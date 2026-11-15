@@ -1206,13 +1206,12 @@ fn law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_re
             .as_bytes(),
         options(),
     )?;
-    assert!(matches!(
-        law::Results::with_profile(&inconsistent, Profile::receive()),
-        Err(Error::Inconsistent {
-            segment: "TCD",
-            field: 1
-        })
-    ));
+    let failure = law::Results::with_profile(&inconsistent, Profile::receive())
+        .err()
+        .ok_or("accepted inconsistent TCD")?;
+    assert!(
+        matches!(failure,Error::AtSegment {occurrence:1,source} if matches!(*source,Error::Inconsistent {segment:"TCD",field:1}))
+    );
     Ok(())
 }
 

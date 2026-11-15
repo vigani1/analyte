@@ -76,19 +76,37 @@ pub(crate) async fn receive(
     Ok(received_at)
 }
 
+/// Durable semantic outcome; conflicts remain distinct from unreadable input.
+#[derive(Clone, Copy)]
+pub(crate) enum InterpretationOutcome {
+    Accepted,
+    Failed,
+    Conflict,
+    WorkConflict(crate::orders::law::validation::Mismatch),
+}
+
 pub(crate) async fn interpret(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
 ) -> Result<bool, Error> {
-    Ok(interpret_with_location(store, machine, id).await?.0)
+    Ok(matches!(
+        interpret_with_location(store, machine, id).await?.0,
+        InterpretationOutcome::Accepted
+    ))
 }
 
 pub(crate) async fn interpret_with_location(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
-) -> Result<(bool, Option<crate::machine::hl7_error::Location>), Error> {
+) -> Result<
+    (
+        InterpretationOutcome,
+        Option<crate::machine::hl7_error::Location>,
+    ),
+    Error,
+> {
     let receipt = store
         .request(deadline(), move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
@@ -113,7 +131,7 @@ pub(crate) async fn persist_mapping(
     id: ReceiptId,
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
-) -> Result<(bool, analyte_store::InterpretationCommit), Error> {
+) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
     let atomic = match machine.snapshot.effective().stack() {
         analyte_config::Stack::Law(_) => true,
         analyte_config::Stack::Astm(_)
@@ -123,6 +141,35 @@ pub(crate) async fn persist_mapping(
         | analyte_config::Stack::Poct(_)
         | analyte_config::Stack::VidasLiteral(_)
         | analyte_config::Stack::Autolyser(_) => false,
+    };
+    let lifecycle = atomic.then_some(law_lifecycle());
+    let work_conflict = if let analyte_config::Stack::Law(settings) =
+        machine.snapshot.effective().stack()
+    {
+        let receipt = store
+            .request(deadline(), move |s| {
+                s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+            })
+            .await?;
+        let payload = receipt.raw.get(1..receipt.raw.len().saturating_sub(2));
+        match payload
+            .and_then(|bytes| analyte_hl7::law::parse_message(bytes, settings.options()).ok())
+        {
+            Some(message) if analyte_hl7::law::receive_results(&message).is_ok() => {
+                crate::orders::law::validation::check(store, machine, &message, settings.options())
+                    .await?
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let mapping = if work_conflict.is_some() {
+        Err(invalid(
+            "LAW returned work differs from retained downloaded command; operator review required",
+        ))
+    } else {
+        mapping
     };
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
@@ -223,15 +270,14 @@ pub(crate) async fn persist_mapping(
                 if !accepted {
                     return Ok(Vec::new());
                 }
-                build_deliveries(assigned, outcomes, &receipt, &destination)
+                build_deliveries(assigned, outcomes, &receipt, &destination, lifecycle)
             };
             let commit = reconcile(
                 store,
                 id,
                 action.as_ref(),
                 interpretation,
-                &corrections,
-                &findings,
+                (&corrections, &findings, lifecycle),
                 build,
             );
             match commit {
@@ -245,23 +291,47 @@ pub(crate) async fn persist_mapping(
                         id,
                         action.as_ref(),
                         conflict.ok_or(analyte_store::Error::InvalidInput)?,
-                        &[],
-                        &findings,
+                        (&[], &findings, lifecycle),
                         |_, _| Ok(Vec::new()),
                     )?;
-                    Ok((rejected, false))
+                    Ok((rejected, InterpretationOutcome::Conflict))
                 }
-                result => result.map(|commit| (commit, accepted)),
+                result => result.map(|commit| {
+                    (
+                        commit,
+                        if accepted {
+                            InterpretationOutcome::Accepted
+                        } else {
+                            InterpretationOutcome::Failed
+                        },
+                    )
+                }),
             }
         })
         .await?;
     let (result, successful) = result;
-    let accepted = successful
+    let successful = work_conflict.map_or(successful, InterpretationOutcome::WorkConflict);
+    let accepted = matches!(successful, InterpretationOutcome::Accepted)
         && !result
             .outcomes
             .iter()
             .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
-    Ok((accepted, result))
+    Ok((
+        if accepted {
+            InterpretationOutcome::Accepted
+        } else {
+            match successful {
+                InterpretationOutcome::Conflict => InterpretationOutcome::Conflict,
+                InterpretationOutcome::WorkConflict(location) => {
+                    InterpretationOutcome::WorkConflict(location)
+                }
+                InterpretationOutcome::Accepted | InterpretationOutcome::Failed => {
+                    InterpretationOutcome::Failed
+                }
+            }
+        },
+        result,
+    ))
 }
 
 // One audit dispatch for normal and rejected-batch commits; recovery never bypasses it.
@@ -270,18 +340,38 @@ fn reconcile(
     id: ReceiptId,
     action: Option<&analyte_store::Reprocess>,
     interpretation: Interpretation,
-    corrections: &[bool],
-    findings: &[analyte_store::Parked],
+    mapping: (
+        &[bool],
+        &[analyte_store::Parked],
+        Option<analyte_store::StatusLifecycle<'_>>,
+    ),
     build: impl FnOnce(
         &Interpretation,
         &[RevisionOutcome],
     ) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error>,
 ) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
-    match action {
-        Some(action) => {
+    let (corrections, findings, lifecycle) = mapping;
+    match (action, lifecycle) {
+        (Some(action), Some(policy)) => store.reprocess_with_lifecycle(
+            action,
+            interpretation,
+            (corrections, findings),
+            policy,
+            build,
+        ),
+        (None, Some(policy)) => store.interpret_with_lifecycle(
+            id,
+            interpretation,
+            (corrections, findings),
+            policy,
+            build,
+        ),
+        (Some(action), None) => {
             store.reprocess_reconciled(action, interpretation, corrections, findings, build)
         }
-        None => store.interpret_reconciled(id, interpretation, corrections, findings, build),
+        (None, None) => {
+            store.interpret_reconciled(id, interpretation, corrections, findings, build)
+        }
     }
 }
 
@@ -298,6 +388,7 @@ fn build_deliveries(
     outcomes: &[RevisionOutcome],
     receipt: &ReceiptMetadata,
     destination: &Identifier,
+    lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
 ) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error> {
     let mut deliveries = Vec::new();
     if let Reading::Results(results) = &assigned.outcome {
@@ -308,7 +399,10 @@ fn build_deliveries(
                 | RevisionOutcome::Conflict
                 | RevisionOutcome::Unresolved => false,
             };
-            if fresh && result.processing.may_deliver_to_production() && !result.requires_parking()
+            if fresh
+                && lifecycle.is_none_or(|policy| policy.may_deliver(result))
+                && result.processing.may_deliver_to_production()
+                && !result.requires_parking()
             {
                 deliveries.push(
                     analyte_sink::build_delivery(
@@ -367,4 +461,15 @@ pub(crate) async fn failed_reading(
 ) -> Result<(), Error> {
     persist_mapping(store, machine, id, Err(invalid(reason)), None).await?;
     Ok(())
+}
+
+fn law_lifecycle() -> analyte_store::StatusLifecycle<'static> {
+    analyte_store::StatusLifecycle {
+        transitions: analyte_hl7::law::STATUS_TRANSITIONS,
+        withheld: analyte_hl7::law::WITHHELD_STATUSES,
+        single_run: analyte_hl7::law::SINGLE_RUN_STATUSES,
+        run: |identity| {
+            analyte_hl7::law::observation_run(identity.sub_id.as_str()).map(str::to_owned)
+        },
+    }
 }

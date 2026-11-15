@@ -29,7 +29,7 @@ pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
 mod revisions;
-pub use revisions::{InterpretationCommit, RevisionOutcome};
+pub use revisions::{InterpretationCommit, RevisionOutcome, StatusLifecycle};
 mod query;
 pub use query::{Frame, ParkedItem, Receipt};
 mod records;

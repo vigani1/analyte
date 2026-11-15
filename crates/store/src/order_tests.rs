@@ -1647,3 +1647,64 @@ fn adr0003_caller_groups_are_exact_and_identity_budget_has_no_namespace_assumpti
     }
     Ok(())
 }
+
+#[test]
+fn law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("command.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let owner = Identifier::new("owner")?;
+    let key = identity()?;
+    let groups = vec![vec![analyte_model::NamespacedId {
+        namespace: Identifier::new("local")?,
+        value: Identifier::new("test")?,
+    }]];
+    let namespace = Identifier::new("LAB")?;
+    let record = store
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions {
+                items: OrderItems::Groups {
+                    groups: &groups,
+                    namespace: Some(&namespace),
+                    max_identity_bytes: 46,
+                },
+                owner: Some(&owner),
+                prepare: None,
+            },
+        )?
+        .map_err(std::io::Error::other)?;
+    assert!(
+        store
+            .retain_order_command(&key, &Identifier::new("other")?, b"wrong-owner".to_vec())
+            .is_err()
+    );
+    store.retain_order_command(&key, &owner, b"synthetic original command".to_vec())?;
+    assert!(
+        store
+            .retain_order_command(&key, &owner, b"changed command".to_vec())
+            .is_err()
+    );
+    let placer = record.items.first().ok_or("item")?.placer.clone();
+    assert!(
+        store
+            .machine_order_by_placer(&Identifier::new("other-machine")?, &placer)?
+            .is_none()
+    );
+    drop(store);
+    let store = open(&path)?;
+    let retained = store
+        .machine_order_by_placer(&key.machine, &placer)?
+        .ok_or("retained command")?;
+    assert_eq!(
+        retained.original_command(),
+        Some(b"synthetic original command".as_slice())
+    );
+    Ok(())
+}

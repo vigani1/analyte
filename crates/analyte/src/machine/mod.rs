@@ -47,6 +47,14 @@ pub(crate) async fn run(
     mut closing: Closing,
     capture: Option<crate::capture::Capture>,
 ) -> Result<(), Error> {
+    if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack()
+        && matches!(
+            settings.policy.links,
+            analyte_config::LawLinks::Independent { .. }
+        )
+    {
+        return law::independent::run(machine, store, stop, closing, capture).await;
+    }
     let link = settings::transport(machine.snapshot.effective().stack());
     let limits = Limits::new(16, Duration::from_millis(u64::from(link.timeout_ms())))?;
     let endpoint = &machine.snapshot.effective().site().endpoint;

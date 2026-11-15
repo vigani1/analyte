@@ -10,6 +10,8 @@ pub struct ErrorLocation {
     pub segment: &'static str,
     /// One-based field; zero identifies structure/cardinality rather than a field.
     pub field: usize,
+    /// Actual segment occurrence when retained by validation; never inferred from its name.
+    pub occurrence: Option<usize>,
 }
 
 /// Host recovery classes; a failed response is never acknowledged in an ACK loop.
@@ -50,7 +52,8 @@ impl Failure {
             | Self::InconsistentOrl(error) => error,
             Self::QueryRejected { location } => return Some(*location),
         };
-        match error {
+        let occurrence = error.occurrence();
+        match error.base() {
             Error::DilutionDefinition { segment, field, .. }
             | Error::Subcomponent { segment, field, .. }
             | Error::Authority { segment, field, .. }
@@ -60,8 +63,10 @@ impl Failure {
             | Error::Syntax(crate::Error::Control { segment, field }) => Some(ErrorLocation {
                 segment,
                 field: *field,
+                occurrence,
             }),
-            Error::Syntax(
+            Error::AtSegment { .. }
+            | Error::Syntax(
                 crate::Error::Limit { .. }
                 | crate::Error::Encoding
                 | crate::Error::Truncation
@@ -75,6 +80,39 @@ impl Failure {
                 | crate::Error::AckMode,
             ) => None,
         }
+    }
+
+    /// Renders the retained field location, omitting only locations whose occurrence is unknown.
+    /// A single segment in the original proves occurrence one; repeated segments need evidence.
+    #[must_use]
+    pub fn acknowledgment_error<'a>(
+        &self,
+        message: &Message,
+        code: &'a [u8],
+        application_code: &'a [u8],
+    ) -> crate::AckError<'a> {
+        let located = self
+            .location()
+            .filter(|l| l.field > 0)
+            .and_then(|location| {
+                let field = u16::try_from(location.field).ok()?;
+                let occurrence = location.occurrence.or_else(|| {
+                    (message
+                        .segments()
+                        .filter(|s| s.id() == location.segment.as_bytes())
+                        .count()
+                        == 1)
+                        .then_some(1)
+                })?;
+                Some(crate::AckError {
+                    segment: location.segment.as_bytes(),
+                    occurrence: u16::try_from(occurrence).ok()?,
+                    field,
+                    code,
+                    application_code,
+                })
+            });
+        located.unwrap_or(crate::AckError::unlocated(code, application_code))
     }
 
     /// Returns the triggered-message MSA outcome, or none for failed responses/query processing.
@@ -92,7 +130,7 @@ impl Failure {
 }
 
 fn triggered(error: Error) -> Failure {
-    match error {
+    let reject = match error.base() {
         Error::Component { segment: "MSH", .. }
         | Error::Inconsistent { .. }
         | Error::Content {
@@ -102,13 +140,19 @@ fn triggered(error: Error) -> Failure {
         | Error::Syntax(crate::Error::Control {
             segment: "MSH",
             field: 9 | 12 | 15 | 16 | 18 | 21,
-        }) => Failure::ContentReject(error),
-        Error::DilutionDefinition { .. }
+        }) => true,
+        Error::AtSegment { .. }
+        | Error::DilutionDefinition { .. }
         | Error::Subcomponent { .. }
         | Error::Authority { .. }
         | Error::Component { .. }
         | Error::Content { .. }
-        | Error::Syntax(_) => Failure::MalformedTrigger(error),
+        | Error::Syntax(_) => false,
+    };
+    if reject {
+        Failure::ContentReject(error)
+    } else {
+        Failure::MalformedTrigger(error)
     }
 }
 

@@ -46,11 +46,19 @@ pub struct MachineOrder {
     /// Durable command items; legacy v4 coverage is explicitly unknown.
     #[serde(default)]
     pub items: Vec<MachineOrderItem>,
+    #[serde(default)]
+    original_command: Option<Vec<u8>>,
 }
 
 const RESERVATION_OWNER_PREFIX: &str = "host-reserved:";
 
 impl MachineOrder {
+    /// Original prepared command, retained before I/O; absent for older reservations.
+    #[must_use]
+    pub fn original_command(&self) -> Option<&[u8]> {
+        self.original_command.as_deref()
+    }
+
     /// True only for the connection that admitted this cancellation request.
     #[must_use]
     pub fn cancel_requested_by(&self, owner: &Identifier) -> bool {

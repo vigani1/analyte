@@ -104,3 +104,26 @@ impl Store {
         Err(Error::InvalidInput)
     }
 }
+
+impl Store {
+    /// Finds a retained command by machine and exact placer value; ambiguity is refused.
+    /// # Errors
+    /// Reports ambiguity or invalid/database evidence.
+    pub fn machine_order_by_placer(
+        &self,
+        machine: &Identifier,
+        placer: &str,
+    ) -> Result<Option<MachineOrder>, Error> {
+        let mut query = self.db.prepare("SELECT DISTINCT o.id FROM machine_orders o JOIN machine_order_items i ON i.machine_order=o.id WHERE o.machine=?1 AND i.placer=?2 LIMIT 2")?;
+        let ids = query
+            .query_map(params![machine.as_str(), placer], |row| {
+                row.get::<_, i64>(0)
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        match ids.as_slice() {
+            [] => Ok(None),
+            [id] => load(&self.db, *id).map(Some),
+            _ => Err(Error::Conflict),
+        }
+    }
+}

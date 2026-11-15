@@ -1,5 +1,6 @@
 //! LAW work exchanges, TF-2b 3.27/3.28; shared cache, reservations and item outcomes.
 mod sending;
+pub(crate) mod validation;
 mod work;
 use crate::{Error, config::Machine, deadline, evidence, invalid};
 use analyte_hl7::{AckCode, AckError, Message, Options, Responsibility, law};
@@ -109,7 +110,20 @@ impl Connection {
             Ok(query) => query,
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                return Err(error.into());
+                return response_metadata(|response| {
+                    let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
+                    law::reject_trigger(
+                        message.raw(),
+                        response,
+                        error
+                            .acknowledgment_code()
+                            .ok_or("query failure has no ACK outcome")?,
+                        detail,
+                        options,
+                    )?
+                    .map(Reply::Response)
+                    .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
+                });
             }
         };
         let stack = super::settings::law(machine)?;

@@ -73,7 +73,7 @@ async fn no_work(peer: &mut TcpStream) -> Result<(), Error> {
     );
     Ok(())
 }
-async fn cancel_cache(path: &Path, reference: &Reference) -> Result<(), Error> {
+pub(super) async fn cancel_cache(path: &Path, reference: &Reference) -> Result<(), Error> {
     let evidence: String =
         database(path)?.query_row("SELECT evidence FROM orders WHERE id='order-1'", [], |r| {
             r.get(0)

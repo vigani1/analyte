@@ -193,8 +193,12 @@ starts after issuance for both work and cancel ORLs. Partial input still uses
 pause and stale/untrusted feed admission use the shared store checks. A failed
 idle lookup produces no work bytes and retains the receiving connection. Tests:
 `law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead` in this
-crate, and the program's source-named `tests/law/work.rs` matrix. The single-link
-scope and specific rejection are tested by
-`law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_independent_links`.
-This declared subset does not implement TF-2b B.6's independent directional links
-or short-lived connections. No full LAW connection-conformance claim is made.
+crate, and the program's source-named `tests/law/work.rs` matrix. The topology choices and validation are tested by
+`law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint`.
+Persistent mode uses the site TCP client/server endpoint for all transactions.
+Independent mode requires an inbound `tcp_server` site endpoint plus an explicit
+`law.outbound_endpoint` analyzer listener for LAB-28. The host owns bounded queued
+follow-ups and opens a separate outgoing connection per transaction. A query peer
+may close after RSP; work ownership survives that closure. Failed attempts are
+uncertain and never automatically resent. See the program's B.6 tests in
+`docs/protocols/ihe-law.md`; evidence remains documented.

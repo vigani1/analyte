@@ -95,7 +95,15 @@ async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c()
     .await?;
     let running = Running::start(&path, &reference.url, "synthetic-api")?;
     let mut peer = connect(&path, "law").await?;
-    let first = result("first", "awos-1^LAB", "other-id^ANALYZER", "12.30", "F");
+    // B.7.6 p.82: unknown non-null AWOS is rejected, not treated as unsolicited.
+    let unknown = result("never-downloaded", "awos-1^LAB", "", "12.30", "F");
+    assert!(
+        hl7(&mut peer, unknown.as_bytes())
+            .await?
+            .contains("MSA|AR|never-downloaded")
+    );
+    assert_eq!(count(&path, "outbox")?, 0);
+    let first = result("first", "\"\"", "awos-1^LAB", "12.30", "F");
     let ack = hl7(&mut peer, first.as_bytes()).await?;
     assert!(ack.contains("ACK^R22^ACK"), "{ack}");
     assert!(ack.contains("MSA|AA|first"), "{ack}");
@@ -111,20 +119,14 @@ async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c()
         .contains("MSA|AA|retransmit")
     );
     assert_eq!(count(&path, "outbox")?, 1);
-    let conflict = result("conflict", "awos-1^LAB", "other-id^ANALYZER", "99.9", "F");
+    let conflict = result("conflict", "\"\"", "awos-1^LAB", "99.9", "F");
     assert!(
         hl7(&mut peer, conflict.as_bytes())
             .await?
-            .contains("MSA|AE|conflict")
+            .contains("MSA|AR|conflict")
     );
     assert_eq!(count(&path, "outbox")?, 1);
-    let correction = result(
-        "correction",
-        "awos-1^LAB",
-        "other-id^ANALYZER",
-        "13.40",
-        "C",
-    );
+    let correction = result("correction", "\"\"", "awos-1^LAB", "13.40", "C");
     assert!(
         hl7(&mut peer, correction.as_bytes())
             .await?
@@ -199,13 +201,16 @@ async fn law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_deli
     let mut peer = connect(&path, "law").await?;
     for (message, code) in [
         (
-            result("unknown-test", "awos-1^LAB", "", "12.30", "F")
+            result("unknown-test", "\"\"", "awos-1^LAB", "12.30", "F")
                 .replace("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB"),
             "AE",
         ),
-        (result("bad-status", "awos-1^LAB", "", "12.30", "D"), "AE"),
         (
-            result("bad-tcd", "awos-1^LAB", "", "12.30", "F") + "TCD|OTHER^Other^99LAB\r",
+            result("bad-status", "\"\"", "awos-1^LAB", "12.30", "D"),
+            "AE",
+        ),
+        (
+            result("bad-tcd", "\"\"", "awos-1^LAB", "12.30", "F") + "TCD|OTHER^Other^99LAB\r",
             "AR",
         ),
     ] {
@@ -251,8 +256,8 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     let mut peer = connect(&path, "law").await?;
     let first = result(
         "control-id-longer-than-generic-hl7-twenty",
+        "\"\"",
         "awos-1^LAB",
-        "",
         "12.30",
         "F",
     )
@@ -263,6 +268,8 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
             .contains("MSA|AA|control-id-longer-than-generic-hl7-twenty")
     );
     check(&reference.event().await?, "awos-1", "LAB", 0, "12.30")?;
+    // C.7 pp.102-103: OG.1 stays 1; changing OG.3 distinguishes another
+    // observation within the same run, not a second final run.
     let rerun = first
         .replace("control-id-longer-than-generic-hl7-twenty", "rerun")
         .replace("|1^1^1|", "|1^1^2|");
@@ -275,11 +282,11 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     let conflict = first
         .replace("control-id-longer-than-generic-hl7-twenty", "mixed")
         .replace("12.30", "99.9");
-    let new = result("new", "awos-2^LAB", "", "10.10", "F");
+    let new = result("new", "\"\"", "awos-2^LAB", "10.10", "F");
     let (_, new_body) = new.split_once('\r').ok_or("synthetic header absent")?;
     let mixed = format!("{conflict}{}", new_body.replacen("SPM|1|", "SPM|2|", 1));
     let ack = hl7(&mut peer, mixed.as_bytes()).await?;
-    assert!(ack.contains("MSA|AE|mixed"), "{ack}");
+    assert!(ack.contains("MSA|AR|mixed"), "{ack}");
     assert_eq!(
         count(&path, "outbox")?,
         2,
@@ -292,8 +299,8 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     );
     assert!(hl7(&mut peer, new.as_bytes()).await?.contains("MSA|AA|new"));
     check(&reference.event().await?, "awos-2", "LAB", 0, "10.10")?;
-    let valid = result("mixed-mapping", "awos-3^LAB", "", "10.10", "F");
-    let unknown = result("unknown", "awos-4^LAB", "", "10.10", "F")
+    let valid = result("mixed-mapping", "\"\"", "awos-3^LAB", "10.10", "F");
+    let unknown = result("unknown", "\"\"", "awos-4^LAB", "10.10", "F")
         .replace("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB");
     let (_, unknown_body) = unknown.split_once('\r').ok_or("synthetic header absent")?;
     let mixed_mapping = format!("{valid}{}", unknown_body.replacen("SPM|1|", "SPM|2|", 1));
@@ -334,7 +341,7 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     let running = Running::start_program(loaded, "synthetic-api")?;
     let mut peer = connect(&path, "law").await?;
     let wire = analyte_framing::mllp::encode(
-        result("durable", "awos-1^LAB", "", "12.30", "F").as_bytes(),
+        result("durable", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
         analyte_framing::mllp::Limit::new(1048576)?,
     )?;
     peer.write_all(wire.get(..12).ok_or("synthetic prefix missing")?)
@@ -399,7 +406,7 @@ async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), 
         let mut peer = connect(&path, "law").await?;
         database(&path)?.execute_batch(&format!("CREATE TRIGGER synthetic_storage_failure BEFORE INSERT ON {table} BEGIN SELECT RAISE(FAIL,'synthetic-storage-failure'); END;"))?;
         let wire = analyte_framing::mllp::encode(
-            result("storage-failure", "awos-1^LAB", "", "12.30", "F").as_bytes(),
+            result("storage-failure", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
             analyte_framing::mllp::Limit::new(1048576)?,
         )?;
         peer.write_all(&wire).await?;
@@ -450,7 +457,7 @@ async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<
     ));
     let mut peer = connect(&path, "law").await?;
     let wire = analyte_framing::mllp::encode(
-        result("full", "awos-1^LAB", "", "12.30", "F").as_bytes(),
+        result("full", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
         analyte_framing::mllp::Limit::new(1048576)?,
     )?;
     peer.write_all(&wire).await?;
@@ -521,18 +528,13 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
         "{ack}"
     );
     assert!(!ack.contains("OML"));
-    let work = result("work1", "awos-1^LAB", "", "12.30", "F")
+    let work = result("work1", "\"\"", "awos-1^LAB", "12.30", "F")
         .replace("OUL^R22^OUL_R22", "OML^O33^OML_O33")
         .replace("LAB-29", "LAB-28");
-    peer.write_all(&analyte_framing::mllp::encode(
-        work.as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
-    )?)
-    .await?;
-    assert_eq!(
-        tokio::time::timeout(HANG_GUARD, peer.read(&mut [0; 1])).await??,
-        0
-    );
+    // B.7.2 pp.80-81: unsupported trigger is rejected with correlated AR.
+    let rejected = hl7(&mut peer, work.as_bytes()).await?;
+    assert!(rejected.contains("MSA|AR|work1"), "{rejected}");
+    assert!(!rejected.contains("MSA|AA|"));
     assert_eq!(count(&path, "machine_orders")?, 0);
     assert_eq!(count(&path, "receipts")?, 2);
     assert_eq!(count(&path, "outbox")?, 0);
@@ -560,7 +562,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     // LAW permits 50-character control IDs; the generic HL7 entry point does not.
     // Reprocessing must retain LAW validation/mapping rather than fall back to HL7.
     let control = "R".repeat(50);
-    let payload = result(&control, "awos-1^LAB", "", "12.30", "F");
+    let payload = result(&control, "\"\"", "awos-1^LAB", "12.30", "F");
     assert!(
         hl7(&mut peer, payload.as_bytes())
             .await?
@@ -665,11 +667,11 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     );
     // Reprocessing a retained non-C conflict must roll back its attempted audit
     // with the batch, then commit one failed version/audit and no revisions.
-    let conflicting = result("reprocess-conflict", "awos-1^LAB", "", "99.90", "F");
+    let conflicting = result("reprocess-conflict", "\"\"", "awos-1^LAB", "99.90", "F");
     assert!(
         hl7(&mut peer, conflicting.as_bytes())
             .await?
-            .contains("MSA|AE|reprocess-conflict")
+            .contains("MSA|AR|reprocess-conflict")
     );
     let conflict_id: String = database(&path)?.query_row(
         "SELECT id FROM receipts ORDER BY rowid DESC LIMIT 1",
@@ -710,5 +712,188 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     assert_eq!(count(&path, "observation_revisions")?, 1);
     store.shutdown(until()?).await?;
     reference.close().await?;
+    Ok(())
+}
+
+// PaLM TF-2b Rev 11 B.7.1-B.7.2 pp.80-81; C.1 pp.84-85.
+#[tokio::test]
+async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = vendor_config(temp.path(), "law", &definition())?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "law").await?;
+    let first = result("second-obx", "\"\"", "run^ANALYZER", "1.0", "F");
+    let obx = first.split("OBX|").nth(1).ok_or("synthetic OBX missing")?;
+    let second = format!("OBX|{}", obx.replacen("1|NM|", "2|NM|", 1));
+    for (payload, location) in [
+        (
+            format!("{first}{}", second.replace("|F|", "|D|")),
+            "OBX^2^11",
+        ),
+        (
+            format!("{first}{}", second.replacen("OBX|2|", "OBX|3|", 1)),
+            "OBX^2^1",
+        ),
+        (
+            format!("{}{second}", first.replace("|F|", "|D|")),
+            "OBX^1^11",
+        ),
+    ] {
+        let ack = hl7(&mut peer, payload.as_bytes()).await?;
+        assert!(ack.contains("MSA|AE|second-obx"), "{ack}");
+        assert!(ack.contains(&format!("ERR||{location}|")), "{ack}");
+        assert_eq!(count(&path, "outbox")?, 0);
+        assert_eq!(count(&path, "observation_revisions")?, 0);
+        let raw: Vec<u8> = database(&path)?.query_row(
+            "SELECT raw FROM receipts ORDER BY rowid DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(
+            raw,
+            analyte_framing::mllp::encode(
+                payload.as_bytes(),
+                analyte_framing::mllp::Limit::new(1048576)?
+            )?
+        );
+    }
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+// ADR 0011; PaLM TF-2b Rev 11 C.7 Figure C.7-1 p.111, Table C.7-18 p.110.
+#[tokio::test]
+async fn law_adr0011_c7_all_status_moves_and_unverified_delivery() -> Result<(), Error> {
+    for before in ["P", "R", "F", "C", "X"] {
+        for after in ["P", "R", "F", "C", "X"] {
+            let temp = tempfile::tempdir()?;
+            let path = vendor_config(temp.path(), "law", &definition())?;
+            let reference = Reference::start(
+                &temp.path().join("receiver.db"),
+                TcpListener::bind("127.0.0.1:0").await?,
+                false,
+            )
+            .await?;
+            let mut running = Running::start(&path, &reference.url, "synthetic-api")?;
+            let mut peer = connect(&path, "law").await?;
+            let first = result("before", "\"\"", "lifecycle^ANALYZER", "1.0", before);
+            assert!(
+                hl7(&mut peer, first.as_bytes())
+                    .await?
+                    .contains("MSA|AA|before")
+            );
+            if before == "R" && after == "F" {
+                running.stop().await?;
+                running = Running::start(&path, &reference.url, "synthetic-api")?;
+                peer = connect(&path, "law").await?;
+            }
+            let permitted = matches!(
+                (before, after),
+                ("P", "P" | "R" | "F") | ("R", "R" | "F") | ("F", "C") | ("C", "C")
+            );
+            let second = result("after", "\"\"", "lifecycle^ANALYZER", "2.0", after);
+            let ack = hl7(&mut peer, second.as_bytes()).await?;
+            assert!(
+                ack.contains(&format!(
+                    "MSA|{}|after",
+                    if permitted { "AA" } else { "AR" }
+                )),
+                "{before}->{after}: {ack}"
+            );
+            assert_eq!(
+                count(&path, "observation_revisions")?,
+                if permitted { 2 } else { 1 },
+                "{before}->{after}"
+            );
+            let deliveries = i64::from(before != "R") + i64::from(permitted && after != "R");
+            assert_eq!(count(&path, "outbox")?, deliveries, "{before}->{after}");
+            if permitted && before == "R" && after == "F" {
+                let row =
+                    database(&path)?.query_row("SELECT payload FROM outbox LIMIT 1", [], |r| {
+                        r.get::<_, Vec<u8>>(0)
+                    })?;
+                let body: serde_json::Value = serde_json::from_slice(&row)?;
+                assert_eq!(
+                    body.pointer("/results/0/identity/resolved/revision")
+                        .and_then(serde_json::Value::as_u64),
+                    Some(1)
+                );
+                assert_eq!(
+                    body.pointer("/results/0/parts/0/source_status")
+                        .and_then(|v| v.as_str()),
+                    Some("F")
+                );
+            }
+            running.stop().await?;
+            reference.close().await?;
+        }
+    }
+    Ok(())
+}
+
+// C.7 Figure C.7-1 p.111 and OG.1 pp.102-103; ADR 0011.
+#[tokio::test]
+async fn law_adr0011_c7_only_one_final_run_in_history_or_batch() -> Result<(), Error> {
+    for batch in [false, true] {
+        let temp = tempfile::tempdir()?;
+        let path = vendor_config(temp.path(), "law", &definition())?;
+        let mut reference = Reference::start(
+            &temp.path().join("receiver.db"),
+            TcpListener::bind("127.0.0.1:0").await?,
+            false,
+        )
+        .await?;
+        let running = Running::start(&path, &reference.url, "synthetic-api")?;
+        let mut peer = connect(&path, "law").await?;
+        let first = result("run-one", "\"\"", "order^ANALYZER", "1.0", "F")
+            .replace("^99LAB|1|1.0", "^99LAB|1^1^1|1.0");
+        let second = result("run-two", "\"\"", "order^ANALYZER", "2.0", "F")
+            .replace("^99LAB|1|2.0", "^99LAB|2^1^1|2.0");
+        if batch {
+            let (_, body) = second.split_once('\r').ok_or("header")?;
+            let mixed = format!("{first}{}", body.replacen("SPM|1|", "SPM|2|", 1));
+            assert!(
+                hl7(&mut peer, mixed.as_bytes())
+                    .await?
+                    .contains("MSA|AR|run-one")
+            );
+            assert_eq!(count(&path, "outbox")?, 0);
+            assert_eq!(count(&path, "observation_revisions")?, 0);
+        } else {
+            assert!(
+                hl7(&mut peer, first.as_bytes())
+                    .await?
+                    .contains("MSA|AA|run-one")
+            );
+            reference.event().await?;
+            running.stop().await?;
+            let running = Running::start(&path, &reference.url, "synthetic-api")?;
+            let mut peer = connect(&path, "law").await?;
+            assert!(
+                hl7(&mut peer, second.as_bytes())
+                    .await?
+                    .contains("MSA|AR|run-two")
+            );
+            assert!(
+                hl7(&mut peer, second.replace("|F|", "|C|").as_bytes())
+                    .await?
+                    .contains("MSA|AR|run-two")
+            );
+            assert_eq!(count(&path, "outbox")?, 1);
+            assert_eq!(count(&path, "observation_revisions")?, 1);
+            running.stop().await?;
+            reference.close().await?;
+            continue;
+        }
+        running.stop().await?;
+        reference.close().await?;
+    }
     Ok(())
 }

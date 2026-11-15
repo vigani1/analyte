@@ -133,6 +133,7 @@ impl Store {
                 OrderOwner::Reservation(owner.clone())
             }),
             items: Vec::new(),
+            original_command: None,
         };
         record.items = create_items(&tx, &record, fields.tests, options.items, limit)?;
         if let Some(prepare) = options.prepare {
@@ -142,5 +143,36 @@ impl Store {
         append(&tx, &record, event.as_ref(), limit)?;
         tx.commit()?;
         Ok(Ok(record))
+    }
+}
+
+impl Store {
+    /// Retains immutable prepared bytes before I/O, only for an owned sending reservation.
+    /// Cancellation after this commit never grants permission to resend.
+    /// # Errors
+    /// Reports capacity, ownership, changed evidence or database failures.
+    pub fn retain_order_command(
+        &mut self,
+        identity: &MachineOrderKey,
+        owner: &Identifier,
+        bytes: Vec<u8>,
+    ) -> Result<(), Error> {
+        self.capacity(self.limits.record_bytes)?;
+        let limit = self.limits.record_bytes;
+        if bytes.is_empty() || bytes.len() > limit {
+            return Err(Error::InvalidInput);
+        }
+        let record = self.machine_order(identity)?.ok_or(Error::Conflict)?;
+        if !record.reserved_by(owner) || record.original_command.is_some() {
+            return Err(Error::Conflict);
+        }
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut record = record;
+        record.original_command = Some(bytes);
+        append(&tx, &record, None, limit)?;
+        tx.commit()?;
+        Ok(())
     }
 }

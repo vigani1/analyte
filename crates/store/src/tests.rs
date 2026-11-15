@@ -1623,6 +1623,157 @@ fn rule3_interpretation_digest_verified_legacy_evidence_still_reads() -> TestRes
     Ok(())
 }
 
+#[test]
+fn adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("status-table.db"))?;
+    let policy = StatusLifecycle {
+        transitions: &[("draft", "ready")],
+        withheld: &["draft"],
+        single_run: &[],
+        run: |_| None,
+    };
+    for (index, status, expected) in [
+        (0, "draft", RevisionOutcome::New(analyte_model::Revision(0))),
+        (
+            1,
+            "ready",
+            RevisionOutcome::Correction(analyte_model::Revision(1)),
+        ),
+        (2, "draft", RevisionOutcome::Conflict),
+    ] {
+        let metadata = receipt(b"synthetic")?;
+        store.receive(&metadata, b"synthetic", b"config")?;
+        let mut result = production_result(metadata.id)?;
+        let mut parts = result.parts.as_slice().to_vec();
+        parts.first_mut().ok_or(Error::Corruption)?.source_status =
+            analyte_model::SourceText::new(status)?;
+        result.parts =
+            analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
+        if let Some(sample) = &mut result.sample {
+            sample.id = SampleId::new(&format!("sample-{index}"))?;
+        }
+        assert_eq!(policy.may_deliver(&result), status != "draft");
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![result]);
+        let commit = store.interpret_with_lifecycle(
+            metadata.id,
+            evidence,
+            (&[true], &[]),
+            policy,
+            |_, _| Ok(vec![]),
+        )?;
+        assert_eq!(commit.outcomes, [expected]);
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("batch-status.db"))?;
+    let policy = StatusLifecycle {
+        transitions: &[("draft", "draft"), ("draft", "ready")],
+        withheld: &[],
+        single_run: &[],
+        run: |_| None,
+    };
+    let make = |receipt,
+                status: &str|
+     -> Result<analyte_model::ResultContent, Box<dyn std::error::Error>> {
+        let mut result = production_result(receipt)?;
+        let mut parts = result.parts.as_slice().to_vec();
+        parts.first_mut().ok_or(Error::Corruption)?.source_status =
+            analyte_model::SourceText::new(status)?;
+        result.parts =
+            analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
+        Ok(result)
+    };
+    let first = receipt(b"synthetic")?;
+    store.receive(&first, b"synthetic", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![make(first.id, "draft")?, make(first.id, "ready")?]);
+    let commit = store.interpret_with_lifecycle(
+        first.id,
+        evidence,
+        (&[false, false], &[]),
+        policy,
+        |_, _| Ok(vec![]),
+    )?;
+    assert_eq!(
+        commit.outcomes,
+        [
+            RevisionOutcome::New(analyte_model::Revision(0)),
+            RevisionOutcome::Correction(analyte_model::Revision(1))
+        ]
+    );
+    let second = receipt(b"synthetic")?;
+    store.receive(&second, b"synthetic", b"config")?;
+    let mut result = make(second.id, "draft")?;
+    result.sample.as_mut().ok_or(Error::Corruption)?.id = SampleId::new("changed")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result]);
+    let commit =
+        store.interpret_with_lifecycle(second.id, evidence, (&[false], &[]), policy, |_, _| {
+            Ok(vec![])
+        })?;
+    assert_eq!(commit.outcomes, [RevisionOutcome::Conflict]);
+    Ok(())
+}
+
+#[test]
+fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("withheld.db"))?;
+    let metadata = receipt(b"synthetic")?;
+    store.receive(&metadata, b"synthetic", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+    let policy = StatusLifecycle {
+        transitions: &[],
+        withheld: &["F"],
+        single_run: &[],
+        run: |_| None,
+    };
+    let result = store.interpret_with_lifecycle(
+        metadata.id,
+        evidence,
+        (&[false], &[]),
+        policy,
+        |evidence, _| {
+            let Reading::Results(results) = &evidence.outcome else {
+                return Err(Error::InvalidInput);
+            };
+            let Some(analyte_model::IdentityStatus::Resolved(identity)) =
+                results.first().map(|r| &r.identity)
+            else {
+                return Err(Error::InvalidInput);
+            };
+            Ok(vec![Delivery {
+                id: DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| Error::InvalidInput)?,
+                destination: Identifier::new("app").map_err(|_| Error::InvalidInput)?,
+                ordering_key: OrderingKey {
+                    machine: metadata.machine.clone(),
+                    observation: identity.observation.clone(),
+                },
+                payload: b"must not deliver".to_vec(),
+                contract_version: 1,
+            }])
+        },
+    );
+    assert!(matches!(result, Err(Error::InvalidInput)));
+    for table in ["interpretations", "observation_revisions", "outbox"] {
+        assert_eq!(
+            store
+                .db
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))?,
+            0
+        );
+    }
+    Ok(())
+}
+
 // ADR 0003; POCT01-A2 B 3.2 pp.71-72: provenance offsets must not create results.
 #[test]
 fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evidence() -> TestResult

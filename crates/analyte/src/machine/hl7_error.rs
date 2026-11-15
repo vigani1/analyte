@@ -1,5 +1,5 @@
 //! Shared HL7/LAW error evidence: never invent a location for an unknown cause.
-use analyte_hl7::{AckError, Message, Terminator};
+use analyte_hl7::{AckError, Terminator};
 use analyte_mapping::{Output, Position};
 
 #[derive(Debug, Clone)]
@@ -59,23 +59,6 @@ impl Location {
             segment,
             occurrence: u16::try_from(occurrence).ok()?,
             field: u16::try_from(position.field).ok()?,
-        })
-    }
-
-    pub(crate) fn unique(message: &Message, segment: &str, field: usize) -> Option<Self> {
-        if field == 0
-            || message
-                .segments()
-                .filter(|s| s.id() == segment.as_bytes())
-                .count()
-                != 1
-        {
-            return None;
-        }
-        Some(Self {
-            segment: segment.as_bytes().try_into().ok()?,
-            occurrence: 1,
-            field: u16::try_from(field).ok()?,
         })
     }
 }

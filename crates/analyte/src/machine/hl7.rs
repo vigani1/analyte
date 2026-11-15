@@ -123,9 +123,9 @@ pub(super) async fn session(
                             let id = pending
                                 .remove(&(token.epoch(), token.ordinal()))
                                 .ok_or_else(|| invalid("HL7 receipt correlation missing"))?;
-                            let (success, location) =
+                            let (outcome, location) =
                                 evidence::interpret_with_location(store, machine, id).await?;
-                            let event = if success {
+                            let event = if matches!(outcome,evidence::InterpretationOutcome::Accepted) {
                                 Event::Interpreted(token)
                             } else {
                                 Event::NotInterpretable(

@@ -3,8 +3,8 @@
 Status, 2026-11-15: phases 1 to 4, 6 and 8 are built at the documented level,
 while phase 5 has a POCT Basic Profile implementation with an open conformance
 evidence gate (see the audited [POCT checklist](protocols/poct1-a.md)),
-including IHE LAW as Analyzer Manager in the program (one persistent link;
-independent links and successful recorded simulator qualification remain). The program receives and parks
+including IHE LAW as Analyzer Manager in the program (persistent or independent
+directional links; successful recorded simulator qualification remains). The program receives and parks
 results from every stack, answers machine queries and sends work lists for
 ASTM, HL7, LAW, VIDAS and Autolyser through one durable order path that never
 resends. Recordings replay through the program. From phase 9: OS services,
