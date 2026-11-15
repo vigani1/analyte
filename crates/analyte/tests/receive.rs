@@ -169,7 +169,8 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
         store
             .health(
                 &analyte_model::Identifier::new("demo")?,
-                jiff::Timestamp::now().as_second()
+                jiff::Timestamp::now().as_second(),
+                30
             )?
             .pending_count,
         1
@@ -189,7 +190,8 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
         stored(&program)?
             .health(
                 &analyte_model::Identifier::new("demo")?,
-                jiff::Timestamp::now().as_second()
+                jiff::Timestamp::now().as_second(),
+                30
             )?
             .pending_count,
         1

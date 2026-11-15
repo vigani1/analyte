@@ -106,7 +106,8 @@ stop, transports close and join (5 seconds), and the store drains and closes
 Delivery/store failures stop the service visibly. Individual machine failures
 remain isolated. HTTP requests have a 3-second deadline, local delivery storage
 operations 2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
-and order polls run every 5 seconds with a 30-second freshness policy.
+and order polls run every 5 seconds. Site destination `freshness_seconds`
+(default 30, nonzero) sets `Limits.freshness` for lookups, reservations and alerts.
 An uninterruptible operating-system flush cannot be cancelled within a worker;
 owner destructors join rather than detach. The process watchdog enforces the
 overall stop deadline even when such a join blocks; see Running as a service.

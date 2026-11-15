@@ -385,3 +385,35 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
     store.shutdown(deadline()).await?;
     Ok(())
 }
+
+// ADR 0004: site policy becomes destination Limits, rather than a host constant.
+#[test]
+fn rule9_destination_config_sets_operational_freshness_and_rejects_zero() -> Result<(), Error> {
+    let temp = crate::admin::private_tempdir()?;
+    let definition =
+        include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
+    let loaded = program(temp.path(), &definition, "127.0.0.1:5600")?;
+    assert_eq!(
+        loaded.machines()[0].destination_limits.freshness.as_secs(),
+        30
+    );
+    let site = temp.path().join("site.toml");
+    let original = std::fs::read_to_string(&site)?;
+    for seconds in [7, 120] {
+        std::fs::write(
+            &site,
+            format!("{original}\nfreshness_seconds = {seconds}\n"),
+        )?;
+        let configured = Program::load(&temp.path().join("program.toml"))?;
+        assert_eq!(
+            configured.machines()[0]
+                .destination_limits
+                .freshness
+                .as_secs(),
+            seconds
+        );
+    }
+    std::fs::write(&site, format!("{original}\nfreshness_seconds = 0\n"))?;
+    assert!(Program::load(&temp.path().join("program.toml")).is_err());
+    Ok(())
+}

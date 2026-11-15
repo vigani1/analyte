@@ -17,6 +17,7 @@ impl Connection {
         machine: &Machine,
         options: Options,
     ) -> Result<Option<Message>, Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         if self.exchange.is_some() {
             return Ok(None);
         }
@@ -35,10 +36,20 @@ impl Connection {
         let target = machine.id.clone();
         let cancels = store
             .request(until, move |store| {
-                if store.restore_unreconciled()? {
+                if !store
+                    .order_trust(&destination, jiff::Timestamp::now().as_second(), freshness)?
+                    .is_trusted()
+                {
                     return Ok(None);
                 }
-                store.cancel_candidates(&destination, &target).map(Some)
+                store
+                    .cancel_candidates(
+                        &destination,
+                        &target,
+                        jiff::Timestamp::now().as_second(),
+                        freshness,
+                    )
+                    .map(Some)
             })
             .await?;
         let Some(cancels) = cancels else {
@@ -60,7 +71,7 @@ impl Connection {
                         version,
                         jiff::Timestamp::now().as_second(),
                         &owner,
-                        super::super::FRESHNESS_SECONDS,
+                        freshness,
                         super::super::event,
                     )
                 })
@@ -121,7 +132,7 @@ impl Connection {
                                         identity: &key,
                                         version,
                                         now: jiff::Timestamp::now().as_second(),
-                                        freshness: super::super::FRESHNESS_SECONDS,
+                                        freshness,
                                     },
                                     reason,
                                     super::super::event,
@@ -161,6 +172,7 @@ impl Connection {
         until: Instant,
         options: Options,
     ) -> Result<Vec<(Command, MachineOrder)>, Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         let mut prepared = Vec::new();
         for cached in cached {
             let app: analyte_contract::Order =
@@ -193,7 +205,7 @@ impl Connection {
                             identity: &identity,
                             version,
                             now: jiff::Timestamp::now().as_second(),
-                            freshness: super::super::FRESHNESS_SECONDS,
+                            freshness,
                         },
                         OrderItems::PerTest {
                             namespace: &namespace,

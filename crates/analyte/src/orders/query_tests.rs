@@ -1,4 +1,5 @@
 use super::*;
+use analyte_model::Identifier;
 use std::{path::Path, time::Duration};
 
 struct Space;
@@ -24,11 +25,12 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     )?
     .validate()?;
     Ok(Machine {
+        destination_limits: crate::delivery::limits(30),
         #[cfg(feature = "test-hooks")]
         law_committed: None,
         #[cfg(feature = "test-hooks")]
         astm_committed: None,
-        id: analyte_model::Identifier::new("synthetic")?,
+        id: Identifier::new("synthetic")?,
         snapshot,
         listener: None,
     })
@@ -94,5 +96,81 @@ fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orde
         )?,
         Some(Request::Unsupported)
     ));
+    Ok(())
+}
+
+// ADR 0004 / safety rule 9 / LIS02 section 11: unavailable is query error, never no information.
+#[tokio::test]
+async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    for case in ["unknown", "incomplete", "stale", "paused", "short", "long"] {
+        let mut machine = machine("error")?;
+        machine.destination_limits.freshness =
+            Duration::from_secs(if case == "long" { 120 } else { 10 });
+        let mut store = Handle::start(
+            temp.path().join(format!("{case}.db")),
+            analyte_store::Limits {
+                reserve_bytes: 1024,
+                database_bytes: 100_000_000,
+                record_bytes: 65_536,
+                page_rows: 100,
+                busy_timeout: Duration::from_millis(20),
+            },
+            Box::new(Space),
+            4,
+            crate::deadline(),
+        )
+        .await?;
+        let destination = crate::orders::destination(&machine);
+        store
+            .request(crate::deadline(), move |s| {
+                if case != "unknown" {
+                    s.order_page(&analyte_store::OrderPage {
+                        destination,
+                        cursor: Identifier::new("c")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        complete: case != "incomplete",
+                        polled: jiff::Timestamp::now().as_second()
+                            - if case == "paused" { 0 } else { 50 },
+                        orders: Vec::new(),
+                    })?;
+                }
+                if case == "paused" {
+                    s.audit(&analyte_store::Audit {
+                        actor: Identifier::new("operator")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        action: Identifier::new("store-restore")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        targets: Vec::new(),
+                        time: 0,
+                        reason: analyte_model::Reason::new("synthetic restore")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    })?;
+                }
+                Ok(())
+            })
+            .await?;
+        let mut pending = Pending::new(
+            &store,
+            &machine,
+            vec![SampleId::new("001a")?],
+            Instant::now(),
+        )?;
+        let response = pending
+            .finish(&machine)
+            .await?
+            .ok_or("query response absent")?;
+        assert_eq!(
+            response.records.last().ok_or("termination absent")?,
+            if case == "long" {
+                b"L|1|I\r".as_slice()
+            } else {
+                b"L|1|Q\r".as_slice()
+            },
+            "{case}"
+        );
+        drop(pending);
+        store.shutdown(crate::deadline()).await?;
+    }
     Ok(())
 }

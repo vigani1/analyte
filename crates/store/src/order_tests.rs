@@ -56,7 +56,7 @@ fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_re
         ("b", "requested", Some("other"), 200, false),
         ("c", "requested", Some("machine"), 200, false),
         ("d", "requested", None, 200, false),
-        ("e", "cancelled", None, 200, false),
+        ("e", "cancel_confirmed", None, 200, false),
         ("f", "requested", None, 101, false),
         ("g", "requested", None, 200, true),
         ("h", "requested", None, 200, false),
@@ -789,7 +789,7 @@ fn adr0004_cancel_refusal_restores_sent_and_missing_cancel_is_uncertain() -> Tes
         assert!(result.source_code.as_str().contains("CancelRefused"));
         assert!(
             store
-                .order_candidates(&identity()?.destination, &identity()?.machine, "")?
+                .order_candidates(&identity()?.destination, &identity()?.machine, "", 101, 30)?
                 .is_empty()
         );
     }
@@ -1188,5 +1188,94 @@ fn adr0003_rule8_cancel_refusal_uses_cancel_from_not_history_json() -> TestResul
             .iter()
             .all(|item| item.state == OrderState::Sent)
     );
+    Ok(())
+}
+
+// ADR 0004 / safety rule 9: all order readers, reservations and alerts share one trust decision.
+#[test]
+fn rule9_typed_trust_matrix_and_configured_age_boundary() -> TestResult {
+    for case in [
+        "unknown",
+        "incomplete",
+        "paused",
+        "stale",
+        "trusted",
+        "future",
+    ] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("trust.db"))?;
+        let key = identity()?;
+        if case != "unknown" {
+            let mut snapshot = page(1, "requested", false, 1000)?;
+            snapshot.complete = case != "incomplete";
+            snapshot.polled = if case == "future" {
+                131
+            } else if case == "paused" {
+                120
+            } else {
+                100
+            };
+            store.order_page(&snapshot)?;
+        }
+        if case == "paused" {
+            store.audit(&Audit {
+                actor: Identifier::new("operator")?,
+                action: Identifier::new("store-restore")?,
+                targets: vec![],
+                time: 101,
+                reason: analyte_model::Reason::new("synthetic restore")?,
+            })?;
+        }
+        let freshness = if case == "trusted" { 31 } else { 30 };
+        let expected = match case {
+            "unknown" | "future" => OrderTrust::Unknown,
+            "incomplete" => OrderTrust::Incomplete,
+            "paused" => OrderTrust::RestorePaused,
+            "stale" => OrderTrust::Stale { age: 30 },
+            "trusted" => OrderTrust::Trusted { age: 30 },
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            store.order_trust(&key.destination, 130, freshness)?,
+            expected
+        );
+        let lookup = store.orders(&key.destination, &SampleId::new("001a")?, 130, freshness)?;
+        let pending = store.pending_orders(&key.destination, &key.machine, "", 130, freshness)?;
+        assert_eq!(!matches!(lookup, Lookup::NotTrusted), expected.is_trusted());
+        assert_eq!(
+            !matches!(pending, PendingOrders::NotTrusted),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store
+                .order_candidates(&key.destination, &key.machine, "", 130, freshness)
+                .is_ok(),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store
+                .cancel_candidates(&key.destination, &key.machine, 130, freshness)
+                .is_ok(),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store.alert_value(
+                &AlertKey::OrderCacheStale,
+                130,
+                &[(key.destination.clone(), freshness)]
+            )?,
+            if expected.is_trusted() {
+                Some(30)
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            store
+                .reserve_send(&key, NonZeroU64::MIN, 130, freshness)?
+                .is_ok(),
+            expected.is_trusted()
+        );
+    }
     Ok(())
 }

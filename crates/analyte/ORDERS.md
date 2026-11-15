@@ -34,8 +34,8 @@ policy. Status `A` cancels the pending lookup. One query is outstanding per
 connection; a new transfer supersedes its pending answer.
 
 The query deadline starts at the transfer's ENQ, before storage admission and
-frame journaling. Answers use only a complete cache younger than 30 seconds,
-the same freshness policy used by the app poller. Trusted empty answers use
+frame journaling. Answers use only a complete cache younger than the destination
+`freshness_seconds` setting (default 30), shared with the app poller. Trusted empty answers use
 no-information termination. Untrusted or late lookups produce query error or
 silence according to the explicit policy. Mapping failures never produce a
 partial order answer; the rejected order also gets a protected lifecycle event.

@@ -186,9 +186,9 @@ pub struct OrderReservation<'a> {
 #[derive(Deserialize)]
 struct CachedFields {
     version: NonZeroU64,
-    state: String,
+    state: OrderState,
     tombstone: bool,
-    target_analyzers: Option<Vec<String>>,
+    target_analyzers: Option<Vec<Identifier>>,
     tests: Vec<NamespacedId>,
 }
 
@@ -216,7 +216,7 @@ impl Store {
         now: i64,
         freshness: u64,
     ) -> Result<crate::PendingOrders, Error> {
-        if !self.trusted_order_lookup(destination, now, freshness)? {
+        if !self.order_trust(destination, now, freshness)?.is_trusted() {
             return Ok(crate::PendingOrders::NotTrusted);
         }
         let limit = self
@@ -247,12 +247,18 @@ impl Store {
             let cached: CachedOrder = serde_json::from_str(&encoded)?;
             cursor = Some(cached.id.clone());
             let fields: CachedFields = serde_json::from_str(&cached.document)?;
-            if fields.state == "requested"
-                && !fields.tombstone
-                && fields
-                    .target_analyzers
-                    .as_ref()
-                    .is_none_or(|targets| targets.iter().any(|target| target == machine.as_str()))
+            if fields
+                .state
+                .eligible_for(
+                    OrderState::Requested,
+                    fields.tombstone,
+                    fields
+                        .target_analyzers
+                        .as_ref()
+                        .map(|targets| targets.iter().map(Identifier::as_str)),
+                    machine.as_str(),
+                )
+                .is_ok()
             {
                 orders.push(cached);
             }
@@ -271,7 +277,12 @@ impl Store {
         destination: &Identifier,
         machine: &Identifier,
         after: &str,
+        now: i64,
+        freshness: u64,
     ) -> Result<Vec<CachedOrder>, Error> {
+        if !self.order_trust(destination, now, freshness)?.is_trusted() {
+            return Err(Error::Conflict);
+        }
         let mut statement = self.db.prepare("SELECT evidence FROM orders o WHERE destination=?1 AND id>?3 AND generation=(SELECT generation FROM feed WHERE destination=?1) AND NOT EXISTS(SELECT 1 FROM machine_orders m WHERE m.destination=o.destination AND m.order_id=o.id AND m.machine=?2) ORDER BY id LIMIT ?4")?;
         let rows = statement
             .query_map(
@@ -429,7 +440,8 @@ impl Store {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if Self::restore_paused(&tx)? {
+        let trust = Self::order_trust_on(&tx, &identity.destination, now, freshness)?;
+        if trust == crate::OrderTrust::RestorePaused {
             return Ok(Err(SendRefusal::RestoreUnreconciled));
         }
         let existing = tx
@@ -446,7 +458,7 @@ impl Store {
         if existing.is_some() {
             return Ok(Err(SendRefusal::AlreadyReserved));
         }
-        if !trusted_feed(&tx, &identity.destination, now, freshness)? {
+        if !trust.is_trusted() {
             return Ok(Err(SendRefusal::Untrusted));
         }
         let cached = tx.query_row("SELECT evidence FROM orders WHERE destination=?1 AND id=?2 AND generation=(SELECT generation FROM feed WHERE destination=?1)",params![identity.destination.as_str(),identity.order.as_str()], |r| r.get::<_,String>(0)).optional()?;
@@ -458,21 +470,31 @@ impl Store {
         if fields.version != version {
             return Ok(Err(SendRefusal::VersionChanged));
         }
-        if cached.tombstone || fields.tombstone {
+        if cached.tombstone {
             return Ok(Err(SendRefusal::Withdrawn));
         }
         if cached.expiry <= now {
             return Ok(Err(SendRefusal::Expired));
         }
-        if fields.state != "requested" {
-            return Ok(Err(SendRefusal::NotRequested));
-        }
-        if fields
-            .target_analyzers
-            .as_ref()
-            .is_some_and(|targets| !targets.iter().any(|t| t == identity.machine.as_str()))
-        {
-            return Ok(Err(SendRefusal::WrongMachine));
+        match fields.state.eligible_for(
+            OrderState::Requested,
+            fields.tombstone,
+            fields
+                .target_analyzers
+                .as_ref()
+                .map(|targets| targets.iter().map(Identifier::as_str)),
+            identity.machine.as_str(),
+        ) {
+            Ok(()) => {}
+            Err(analyte_model::OrderIneligible::Withdrawn) => {
+                return Ok(Err(SendRefusal::Withdrawn));
+            }
+            Err(analyte_model::OrderIneligible::Phase) => {
+                return Ok(Err(SendRefusal::NotRequested));
+            }
+            Err(analyte_model::OrderIneligible::Target) => {
+                return Ok(Err(SendRefusal::WrongMachine));
+            }
         }
         let state = OrderState::Requested.transition(OrderTransition::Advance(initial))?;
         tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,?5,?6,?6,?7)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),key(&state)?,now,code.as_str()])?;
@@ -542,21 +564,60 @@ impl Store {
         &self,
         destination: &Identifier,
         machine: &Identifier,
+        now: i64,
+        freshness: u64,
     ) -> Result<Vec<(MachineOrder, CachedOrder)>, Error> {
-        let mut statement=self.db.prepare("SELECT m.id,o.evidence FROM machine_orders m JOIN orders o ON o.destination=m.destination AND o.id=m.order_id JOIN feed f ON f.destination=o.destination AND f.generation=o.generation WHERE m.destination=?1 AND m.machine=?2 AND m.state IN ('\"Sent\"','\"Accepted\"') AND json_extract(json_extract(o.evidence,'$.document'),'$.state')='cancel_requested' AND NOT EXISTS(SELECT 1 FROM machine_order_history h WHERE h.machine_order=m.id AND json_extract(h.evidence,'$.source_code') LIKE 'app-cancel:'||json_extract(json_extract(o.evidence,'$.document'),'$.version')||':%') ORDER BY m.id LIMIT ?3")?;
-        let rows = statement
-            .query_map(
-                params![
-                    destination.as_str(),
-                    machine.as_str(),
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
-                ],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
-        rows.into_iter()
-            .map(|(id, evidence)| Ok((load(&self.db, id)?, serde_json::from_str(&evidence)?)))
-            .collect()
+        if !self.order_trust(destination, now, freshness)?.is_trusted() {
+            return Err(Error::Conflict);
+        }
+        let mut after = 0;
+        let mut candidates = Vec::new();
+        // Bound filtering work without letting an ineligible first page starve later cancels.
+        for _ in 0..128 {
+            let mut statement = self.db.prepare("SELECT m.id,o.evidence FROM machine_orders m JOIN orders o ON o.destination=m.destination AND o.id=m.order_id JOIN feed f ON f.destination=o.destination AND f.generation=o.generation WHERE m.destination=?1 AND m.machine=?2 AND m.id>?3 AND NOT EXISTS(SELECT 1 FROM machine_order_history h WHERE h.machine_order=m.id AND json_extract(h.evidence,'$.source_code') LIKE 'app-cancel:'||json_extract(json_extract(o.evidence,'$.document'),'$.version')||':%') ORDER BY m.id LIMIT ?4")?;
+            let rows = statement
+                .query_map(
+                    params![
+                        destination.as_str(),
+                        machine.as_str(),
+                        after,
+                        i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                    ],
+                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            let exhausted = rows.len() < self.limits.page_rows;
+            for (id, evidence) in rows {
+                after = id;
+                let order = load(&self.db, id)?;
+                let cached: CachedOrder = serde_json::from_str(&evidence)?;
+                let fields: CachedFields = serde_json::from_str(&cached.document)?;
+                if matches!(order.state, OrderState::Sent | OrderState::Accepted)
+                    && cached.expiry > now
+                    && fields
+                        .state
+                        .eligible_for(
+                            OrderState::CancelRequested,
+                            fields.tombstone,
+                            fields
+                                .target_analyzers
+                                .as_ref()
+                                .map(|targets| targets.iter().map(Identifier::as_str)),
+                            machine.as_str(),
+                        )
+                        .is_ok()
+                {
+                    candidates.push((order, cached));
+                    if candidates.len() == self.limits.page_rows {
+                        return Ok(candidates);
+                    }
+                }
+            }
+            if exhausted {
+                return Ok(candidates);
+            }
+        }
+        Err(Error::InvalidInput)
     }
 
     /// Rechecks an app cancellation and records its version once, before cancel bytes.
@@ -765,15 +826,26 @@ impl Store {
             ChangeEvidence::AppCancel(version, freshness) => (None, Some((version, freshness))),
         };
         if let Some((version, freshness)) = cancel_version {
-            if Self::restore_paused(&tx)?
-                || !trusted_feed(&tx, &record.key.destination, now, freshness)?
-            {
+            if !Self::order_trust_on(&tx, &record.key.destination, now, freshness)?.is_trusted() {
                 return Err(Error::Conflict);
             }
             let cached:String=tx.query_row("SELECT evidence FROM orders WHERE destination=?1 AND id=?2 AND generation=(SELECT generation FROM feed WHERE destination=?1)",params![record.key.destination.as_str(),record.key.order.as_str()],|row|row.get(0))?;
             let cached: CachedOrder = serde_json::from_str(&cached)?;
             let fields: CachedFields = serde_json::from_str(&cached.document)?;
-            if fields.version != version || fields.state != "cancel_requested" {
+            if fields.version != version
+                || !fields
+                    .state
+                    .eligible_for(
+                        OrderState::CancelRequested,
+                        fields.tombstone,
+                        fields
+                            .target_analyzers
+                            .as_ref()
+                            .map(|targets| targets.iter().map(Identifier::as_str)),
+                        record.key.machine.as_str(),
+                    )
+                    .is_ok()
+            {
                 return Err(Error::Conflict);
             }
             let prior:i64=tx.query_row("SELECT count(*) FROM machine_order_history WHERE machine_order=?1 AND json_extract(evidence,'$.source_code') LIKE ?2",params![id,format!("app-cancel:{version}:%")],|row|row.get(0))?;
@@ -961,25 +1033,6 @@ fn aggregate(states: &[OrderState]) -> OrderState {
         }
     }
     OrderState::Uncertain
-}
-
-pub(super) fn trusted_feed(
-    db: &rusqlite::Connection,
-    destination: &Identifier,
-    now: i64,
-    freshness: u64,
-) -> Result<bool, Error> {
-    let poll = db
-        .query_row(
-            "SELECT polled FROM feed WHERE destination=?1 AND complete=1 AND trusted=1",
-            [destination.as_str()],
-            |row| row.get::<_, i64>(0),
-        )
-        .optional()?;
-    Ok(poll
-        .and_then(|p| now.checked_sub(p))
-        .and_then(|age| u64::try_from(age).ok())
-        .is_some_and(|age| age < freshness))
 }
 
 #[cfg(test)]

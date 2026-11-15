@@ -391,6 +391,7 @@ impl Connection {
         started: Instant,
         receipt: ReceiptId,
     ) -> Result<(), Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         let request = match query::Request::new(message) {
             Ok(request) => request,
             Err(error) => {
@@ -505,7 +506,7 @@ impl Connection {
                                                 identity: &identity,
                                                 version,
                                                 now: jiff::Timestamp::now().as_second(),
-                                                freshness: super::FRESHNESS_SECONDS,
+                                                freshness,
                                             },
                                             reason,
                                             super::event,
@@ -556,6 +557,7 @@ impl Connection {
                 until,
                 &mut self.active,
                 Some(self.owner.clone()),
+                machine.destination_limits.freshness.as_secs(),
             )
             .await?
             {
@@ -721,6 +723,7 @@ mod tests {
         )?
         .validate()?;
         let machine = Machine {
+            destination_limits: crate::delivery::limits(30),
             #[cfg(feature = "test-hooks")]
             law_committed: None,
             id: Identifier::new("synthetic")?,
