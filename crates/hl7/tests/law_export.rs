@@ -14,6 +14,7 @@ fn law_tf2b_appendix_c_export_messages_reparse() -> Result<(), Box<dyn std::erro
             "rsp_k11_empty.hl7",
             "oml_o33_new.hl7",
             "oml_o33_cancel.hl7",
+            "oml_o33_new_parent_carrier.hl7",
             "oml_o33_negative.hl7",
             "ack_r22_aa.hl7",
             "ack_r22_ae.hl7",
@@ -42,6 +43,30 @@ fn law_tf2b_appendix_c_export_messages_reparse() -> Result<(), Box<dyn std::erro
                 &message,
                 analyte_hl7::law::ControlDirection::Receive,
             )?;
+            if matches!(
+                name,
+                "oml_o33_new.hl7" | "oml_o33_cancel.hl7" | "oml_o33_new_parent_carrier.hl7"
+            ) {
+                let sac = message
+                    .segments()
+                    .find(|segment| segment.id() == b"SAC")
+                    .ok_or("missing SAC")?;
+                let field = |number| {
+                    sac.field(number)
+                        .map_or(b"".as_slice(), analyte_hl7::Field::raw)
+                };
+                if name == "oml_o33_new_parent_carrier.hl7" {
+                    assert!(field(3).is_empty());
+                    assert_eq!(field(4), b"SYN-PARENT1");
+                    assert_eq!(field(10), b"SYN-RACK1");
+                    assert_eq!(field(11), b"1");
+                } else {
+                    assert_eq!(field(3), b"SYN-0001");
+                    for number in [10, 11, 13, 14] {
+                        assert!(field(number).is_empty());
+                    }
+                }
+            }
             assert_eq!(message.raw(), bytes);
         }
         Ok(())

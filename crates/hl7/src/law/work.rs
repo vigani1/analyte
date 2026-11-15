@@ -77,7 +77,8 @@ impl<'a> Awos<'a> {
     /// Validates the required identifiers and coded specimen/test fields.
     /// An AWOS orders one test or battery; separate replicates need separate IDs.
     /// # Errors
-    /// Rejects empty, null, oversized or separator-injected fields.
+    /// Rejects null, oversized or separator-injected fields. An empty container
+    /// requires parent and position details at rendering (C.11).
     pub fn new(
         id: &'a [u8],
         specimen: &'a [u8],
@@ -93,7 +94,9 @@ impl<'a> Awos<'a> {
             (container, "SAC", 3, 80),
             (test, "OBR", 4, 250),
         ] {
-            safe(value, segment, field, maximum)?;
+            if field != 3 || segment != "SAC" || !value.is_empty() {
+                safe(value, segment, field, maximum)?;
+            }
         }
         match role {
             b"P" => safe(specimen_type, "SPM", 4, 250)?,
@@ -358,6 +361,14 @@ pub fn work_order_with_profile(
     }
     let mut ids = BTreeSet::new();
     for awos in work {
+        if awos.container.is_empty()
+            && awos
+                .container_details
+                .and_then(|details| details.parent)
+                .is_none_or(<[u8]>::is_empty)
+        {
+            return Err(content("SAC", 4));
+        }
         if !ids.insert(awos.id) {
             return Err(content("OBR", 2));
         }
@@ -459,7 +470,10 @@ pub fn work_order_with_profile(
                 (24, details.volume_units),
                 (29, details.dilution),
             ] {
-                set_field(&mut container, position, value, "SAC")?;
+                // C.11 excludes carrier/tray identification when SAC-3 is supplied.
+                if awos.container.is_empty() || !matches!(position, 10 | 11 | 13 | 14 | 15) {
+                    set_field(&mut container, position, value, "SAC")?;
+                }
             }
         }
         segment(&mut wire, b"SAC", &container)?;

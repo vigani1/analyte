@@ -79,17 +79,18 @@ pub(crate) fn generate(directory: &Path) -> ExportResult<()> {
         peer_facility: b"ANALYTE-TEST",
     };
     let container = ContainerDetails {
+        parent: Some(b"SYN-PARENT1"),
         carrier: Some(b"SYN-RACK1"),
         carrier_position: Some(b"1"),
         ..ContainerDetails::default()
     };
-    let work = |action, id: &'static [u8]| -> ExportResult<Message> {
+    let work = |action, id: &'static [u8], container_id: &'static [u8]| -> ExportResult<Message> {
         let awos = Awos::new(
             b"SYN-AWOS1",
             b"SYN-0001&ANALYTE-TEST",
             b"SER^Serum^HL70487",
             b"P",
-            b"SYN-0001",
+            container_id,
             b"SYN-TEST^Synthetic test^99SYN",
             action,
         )?
@@ -103,8 +104,9 @@ pub(crate) fn generate(directory: &Path) -> ExportResult<()> {
             options(),
         )?)
     };
-    let new = work(WorkAction::New, b"SYN-OML1")?;
-    let cancel = work(WorkAction::Cancel, b"SYN-OML2")?;
+    let new = work(WorkAction::New, b"SYN-OML1", b"SYN-0001")?;
+    let cancel = work(WorkAction::Cancel, b"SYN-OML2", b"SYN-0001")?;
+    let parent = work(WorkAction::New, b"SYN-OML4", b"")?;
     let negative = law::negative_work(
         Query::new(&specimen)?,
         address,
@@ -186,6 +188,11 @@ pub(crate) fn generate(directory: &Path) -> ExportResult<()> {
         ("rsp_k11_empty.hl7", empty.message(), ControlDirection::Send),
         ("oml_o33_new.hl7", &new, ControlDirection::Send),
         ("oml_o33_cancel.hl7", &cancel, ControlDirection::Send),
+        (
+            "oml_o33_new_parent_carrier.hl7",
+            &parent,
+            ControlDirection::Send,
+        ),
         ("oml_o33_negative.hl7", &negative, ControlDirection::Send),
         ("ack_r22_aa.hl7", &aa, ControlDirection::Send),
         ("ack_r22_ae.hl7", &ae, ControlDirection::Send),
