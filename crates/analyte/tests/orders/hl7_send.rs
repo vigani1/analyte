@@ -472,6 +472,7 @@ async fn hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing
         );
         assert_eq!(database(&path)?.query_row("SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.state')='Sending'", [], |row| row.get::<_, i64>(0))?, 0);
         assert!(
+            // Deliberate quiet window: no reply may arrive.
             tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
                 .await
                 .is_err()
@@ -498,6 +499,7 @@ async fn hl7_231_4_3_1_4_251_4_5_1_4_full_group_ei_overflow_precedes_reservation
         assert!(code.contains("HL7-app-order-id-too-long-for-ORC-4"));
         assert_eq!(database(&path)?.query_row("SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.state')='Sending'", [], |row| row.get::<_, i64>(0))?, 0);
         assert!(
+            // Deliberate quiet window: no reply may arrive.
             tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
                 .await
                 .is_err()
