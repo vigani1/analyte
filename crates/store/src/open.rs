@@ -196,5 +196,4 @@ fn default_startup() -> Result<Startup, Error> {
 }
 
 #[cfg(test)]
-#[path = "open_tests.rs"]
 mod tests;
