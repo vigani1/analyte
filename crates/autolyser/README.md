@@ -67,17 +67,50 @@ The `analyte` program drives this crate over configured connections. Incoming
 bytes are journaled with driver/config versions before the dialog sees them;
 complete receipts and interpretations are then stored through the protected store.
 Unresolved result identities remain unresolved, are parked with their reason,
-and create no app delivery. Inspect them with `analyte parked list`.
+and create no result delivery. Inspect them with `analyte parked list`.
 The program never derives a run identity from sample, value, timestamp or receipt.
 
-Worklist download is **not wired into the program yet**. VIDAS and Autolyser
-send-ahead will follow the phase 6 machine-order store API (`reserve_send`,
-lifecycle history and operator reconciliation) after `feat/program-orders`
-merges. The vendor config download permission does not schedule an operation.
-POCT optional order/list extensions remain outside the supported profile.
+## Program work-list download
+
+The program now sends insertions through the shared order mapper and durable
+reservation path; see [program order behavior](../analyte/ORDERS.md).
+The host initiates polling and insertion, following this crate's dialog. A
+completed stored poll response opens the next idle interval for an insertion;
+an unanswered initial poll never reserves an order. Enable both
+`[autolyser] download = true` and `[orders] send_ahead = true`. Patient namespace,
+clone flag, analysis-code, specimen-medium and list mappings are explicit.
+
+Mapping finishes before `reserve_send` writes `Sending`, with no app event.
+The host sends STX, waits for ACK, then sends the work list, checksum and EOT
+without an extra command letter. Only the complete, durably stored `Y` plus
+binary position reply produces one `Sent` event, never automatic `Accepted`.
+A partial or unanswered exchange, disconnect, bad ACK, negative or unknown
+reply becomes `Uncertain` with a specific code and closes for reconciliation.
+A mid-send `Park` finalizes that order in the same run, while pending storage
+effects are consumed before closing. Restart changes only remaining `Sending`
+entries to `Uncertain`; `Sent` stays `Sent`. Orders are never automatically
+replayed. Result-poll custody guards remain separate, as described below.
+
+One insertion contains 1-99 tests, each an exact four-byte printable analysis
+code. The app patient ID must match `patient_namespace`, use printable ASCII
+and fit fifteen bytes; documented space padding does not truncate or normalize
+it. There is no separate sample-ID field, so missing patient data is never
+replaced by the sample ID. Explicit specimen mappings select `S` or `U`, and
+priority mappings select `T` or `R`. The clone setting must be explicitly true
+or false. A supplied cup slot must be numeric 1-99; the host never defaults to
+`00` autoassignment. This wire range is not proof of the installed tray's
+physical capacity. Missing required context, unmapped codes and over-long IDs
+are rejected before transmission. Installed deadlines and bounds stay explicit.
+
+Program/reference-receiver tests in
+[`tests/orders/autolyser.rs`](../analyte/tests/orders/autolyser.rs) cover the
+[required cases](../analyte/ORDERS.md#vendor-end-to-end-coverage), including both
+clone values and same-round Park. Evidence remains **documented**: these are
+synthetic conversations, not machine recordings or official simulator evidence.
+Raw bytes and patient/order context stay in protected storage, not ordinary logs.
 
 Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
-parking, operator visibility, zero reference-receiver deliveries and storage
+parking, operator visibility, zero reference-receiver result deliveries and storage
 failure. They do not raise the documented evidence level. No current vendor
 crate path supplies a resolved result identity for a delivery test.
 

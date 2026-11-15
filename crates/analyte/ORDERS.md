@@ -228,3 +228,34 @@ O-record and complete H/P/O/L payload bytes for both send-ahead and query
 answers, including configured context, absent destinations, unmapped and missing
 specimen context. Existing minimal O records stay byte-for-byte unchanged when
 these destinations are absent. Evidence remains documented, not machine-proven.
+
+
+## Vendor end-to-end coverage
+
+The required vendor regression matrix is covered below. These tests run the
+program, a temporary protected store and the reference receiver. Shared assertions check
+exact wire data, no app event for `Sending`, and one delivered event with the
+specific final state/code. Startup validation rejects absent namespace settings;
+missing or mismatched patient context is rejected at the order boundary.
+
+| Required case | VIDAS | Autolyser |
+| --- | --- | --- |
+| Normal send; Sent survives restart | [All assays](tests/orders/vidas.rs#L84) | [Both clone values](tests/orders/autolyser.rs#L108) |
+| Timeout | [Covered](tests/orders/vidas.rs#L131) | [Covered](tests/orders/autolyser.rs#L163); [partial reply](tests/orders/autolyser.rs#L182) |
+| Disconnect mid-send | [Covered](tests/orders/vidas.rs#L155) | [Covered](tests/orders/autolyser.rs#L221) |
+| Restart during Sending; no replay | [Covered](tests/orders/vidas.rs#L175) | [Covered](tests/orders/autolyser.rs#L241) |
+| Unmapped test | [Covered](tests/orders/vidas.rs#L219) | [Covered](tests/orders/autolyser.rs#L281) |
+| Unmapped specimen type | [Covered](tests/orders/vidas.rs#L228) | [Covered](tests/orders/autolyser.rs#L291) |
+| Missing required position | Not applicable: Literal has no position field | [Covered](tests/orders/autolyser.rs#L307) |
+| Wrong patient namespace | [Covered](tests/orders/vidas.rs#L234) | [Covered](tests/orders/autolyser.rs#L322) |
+| Missing namespace configuration | [Covered](tests/orders/vidas.rs#L295) | [Covered](tests/orders/autolyser.rs#L363) |
+| Missing patient | [Covered](tests/orders/vidas.rs#L240) | [Covered](tests/orders/autolyser.rs#L328) |
+| Over-long ID | [Sample](tests/orders/vidas.rs#L246); [patient](tests/orders/vidas.rs#L252) | [Patient](tests/orders/autolyser.rs#L334) |
+| Cancelled before send | [Covered](tests/orders/vidas.rs#L258) | [Covered](tests/orders/autolyser.rs#L340) |
+| Park mid-send: same-round Uncertain and event | [Covered](tests/orders/vidas.rs#L326) | [Covered](tests/orders/autolyser.rs#L201) |
+| Unanswered result poll cannot send an order | Not applicable: Literal does not poll for results | [Covered](tests/orders/autolyser.rs#L146) |
+
+The suites contain 13 VIDAS and 18 Autolyser tests. They also cover Autolyser's
+invalid cup slots, missing specimen medium and negative/unknown insertion replies.
+Evidence remains **documented**; the table is synthetic regression coverage,
+not qualification against hardware or an official simulator.
