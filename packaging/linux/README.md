@@ -18,7 +18,8 @@ Run these steps as an administrator from the repository root.
 2. Install the site's validated program, definitions and site files in
    `/etc/analyte`, owned by root, readable by group `analyte`, and not writable
    by the service. In `/etc/analyte/analyte.toml`, set
-   `data_directory = "/var/lib/analyte"`. Other configuration paths are relative
+   `data_directory = "/var/lib/analyte"`. This setting must be exactly that path:
+   it is the unit's only writable persistent data directory. Other configuration paths are relative
    to the program file. Configure file handoff/archive/quarantine paths under
    `/var/lib/analyte`; the unit permits writes only there and in private temporary
    storage. Do not copy the synthetic example as an operational configuration.

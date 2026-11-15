@@ -67,8 +67,9 @@ Delivery/store failures stop the service visibly. Individual machine failures
 remain isolated. HTTP requests have a 3-second deadline, local delivery storage
 operations 2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
 and order polls run every 5 seconds with a 30-second freshness policy.
-As with the store's existing worker, an uninterruptible operating-system flush
-cannot safely be forcibly cancelled; owner destructors join rather than detach.
+An uninterruptible operating-system flush cannot be cancelled within a worker;
+owner destructors join rather than detach. The process watchdog enforces the
+overall stop deadline even when such a join blocks; see Running as a service.
 
 The capacity probe invokes Windows PowerShell `Get-Volume -FilePath` or GNU `df
 --output=avail --block-size=1` on Linux, with a three-second deadline and bounded
@@ -76,8 +77,8 @@ output. Paths are passed as data, never interpolated into executable scripts.
 Missing utilities, permission errors and invalid output refuse admission.
 Installing a faster native probe later does not change the storage boundary.
 
-Service installers, the admin webpage, retention and real machine validation
-are outside this PR. Serial hardware and Linux runtime
+The admin webpage, retention and real machine validation
+remain outside this work. Serial hardware and Linux runtime
 verification remain CI/lab work; localhost integration tests run on Windows here.
 
 Credentials are loaded by the host at startup from `ANALYTE_SECRET_<NAME>`:
@@ -128,7 +129,7 @@ means Sent, never Accepted. Interrupted orders become Uncertain and are never
 automatically replayed. Autolyser host-initiated insertions use the same durable path after a completed
 host poll, with an explicit specimen-medium table, clone flag and cup position.
 
-## Test-only commit boundary hook
+## Test-only boundary hooks
 
 The non-default `test-hooks` Cargo feature exposes one one-shot ASTM hook:
 `AstmCommitted`, after durable frame storage and before ACK generation. Tests
@@ -139,6 +140,18 @@ deadline. Without the feature, both the hook and its call site compile out.
 `test-hooks` is test-only and must never be enabled for release builds.
 Exercise its restart test with
 `cargo test -p analyte --all-features --test delivery recording`.
+
+The same feature also exposes `Program::stall_store_on_shutdown_for_test`,
+restricted to the loopback test service with explicitly injected listeners.
+It stalls one store operation at shutdown and sets a 500 ms process deadline;
+it deliberately requires a child process because the real watchdog exits 3.
+It changes no protocol or storage bytes and cannot be enabled by TOML. Run the
+ADR 0003 recovery case with
+`cargo test -p analyte --all-features --test delivery plan11_adr0003_agents_forced_exit`.
+The test retains committed raw receipts, confirms identical result retry bytes
+and ID with one result at the receiver, and recovers Sending to Uncertain.
+`tests/service_unit.rs` checks the unit's structure, sandbox settings and stop
+margin without requiring systemd or installing anything.
 
 
 ## Restore and reconciliation (plan ?11, ADR 0003 rules 2, 4, 8)
@@ -171,12 +184,39 @@ no schema migration or driver-specific exception is needed. Evidence remains
 
 ## Running as a service
 
-Windows uses `analyte service run --config C:\ProgramData\Analyte\analyte.toml`.
-The pre-created data directory must be restricted to the service account and
-administrators. Service logs append to `<data_directory>/analyte.log`; they
-contain component IDs and diagnostics, never clinical payloads. Protect and rotate
-this log operationally. This entry point requires the Service Control Manager; use `analyte run --config
-<path>` in a terminal. Service installation is separate from the Rust entry point.
+Use a release build without `test-hooks`. Evidence remains **documented**:
+synthetic subprocess and SCM seam tests do not establish a real SCM installation,
+systemd runtime or machine qualification. There is no MSI/installer GUI, signing
+or automatic update mechanism.
+
+For Linux, follow the [systemd installation guide](../../packaging/linux/README.md).
+The unit starts `/usr/local/bin/analyte run --config /etc/analyte/analyte.toml
+--shutdown-timeout-secs 30` as the dedicated `analyte` user without a login.
+The config's `data_directory` **must be `/var/lib/analyte`**, the only writable
+persistent data path allowed by the unit. The state directory is mode 0700;
+file handoff areas must also live beneath it. Configuration and binaries remain
+read-only to the service. `dialout` supplies serial device access; confirm the
+group and actual device permissions for the distribution. Logs go to journald:
+`sudo journalctl -u analyte.service`. Stop safely with
+`sudo systemctl stop analyte.service`; SIGTERM and SIGINT both use graceful shutdown.
+
+For Windows, follow the [PowerShell installation guide](../../packaging/windows/README.md).
+The scripts configure automatic start under `NT SERVICE\Analyte`, restart actions
+on failure, and Modify access only on the dedicated data directory, with SYSTEM
+and administrators retaining FullControl. By default the program file is
+`C:\ProgramData\Analyte\config\analyte.toml` and its `data_directory` must match
+the installer's `C:\ProgramData\Analyte\data` parameter. Prepare read access to
+configuration, device permissions and protected service credentials before
+`Start-Service Analyte`. Service logs append to `<data_directory>/analyte.log`.
+Protect and rotate the log. Stop safely with `Stop-Service Analyte` or Services.msc.
+Uninstall removes service registration and retains data, logs and configuration.
+
+`analyte service run --config <path>` is the Windows SCM entry point; invoking it
+outside the SCM fails explicitly. Use `analyte run --config <path>` in a terminal.
+Neither mode installs a service in Rust. Configure the lab PC not to sleep.
+Provision secrets through the platform's protected service environment, never
+TOML or command arguments. Logs contain component IDs and diagnostics, never
+patient payloads; raw evidence stays in the protected data directory.
 
 Both commands accept `--shutdown-timeout-secs` (30 through 300, default 30).
 Stop requests first run the staged drain described above. A dedicated OS thread
@@ -192,3 +232,9 @@ public API before exiting on deadline. The SCM therefore shows a normal stop;
 the deadline reason is in the Analyte log and process exit code, not an SCM
 service-specific exit code. Linux systemd records exit code 3 as a failure.
 Keep the service stop timeout above the configured Analyte deadline.
+The shipped Linux unit uses `TimeoutStopSec=35s` for the 30-second Analyte bound;
+when changing the bound, keep a five-second systemd margin. A requested normal
+stop, including a forced Windows stop reported as Stopped, is not automatically
+restarted by recovery actions. Inspect the log after a forced stop, preserve the
+store and follow the existing recovery/reconciliation procedures. Never replay
+an uncertain machine order merely because a service was restarted.
