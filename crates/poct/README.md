@@ -1,6 +1,6 @@
 # POCT01-A2 Observation Reviewer
 
-Evidence level: **documented**. The crate implements the mandatory Basic Profile
+Evidence level: **documented**. The crate provides Basic Profile components
 as a pure library: bounded XML syntax and typed messages, reviewer builders,
 conversation state machine, observation duplicate comparison and common-model
 mapping. Tests use independently written synthetic messages. There is no real
@@ -118,6 +118,11 @@ message retain metadata beyond the common model's summary.
 
 ## Basic Profile checklist evidence
 
+This is a source-to-test index, not a complete conformance claim. The audited
+completion gates and outstanding evidence are in
+[the protocol checklist](../../docs/protocols/poct1-a.md). Component tests prove
+only their own boundaries; program tests are identified explicitly.
+
 Section references are to Appendix B of POCT01-A2. Tests are in `tests/`.
 
 | Checklist row | Implementation and tests |
@@ -168,9 +173,10 @@ raw bytes are kept beside decoded values, including their entity spelling.
 
 ## Local verification
 
-On Windows, the four required workspace checks pass with the pinned Rust 1.100
-compiler. Workspace tests also pass with the declared Rust 1.95 minimum. Linux
-and fuzz-target execution have not been run locally. No dependencies beyond the
+The local verification gate is formatting, strict workspace Clippy, all-feature
+workspace tests and cargo-deny with the pinned toolchain. CI separately runs
+Linux, the minimum supported Rust version and fuzz targets; local Windows checks
+do not prove those runs or interoperability. No dependencies beyond the
 approved quick-xml, thiserror, analyte-model, jiff and test-only proptest are used.
 
 
@@ -181,13 +187,15 @@ bytes are journaled with driver/config versions before the dialog sees them;
 complete receipts and interpretations are then stored through the protected store.
 Unresolved result identities remain unresolved, are parked with their reason,
 and create no app delivery. Inspect them with `analyte parked list`.
-The program never derives a run identity from sample, value, timestamp or receipt.
+The program uses only the configured composite device/time/analyte identity
+described above, never sample/value/receipt heuristics or a timestamp alone.
 
 VIDAS and Autolyser work-list sending is implemented; see
 [program orders](../analyte/ORDERS.md).
 POCT optional order/list extensions remain outside the supported profile.
 
 Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
-parking, operator visibility, zero reference-receiver deliveries and storage
-failure. They do not raise the documented evidence level. No current vendor
-crate path supplies a resolved result identity for a delivery test.
+parking, operator visibility, storage failure, rejected Hello responses and
+control-ID reuse. The POCT program/reference-receiver identity test proves real
+delivery, retransmission suppression and an edited revision. These tests do not
+raise the documented evidence level or close the unchecked conformance gates.
