@@ -1,0 +1,16 @@
+[package]
+name = "analyte-poct"
+description = "POCT01-A2 Device Messaging Layer as the Observation Reviewer: XML messages and the reviewer conversation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true

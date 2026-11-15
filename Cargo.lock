@@ -15,6 +15,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "analyte-autolyser"
+version = "0.1.0"
+
+[[package]]
 name = "analyte-config"
 version = "0.1.0"
 dependencies = [
@@ -87,6 +91,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "analyte-poct"
+version = "0.1.0"
+
+[[package]]
 name = "analyte-receiver"
 version = "0.1.0"
 dependencies = [
@@ -131,6 +139,10 @@ dependencies = [
 
 [[package]]
 name = "analyte-transport"
+version = "0.1.0"
+
+[[package]]
+name = "analyte-vidas"
 version = "0.1.0"
 
 [[package]]

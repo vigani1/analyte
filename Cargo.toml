@@ -27,6 +27,9 @@ analyte-contract = { path = "crates/contract", version = "0.1.0" }
 analyte-sink = { path = "crates/sink", version = "0.1.0" }
 analyte-sim = { path = "crates/sim", version = "0.1.0" }
 analyte-receiver = { path = "crates/receiver", version = "0.1.0" }
+analyte-poct = { path = "crates/poct", version = "0.1.0" }
+analyte-vidas = { path = "crates/vidas", version = "0.1.0" }
+analyte-autolyser = { path = "crates/autolyser", version = "0.1.0" }
 
 # Runtime, errors, logging
 tokio = { version = "1.54", default-features = false }
@@ -38,6 +41,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 toml = "1.2"
+quick-xml = { version = "0.42", default-features = false } # POCT01-A2 XML; never resolves external entities
 uuid = { version = "1.29", features = ["v7"] }
 jiff = "0.2.45"
 
