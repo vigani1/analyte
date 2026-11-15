@@ -5,6 +5,143 @@ use analyte_model::{Identifier, NamespacedId, SampleId};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+#[test]
+fn rule7_outbound_selected_component_at_configured_ceiling_is_preserved() -> TestResult {
+    let base = include_str!("../../config/examples/astm.toml")
+        .replace("components = 128", "components = 4");
+    let section = include_str!("../../config/examples/orders.toml")
+        .replace("field=3,component=1", "field=3,component=4");
+    let definition = format!("{base}\n{section}");
+    let cfg = Draft::load(
+        ("machine", &definition),
+        ("site", include_str!("../../config/examples/site.toml")),
+        ("local", "schema_version=1"),
+    )?
+    .validate()?;
+    let mapped = map_order(&order()?, &cfg)?;
+    assert_eq!(mapped.record()?, b"O|1|^^^001a||^^^SEND|R||||||N\r");
+    Ok(())
+}
+
+#[test]
+fn rule7_display_text_bound_is_inclusive_and_refuses_delimiter_injection() -> TestResult {
+    let section = include_str!("../../config/examples/hl7_orders.toml").replace(
+        "namespace=\"synthetic\",value=\"TEST\"",
+        "namespace=\"demo\",value=\"DEMO\"",
+    );
+    let definition = format!(
+        "{}\n{section}",
+        include_str!("../../config/examples/hl7.toml")
+    );
+    let cfg = Draft::load(
+        ("machine", &definition),
+        ("site", include_str!("../../config/examples/site.toml")),
+        ("local", "schema_version=1"),
+    )?
+    .validate()?;
+    for (length, accepted) in [(299, true), (300, true), (301, false)] {
+        assert_eq!(
+            analyte_mapping::map_display(&order()?, &"X".repeat(length), &cfg).is_ok(),
+            accepted
+        );
+    }
+    for text in ["injected|field", "injected^component", "café"] {
+        assert!(matches!(
+            analyte_mapping::map_display(&order()?, text, &cfg),
+            Err(OrderMappingError::Representation)
+        ));
+    }
+    Ok(())
+}
+
+fn bounded_order_config(key: &str, value: usize) -> Result<Validated, analyte_config::Error> {
+    let base = include_str!("../../config/examples/astm.toml");
+    let old = match key {
+        "bytes" => 1048576,
+        "record_bytes" => 65536,
+        "components" => 128,
+        _ => unreachable!("fixed test keys"),
+    };
+    let section = include_str!("../../config/examples/orders.toml");
+    let definition = format!(
+        "{}\n{section}",
+        base.replace(&format!("{key} = {old}"), &format!("{key} = {value}"))
+    );
+    Draft::load(
+        ("machine", &definition),
+        ("site", include_str!("../../config/examples/site.toml")),
+        ("local", "schema_version=1"),
+    )?
+    .validate()
+}
+
+#[test]
+fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResult {
+    let expected = b"O|1|001a||^^^SEND|R||||||N\r";
+    for (key, ceiling) in [
+        ("bytes", expected.len()),
+        ("record_bytes", expected.len() - 1),
+    ] {
+        for (bound, accepted) in [(ceiling - 1, false), (ceiling, true), (ceiling + 1, true)] {
+            let mapped = map_order(&order()?, &bounded_order_config(key, bound)?);
+            assert_eq!(mapped.is_ok(), accepted, "{key}={bound}");
+            if accepted {
+                assert_eq!(mapped?.record()?, expected);
+            } else {
+                assert!(matches!(mapped, Err(OrderMappingError::Representation)));
+            }
+        }
+    }
+    let mapped = map_order(&order()?, &bounded_order_config("components", 4)?)?;
+    assert_eq!(mapped.record()?, expected);
+    Ok(())
+}
+
+#[test]
+fn rule5_outbound_sample_reserved_characters_are_refused_without_rewriting() -> TestResult {
+    let settings = config(include_str!("../../config/examples/orders.toml"))?;
+    for sample in ["A|B", "A^B", "A&B", "A\\B", "café"] {
+        let mut input = order()?;
+        input.sample = SampleId::new(sample)?;
+        assert!(
+            matches!(
+                map_order(&input, &settings),
+                Err(OrderMappingError::Representation)
+            ),
+            "{sample}"
+        );
+        assert_eq!(input.sample.as_str(), sample);
+    }
+    Ok(())
+}
+
+#[test]
+fn rule7_outbound_test_count_is_nonempty_and_inclusive() -> TestResult {
+    let definition = format!(
+        "{}\n{}",
+        include_str!("../../config/examples/astm.toml")
+            .replace("repetitions = 128", "repetitions = 2"),
+        include_str!("../../config/examples/orders.toml")
+    );
+    let settings = Draft::load(
+        ("machine", &definition),
+        ("site", include_str!("../../config/examples/site.toml")),
+        ("local", "schema_version=1"),
+    )?
+    .validate()?;
+    for (count, accepted) in [(0, false), (1, true), (2, true), (3, false)] {
+        let mut input = order()?;
+        let test = input.tests.first().ok_or("test")?.clone();
+        input.tests = vec![test; count];
+        let mapped = map_order(&input, &settings);
+        assert_eq!(mapped.is_ok(), accepted, "count={count}");
+        if !accepted {
+            assert!(matches!(mapped, Err(OrderMappingError::Representation)));
+        }
+    }
+    Ok(())
+}
+
 fn config(section: &str) -> Result<Validated, analyte_config::Error> {
     let definition = format!(
         "{}\n{section}",
