@@ -3,7 +3,7 @@ use analyte_hl7::*;
 use proptest::prelude::*;
 
 fn wire(version: &str, accept: &str, application: &str, charset: &str, body: &str) -> Vec<u8> {
-    format!("MSH|^~\\&|SENDER|SF|RECEIVER|RF|202601011200||ORU^R01|00017|P|{version}|||{accept}|{application}||{charset}\r{body}").into_bytes()
+    format!("MSH|^~\\&|SENDER|SF|RECEIVER|RF|202601011200||ORU^R01^ORU_R01|00017|P|{version}|||{accept}|{application}||{charset}\r{body}").into_bytes()
 }
 fn parse(raw: &[u8]) -> Result<Message, Error> {
     Message::parse(raw, Options::default())
@@ -18,7 +18,7 @@ fn response() -> Result<Response<'static>, Error> {
 #[test]
 fn hl7_251_2_5_4_alternate_delimiters_and_msh_indexing() -> Result<(), Error> {
     let raw =
-        b"MSH*$%!@*SENDER*SF*RECEIVER*RF*202601011200**ORU$R01*00017*P*2.5.1\rOBX**A$$B@C%%\r";
+        b"MSH*$%!@*SENDER*SF*RECEIVER*RF*202601011200**ORU$R01$ORU_R01*00017*P*2.5.1\rOBX**A$$B@C%%\r";
     let m = parse(raw)?;
     let msh = Msh::new(&m)?;
     assert_eq!(m.delimiters().bytes(), *b"*$%!@");
@@ -356,7 +356,7 @@ fn hl7_251_2_15_control_fields_reject_invalid_codes_and_header_injection() -> Re
 #[test]
 fn hl7_251_2_15_9_2_rejects_later_version_truncation() {
     assert_eq!(
-        parse(b"MSH|^~\\&#|A|B|C|D|20260101||ORU^R01|1|P|2.5.1\r"),
+        parse(b"MSH|^~\\&#|A|B|C|D|20260101||ORU^R01^ORU_R01|1|P|2.5.1\r"),
         Err(Error::Truncation)
     );
 }
@@ -399,7 +399,7 @@ fn hl7_251_2_5_4_crlf_policy_rejects_mixed_line_endings() {
 }
 #[test]
 fn hl7_251_2_9_ack_uses_negotiated_separators() -> Result<(), Error> {
-    let m = parse(b"MSH*$%!@*S*SF*R*RF*20260101**ORU$R01*00017*P*2.5.1***AL*AL\r")?;
+    let m = parse(b"MSH*$%!@*S*SF*R*RF*20260101**ORU$R01$ORU_R01*00017*P*2.5.1***AL*AL\r")?;
     let ack = acknowledgment(
         &m,
         response()?,
@@ -485,6 +485,35 @@ fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Resu
             assert!(Msh::new(&m).is_ok(), "{version}: {stamp}");
             assert_eq!(m.serialize(), raw);
         }
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 section 2.A.44 pp.2-180-181; 2.3.1 section 2.24.1.9 p.2-95.
+#[test]
+fn hl7_251_2_a_44_and_231_2_24_1_9_message_type_components() -> Result<(), Error> {
+    for (version, kind, valid) in [
+        ("2.5.1", "ORU^R01", false),
+        ("2.5.1", "ACK", false),
+        ("2.5.1", "ACK^^ACK", false),
+        ("2.5.1", "ORUU^R01^ORU_R01", false),
+        ("2.5.1", "ORU^R001^ORU_R01", false),
+        ("2.5.1", "ORU^R01^ORU_R011", false),
+        ("2.5.1", "ORU^R01^ORU_R01", true),
+        ("2.3.1", "ACK", true),
+        ("2.3.1", "ACK^^ACK", true),
+        ("2.3.1", "DSR", true),
+        ("2.3.1", "ORU", false),
+        ("2.3.1", "ORU^^ORU_R01", false),
+        ("2.3.1", "ORU^R01", true),
+    ] {
+        let raw = String::from_utf8(wire(version, "", "", "", ""))
+            .expect("synthetic ASCII")
+            .replace("ORU^R01^ORU_R01", kind)
+            .into_bytes();
+        let message = parse(&raw)?;
+        assert_eq!(Msh::new(&message).is_ok(), valid, "{version}: {kind}");
+        assert_eq!(message.serialize(), raw);
     }
     Ok(())
 }

@@ -132,7 +132,7 @@ async fn read_ack(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
     .await?
 }
 
-const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
+const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
 
 #[tokio::test]
 async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() -> Result<(), Error>

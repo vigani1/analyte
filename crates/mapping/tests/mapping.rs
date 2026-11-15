@@ -28,7 +28,7 @@ fn input() -> Input {
 
 fn hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error>> {
     let config = config(definition)?;
-    let raw = format!("MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|P|2.5.1\r{body}");
+    let raw = format!("MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\r{body}");
     let options = config.effective().hl7_options().ok_or("missing options")?;
     let message = analyte_hl7::Message::parse(raw.as_bytes(), options)?;
     Ok(map_hl7(&message, &config, input())?)
@@ -174,7 +174,7 @@ fn plan6_training_and_debug_never_deliver_for_both_protocols() -> TestResult {
         let a = astm("R|1|^^^SYN|1|||||F\r", mode)?;
         let config = config(HL7_CONFIG)?;
         let raw = format!(
-            "MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|{mode}|2.5.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r"
+            "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|{mode}|2.5.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r"
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
@@ -485,7 +485,7 @@ fn rule7_overlimit_repetitions_and_parts_fail_before_partial_success() -> TestRe
     // The parser's configured limit also owns this boundary.
     let config = config(&HL7_CONFIG.replace("repetitions = 128", "repetitions = 512"))?;
     let raw = format!(
-        "MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|P|2.5.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||{repetitions}||||||F\r"
+        "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||{repetitions}||||||F\r"
     );
     let message = analyte_hl7::Message::parse(
         raw.as_bytes(),
@@ -498,7 +498,8 @@ fn rule7_overlimit_repetitions_and_parts_fail_before_partial_success() -> TestRe
             ..
         })
     ));
-    let mut raw = "MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|P|2.5.1\rOBR|1||001\r".to_owned();
+    let mut raw =
+        "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||001\r".to_owned();
     for ordinal in 1..=257 {
         raw.push_str(&format!("OBX|{ordinal}|NM|SYN^^synthetic||1||||||F\r"));
     }
@@ -589,7 +590,8 @@ fn hl7_optional_orc_does_not_leak_into_the_following_order() -> TestResult {
 #[test]
 fn rule7_expanded_parent_context_has_a_separate_budget() -> TestResult {
     let config = config(HL7_CONFIG)?;
-    let mut raw = "MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|P|2.5.1\rOBR|1||001\r".to_owned();
+    let mut raw =
+        "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||001\r".to_owned();
     raw.push_str(&format!("NTE|1||{}\r", "x".repeat(16000)));
     for ordinal in 1..=220 {
         raw.push_str(&format!(
@@ -651,7 +653,7 @@ fn lis02_6_12_hl7_251_msh11_unknown_processing_still_refused() -> TestResult {
         ));
         let definition = config(HL7_CONFIG)?;
         let raw = format!(
-            "MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|{mode}|2.5.1\rOBR|1||sample\rOBX|1|NM|SYN^Synthetic^synthetic||1|mg/L|||||F\r"
+            "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|{mode}|2.5.1\rOBR|1||sample\rOBX|1|NM|SYN^Synthetic^synthetic||1|mg/L|||||F\r"
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),

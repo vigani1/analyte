@@ -518,7 +518,7 @@ impl Orders {
             None => return Err(invalid(path, "syntax.edition", "HL7 requires an edition")),
         };
         let wire = format!(
-            "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02|config|P|{edition}\rQRD|{}\r",
+            "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02^QRY_Q02|config|P|{edition}\rQRD|{}\r",
             fields.join("|")
         );
         let syntax = analyte_hl7::Message::parse(wire.as_bytes(), analyte_hl7::Options::default())

@@ -12,7 +12,8 @@ fn dialog() -> Result<Dialog, Error> {
     ))
 }
 fn message(mode: &str) -> Vec<u8> {
-    format!("\x0bMSH|^~\\&|A|B|C|D|20261115||ORU^R01|001|P|2.5.1|||{mode}\r\x1c\r").into_bytes()
+    format!("\x0bMSH|^~\\&|A|B|C|D|20261115||ORU^R01^ORU_R01|001|P|2.5.1|||{mode}\r\x1c\r")
+        .into_bytes()
 }
 fn feed(d: &mut Dialog, bytes: &[u8]) -> Result<Vec<Action>, Error> {
     let mut out = Vec::new();
