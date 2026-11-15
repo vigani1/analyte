@@ -36,6 +36,7 @@ use std::{
 };
 use support::*;
 use tokio::{
+    io::AsyncReadExt as _,
     net::TcpListener,
     sync::{Notify, mpsc, oneshot},
     task::JoinHandle,
@@ -1021,6 +1022,108 @@ async fn plan11_alert_evaluator_keeps_receive_delivery_and_shutdown_bounded() ->
         |r| r.get(0),
     )?;
     assert!(!state);
+    reference.close().await?;
+    Ok(())
+}
+
+// Plan section 11 and ADR 0008: an explicit CLI resend reaches the real reference
+// receiver as a duplicate, with the identical ID and wire body, and one audit.
+#[tokio::test]
+async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and_bytes()
+-> Result<(), Error> {
+    let directory = tempfile::tempdir()?;
+    let path = config(directory.path(), false)?;
+    let receiver_path = directory.path().join("reference.db");
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let mut reference = Reference::start(&receiver_path, listener, false).await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "hl7").await?;
+    assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
+    let original = reference.event().await?;
+    assert!(original.outcome.contains("accepted"));
+    wait_state(&path, "done", 1).await?;
+    for suffix in [
+        vec!["--reason", "app recovery"],
+        vec!["--actor", "synthetic-operator"],
+    ] {
+        let refused = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .arg("--config")
+            .arg(&*path)
+            .args(["deliveries", "resend", &original.id])
+            .args(suffix)
+            .output()?;
+        assert!(!refused.status.success());
+    }
+    let unknown = uuid::Uuid::now_v7().to_string();
+    let refused = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+        .arg("--config")
+        .arg(&*path)
+        .args([
+            "--actor",
+            "synthetic-operator",
+            "deliveries",
+            "resend",
+            &unknown,
+            "--reason",
+            "app recovery",
+        ])
+        .output()?;
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("UnknownDelivery"));
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+        .arg("--config")
+        .arg(&*path)
+        .args([
+            "--actor",
+            "synthetic-operator",
+            "deliveries",
+            "resend",
+            &original.id,
+            "--reason",
+            "app data recovery requested",
+        ])
+        .output()?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let duplicate = reference.event().await?;
+    assert!(duplicate.outcome.contains("duplicate"));
+    assert_eq!(duplicate.id, original.id);
+    assert_eq!(duplicate.bytes, original.bytes);
+    wait_state(&path, "done", 1).await?;
+    assert_eq!(receiver_count(&receiver_path)?, 1);
+    let db = database(&path)?;
+    let evidence: String = db.query_row(
+        "SELECT evidence FROM audit WHERE json_extract(evidence,'$.action')='delivery-resend'",
+        [],
+        |r| r.get(0),
+    )?;
+    let audit: analyte_store::Audit = serde_json::from_str(&evidence)?;
+    assert_eq!(audit.actor.as_str(), "synthetic-operator");
+    assert!(
+        audit
+            .targets
+            .iter()
+            .any(|t| t.as_str() == format!("delivery:{}", original.id))
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM audit WHERE json_extract(evidence,'$.action')='delivery-resend'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    // No operator resend writes to the analyzer connection.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), peer.read_u8())
+            .await
+            .is_err()
+    );
+    drop(db);
+    service.stop().await?;
     reference.close().await?;
     Ok(())
 }

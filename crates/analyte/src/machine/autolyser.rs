@@ -1,8 +1,5 @@
 //! Host-polled Autolyser connection; a corrupt report blocks R until L recovery.
-use super::{
-    vendor::{self, Input, ms},
-    vendor_model,
-};
+use super::vendor::{self, Input, ms};
 use crate::{Error, config::Machine, evidence, invalid};
 use analyte_autolyser::dialog::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
@@ -217,7 +214,7 @@ async fn process(
                 let (id, time) = receipt
                     .take()
                     .ok_or_else(|| invalid("Autolyser report receipt missing"))?;
-                match vendor_model::autolyser(machine, id, &report, time) {
+                match super::interpretation::map(machine, id, time, &report.raw) {
                     Ok(reading) => evidence::vendor_reading(store, machine, id, reading).await?,
                     Err(error) => {
                         vendor::failed(

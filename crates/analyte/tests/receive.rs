@@ -687,3 +687,95 @@ async fn plan11_status_reports_health_and_last_receipt_without_payloads_or_secre
     assert!(!text.contains("demo-signing"));
     Ok(())
 }
+
+// Plan section 11 and ADR 0003: real CLI commands require actor/reason and reuse
+// the live stored-byte interpretation; neither reprocess nor resend touches orders.
+#[tokio::test]
+async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_actor_reason()
+-> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let definition = std::fs::read_to_string(temp.path().join("machine.toml"))?;
+    std::fs::write(
+        temp.path().join("machine.toml"),
+        definition.replace("machine_code=\"SYN\"", "machine_code=\"OTHER\""),
+    )?;
+    let program = Program::load(&path)?;
+    let (shutdown, stop) = oneshot::channel();
+    let owner = tokio::spawn(serve(
+        Program::load(&path)?,
+        Box::new(Space(u64::MAX)),
+        async {
+            stop.await?;
+            Ok(())
+        },
+    ));
+    let mut peer = connect(&program).await?;
+    peer.write_all(&analyte_framing::mllp::encode(
+        ORU,
+        analyte_framing::mllp::Limit::new(1048576)?,
+    )?)
+    .await?;
+    assert!(String::from_utf8(read_ack(&mut peer).await?)?.contains("MSA|AE"));
+    shutdown.send(()).map_err(|_| "shutdown lost")?;
+    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    let store = stored(&program)?;
+    let receipt = store.receipts("")?.first().ok_or("receipt missing")?.id;
+    let parked = store.parked(0)?.first().ok_or("parked missing")?.id;
+    let raw = store.receipt(receipt)?.ok_or("receipt missing")?.raw;
+    drop(store);
+    std::fs::write(temp.path().join("machine.toml"), definition)?;
+    let receipt = uuid::Uuid::from(receipt).to_string();
+    let parked = parked.to_string();
+    for args in [
+        vec!["parked", "reprocess", &parked],
+        vec!["receipts", "reprocess", &receipt],
+        vec!["deliveries", "list"],
+    ] {
+        for suffix in [
+            vec!["--reason", "mapping repaired"],
+            vec!["--actor", "operator"],
+        ] {
+            let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+                .arg("--config")
+                .arg(&path)
+                .args(&args)
+                .args(suffix)
+                .output()?;
+            assert!(!output.status.success());
+        }
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .arg("--config")
+            .arg(&path)
+            .args(&args)
+            .args(["--actor", "operator", "--reason", "mapping repaired"])
+            .output()?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        if args.first() == Some(&"deliveries") {
+            assert!(!output.stdout.is_empty());
+        }
+    }
+    let store = stored(&program)?;
+    let receipt = analyte_model::ReceiptId::try_from(uuid::Uuid::parse_str(&receipt)?)?;
+    assert_eq!(store.receipt(receipt)?.ok_or("receipt missing")?.raw, raw);
+    assert!(
+        store
+            .parked_item(parked.parse()?)?
+            .ok_or("parked missing")?
+            .resolution
+            .is_some()
+    );
+    assert_eq!(store.deliveries(0)?.len(), 1);
+    assert_eq!(store.audits(0)?.len(), 3);
+    assert!(
+        store
+            .audits(0)?
+            .iter()
+            .all(|(_, a)| a.actor.as_str() == "operator")
+    );
+    Ok(())
+}

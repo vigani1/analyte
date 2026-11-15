@@ -1199,3 +1199,315 @@ fn plan11_interrupted_restore_staging_refuses_startup_without_deleting_evidence(
     );
     Ok(())
 }
+
+#[test]
+fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("resend.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    let result = production_result(metadata.id)?;
+    let observation = match &result.identity {
+        analyte_model::IdentityStatus::Resolved(id) => id.observation.clone(),
+        analyte_model::IdentityStatus::Unresolved(_) => return Err("fixture identity".into()),
+    };
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result]);
+    let delivery = Delivery {
+        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        destination: Identifier::new("app")?,
+        ordering_key: OrderingKey {
+            machine: metadata.machine.clone(),
+            observation,
+        },
+        payload: b"immutable synthetic bytes".to_vec(),
+        contract_version: 1,
+    };
+    store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?;
+    let mut audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("delivery-resend")?,
+        targets: vec![Identifier::new(&format!(
+            "delivery:{}",
+            uuid::Uuid::from(delivery.id)
+        ))?],
+        time: 50,
+        reason: Reason::new("app data recovered; resend requested")?,
+    };
+    assert!(matches!(
+        store.resend_delivery(delivery.id, false, &audit),
+        Err(Error::ResendState)
+    ));
+    let first = store.claim(0)?.ok_or("missing claim")?;
+    assert!(matches!(
+        store.resend_delivery(delivery.id, false, &audit),
+        Err(Error::ResendState)
+    ));
+    store.attempted(delivery.id, &Attempt::Done, 0)?;
+    // An audit write failure must roll back the requeue, not just the audit.
+    store.db.execute_batch("CREATE TRIGGER reject_resend_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
+    assert!(store.resend_delivery(delivery.id, false, &audit).is_err());
+    assert_eq!(
+        store
+            .deliveries(0)?
+            .first()
+            .ok_or("missing delivery")?
+            .state,
+        DeliveryState::Done
+    );
+    store
+        .db
+        .execute_batch("DROP TRIGGER reject_resend_audit;")?;
+    for outcome in [
+        Attempt::Done,
+        Attempt::Parked(Reason::new("rejection")?),
+        Attempt::Paused(Reason::new("setup")?),
+    ] {
+        store.resend_delivery(delivery.id, false, &audit)?;
+        let retry = store.claim(50)?.ok_or("missing retry")?;
+        assert_eq!(retry.id, first.id);
+        assert_eq!(retry.payload, first.payload);
+        store.attempted(retry.id, &outcome, 50)?;
+    }
+    assert_eq!(store.audits(0)?.len(), 3);
+    assert_eq!(
+        store.audits(0)?.first().ok_or("missing audit")?.1.targets,
+        audit.targets
+    );
+    assert!(
+        store
+            .deliveries(
+                store
+                    .deliveries(0)?
+                    .first()
+                    .ok_or("missing delivery")?
+                    .sequence
+            )?
+            .is_empty()
+    );
+    let unknown = DeliveryId::try_from(uuid::Uuid::now_v7())?;
+    audit.targets = vec![Identifier::new(&format!(
+        "delivery:{}",
+        uuid::Uuid::from(unknown)
+    ))?];
+    assert!(matches!(
+        store.resend_delivery(unknown, false, &audit),
+        Err(Error::UnknownDelivery)
+    ));
+    assert_eq!(store.audits(0)?.len(), 3);
+    Ok(())
+}
+
+#[test]
+fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("superseded.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    let result = production_result(metadata.id)?;
+    let observation = match &result.identity {
+        analyte_model::IdentityStatus::Resolved(id) => id.observation.clone(),
+        analyte_model::IdentityStatus::Unresolved(_) => return Err("fixture identity".into()),
+    };
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result]);
+    let delivery = Delivery {
+        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        destination: Identifier::new("app")?,
+        ordering_key: OrderingKey {
+            machine: metadata.machine.clone(),
+            observation,
+        },
+        payload: b"old bytes".to_vec(),
+        contract_version: 1,
+    };
+    store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?;
+    store.claim(0)?.ok_or("missing claim")?;
+    store.attempted(delivery.id, &Attempt::Done, 0)?;
+    store.db.execute(
+        "INSERT INTO interpretations VALUES (?1,2,?2)",
+        params![key(&metadata.id)?, key(&evidence)?],
+    )?;
+    // A correction need not have an outbox row to supersede the older revision.
+    let identity = key(&(
+        &delivery.ordering_key.machine,
+        &delivery.ordering_key.observation,
+    ))?;
+    store.db.execute(
+        "INSERT INTO observation_revisions VALUES (?1,1,?2,2,?3)",
+        params![
+            identity,
+            key(&metadata.id)?,
+            digest(b"corrected").0.as_slice()
+        ],
+    )?;
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("delivery-resend")?,
+        targets: vec![Identifier::new(&format!(
+            "delivery:{}",
+            uuid::Uuid::from(delivery.id)
+        ))?],
+        time: 50,
+        reason: Reason::new("explicit old revision recovery")?,
+    };
+    assert!(matches!(
+        store.resend_delivery(delivery.id, false, &audit),
+        Err(Error::SupersededDelivery)
+    ));
+    assert!(store.audits(0)?.is_empty());
+    store.resend_delivery(delivery.id, true, &audit)?;
+    assert_eq!(
+        store.claim(50)?.ok_or("missing resend")?.payload,
+        delivery.payload
+    );
+    assert_eq!(store.audits(0)?.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("reprocess.db"))?;
+    let metadata = receipt(b"original")?;
+    store.receive(&metadata, b"original", b"config")?;
+    let mut original = interpretation()?;
+    original.outcome = Reading::Failed(Reason::new("test mapping missing")?);
+    store.interpret(metadata.id, &original, &[])?;
+    let before: String = store
+        .db
+        .query_row("SELECT evidence FROM interpretations", [], |r| r.get(0))?;
+    let parked = store.parked(0)?.first().ok_or("missing parked")?.id;
+    let mut current = interpretation()?;
+    current.config_version = Identifier::new("current-config")?;
+    current.driver.value = Identifier::new("current-driver")?;
+    current.config = b"current mapping".to_vec();
+    current.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+    let action = Reprocess {
+        receipt: metadata.id,
+        parked: Some(parked),
+        audit: Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("receipt-reprocess")?,
+            targets: vec![],
+            time: 42,
+            reason: Reason::new("test mapping repaired")?,
+        },
+    };
+    store.db.execute_batch("CREATE TRIGGER fail_reprocess_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
+    assert!(
+        store
+            .reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![]))
+            .is_err()
+    );
+    assert!(store.interpretation(metadata.id, 2)?.is_none());
+    assert!(
+        store
+            .parked_item(parked)?
+            .ok_or("missing parked")?
+            .resolution
+            .is_none()
+    );
+    assert!(store.audits(0)?.is_empty());
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        0
+    );
+    store
+        .db
+        .execute_batch("DROP TRIGGER fail_reprocess_audit;")?;
+    let commit =
+        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![]))?;
+    assert_eq!(commit.version, 2);
+    assert!(matches!(
+        commit.outcomes.as_slice(),
+        [RevisionOutcome::New(_)]
+    ));
+    let retained = store
+        .interpretation(metadata.id, 2)?
+        .ok_or("missing version")?;
+    assert_eq!(retained.driver, current.driver);
+    assert_eq!(retained.config_version, current.config_version);
+    assert_eq!(retained.config, current.config);
+    let wire: serde_json::Value = serde_json::from_str(&store.db.query_row(
+        "SELECT evidence FROM interpretations WHERE version=2",
+        [],
+        |r| r.get::<_, String>(0),
+    )?)?;
+    assert_eq!(
+        wire["config_digest"],
+        serde_json::to_value(digest(&current.config))?
+    );
+    let after: String = store.db.query_row(
+        "SELECT evidence FROM interpretations WHERE version=1",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(before, after);
+    assert_eq!(
+        store.receipt(metadata.id)?.ok_or("missing receipt")?.raw,
+        b"original"
+    );
+    assert_eq!(store.audits(0)?.len(), 1);
+    let resolution: Audit = serde_json::from_str(
+        &store
+            .parked_item(parked)?
+            .ok_or("missing parked")?
+            .resolution
+            .ok_or("not resolved")?,
+    )?;
+    assert_eq!(
+        resolution.targets,
+        store.audits(0)?.first().ok_or("missing audit")?.1.targets
+    );
+    assert!(
+        resolution
+            .targets
+            .iter()
+            .any(|t| t.as_str().ends_with(":2"))
+    );
+    assert!(matches!(
+        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![])),
+        Err(Error::ReprocessParked)
+    ));
+    let other = store.park(&Parked {
+        kind: Identifier::new("unrelated")?,
+        reason: Reason::new("other receipt")?,
+        targets: vec![],
+    })?;
+    let mut action = action;
+    action.parked = Some(other);
+    assert!(matches!(
+        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![])),
+        Err(Error::ReprocessParked)
+    ));
+    action.parked = None;
+    current.outcome = Reading::Results(vec![]);
+    store.reprocess_reconciled(&action, current, &[], &[], |_, _| Ok(vec![]))?;
+    assert!(
+        store
+            .parked(0)?
+            .iter()
+            .any(|p| p.evidence.contains("reprocessing produced no results"))
+    );
+    assert_eq!(store.audits(0)?.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn rule3_interpretation_digest_verified_legacy_evidence_still_reads() -> TestResult {
+    let evidence = interpretation()?;
+    let mut encoded = serde_json::to_value(&evidence)?;
+    encoded["config_digest"] = serde_json::to_value(digest(b"different"))?;
+    assert!(serde_json::from_value::<Interpretation>(encoded.clone()).is_err());
+    encoded
+        .as_object_mut()
+        .ok_or("not object")?
+        .remove("config_digest");
+    let legacy: Interpretation = serde_json::from_value(encoded)?;
+    assert_eq!(legacy.config, evidence.config);
+    Ok(())
+}

@@ -114,11 +114,11 @@ pub(super) async fn session(
                         Action::Commit(token, raw) => {
                             let id = ReceiptId::new();
                             match evidence::receive(store, machine, id, raw).await {
-                                Ok(time) => {
+                                Ok(_) => {
                                     if pending.len() >= 2 {
                                         return Err(invalid("HL7 pending receipt limit exceeded"));
                                     }
-                                    pending.insert((token.epoch(), token.ordinal()), (id, time));
+                                    pending.insert((token.epoch(), token.ordinal()), id);
                                     actions.extend(
                                         dialog.step(start.elapsed(), Event::Committed(token))?,
                                     );
@@ -135,12 +135,12 @@ pub(super) async fn session(
                                 }
                             }
                         }
-                        Action::Interpret(token, payload) => {
-                            let (id, time) = pending
+                        Action::Interpret(token, _payload) => {
+                            let id = pending
                                 .remove(&(token.epoch(), token.ordinal()))
                                 .ok_or_else(|| invalid("HL7 receipt correlation missing"))?;
                             let success =
-                                evidence::interpret(store, machine, id, time, &payload).await?;
+                                evidence::interpret(store, machine, id).await?;
                             let event = if success {
                                 Event::Interpreted(token)
                             } else {

@@ -2,7 +2,7 @@ use analyte_model::{DeliveryId, Identifier, Reason, ResultContent, SampleId};
 use serde::{Deserialize, Serialize};
 
 /// Reproducible interpretation with exact effective config and typed result contents.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Interpretation {
     /// Driver name and version.
     pub driver: analyte_model::NamespacedId,
@@ -12,6 +12,50 @@ pub struct Interpretation {
     pub config: Vec<u8>,
     /// Typed contents or a specific failure.
     pub outcome: Reading,
+}
+
+// Legacy versions lacked an explicit digest. New evidence records it; readers
+// verify it when present without rewriting any historical interpretation.
+impl Serialize for Interpretation {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut fields = serializer.serialize_struct("Interpretation", 5)?;
+        fields.serialize_field("driver", &self.driver)?;
+        fields.serialize_field("config_version", &self.config_version)?;
+        fields.serialize_field("config", &self.config)?;
+        fields.serialize_field("config_digest", &crate::digest(&self.config))?;
+        fields.serialize_field("outcome", &self.outcome)?;
+        fields.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Interpretation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Evidence {
+            driver: analyte_model::NamespacedId,
+            config_version: Identifier,
+            config: Vec<u8>,
+            #[serde(default)]
+            config_digest: Option<analyte_model::Digest>,
+            outcome: Reading,
+        }
+        let evidence = Evidence::deserialize(deserializer)?;
+        if evidence
+            .config_digest
+            .is_some_and(|digest| digest != crate::digest(&evidence.config))
+        {
+            return Err(serde::de::Error::custom(
+                "interpretation configuration digest mismatch",
+            ));
+        }
+        Ok(Self {
+            driver: evidence.driver,
+            config_version: evidence.config_version,
+            config: evidence.config,
+            outcome: evidence.outcome,
+        })
+    }
 }
 
 /// Parsing never silently substitutes an empty successful result.

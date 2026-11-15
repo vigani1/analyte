@@ -169,7 +169,7 @@ async fn process(
     };
     let id = ReceiptId::new();
     // No parse success or early MSH acceptance can bypass this durable boundary.
-    let time = evidence::receive(store, machine, id, raw.clone()).await?;
+    evidence::receive(store, machine, id, raw.clone()).await?;
     #[cfg(feature = "test-hooks")]
     if let Some(hook) = &machine.law_committed {
         hook.pause(&mut _stop).await?;
@@ -217,8 +217,8 @@ async fn process(
         ));
     }
     let (code, responsibility, location) = match law::receive_results(&message) {
-        Ok(results) => {
-            let accepted = evidence::interpret_law(store, machine, id, time, &results).await?;
+        Ok(_) => {
+            let accepted = evidence::interpret(store, machine, id).await?;
             if accepted {
                 (AckCode::Aa, Responsibility::StoredAndInterpreted, None)
             } else {

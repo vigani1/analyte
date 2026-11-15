@@ -1,8 +1,5 @@
 //! POCT01-A2 DML reviewer with durable custody before every acceptance.
-use super::{
-    vendor::{self, Input, ms},
-    vendor_model,
-};
+use super::vendor::{self, Input, ms};
 use crate::{Error, config::Machine, evidence, invalid};
 use analyte_model::ReceiptId;
 use analyte_poct::{
@@ -70,12 +67,7 @@ pub(super) async fn session(
         .poct
         .as_ref()
         .ok_or_else(|| invalid("POCT policy missing"))?;
-    let limits = Limits {
-        message_bytes: settings.framing.limit.min(settings.syntax.bytes),
-        depth: policy.depth,
-        elements: policy.elements,
-        attribute_bytes: policy.attribute_bytes,
-    };
+    let limits = super::interpretation::poct_limits(machine)?;
     let mut dialog = Dialog::new(
         DialogConfig {
             pending_messages: policy.pending_messages,
@@ -223,7 +215,12 @@ async fn process(
                             .await?;
                     match message.body() {
                         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
-                            match vendor_model::poct(machine, id, &message, time) {
+                            match super::interpretation::map(
+                                machine,
+                                id,
+                                time,
+                                message.document().raw(),
+                            ) {
                                 Ok(reading) => {
                                     evidence::vendor_reading(store, machine, id, reading).await?;
                                 }

@@ -1,6 +1,6 @@
 //! Protected evidence processing; no payload enters ordinary logs.
 use crate::{Error, config::Machine, deadline, invalid};
-use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata, Revision};
+use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 
 pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
@@ -42,105 +42,32 @@ pub(crate) async fn receive(
     Ok(received_at)
 }
 
-fn mapped(
-    machine: &Machine,
-    id: ReceiptId,
-    time: jiff::Timestamp,
-    payload: &[u8],
-) -> Result<analyte_mapping::Output, Error> {
-    let effective = machine.snapshot.effective();
-    let input = analyte_mapping::Input {
-        receipt: id,
-        received_at: time,
-        revision: Revision(0),
-    };
-    match effective.machine().syntax.kind {
-        analyte_config::SyntaxKind::Poct
-        | analyte_config::SyntaxKind::VidasLiteral
-        | analyte_config::SyntaxKind::Autolyser => {
-            Err(invalid("vendor syntax bypasses field mapping"))
-        }
-        analyte_config::SyntaxKind::AstmLis02 => {
-            let limits = effective
-                .astm_limits()
-                .ok_or_else(|| invalid("ASTM parser limits missing"))?;
-            let messages = analyte_astm::parse_with(payload, limits, |bytes| {
-                match effective.machine().syntax.encoding {
-                    analyte_config::Encoding::Ascii => bytes
-                        .is_ascii()
-                        .then(|| String::from_utf8_lossy(bytes).into_owned()),
-                    analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
-                    analyte_config::Encoding::Utf8 => {
-                        std::str::from_utf8(bytes).ok().map(str::to_owned)
-                    }
-                }
-            })?;
-            // A transfer may contain multiple messages; the host must retain every one.
-            if messages.len() != 1 {
-                return Err(invalid(
-                    "ASTM transfer does not contain exactly one message; operator review required",
-                ));
-            }
-            Ok(analyte_mapping::map_astm(
-                messages
-                    .first()
-                    .ok_or_else(|| invalid("ASTM message missing"))?,
-                &machine.snapshot,
-                input,
-            )?)
-        }
-        analyte_config::SyntaxKind::Hl7V2 => {
-            let message = analyte_hl7::Message::parse(
-                payload,
-                effective
-                    .hl7_options()
-                    .ok_or_else(|| invalid("HL7 parser options missing"))?,
-            )?;
-            Ok(analyte_mapping::map_hl7(
-                &message,
-                &machine.snapshot,
-                input,
-            )?)
-        }
-    }
-}
-
 pub(crate) async fn interpret(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
-    time: jiff::Timestamp,
-    payload: &[u8],
 ) -> Result<bool, Error> {
-    persist_mapping(store, machine, id, mapped(machine, id, time, payload)).await
+    let receipt = store
+        .request(deadline(), move |s| {
+            s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+        })
+        .await?;
+    let mapping = crate::machine::interpretation::map(
+        machine,
+        id,
+        receipt.metadata.received_at,
+        &receipt.raw,
+    );
+    Ok(persist_mapping(store, machine, id, mapping, None).await?.0)
 }
 
-pub(crate) async fn interpret_law(
-    store: &Handle,
-    machine: &Machine,
-    id: ReceiptId,
-    time: jiff::Timestamp,
-    results: &analyte_hl7::law::Results<'_>,
-) -> Result<bool, Error> {
-    let mapped = analyte_mapping::map_law(
-        results,
-        &machine.snapshot,
-        analyte_mapping::Input {
-            receipt: id,
-            received_at: time,
-            revision: Revision(0),
-        },
-    )
-    .map_err(Into::into);
-    persist_mapping(store, machine, id, mapped).await
-}
-
-async fn persist_mapping(
+pub(crate) async fn persist_mapping(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
     mapping: Result<analyte_mapping::Output, Error>,
-) -> Result<bool, Error> {
+    action: Option<analyte_store::Reprocess>,
+) -> Result<(bool, analyte_store::InterpretationCommit), Error> {
     let atomic = machine.snapshot.effective().machine().law.is_some();
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
@@ -225,38 +152,43 @@ async fn persist_mapping(
                 .receipt(id)?
                 .ok_or(analyte_store::Error::Conflict)?
                 .metadata;
-            let commit = store.interpret_reconciled(
+            let build = |assigned: &Interpretation, outcomes: &[RevisionOutcome]| {
+                if atomic
+                    && outcomes.iter().any(|outcome| {
+                        matches!(
+                            outcome,
+                            RevisionOutcome::Conflict | RevisionOutcome::Unresolved
+                        )
+                    })
+                {
+                    return Err(analyte_store::Error::DeliveryBuild(Box::new(
+                        LawBatchConflict,
+                    )));
+                }
+                if !accepted {
+                    return Ok(Vec::new());
+                }
+                build_deliveries(assigned, outcomes, &receipt, &destination)
+            };
+            let commit = reconcile(
+                store,
                 id,
+                action.as_ref(),
                 interpretation,
                 &corrections,
                 &findings,
-                |assigned, outcomes| {
-                    if atomic
-                        && outcomes.iter().any(|outcome| {
-                            matches!(
-                                outcome,
-                                RevisionOutcome::Conflict | RevisionOutcome::Unresolved
-                            )
-                        })
-                    {
-                        return Err(analyte_store::Error::DeliveryBuild(Box::new(
-                            LawBatchConflict,
-                        )));
-                    }
-                    if !accepted {
-                        return Ok(Vec::new());
-                    }
-                    build_deliveries(assigned, outcomes, &receipt, &destination)
-                },
+                build,
             );
             match commit {
-                // The builder refusal rolls back revisions and deliveries together.
-                // Retain a failed interpretation on the original receipt afterwards.
+                // The builder refusal rolls back revisions, audit and deliveries together.
+                // Keep a failed version (and its audit for operator actions) afterwards.
                 Err(analyte_store::Error::DeliveryBuild(error))
                     if error.is::<LawBatchConflict>() =>
                 {
-                    let rejected = store.interpret_reconciled(
+                    let rejected = reconcile(
+                        store,
                         id,
+                        action.as_ref(),
                         conflict.ok_or(analyte_store::Error::InvalidInput)?,
                         &[],
                         &findings,
@@ -268,12 +200,34 @@ async fn persist_mapping(
             }
         })
         .await?;
-    Ok(result.1
+    let (result, successful) = result;
+    let accepted = successful
         && !result
-            .0
             .outcomes
             .iter()
-            .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved)))
+            .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
+    Ok((accepted, result))
+}
+
+// One audit dispatch for normal and rejected-batch commits; recovery never bypasses it.
+fn reconcile(
+    store: &mut analyte_store::Store,
+    id: ReceiptId,
+    action: Option<&analyte_store::Reprocess>,
+    interpretation: Interpretation,
+    corrections: &[bool],
+    findings: &[analyte_store::Parked],
+    build: impl FnOnce(
+        &Interpretation,
+        &[RevisionOutcome],
+    ) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error>,
+) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
+    match action {
+        Some(action) => {
+            store.reprocess_reconciled(action, interpretation, corrections, findings, build)
+        }
+        None => store.interpret_reconciled(id, interpretation, corrections, findings, build),
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -346,7 +300,7 @@ pub(crate) async fn vendor_reading(
     id: ReceiptId,
     output: analyte_mapping::Output,
 ) -> Result<(), Error> {
-    persist_mapping(store, machine, id, Ok(output)).await?;
+    persist_mapping(store, machine, id, Ok(output), None).await?;
     Ok(())
 }
 
@@ -356,6 +310,6 @@ pub(crate) async fn failed_reading(
     id: ReceiptId,
     reason: &str,
 ) -> Result<(), Error> {
-    persist_mapping(store, machine, id, Err(invalid(reason))).await?;
+    persist_mapping(store, machine, id, Err(invalid(reason)), None).await?;
     Ok(())
 }

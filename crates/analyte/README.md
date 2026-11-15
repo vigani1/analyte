@@ -33,6 +33,45 @@ listed ID with `--after` for the next page. Resolution never deletes evidence or
 resends an order. A backup target must not already exist. An unsuccessful backup
 may leave a partial target, which must not be restored.
 
+## Reprocess and resend
+
+Use **reprocess** after fixing parsing or a missing test mapping. It reads the
+receipt's original bytes using the current driver and configuration files and
+appends a new interpretation with that provenance and config digest. The original
+receipt and earlier interpretations stay unchanged. Existing revision rules still
+apply: identical results are retransmissions with no new delivery; changed content
+without correction evidence is parked as a conflict. Unresolved identities remain
+parked. A successful parked-item reprocess records its resolution and new version;
+a failed interpretation records a new parked reason. Each action has one durable
+audit in the same transaction as its effects.
+
+```sh
+analyte --config analyte.toml --actor operator parked reprocess <parked-id> --reason 'Added the missing test mapping'
+analyte --config analyte.toml --actor operator receipts reprocess <receipt-uuid> --reason 'Reviewed the current mapping'
+```
+
+Use **resend** when the app needs an existing delivery again, after repairing the
+cause of a rejection or setup pause, or after losing previously accepted data.
+It queues the same delivery ID and exact stored bytes; the app answers a repeat
+as `duplicate`. It does not interpret the receipt again or build new bytes.
+Only Done, Parked and setup-paused deliveries are eligible; pending, in-flight,
+conflicting and unknown deliveries are refused. Naming a delivery ID explicitly
+on the CLI acknowledges selecting it even if a newer result revision exists.
+Check the ID carefully before requesting an older revision.
+
+```sh
+analyte --config analyte.toml --actor operator deliveries list --reason 'Find the delivery for app recovery'
+analyte --config analyte.toml --actor operator deliveries resend <delivery-uuid> --reason 'App recovery requested this delivery'
+```
+
+All four commands require an explicit `--actor` and `--reason`. The delivery list
+is bounded: use its final sequence number with `--after` to read the next page.
+The list contains IDs, destinations and states, without clinical payloads. A resend
+is queued for the service's ordinary delivery worker; the CLI does not contact the
+app itself. Neither action contacts a machine, answers a machine query or resends
+an order. A timeout can leave an action committed: inspect its audit and retained
+versions before deciding whether to repeat it.
+
 Each machine has one supervised owner. TCP servers accept one session at a time;
 TCP clients reconnect without carrying writes between sessions. Serial ports run
 on dedicated joined threads. File producers must rename complete files into the
@@ -337,7 +376,7 @@ snapshot cannot be read in time, the page reports failure rather than displaying
 an incomplete count as a total. Raw payloads and sample IDs are not shown on
 the overview.
 
-Use the navigation links for machines, parked items, and machine orders. Lists
+Use the navigation links for machines, parked items, machine orders and deliveries. Lists
 show at most 50 entries and may show fewer under the configured store page bound.
 Follow Next page to continue. Cursors are nonnegative and bounded; unknown
 query fields are refused. Parked lists show category, reason, linked identities
@@ -361,7 +400,19 @@ The separate retained-cache panel shows sample IDs, items and its version. A
 different cache version is explicitly labelled as current cache items rather than
 the historical machine items; missing or invalid documents never cause guessed items.
 
-Actions such as resolving, reconciling and retrying remain CLI-only.
+Parked-item detail pages link to **Reprocess**, and the bounded **Deliveries**
+page links eligible entries to **Resend**. Each link opens a confirmation page;
+only its POST form performs the action. A reason and the authenticated session's
+CSRF token are required, and the audit records the session actor. Resending a
+superseded delivery additionally requires the explicit checkbox acknowledging
+that older delivery. GET requests never change interpretation or delivery state.
+
+Admin reprocessing loads current settings from the service's original program
+file and refuses a changed data-directory target. Validate edited files with
+`check-config` first. Reprocessing uses those edited files; it does not hot-reload
+the running receive sessions. An action timeout can leave a durable effect: inspect
+the audit and version or delivery state before repeating it. Resolving and order
+reconciliation remain CLI-only.
 
 ## Running as a service
 

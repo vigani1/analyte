@@ -5,7 +5,11 @@ mod alerts;
 pub use alerts::*;
 mod machine_orders;
 mod migration;
+mod reprocess;
+pub use reprocess::Reprocess;
+mod resend;
 mod restore;
+pub use resend::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
 pub const SCHEMA_VERSION: i64 = 6;
@@ -33,6 +37,22 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Requested receipt has never been stored.
+    #[error("receipt does not exist")]
+    UnknownReceipt,
+    /// Parked item does not exist, is already resolved or belongs to other evidence.
+    #[error("parked item is missing, resolved or unrelated to this receipt")]
+    ReprocessParked,
+
+    /// No delivery exists with the requested identity.
+    #[error("delivery does not exist")]
+    UnknownDelivery,
+    /// Only completed, parked or setup-paused deliveries can be resent.
+    #[error("delivery state does not permit resend")]
+    ResendState,
+    /// A newer observation revision exists; explicitly name the old delivery to resend it.
+    #[error("delivery is superseded; explicit operator acknowledgement required")]
+    SupersededDelivery,
     /// Another owner prevents exclusive restore access.
     #[error("store is in use; stop the service before restoring")]
     InUse,
