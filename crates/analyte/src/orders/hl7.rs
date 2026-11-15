@@ -180,11 +180,10 @@ impl Connection {
         &mut self,
         store: &Handle,
         machine: &Machine,
-        conn: &mut analyte_transport::Connection,
         request: Request<'_>,
-        dialog: &mut analyte_dialog::hl7::Dialog,
+        dialog: &analyte_dialog::hl7::Dialog,
         clock: Instant,
-    ) -> Result<(), Error> {
+    ) -> Result<Option<analyte_dialog::hl7::DisplayReply>, Error> {
         let Request {
             message,
             started,
@@ -195,7 +194,7 @@ impl Connection {
             Ok(request) => request,
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                return Ok(());
+                return Ok(None);
             }
         };
         let settings = super::settings::hl7(machine)
@@ -359,40 +358,16 @@ impl Connection {
             self.reserving.clear();
         }
         let qck = query::acknowledgment(request, qck_metadata.response()?, answer, self.options)?;
-        if let Err(error) = write(
-            conn,
-            qck.raw(),
-            self.options,
-            if answer == CacheAnswer::Found {
-                until
-            } else {
-                deadline()
-            },
-        )
-        .await
-        {
-            self.outcome(store, "HL7-QCK-write-failed", false).await?;
-            return Err(error);
-        }
-        if let Some(dsr) = dsr {
-            if Instant::now() >= until {
-                self.outcome(store, "HL7-query-deadline-before-DSR", false)
-                    .await?;
-                return Ok(());
-            }
-            dialog.await_display(
-                clock.elapsed(),
-                dsr_metadata.response()?.control_id,
-                Duration::from_millis(u64::from(layout.acknowledgment_ms)),
-            )?;
-            if let Err(error) = write(conn, dsr.raw(), self.options, until).await {
-                self.outcome(store, "HL7-DSR-write-failed", false).await?;
-                return Err(error);
-            }
-        }
-        Ok(())
+        Ok(Some(analyte_dialog::hl7::DisplayReply {
+            acknowledgment: qck,
+            display: dsr,
+            query_deadline: until.duration_since(clock),
+            failure_deadline: deadline().duration_since(clock),
+            acknowledgment_wait: Duration::from_millis(u64::from(layout.acknowledgment_ms)),
+        }))
     }
 }
+
 fn sample(
     request: query::Request<'_>,
     layout: &analyte_config::Hl7OrderQuery,

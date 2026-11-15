@@ -7,6 +7,7 @@ use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
 mod orders;
 use orders::Orders;
+pub use orders::{DisplayReply, ReplyPart};
 
 /// Connection-scoped host request identity. The host must supply a unique epoch after restart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +111,12 @@ pub enum Event<'a> {
     Respond(ReceiptId, Response<'a>),
     /// Explicit outgoing message; never retried automatically.
     Send(&'a [u8]),
+    /// Reply prepared only after lookup and any required durable reservations.
+    QueryReply(&'a DisplayReply),
+    /// The requested reply part was queued by the transport within its budget.
+    QueryWritten(ReplyPart),
+    /// Issuance failed or became uncertain; never retry implicitly.
+    QueryWriteFailed(ReplyPart),
     /// Connection ended. Drop this dialog after consuming returned evidence.
     Disconnect,
 }
@@ -173,6 +180,15 @@ pub enum Action {
         code: &'static str,
         /// Validation diagnostic without raw payload.
         detail: Option<String>,
+    },
+    /// Issue one reply part; feed back completion before issuing another part.
+    QueryWrite {
+        /// Exact framed bytes, for transport only.
+        bytes: Vec<u8>,
+        /// Absolute deadline relative to the connection clock.
+        until: Duration,
+        /// Identifies the issuance awaiting completion.
+        part: ReplyPart,
     },
     /// Next absolute wake-up time.
     Deadline(Option<Duration>),
@@ -364,6 +380,9 @@ impl Dialog {
         }
         match event {
             Event::Tick => {}
+            Event::QueryReply(reply) => self.prepare_reply(reply, out)?,
+            Event::QueryWritten(part) => self.reply_written(part, out)?,
+            Event::QueryWriteFailed(part) => self.reply_failed(part, out)?,
             Event::Byte(byte) => {
                 self.frame_started.get_or_insert(self.now);
                 if let Some(event) = self.decoder.push(byte) {

@@ -3,6 +3,36 @@ use super::{Action, Dialog, Error, Message, Msh, ReceiptId};
 use analyte_hl7::{AckCode, ControlId, Version, query};
 use std::time::Duration;
 
+/// The transport issuance currently requested by a deferred-display reply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplyPart {
+    /// Query acknowledgment, always issued before any display.
+    Qck,
+    /// Reserved display message; never automatically retried.
+    Dsr,
+}
+
+/// Host-prepared reply after cache lookup and durable order reservation.
+#[derive(Debug)]
+pub struct DisplayReply {
+    /// QCK built for the actual cache outcome.
+    pub acknowledgment: Message,
+    /// Present only when all display work has been reserved durably.
+    pub display: Option<Message>,
+    /// Total query deadline, relative to the connection clock.
+    pub query_deadline: Duration,
+    /// Separate issuance deadline for an unavailable/empty acknowledgment.
+    pub failure_deadline: Duration,
+    /// Application ACK budget, beginning immediately before DSR issuance.
+    pub acknowledgment_wait: Duration,
+}
+
+#[derive(Debug)]
+enum Issuance {
+    Qck(DisplayReply),
+    Dsr,
+}
+
 #[derive(Debug)]
 enum Waiting {
     Idle,
@@ -20,6 +50,7 @@ pub(super) struct Orders {
     version: Version,
     waiting: Waiting,
     pending: Option<(ReceiptId, Message, Kind, Duration)>,
+    issuance: Option<Issuance>,
 }
 impl Orders {
     pub(super) fn committing(&self) -> bool {
@@ -72,6 +103,7 @@ impl Dialog {
             version,
             waiting: Waiting::Idle,
             pending: None,
+            issuance: None,
         });
         Ok(())
     }
@@ -136,6 +168,101 @@ impl Dialog {
             return Err(Error::Busy);
         }
         orders.waiting = Waiting::Order { until };
+        Ok(())
+    }
+    pub(super) fn prepare_reply(
+        &mut self,
+        reply: &DisplayReply,
+        out: &mut Vec<Action>,
+    ) -> Result<(), Error> {
+        let orders = self.orders.as_mut().ok_or(Error::Configuration)?;
+        if orders.issuance.is_some() {
+            return Err(Error::Busy);
+        }
+        let until = if reply.display.is_some() {
+            reply.query_deadline
+        } else {
+            reply.failure_deadline
+        };
+        let bytes = analyte_framing::mllp::encode(reply.acknowledgment.raw(), self.config.limit)?;
+        orders.issuance = Some(Issuance::Qck(DisplayReply {
+            acknowledgment: reply.acknowledgment.clone(),
+            display: reply.display.clone(),
+            query_deadline: reply.query_deadline,
+            failure_deadline: reply.failure_deadline,
+            acknowledgment_wait: reply.acknowledgment_wait,
+        }));
+        out.push(Action::QueryWrite {
+            bytes,
+            until,
+            part: ReplyPart::Qck,
+        });
+        Ok(())
+    }
+    pub(super) fn reply_written(
+        &mut self,
+        part: ReplyPart,
+        out: &mut Vec<Action>,
+    ) -> Result<(), Error> {
+        let orders = self.orders.as_mut().ok_or(Error::Configuration)?;
+        match (orders.issuance.take(), part) {
+            (Some(Issuance::Qck(reply)), ReplyPart::Qck) => {
+                if let Some(display) = reply.display {
+                    if self.now >= reply.query_deadline {
+                        out.push(Action::DisplayOutcome {
+                            receipt: None,
+                            accepted: false,
+                            code: "HL7-query-deadline-before-DSR",
+                            detail: None,
+                        });
+                    } else {
+                        let id = Msh::new(&display)?.control_id().to_vec();
+                        let bytes =
+                            analyte_framing::mllp::encode(display.raw(), self.config.limit)?;
+                        self.await_display(
+                            self.now,
+                            ControlId::new(&id)?,
+                            reply.acknowledgment_wait,
+                        )?;
+                        self.orders.as_mut().ok_or(Error::Configuration)?.issuance =
+                            Some(Issuance::Dsr);
+                        out.push(Action::QueryWrite {
+                            bytes,
+                            until: reply.query_deadline,
+                            part: ReplyPart::Dsr,
+                        });
+                    }
+                }
+            }
+            (Some(Issuance::Dsr), ReplyPart::Dsr) => {}
+            (state, _) => {
+                orders.issuance = state;
+                return Err(Error::Stale);
+            }
+        }
+        Ok(())
+    }
+    pub(super) fn reply_failed(
+        &mut self,
+        part: ReplyPart,
+        out: &mut Vec<Action>,
+    ) -> Result<(), Error> {
+        let orders = self.orders.as_mut().ok_or(Error::Configuration)?;
+        let code = match (&orders.issuance, part) {
+            (Some(Issuance::Qck(_)), ReplyPart::Qck) => "HL7-QCK-write-failed",
+            (Some(Issuance::Dsr), ReplyPart::Dsr) => {
+                orders.waiting = Waiting::Idle;
+                "HL7-DSR-write-failed"
+            }
+            (None | Some(Issuance::Qck(_) | Issuance::Dsr), _) => return Err(Error::Stale),
+        };
+        orders.issuance = None;
+        out.push(Action::DisplayOutcome {
+            receipt: None,
+            accepted: false,
+            code,
+            detail: None,
+        });
         Ok(())
     }
     pub(super) fn route_order(

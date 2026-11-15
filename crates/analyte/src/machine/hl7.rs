@@ -40,6 +40,7 @@ pub(super) async fn session(
         dialog.enable_orders(settings.syntax.edition.into())?;
     }
     let mut input_evidence = Vec::new();
+    let mut write_error = None;
     let result = async {
         loop {
             let wait = wake.map_or(Duration::from_secs(1), |d: Duration| {
@@ -93,7 +94,8 @@ pub(super) async fn session(
                                 evidence::failed_reading(store,machine,id,"HL7 query edition differs from configured edition").await?;
                             } else {
                                 let query = queries.as_mut().ok_or("HL7 query services absent")?;
-                                tokio::select! { biased; () = super::stopping(&mut stop) => return Ok(()), result = query.answer(store,machine,conn,crate::orders::hl7::Request { message: &message, started: start.checked_add(started).ok_or("query clock overflow")?, receipt: id },&mut dialog,start) => result? };
+                                let reply = tokio::select! { biased; () = super::stopping(&mut stop) => return Ok(()), result = query.answer(store,machine,crate::orders::hl7::Request { message: &message, started: start.checked_add(started).ok_or("query clock overflow")?, receipt: id },&dialog,start) => result? };
+                                if let Some(reply) = reply { actions.extend(dialog.step(start.elapsed(), Event::QueryReply(&reply))?); }
                             }
                             actions.extend(dialog.step(start.elapsed(), Event::Tick)?);
                         }
@@ -162,6 +164,15 @@ pub(super) async fn session(
                                 ),
                             )?);
                         }
+                        Action::QueryWrite { bytes, until, part } => {
+                            match conn.write_all(&bytes, Some(tokio::time::Instant::from_std(start.checked_add(until).ok_or("query write deadline overflow")?))).await {
+                                Ok(()) => actions.extend(dialog.step(start.elapsed(), Event::QueryWritten(part))?),
+                                Err(error) => {
+                                    actions.extend(dialog.step(start.elapsed(), Event::QueryWriteFailed(part))?);
+                                    write_error = Some(error);
+                                },
+                            }
+                        }
                         Action::Write(bytes) => {
                             conn.write_all(&bytes, None).await?;
                         }
@@ -194,6 +205,7 @@ pub(super) async fn session(
                         }
                     }
                 }
+                if let Some(error) = write_error.take() { return Err(error.into()); }
             }
             input_evidence.clear();
             if let Some(query) = &mut queries {
