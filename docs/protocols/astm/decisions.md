@@ -1,0 +1,125 @@
+# ASTM decisions
+
+These choices explain Analyte's policy and interpretations. Mandatory wire
+rules and their coverage belong only in [checklist.md](checklist.md).
+
+## 1. Resolve the frame-size wording in favor of the total ceiling
+
+- **what**: Subtract overhead when splitting a record into frames; smaller
+  vendor limits remain explicit configuration.
+- **why**: The later sentence about fitting a message in one frame does not
+  subtract overhead. Reading it literally could exceed the total ceiling
+  stated immediately before it, so the overhead-inclusive rule wins.
+- **source**: LIS01-A2 §6.3.1–6.3.1.2, p.7; §4.4.1, p.2.
+- **test**: `lis01_6_3_1_6_3_2_6_3_3_6_6_large_records_rollover_separate_records`.
+
+## 2. Make the checksum span explicit
+
+- **what**: Include ETB or ETX in the raw-byte checksum, before decoding text.
+- **why**: The addition sentence does not explicitly name the terminator,
+  although the frame layout puts it inside the checked block. An explicit
+  span prevents competing readings; decoding first could change checked bytes.
+- **source**: LIS01-A2 §6.3.1.2–6.3.3.1, pp.7–8.
+- **test**: `lis01_6_3_3_checksum_sums_raw_digit_through_etx`.
+
+## 3. Do not autodetect bare LIS02 over TCP
+
+- **what**: The ASTM TCP stack retains the link dialog; bare LIS02 file input
+  is a separate configured transport, not a TCP fallback.
+- **why**: LIS01 suggests direct LIS02 over TCP as an alternative. Silently
+  selecting that alternative on unexpected bytes would change the acceptance
+  contract and could conceal a connection to the wrong endpoint.
+- **source**: LIS01-A2 §4.4.2, p.2;
+  [ADR 0002](../../adr/0002-config-first.md), Decision.
+- **test**: none yet.
+
+## 4. Reject oversized records instead of truncating
+
+- **what**: Enforce configured field and record bounds without shortening data.
+- **why**: LIS02 leaves practical limits to the implementations and permits
+  agreed truncation. A shortened identifier or result could still look valid,
+  so Analyte rejects it and keeps the original evidence instead.
+- **source**: LIS02-A2 §§5.2–5.3, pp.5–6;
+  [ADR 0003](../../adr/0003-clinical-safety-rules.md), values and bounds policy.
+- **test**: `lis02_5_2_5_3_limits_reject_instead_of_truncating`.
+
+## 5. Configure whether to honor receiver interrupts
+
+- **what**: Expose honoring an interrupt as a dialog setting.
+- **why**: The sender may continue or yield. An explicit setting lets the
+  installation choose that behavior without a vendor special case in the
+  shared state machine.
+- **source**: LIS01-A2 §6.3.5.1–6.3.5.3, p.8.
+- **test**: `lis01_6_3_5_interrupt_honor_ignore_and_issue`.
+
+## 6. Keep one outgoing message buffer
+
+- **what**: Refuse a second outgoing message while the dialog owns one.
+- **why**: Extra buffering is optional. The host already owns durable order
+  scheduling, so a second queue in the link would complicate shutdown and
+  uncertain sends without adding a needed capability.
+- **source**: LIS01-A2 §6.5.2.6, p.10;
+  [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), dialog ownership.
+- **test**: `lis01_6_5_2_6_one_message_buffer_and_validated_vendor_values`.
+
+## 7. Refuse unsupported search semantics
+
+- **what**: Serve supported exact-sample order queries; refuse unsupported
+  ranges and filters instead of evaluating only their understood parts.
+- **why**: LIS02 describes searches without requiring every search service.
+  Ignoring a filter could select a different order set and send tests the
+  query did not request.
+- **source**: LIS02-A2 §§11.3–11.8, pp.25–26.
+- **test**: `lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orders`.
+
+## 8. Make acknowledgment depend on durable custody
+
+- **what**: Reserve capacity before accepting a transfer and commit each frame
+  before its positive data acknowledgment.
+- **why**: A valid checksum proves nothing about crash survival. The analyzer
+  must retain responsibility if the host cannot keep the promised evidence.
+- **source**: [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), ASTM row;
+  [ADR 0003](../../adr/0003-clinical-safety-rules.md), Store before acknowledging.
+- **test**: `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack`.
+
+## 9. Detect conflicting retransmitted frames
+
+- **what**: Compare retransmission identity with retained payload evidence;
+  a reused frame number with different content is not a duplicate.
+- **why**: The small cyclic frame number handles sequencing, not durable
+  content identity. A lost ACK must not let conflicting bytes pass as the
+  previously stored frame.
+- **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Keep the original
+  and Three identities.
+- **test**: `adr0003_lis01_6_3_2_6_5_1_commit_duplicate_and_conflict`.
+
+## 10. Isolate nonproduction queries from real orders
+
+- **what**: Refuse real order lookup for training, debug and QC query contexts.
+- **why**: A syntactically valid test exchange must not reserve patient work.
+  The processing label is therefore a host authorization boundary, not merely
+  retained metadata.
+- **source**: LIS02-A2 §6.12, p.12;
+  [ADR 0003](../../adr/0003-clinical-safety-rules.md), order lifecycle policy.
+- **test**: `lis02_6_12_p12_nonproduction_queries_never_reserve_or_send`.
+
+## 11. Keep an unknown lookup distinct from an empty lookup
+
+- **what**: A failed lookup or elapsed query budget produces a query error or
+  silence, never a successful no-information answer.
+- **why**: No-information would tell the analyzer there is no work when
+  Analyte merely failed to learn what work exists.
+- **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Lookup failure
+  is not no orders.
+- **test**: `lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never_no_information`.
+
+## 12. Keep result history separate from transfer sequencing
+
+- **what**: Assign revisions from trusted observation identity and status
+  history, independently of frame numbers and transmission IDs.
+- **why**: A transfer retry must not create another clinical result, while a
+  preliminary-to-final change must not become an unmarked-correction conflict.
+  Link sequencing cannot decide either question.
+- **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities;
+  [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
+- **test**: `adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart`.
