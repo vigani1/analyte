@@ -49,7 +49,7 @@ async fn client(
         .await?;
     let mut loaded = Program::load(&path)?;
     loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
-    let running = Running::start_program(loaded, "synthetic-api")?;
+    let running = Running::start_program(loaded, "synthetic-api").await?;
     let (peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
         .map_err(|e| format!("reconnect after disconnect: {e}"))??;
@@ -273,7 +273,7 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
     drop(outbound);
     wait_audit(&path).await?;
     running.stop().await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     assert!(
         // Deliberate quiet window: no outbound connection may be opened.
         tokio::time::timeout(Duration::from_millis(250), listener.accept())
@@ -346,7 +346,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
             temp.path().join("hl7.toml"),
             settings.replace("send_ahead = false", "send_ahead = true"),
         )?;
-        let running = Running::start(&path, &reference.url, "synthetic-api")?;
+        let running = Running::start(&path, &reference.url, "synthetic-api").await?;
         assert!(
             // Deliberate quiet window: no outbound connection may be opened.
             tokio::time::timeout(Duration::from_millis(500), listener.accept())
@@ -459,7 +459,7 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
     .await?;
     vendor_support::state(&path, "Sending").await?;
     drop(outbound);
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let peer = connect(&path, "law").await?;
     vendor_support::state(&path, "Uncertain").await?;
     assert!(

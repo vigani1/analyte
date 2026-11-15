@@ -93,7 +93,7 @@ async fn lis02_section11_fresh_cache_orders_empty_and_untrusted_are_distinct_on_
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     let reply = query(&mut peer, "000Ab12").await?;
@@ -137,7 +137,7 @@ async fn rule8_query_response_reserves_without_event_then_disconnect_emits_one_u
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     astm(
@@ -201,7 +201,7 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 5);
     machine_state(&path, "Uncertain", 1).await?;
@@ -209,7 +209,7 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
     assert_eq!(receiver_count(&receiver_path)?, 1);
     drop(peer);
     service.stop().await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     assert!(
         // Deliberate quiet window: no reply may arrive.
@@ -255,7 +255,7 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
             .last()
             .is_some_and(|s| s.contains("verified synthetic work list"))
     );
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     wait_state(&path, "done", 2).await?;
     assert_eq!(receiver_count(&receiver_path)?, 2);
     service.stop().await?;
@@ -285,7 +285,7 @@ async fn adr0004_unmapped_and_cancelled_orders_are_never_sent_and_rejection_reac
             .as_bytes(),
     )?;
     reference.receiver.seed(vec![unmapped, cancelled]).await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     machine_state(&path, "Rejected", 1).await?;
     assert!(
@@ -324,7 +324,7 @@ async fn lis01_transfer_ack_is_sent_not_application_acceptance_and_disconnect_is
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     let received = receive_orders(&mut peer).await?;
     analyte_astm::parse(&received, analyte_astm::Limits::default())?;
@@ -332,7 +332,7 @@ async fn lis01_transfer_ack_is_sent_not_application_acceptance_and_disconnect_is
     machine_state(&path, "Sent", 1).await?;
     drop(peer);
     service.stop().await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     machine_state(&path, "Sent", 1).await?;
     wait_state(&path, "done", 1).await?;
     assert_eq!(
@@ -367,7 +367,7 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     peer.write_all(b"\x05").await?;
@@ -424,7 +424,7 @@ async fn adr0004_required_position_absent_rejects_query_order_and_delivers_speci
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     assert!(query(&mut peer, "000Ab12").await?.ends_with(b"L|1|Q\r"));
@@ -458,7 +458,7 @@ async fn adr0004_disconnect_before_astm_ack_preserves_uncertain_outcome_and_even
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 5);
     drop(peer);
@@ -512,7 +512,7 @@ async fn astm_context_exchange(
             &value,
         )?)?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     if !send {
@@ -639,7 +639,7 @@ async fn plan11_rule8_restore_blocks_astm_send_ahead_and_query_orders_on_wire() 
             ))?])
             .await?;
         // Initialize and stop before restoring, so no machine has received work.
-        let service = Running::start(&path, &reference.url, "synthetic-api")?;
+        let service = Running::start(&path, &reference.url, "synthetic-api").await?;
         let ready = connect(&path, "hl7").await?;
         wait_cache(&path).await?;
         drop(ready);
@@ -682,7 +682,7 @@ async fn plan11_rule8_restore_blocks_astm_send_ahead_and_query_orders_on_wire() 
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let service = Running::start(&path, &reference.url, "synthetic-api")?;
+        let service = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "astm").await?;
         wait_cache(&path).await?;
         if send {
@@ -726,7 +726,7 @@ async fn lis02_6_12_p12_nonproduction_queries_never_reserve_or_send() -> Result<
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     // LIS02-A2 section 6.12 p.12: non-production queries cannot issue patient work.

@@ -46,7 +46,7 @@ async fn setup(
             &value,
         )?)?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let peer = connect(&path, "autolyser").await?;
     Ok((temp, path, reference, service, peer))
 }
@@ -133,7 +133,7 @@ async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_sta
         .await?;
         service.stop().await?;
         drop(peer);
-        let service = Running::start(&path, &reference.url, "synthetic-api")?;
+        let service = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "autolyser").await?;
         only_polls(&mut peer).await?;
         event(
@@ -269,7 +269,7 @@ async fn adr0004_rule8_autolyser_restart_during_send_recovers_only_sending_never
     service.crash().await?;
     drop(peer);
     state(&path, "Sending").await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "autolyser").await?;
     event(
         &path,
@@ -413,7 +413,7 @@ async fn adr0004_autolyser_missing_patient_namespace_prevents_program_start() ->
             &order()?,
         )?)?])
         .await?;
-    let Err(error) = Running::start(&path, &reference.url, "synthetic-api") else {
+    let Err(error) = Running::start(&path, &reference.url, "synthetic-api").await else {
         return Err("missing patient namespace admitted".into());
     };
     assert!(error.to_string().contains("orders.patient_namespace"));

@@ -104,15 +104,16 @@ pub(super) struct Running {
 }
 
 impl Running {
-    pub(super) fn start(path: &Fixture, url: &str, api: &str) -> Result<Self, Error> {
+    pub(super) async fn start(path: &Fixture, url: &str, api: &str) -> Result<Self, Error> {
         let program = program(path, url)?;
-        Self::start_program(program, api)
+        Self::start_program(program, api).await
     }
 
-    pub(super) fn start_program(program: Program, api: &str) -> Result<Self, Error> {
+    pub(super) async fn start_program(program: Program, api: &str) -> Result<Self, Error> {
         let secrets = secrets(&program, api)?;
         let (stop, stopped) = oneshot::channel();
-        let task = tokio::spawn(service::serve_loopback_test(
+        let (ready, started) = oneshot::channel();
+        let mut task = tokio::spawn(service::serve_loopback_test(
             program,
             Box::new(Space),
             async {
@@ -120,7 +121,32 @@ impl Running {
                 Ok(())
             },
             secrets,
+            Some(ready),
         ));
+        let startup = tokio::time::timeout(HANG_GUARD, async {
+            tokio::select! { biased;
+                result = &mut task => match result? {
+                    Err(error) => Err(error),
+                    Ok(()) => Err("test service ended before readiness".into()),
+                },
+                result = started => match result {
+                    Ok(()) => Ok(()),
+                    Err(_) => match (&mut task).await? {
+                        Err(error) => Err(error),
+                        Ok(()) => Err("test service ended without readiness".into()),
+                    },
+                },
+            }
+        })
+        .await;
+        match startup {
+            Ok(result) => result?,
+            Err(error) => {
+                task.abort();
+                let _ = task.await;
+                return Err(error.into());
+            }
+        }
         Ok(Self { stop, task })
     }
 
@@ -266,4 +292,18 @@ pub(super) async fn wait_feed(path: &Path) -> Result<(), Error> {
         }
     })
     .await?
+}
+
+#[tokio::test]
+async fn startup_failure_reaches_caller_before_any_peer_or_cache_wait() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    // A file where the protected directory belongs forces a real startup I/O error.
+    std::fs::write(temp.path().join("data"), b"synthetic blocked directory")?;
+    let error = Running::start(&path, "http://127.0.0.1:1", "synthetic-api")
+        .await
+        .err()
+        .ok_or("failed service startup was reported as ready")?;
+    assert!(error.downcast_ref::<std::io::Error>().is_some(), "{error}");
+    Ok(())
 }

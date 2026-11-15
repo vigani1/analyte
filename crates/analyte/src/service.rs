@@ -24,11 +24,17 @@ impl Drop for AdminOwner {
 /// # Errors
 /// Reports directory, migration, integrity or worker failures.
 pub async fn open_store(program: &Program, space: Box<dyn FreeSpace>) -> Result<Handle, Error> {
-    open_store_with_deadline(program, space, deadline()).await
+    open_store_with_deadline(
+        program,
+        space,
+        Instant::now()
+            .checked_add(program.store_startup_timeout())
+            .ok_or_else(|| invalid("store startup deadline overflow"))?,
+    )
+    .await
 }
 
-// Fixture setup may migrate many tables on a slow filesystem. Its hang guard is
-// independent of the unchanged production startup policy in open_store.
+// Explicit fixture deadlines do not change the validated installation startup budget.
 pub(crate) async fn open_store_with_deadline(
     program: &Program,
     space: Box<dyn FreeSpace>,
@@ -82,9 +88,12 @@ pub(crate) async fn serve_bounded(
         Box::new(Volume),
         stop,
         secrets,
-        false,
-        bound,
-        watchdog,
+        Supervision {
+            loopback: false,
+            shutdown_bound: bound,
+            watchdog,
+            ready: None,
+        },
     )
     .await
 }
@@ -106,15 +115,19 @@ pub async fn serve(
         space,
         stop,
         secrets,
-        false,
-        Duration::from_secs(30),
-        None,
+        Supervision {
+            loopback: false,
+            shutdown_bound: Duration::from_secs(30),
+            watchdog: None,
+            ready: None,
+        },
     )
     .await
 }
 
 /// Runs synthetic localhost tests with injected host credentials and explicit URL overrides.
 /// No production configuration can enable HTTP. All spawned tasks are joined.
+/// An optional readiness signal fires after startup and owner creation succeed.
 /// # Errors
 /// Reports startup, supervision and bounded shutdown failures.
 pub async fn serve_loopback_test(
@@ -122,17 +135,28 @@ pub async fn serve_loopback_test(
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
     secrets: crate::secrets::EnvironmentSecrets,
+    ready: Option<tokio::sync::oneshot::Sender<()>>,
 ) -> Result<(), Error> {
     serve_with(
         program,
         space,
         stop,
         secrets,
-        true,
-        Duration::from_secs(30),
-        None,
+        Supervision {
+            loopback: true,
+            shutdown_bound: Duration::from_secs(30),
+            watchdog: None,
+            ready,
+        },
     )
     .await
+}
+
+struct Supervision {
+    loopback: bool,
+    shutdown_bound: Duration,
+    watchdog: Option<Arc<crate::shutdown::Watchdog>>,
+    ready: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 async fn serve_with(
@@ -140,10 +164,14 @@ async fn serve_with(
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
     secrets: crate::secrets::EnvironmentSecrets,
-    loopback: bool,
-    shutdown_bound: Duration,
-    watchdog: Option<Arc<crate::shutdown::Watchdog>>,
+    supervision: Supervision,
 ) -> Result<(), Error> {
+    let Supervision {
+        loopback,
+        shutdown_bound,
+        watchdog,
+        ready,
+    } = supervision;
     #[cfg(feature = "test-hooks")]
     let shutdown_bound = if program.stall_store_on_shutdown {
         if !loopback || watchdog.is_some() {
@@ -268,6 +296,9 @@ async fn serve_with(
             }
             ready.send_replace(true);
         });
+    }
+    if let Some(ready) = ready {
+        let _ = ready.send(());
     }
     tokio::pin!(stop);
     let result = loop {

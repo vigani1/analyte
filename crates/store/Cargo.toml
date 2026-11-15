@@ -10,14 +10,16 @@ publish.workspace = true
 
 [dependencies]
 analyte-model = { workspace = true }
-rusqlite = { workspace = true, features = ["backup"] }
+rusqlite = { workspace = true, features = ["backup", "hooks"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 
 [dev-dependencies]
+tracing-subscriber = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tempfile = { workspace = true }
 proptest = { workspace = true }

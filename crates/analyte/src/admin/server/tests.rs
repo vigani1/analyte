@@ -92,6 +92,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
         Box::new(Space),
         std::future::pending(),
         injected,
+        None,
     )
     .await
     .err()
@@ -115,6 +116,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
             Ok(())
         },
         injected,
+        None,
     ));
     let host = address.to_string();
     tokio::time::timeout(Duration::from_secs(5), async {
