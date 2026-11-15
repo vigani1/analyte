@@ -432,3 +432,59 @@ fn hl7_231_2_24_2_6_legacy_msa_fields_preserved() -> Result<(), Error> {
     );
     Ok(())
 }
+
+// HL7 2.5.1 sections 2.15.9, 2.15.9.7 pp.2-74, 2-76;
+// HL7 2.3.1 section 2.24.1.7: timestamp usage remains optional.
+#[test]
+fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Result<(), Error> {
+    for version in ["2.5.1", "2.3.1"] {
+        for stamp in [
+            "",
+            "\"\"",
+            "20260230",
+            "202613",
+            "202601011260",
+            "20260101~20260102",
+            "20260101&x",
+            "20260101^Q",
+            "20260101^D^extra",
+        ] {
+            let raw = String::from_utf8(wire(version, "", "", "", ""))
+                .expect("synthetic ASCII")
+                .replace("202601011200", stamp)
+                .into_bytes();
+            let m = parse(&raw)?;
+            if version == "2.3.1" && stamp.is_empty() {
+                assert!(Msh::new(&m).is_ok());
+            } else {
+                assert!(
+                    matches!(
+                        Msh::new(&m),
+                        Err(Error::Control {
+                            segment: "MSH",
+                            field: 7
+                        })
+                    ),
+                    "{version}: {stamp}"
+                );
+            }
+            assert_eq!(m.serialize(), raw);
+        }
+        for stamp in [
+            "2026",
+            "202601",
+            "20260228",
+            "20260101120000.1234+0130",
+            "20260101^D",
+        ] {
+            let raw = String::from_utf8(wire(version, "", "", "", ""))
+                .expect("synthetic ASCII")
+                .replace("202601011200", stamp)
+                .into_bytes();
+            let m = parse(&raw)?;
+            assert!(Msh::new(&m).is_ok(), "{version}: {stamp}");
+            assert_eq!(m.serialize(), raw);
+        }
+    }
+    Ok(())
+}

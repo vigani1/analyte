@@ -212,6 +212,22 @@ impl<'a> Msh<'a> {
                 });
             }
         };
+        // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
+        // 2.3.1 retains optional usage. Validate a supplied TS in either edition.
+        let timestamp = segment.field(7);
+        if version == Version::V251 || timestamp.is_some_and(|field| !field.raw().is_empty()) {
+            let field = required(segment, 7)?;
+            let mut repetitions = field.repetitions();
+            let valid = repetitions.next().is_some_and(|value| {
+                crate::datatypes::timestamp(&value.components().collect::<Vec<_>>())
+            });
+            if field.raw().len() > 26 || !valid || repetitions.next().is_some() {
+                return Err(Error::Control {
+                    segment: "MSH",
+                    field: 7,
+                });
+            }
+        }
         let accept = condition(segment, 15)?;
         let application = condition(segment, 16)?;
         let mode = if accept.is_none() && application.is_none() {

@@ -86,6 +86,10 @@ then becomes the test list, one or more tests per row.
 - [ ] M — Agree a connection encoding compatible with R1; exclude UTF-16/32 and embedded conflicting control bytes. MLLP §1.3 pp.2–3.
 - [ ] B — On undecodable or contradictory charset input retain bytes and report failure without replacement-character corruption. Above clauses plus project retention policy (engineering gate).
 
+- [x] B — Require a valid MSH-7 in 2.5.1; permit its omission in 2.3.1 and validate supplied timestamps. 251 ch.2 sections 2.15.9, 2.15.9.7 pp.74, 76; 231 ch.2 section 2.24.1.7.
+
+  **Evidence:** [control.rs](../../crates/hl7/tests/control.rs): `hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence` checks missing/null, invalid dates, repetition/composite misuse, valid reduced precision and unchanged source bytes.
+
 ### E. Original/enhanced ACK and errors
 
 - [ ] B — Both MSH-15/16 unvalued selects original mode; otherwise validate and apply the enhanced condition fields. 231 ch.2 §§2.12.1, 2.24.1.15–16 pp.107–112, 143–144; 251 ch.2 §§2.9, 2.15.9.15–16 pp.24–28, 78.
