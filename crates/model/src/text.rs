@@ -1,3 +1,4 @@
+//! Bounded text types belong to the shared model to validate input once.
 use serde::{Deserialize, Serialize};
 
 /// Failure to construct bounded source text.

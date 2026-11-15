@@ -109,7 +109,7 @@ pub enum Outbound {
 /// # Errors
 /// Rejects missing UTC offset, XML-invalid values, structural errors and output
 /// exceeding configured limits. No unchecked byte payload can be returned.
-pub fn build(header: &Header, body: &Outbound, limits: Limits) -> Result<Message, MessageError> {
+pub fn encode(header: &Header, body: &Outbound, limits: Limits) -> Result<Message, MessageError> {
     if header.created.offset_seconds().is_none() {
         return Err(MessageError::Data(crate::DataError::Time));
     }

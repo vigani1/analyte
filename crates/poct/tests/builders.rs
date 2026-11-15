@@ -2,7 +2,7 @@
 mod peer_messages;
 use analyte_poct::{
     AckKind, ApplicationError, Body, ControlId, EscapeReason, Header, Message, MessageError,
-    Outbound, TerminationReason, Timestamp, build,
+    Outbound, TerminationReason, Timestamp, encode,
 };
 
 #[test]
@@ -25,7 +25,7 @@ fn poct01_b_6_reviewer_builders_round_trip_and_correlate() -> Result<(), Message
             reason: EscapeReason::CannotComplete,
         },
     ] {
-        let built = build(&header, &body, peer_messages::limits())?;
+        let built = encode(&header, &body, peer_messages::limits())?;
         let parsed = Message::parse(built.document().raw(), peer_messages::limits())?;
         assert_eq!(parsed.header(), &header);
         match (&body, parsed.body()) {
@@ -56,10 +56,10 @@ fn poct01_project_builder_limits_and_explicit_offset() -> Result<(), MessageErro
     };
     let mut limits = peer_messages::limits();
     limits.message_bytes = 10;
-    assert!(build(&header, &Outbound::RequestObservations, limits).is_err());
+    assert!(encode(&header, &Outbound::RequestObservations, limits).is_err());
     header.created = Timestamp::parse("2026-06-09T08:00:00")?;
     assert!(
-        build(
+        encode(
             &header,
             &Outbound::RequestObservations,
             peer_messages::limits()
@@ -84,7 +84,7 @@ fn poct01_b_5_7_builder_honors_exact_device_receive_size() -> Result<(), Message
         control_id: ControlId::new("synthetic-&-id")?,
         created: Timestamp::parse("2026-03-12T09:41:02+01:00")?,
     };
-    let built = build(
+    let built = encode(
         &header,
         &Outbound::RequestObservations,
         peer_messages::limits(),
@@ -92,7 +92,7 @@ fn poct01_b_5_7_builder_honors_exact_device_receive_size() -> Result<(), Message
     let mut limits = peer_messages::limits();
     limits.message_bytes = built.document().raw().len();
     assert_eq!(
-        build(&header, &Outbound::RequestObservations, limits)?
+        encode(&header, &Outbound::RequestObservations, limits)?
             .document()
             .raw(),
         built.document().raw()
@@ -101,6 +101,6 @@ fn poct01_b_5_7_builder_honors_exact_device_receive_size() -> Result<(), Message
         .message_bytes
         .checked_sub(1)
         .ok_or(MessageError::Structure)?;
-    assert!(build(&header, &Outbound::RequestObservations, limits).is_err());
+    assert!(encode(&header, &Outbound::RequestObservations, limits).is_err());
     Ok(())
 }

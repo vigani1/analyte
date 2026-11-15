@@ -1,4 +1,4 @@
-//! Outbound contract delivery and order polling. Evidence remains in the store.
+//! Integration boundary: owns HTTP delivery and order polling, without analyzer I/O or clinical decisions.
 #![forbid(unsafe_code)]
 
 mod delivery;

@@ -30,7 +30,7 @@ proven driver.
   topic completion waits for the preceding custody decisions.
 - Build each `Send` with its emitted control ID and a host-supplied creation
   timestamp with UTC offset. Pass the smaller of local and
-  `outbound_message_limit()` bounds to `build`. Failed writes/builds must cause a
+  `outbound_message_limit()` bounds to `encode`. Failed writes/builds must cause a
   disconnect; they never imply successful transmission. Write latency must fit
   inside the issued action's deadline. Builders escape XML and validate output
   with the same structure rules as received messages.

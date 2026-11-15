@@ -1,4 +1,4 @@
-//! Deterministic LIS01-A2 dialogs. Evidence level: documented.
+//! Dialog layer: owns protocol state and deadlines, without I/O, storage or clinical interpretation.
 #![forbid(unsafe_code)]
 
 pub mod astm;

@@ -1,3 +1,4 @@
+//! Typed HL7 field access belongs beside the grammar it interprets.
 use crate::{Error, Field, Message, Segment, Version};
 
 /// A nonempty bounded message identity; preserves spelling without numeric conversion.

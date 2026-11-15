@@ -1,3 +1,4 @@
+//! HTTP signature rules belong to the integration contract, without network I/O.
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;

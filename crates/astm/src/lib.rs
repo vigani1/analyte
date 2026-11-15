@@ -1,4 +1,4 @@
-//! Pure, bounded LIS02-A2 syntax. Evidence level: documented.
+//! Syntax layer: owns bounded ASTM records and typed access, without I/O or model mapping.
 #![forbid(unsafe_code)]
 
 mod syntax;

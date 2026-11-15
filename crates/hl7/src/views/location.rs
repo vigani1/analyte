@@ -1,3 +1,4 @@
+//! HL7 location field access belongs beside typed segment views.
 use crate::{AckError, Terminator};
 #[derive(Debug, Clone)]
 /// A source-backed segment occurrence and field for acknowledgment errors.

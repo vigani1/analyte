@@ -1,4 +1,4 @@
-//! Mapping layer: bounded analyzer terms to common results and explicit outgoing orders.
+//! Mapping layer: owns explicit machine/model translations, without I/O or clinical interpretation.
 //! Protocol crates own grammar and dialogs; this crate owns translations and performs no I/O.
 //! The caller retains the receipt and parks any output with findings.
 #![forbid(unsafe_code)]
@@ -9,33 +9,31 @@ pub mod astm;
 pub mod autolyser;
 /// HL7 terms to common results and explicit outgoing orders.
 pub mod hl7;
-mod identity;
+
 /// LAW terms to common results and explicit outgoing work.
 pub mod law;
-mod outbound_codes;
+
 /// POCT terms to common observations and configured results.
 pub mod poct;
-mod result_evidence;
+
 /// VIDAS terms to common evidence and explicit outgoing orders.
 pub mod vidas;
 pub use astm::map as map_astm;
 pub use autolyser::map as map_autolyser;
 pub use hl7::map as map_hl7;
+pub use inbound::evidence::ResultMappingError;
 pub use law::map as map_law;
-pub use outbound_codes::{
+pub use orders::codes::{
     map_priority as outbound_priority, map_specimen as outbound_specimen, map_test as outbound_test,
 };
 pub use poct::map as map_poct;
-pub use result_evidence::ResultMappingError;
 pub use vidas::{
     ResultEvidence as VidasResultEvidence, map as map_vidas, map_evidence as vidas_evidence,
 };
-mod map;
+
+mod inbound;
 mod orders;
-mod result;
-mod source;
-mod time;
-mod value;
+
 pub use orders::*;
 
 use analyte_config::{SyntaxKind, Validated};
@@ -359,7 +357,7 @@ fn finding(output: &mut Output, position: Position, problem: Problem) -> Result<
 
 fn reserve_evidence(
     output: &mut Output,
-    source: &source::Source<'_>,
+    source: &inbound::source::Source<'_>,
     index: usize,
 ) -> Result<(), Error> {
     let position = source.position(index, 0);

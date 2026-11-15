@@ -1,3 +1,4 @@
+//! Evidence conversions belong beside contract evidence to preserve model meanings.
 use super::*;
 
 impl From<&analyte_model::SampleId> for SampleId {

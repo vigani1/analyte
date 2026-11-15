@@ -1,3 +1,4 @@
+//! Typed ASTM record access belongs beside the grammar it interprets.
 use crate::{Field, Kind, Record};
 /// Read-only LIS02 header positions; no clinical defaults are inferred.
 #[derive(Clone, Copy, Debug)]

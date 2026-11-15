@@ -1,3 +1,4 @@
+//! Order-specific validation and encoding belong beside typed HL7 order fields.
 use super::{
     Code, Control, Error, Family, Header, Order, OrderId, OrderMessage, SampleField, Subject,
     invalid, types::scalar,
