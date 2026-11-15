@@ -20,8 +20,15 @@ fuzz_target!(|data: &[u8]| {
     )
     .unwrap();
     let mut decoder = Decoder::new(config);
-    for &byte in data {
-        let _ = decoder.push(byte);
+    for (index, &byte) in data.iter().enumerate() {
+        if let Ok(Some(packet)) = decoder.push(byte) {
+            assert_eq!(Some(packet.raw.as_slice()), data.get(..=index));
+            if let Ok(text) = std::str::from_utf8(&packet.body) {
+                if let Ok(message) = Message::parse(text, SampleLimit::Seventeen) {
+                    assert_eq!(message.text().as_bytes(), packet.body);
+                }
+            }
+        }
     }
     if let Ok(text) = std::str::from_utf8(data) {
         for limit in [SampleLimit::Twelve, SampleLimit::Seventeen] {
