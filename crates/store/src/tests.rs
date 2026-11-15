@@ -3421,6 +3421,15 @@ fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit(
         b"current original"
     );
     assert!(!path.with_extension("before-restore").exists());
+    // A refused restore removes only its own staged copy; the backup and current store
+    // stay, and ordinary startup is not blocked by a leftover stage.
+    assert!(!path.with_extension("restore-pending").exists());
+    assert!(source.exists());
+    drop(db);
+    assert_eq!(
+        open(&path)?.raw(current.id)?,
+        Some(b"current original".to_vec())
+    );
     Ok(())
 }
 
