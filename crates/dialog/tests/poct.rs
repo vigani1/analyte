@@ -1,6 +1,6 @@
 //! Appendix B sections 3, 4 and 9 deterministic reviewer conversation tests.
 use analyte_dialog::poct::{
-    CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogError, DialogEvent,
+    CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent, Error as DialogError,
 };
 #[path = "../../poct/tests/peer_messages.rs"]
 mod peer_messages;
