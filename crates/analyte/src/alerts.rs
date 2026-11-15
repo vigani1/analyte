@@ -335,22 +335,26 @@ mod tests {
         Ok(())
     }
 
-    // Plan section 11 and rule 7: cancellation of a queued read releases the evaluator,
-    // even while the separately owned storage thread is occupied.
-    #[tokio::test]
-    async fn plan11_evaluator_cancels_during_store_read_within_shutdown_bound() -> Result<(), Error>
-    {
-        let temp = tempfile::tempdir()?;
-        let store = Arc::new(
+    async fn open_store(path: std::path::PathBuf) -> Result<Arc<Handle>, Error> {
+        Ok(Arc::new(
             Handle::start(
-                temp.path().join("cancel.db"),
+                path,
                 limits(),
                 Box::new(Space(Arc::new(AtomicU64::new(u64::MAX)))),
                 8,
                 deadline(),
             )
             .await?,
-        );
+        ))
+    }
+
+    // Plan section 11 and rule 7: cancellation of a queued read releases the evaluator,
+    // even while the separately owned storage thread is occupied.
+    #[tokio::test]
+    async fn plan11_evaluator_cancels_during_store_read_within_shutdown_bound() -> Result<(), Error>
+    {
+        let temp = tempfile::tempdir()?;
+        let store = open_store(temp.path().join("cancel.db")).await?;
         let (entered, waiting) = tokio::sync::oneshot::channel();
         let (release, released) = std::sync::mpsc::channel();
         let owner = store.clone();
@@ -388,16 +392,7 @@ mod tests {
     #[tokio::test]
     async fn plan11_store_read_deadline_is_specific_and_preserves_state() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
-        let store = Arc::new(
-            Handle::start(
-                temp.path().join("deadline.db"),
-                limits(),
-                Box::new(Space(Arc::new(AtomicU64::new(u64::MAX)))),
-                8,
-                deadline(),
-            )
-            .await?,
-        );
+        let store = open_store(temp.path().join("deadline.db")).await?;
         let (entered, waiting) = tokio::sync::oneshot::channel();
         let (release, released) = std::sync::mpsc::channel();
         let owner = store.clone();

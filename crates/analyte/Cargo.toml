@@ -1,4 +1,5 @@
 [package]
+autotests = false
 name = "analyte"
 description = "The Analyte program: the service that connects lab analyzers to lab apps, and its command line."
 version.workspace = true
@@ -56,3 +57,23 @@ workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-services = { workspace = true }
+
+[[test]]
+name = "admin_token"
+path = "tests/admin_token.rs"
+
+[[test]]
+name = "delivery"
+path = "tests/delivery.rs"
+
+[[test]]
+name = "receive"
+path = "tests/receive.rs"
+
+[[test]]
+name = "service_unit"
+path = "tests/service_unit.rs"
+
+[[test]]
+name = "vendor_receive"
+path = "tests/vendor_receive.rs"

@@ -724,7 +724,7 @@ fn rule7_identity_run_accepts_exact_source_text_ceiling_and_rejects_larger() -> 
 
 #[test]
 fn law_tf2b_3_29_4_b3_mapping_preserves_awos_og_and_refuses_generic_entry() -> TestResult {
-    let definition = include_str!("../../../config/examples/law.toml").replace("order_namespace = {field={group=\"order\",record=\"OBR\",field=2,component=2,repetition=1}}", "order_namespace = {fixed=\"manager\"}");
+    let definition = include_str!("../../config/examples/law.toml").replace("order_namespace = {field={group=\"order\",record=\"OBR\",field=2,component=2,repetition=1}}", "order_namespace = {fixed=\"manager\"}");
     let cfg = config(&definition)?;
     let raw = b"MSH|^~\\&|A|AF|M|MF|20261115120000+0000||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01&99LAB||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||000tube\rOBR||awos-1||SYN^Synthetic^99LAB\rORC|SC||||CM\rOBX|1|NM|SYN^Synthetic^99LAB|1^1^1|1|mg/L^mg/L^UCUM||N^Normal^HL70078|||F|||||operator||instrument^99LAB~module^99LAB|20261115120000||||||||||RSLT\r";
     let message =
