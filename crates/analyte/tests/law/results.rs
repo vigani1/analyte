@@ -1,5 +1,6 @@
 //! Synthetic LAW program/reference-receiver matrix, TF-2b 3.29.4, B.3 and B.7.
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn definition() -> String {
@@ -339,6 +340,7 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     peer.write_all(wire.get(..12).ok_or("synthetic prefix missing")?)
         .await?;
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(40), peer.read_u8())
             .await
             .is_err()
@@ -352,6 +354,7 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     assert_eq!(count(&path, "interpretations")?, 0);
     assert_eq!(count(&path, "outbox")?, 0);
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(80), peer.read_u8())
             .await
             .is_err()
@@ -367,7 +370,7 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
 }
 
 async fn read_reply(peer: &mut tokio::net::TcpStream) -> Result<String, Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         let mut bytes = Vec::new();
         while !bytes.ends_with(b"\x1c\r") {
             if bytes.len() >= 65536 {
@@ -401,7 +404,7 @@ async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), 
         )?;
         peer.write_all(&wire).await?;
         let mut buffer = [0; 1024];
-        let read = tokio::time::timeout(Duration::from_secs(5), peer.read(&mut buffer)).await??;
+        let read = tokio::time::timeout(HANG_GUARD, peer.read(&mut buffer)).await??;
         assert_eq!(read, 0, "storage failure must close without AA");
         assert_eq!(
             count(&path, "receipts")?,
@@ -452,13 +455,13 @@ async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<
     )?;
     peer.write_all(&wire).await?;
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut [0; 1])).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut [0; 1])).await??,
         0
     );
     assert_eq!(count(&path, "receipts")?, 0);
     assert_eq!(count(&path, "outbox")?, 0);
     stop.send(()).map_err(|()| "service stopped early")?;
-    tokio::time::timeout(Duration::from_secs(7), task).await???;
+    tokio::time::timeout(HANG_GUARD, task).await???;
     assert_eq!(receiver_count(&receiver_path)?, 0);
     reference.close().await?;
     Ok(())
@@ -484,7 +487,7 @@ async fn law_tf2b_3_29_4_mllp_partial_block_deadline_parks_original_without_aa()
     let partial = b"\x0bMSH|^~\\&|A";
     peer.write_all(partial).await?;
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut [0; 1])).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut [0; 1])).await??,
         0
     );
     let raw: Vec<u8> = database(&path)?.query_row("SELECT raw FROM receipts", [], |r| r.get(0))?;
@@ -527,7 +530,7 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
     )?)
     .await?;
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut [0; 1])).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut [0; 1])).await??,
         0
     );
     assert_eq!(count(&path, "machine_orders")?, 0);
@@ -654,6 +657,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     assert_eq!(count(&path, "machine_orders")?, 0);
     assert_eq!(receiver_count(&receiver_path)?, 1);
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(100), peer.read_u8())
             .await
             .is_err(),

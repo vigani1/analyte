@@ -1,5 +1,6 @@
 //! LIS02-A2 §§8,11,12 and ADR 0004, using synthetic loopback peers only.
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -28,7 +29,7 @@ async fn query(peer: &mut TcpStream, sample: &str) -> Result<Vec<u8>, Error> {
 }
 
 async fn receive_orders(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         assert_eq!(peer.read_u8().await?, 5);
         peer.write_all(b"\x06").await?;
         let mut payload = Vec::new();
@@ -60,7 +61,7 @@ async fn receive_orders(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
 }
 
 async fn wait_cache(path: &Path) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             if database(path)?
                 .query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?
@@ -144,10 +145,7 @@ async fn rule8_query_response_reserves_without_event_then_disconnect_emits_one_u
         b"H|\\^&|||SYN|||||||P|1\rQ|1|^000Ab12||ALL||||||||O\rL|1|N\r",
     )
     .await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read_u8()).await??,
-        5
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 5);
     machine_state(&path, "Sending", 1).await?;
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
@@ -162,7 +160,7 @@ async fn rule8_query_response_reserves_without_event_then_disconnect_emits_one_u
 }
 
 async fn machine_state(path: &Path, state: &str, count: i64) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             if database(path)?.query_row(
                 "SELECT count(*) FROM machine_orders WHERE state=?1",
@@ -205,10 +203,7 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
         .await?;
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
     let mut peer = connect(&path, "astm").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read_u8()).await??,
-        5
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 5);
     machine_state(&path, "Uncertain", 1).await?;
     wait_state(&path, "done", 1).await?;
     assert_eq!(receiver_count(&receiver_path)?, 1);
@@ -217,6 +212,7 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
     let mut peer = connect(&path, "astm").await?;
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
             .await
             .is_err()
@@ -293,6 +289,7 @@ async fn adr0004_unmapped_and_cancelled_orders_are_never_sent_and_rejection_reac
     let mut peer = connect(&path, "astm").await?;
     machine_state(&path, "Rejected", 1).await?;
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
             .await
             .is_err()
@@ -374,10 +371,7 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     peer.write_all(b"\x05").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(2), peer.read_u8()).await??,
-        6
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     tokio::time::sleep(Duration::from_millis(40)).await;
     let request = b"H|\\^&|||SYN|||||||P|1\rQ|1|^000Ab12||ALL||||||||O\rL|1|N\r";
     for frame in analyte_framing::astm::encode(
@@ -386,10 +380,7 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
         analyte_framing::astm::Limit::new(64000)?,
     )? {
         peer.write_all(&frame).await?;
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(2), peer.read_u8()).await??,
-            6
-        );
+        assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     }
     peer.write_all(b"\x04").await?;
     assert!(receive_orders(&mut peer).await?.ends_with(b"L|1|Q\r"));
@@ -399,6 +390,7 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
     )
     .await?;
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(100), peer.read_u8())
             .await
             .is_err()
@@ -468,10 +460,7 @@ async fn adr0004_disconnect_before_astm_ack_preserves_uncertain_outcome_and_even
         .await?;
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
     let mut peer = connect(&path, "astm").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read_u8()).await??,
-        5
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 5);
     drop(peer);
     machine_state(&path, "Uncertain", 1).await?;
     wait_state(&path, "done", 1).await?;
@@ -534,6 +523,7 @@ async fn astm_context_exchange(
     if let Some(code) = rejection {
         machine_state(&path, "Rejected", 1).await?;
         assert!(
+            // Deliberate quiet window: no reply may arrive.
             tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
                 .await
                 .is_err()
@@ -697,6 +687,7 @@ async fn plan11_rule8_restore_blocks_astm_send_ahead_and_query_orders_on_wire() 
         wait_cache(&path).await?;
         if send {
             assert!(
+                // Deliberate quiet window: no reply may arrive.
                 tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
                     .await
                     .is_err()

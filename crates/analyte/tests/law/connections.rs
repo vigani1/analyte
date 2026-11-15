@@ -1,6 +1,7 @@
 //! Declared single-persistent-link scope; TF-2b B.5/B.6 and 3.27-3.29.
 //! This is host integration evidence, not independent-link conformance.
 use super::*;
+use crate::support::HANG_GUARD;
 
 async fn client(
     settings: &str,
@@ -49,7 +50,7 @@ async fn client(
     let mut loaded = Program::load(&path)?;
     loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
     let running = Running::start_program(loaded, "synthetic-api")?;
-    let (peer, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+    let (peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
         .map_err(|e| format!("reconnect after disconnect: {e}"))??;
     wait_feed(&path).await?;
@@ -112,6 +113,7 @@ async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions
         quiet(&mut peer).await?;
         if let Some(listener) = listener {
             assert!(
+                // Deliberate quiet window: no reply may arrive.
                 tokio::time::timeout(Duration::from_millis(100), listener.accept())
                     .await
                     .is_err(),
@@ -134,7 +136,7 @@ async fn law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work(
     packet(&mut peer).await?;
     vendor_support::state(&path, "Sending").await?;
     drop(peer);
-    let (mut peer, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+    let (mut peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
         .map_err(|e| format!("reconnect after disconnect: {e}"))??;
     vendor_support::state(&path, "Uncertain").await?;
@@ -144,11 +146,11 @@ async fn law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work(
     peer.write_all(&[11, b'M', b'S', b'H']).await?;
     let mut byte = [0];
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), peer.read(&mut byte)).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut byte)).await??,
         0
     );
     drop(peer);
-    let (mut peer, _) = tokio::time::timeout(Duration::from_secs(3), listener.accept())
+    let (mut peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
         .map_err(|e| format!("reconnect after partial deadline: {e}"))??;
     quiet(&mut peer).await?;
@@ -173,6 +175,7 @@ async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadline
     let (_temp, path, reference, running, mut peer, _listener) = client(&settings).await?;
     packet(&mut peer).await?;
     // A missing ORL uses response_ms, not the much longer transport timeout.
+    // Deliberate upper bound on configured ORL response expiry.
     tokio::time::timeout(
         Duration::from_secs(2),
         vendor_support::state(&path, "Uncertain"),

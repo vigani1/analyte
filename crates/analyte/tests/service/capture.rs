@@ -1,5 +1,6 @@
 //! Plan §10, ADR 0009 and rule 10: optional capture must not change ACKs or delivery.
 use super::*;
+use crate::support::HANG_GUARD;
 use analyte_transport::recording::{self, Direction, Evidence};
 use tokio::io::AsyncWriteExt as _;
 
@@ -71,7 +72,7 @@ async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_
         }
         let running = Running::start_program(program, "synthetic-api")?;
         let mut peer = if let Some(listener) = &listener {
-            tokio::time::timeout(Duration::from_secs(5), listener.accept())
+            tokio::time::timeout(HANG_GUARD, listener.accept())
                 .await??
                 .0
         } else {
@@ -86,7 +87,7 @@ async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_
         let mut acknowledgments = vec![ack];
         if enabled && !fail {
             let mut peer = if let Some(listener) = &listener {
-                tokio::time::timeout(Duration::from_secs(5), listener.accept())
+                tokio::time::timeout(HANG_GUARD, listener.accept())
                     .await??
                     .0
             } else {
@@ -160,6 +161,6 @@ async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_
 
 fn analyte_deadline() -> std::time::Instant {
     std::time::Instant::now()
-        .checked_add(Duration::from_secs(5))
+        .checked_add(HANG_GUARD)
         .unwrap_or_else(std::time::Instant::now)
 }
