@@ -303,3 +303,11 @@ After `git merge --signoff origin/main`, the final five commands all exited 0 on
 [Retained check outputs and exit codes](evidence/store/resume/checks/exits.json) and sibling logs preserve the evidence. No Linux or minimum-Rust run was performed locally; those remain CI work. No production code, dependency or plan claim changed in this PR.
 
 The final fetch also merged main's ADR 0012 documentation update (#90) with sign-off. All five checks were rerun after that merge and again exited 0; the retained continuation check logs are those final runs.
+
+## Store round 2: machine orders and poll custody
+
+Baseline: `546195ac346667aba25a0fc421332bd4be87296d` (origin/main after PR #87).
+Branch: `test/mutation-store-2`. This continuation is in progress; no new results are claimed yet.
+Production code remains unchanged. Use cargo-mutants 27.1.0, all features, scratch copies, 60-second tests and 180-second builds.
+
+Priority: finish machine_orders and every submodule, then polls, before lower-risk modules.
