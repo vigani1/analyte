@@ -717,3 +717,54 @@ async fn plan11_rule8_restore_blocks_astm_send_ahead_and_query_orders_on_wire() 
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn lis02_6_12_p12_nonproduction_queries_never_reserve_or_send() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    configure_orders(temp.path(), false)?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(include_bytes!(
+            "../../../../docs/contract/vectors/order.json"
+        ))?])
+        .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "astm").await?;
+    wait_cache(&path).await?;
+    // LIS02-A2 ?6.12 p.12: non-production queries cannot issue patient work.
+    for (index, processing) in ["T", "D", "Q"].into_iter().enumerate() {
+        astm(
+            &mut peer,
+            format!("H|\\^&|||SYN|||||||{processing}|1\rQ|1|^000Ab12||ALL||||||||O\rL|1|N\r")
+                .as_bytes(),
+        )
+        .await?;
+        let reply = receive_orders(&mut peer).await?;
+        assert!(reply.ends_with(b"L|1|Q\r"));
+        assert!(!reply.windows(2).any(|w| w == b"O|"));
+        assert_eq!(
+            database(&path)?.query_row(
+                "SELECT count(*) FROM receipts WHERE length(raw)>0",
+                [],
+                |r| r.get::<_, usize>(0)
+            )?,
+            index + 1
+        );
+        assert_eq!(
+            database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
+                .get::<_, i64>(0))?,
+            0
+        );
+    }
+    drop(peer);
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

@@ -58,6 +58,16 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
     if queries.is_empty() {
         return Ok(None);
     }
+    // LIS02-A2 ?6.12 p.12: only production may reach the real order cache.
+    // ?12.3 pp.27?28 permits a query error, never a fabricated empty answer.
+    if messages
+        .iter()
+        .flat_map(Message::records)
+        .filter_map(analyte_astm::Header::new)
+        .any(|header| header.processing_id().is_none_or(|id| id.raw() != b"P"))
+    {
+        return Ok(Some(Request::Unsupported));
+    }
     if queries.len() != 1
         || messages
             .iter()
