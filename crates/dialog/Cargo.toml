@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+analyte-hl7 = { workspace = true }
 analyte-framing = { workspace = true }
 thiserror = { workspace = true }
 
