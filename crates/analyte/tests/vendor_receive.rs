@@ -233,6 +233,32 @@ impl Running {
         Ok(())
     }
 
+    fn no_results(&self) -> Result<(), Error> {
+        let db = self.database()?;
+        let mut statement = db.prepare("SELECT evidence FROM interpretations")?;
+        let mut found = false;
+        for row in statement.query_map([], |row| row.get::<_, String>(0))? {
+            let interpretation: analyte_store::Interpretation = serde_json::from_str(&row?)?;
+            match interpretation.outcome {
+                analyte_store::Reading::Results(results) => {
+                    assert!(results.is_empty());
+                    found = true;
+                }
+                analyte_store::Reading::Failed(_) => {
+                    return Err("unknown test must use the mapping-finding path".into());
+                }
+            }
+        }
+        assert!(found);
+        let alternate: i64 = db.query_row(
+            "SELECT count(*) FROM parked WHERE evidence LIKE '%unknown_vendor_test%'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(alternate, 0);
+        Ok(())
+    }
+
     async fn parked(&self, reason: &str) -> Result<(), Error> {
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
@@ -485,5 +511,65 @@ async fn autolyser_rev18_p175_adr0003_uncertain_r_blocks_restart_until_operator_
         0
     );
     run.parked("Autolyser R may advance its cursor").await?;
+    run.close().await
+}
+
+#[tokio::test]
+async fn vidas_literal_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/vidas_literal.toml")).await?;
+    run.peer.write_all(&[5]).await?;
+    assert_eq!(byte(&mut run.peer).await?, 6);
+    let packet = vidas_config()?.encode(b"mtrsl|pi|si|ci00012a|rtMISS|tt|td|qlpositive|qn<0.1|")?;
+    run.peer.write_all(&packet).await?;
+    assert_eq!(byte(&mut run.peer).await?, 6);
+    run.parked("UnknownTest").await?;
+    run.stored(&packet, "analyte-vidas")?;
+    run.no_results()?;
+    run.peer.write_all(&[3, 4]).await?;
+    run.close().await
+}
+
+#[tokio::test]
+async fn autolyser_rev18_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error>
+{
+    use analyte_autolyser::records::{Field, Report};
+    let mut run = Running::start(include_str!("../../config/examples/autolyser.toml")).await?;
+    poll(&mut run.peer, b'R').await?;
+    let mut report = Report::parse(&report()?, false)?;
+    report.values.first_mut().ok_or("fixture value")?.code = Field::new(b"MISS")?;
+    let raw = Report::build(
+        &report.patient,
+        report.list,
+        report.sample,
+        None,
+        &report.values,
+    )?
+    .raw;
+    run.peer.write_all(&raw).await?;
+    run.parked("UnknownTest").await?;
+    run.stored(&raw, "analyte-autolyser")?;
+    run.no_results()?;
+    run.close().await
+}
+
+#[tokio::test]
+async fn poct01_b6_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    run.peer
+        .write_all(poct_peer::hello("hello").as_bytes())
+        .await?;
+    xml(&mut run.peer).await?;
+    run.peer
+        .write_all(poct_peer::status("status", "1").as_bytes())
+        .await?;
+    xml(&mut run.peer).await?;
+    xml(&mut run.peer).await?;
+    let raw = poct_peer::observation("unknown", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>")
+        .replace("synthetic-analyte", "unknown-analyte");
+    run.peer.write_all(raw.as_bytes()).await?;
+    xml(&mut run.peer).await?;
+    run.parked("UnknownTest").await?;
+    run.stored(raw.as_bytes(), "analyte-poct")?;
+    run.no_results()?;
     run.close().await
 }

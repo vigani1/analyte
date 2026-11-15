@@ -208,7 +208,7 @@ pub struct SourceComment {
 }
 
 /// All mapped and unrepresentable observations, together with every discovered issue.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Output {
     /// Replacement units, in first-occurrence order.
     pub results: Vec<MappedResult>,
@@ -222,6 +222,20 @@ pub struct Output {
 }
 
 impl Output {
+    /// Retains an unknown test as unmapped evidence, with the common parking reason.
+    /// No result or test namespace is invented for this observation.
+    /// # Errors
+    /// Refuses more findings than the mapping evidence bound permits.
+    pub fn unmapped_test(
+        &mut self,
+        position: Position,
+        values: EvidenceList<ResultValue>,
+    ) -> Result<(), Error> {
+        finding(self, position, Problem::UnknownTest)?;
+        self.unmapped.push(UnmappedObservation { position, values });
+        Ok(())
+    }
+
     /// True when the host must park this receipt; callers must check this before delivery.
     #[must_use]
     pub fn requires_parking(&self) -> bool {

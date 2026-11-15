@@ -34,7 +34,7 @@ recover_last_on_poll = true
 download = false
 
 [codes]
-tests = [{machine_code="SYN", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
+tests = [{machine_code="SYN ", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
 units = [{original="mg/L", ucum="mg/L"}]
 [evidence]
 level = "documented"

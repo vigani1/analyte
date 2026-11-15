@@ -112,16 +112,30 @@ pub(crate) async fn interpret(
     time: jiff::Timestamp,
     payload: &[u8],
 ) -> Result<bool, Error> {
-    let mapping = mapped(machine, id, time, payload);
+    persist_mapping(store, machine, id, mapped(machine, id, time, payload)).await
+}
+
+async fn persist_mapping(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    mapping: Result<analyte_mapping::Output, Error>,
+) -> Result<bool, Error> {
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
         Ok(output) => {
             accepted = !output.requires_parking();
-            let findings = output
+            let mut findings = output
                 .findings
                 .iter()
                 .map(|f| format!("{:?}: {:?}", f.position, f.problem))
                 .collect::<Vec<_>>();
+            for result in &output.results {
+                if let analyte_model::IdentityStatus::Unresolved(reason) = &result.content.identity
+                {
+                    findings.push(reason.as_str().to_owned());
+                }
+            }
             let corrections = output
                 .results
                 .iter()
@@ -251,76 +265,18 @@ pub(crate) async fn vendor_reading(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
-    reading: Reading,
+    output: analyte_mapping::Output,
 ) -> Result<(), Error> {
-    let corrections = match &reading {
-        Reading::Results(results) => vec![false; results.len()],
-        Reading::Failed(_) => Vec::new(),
-    };
-    let mut findings = Vec::new();
-    if let Reading::Results(results) = &reading {
-        for result in results {
-            if let analyte_model::IdentityStatus::Unresolved(reason) = &result.identity {
-                findings.push(analyte_store::Parked {
-                    kind: Identifier::new("unresolved_identity")?,
-                    reason: reason.clone(),
-                    targets: vec![Identifier::new(&uuid::Uuid::from(id).to_string())?],
-                });
-            }
-        }
-    }
-    let mut unknown_test = false;
-    if let Reading::Results(results) = &reading {
-        for result in results {
-            for part in result.parts.as_slice() {
-                if !machine
-                    .snapshot
-                    .effective()
-                    .machine()
-                    .tests()
-                    .iter()
-                    .any(|entry| {
-                        entry.app_system == part.test.namespace && entry.app_code == part.test.value
-                    })
-                {
-                    unknown_test = true;
-                }
-            }
-        }
-    }
-    if unknown_test {
-        findings.push(analyte_store::Parked {
-            kind: Identifier::new("unknown_vendor_test")?,
-            reason: analyte_model::Reason::new("vendor test has no unique configured translation")?,
-            targets: vec![Identifier::new(&uuid::Uuid::from(id).to_string())?],
-        });
-    }
-    let interpretation = Interpretation {
-        driver: driver(machine)?,
-        config_version: Identifier::new("1")?,
-        config: machine.snapshot.canonical().as_bytes().to_vec(),
-        outcome: reading,
-    };
-    let destination = machine.snapshot.effective().site().destination.name.clone();
-    store
-        .request(deadline(), move |store| {
-            let receipt = store
-                .receipt(id)?
-                .ok_or(analyte_store::Error::Conflict)?
-                .metadata;
-            store.interpret_reconciled(
-                id,
-                interpretation,
-                &corrections,
-                &findings,
-                |assigned, outcomes| {
-                    if unknown_test {
-                        return Ok(Vec::new());
-                    }
-                    build_deliveries(assigned, outcomes, &receipt, &destination)
-                },
-            )
-        })
-        .await?;
+    persist_mapping(store, machine, id, Ok(output)).await?;
+    Ok(())
+}
+
+pub(crate) async fn failed_reading(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    reason: &str,
+) -> Result<(), Error> {
+    persist_mapping(store, machine, id, Err(invalid(reason))).await?;
     Ok(())
 }

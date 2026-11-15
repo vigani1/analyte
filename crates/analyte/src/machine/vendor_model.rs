@@ -1,14 +1,15 @@
 //! Conservative vendor adapters retain unresolved identities and exact values.
 use crate::{Error, config::Machine};
+use analyte_mapping::{MappedResult, Output, Position};
 use analyte_model::*;
-use analyte_store::Reading;
 
-fn part(code: &str, value: ResultValue, received_at: jiff::Timestamp) -> Result<ResultPart, Error> {
+fn part(
+    test: NamespacedId,
+    value: ResultValue,
+    received_at: jiff::Timestamp,
+) -> Result<ResultPart, Error> {
     Ok(ResultPart {
-        test: NamespacedId {
-            namespace: Identifier::new("vendor-source")?,
-            value: Identifier::new(code)?,
-        },
+        test,
         values: EvidenceList::new(vec![value])?,
         units: None,
         dilution: None,
@@ -24,16 +25,8 @@ fn part(code: &str, value: ResultValue, received_at: jiff::Timestamp) -> Result<
     })
 }
 
-fn translate(machine: &Machine, part: &mut ResultPart) -> Result<(), Error> {
+fn translate_units(machine: &Machine, part: &mut ResultPart) -> Result<(), Error> {
     let settings = machine.snapshot.effective().machine();
-    if let Some(entry) =
-        analyte_mapping::test_translation(settings.tests(), &[part.test.value.as_str()], None)
-    {
-        part.test = NamespacedId {
-            namespace: entry.app_system.clone(),
-            value: entry.app_code.clone(),
-        };
-    }
     if let Some(unit) = &part.units {
         let original = unit.original_text().clone();
         if let Some(entry) = analyte_mapping::unit_translation(settings.units(), original.as_str())
@@ -65,14 +58,45 @@ fn result(
     })
 }
 
+fn translated_test(machine: &Machine, code: &str, system: Option<&str>) -> Option<NamespacedId> {
+    analyte_mapping::test_translation(
+        machine.snapshot.effective().machine().tests(),
+        &[code],
+        system,
+    )
+    .map(|entry| NamespacedId {
+        namespace: entry.app_system.clone(),
+        value: entry.app_code.clone(),
+    })
+}
+
+fn push_result(output: &mut Output, content: ResultContent) -> Result<(), Error> {
+    output.results.push(MappedResult {
+        content,
+        corrections: EvidenceList::new(vec![false])?,
+    });
+    Ok(())
+}
+
 pub(super) fn vidas(
     machine: &Machine,
     receipt: ReceiptId,
     message: &analyte_vidas::syntax::Message,
     time: jiff::Timestamp,
-) -> Result<Reading, Error> {
+) -> Result<Output, Error> {
     let evidence = message.result()?;
-    let mut source = part(evidence.assay.as_str(), evidence.value, time)?;
+    let mut output = Output::default();
+    let Some(test) = translated_test(machine, evidence.assay.as_str(), None) else {
+        output.unmapped_test(
+            Position {
+                record: 1,
+                field: 0,
+            },
+            EvidenceList::new(vec![evidence.value])?,
+        )?;
+        return Ok(output);
+    };
+    let mut source = part(test, evidence.value, time)?;
     source.units = evidence.unit.map(Units::original);
     source.flags = EvidenceList::new(evidence.flag.into_iter().collect())?;
     source.comments = EvidenceList::new(vec![evidence.call])?;
@@ -82,19 +106,23 @@ pub(super) fn vidas(
             applied: DilutionApplied::Unknown,
         });
     }
-    translate(machine, &mut source)?;
-    Ok(Reading::Results(vec![result(
-        receipt,
-        Some(SampleIdentity {
-            id: evidence.sample,
-            source: SampleSource::Unknown,
-            position: None,
-        }),
-        source,
-        IdentityStatus::Unresolved(Reason::new(
-            "VIDAS Literal lacks trusted result/run identity and patient versus QC classification",
-        )?),
-    )?]))
+    translate_units(machine, &mut source)?;
+    push_result(
+        &mut output,
+        result(
+            receipt,
+            Some(SampleIdentity {
+                id: evidence.sample,
+                source: SampleSource::Unknown,
+                position: None,
+            }),
+            source,
+            IdentityStatus::Unresolved(Reason::new(
+                "VIDAS Literal lacks trusted result/run identity and patient versus QC classification",
+            )?),
+        )?,
+    )?;
+    Ok(output)
 }
 
 pub(super) fn autolyser(
@@ -102,31 +130,45 @@ pub(super) fn autolyser(
     receipt: ReceiptId,
     report: &analyte_autolyser::records::Report,
     time: jiff::Timestamp,
-) -> Result<Reading, Error> {
-    let mut results = Vec::new();
-    for value in &report.values {
+) -> Result<Output, Error> {
+    let mut output = Output::default();
+    for (index, value) in report.values.iter().enumerate() {
         let code = std::str::from_utf8(value.code.bytes())?;
-        let text = std::str::from_utf8(value.text.bytes())?;
-        let mut source = part(
-            code,
-            ResultValue {
-                original: SourceText::new(text)?,
-                parsed: ValueInterpretation::Text,
-            },
-            time,
-        )?;
+        let value = ResultValue {
+            original: SourceText::new(std::str::from_utf8(value.text.bytes())?)?,
+            parsed: ValueInterpretation::Text,
+        };
+        let Some(test) = translated_test(machine, code, None) else {
+            output.unmapped_test(
+                Position {
+                    record: index.saturating_add(1),
+                    field: 0,
+                },
+                EvidenceList::new(vec![value])?,
+            )?;
+            continue;
+        };
+        let mut source = part(test, value, time)?;
         if report.control.as_ref().is_some_and(|c| c.is_control) {
             source.qc_class = QcClass::Control;
         }
-        translate(machine, &mut source)?;
-        results.push(result(receipt, None, source, IdentityStatus::Unresolved(Reason::new("Autolyser Rev18 has no immutable run identity; patient code is not trusted specimen identity")?))?);
+        translate_units(machine, &mut source)?;
+        push_result(
+            &mut output,
+            result(
+                receipt,
+                None,
+                source,
+                IdentityStatus::Unresolved(Reason::new(
+                    "Autolyser Rev18 has no immutable run identity; patient code is not trusted specimen identity",
+                )?),
+            )?,
+        )?;
     }
-    if results.is_empty() {
-        return Ok(Reading::Failed(Reason::new(
-            "Autolyser report contains no results",
-        )?));
+    if report.values.is_empty() {
+        return Err(crate::invalid("Autolyser report contains no results"));
     }
-    Ok(Reading::Results(results))
+    Ok(output)
 }
 
 pub(super) fn poct(
@@ -134,23 +176,38 @@ pub(super) fn poct(
     receipt: ReceiptId,
     message: &analyte_poct::Message,
     time: jiff::Timestamp,
-) -> Result<Reading, Error> {
-    let mut results = Vec::new();
-    for observation in analyte_poct::map_observations(message, time)? {
-        let mut part = observation.part;
-        translate(machine, &mut part)?;
-        // The protocol crate's identity decision is authoritative, including Unresolved.
-        results.push(result(
-            receipt,
-            observation.sample,
-            part,
-            observation.identity,
-        )?);
-    }
-    if results.is_empty() {
-        return Ok(Reading::Failed(Reason::new(
+) -> Result<Output, Error> {
+    let observations = analyte_poct::map_observations(message, time)?;
+    if observations.is_empty() {
+        return Err(crate::invalid(
             "POCT observations transfer contains no observations",
-        )?));
+        ));
     }
-    Ok(Reading::Results(results))
+    let mut output = Output::default();
+    for observation in observations {
+        let mut part = observation.part;
+        let system = observation
+            .source_code
+            .system
+            .as_deref()
+            .or(observation.source_code.system_name.as_deref());
+        let Some(test) = translated_test(machine, &observation.source_code.value, system) else {
+            output.unmapped_test(
+                Position {
+                    record: observation.source_index.saturating_add(1),
+                    field: 0,
+                },
+                part.values,
+            )?;
+            continue;
+        };
+        part.test = test;
+        translate_units(machine, &mut part)?;
+        // The protocol crate's identity decision is authoritative, including Unresolved.
+        push_result(
+            &mut output,
+            result(receipt, observation.sample, part, observation.identity)?,
+        )?;
+    }
+    Ok(output)
 }

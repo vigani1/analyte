@@ -2,7 +2,7 @@
 use crate::FieldSyntax;
 use crate::source::Source;
 use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, present, text};
-use crate::{MappedResult, UnmappedObservation, identity, result, value};
+use crate::{MappedResult, identity, result, value};
 use analyte_config::Validated;
 use analyte_model::*;
 
@@ -22,7 +22,7 @@ fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode
                 source.position(0, field),
                 Problem::UnknownProcessing,
             )?;
-            // There is no Unknown model variant. Refuse rather than invent a mode.
+            // These record standards require an explicit mode; Unknown is not a fallback.
             Err(Error::Structure {
                 position: source.position(0, field),
                 reason: "unknown processing mode",
@@ -43,13 +43,7 @@ pub(crate) fn message(
             resource: "records",
         });
     }
-    let mut output = Output {
-        results: Vec::new(),
-        unmapped: Vec::new(),
-        findings: Vec::new(),
-        comments: Vec::new(),
-        evidence_budget: 0,
-    };
+    let mut output = Output::default();
     let mode = processing(source, &mut output)?;
     for (index, node) in source.nodes.iter().enumerate() {
         if node.name == "C" || node.name == "NTE" {
@@ -111,15 +105,13 @@ pub(crate) fn message(
             }),
             (Some(_), None, None) | (None, None, None) | (None, Some(_), _) => None,
         };
+        let Some(source_code) = source_code else {
+            output.unmapped_test(source.position(index, 3), values)?;
+            continue;
+        };
         if translation.is_none() {
             finding(&mut output, source.position(index, 3), Problem::UnknownTest)?;
         }
-        let Some(source_code) = source_code else {
-            output
-                .unmapped
-                .push(UnmappedObservation { position, values });
-            continue;
-        };
         let test = translation.map_or_else(
             || source_code.clone(),
             |t| NamespacedId {
