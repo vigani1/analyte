@@ -490,3 +490,39 @@ VIDAS, Autolyser and POCT disconnect and storage-failure dialog effects are
 processed before the host returns. Parking retains the reason with the existing
 transport evidence; a failed parking write is reported alongside its original error.
 
+## Capturing conversations
+
+Plan ?10 and ADR 0009: set `capture = true` on a `[[machines]]` entry in the
+**program** TOML, then restart. It defaults to false and does not belong in the
+shipped machine definition. Capture-enabled machine IDs use ASCII letters,
+digits, underscores or hyphens so each names exactly one directory.
+
+Every successful TCP connection (client or server), serial open and watched-folder
+receipt gets a separate UUID-named `.rec.jsonl` file under
+`<data_directory>/captures/<machine>/`. The existing transport recorder preserves
+exact bytes, directions, chunk boundaries and relative times. Live headers declare
+`machine` evidence and `NOT de-identified`; they do not qualify a driver.
+
+These files **contain patient data**. Keep them in the protected store, apply the
+installation ACL on Windows, and never put them in ordinary logs (rule 10).
+Directories and files use owner-only permissions on Unix. Before sharing, work
+on a copy: remove or replace every patient and specimen identifier consistently,
+inspect every decoded event (including link metadata), and record the review in
+the header de-identification statement. Preserve the protected original. Synthetic
+simulator captures may be labelled `simulator` only after reviewing their content;
+never relabel a patient capture as synthetic.
+
+Recording is optional evidence, not clinical custody. A recording error disables
+that connection's capture; receiving, ACKs and delivery continue. One specific
+error is logged without payloads. `analyte status <program.toml>` shows retained
+capture failure status; a missing failure is not proof of completeness. Failure
+markers live in the protected data directory (`capture-<machine>.failure` and
+`<recording-name>.failed`). They remain until an operator archives them after
+review. If status cannot be persisted, the log reports that failure too.
+
+Each recorder has a 64-event queue and the ADR 0009 codec's file/event/byte limits.
+The host bounds unfinished workers to 16 per machine and joins them at shutdown.
+Before each write it requires the store's configured reserve plus a 16 MiB margin;
+unknown capacity stops recording. A saturated queue, limit or low disk ends capture
+visibly rather than silently omitting bytes. Incomplete/failed captures are not
+conformance evidence. Capture does not acknowledge data or change replay policy.

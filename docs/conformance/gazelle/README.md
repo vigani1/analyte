@@ -39,8 +39,11 @@ The AA and AE ACK files are alternative outcomes for the same synthetic result.
 
 Save reports in `docs/conformance/gazelle/results/`. Record the tool build, profile
 revision/OID, actor/options, date, source commit and filename with each report.
-Retain failures and their diagnostics as well as successes. Message-level validation is recorded below. A simulator conversation and
-full LAW actor qualification remain outstanding.
+Retain failures and their diagnostics as well as successes. Message-level
+validation is recorded below. Successful simulator qualification and
+full LAW actor qualification remain outstanding. The first live LAB-28
+[conversation](law-run/README.md) is now recorded: its ORL was parked at MSH-7.1,
+and cancellation was not reached. This does not raise the documented level.
 
 ## Recorded Gazelle run (2026-11-15)
 

@@ -42,6 +42,7 @@ pub(crate) async fn run(
     mut stop: watch::Receiver<bool>,
     file_root: std::path::PathBuf,
     mut closing: Closing,
+    capture: Option<crate::capture::Capture>,
 ) -> Result<(), Error> {
     let limits = Limits::new(
         16,
@@ -68,6 +69,10 @@ pub(crate) async fn run(
                     accepted = listener.accept() => accepted?,
                 };
                 let (conn, side) = connection(limits);
+                let side = match &capture {
+                    Some(capture) => capture.attach(side),
+                    None => side,
+                };
                 let cancel = conn.cancellation();
                 let processing = drive(&machine, &store, conn, stop.clone(), &mut closing);
                 let transport = analyte_transport::tcp::pump(accepted.0, side);
@@ -85,6 +90,10 @@ pub(crate) async fn run(
         }
         TransportKind::TcpClient => loop {
             let (conn, side) = connection(limits);
+            let side = match &capture {
+                Some(capture) => capture.attach(side),
+                None => side,
+            };
             let cancel = conn.cancellation();
             let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
             let (result, transport) = tokio::join!(
@@ -111,9 +120,11 @@ pub(crate) async fn run(
                 () = tokio::time::sleep(Duration::from_millis(100)) => {}
             }
         },
-        TransportKind::Serial => serial::run(&machine, &store, limits, stop, closing).await,
+        TransportKind::Serial => {
+            serial::run(&machine, &store, limits, stop, closing, capture.as_ref()).await
+        }
         TransportKind::WatchedFolder => {
-            folder::session(&machine, &store, file_root, stop, closing).await
+            folder::session(&machine, &store, file_root, stop, closing, capture.as_ref()).await
         }
     }
 }

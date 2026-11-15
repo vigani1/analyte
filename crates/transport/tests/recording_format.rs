@@ -76,3 +76,18 @@ fn adr0009_invalid_line_and_each_limit_are_errors() -> Result<(), Box<dyn std::e
     );
     Ok(())
 }
+
+#[test]
+fn adr0009_guard_refusal_preserves_bytes_and_reports_failure()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_transport::recording::{Kind, recording};
+    let root = tempfile::tempdir()?;
+    let path = root.path().join("guarded.rec.jsonl");
+    let (tap, worker) = recording(path.clone(), 4)?;
+    tap.record(Kind::In, std::time::Instant::now(), b"SYN-0001")?;
+    let result = worker.run_guarded(|| Err(std::io::Error::other("clinical reserve reached")));
+    assert!(result.is_err());
+    assert!(tap.failure().is_some());
+    assert!(!path.exists());
+    Ok(())
+}
