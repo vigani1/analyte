@@ -44,7 +44,19 @@ pub fn acknowledgment(
     error: Option<AckError<'_>>,
     options: Options,
 ) -> Result<Option<Message>, Error> {
-    let msh = Msh::new(message)?;
+    acknowledgment_with_limit(message, response, code, responsibility, error, options, 20)
+}
+
+pub(crate) fn acknowledgment_with_limit(
+    message: &Message,
+    response: Response<'_>,
+    code: AckCode,
+    responsibility: Responsibility,
+    error: Option<AckError<'_>>,
+    options: Options,
+    control_limit: usize,
+) -> Result<Option<Message>, Error> {
+    let msh = Msh::with_control_limit(message, control_limit)?;
     match (code, responsibility) {
         (AckCode::Aa, Responsibility::StoredAndInterpreted)
         | (AckCode::Ca, Responsibility::Stored | Responsibility::StoredAndInterpreted)
@@ -89,7 +101,7 @@ pub fn acknowledgment(
         }
         Ok(())
     };
-    safe(response.control_id.raw(), 10, 20)?;
+    safe(response.control_id.raw(), 10, control_limit)?;
     safe(response.timestamp, 7, 26)?;
     if response.control_id.raw().is_empty() || response.control_id.raw() == msh.control_id() {
         return Err(Error::Control {

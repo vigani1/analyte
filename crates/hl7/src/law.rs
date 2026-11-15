@@ -1,0 +1,320 @@
+//! LAW query views. Evidence: documented, PaLM TF-2b Rev 11 Ãƒâ€šÃ‚Â§3.27.4.
+//!
+//! These views borrow the original message. A validation error never consumes it.
+//! Query responses, work downloads and results have separate pure APIs. Full
+//! field/option conformance is still incomplete; see the crate README.
+use crate::{Field, Message, Msh, Segment, Version};
+use thiserror::Error;
+
+/// A LAW validation failure, without payload in its diagnostic.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum Error {
+    /// Individually valid fields contradict each other; reject the whole content.
+    #[error("inconsistent LAW content at {segment}-{field}")]
+    Inconsistent {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field.
+        field: usize,
+    },
+    /// Base HL7 control validation failed.
+    #[error(transparent)]
+    Syntax(#[from] crate::Error),
+
+    /// A required field, cardinality or predicate was violated.
+    #[error("LAW content rejected at {segment}-{field}")]
+    Content {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field, or zero for segment cardinality/order.
+        field: usize,
+    },
+}
+
+fn content(segment: &'static str, field: usize) -> Error {
+    Error::Content { segment, field }
+}
+
+fn raw(segment: Segment<'_>, field: usize) -> &[u8] {
+    segment.field(field).map_or(b"", Field::raw)
+}
+
+fn required(segment: Segment<'_>, field: usize, maximum: usize) -> Result<&[u8], Error> {
+    let value = raw(segment, field);
+    if value.is_empty() || value == b"\"\"" || value.len() > maximum {
+        return Err(content("QPD", field));
+    }
+    Ok(value)
+}
+
+/// A container/carrier identity with original namespace components preserved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Identity<'a>(&'a [u8]);
+
+impl<'a> Identity<'a> {
+    /// Returns the original EI bytes, including any assigning namespace.
+    #[must_use]
+    pub fn raw(self) -> &'a [u8] {
+        self.0
+    }
+}
+
+/// Query scope, with informational position distinct from lookup position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope<'a> {
+    /// Work for an identified container.
+    Container(Identity<'a>),
+    /// Every pending AWOS.
+    AllPending,
+    /// Lookup by carrier and position, with optional location.
+    Rack {
+        /// Carrier identity.
+        carrier: Identity<'a>,
+        /// Original numeric array, preserving all axes.
+        position: &'a [u8],
+        /// Additional coded location, when supplied.
+        location: Option<&'a [u8]>,
+    },
+    /// Lookup by tray and position, with optional location.
+    Tray {
+        /// Tray identity.
+        tray: Identity<'a>,
+        /// Original numeric array, preserving all axes.
+        position: &'a [u8],
+        /// Additional coded location, when supplied.
+        location: Option<&'a [u8]>,
+    },
+    /// An isolate and its primary container are both lookup evidence.
+    Isolate {
+        /// Isolate container identity.
+        isolate: Identity<'a>,
+        /// Primary container identity.
+        parent: Identity<'a>,
+    },
+    /// Lookup uses the container; position is informational only.
+    InformationalRack {
+        /// Container used for lookup.
+        container: Identity<'a>,
+        /// Informational carrier identity.
+        carrier: Identity<'a>,
+        /// Informational position.
+        position: &'a [u8],
+    },
+}
+
+/// Validated QBP structure and query field predicates; original bytes remain borrowed.
+#[derive(Debug, Clone, Copy)]
+pub struct Query<'a> {
+    message: &'a Message,
+    qpd: Segment<'a>,
+    scope: Scope<'a>,
+}
+
+impl<'a> Query<'a> {
+    /// Validates QBP structure, LAW header, QPD scope and immediate response mode.
+    ///
+    /// # Errors
+    /// Returns a located content error or the underlying HL7 control error.
+    /// This is not a complete LAW profile validator (see the crate README).
+    pub fn new(message: &'a Message) -> Result<Self, Error> {
+        profile::header(message, b"LAB-27", true)?;
+        let msh = msh(message)?;
+        if msh.version() != Version::V251 {
+            return Err(content("MSH", 12));
+        }
+        let header = msh.segment();
+        let d = message.delimiters();
+        let components: Vec<_> = raw(header, 9).split(|b| *b == d.component).collect();
+        if components != [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
+            return Err(content("MSH", 9));
+        }
+        for (field, value) in [(15, b"NE".as_slice()), (16, b"AL")] {
+            if raw(header, field) != value {
+                return Err(content("MSH", field));
+            }
+        }
+        let profile = raw(header, 21)
+            .split(|b| *b == d.repetition)
+            .next()
+            .unwrap_or_default();
+        if !profile
+            .split(|b| *b == d.component)
+            .eq([b"LAB-27".as_slice(), b"IHE"])
+        {
+            return Err(content("MSH", 21));
+        }
+        let mut segments = message.segments().skip(1);
+        let qpd = segments
+            .next()
+            .filter(|s| s.id() == b"QPD")
+            .ok_or(content("QPD", 0))?;
+        let rcp = segments
+            .next()
+            .filter(|s| s.id() == b"RCP")
+            .ok_or(content("RCP", 0))?;
+        if segments.next().is_some() {
+            return Err(content("RCP", 0));
+        }
+        if raw(rcp, 1) != b"I" {
+            return Err(content("RCP", 1));
+        }
+        let modality: Vec<_> = raw(rcp, 3).split(|b| *b == d.component).collect();
+        if modality.first().copied() != Some(b"R".as_slice())
+            || modality.get(2).copied() != Some(b"HL70394".as_slice())
+            || modality.len() != 3
+            || !matches!(modality.get(1).copied(), Some(b"" | b"Real Time"))
+        {
+            return Err(content("RCP", 3));
+        }
+        for (offset, field) in rcp.fields().enumerate().skip(1) {
+            // RCP-2 and fields after RCP-3 are excluded by the LAW static definition.
+            if offset != 2 && !field.raw().is_empty() {
+                return Err(content("RCP", 0));
+            }
+        }
+        let name = required(qpd, 1, 80)?;
+        let mut name_parts = name.split(|b| *b == d.component);
+        let kind = name_parts.next().unwrap_or_default();
+        let description = name_parts.next().unwrap_or_default();
+        if description.is_empty()
+            || name_parts.next() != Some(b"IHELAW".as_slice())
+            || name_parts.next().is_some()
+        {
+            return Err(content("QPD", 1));
+        }
+        required(qpd, 2, 32)?;
+        let mandatory: &[usize] = match kind {
+            b"WOS" => &[3],
+            b"WOS_ALL" => &[],
+            b"WOS_BY_RACK" => &[4, 5],
+            b"WOS_BY_TRAY" => &[6, 7],
+            b"WOS_BY_ISOLATE" => &[3, 9],
+            b"WOS_INFORMATIONAL_RACK" => &[3, 4, 5],
+            _ => return Err(content("QPD", 1)),
+        };
+        for field in 3..=9 {
+            if mandatory.contains(&field) {
+                required(qpd, field, 80)?;
+            } else if !(field == 8 && matches!(kind, b"WOS_BY_RACK" | b"WOS_BY_TRAY"))
+                && !raw(qpd, field).is_empty()
+            {
+                return Err(content("QPD", field));
+            }
+        }
+        for (offset, field) in qpd.fields().enumerate() {
+            if offset >= 9 && !field.raw().is_empty() {
+                return Err(content("QPD", 0));
+            }
+            if field.repetitions().count() != 1 || field.is_null() {
+                return Err(content("QPD", offset.saturating_add(1)));
+            }
+        }
+        for field in mandatory {
+            if matches!(field, 5 | 7) {
+                for axis in raw(qpd, *field).split(|b| *b == d.component) {
+                    if axis.is_empty() || axis.len() > 16 || !axis.iter().all(u8::is_ascii_digit) {
+                        return Err(content("QPD", *field));
+                    }
+                }
+            } else if raw(qpd, *field)
+                .split(|b| *b == d.component)
+                .next()
+                .is_none_or(|v| v.is_empty() || v.len() > 50)
+            {
+                return Err(content("QPD", *field));
+            }
+        }
+        let location = (!raw(qpd, 8).is_empty()).then_some(raw(qpd, 8));
+        let scope = match kind {
+            b"WOS" => Scope::Container(Identity(raw(qpd, 3))),
+            b"WOS_ALL" => Scope::AllPending,
+            b"WOS_BY_RACK" => Scope::Rack {
+                carrier: Identity(raw(qpd, 4)),
+                position: raw(qpd, 5),
+                location,
+            },
+            b"WOS_BY_TRAY" => Scope::Tray {
+                tray: Identity(raw(qpd, 6)),
+                position: raw(qpd, 7),
+                location,
+            },
+            b"WOS_BY_ISOLATE" => Scope::Isolate {
+                isolate: Identity(raw(qpd, 3)),
+                parent: Identity(raw(qpd, 9)),
+            },
+            b"WOS_INFORMATIONAL_RACK" => Scope::InformationalRack {
+                container: Identity(raw(qpd, 3)),
+                carrier: Identity(raw(qpd, 4)),
+                position: raw(qpd, 5),
+            },
+            _ => return Err(content("QPD", 1)),
+        };
+        Ok(Self {
+            message,
+            qpd,
+            scope,
+        })
+    }
+
+    /// Returns the validated lookup scope.
+    #[must_use]
+    pub fn scope(self) -> Scope<'a> {
+        self.scope
+    }
+
+    /// Returns the exact query tag, distinct from MSH-10.
+    #[must_use]
+    pub fn tag(self) -> &'a [u8] {
+        raw(self.qpd, 2)
+    }
+
+    /// Returns the original message for protected retention and exact QPD echoing.
+    #[must_use]
+    pub fn message(self) -> &'a Message {
+        self.message
+    }
+}
+
+mod responses;
+
+pub use responses::{CacheAnswer, QueryFollowup, QueryResponse, query_response};
+
+mod work;
+
+pub use work::{
+    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, WorkAction, WorkResponse,
+    negative_work, work_order,
+};
+
+mod results;
+
+pub use results::{
+    Attached, Observation, Parent, ResultStatus, Results, SpecimenObservation, Value,
+    result_acknowledgment,
+};
+
+mod profile;
+
+pub use profile::{FieldRule, Usage, validate_segment};
+
+fn msh(message: &Message) -> Result<Msh<'_>, crate::Error> {
+    Msh::with_control_limit(message, 50)
+}
+
+/// Validates the LAW-extended message ID length (TF-2b C.4, at most 50 bytes).
+/// # Errors
+/// Rejects empty, null, oversized or non-graphic IDs; rendering checks delimiters.
+pub fn control_id(raw: &[u8]) -> Result<crate::ControlId<'_>, crate::Error> {
+    crate::ControlId::with_limit(raw, 50)
+}
+
+mod failure;
+
+pub use failure::{
+    ErrorLocation, Failure, receive_acknowledgment, receive_query, receive_results,
+    receive_work_response,
+};
+
+mod content;
+
+pub use content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkNotes};
