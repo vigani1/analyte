@@ -4,12 +4,14 @@
 mod law;
 mod orders;
 mod schema;
+mod stack;
 mod validation;
 pub use law::*;
 pub use orders::*;
 pub use schema::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+pub use stack::*;
 use validation::{validate_machine, validate_site};
 
 /// Maximum bytes accepted per TOML layer, before parsing or allocation.
@@ -148,6 +150,8 @@ pub struct Draft {
 /// Fully checked effective settings; fields cannot be mutated or deserialized.
 #[derive(Debug, Serialize)]
 pub struct Effective {
+    #[serde(skip)]
+    stack: Stack,
     schema_version: u32,
     machine: Machine,
     site: Site,
@@ -230,7 +234,9 @@ impl Draft {
         let path = self.paths.get(2).map_or("overrides", String::as_str);
         validate_machine(&self.machine, path)?;
         validate_site(&self.site, &self.machine.transport, path)?;
+        let stack = Stack::from_validated(&self.machine);
         let effective = Effective {
+            stack,
             schema_version: 1,
             machine: self.machine,
             site: self.site,
@@ -282,6 +288,12 @@ impl Active {
 }
 
 impl Effective {
+    /// Returns the single supported stack built from the effective validated layers.
+    #[must_use]
+    pub fn stack(&self) -> &Stack {
+        &self.stack
+    }
+
     /// Returns validated protocol settings and mappings.
     #[must_use]
     pub fn machine(&self) -> &Machine {
