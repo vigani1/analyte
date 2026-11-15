@@ -234,7 +234,9 @@ Never raise a level without the evidence that justifies it.
 
 Run focused checks while iterating. Before handoff run `cargo fmt --check`,
 `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test
---workspace` and `cargo deny check`. Report every check that was not run and
+--workspace`, `cargo deny check` and `cargo check --manifest-path
+fuzz/Cargo.toml --bins` (the fuzz workspace is separate, so renames miss it).
+Report every check that was not run and
 why; never claim a check passed without its output. Back technical claims with
 evidence: the source section, the test or the recording.
 
