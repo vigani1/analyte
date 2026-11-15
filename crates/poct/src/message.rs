@@ -56,7 +56,7 @@ impl ControlId {
             || value.len() > 256
             || value
                 .chars()
-                .any(|c| c.is_control() || !crate::xml::xml_character(c))
+                .any(|c| c.is_control() || !crate::syntax::xml_character(c))
         {
             return Err(MessageError::MissingValue("HDR.control_id"));
         }

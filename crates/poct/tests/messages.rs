@@ -1,7 +1,7 @@
 //! Appendix B sections 5, 6, 8 and 12 typed-message regression tests.
-mod common;
+mod peer_messages;
 use analyte_poct::{Body, DataError, Message, MessageError, Nullable, Timestamp, Value};
-use common::{field, hello, limits, message, observation, status};
+use peer_messages::{field, hello, limits, message, observation, status};
 use proptest::prelude::*;
 
 #[test]

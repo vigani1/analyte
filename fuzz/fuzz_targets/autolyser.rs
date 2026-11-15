@@ -2,7 +2,8 @@
 #![forbid(unsafe_code)]
 use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
-    use analyte_autolyser::{dialog::*, records::*};
+    use analyte_autolyser::syntax::*;
+    use analyte_dialog::autolyser::*;
     use std::time::Duration;
     const CONFIG: Config = Config {
         poll: Duration::from_secs(1),

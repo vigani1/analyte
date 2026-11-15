@@ -10,8 +10,8 @@ like the original code.
 
 ## Completed round results
 
-Framing and dialog are complete historical rounds; this round stops after mapping.
-Contract, sink and store remain unmeasured; their coverage is available below.
+Framing, dialog and mapping are complete historical rounds. The current round
+measures contract and sink; store remains unmeasured. Coverage is available below.
 Percentages sum covered/count across each crate's `src/` files, excluding
 integration test files. Regions are smaller than lines, so a covered line can
 still contain an untested decision. These are baseline measurements, before the
@@ -22,8 +22,8 @@ new tests; they are not a prediction of the final coverage.
 | analyte-framing | 97.79 | 97.86 | 66 / 5 / 8 / 0 | 70 / 1 / 8 / 0 |
 | analyte-dialog | 92.46 | 87.99 | 90 / 34 / 10 / 0 | 124 / 0 / 10 / 0 |
 | analyte-mapping | 84.97 | 81.47 | 221 / 185 / 49 / 0 | 399 / 7 / 49 / 0 (combined replays) |
-| analyte-contract | 86.92 | 83.28 | Not run | Not run |
-| analyte-sink | 92.86 | 83.53 | Not run | Not run |
+| analyte-contract | 86.92 | 83.28 | 53 / 52 / 71 / 0 | 105 / 0 / 71 / 0 |
+| analyte-sink | 92.86 | 83.53 | 32 / 46 / 18 / 16 | 91 / 3 / 18 / 0 (combined replays; all 3 equivalent) |
 | analyte-store | 91.64 | 77.57 | Not run | Not run |
 | analyte | 64.60 | 58.03 | Outside requested mutation scope | Not run |
 | analyte-astm | 90.73 | 90.20 | Outside requested mutation scope | Not run |
@@ -214,6 +214,82 @@ Source findings to retain for follow-up:
   assert host download policy, identity preservation and configured bounds,
   with no new vendor-conformance claim or evidence-level change.
 
+### Contract and sink round
+
+Baseline production is `7ed5a7ce377922e6e2c1d4bc244d2756f6ec50a9`, from
+origin/main after PR #62. Contract's full 176-mutant baseline measured
+53 caught / 52 missed / 71 unviable / 0 timeout. Its full replay measured
+105 caught / 0 missed / 71 unviable / 0 timeout: every baseline miss is caught.
+No contract survivor was excluded as equivalent.
+
+Sink's full 112-mutant baseline measured 32 caught / 46 missed / 18 unviable /
+16 timeout. The initial serial replay stopped on a timed-out unmutated baseline
+(147-second build, 60-second tests); no mutant outcomes came from that attempt.
+The original logs are retained. A serial retry uses unchanged deadlines.
+
+The completed full parallel sink replay measured 69 caught / 5 missed / 16
+unviable / 22 timeouts in about 22 minutes. Exact-mutation focused replays
+resolve every timeout and both behavior-changing survivors: combined outcomes
+are 91 caught / 3 equivalent survivors / 18 unviable / 0 unresolved timeouts.
+Each of the original 112 mutations is counted once. Two event-size comparisons
+are unreachable with bounded validated event fields. The early draining-stop
+check is redundant with the biased cancellation branch for the host's terminal,
+non-retractable shutdown signal; the appendix states this scope explicitly.
+Forty-four of the 46 baseline misses are caught; two are equivalent. The third
+equivalent mutation was a baseline timeout.
+
+Serial and early focused attempts retained under target/mutation-retry and
+target/mutation-final-recheck were superseded/stopped when full-suite waits
+obscured assertion failures. Their partial totals are not used as completed
+rounds. Sink tests internally build the reference receiver, and some mutated
+loops leave other tests waiting until their 60-second hang guard; neither a
+build timeout nor such a test timeout is counted as caught. Focused replays
+select direct tests with the same production mutation, features and deadlines.
+An early conflict-detail test listener also waited when no HTTP was sent; it
+was made cancellable, and its final focused replay catches both routing/version
+mutations. Independent username-only/password-only URL fixtures catch the two
+survivors masked by the original combined credential fixture. No production
+bug was exposed or fixed.
+
+The [contract/sink appendix](contract-sink-mutations.md) lists the exact
+baseline misses, failing-test logs and the test-claim audit against clinical
+rules, ADRs 0003/0010/0011, the plan and contract v1. Twelve contract tests and
+ten sink tests were added; existing conversion tests gained full-document
+size checks and two overbroad fixture-test names were narrowed. Production
+code, dependencies and machine evidence levels are unchanged. Coverage remains
+the historical snapshot, not a new measurement.
+
+The 46-miss focused replay completed with 42 caught / 4 missed; the final
+URL replay caught the two real survivors, leaving the two equivalent baseline
+misses. Final Windows formatting, all-target/all-feature Clippy with warnings
+denied, workspace all-feature tests and cargo deny exited 0. Deny retains its
+existing duplicate warnings and reports all four policy categories OK. Logs
+are in target/contract-sink-checks. Linux and minimum-version runs remain CI;
+coverage was not rerun. The appendix records the test-source audit and limits.
+
+Commands (PowerShell, with cargo in PATH), in addition to the handoff checks:
+
+```powershell
+cargo mutants -p analyte-contract --all-features --timeout 60 --build-timeout 180 -j 4 -o target/mutation-before/contract
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 4 -o target/mutation-before/sink
+cargo mutants -p analyte-contract --all-features --timeout 60 --build-timeout 180 -j 4 -o target/mutation-after/contract
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -o target/mutation-after/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -o target/mutation-retry/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 4 -o target/mutation-final/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'replace cancelled with|Poller.*run ->' --cargo-test-arg rule7_owner_loops_and_cancellation_wait_for_their_signal -o target/mutation-signal-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'claim_timeout|Worker.*run.* ->' --cargo-test-arg rule7_idle_workers_wait_before_claiming_again -o target/mutation-idle-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'destination.rs:145:42: replace > with <|destination.rs:146:16|destination.rs:148:50: replace > with <' --cargo-test-arg contract_v1_rule7_credentials_reject_each_invalid_component -o target/mutation-credentials-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'polling.rs:34:9|polling.rs:92:9' --cargo-test-arg adr0004_contract_v1_pagination_progress_and_page_bounds -o target/mutation-polling-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'delivery.rs:143:28|delivery.rs:199:35' --cargo-test-arg contract_v1_conflict_detail_requires_conflict_status_and_version_one -o target/mutation-delivery-final/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'in body$' --cargo-test-arg contract_v1_rule7_response_body_ceiling_is_inclusive -o target/mutation-body-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'replace body ->|delivery.rs:250:32|delivery.rs:253:54' --cargo-test-arg contract_v1_ -o target/mutation-http-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'replace build_delivery ->.*Default|Worker.*deliver_once ->.*Default' --cargo-test-arg mutation_ -o target/mutation-build-recheck/sink
+$misses = Get-Content target/mutation-before/sink/mutants.out/missed.txt
+$pattern = ($misses | ForEach-Object { '^' + [regex]::Escape($_) + '$' }) -join '|'
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F $pattern --cargo-test-arg mutation_ -o target/mutation-misses-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'destination.rs:100:13|destination.rs:101:13' --cargo-test-arg mutation_rule7_destination_url_byte_ceiling_is_inclusive -o target/mutation-url-recheck/sink
+```
+
 ### Uncovered safety regions to follow up
 
 These are zero-count region starts in the baseline LLVM export, rather than
@@ -297,8 +373,7 @@ Mapping runs use the analogous directories shown above. An initial quoted
 empty-match-arm filter selected no mutations in PowerShell; it is not counted.
 The subsequent `in values$` replay selected all nine value-mapping mutations.
 
-Continue in this order: analyte-contract,
-analyte-sink, analyte-store. For each, repeat the directory creation and mutation
+The remaining unmeasured crate is analyte-store. Repeat the directory creation and mutation
 command above, substituting the crate name and output directory. After adding
 tests, use a separate `target/mutation-after/<crate>` output directory and retain
 the before results. Do not count an unrun crate as having zero missed mutations.
@@ -323,11 +398,9 @@ duplicate dependency warnings but all four policy checks passed. The coverage
 command also completed successfully. No checks on Linux or the minimum Rust
 version were run locally; those remain CI checks.
 
-This is framing and dialog followed by the mapping round, not a completed
-six-crate mutation audit. Next run contract, sink and store, one crate
-per round, and triage every miss.
-Their existing tests and the safety regions above have not yet been challenged
-by mutations. No files owned by the fuzz/timing builder were edited.
+This is framing/dialog, mapping, then contract/sink, not a completed six-crate
+mutation audit. Store remains next; its existing tests and safety regions above
+have not yet been challenged by mutations. No files owned by the fuzz/timing builder were edited.
 
 ### Program coverage remains a priority
 

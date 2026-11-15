@@ -138,7 +138,8 @@ fn model_fixture(value: &mut Value) {
 }
 
 #[test]
-fn adr0008_all_result_evidence_converts_without_loss() -> Result<(), Box<dyn std::error::Error>> {
+fn adr0008_published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::error::Error>>
+{
     for bytes in [
         include_bytes!("../../../docs/contract/vectors/delivery.json").as_slice(),
         include_bytes!("../../../docs/contract/vectors/unresolved-identity.json").as_slice(),
@@ -173,6 +174,62 @@ fn adr0008_all_result_evidence_converts_without_loss() -> Result<(), Box<dyn std
         let delivery =
             Delivery::from_result(&model, &receipt, id, "2026-11-15T12:00:00Z".parse()?)?;
         assert_eq!(serde_json::to_value(delivery)?, document);
+        // Contract v1 document ceiling includes all retained evidence (rule 7).
+        let mut large = model.clone();
+        let mut parts = large.parts.as_slice().to_vec();
+        let part = parts.first_mut().ok_or("part")?;
+        part.comments = analyte_model::EvidenceList::new(vec![
+            analyte_model::SourceText::new(
+                &"x".repeat(16384)
+            )?;
+            65
+        ])?;
+        large.parts =
+            analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
+        assert!(matches!(
+            Delivery::from_result(&large, &receipt, id, receipt.received_at),
+            Err(analyte_contract::DocumentError::TooLarge)
+        ));
+        let mut parts = model.parts.as_slice().to_vec();
+        parts.first_mut().ok_or("part")?.comments = analyte_model::EvidenceList::new(vec![
+                analyte_model::SourceText::new(
+                    &"x".repeat(16384)
+                )?;
+                63
+            ])?;
+        let mut exact = model.clone();
+        exact.parts = analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(
+            parts.clone(),
+        )?)?;
+        let initial = Delivery::from_result(&exact, &receipt, id, receipt.received_at)?;
+        let length = serde_json::to_vec(&initial)?.len();
+        let padding = analyte_contract::MAX_DOCUMENT_BYTES
+            .checked_sub(length)
+            .and_then(|n| n.checked_sub(3))
+            .ok_or("padding")?;
+        let mut comments = parts.first().ok_or("part")?.comments.as_slice().to_vec();
+        comments.push(analyte_model::SourceText::new(&"x".repeat(padding))?);
+        parts.first_mut().ok_or("part")?.comments =
+            analyte_model::EvidenceList::new(comments.clone())?;
+        exact.parts = analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(
+            parts.clone(),
+        )?)?;
+        let at_limit = Delivery::from_result(&exact, &receipt, id, receipt.received_at)?;
+        assert_eq!(
+            serde_json::to_vec(&at_limit)?.len(),
+            analyte_contract::MAX_DOCUMENT_BYTES
+        );
+        comments.pop();
+        comments.push(analyte_model::SourceText::new(
+            &"x".repeat(padding.checked_add(1).ok_or("padding overflow")?),
+        )?);
+        parts.first_mut().ok_or("part")?.comments = analyte_model::EvidenceList::new(comments)?;
+        exact.parts =
+            analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
+        assert!(matches!(
+            Delivery::from_result(&exact, &receipt, id, receipt.received_at),
+            Err(analyte_contract::DocumentError::TooLarge)
+        ));
         let mut mismatch = receipt;
         mismatch.id = analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())?;
         assert!(Delivery::from_result(&model, &mismatch, id, mismatch.received_at).is_err());
@@ -181,8 +238,8 @@ fn adr0008_all_result_evidence_converts_without_loss() -> Result<(), Box<dyn std
 }
 
 #[test]
-fn adr0008_every_interpretation_and_source_text_survives() -> Result<(), Box<dyn std::error::Error>>
-{
+fn adr0008_selected_interpretations_and_source_text_survive()
+-> Result<(), Box<dyn std::error::Error>> {
     let mut document: Value = serde_json::from_slice(include_bytes!(
         "../../../docs/contract/vectors/delivery.json"
     ))?;

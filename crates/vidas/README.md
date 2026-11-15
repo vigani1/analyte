@@ -109,3 +109,8 @@ Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody
 parking, operator visibility, zero reference-receiver result deliveries and storage
 failure. They do not raise the documented evidence level. No current vendor
 crate path supplies a resolved result identity for a delivery test.
+
+Conversation state and deadline policy live in `analyte-dialog`, in `src/vidas.rs`.
+Conversation tests live in `crates/dialog/tests/vidas.rs`.
+
+Checksum envelopes live in `crates/framing/src/vidas.rs`.
