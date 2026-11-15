@@ -1,5 +1,6 @@
 //! Host-owned order lookup, command reservation and operator reconciliation.
 pub(crate) mod astm;
+pub(crate) mod sending;
 use crate::{Error, config::Machine};
 use analyte_contract::{EventFields, OrderEvent, Source, Text};
 use analyte_model::{Identifier, NamespacedId, SampleId};

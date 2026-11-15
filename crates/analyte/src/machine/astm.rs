@@ -47,6 +47,9 @@ pub(super) async fn session(
     let mut response: Option<Vec<Vec<u8>>> = None;
     let mut response_deadline = None;
     let mut query_started = None;
+    let mut active_order = None;
+    let mut order_cursor = String::new();
+    let mut next_order_poll = Instant::now();
     let result = async {
         loop {
             let event = tokio::select! {
@@ -77,7 +80,14 @@ pub(super) async fn session(
                 Some(analyte_transport::Event::Closed(_)) => break,
                 Some(analyte_transport::Event::Failed(_) | analyte_transport::Event::RecordingFailed(_)) | None => Vec::new(),
             };
-            let events = if bytes.is_empty() && response.is_some() && wake.is_none() {
+            let outgoing = if bytes.is_empty() && wake.is_none() && response.is_none() && pending.is_none() && Instant::now() >= next_order_poll {
+                next_order_poll = Instant::now().checked_add(Duration::from_secs(1)).ok_or_else(||invalid("order poll deadline overflow"))?;
+                crate::orders::sending::next(store,machine,&mut order_cursor).await?
+            } else { None };
+            let events = if let Some(reserved) = outgoing {
+                active_order = Some(reserved.order);
+                vec![Event::Send(reserved.records)]
+            } else if bytes.is_empty() && response.is_some() && wake.is_none() {
                 if response_deadline.is_some_and(|until| Instant::now() >= until) { response = crate::orders::astm::failure(machine); }
                 match response.take() { Some(records) => vec![Event::Send(records)], None => vec![Event::Tick] }
             } else if bytes.is_empty() { vec![Event::Tick] } else { bytes.into_iter().map(Event::Byte).collect() };
@@ -152,13 +162,27 @@ pub(super) async fn session(
                             evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
                         }
                         Action::CommitFailed(_) | Action::LimitReached => return Err(invalid("ASTM storage or resource limit refused transfer")),
-                        Action::Sent(_) => {},
+                        Action::Sent(end) => {
+                            if let Some(order) = active_order.take() && end != End::Normal {
+                                crate::orders::sending::uncertain(store,&order,"ASTM-transfer-incomplete").await?;
+                                // LIS01 frame ACKs confirm transfer, not LIS02 application acceptance.
+                                // Successful transfers remain Sent until explicit machine evidence.
+                            }
+                        },
                     }
                 }
             }
         }
         Ok(())
     }.await;
+    if let Some(order) = active_order.take() {
+        crate::orders::sending::uncertain(
+            store,
+            &order,
+            "connection-ended-before-transfer-confirmation",
+        )
+        .await?;
+    }
     if let Some(transfer) = transfer {
         store
             .request(deadline(), move |s| s.finish_transfer(&transfer, None))
