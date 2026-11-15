@@ -919,7 +919,7 @@ fn hl7_231_2_8_20_and_251_2_a_33_uri_code_is_edition_specific() -> Result<(), Er
 }
 
 #[test]
-fn hl7_231_2_8_48_and_251_2_a_86_table_0200_name_codes() -> Result<(), Error> {
+fn hl7_231_2_8_49_and_251_2_a_86_table_0200_name_codes() -> Result<(), Error> {
     for (edition, code, accepted) in [
         ("2.3.1", b"I", false),
         ("2.5.1", b"I", true),

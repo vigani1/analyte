@@ -42,13 +42,13 @@ pub(crate) struct Rules {
     pub coded_lengths: &'static [usize],
     // HL7 2.3.1 section 2.8.20 table 0301; 2.5.1 section 2.A.33 table 0301.
     pub uri: bool,
-    // HL7 2.3.1 section 2.8.48; 2.5.1 section 2.A.86 and section 2.A.30.
+    // HL7 2.3.1 section 2.8.49; 2.5.1 section 2.A.86 and section 2.A.30.
     pub xcn_components: usize,
     pub family_components: usize,
     pub family_lengths: &'static [usize],
     pub xcn_lengths: &'static [usize],
     pub name_types: &'static [&'static [u8]],
-    // HL7 2.3.1 section 4.3 quantity/timing; 2.5.1 section 2.A.47, section 2.A.63, section 2.A.76.
+    // HL7 2.3.1 section 4.3 quantity/timing; 2.5.1 section 2.A.50, section 2.A.63, section 2.A.76.
     pub sequence_required: &'static [usize],
     pub sequence_lengths: &'static [usize],
     pub interval_lengths: &'static [usize],
