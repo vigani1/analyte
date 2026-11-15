@@ -32,7 +32,77 @@ pub struct ParkedItem {
     pub resolution: Option<String>,
 }
 
+impl ParkedItem {
+    /// Decodes retained structured or legacy parking evidence without rewriting it.
+    /// # Errors
+    /// Refuses corrupt or unrecognized evidence instead of inventing receipt links.
+    pub fn details(&self) -> Result<crate::Parked, Error> {
+        let value: serde_json::Value = serde_json::from_str(&self.evidence)?;
+        if value.is_object() {
+            return Ok(serde_json::from_value(value)?);
+        }
+        let kind = value
+            .get(0)
+            .and_then(serde_json::Value::as_str)
+            .ok_or(Error::Corruption)?;
+        let target = value
+            .get(1)
+            .and_then(serde_json::Value::as_str)
+            .ok_or(Error::Corruption)?;
+        let target = match kind {
+            "interpretation_failure" | "result_reconciliation" | "parked" | "conflict" => {
+                serde_json::from_str::<String>(target)?
+            }
+            "incomplete_transfer" => target.to_owned(),
+            _ => return Err(Error::Corruption),
+        };
+        let reason = match kind {
+            "result_reconciliation" => format!(
+                "result reconciliation: {}",
+                value
+                    .get(3)
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or(Error::Corruption)?
+            ),
+            "interpretation_failure" | "parked" | "conflict" | "incomplete_transfer" => value
+                .get(2)
+                .and_then(serde_json::Value::as_str)
+                .ok_or(Error::Corruption)?
+                .to_owned(),
+            _ => return Err(Error::Corruption),
+        };
+        Ok(crate::Parked {
+            kind: Identifier::new(kind).map_err(|_| Error::Corruption)?,
+            reason: analyte_model::Reason::new(&reason).map_err(|_| Error::Corruption)?,
+            targets: vec![Identifier::new(&target).map_err(|_| Error::Corruption)?],
+        })
+    }
+}
+
 impl Store {
+    /// Resolves an open parked item to exactly one retained receipt.
+    /// # Errors
+    /// Refuses missing/resolved items and absent or ambiguous receipt links.
+    pub fn parked_receipt(&self, id: i64) -> Result<ReceiptId, Error> {
+        let item = self.parked_item(id)?.ok_or(Error::ReprocessParked)?;
+        if item.resolution.is_some() {
+            return Err(Error::ReprocessParked);
+        }
+        let details = item.details()?;
+        let mut receipt = None;
+        for target in details.targets {
+            // IDs share a representation; existence in receipts establishes the link.
+            if let Ok(id) = serde_json::from_value::<ReceiptId>(serde_json::Value::String(
+                target.as_str().to_owned(),
+            )) && self.receipt_metadata(id)?.is_some()
+                && receipt.replace(id).is_some()
+            {
+                return Err(Error::ReprocessParked);
+            }
+        }
+        receipt.ok_or(Error::ReprocessParked)
+    }
+
     /// Reads receipt metadata without loading raw payload or configuration bytes.
     /// # Errors
     /// Reports database failures or corrupt retained metadata.

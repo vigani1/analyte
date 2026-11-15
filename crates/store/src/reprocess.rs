@@ -21,23 +21,17 @@ pub(super) fn check_parked(tx: &Transaction<'_>, id: i64, receipt: ReceiptId) ->
             |r| r.get(0),
         )
         .optional()?;
-    let evidence: serde_json::Value =
-        serde_json::from_str(&evidence.ok_or(Error::ReprocessParked)?)?;
-    let receipt_key = key(&receipt)?;
-    let receipt_text: String = serde_json::from_str(&receipt_key)?;
-    let linked = if let Some(targets) = evidence
-        .get("targets")
-        .and_then(serde_json::Value::as_array)
-    {
-        targets
-            .iter()
-            .any(|target| target.as_str() == Some(&receipt_text))
-    } else {
-        matches!(
-            evidence.get(0).and_then(serde_json::Value::as_str),
-            Some("interpretation_failure" | "result_reconciliation")
-        ) && evidence.get(1).and_then(serde_json::Value::as_str) == Some(&receipt_key)
-    };
+    let details = crate::ParkedItem {
+        id,
+        evidence: evidence.ok_or(Error::ReprocessParked)?,
+        resolution: None,
+    }
+    .details()?;
+    let receipt_text: String = serde_json::from_str(&key(&receipt)?)?;
+    let linked = details
+        .targets
+        .iter()
+        .any(|target| target.as_str() == receipt_text);
     if !linked {
         return Err(Error::ReprocessParked);
     }

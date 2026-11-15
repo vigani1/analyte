@@ -47,6 +47,29 @@ pub struct StoredDelivery {
 }
 
 impl Store {
+    /// Reads one delivery's operator metadata without exposing its bytes.
+    /// # Errors
+    /// Reports database failures or corrupt stored metadata; unknown IDs return absence.
+    pub fn delivery(&self, id: DeliveryId) -> Result<Option<StoredDelivery>, Error> {
+        let row: Option<(i64, String, String)> = self
+            .db
+            .query_row(
+                "SELECT sequence,destination,state FROM outbox WHERE id=?1",
+                [key(&id)?],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        row.map(|(sequence, destination, state)| {
+            Ok(StoredDelivery {
+                sequence,
+                id,
+                destination: Identifier::new(&destination).map_err(|_| Error::Corruption)?,
+                state: DeliveryState::parse(&state)?,
+            })
+        })
+        .transpose()
+    }
+
     /// Lists a bounded page of deliveries after a sequence cursor.
     /// # Errors
     /// Reports database failures and corrupt stored identities or states.

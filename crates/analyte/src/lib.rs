@@ -9,6 +9,7 @@ mod evidence;
 pub mod machine;
 pub mod orders;
 pub mod output;
+pub mod recovery;
 pub mod secrets;
 pub mod service;
 mod shutdown;
