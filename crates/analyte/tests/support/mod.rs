@@ -152,11 +152,10 @@ pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error>
     // does not prove the store exists; wait until the latest schema is present.
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
+            // The file appears before migration completes; wait for the version.
             let ready = database(path).is_ok_and(|db| {
-                db.query_row("SELECT count(*) FROM machine_orders", [], |r| {
-                    r.get::<_, i64>(0)
-                })
-                .is_ok()
+                db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                    .is_ok_and(|version| version == analyte_store::SCHEMA_VERSION)
             });
             if ready {
                 return Ok::<_, Error>(());

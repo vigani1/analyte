@@ -191,6 +191,15 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     );
     store
         .request(crate::deadline(), move |store| {
+            store.evaluate_alert(&analyte_store::AlertKey::RestorePaused,
+                "<script>responder('duty')&</script>", true, Some(1), 100)?;
+            store.evaluate_alert(&analyte_store::AlertKey::MachineSilent(
+                Identifier::new("<busy&machine>").map_err(|_| analyte_store::Error::InvalidInput)?),
+                "analyzer operator", true, None, 100)?;
+            store.evaluate_alert(&analyte_store::AlertKey::ParkedItems,
+                "cleared alert responder", true, Some(1), 100)?;
+            store.evaluate_alert(&analyte_store::AlertKey::ParkedItems,
+                "cleared alert responder", false, Some(0), 101)?;
             // Synthetic read fixtures: two pages ensure the overview does not report
             // a first-page count as a total. No machine commands are invoked.
             let id = |value| Identifier::new(value).map_err(|_| analyte_store::Error::InvalidInput);
@@ -338,6 +347,17 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     assert!(!response.contains("<script>"));
     assert!(response.contains("Order sending paused after restore</dt><dd>true"));
     assert!(response.contains("Uncertain orders</dt><dd>2"));
+    assert!(response.contains("Active alerts</dt><dd>2"));
+    assert!(response.contains("Alert</dt><dd>restore_paused"));
+    assert!(response.contains("Alert</dt><dd>machine_silent"));
+    assert!(
+        response.contains(
+            "Responder</dt><dd>&lt;script&gt;responder(&#39;duty&#39;)&amp;&lt;/script&gt;"
+        )
+    );
+    assert!(response.contains("Alert machine</dt><dd>&lt;busy&amp;machine&gt;"));
+    assert!(response.contains("Raised age (seconds)</dt><dd>"));
+    assert!(!response.contains("cleared alert responder"));
     assert!(response.contains("Machine owner</dt><dd>stopped"));
     assert!(response.contains("Last received activity</dt><dd>1970-01-01T00:03:20Z"));
     assert!(response.contains("Pending items</dt><dd>2"));

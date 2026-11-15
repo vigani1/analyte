@@ -1,5 +1,8 @@
 //! Bounded program TOML and machine snapshots, with no secret values.
+mod alerts;
 use crate::{Error, invalid};
+pub(crate) use alerts::Condition;
+pub use alerts::{Alert, AlertConfigError, AlertKind};
 use analyte_config::{Draft, Validated};
 use serde::Deserialize;
 use std::{
@@ -21,6 +24,8 @@ pub struct Machine {
 
 /// Validated program settings. Paths are resolved relative to the program file.
 pub struct Program {
+    alerts: Vec<Alert>,
+    alert_interval: Duration,
     admin_address: Option<std::net::SocketAddrV4>,
     #[cfg(feature = "test-hooks")]
     pub(crate) stall_store_on_shutdown: bool,
@@ -37,6 +42,10 @@ pub struct Program {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
+    #[serde(default)]
+    alerts: Vec<alerts::DraftAlert>,
+    #[serde(default = "alerts::interval_default")]
+    alert_interval_seconds: u64,
     admin: Option<Admin>,
     #[serde(default)]
     signing_rotation: std::collections::BTreeMap<String, Vec<analyte_model::Identifier>>,
@@ -271,7 +280,32 @@ impl Program {
                 return Err(invalid("inconsistent shared destination"));
             }
         }
+        if !(1..=3600).contains(&file.alert_interval_seconds) {
+            return Err(AlertConfigError::Interval.into());
+        }
+        if file.alerts.len() > 128 {
+            return Err(AlertConfigError::TooMany.into());
+        }
+        let alerts = file
+            .alerts
+            .into_iter()
+            .map(|alert| alert.validate(file.store.reserve_bytes))
+            .collect::<Result<Vec<_>, _>>()?;
+        for (index, alert) in alerts.iter().enumerate() {
+            if let Some(machine) = alert.machine()
+                && !machines.iter().any(|installed| &installed.id == machine)
+            {
+                return Err(AlertConfigError::UnknownMachine.into());
+            }
+            if alerts.iter().take(index).any(|previous| {
+                previous.kind() == alert.kind() && previous.machine() == alert.machine()
+            }) {
+                return Err(AlertConfigError::Duplicate.into());
+            }
+        }
         Ok(Self {
+            alerts,
+            alert_interval: Duration::from_secs(file.alert_interval_seconds),
             admin_address,
             #[cfg(feature = "test-hooks")]
             stall_store_on_shutdown: false,
@@ -291,6 +325,18 @@ impl Program {
 }
 
 impl Program {
+    /// Returns the bounded evaluation interval.
+    #[must_use]
+    pub fn alert_interval(&self) -> Duration {
+        self.alert_interval
+    }
+
+    /// Borrows opt-in alert policies; an omitted list is empty.
+    #[must_use]
+    pub fn alerts(&self) -> &[Alert] {
+        &self.alerts
+    }
+
     /// Returns the configured IPv4 loopback admin endpoint, absent when disabled.
     #[must_use]
     pub fn admin_address(&self) -> Option<std::net::SocketAddrV4> {
@@ -374,6 +420,61 @@ mod admin_tests {
     fn plan11_admin_is_absent_by_default() -> Result<(), Error> {
         let file: File = toml::from_str(include_str!("../examples/analyte.toml"))?;
         assert!(file.admin.is_none());
+        assert!(file.alerts.is_empty());
+        assert_eq!(file.alert_interval_seconds, 30);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod alert_program_tests {
+    use super::*;
+
+    // Plan section 11: policies identify installed machines and have unique identities.
+    #[test]
+    fn plan11_alert_program_validation() -> Result<(), Error> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let definition = root.join("../config/examples/hl7.toml").canonicalize()?;
+        let site = root.join("../config/examples/site.toml").canonicalize()?;
+        let original = include_str!("../examples/analyte.toml")
+            .replace(
+                "../../config/examples/hl7.toml",
+                &definition.to_string_lossy().replace('\\', "/"),
+            )
+            .replace(
+                "../../config/examples/site.toml",
+                &site.to_string_lossy().replace('\\', "/"),
+            );
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("program.toml");
+        std::fs::write(&path, &original)?;
+        assert!(Program::load(&path)?.alerts().is_empty());
+        let policy = "\n[[alerts]]\nkind='restore_paused'\nresponder='lab duty officer'\n";
+        std::fs::write(&path, format!("{original}{policy}"))?;
+        assert_eq!(Program::load(&path)?.alerts().len(), 1);
+        std::fs::write(&path, format!("{original}{policy}{policy}"))?;
+        let error = Program::load(&path)
+            .err()
+            .ok_or("duplicate policy accepted")?;
+        assert_eq!(
+            error.downcast_ref::<AlertConfigError>(),
+            Some(&AlertConfigError::Duplicate)
+        );
+        let silent = "\n[[alerts]]\nkind='machine_silent'\nthreshold=60\nresponder='lab duty officer'\nmachine='missing'\n";
+        std::fs::write(&path, format!("{original}{silent}"))?;
+        let error = Program::load(&path)
+            .err()
+            .ok_or("unknown machine accepted")?;
+        assert_eq!(
+            error.downcast_ref::<AlertConfigError>(),
+            Some(&AlertConfigError::UnknownMachine)
+        );
+        std::fs::write(&path, format!("alert_interval_seconds=0\n{original}"))?;
+        let error = Program::load(&path).err().ok_or("zero interval accepted")?;
+        assert_eq!(
+            error.downcast_ref::<AlertConfigError>(),
+            Some(&AlertConfigError::Interval)
+        );
         Ok(())
     }
 }
