@@ -227,11 +227,57 @@ impl Message {
             terminator: options.terminator,
             charset: Charset::Ascii,
         };
-        let ending = message.ending();
+        message.validate_terminators()?;
+        message.validate_segments(options)?;
+        let msh = message.segments().next().ok_or(Error::Encoding)?;
+        let version = msh.field(12).ok_or(Error::Control {
+            segment: "MSH",
+            field: 12,
+        })?;
+        let version_id = version
+            .raw
+            .split(|b| *b == delimiters.component)
+            .next()
+            .unwrap_or_default();
+        if crate::Version::parse_wire(version_id, law).is_none() {
+            return Err(Error::Control {
+                segment: "MSH",
+                field: 12,
+            });
+        }
+        let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
+            b"" | b"ASCII" => Charset::Ascii,
+            b"8859/1" => Charset::Latin1,
+            b"UNICODE UTF-8"
+                if crate::Version::parse_wire(version_id, law) != Some(crate::Version::V231)
+                    || options.allow_utf8_in_v231 =>
+            {
+                Charset::Utf8
+            }
+            _ => return Err(Error::UnsupportedCharset),
+        };
+        if charset != options.charset {
+            return Err(Error::CharsetMismatch);
+        }
+        if !law && msh.field(20).is_some_and(|f| !f.raw.is_empty()) {
+            return Err(Error::UnsupportedCharset);
+        }
+        match charset {
+            Charset::Ascii if !raw.is_ascii() => return Err(Error::CharacterEncoding),
+            Charset::Utf8 => {
+                std::str::from_utf8(raw).map_err(|_| Error::CharacterEncoding)?;
+            }
+            Charset::Ascii | Charset::Latin1 => {}
+        }
+        Ok(Self { charset, ..message })
+    }
+    fn validate_terminators(&self) -> Result<(), Error> {
+        let raw = self.raw.as_slice();
+        let ending = self.ending();
         if !raw.ends_with(ending) {
             return Err(Error::Terminator);
         }
-        if options.terminator == Terminator::CrLf {
+        if self.terminator == Terminator::CrLf {
             for (index, byte) in raw.iter().enumerate() {
                 if (*byte == b'\r' && raw.get(index.saturating_add(1)) != Some(&b'\n'))
                     || (*byte == b'\n'
@@ -242,7 +288,12 @@ impl Message {
                 }
             }
         }
-        for (index, segment) in message.segments().enumerate() {
+        Ok(())
+    }
+    fn validate_segments(&self, options: Options) -> Result<(), Error> {
+        let delimiters = self.delimiters;
+        let field = delimiters.field;
+        for (index, segment) in self.segments().enumerate() {
             let position = index.saturating_add(1);
             if position > options.limits.segments {
                 return Err(Error::Limit {
@@ -287,47 +338,7 @@ impl Message {
                 }
             }
         }
-        let msh = message.segments().next().ok_or(Error::Encoding)?;
-        let version = msh.field(12).ok_or(Error::Control {
-            segment: "MSH",
-            field: 12,
-        })?;
-        let version_id = version
-            .raw
-            .split(|b| *b == delimiters.component)
-            .next()
-            .unwrap_or_default();
-        if crate::Version::parse_wire(version_id, law).is_none() {
-            return Err(Error::Control {
-                segment: "MSH",
-                field: 12,
-            });
-        }
-        let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
-            b"" | b"ASCII" => Charset::Ascii,
-            b"8859/1" => Charset::Latin1,
-            b"UNICODE UTF-8"
-                if crate::Version::parse_wire(version_id, law) != Some(crate::Version::V231)
-                    || options.allow_utf8_in_v231 =>
-            {
-                Charset::Utf8
-            }
-            _ => return Err(Error::UnsupportedCharset),
-        };
-        if charset != options.charset {
-            return Err(Error::CharsetMismatch);
-        }
-        if !law && msh.field(20).is_some_and(|f| !f.raw.is_empty()) {
-            return Err(Error::UnsupportedCharset);
-        }
-        match charset {
-            Charset::Ascii if !raw.is_ascii() => return Err(Error::CharacterEncoding),
-            Charset::Utf8 => {
-                std::str::from_utf8(raw).map_err(|_| Error::CharacterEncoding)?;
-            }
-            Charset::Ascii | Charset::Latin1 => {}
-        }
-        Ok(Self { charset, ..message })
+        Ok(())
     }
     fn ending(&self) -> &'static [u8] {
         match self.terminator {

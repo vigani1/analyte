@@ -413,48 +413,7 @@ fn obx(
         excluded(raw(segment, 6), direction, content("OBX", 6))?;
     }
     scalar(segment, "OBX", 7, false, 70)?;
-    // C.7-1 retains a five-character length from the old ID datatype. That cannot
-    // hold C.7-17's required CWE namespace. Its explicit component profile governs.
-    let flags = raw(segment, 8);
-    if flags.is_empty() {
-        return Err(content("OBX", 8));
-    }
-    if flags != b"\"\"" {
-        for flag in flags.split(|b| *b == b'~') {
-            components(
-                flag,
-                8,
-                &[(1, true, 20), (2, false, 199), (3, true, 12)],
-                direction,
-            )?;
-            if part(flag, 3) != b"HL70078" && !vendor(part(flag, 3)) {
-                return Err(location(8, 3));
-            }
-            if part(flag, 3) == b"HL70078"
-                && !matches!(
-                    part(flag, 1),
-                    b"<" | b">"
-                        | b"L"
-                        | b"H"
-                        | b"LL"
-                        | b"HH"
-                        | b"N"
-                        | b"A"
-                        | b"POS"
-                        | b"NEG"
-                        | b"IND"
-                        | b"QCF"
-                        | b"S"
-                        | b"I"
-                        | b"R"
-                        | b"SDD"
-                        | b"IE"
-                )
-            {
-                return Err(location(8, 1));
-            }
-        }
-    }
+    validate_flags(segment, direction)?;
     if direction == ControlDirection::Receive && profile.mass_spectrometry {
         scalar(segment, "OBX", 9, false, 5)?;
         if !raw(segment, 9).is_empty() {
@@ -646,4 +605,50 @@ pub(super) fn validate(
         b"INV" => inv(segment, profile, direction),
         _ => Err(content("observation profile", 0)),
     }
+}
+
+fn validate_flags(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error> {
+    // C.7-1 retains a five-character length from the old ID datatype. That cannot
+    // hold C.7-17's required CWE namespace. Its explicit component profile governs.
+    let flags = raw(segment, 8);
+    if flags.is_empty() {
+        return Err(content("OBX", 8));
+    }
+    if flags != b"\"\"" {
+        for flag in flags.split(|b| *b == b'~') {
+            components(
+                flag,
+                8,
+                &[(1, true, 20), (2, false, 199), (3, true, 12)],
+                direction,
+            )?;
+            if part(flag, 3) != b"HL70078" && !vendor(part(flag, 3)) {
+                return Err(location(8, 3));
+            }
+            if part(flag, 3) == b"HL70078"
+                && !matches!(
+                    part(flag, 1),
+                    b"<" | b">"
+                        | b"L"
+                        | b"H"
+                        | b"LL"
+                        | b"HH"
+                        | b"N"
+                        | b"A"
+                        | b"POS"
+                        | b"NEG"
+                        | b"IND"
+                        | b"QCF"
+                        | b"S"
+                        | b"I"
+                        | b"R"
+                        | b"SDD"
+                        | b"IE"
+                )
+            {
+                return Err(location(8, 1));
+            }
+        }
+    }
+    Ok(())
 }
