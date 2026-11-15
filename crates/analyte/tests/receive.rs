@@ -37,6 +37,51 @@ fn config(temp: &Path, astm: bool) -> Result<std::path::PathBuf, Error> {
     Ok(path)
 }
 
+#[test]
+fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io()
+-> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    std::fs::write(
+        temp.path().join("machine.toml"),
+        include_str!("../../config/examples/law.toml"),
+    )?;
+    let loaded = Program::load(&path)?;
+    assert_eq!(
+        loaded
+            .machines()
+            .first()
+            .ok_or("LAW machine absent")?
+            .snapshot()
+            .effective()
+            .machine()
+            .dialog
+            .kind,
+        analyte_config::DialogKind::LawManager
+    );
+    assert!(!temp.path().join("data").exists());
+    std::fs::write(
+        temp.path().join("machine.toml"),
+        include_str!("../../config/examples/law.toml")
+            .replace("kind = \"tcp_server\"", "kind = \"tcp_client\""),
+    )?;
+    let loaded = Program::load(&path)?;
+    assert_eq!(
+        loaded
+            .machines()
+            .first()
+            .ok_or("LAW machine absent")?
+            .snapshot()
+            .effective()
+            .machine()
+            .transport
+            .kind,
+        analyte_config::TransportKind::TcpClient
+    );
+    assert!(!temp.path().join("data").exists());
+    Ok(())
+}
+
 async fn connect(program: &Program) -> Result<TcpStream, Error> {
     let endpoint = &program
         .machines()

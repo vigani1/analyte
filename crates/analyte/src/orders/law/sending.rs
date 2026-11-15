@@ -1,0 +1,216 @@
+//! Shared query/send-ahead reservation and cancellation admission; TF-2b 3.28.4.
+use super::{
+    Connection, Exchange,
+    work::{Command, render},
+};
+use crate::{Error, config::Machine, invalid};
+use analyte_hl7::{Message, Options, law};
+use analyte_model::SourceText;
+use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderItems, OrderReservation};
+use std::time::{Duration, Instant};
+impl Connection {
+    /// Admits at most one idle exchange. Once reserved, only an outcome may change it;
+    /// connection cancellation recovers owned in-flight store calls through `close`.
+    pub(crate) async fn idle(
+        &mut self,
+        store: &Handle,
+        machine: &Machine,
+        options: Options,
+    ) -> Result<Option<Message>, Error> {
+        if self.exchange.is_some() {
+            return Ok(None);
+        }
+        let cfg = machine.snapshot.effective().machine();
+        let Some(settings) = cfg
+            .orders
+            .as_ref()
+            .filter(|_| cfg.law.as_ref().is_some_and(|law| law.work.is_some()))
+        else {
+            return Ok(None);
+        };
+        let until = Instant::now()
+            .checked_add(Duration::from_millis(u64::from(cfg.dialog.send_timeout_ms)))
+            .ok_or("LAW preparation deadline overflow")?;
+        let destination = super::super::destination(machine);
+        let target = machine.id.clone();
+        let cancels = store
+            .request(until, move |store| {
+                if store.restore_unreconciled()? {
+                    return Ok(None);
+                }
+                store.cancel_candidates(&destination, &target).map(Some)
+            })
+            .await?;
+        let Some(cancels) = cancels else {
+            return Ok(None);
+        };
+        for (record, cached) in cancels {
+            let app: analyte_contract::Order =
+                analyte_contract::decode(cached.document.as_bytes())?;
+            let command = Command::new(machine, &app)?;
+            let sent = render(&[(&command, &record)], law::WorkAction::Cancel, options)?;
+            let id = record.id;
+            let version = app.fields().version;
+            let owner = self.owner.clone();
+            self.reserving.push(record.key.clone());
+            match store
+                .request(until, move |store| {
+                    store.request_order_cancel(
+                        id,
+                        version,
+                        jiff::Timestamp::now().as_second(),
+                        &owner,
+                        super::super::FRESHNESS_SECONDS,
+                        super::super::event,
+                    )
+                })
+                .await
+            {
+                Ok(record) => {
+                    self.exchange = Some(Exchange {
+                        records: vec![record],
+                        sent: sent.clone(),
+                        until,
+                        query: None,
+                    });
+                    return Ok(Some(sent));
+                }
+                Err(analyte_store::Error::Conflict) => {
+                    self.reserving.clear();
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        if !settings.send_ahead {
+            return Ok(None);
+        }
+        let candidates =
+            super::super::sending::candidate_page(store, machine, &mut self.cursor).await?;
+        for cached in candidates {
+            self.cursor = cached.id.as_str().to_owned();
+            let app: analyte_contract::Order =
+                analyte_contract::decode(cached.document.as_bytes())?;
+            if !super::super::eligible(&app, machine) {
+                continue;
+            }
+            let key = MachineOrderKey {
+                destination: super::super::destination(machine),
+                order: cached.id.clone(),
+                machine: machine.id.clone(),
+            };
+            let version = app.fields().version;
+            let prepared = match self
+                .reserve(store, machine, vec![cached], until, options)
+                .await
+            {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    self.close(store, "LAW-send-preparation-failed").await?;
+                    if matches!(
+                        error.downcast_ref::<analyte_store::Error>(),
+                        Some(
+                            analyte_store::Error::DeliveryBuild(_)
+                                | analyte_store::Error::ItemIdentityTooLong
+                        )
+                    ) {
+                        let reason = SourceText::new(&format!("LAW-order-preflight:{error}"))?;
+                        store
+                            .request(until, move |store| {
+                                store.reject_unsent(
+                                    &OrderReservation {
+                                        identity: &key,
+                                        version,
+                                        now: jiff::Timestamp::now().as_second(),
+                                        freshness: super::super::FRESHNESS_SECONDS,
+                                    },
+                                    reason,
+                                    super::super::event,
+                                )
+                            })
+                            .await??;
+                        continue;
+                    }
+                    return Err(error);
+                }
+            };
+            if prepared.is_empty() {
+                continue;
+            }
+            let refs = prepared
+                .iter()
+                .map(|(command, record)| (command, record))
+                .collect::<Vec<_>>();
+            let sent = render(&refs, law::WorkAction::New, options)?;
+            self.exchange = Some(Exchange {
+                records: prepared.into_iter().map(|(_, record)| record).collect(),
+                sent: sent.clone(),
+                until,
+                query: None,
+            });
+            return Ok(Some(sent));
+        }
+        Ok(None)
+    }
+
+    /// The same preflight and per-AWOS reservation admits queried and unsolicited work.
+    pub(super) async fn reserve(
+        &mut self,
+        store: &Handle,
+        machine: &Machine,
+        cached: Vec<analyte_store::CachedOrder>,
+        until: Instant,
+        options: Options,
+    ) -> Result<Vec<(Command, MachineOrder)>, Error> {
+        let mut prepared = Vec::new();
+        for cached in cached {
+            let app: analyte_contract::Order =
+                analyte_contract::decode(cached.document.as_bytes())?;
+            if !super::super::eligible(&app, machine) {
+                continue;
+            }
+            if Instant::now() >= until {
+                return Err(invalid("LAW query deadline before reservation"));
+            }
+            let command = Command::new(machine, &app)?;
+            let key = MachineOrderKey {
+                destination: super::super::destination(machine),
+                order: cached.id,
+                machine: machine.id.clone(),
+            };
+            let version = app.fields().version;
+            let identity = key.clone();
+            let owner = self.owner.clone();
+            let namespace = command
+                .settings
+                .placer_namespace
+                .clone()
+                .ok_or("LAW placer namespace absent")?;
+            self.reserving.push(key);
+            let reserved = store
+                .request(until, move |store| {
+                    store.reserve_send_items_with(
+                        &OrderReservation {
+                            identity: &identity,
+                            version,
+                            now: jiff::Timestamp::now().as_second(),
+                            freshness: super::super::FRESHNESS_SECONDS,
+                        },
+                        OrderItems::PerTest {
+                            namespace: &namespace,
+                            identity_bytes: 50,
+                        },
+                        &owner,
+                        |record| {
+                            render(&[(&command, record)], law::WorkAction::New, options)
+                                .map_err(analyte_store::Error::DeliveryBuild)?;
+                            Ok(command)
+                        },
+                    )
+                })
+                .await?
+                .map_err(std::io::Error::other)?;
+            prepared.push((reserved.1, reserved.0));
+        }
+        Ok(prepared)
+    }
+}

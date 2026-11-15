@@ -307,7 +307,7 @@ pub fn map_astm(
         analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
     };
     source.attach_comments()?;
-    map::message(&source, config, input)
+    map::message(&source, config, input, None)
 }
 
 /// Maps ORU R01 or OUL R22 (2.5.1 only), with group-relative selectors.
@@ -318,6 +318,32 @@ pub fn map_hl7(
     config: &Validated,
     input: Input,
 ) -> Result<Output, Error> {
+    if config.effective().machine().law.is_some() {
+        return Err(Error::Syntax);
+    }
+    check_hl7(message, config)?;
+    map_hl7_checked(message, config, input)
+}
+
+/// Maps atomically validated LAB-29 through the shared field mapper and translations.
+/// AWOS identity takes precedence; unsolicited work needs an explicit analyzer identity.
+/// # Errors
+/// Rejects mismatched configuration, unsupported mapping content or resource bounds.
+pub fn map_law(
+    results: &analyte_hl7::law::Results<'_>,
+    config: &Validated,
+    input: Input,
+) -> Result<Output, Error> {
+    if config.effective().machine().law.is_none() {
+        return Err(Error::Syntax);
+    }
+    check_hl7(results.message(), config)?;
+    let mut source = source::law(results)?;
+    source.attach_comments()?;
+    map::message(&source, config, input, Some(results))
+}
+
+fn check_hl7(message: &analyte_hl7::Message, config: &Validated) -> Result<(), Error> {
     if FieldSyntax::try_from(config.effective().machine().syntax.kind).map_err(|_| Error::Syntax)?
         != FieldSyntax::Hl7V2
     {
@@ -340,6 +366,15 @@ pub fn map_hl7(
             resource: "message bytes or segments",
         });
     }
+    Ok(())
+}
+
+fn map_hl7_checked(
+    message: &analyte_hl7::Message,
+    config: &Validated,
+    input: Input,
+) -> Result<Output, Error> {
+    let settings = &config.effective().machine().syntax;
     let mut source = source::hl7(message)?;
     let version = analyte_hl7::Msh::new(message)
         .map_err(|source| Error::Hl7 {
@@ -369,7 +404,7 @@ pub fn map_hl7(
         });
     }
     source.attach_comments()?;
-    map::message(&source, config, input)
+    map::message(&source, config, input, None)
 }
 
 fn text(value: &str, position: Position) -> Result<SourceText, Error> {

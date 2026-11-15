@@ -36,7 +36,27 @@ pub(crate) fn observation(
     config: &Validated,
     code: NamespacedId,
     output: &mut Output,
+    law: Option<&std::collections::BTreeMap<*const u8, &analyte_hl7::law::Observation<'_>>>,
 ) -> Result<Option<ObservationIdentity>, Error> {
+    if let Some(observations) = law {
+        let segment = source.nodes.get(index).and_then(|node| match node.record {
+            crate::source::Record::Hl7(segment) => Some(segment),
+            crate::source::Record::Astm(_) => None,
+        });
+        let observation =
+            segment.and_then(|segment| observations.get(&segment.raw().as_ptr()).copied());
+        let Some(observation) = observation else {
+            finding(
+                output,
+                source.position(index, 0),
+                Problem::MissingIdentity {
+                    setting: "LAW specimen observation has no AWOS",
+                },
+            )?;
+            return Ok(None);
+        };
+        return law_observation(source, index, config, code, output, observation);
+    }
     let settings = &crate::field_mappings(config)?.identity;
     let mut missing = false;
     let mut required = |field: &analyte_config::Field, setting| -> Result<String, Error> {
@@ -91,6 +111,86 @@ pub(crate) fn observation(
                 &order_id,
                 source.position(index, usize::from(settings.order_id.field)),
             )?,
+            namespace: identifier(&namespace, position)?,
+        },
+    }))
+}
+
+// TF-2b 3.29.4/B.3: preserve the complete OG, not just its first component.
+// No downloaded-order lookup is required for analyzer-created unsolicited work.
+fn law_observation(
+    source: &Source<'_>,
+    index: usize,
+    config: &Validated,
+    code: NamespacedId,
+    output: &mut Output,
+    observation: &analyte_hl7::law::Observation<'_>,
+) -> Result<Option<ObservationIdentity>, Error> {
+    let order = source
+        .ancestors(index)?
+        .into_iter()
+        .rev()
+        .find(|i| source.nodes.get(*i).is_some_and(|node| node.name == "OBR"));
+    let Some(order) = order else {
+        finding(
+            output,
+            source.position(index, 0),
+            Problem::MissingIdentity {
+                setting: "LAW order",
+            },
+        )?;
+        return Ok(None);
+    };
+    let field = if observation.awos().is_some() { 2 } else { 3 };
+    let id = present(source.component(order, field, 1, 1)?);
+    let namespace = present(source.component(order, field, 1, 2)?);
+    let universal = present(source.component(order, field, 1, 3)?);
+    let kind = present(source.component(order, field, 1, 4)?);
+    let namespace = if universal.is_some() {
+        // EI's complete assigning authority is source evidence; do not discard its universal ID.
+        Some(format!(
+            "{}^{}^{}",
+            namespace.unwrap_or_default(),
+            universal.unwrap_or_default(),
+            kind.unwrap_or_default()
+        ))
+    } else {
+        namespace.or_else(|| {
+            if field == 2 {
+                match &config
+                    .effective()
+                    .machine()
+                    .mappings
+                    .as_ref()?
+                    .identity
+                    .order_namespace
+                {
+                    OrderNamespace::Fixed { fixed } => Some(fixed.as_str().to_owned()),
+                    OrderNamespace::Field { .. } => None,
+                }
+            } else {
+                None
+            }
+        })
+    };
+    let sub_id = present(Some(source.text(observation.sub_id(), index, 4)?));
+    let (Some(id), Some(namespace), Some(sub_id)) = (id, namespace, sub_id) else {
+        finding(
+            output,
+            source.position(order, field),
+            Problem::MissingIdentity {
+                setting: "LAW AWOS/analyzer order authority or OG",
+            },
+        )?;
+        return Ok(None);
+    };
+    let position = source.position(order, field);
+    Ok(Some(ObservationIdentity {
+        code,
+        sub_id: text(&sub_id, source.position(index, 4))?,
+        run: text("", position)?,
+        order: NamespacedId {
+            value: identifier(&id, position)?,
             namespace: identifier(&namespace, position)?,
         },
     }))

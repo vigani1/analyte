@@ -233,38 +233,42 @@ pub(crate) async fn complete(
     Ok(())
 }
 
-/// Marks interrupted Sending reservations uncertain without issuing another command.
+/// Recovers interrupted sends and admitted cancellations without issuing commands.
+/// A lost cancel reply is uncertainty too; it never grants permission to repeat CA.
 pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     let until = deadline();
-    let mut after = 0;
-    loop {
-        let orders = store
-            .request(until, move |store| {
-                store.machine_orders(&analyte_store::MachineOrderFilter {
-                    after,
-                    machine: None,
-                    state: Some(OrderState::Sending),
-                })
-            })
-            .await?;
-        if orders.is_empty() {
-            return Ok(());
-        }
-        for order in orders {
-            after = order.id;
-            let id = order.id;
-            store
+    for state in [OrderState::Sending, OrderState::CancelRequested] {
+        let mut after = 0;
+        loop {
+            let orders = store
                 .request(until, move |store| {
-                    store.transition_order(
-                        id,
-                        OrderState::Uncertain,
-                        SourceText::new("host-restart")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        jiff::Timestamp::now().as_second(),
-                        super::event,
-                    )
+                    store.machine_orders(&analyte_store::MachineOrderFilter {
+                        after,
+                        machine: None,
+                        state: Some(state),
+                    })
                 })
                 .await?;
+            if orders.is_empty() {
+                break;
+            }
+            for order in orders {
+                after = order.id;
+                let id = order.id;
+                store
+                    .request(until, move |store| {
+                        store.transition_order(
+                            id,
+                            OrderState::Uncertain,
+                            SourceText::new("host-restart")
+                                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            jiff::Timestamp::now().as_second(),
+                            super::event,
+                        )
+                    })
+                    .await?;
+            }
         }
     }
+    Ok(())
 }

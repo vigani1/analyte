@@ -52,7 +52,8 @@ send occurred. App events use the existing immutable delivery outbox.
 A reservation prevents another automatic send for that app order and machine,
 including after a version change or restart. A link timeout, interrupted transfer
 or disconnect before transfer confirmation becomes `Uncertain`. On restart,
-only remaining `Sending` entries become `Uncertain` with an app event; confirmed `Sent` entries remain `Sent`.
+remaining `Sending` and admitted `CancelRequested` entries become `Uncertain`
+with an app event; confirmed `Sent` entries remain `Sent`.
 
 LIS01 frame acknowledgments establish transfer completion, not application
 acceptance of a work order. Successful transfers advance from `Sending` to `Sent` with one app event; they do not
@@ -397,3 +398,91 @@ Synthetic end-to-end cases cover both editions, accepted/rejected/mixed items,
 no reply, disconnect, cancel accepted/refused through the reference app feed,
 restart while Sending, no resend, actual placer-ID overflow, overlong ORC-4,
 and paused restore admission. They do not qualify a physical analyzer.
+
+## LAW query-triggered work checkpoint (step 3)
+
+The explicit `[law.work]` and shared `[orders]` tables enable LAB-27 by container
+ID or all pending work for this analyzer. Raw QBP is durable before lookup or
+response. One bounded `Store::pending_orders` read API shares the existing cache
+trust rule, including freshness, generation and restore pause. Multi-page reads
+run in one store-owner request; a filtered-empty page with a cursor is not no-work.
+Size/deadline exhaustion is an error. Sample IDs retain their original spelling.
+
+Query-triggered followups use the pure LAW builders and the shared per-test item
+reservation path (one AWOS per explicitly requested test). The store supplies
+placer identity and retains its configured namespace; LAW emits EI.1 only.
+Preflight occurs before Sending commits, and the complete multi-order message
+is built before positive output. Partial preparation failure reconciles any
+owned reservations as Uncertain, never a resend or partial positive work list.
+
+Correlated ORL outcomes go through `finish_order_items`; MSA AA alone is not
+acceptance. Replies are matched by AWOS, not array position. Timeouts, disconnects,
+late/invalid ORL and lost store responses preserve uncertainty. A repeated query
+cannot reserve any prior order again. Fresh, authoritative empty produces the
+restricted negative LAB-28 without items; its ORL is retained and correlation is
+audited without an order transition. Unsupported forms use QAK AR; failed/stale/
+untrusted/paused/late lookups use AE. Neither makes a no-work claim.
+
+`tests/law/queries.rs` names the source sections for thirteen program/reference-receiver
+tests. Results-only config without a work layout remains covered by
+`tests/law/results.rs::law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_acceptance`.
+This historical query checkpoint is extended by step 4 below. Original-work
+result correlation, independent directional links and hardware/Gazelle qualification
+remain. Evidence is documented.
+
+
+## LAW send-ahead and cancellation checkpoint (step 4)
+
+`orders.send_ahead = true` opts into unsolicited LAB-28 with the existing
+`law.work` bindings. One bounded candidate page is considered per idle interval.
+The same preflight and per-test reservation function admits queried and unsolicited
+work. One shared LAW builder, writer, pending exchange and ORL handler serve both.
+Each AWOS keeps its stored placer identity; only explicit per-AWOS OK/UA determines
+acceptance/rejection. Missing, late or inconsistent replies become Uncertain.
+
+App `cancel_requested` versions use the existing shared cancellation admission
+transaction and the LAW Cancel control. The retained AWOS IDs and test coverage
+identify each request; no new AWOS or item is allocated for cancellation. CR becomes
+CancelConfirmed; UC produces CancelRefused and preserves the preceding item state.
+Mixed cancellation outcomes remain per item and use the shared store's aggregate
+policy. Cancellation works for queried work even with send-ahead disabled. Each
+app cancellation version is admitted once, including after UC and restart.
+
+The shared restore pause helper blocks new and cancel admission. Idle read failures
+are reported without issuing bytes or converting them into an empty answer. Any
+owned in-flight store call is reconciled before continuing. Disconnect, response
+timeout, shutdown and restart cannot repeat work or cancel commands. Startup
+recovery now handles admitted CancelRequested attempts alongside Sending; both
+become Uncertain with retained item evidence and an app event.
+
+Seven tests in `tests/law/work.rs` (under `delivery.rs`) cite TF-2b 3.28.4/C.8 and
+ADR 0003: accepted/rejected/mixed AWOS; CR/UC/mixed cancellations; timeout and
+disconnect; crash during Sending or CancelRequested; restore pause for both
+admissions; preflight rejection with no bytes; and queried-work cancellation.
+They use temporary stores and the reference receiver. Accepted, rejected and
+cancelled/refused work also survives a restart without resend.
+
+## LAW persistent-link scope (step 5)
+
+The agreed scope is one persistent link per configured LAW machine, carrying all
+three transactions. `law.connection_mode = "persistent"` is required. The existing
+TCP server/client transport selection controls who opens it, without a second
+role field or duplicated protocol path. Independent per-transaction links fail
+validation specifically at `law.connection_mode`. This subset does not meet
+TF-2b B.6's independent-link topology; that row remains unchecked.
+
+Tests in `tests/law/connections.rs` cover both directions, all three transactions
+on the same link, client reconnection without replay, and first-byte deadlines
+with retained partial bytes. Configuration/startup tests name the supported
+scope and the unsupported topology explicitly. All existing query, ORL, receive,
+send and operation deadlines come from config; idle scheduling does not replace
+them. The final matrix is in the protocol checklist. Evidence remains documented.
+
+
+Audited LAW result reprocessing uses the shared stored-byte interpretation entry
+point merged from main. It has no transport handle, never sends work or ACKs,
+and preserves the atomic LAW batch policy before revision/outbox commit. The
+mapping-repair regression in `tests/law/results.rs` verifies the original receipt
+and first interpretation are unchanged, the parked item resolves, and a repeated
+reprocess produces no delivery. Persistent-client deadline evidence is in
+`law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines`.

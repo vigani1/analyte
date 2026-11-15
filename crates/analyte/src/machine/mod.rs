@@ -6,6 +6,7 @@ mod folder;
 mod hl7;
 pub(crate) mod interpretation;
 pub use interpretation::reprocess;
+mod law;
 mod poct;
 mod serial;
 mod vendor;
@@ -83,13 +84,24 @@ pub(crate) async fn run(
         }
         TransportKind::TcpClient => loop {
             let (conn, side) = connection(limits);
+            let cancel = conn.cancellation();
             let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
             let (result, transport) = tokio::join!(
                 drive(&machine, &store, conn, stop.clone(), &mut closing),
                 transport
             );
-            result?;
-            transport?;
+            // drive cancels the I/O owner and drops its consumer after session cleanup.
+            // The client's final Closed event can therefore meet a closed queue; that
+            // expected owner shutdown must not terminate persistent reconnection.
+            if let Err(error) = transport
+                && !(matches!(error, analyte_transport::Error::ConsumerClosed)
+                    && cancel.is_cancelled())
+            {
+                return Err(error.into());
+            }
+            if let Err(error) = result {
+                tracing::error!(machine=machine.id.as_str(),error_kind=%error,"machine session stopped");
+            }
             if *stop.borrow() {
                 return Ok(());
             }
@@ -122,6 +134,7 @@ async fn session(
     match machine.snapshot.effective().machine().dialog.kind {
         analyte_config::DialogKind::AstmLink => astm::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::Hl7Receiver => hl7::session(machine, store, conn, stop).await,
+        analyte_config::DialogKind::LawManager => law::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::Poct => poct::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::VidasLiteral => {
             vidas::session(machine, store, conn, stop).await

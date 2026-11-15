@@ -304,6 +304,32 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
             });
         }
     };
+    hl7_segments(
+        message,
+        if oul {
+            Hl7Structure::Oul
+        } else {
+            Hl7Structure::Oru
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+enum Hl7Structure {
+    Oru,
+    Oul,
+    Law,
+}
+
+pub(crate) fn law<'a>(results: &analyte_hl7::law::Results<'a>) -> Result<Source<'a>, Error> {
+    hl7_segments(results.message(), Hl7Structure::Law)
+}
+
+fn hl7_segments(
+    message: &analyte_hl7::Message,
+    structure: Hl7Structure,
+) -> Result<Source<'_>, Error> {
+    let oul = matches!(structure, Hl7Structure::Oul | Hl7Structure::Law);
     let mut source = Source {
         nodes: Vec::new(),
         syntax: FieldSyntax::Hl7V2,
@@ -312,6 +338,7 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
     };
     let mut patient = Some(0);
     let mut specimen = None;
+    let mut container = None;
     let mut control = None;
     let mut order = None;
     let mut note_parent = Some(0);
@@ -326,6 +353,7 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
             "PID" => {
                 patient = Some(index);
                 specimen = None;
+                container = None;
                 control = None;
                 order = None;
                 (Some(0), Group::Patient)
@@ -352,7 +380,11 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
                 }
                 let parent = if oul {
                     control = None;
-                    specimen
+                    if matches!(structure, Hl7Structure::Law) {
+                        container.or(specimen)
+                    } else {
+                        specimen
+                    }
                 } else {
                     control.or(patient)
                 };
@@ -363,6 +395,7 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
                 (parent, Group::Order)
             }
             "SPM" => {
+                container = None;
                 if oul {
                     control = None;
                     order = None;
@@ -378,7 +411,10 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
                 specimen = Some(index);
                 (parent, Group::Order)
             }
-            "SAC" if specimen.is_some() => (specimen, Group::Order),
+            "SAC" if specimen.is_some() => {
+                container = Some(index);
+                (specimen, Group::Order)
+            }
             "OBX" => {
                 let parent = if oul {
                     control.or(order).or(specimen)

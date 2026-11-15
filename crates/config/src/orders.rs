@@ -182,6 +182,9 @@ pub struct Orders {
 
 impl Orders {
     fn validate_stack(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+        if machine.law.is_some() {
+            return crate::law::validate_orders(machine, path, self);
+        }
         if machine.syntax.kind != SyntaxKind::Hl7V2
             && (self.hl7.is_some() || self.hl7_send.is_some() || self.placer_namespace.is_some())
         {

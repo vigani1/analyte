@@ -117,6 +117,20 @@ pub(crate) fn map(
             )?)
         }
         analyte_config::SyntaxKind::Hl7V2 => {
+            if effective.machine().dialog.kind == analyte_config::DialogKind::LawManager {
+                let message = analyte_hl7::law::parse_message(
+                    payload,
+                    effective
+                        .hl7_options()
+                        .ok_or_else(|| invalid("LAW parser options missing"))?,
+                )?;
+                let results = analyte_hl7::law::receive_results(&message)?;
+                return Ok(analyte_mapping::map_law(
+                    &results,
+                    &machine.snapshot,
+                    input,
+                )?);
+            }
             let message = analyte_hl7::Message::parse(
                 payload,
                 effective

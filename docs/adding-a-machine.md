@@ -18,16 +18,27 @@ edition; a family name or an Ethernet socket does not establish a protocol.
 | --- | --- | --- |
 | ASTM LIS01/LIS02 | [ASTM scope](protocols/astm.md) | [ASTM example](../crates/config/examples/astm.toml) |
 | HL7 v2 legacy over MLLP | [HL7 scope](protocols/hl7.md) | [HL7 example](../crates/config/examples/hl7.toml) |
-| IHE LAW | [LAW scope](protocols/ihe-law.md) | Confirm Analyzer Manager actor/options and current program wiring with maintainers |
+| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](protocols/ihe-law.md) | [LAW example](../crates/config/examples/law.toml) plus [query/work settings](../crates/config/examples/law_orders.toml); one persistent TCP client/server link |
 | POCT01-A2 | [POCT scope](protocols/poct1-a.md) | [POCT example](../crates/config/examples/poct.toml), Observation Reviewer role |
 | VIDAS Literal or Autolyser | [Protocol index](protocols/README.md), then vendor interface rules | [VIDAS](../crates/config/examples/vidas_literal.toml) or [Autolyser](../crates/config/examples/autolyser.toml) |
 
 There are no vendor-specific pages in that protocol index yet. Use the
 [config reference](../crates/config/README.md) and [order guide](../crates/analyte/ORDERS.md)
-for their implemented policies. LAW is not interchangeable with a legacy HL7
-config: program wiring is still in progress in the plan. Check supported
-scope and exclusions before promising a connection. A new format needs review,
-not a renamed existing stack ([standards-first decision](adr/0007-standards-first.md)).
+for their implemented policies. The LAW runtime carries LAB-27 queries, LAB-28
+work/cancellation and LAB-29 results on one persistent link in the configured
+TCP client/server direction. Declare `law.connection_mode = "persistent"` and
+the peer's supported options explicitly. Queries support exact specimen/container
+ID (SampleId) and all pending work for this analyzer; append the query/work
+settings example to enable queries and their work followups, and select
+`orders.send_ahead = true` for unsolicited work.
+
+Independent per-transaction links are rejected by config validation.
+Isolate/parent and rack/tray queries remain unsupported and receive an error,
+never no-work. Full originating-work result validation, remaining enhanced
+workflows and a recorded Gazelle run remain open in the LAW checklist. Evidence
+is documented, without real-machine qualification. A LAW definition uses the
+LAW profile rather than a legacy HL7 layout. A new format needs review
+([standards-first decision](adr/0007-standards-first.md)).
 
 ## Gather confirmed settings
 

@@ -14,6 +14,8 @@ use std::{
 /// A machine's installation identity and validated effective settings.
 pub struct Machine {
     #[cfg(feature = "test-hooks")]
+    pub(crate) law_committed: Option<std::sync::Arc<crate::test_hooks::Committed>>,
+    #[cfg(feature = "test-hooks")]
     pub(crate) astm_committed: Option<std::sync::Arc<crate::test_hooks::AstmCommitted>>,
     /// Unique installation identity, independent of the shipped definition name.
     pub(crate) id: analyte_model::Identifier,
@@ -111,6 +113,31 @@ fn read(path: &Path) -> Result<String, Error> {
 }
 
 impl Program {
+    /// Installs a one-shot LAW raw-commit/pre-response pause on an injected loopback machine.
+    /// # Errors
+    /// Rejects unknown machines, non-LAW stacks and production listeners.
+    #[cfg(feature = "test-hooks")]
+    pub fn pause_law_committed_for_test(
+        &mut self,
+        id: &str,
+        hook: std::sync::Arc<crate::test_hooks::Committed>,
+    ) -> Result<(), Error> {
+        let machine = self
+            .machines
+            .iter_mut()
+            .find(|m| m.id.as_str() == id)
+            .ok_or_else(|| invalid("unknown test machine"))?;
+        if machine.listener.is_none()
+            || machine.snapshot.effective().machine().dialog.kind
+                != analyte_config::DialogKind::LawManager
+        {
+            return Err(invalid(
+                "commit hook requires injected LAW loopback listener",
+            ));
+        }
+        machine.law_committed = Some(hook);
+        Ok(())
+    }
     /// Stalls the store at shutdown with a 500 ms process deadline, for child-process tests only.
     /// This deliberately never returns from a storage operation; the watchdog must exit 3.
     /// # Errors
@@ -252,6 +279,8 @@ impl Program {
                 ));
             }
             machines.push(Machine {
+                #[cfg(feature = "test-hooks")]
+                law_committed: None,
                 #[cfg(feature = "test-hooks")]
                 astm_committed: None,
                 id: entry.id,

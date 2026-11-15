@@ -566,7 +566,7 @@ pub fn work_order_with_profile(
             }
         }
     }
-    let message = Message::parse(&wire.bytes, options)?;
+    let message = super::parse_message(&wire.bytes, options)?;
     profile.validate_message(&message, super::ControlDirection::Send)?;
     Ok(message)
 }
@@ -607,7 +607,14 @@ pub fn negative_work(
     let mut sac: [&[u8]; 15] = [b""; 15];
     for (target, source) in [(2, 3), (3, 9), (9, 4), (10, 5), (12, 6), (13, 7), (14, 8)] {
         let slot = sac.get_mut(target).ok_or(content("SAC", 0))?;
-        *slot = super::raw(query.qpd, source);
+        let value = super::raw(query.qpd, source);
+        // C.11 manager-authored EI fields support EI.1 only. The RSP still
+        // echoes the original QPD; ignored receive components stay in that original.
+        *slot = if matches!(target, 2 | 3 | 9 | 12) {
+            super::control::part(value, 1)
+        } else {
+            value
+        };
     }
     if matches!(query.scope(), Scope::AllPending) {
         *sac.get_mut(2).ok_or(content("SAC", 3))? = b"\"\"";
@@ -628,7 +635,7 @@ pub fn negative_work(
             response.timestamp.get(..14).ok_or(content("ORC", 9))?,
         ],
     )?;
-    let message = Message::parse(&wire.bytes, options)?;
+    let message = super::parse_message(&wire.bytes, options)?;
     super::Profile::for_peer(Capabilities::default())
         .validate_message(&message, super::ControlDirection::Send)?;
     Ok(message)

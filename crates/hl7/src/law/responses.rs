@@ -12,6 +12,8 @@ pub enum CacheAnswer<'a> {
 
     /// Lookup failed; report the supplied location rather than absence of work.
     Unavailable(AckError<'a>),
+    /// A syntactically valid query is outside the manager's configured support (B.7.7).
+    Rejected(AckError<'a>),
 }
 
 /// Required next exchange after query processing; contains no automatic retry.
@@ -71,6 +73,12 @@ pub fn query_response(
         CacheAnswer::Unavailable(error) => (
             AckCode::Ae,
             b"AE".as_slice(),
+            Some(error),
+            QueryFollowup::None,
+        ),
+        CacheAnswer::Rejected(error) => (
+            AckCode::Ar,
+            b"AR".as_slice(),
             Some(error),
             QueryFollowup::None,
         ),

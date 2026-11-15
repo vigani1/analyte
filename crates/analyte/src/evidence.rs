@@ -68,6 +68,7 @@ pub(crate) async fn persist_mapping(
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(bool, analyte_store::InterpretationCommit), Error> {
+    let atomic = machine.snapshot.effective().machine().law.is_some();
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
         Ok(output) => {
@@ -101,6 +102,18 @@ pub(crate) async fn persist_mapping(
             Vec::new(),
         ),
     };
+    // A rejected LAW batch must not register otherwise-new history without an
+    // outbox delivery: a later accepted retry would be mistaken for a retransmission.
+    let (reading, corrections) = if atomic && !accepted && matches!(reading, Reading::Results(_)) {
+        (
+            Reading::Failed(analyte_model::Reason::new(
+                "LAW mapping requires operator review; inspect protected findings and original receipt",
+            )?),
+            Vec::new(),
+        )
+    } else {
+        (reading, corrections)
+    };
     let interpretation = Interpretation {
         driver: driver(machine)?,
         config_version: Identifier::new("1")?,
@@ -108,6 +121,16 @@ pub(crate) async fn persist_mapping(
         outcome: reading,
     };
     let destination = machine.snapshot.effective().site().destination.name.clone();
+    let conflict = if atomic {
+        Some(Interpretation {
+            driver: interpretation.driver.clone(),
+            config_version: interpretation.config_version.clone(),
+            config: interpretation.config.clone(),
+            outcome: Reading::Failed(analyte_model::Reason::new(&LawBatchConflict.to_string())?),
+        })
+    } else {
+        None
+    };
     let result = store
         .request(deadline(), move |store| {
             let findings = findings
@@ -130,32 +153,88 @@ pub(crate) async fn persist_mapping(
                 .ok_or(analyte_store::Error::Conflict)?
                 .metadata;
             let build = |assigned: &Interpretation, outcomes: &[RevisionOutcome]| {
+                if atomic
+                    && outcomes.iter().any(|outcome| {
+                        matches!(
+                            outcome,
+                            RevisionOutcome::Conflict | RevisionOutcome::Unresolved
+                        )
+                    })
+                {
+                    return Err(analyte_store::Error::DeliveryBuild(Box::new(
+                        LawBatchConflict,
+                    )));
+                }
                 if !accepted {
                     return Ok(Vec::new());
                 }
                 build_deliveries(assigned, outcomes, &receipt, &destination)
             };
-            match action {
-                Some(action) => store.reprocess_reconciled(
-                    &action,
-                    interpretation,
-                    &corrections,
-                    &findings,
-                    build,
-                ),
-                None => {
-                    store.interpret_reconciled(id, interpretation, &corrections, &findings, build)
+            let commit = reconcile(
+                store,
+                id,
+                action.as_ref(),
+                interpretation,
+                &corrections,
+                &findings,
+                build,
+            );
+            match commit {
+                // The builder refusal rolls back revisions, audit and deliveries together.
+                // Keep a failed version (and its audit for operator actions) afterwards.
+                Err(analyte_store::Error::DeliveryBuild(error))
+                    if error.is::<LawBatchConflict>() =>
+                {
+                    let rejected = reconcile(
+                        store,
+                        id,
+                        action.as_ref(),
+                        conflict.ok_or(analyte_store::Error::InvalidInput)?,
+                        &[],
+                        &findings,
+                        |_, _| Ok(Vec::new()),
+                    )?;
+                    Ok((rejected, false))
                 }
+                result => result.map(|commit| (commit, accepted)),
             }
         })
         .await?;
-    let accepted = accepted
+    let (result, successful) = result;
+    let accepted = successful
         && !result
             .outcomes
             .iter()
             .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
     Ok((accepted, result))
 }
+
+// One audit dispatch for normal and rejected-batch commits; recovery never bypasses it.
+fn reconcile(
+    store: &mut analyte_store::Store,
+    id: ReceiptId,
+    action: Option<&analyte_store::Reprocess>,
+    interpretation: Interpretation,
+    corrections: &[bool],
+    findings: &[analyte_store::Parked],
+    build: impl FnOnce(
+        &Interpretation,
+        &[RevisionOutcome],
+    ) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error>,
+) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
+    match action {
+        Some(action) => {
+            store.reprocess_reconciled(action, interpretation, corrections, findings, build)
+        }
+        None => store.interpret_reconciled(id, interpretation, corrections, findings, build),
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "LAW result batch conflicts with retained observation history; no result revisions committed"
+)]
+struct LawBatchConflict;
 
 // The store assigns revisions before this callback freezes bytes. Only new and
 // corrected production results can cross this boundary; replay never enqueues.
