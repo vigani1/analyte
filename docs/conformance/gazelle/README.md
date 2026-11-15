@@ -39,9 +39,8 @@ The AA and AE ACK files are alternative outcomes for the same synthetic result.
 
 Save reports in `docs/conformance/gazelle/results/`. Record the tool build, profile
 revision/OID, actor/options, date, source commit and filename with each report.
-Retain failures and their diagnostics as well as successes. No Gazelle run or
-conformance claim is included in this change; passing local parsers is not full
-LAW conformance or simulator evidence.
+Retain failures and their diagnostics as well as successes. Message-level validation is recorded below. A simulator conversation and
+full LAW actor qualification remain outstanding.
 
 ## Recorded Gazelle run (2026-11-15)
 

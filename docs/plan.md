@@ -2,14 +2,16 @@
 
 Status, 2026-11-15: phases 1 to 6 and 8 are built at the documented level,
 including IHE LAW as Analyzer Manager in the program (one persistent link;
-independent links and the Gazelle run remain). The program receives and parks
+independent links and a recorded simulator conversation remain). The program receives and parks
 results from every stack, answers machine queries and sends work lists for
 ASTM, HL7, LAW, VIDAS and Autolyser through one durable order path that never
 resends. Recordings replay through the program. From phase 9: OS services,
 safe restore, the release process, the read-only admin page with audited
 reprocess and resend, alerts with named responders, and the guide to adding a
 machine exist. Phase 7 machine configs and the pilot wait on the lab. Nothing
-has met a real machine yet.
+has met a real machine yet. Recorded Gazelle message validation passes all eight
+Analyzer Manager messages after fixing a SAC-3/SAC-10 defect; this does not
+replace the missing simulator conversation. See [reports](conformance/gazelle/README.md).
 
 ## 1. Goal
 
@@ -60,7 +62,7 @@ evidence; the app decides.
    are pieces in the right layer.
 3. Store first, then acknowledge. Nothing is ever silently lost.
 4. Every driver and config ships with recorded conversations and states its
-   evidence level (proven, simulated, documented).
+   [evidence level](adr/0005-evidence-levels.md).
 5. Outbound connections only: Analyte calls the app; the lab network opens no
    inbound ports to the internet.
 6. One common model for results, orders and sample identity, including the
@@ -168,17 +170,10 @@ new crate rather than a change to a shared one.
   Retry-After), fix the setup (for example a rejected credential) or parked
   with the app's reason. A correction is never delivered before the result it
   corrects.
-- **Authentication:** an existing, documented signing scheme (no home-made
-  cryptography), with key IDs and rotation. The exact scheme is the phase 1
-  contract ADR.
-- **Orders:** the app gives a full initial snapshot, then a versioned feed of
-  changes since an opaque cursor, including deletions, expiry and a reset.
-  Analyte polls it every few seconds and commits each cache update together
-  with its cursor, so machine queries are answered within their deadline
-  (cobas e 411: about 15 seconds). A query is answered only when the cache is
-  complete and fresh for that sample under the deployment's offline policy;
-  otherwise Analyte never answers "no orders". Before sending an order to a
-  machine, it rechecks the order's current version and cancellation.
+- **Authentication:** Standard Webhooks signing with key IDs and rotation, selected
+  by [ADR 0008](adr/0008-app-contract.md).
+- **Orders:** poll the app and answer only from trusted cached work, following
+  [ADR 0004](adr/0004-outbound-only-polled-orders.md).
 - **Versioned and documented** so any app can implement it.
 - **Reference receiver:** a small server in this repository implements the
   whole contract. Tests run against it, and it is the worked example for app
@@ -212,7 +207,7 @@ Machine documents used for the first machines:
 | YHLO iFlash 1200     | YHLO LIS Protocol Manual V1.1 (iFlash family); iFlash 1200 Operation Manual V3.0    |
 | Boule Swelab Lumi    | Lumi User Manual 1504529; Boule's LIS protocol description for the Lumi (still needed) |
 | BioCARE Biolyte 2000 | Service Manual 4.2A, Appendix VI                                                    |
-| bioMérieux VIDAS     | BCI LINK LIS Interface Driver Development Guide 161150-486 C; VIDAS PC User Manual F |
+| bioMérieux VIDAS     | Research: BCI Link guides 161150-486 A/B and VIDAS PC User Manual F; implementation from research notes |
 | Dialab Autolyser     | Autolyser / Autolyser ISE Operator's Manual Rev18; Service Manual Rev01             |
 
 ## 9. First machines
@@ -233,9 +228,8 @@ them can be collected at any time and kept as test data.
 
 ## 10. Testing
 
-- **Recordings:** exact bytes, direction and timing of real conversations,
-  de-identified, replayed by the fake machine. Serial captures come from the
-  machine's own trace log, a sniffer on the lab PC or a hardware tap.
+- **Recordings:** retain and replay synthetic or de-identified conversations in
+  the format owned by [ADR 0009](adr/0009-recording-format.md).
 - **Failure paths:** broken checksums, lost acknowledgments, split and merged
   reads, timeouts, disconnects, restart between storing and acknowledging,
   disk full, corrected and repeated results, late query replies; a crash
@@ -252,7 +246,7 @@ them can be collected at any time and kept as test data.
 
 - One program, installed as a Windows service or Linux systemd unit, starting
   without a login.
-- Local admin page (localhost, password): machines, last messages, parked
+- Local admin page (localhost, bearer token): machines, last messages, parked
   items, resend and reprocess as separate actions, all audited.
 - Alerts on oldest undelivered item, stalled machines and disk space.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM

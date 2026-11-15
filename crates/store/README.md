@@ -7,7 +7,7 @@ and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 5 is
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 6 is
 created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
 Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
@@ -153,52 +153,13 @@ cancellation request, recovery to Uncertain or audited operator reconciliation.
 The protected operator listing includes each item's coverage, placer, state and
 reason. These details do not change contract v1 or enter ordinary logs.
 
-## Restore and reconciliation (plan ?11, ADR 0003 rules 2, 4, 8)
+## Restore and reconciliation
 
-1. Stop the service. Keep the backup and data directory protected as clinical data.
-2. Run `analyte --config analyte.toml --actor operator-name restore --from backup.db --reason "Recovery after disk failure"`.
-   Integrity and supported schema are checked before migration of a staged copy.
-   Normal store owners prevent restore through an OS file lock.
-3. The previous database is retained as `analyte.before-restore`; it is never
-   overwritten or deleted. Existing recovery files refuse a further restore.
-   Archive the previous store securely before a later restore. Interrupted
-   `analyte.restore-pending` files block opening: preserve all files and investigate
-   before proceeding; never remove evidence just to start the service.
-4. Restart the service. Result receiving and app deliveries continue. Delivery
-   retries retain the original ID and bytes; the receiver must accept duplicates.
-   Machine order reservations are paused, including query answers. Untrusted
-   lookups follow their configured error/silence policy, never ?no orders?.
-5. Inspect `analyte --config analyte.toml orders list` and status. Compare each
-   machine's work list and actual outcomes with the app, including commands sent
-   after the backup. Correct the app's requested work and reconcile uncertain
-   entries before releasing the pause. This is an operator responsibility;
-   Analyte cannot infer what reached a machine from an older backup.
-6. Run `analyte --config analyte.toml --actor operator-name orders resume-after-restore --reason "Machines and app reconciled"`.
-   This audited command clears the global pause; it sends no machine command.
-   Existing reservations continue to forbid automatic replay.
+Follow the [operator restore procedure](../analyte/README.md#restore-and-reconciliation-plan-11-adr-0003-rules-2-4-8).
 
-The marker is the latest restore/resume action in the append-only audit trail;
-no schema migration or driver-specific exception is needed. Evidence remains
-**documented**, based on synthetic tests, without real-machine qualification.
+## Trusted analyzer-pending lookup
 
-
-`reserve_send_items_with` runs a pure message preflight with the actual assigned
-IDs before committing Sending. A failed preflight rolls back every item and
-history row. The shared `start_order` transaction checks `restore_paused` for
-all reservation variants, including per-test sends and owned DSR responses.
-App cancellation admission rechecks the feed's trust/version and restore pause
-in its write transaction. The admitted app version and connection owner are
-retained in append-only history; a refused cancellation cannot cause another
-automatic cancel for that same version. Original reservations always block
-resending new work, independently of subsequent app versions.
-
-Aggregate source summaries list item states and bounded diagnostic names; full
-machine reasons stay unchanged on every item. A long collection of reasons
-cannot overflow the aggregate text field and roll back otherwise valid evidence.
-
-## Trusted analyzer-pending lookup (LAW step 3)
-
-`pending_orders(destination, machine, after, now, freshness)` is the one new read
+`pending_orders(destination, machine, after, now, freshness)` is the bounded read
 API for analyzer-specific all-pending queries. It shares the SampleId lookup's
 restore, completeness, trust and clock-age rule, and the existing reservation
 path uses that same age predicate. It scans bounded ordered pages, filtering

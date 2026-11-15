@@ -70,9 +70,9 @@ rules in section 8 use exactly the same machine.
 | Appendix A | above transition tests; named enum states map idle/bid/receive/save/transmit/retry/interrupt/timeout paths |
 | ADR 0003 | failed/unanswered/late commits, exact duplicates, conflicts, and two random-input properties |
 
-Not implemented: ports, clocks, durable storage/restart replay, syntax parsing,
-MLLP/HL7 dialogs, vendor polling, multi-message outgoing queues or clinical order
-lifecycle decisions. Those belong to their owning layers or later work.
+This ASTM module owns no ports, clocks, durable storage or syntax parsing.
+The host implements storage/recovery and order lifecycles; the HL7 dialog is
+described below. Multiple outgoing message queues remain unsupported.
 
 # HL7 over MLLP dialog
 
@@ -115,5 +115,6 @@ late replies/store failures; K split and merged framing, bounded queue overflow,
 partial EOF/deadline, invalid trailer, no byte handshake, sender uncertainty.
 The shared framing/syntax crates own repertoire, encoding, full error rendering
 and parser limits. Restart reconciliation and real durability latency tests
-require the future host/store integration; no simulator or real machine claim
-is made. The random-event property guards uncommitted positive responses.
+are covered by host tests in [receive.rs](../analyte/tests/receive.rs) and
+[HL7 orders](../analyte/tests/orders/hl7_send.rs); no simulator or real machine
+claim is made. The random-event property guards uncommitted positive responses.
