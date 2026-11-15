@@ -224,7 +224,7 @@ and `priorities`; it does not reverse the result table automatically.
 Each test maps an exact app `namespace`/`value` to `machine_components`,
 including significant empty components. `send_ahead` explicitly permits work
 lists. `[orders.query]` requires `deadline_ms` and `when_untrusted`; unavailable,
-stale or late lookup must produce error or silence, never ?no orders?.
+stale or late lookup must produce error or silence, never "no orders".
 
 For ASTM, `[orders.astm]` names the specimen, test, priority and action
 locations. Optional `position` sends the supplied slot in O field 4;
