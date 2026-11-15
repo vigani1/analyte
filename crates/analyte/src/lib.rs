@@ -1,6 +1,7 @@
 //! Foreground host orchestration and command-line operations.
 #![forbid(unsafe_code)]
 
+pub mod admin;
 pub mod config;
 mod delivery;
 mod evidence;

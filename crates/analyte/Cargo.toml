@@ -13,6 +13,9 @@ default = []
 test-hooks = []
 
 [dependencies]
+getrandom = { workspace = true }
+base64 = { workspace = true }
+subtle = { workspace = true }
 analyte-poct = { workspace = true }
 analyte-vidas = { workspace = true }
 analyte-autolyser = { workspace = true }

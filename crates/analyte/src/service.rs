@@ -310,7 +310,7 @@ async fn termination() -> Result<(), Error> {
     Ok(())
 }
 
-fn create_data_directory(path: &std::path::Path) -> Result<(), Error> {
+pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Error> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
