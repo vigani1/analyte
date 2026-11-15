@@ -100,6 +100,10 @@ answers "no orders" when unsure, and every result keeps the three identities.
 
 ## Next steps
 
-1. Settle the open decisions in [plan.md §14](plan.md).
-2. Phase 1: workspace, common model, store, outbox, delivery, fake machine,
-   first reference receiver, CI.
+1. Finish the IHE LAW profile rules and the fake machines with replay.
+2. Phase 6 in the program: answer machine queries from the order cache and
+   send work lists ahead (ASTM, HL7, LAW), with the order lifecycle.
+3. Wire POCT01-A2, VIDAS and Autolyser connections into the program.
+4. Phase 7: machine configs for cobas e 411, Biolyte 2000, iFlash 1200 and
+   Swelab Lumi (documented level until recordings exist).
+5. Phase 9: admin page, installers, release process, lab pilot.
