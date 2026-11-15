@@ -182,6 +182,29 @@ The marker is the latest restore/resume action in the append-only audit trail;
 no schema migration or driver-specific exception is needed. Evidence remains
 **documented**, based on synthetic tests, without real-machine qualification.
 
+## Admin page credentials (in progress)
+
+The optional `[admin]` configuration accepts `port` and defaults `address` to
+`127.0.0.1`. Other addresses and port zero are refused. Omitting the section
+disables administration. The HTTP server and read-only pages are not implemented
+yet; configuring a port does not currently start a listener.
+
+Provision or rotate the host credential with
+`analyte --config analyte.toml admin token --rotate`. The command writes a
+base64-encoded 256-bit token to `<data_directory>/admin-token` and prints it
+once to stdout. Treat stdout as a secret; do not send it to ordinary logs.
+Entropy comes only from the operating system; failure refuses rotation with
+a specific error. No weaker fallback exists.
+
+Unix staging files are created with mode 0600 within the protected directory.
+On Windows, files inherit the directory ACL; restrict it to the service account
+and authorized operators as described in the installation guide. Rotation
+flushes the new file before replacing the old one. A failed or interrupted
+rotation may leave `admin-token.pending`; preserve it securely and investigate
+before retrying. Never move a partial file into place as a credential.
+
+Actions such as resolving, reconciling and retrying remain CLI-only.
+
 ## Running as a service
 
 Use a release build without `test-hooks`. Evidence remains **documented**:

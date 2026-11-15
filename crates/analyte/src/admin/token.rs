@@ -1,13 +1,18 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use std::{
-    fs::OpenOptions,
-    io::Write,
-    path::Path,
-};
+use std::{fs::OpenOptions, io::Write, path::Path};
 
 /// Specific failures provisioning or loading the host's admin credential.
 #[derive(Debug, thiserror::Error)]
 pub enum TokenError {
+    /// The configured admin endpoint has no provisioned credential.
+    #[error("admin token file is missing; run analyte admin token --rotate")]
+    Missing,
+    /// The credential is not one canonical base64-encoded 256-bit value.
+    #[error("admin token file must contain one base64-encoded 256-bit token")]
+    Invalid,
+    /// The credential file can be read by other users, or is not a regular file.
+    #[error("admin token file must be a protected regular file (Unix mode 0600)")]
+    Permissions,
     /// The OS entropy source failed; no replacement credential was installed.
     #[error("admin token OS random source failed: {0}")]
     Random(getrandom::Error),
@@ -19,6 +24,54 @@ pub enum TokenError {
         /// Original operating-system error.
         source: std::io::Error,
     },
+}
+
+/// One validated host credential, deliberately without a Debug implementation.
+pub struct Token(String);
+
+impl Token {
+    /// Reads at most 45 bytes and refuses missing, malformed or unprotected files.
+    /// # Errors
+    /// Reports missing credentials, invalid format, permissions and OS read failures.
+    pub fn load(directory: &Path) -> Result<Self, TokenError> {
+        use std::io::Read as _;
+        let path = directory.join("admin-token");
+        let metadata = std::fs::symlink_metadata(&path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                TokenError::Missing
+            } else {
+                io("inspect credential", e)
+            }
+        })?;
+        if !metadata.is_file() {
+            return Err(TokenError::Permissions);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o777 != 0o600 {
+                return Err(TokenError::Permissions);
+            }
+        }
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .and_then(|file| file.take(45).read_to_end(&mut bytes))
+            .map_err(|e| io("read credential", e))?;
+        let text = String::from_utf8(bytes).map_err(|_| TokenError::Invalid)?;
+        let decoded = STANDARD.decode(&text).map_err(|_| TokenError::Invalid)?;
+        if text.len() != 44 || decoded.len() != 32 || STANDARD.encode(decoded) != text {
+            return Err(TokenError::Invalid);
+        }
+        Ok(Self(text))
+    }
+
+    /// Compares a supplied bearer credential in constant time for equal lengths.
+    /// Length is public: every valid credential contains exactly 44 base64 bytes.
+    #[must_use]
+    pub fn matches(&self, supplied: &str) -> bool {
+        use subtle::ConstantTimeEq as _;
+        bool::from(self.0.as_bytes().ct_eq(supplied.as_bytes()))
+    }
 }
 
 fn io(operation: &'static str, source: std::io::Error) -> TokenError {
@@ -73,6 +126,26 @@ pub fn rotate_token(directory: &Path) -> Result<String, crate::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Plan section 11: missing or malformed credentials cannot enable a listener.
+    #[test]
+    fn plan11_token_loading_refuses_missing_and_malformed_files() -> Result<(), crate::Error> {
+        let directory = tempfile::tempdir()?;
+        assert!(matches!(
+            Token::load(directory.path()),
+            Err(TokenError::Missing)
+        ));
+        let token = rotate_token(directory.path())?;
+        let loaded = Token::load(directory.path())?;
+        assert!(loaded.matches(&token));
+        assert!(!loaded.matches("wrong"));
+        std::fs::write(directory.path().join("admin-token"), b"invalid")?;
+        assert!(matches!(
+            Token::load(directory.path()),
+            Err(TokenError::Invalid)
+        ));
+        Ok(())
+    }
 
     // Plan section 11: rotation installs a full random credential and replaces it.
     #[test]
