@@ -1,7 +1,9 @@
 //! Transactional observation history (ADR 0003).
+mod status;
 use crate::{Delivery, Error, Interpretation, Reading, Store, digest, key};
 use analyte_model::{IdentityStatus, ReceiptId, ResultContent, ResultStatus, Revision};
 use rusqlite::{OptionalExtension, params};
+pub use status::StatusLifecycle;
 
 /// Store decision for one result, in input order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,7 +112,7 @@ impl Store {
         receipt: ReceiptId,
         evidence: Interpretation,
         mapping: (&[bool], &[crate::Parked]),
-        lifecycle: crate::StatusLifecycle<'_>,
+        lifecycle: StatusLifecycle<'_>,
         build: F,
     ) -> Result<InterpretationCommit, Error>
     where
@@ -132,7 +134,7 @@ impl Store {
         action: &crate::Reprocess,
         evidence: Interpretation,
         mapping: (&[bool], &[crate::Parked]),
-        lifecycle: crate::StatusLifecycle<'_>,
+        lifecycle: StatusLifecycle<'_>,
         build: F,
     ) -> Result<InterpretationCommit, Error>
     where
@@ -154,11 +156,7 @@ impl Store {
         &mut self,
         receipt: ReceiptId,
         mut evidence: Interpretation,
-        mapping: (
-            &[bool],
-            &[crate::Parked],
-            Option<crate::StatusLifecycle<'_>>,
-        ),
+        mapping: (&[bool], &[crate::Parked], Option<StatusLifecycle<'_>>),
         action: Option<&crate::Reprocess>,
         build: F,
     ) -> Result<InterpretationCommit, Error>
@@ -187,7 +185,12 @@ impl Store {
         }
         let findings = findings
             .iter()
-            .map(|finding| self.encode(finding))
+            .map(|finding| {
+                self.encode(&crate::parked::ParkingEvidence {
+                    details: finding.clone(),
+                    context: None,
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let limit = self.limits.record_bytes;
         let receipt_key = key(&receipt)?;
@@ -220,7 +223,7 @@ impl Store {
                 };
                 let identity_key = key(&(&stored.metadata.machine, &identity.observation))?;
                 if let Some(policy) = lifecycle
-                    && crate::status::other_final_run(
+                    && status::other_final_run(
                         &tx,
                         &stored.metadata.machine,
                         &candidate,
@@ -277,7 +280,7 @@ impl Store {
                         .map(|(_, result)| result.clone())
                         .map(Ok)
                         .unwrap_or_else(|| {
-                            crate::status::latest(&tx, &identity_key, limit)
+                            status::latest(&tx, &identity_key, limit)
                                 .and_then(|result| result.ok_or(Error::Corruption))
                         })?;
                     policy.permits(&prior, &candidate)
@@ -403,30 +406,30 @@ impl Store {
             {
                 return Err(Error::InvalidInput);
             }
-            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'pending',0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version])?;
+            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version,crate::DeliveryState::Pending])?;
         }
         match &evidence.outcome {
             Reading::Failed(reason) => {
                 tx.execute(
                     "INSERT INTO parked(evidence) VALUES (?1)",
-                    [key(&(
+                    [crate::parked::evidence(
                         "interpretation_failure",
-                        &receipt_key,
-                        reason,
-                        version,
-                    ))?],
+                        &serde_json::from_str::<String>(&receipt_key)?,
+                        reason.as_str(),
+                        Some(crate::parked::ParkingContext::Interpretation { version }),
+                    )?],
                 )?;
             }
             Reading::Results(results) => {
                 if action.is_some() && results.is_empty() && findings_empty {
                     tx.execute(
                         "INSERT INTO parked(evidence) VALUES (?1)",
-                        [key(&(
+                        [crate::parked::evidence(
                             "interpretation_failure",
-                            &receipt_key,
+                            &serde_json::from_str::<String>(&receipt_key)?,
                             "reprocessing produced no results",
-                            version,
-                        ))?],
+                            Some(crate::parked::ParkingContext::Interpretation { version }),
+                        )?],
                     )?;
                 }
                 for (index, (result, outcome)) in results.iter().zip(&outcomes).enumerate() {
@@ -438,13 +441,15 @@ impl Store {
                     {
                         tx.execute(
                             "INSERT INTO parked(evidence) VALUES (?1)",
-                            [key(&(
+                            [crate::parked::evidence(
                                 "result_reconciliation",
-                                &receipt_key,
-                                index,
-                                format!("{outcome:?}"),
-                                version,
-                            ))?],
+                                &serde_json::from_str::<String>(&receipt_key)?,
+                                &format!("result reconciliation: {outcome:?}"),
+                                Some(crate::parked::ParkingContext::Result {
+                                    version: Some(version),
+                                    index,
+                                }),
+                            )?],
                         )?;
                     }
                 }

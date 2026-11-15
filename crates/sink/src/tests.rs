@@ -587,9 +587,16 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     );
     assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Idle);
 
-    let release = audit()?;
+    let mut release = audit()?;
+    release.action = Identifier::new("delivery-resend")?;
+    release.targets = vec![Identifier::new(&format!(
+        "delivery:{}",
+        uuid::Uuid::from(pause_id)
+    ))?];
     store
-        .request(until()?, move |s| s.release_delivery(pause_id, &release))
+        .request(until()?, move |s| {
+            s.resend_delivery(pause_id, false, &release)
+        })
         .await?;
     assert!(
         !destination

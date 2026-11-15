@@ -3,6 +3,9 @@
 //! These views borrow the original message. A validation error never consumes it.
 //! Query responses, work downloads and results have separate pure APIs. Full
 //! field/option conformance is still incomplete; see the crate README.
+/// Maximum manager-authored AWOS identity bytes (TF-2b C.6/C.11, OBR-2).
+pub const AWOS_ID_MAX_BYTES: usize = 50;
+
 use crate::{Field, Message, Msh, Segment, Version};
 use thiserror::Error;
 

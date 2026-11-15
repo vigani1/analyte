@@ -267,7 +267,7 @@ run the program with temporary stores and the reference receiver.
 - [x] Independent directional connections and per-transaction outbound lifetime (TF-2b B.6, pp.79-80). Tests: `law_tf2b_b6_independent_query_followup_survives_inbound_close_and_restarts`, `law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restart`, `law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work`, `law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos`. Query follow-up ownership leaves the inbound session before a positive RSP; the outbound owner waits for RSP issuance, then dials once. Disconnect, failed connection, cancellation or expiration settles owned reservations without resend. Persistent mode remains selectable.
 - [ ] Complete LAW actor qualification: remaining enhanced work groups/options and a recorded Gazelle run. Receive/send/query/ORL deadlines and both topologies have source-named local tests.
 
-The runtime uses the shared order store (schema 6) and operator controls.
+The runtime uses the shared order store (schema 9) and operator controls.
 
 
 ## Link topologies

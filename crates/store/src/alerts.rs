@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub enum AlertKey {
     /// Oldest unfinished delivery.
     OldestUndelivered,
-    /// Last durable message or ASTM frame from this machine.
+    /// Last durable message or journaled frame from this machine.
     MachineSilent(Identifier),
     /// Free bytes relative to the configured reserve.
     DiskReserve,
@@ -209,8 +209,8 @@ impl Store {
             AlertKey::OldestUndelivered => self
                 .db
                 .query_row(
-                    "SELECT min(enqueued_at) FROM outbox WHERE state!='done'",
-                    [],
+                    "SELECT min(enqueued_at) FROM outbox WHERE state!=?1",
+                    [crate::DeliveryState::Done],
                     |r| r.get::<_, Option<i64>>(0),
                 )?
                 .map(|time| now.checked_sub(time).filter(|age| *age >= 0))
@@ -470,19 +470,18 @@ mod tests {
     fn plan11_schema5_activity_backfill_and_live_frames() -> TestResult {
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("old.db");
-        let store = open(&path)?;
-        store.db.execute_batch("DROP TRIGGER receipt_activity; DROP TRIGGER frame_activity;
-            DROP TABLE machine_activity; DROP TABLE alert_history; DROP TABLE alert_state;
-            DROP INDEX alert_oldest_pending; DROP TRIGGER alert_parked_insert; DROP TRIGGER alert_parked_resolution;
-            DROP TRIGGER alert_uncertain_insert; DROP TRIGGER alert_uncertain_transition;
-            DROP TABLE alert_counts;
-            PRAGMA user_version=5;")?;
+        let mut db = rusqlite::Connection::open(&path)?;
+        db.execute_batch(include_str!("schema.sql"))?;
+        Store::migrate_v2(&mut db)?;
+        Store::migrate_v3(&mut db, 65_536)?;
+        db.execute_batch(include_str!("migration_v4.sql"))?;
+        db.execute_batch(include_str!("migration_v5.sql"))?;
         let metadata = serde_json::json!({"machine":"busy","received_at":"1970-01-01T00:01:30Z"});
-        store.db.execute(
+        db.execute(
             "INSERT INTO receipts VALUES('synthetic',?1,x'00',x'00')",
             [metadata.to_string()],
         )?;
-        drop(store);
+        drop(db);
         let mut store = open(&path)?;
         let machine = AlertKey::MachineSilent(Identifier::new("busy")?);
         assert_eq!(
@@ -498,7 +497,12 @@ mod tests {
             },
             config: vec![],
         };
-        store.journal_frame(&transfer, 1, b"synthetic", &provenance)?;
+        store.journal_frame(
+            &transfer,
+            crate::FrameSequence::new(1, 7)?,
+            b"synthetic",
+            &provenance,
+        )?;
         assert_eq!(
             store.alert_value(&machine, 100, &[(Identifier::new("lab")?, 30)])?,
             None
