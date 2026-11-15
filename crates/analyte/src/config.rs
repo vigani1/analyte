@@ -21,6 +21,7 @@ pub struct Machine {
 
 /// Validated program settings. Paths are resolved relative to the program file.
 pub struct Program {
+    admin_address: Option<std::net::SocketAddrV4>,
     #[cfg(feature = "test-hooks")]
     pub(crate) stall_store_on_shutdown: bool,
     pub(crate) loopback_destinations: std::collections::BTreeMap<String, String>,
@@ -36,12 +37,37 @@ pub struct Program {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
+    admin: Option<Admin>,
     #[serde(default)]
     signing_rotation: std::collections::BTreeMap<String, Vec<analyte_model::Identifier>>,
     schema_version: u32,
     data_directory: PathBuf,
     store: Limits,
     machines: Vec<Entry>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Admin {
+    port: u16,
+    #[serde(default = "admin_loopback")]
+    address: std::net::Ipv4Addr,
+}
+
+fn admin_loopback() -> std::net::Ipv4Addr {
+    std::net::Ipv4Addr::LOCALHOST
+}
+
+impl Admin {
+    fn address(&self) -> Result<std::net::SocketAddrV4, Error> {
+        if self.address != std::net::Ipv4Addr::LOCALHOST {
+            return Err(invalid("admin address must be 127.0.0.1"));
+        }
+        if self.port == 0 {
+            return Err(invalid("admin port must be between 1 and 65535"));
+        }
+        Ok(std::net::SocketAddrV4::new(self.address, self.port))
+    }
 }
 
 #[derive(Deserialize)]
@@ -154,6 +180,7 @@ impl Program {
     /// Reports path, TOML, bounds, duplicate identity and machine validation failures.
     pub fn load(path: &Path) -> Result<Self, Error> {
         let file: File = toml::from_str(&read(path)?)?;
+        let admin_address = file.admin.as_ref().map(Admin::address).transpose()?;
         if file.schema_version != 1
             || file.machines.is_empty()
             || file.machines.len() > 128
@@ -245,6 +272,7 @@ impl Program {
             }
         }
         Ok(Self {
+            admin_address,
             #[cfg(feature = "test-hooks")]
             stall_store_on_shutdown: false,
             loopback_destinations: std::collections::BTreeMap::new(),
@@ -263,6 +291,12 @@ impl Program {
 }
 
 impl Program {
+    /// Returns the configured IPv4 loopback admin endpoint, absent when disabled.
+    #[must_use]
+    pub fn admin_address(&self) -> Option<std::net::SocketAddrV4> {
+        self.admin_address
+    }
+
     /// Overrides a known destination for synthetic loopback HTTP tests only.
     /// Production `serve` and `run` reject programs containing these overrides.
     /// # Errors
@@ -307,5 +341,39 @@ impl Machine {
     #[must_use]
     pub fn snapshot(&self) -> &Validated {
         &self.snapshot
+    }
+}
+
+#[cfg(test)]
+mod admin_tests {
+    use super::*;
+
+    // Plan section 11: admission is restricted to the local operator interface.
+    #[test]
+    fn plan11_admin_refuses_non_loopback_configuration() -> Result<(), Error> {
+        for address in ["0.0.0.0", "192.0.2.1", "127.0.0.2"] {
+            let admin: Admin = toml::from_str(&format!("port = 8080\naddress = '{address}'"))?;
+            assert!(admin.address().is_err());
+        }
+        assert!(toml::from_str::<Admin>("port = 8080\naddress = '::'").is_err());
+        Ok(())
+    }
+
+    // Plan section 11: the optional port selects only 127.0.0.1, never a wildcard bind.
+    #[test]
+    fn plan11_admin_port_defaults_to_ipv4_loopback() -> Result<(), Error> {
+        let admin: Admin = toml::from_str("port = 8080")?;
+        assert_eq!(admin.address()?.to_string(), "127.0.0.1:8080");
+        assert!(toml::from_str::<Admin>("port = 65536").is_err());
+        assert!(toml::from_str::<Admin>("port = 0")?.address().is_err());
+        Ok(())
+    }
+
+    // Plan section 11: existing installations have no admin listener by default.
+    #[test]
+    fn plan11_admin_is_absent_by_default() -> Result<(), Error> {
+        let file: File = toml::from_str(include_str!("../examples/analyte.toml"))?;
+        assert!(file.admin.is_none());
+        Ok(())
     }
 }
