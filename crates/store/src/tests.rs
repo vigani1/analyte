@@ -3291,3 +3291,135 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
     assert!(!path.with_extension("before-restore").exists());
     Ok(())
 }
+
+#[test]
+fn mutation_rule7_worker_capacity_bounds_are_inclusive() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()?;
+    runtime.block_on(async {
+        for capacity in [0, 1024, 1025] {
+            let deadline = Instant::now() + HANG_GUARD;
+            let result = Handle::start(
+                temp.path().join(format!("capacity-{capacity}.db")),
+                limits(),
+                Box::new(Space(u64::MAX)),
+                capacity,
+                deadline,
+            )
+            .await;
+            if capacity == 1024 {
+                let mut handle = result?;
+                handle.shutdown(deadline).await?;
+            } else {
+                assert!(matches!(result, Err(Error::InvalidInput)));
+            }
+        }
+        Ok::<_, Error>(())
+    })?;
+    Ok(())
+}
+
+#[test]
+fn mutation_rule7_worker_drop_joins_the_store_owner_before_returning() -> TestResult {
+    struct DropSpace(std::sync::mpsc::Sender<()>);
+    impl FreeSpace for DropSpace {
+        fn available(&self, _: &Path) -> std::io::Result<u64> {
+            Ok(u64::MAX)
+        }
+    }
+    impl Drop for DropSpace {
+        fn drop(&mut self) {
+            let _ = self.0.send(());
+        }
+    }
+    let temp = tempfile::tempdir()?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()?;
+    runtime.block_on(async {
+        for attempt in 0..16 {
+            let (closed, observed) = std::sync::mpsc::channel();
+            let handle = Handle::start(
+                temp.path().join(format!("drop-{attempt}.db")),
+                limits(),
+                Box::new(DropSpace(closed)),
+                1,
+                Instant::now() + HANG_GUARD,
+            )
+            .await?;
+            drop(handle);
+            // Drop promises the owner has already finished, not eventual cleanup.
+            assert_eq!(observed.try_recv(), Ok(()));
+        }
+        Ok::<_, Error>(())
+    })?;
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("current.db");
+    let source = temp.path().join("backup.db");
+    let current = receipt(b"current original")?;
+    let backup = receipt(b"backup original")?;
+    let mut bytes = Vec::new();
+    for (file, metadata, raw) in [
+        (&path, &current, b"current original".as_slice()),
+        (&source, &backup, b"backup original".as_slice()),
+    ] {
+        let db = Connection::open(file)?;
+        db.execute_batch(include_str!("schema.sql"))?;
+        db.execute(
+            "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
+            params![key(&metadata.id)?, key(metadata)?, raw, b"config"],
+        )?;
+        let pages: i64 = db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+        let page: i64 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+        bytes.push(pages.checked_mul(page).ok_or("database size")?);
+    }
+    let limit = bytes
+        .into_iter()
+        .max()
+        .ok_or("database sizes")?
+        .checked_add(1)
+        .ok_or("size limit")?;
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 42,
+        reason: Reason::new("synthetic old-schema recovery")?,
+    };
+    let result = Store::restore(
+        &path,
+        &source,
+        Limits {
+            database_bytes: u64::try_from(limit)?,
+            ..limits()
+        },
+        Box::new(Space(u64::MAX)),
+        &audit,
+        Instant::now() + HANG_GUARD,
+    );
+    let db = Connection::open(&path)?;
+    let pages: i64 = db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+    let page: i64 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+    let actual = pages.checked_mul(page).ok_or("restored size")?;
+    assert!(
+        matches!(result, Err(Error::Capacity)),
+        "restore result {result:?}; published size {actual} exceeds configured limit {limit}"
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT raw FROM receipts WHERE id=?1",
+            [key(&current.id)?],
+            |r| r.get::<_, Vec<u8>>(0)
+        )?,
+        b"current original"
+    );
+    assert!(!path.with_extension("before-restore").exists());
+    Ok(())
+}
