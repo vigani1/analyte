@@ -1,5 +1,6 @@
 //! Protected evidence processing; no payload enters ordinary logs.
-use crate::{Error, config::Machine, deadline, invalid};
+pub(crate) mod capture;
+use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 

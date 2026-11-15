@@ -16,9 +16,9 @@ pub struct Machine {
     pub(crate) capture: bool,
     pub(crate) destination_limits: analyte_sink::Limits,
     #[cfg(feature = "test-hooks")]
-    pub(crate) law_committed: Option<std::sync::Arc<crate::test_hooks::Committed>>,
+    pub(crate) law_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     #[cfg(feature = "test-hooks")]
-    pub(crate) astm_committed: Option<std::sync::Arc<crate::test_hooks::AstmCommitted>>,
+    pub(crate) astm_committed: Option<std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>>,
     /// Unique installation identity, independent of the shipped definition name.
     pub(crate) id: analyte_model::Identifier,
     /// Exact reproducible machine configuration.
@@ -138,7 +138,7 @@ impl Program {
     pub fn pause_law_committed_for_test(
         &mut self,
         id: &str,
-        hook: std::sync::Arc<crate::test_hooks::Committed>,
+        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
     ) -> Result<(), Error> {
         let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none()
@@ -181,7 +181,7 @@ impl Program {
     pub fn pause_astm_committed_for_test(
         &mut self,
         id: &str,
-        hook: std::sync::Arc<crate::test_hooks::AstmCommitted>,
+        hook: std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>,
     ) -> Result<(), Error> {
         let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none()
@@ -300,7 +300,7 @@ impl Program {
                 law_committed: None,
                 #[cfg(feature = "test-hooks")]
                 astm_committed: None,
-                destination_limits: crate::delivery::limits(
+                destination_limits: crate::runtime::delivery::limits(
                     snapshot.effective().site().destination.freshness_seconds,
                 ),
                 id: entry.id,

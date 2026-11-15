@@ -2,7 +2,7 @@
 mod sending;
 pub(crate) mod validation;
 mod work;
-use crate::{Error, config::Machine, deadline, evidence, invalid};
+use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
 use analyte_hl7::{AckCode, AckError, Message, Options, Responsibility, law};
 use analyte_model::{Identifier, OrderState, ReceiptId, SampleId, SourceText};
 use analyte_store::{
@@ -111,22 +111,23 @@ impl Connection {
             Ok(query) => query,
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                return crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law)
-                    .build(|response| {
-                        let detail =
-                            error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
-                        law::reject_trigger(
-                            message.raw(),
-                            response,
-                            error
-                                .acknowledgment_code()
-                                .ok_or("query failure has no ACK outcome")?,
-                            detail,
-                            options,
-                        )?
-                        .map(Reply::Response)
-                        .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
-                    });
+                return crate::machine::hl7_response::response_metadata(
+                    crate::machine::hl7_response::Profile::Law,
+                )
+                .build(|response| {
+                    let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
+                    law::reject_trigger(
+                        message.raw(),
+                        response,
+                        error
+                            .acknowledgment_code()
+                            .ok_or("query failure has no ACK outcome")?,
+                        detail,
+                        options,
+                    )?
+                    .map(Reply::Response)
+                    .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
+                });
             }
         };
         let stack = super::settings::law(machine)?;
@@ -308,16 +309,17 @@ impl Connection {
             return Err(invalid("LAW query deadline after reservation"));
         }
         let followup = if prepared.is_empty() {
-            crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(
-                |response| {
-                    Ok(law::negative_work(
-                        query,
-                        address(&work),
-                        response,
-                        options,
-                    )?)
-                },
-            )?
+            crate::machine::hl7_response::response_metadata(
+                crate::machine::hl7_response::Profile::Law,
+            )
+            .build(|response| {
+                Ok(law::negative_work(
+                    query,
+                    address(&work),
+                    response,
+                    options,
+                )?)
+            })?
         } else {
             let refs = prepared
                 .iter()
@@ -478,17 +480,18 @@ fn reply(
     answer: law::CacheAnswer<'_>,
     options: Options,
 ) -> Result<Reply, Error> {
-    crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(|response| {
-        Ok(Reply::Response(
-            law::query_response(
-                query,
-                answer,
-                response,
-                Responsibility::StoredAndInterpreted,
-                options,
-            )?
-            .message()
-            .clone(),
-        ))
-    })
+    crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Law)
+        .build(|response| {
+            Ok(Reply::Response(
+                law::query_response(
+                    query,
+                    answer,
+                    response,
+                    Responsibility::StoredAndInterpreted,
+                    options,
+                )?
+                .message()
+                .clone(),
+            ))
+        })
 }

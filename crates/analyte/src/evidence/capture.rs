@@ -1,5 +1,5 @@
 //! Plan §10 / ADR 0009: optional protected wire evidence, never clinical custody.
-use crate::{config::Machine, service::create_data_directory};
+use crate::{installation::config::Machine, runtime::service::create_data_directory};
 use analyte_transport::{
     IoSide,
     recording::{self, Evidence, Header},
@@ -269,7 +269,7 @@ mod tests {
             &program,
             "schema_version=1\ndata_directory='data'\n[[machines]]\nid='serial'\ncapture=true\ndefinition='machine.toml'\nsite='site.toml'\n[store]\nreserve_bytes=1024\ndatabase_bytes=100000000\nrecord_bytes=2097152\npage_rows=100\nbusy_timeout_ms=1000\n",
         )?;
-        let program = crate::config::Program::load(&program)?;
+        let program = crate::installation::config::Program::load(&program)?;
         let capture = Capture::new(
             program.machines().first().ok_or("machine")?,
             &root.path().join("data"),

@@ -1,5 +1,5 @@
 //! Operator decisions change evidence and app events, never machine commands.
-use crate::{Error, config::Program, deadline};
+use crate::{Error, deadline, installation::config::Program};
 use analyte_model::{Identifier, OrderState, Reason};
 use analyte_store::{Audit, MachineOrderFilter};
 use clap::{Subcommand, ValueEnum};
@@ -89,7 +89,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         .request(deadline(), |store| store.restore_unreconciled())
         .await?;
     if paused {
-        crate::output::line(
+        crate::operator::output::line(
             "ORDER SENDING PAUSED: restored store requires machine/app reconciliation.",
         )?;
     }
@@ -119,7 +119,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         .await;
     store.shutdown(deadline()).await?;
     for order in result? {
-        crate::output::line(&format!(
+        crate::operator::output::line(&format!(
             "{} app={} order={} machine={} version={} state={:?} updated_at={}",
             order.id,
             order.key.destination.as_str(),
@@ -130,7 +130,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             order.updated_at
         ))?;
         for item in order.items {
-            crate::output::line(&format!(
+            crate::operator::output::line(&format!(
                 "  item={} placer={} namespace={:?} coverage_known={} tests={} state={:?} reason={}",
                 item.index,
                 item.placer,

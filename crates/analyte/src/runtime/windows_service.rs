@@ -1,5 +1,5 @@
 //! SCM adapter. Installation belongs to the packaging scripts, never this module.
-use crate::{Error, config::Program, invalid, service};
+use crate::{Error, installation::config::Program, invalid, runtime::service};
 use std::{
     path::PathBuf,
     sync::{
@@ -42,7 +42,10 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
             }
         }
     });
-    let watchdog = Arc::new(crate::shutdown::Watchdog::new(bound, Some(notice))?);
+    let watchdog = Arc::new(crate::runtime::shutdown::Watchdog::new(
+        bound,
+        Some(notice),
+    )?);
     std::thread::scope(|scope| {
         let runtime_watchdog = watchdog.clone();
         let stopping = requested.clone();
@@ -67,7 +70,7 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
                         .with_writer(log)
                         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
                         .try_init()?;
-                    let secrets = crate::secrets::EnvironmentSecrets::load(&program)?;
+                    let secrets = crate::installation::secrets::EnvironmentSecrets::load(&program)?;
                     drop(startup);
                     service::serve_bounded(
                         program,

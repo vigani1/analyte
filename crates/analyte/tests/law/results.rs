@@ -336,7 +336,7 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     )
     .await?;
     let mut loaded = program(&path, &reference.url)?;
-    let (hook, control) = analyte::test_hooks::Committed::new();
+    let (hook, control) = analyte::runtime::test_hooks::Committed::new();
     loaded.pause_law_committed_for_test("law", hook)?;
     let running = Running::start_program(loaded, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
@@ -597,10 +597,10 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
             Ok((parked, original, version1))
         })
         .await?;
-    let commit = analyte::recovery::reprocess(
+    let commit = analyte::operator::recovery::reprocess(
         &store,
         &current,
-        analyte::recovery::ReprocessTarget::Parked(parked),
+        analyte::operator::recovery::ReprocessTarget::Parked(parked),
         analyte_model::Identifier::new("synthetic-operator")?,
         analyte_model::Reason::new("repair LAW test mapping")?,
     )
@@ -610,10 +610,10 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
         commit.outcomes.as_slice(),
         [analyte_store::RevisionOutcome::New(_)]
     ));
-    let repeated = analyte::recovery::reprocess(
+    let repeated = analyte::operator::recovery::reprocess(
         &store,
         &current,
-        analyte::recovery::ReprocessTarget::Receipt(id),
+        analyte::operator::recovery::ReprocessTarget::Receipt(id),
         analyte_model::Identifier::new("synthetic-operator")?,
         analyte_model::Reason::new("verify retained result idempotency")?,
     )
@@ -683,10 +683,10 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     running.stop().await?;
     drop(peer);
     let mut store = analyte::open_system_store(&current).await?;
-    let rejected = analyte::recovery::reprocess(
+    let rejected = analyte::operator::recovery::reprocess(
         &store,
         &current,
-        analyte::recovery::ReprocessTarget::Receipt(conflict_id),
+        analyte::operator::recovery::ReprocessTarget::Receipt(conflict_id),
         analyte_model::Identifier::new("synthetic-operator")?,
         analyte_model::Reason::new("review retained non-C conflict")?,
     )

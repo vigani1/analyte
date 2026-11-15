@@ -182,16 +182,17 @@ pub(super) async fn reprocess(
         let reason = Reason::new(&form.reason)?;
         let path = state.config_path.clone();
         let program =
-            tokio::task::spawn_blocking(move || crate::config::Program::load(&path)).await??;
+            tokio::task::spawn_blocking(move || crate::installation::config::Program::load(&path))
+                .await??;
         if program.data_directory().canonicalize()? != state.directory.canonicalize()? {
             return Err(crate::invalid(
                 "current configuration points to a different store",
             ));
         }
-        crate::recovery::reprocess(
+        crate::operator::recovery::reprocess(
             &state.store,
             &program,
-            crate::recovery::ReprocessTarget::Parked(parked),
+            crate::operator::recovery::ReprocessTarget::Parked(parked),
             session.actor.clone(),
             reason,
         )
@@ -220,7 +221,7 @@ pub(super) async fn resend(
         return StatusCode::FORBIDDEN.into_response();
     }
     let result = async {
-        crate::recovery::resend(
+        crate::operator::recovery::resend(
             &state.store,
             id(&text)?,
             form.acknowledge_superseded,

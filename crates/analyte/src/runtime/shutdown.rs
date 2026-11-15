@@ -125,7 +125,7 @@ mod tests {
         let mut child = std::process::Command::new(std::env::current_exe()?)
             .args([
                 "--exact",
-                "shutdown::tests::plan11_agents_concurrency_stuck_component_exits_three",
+                "runtime::shutdown::tests::plan11_agents_concurrency_stuck_component_exits_three",
                 "--nocapture",
             ])
             .env(CHILD, "1")

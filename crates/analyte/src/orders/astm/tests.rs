@@ -29,7 +29,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     .validate()?;
     Ok(Machine {
         capture: false,
-        destination_limits: crate::delivery::limits(30),
+        destination_limits: crate::runtime::delivery::limits(30),
         #[cfg(feature = "test-hooks")]
         law_committed: None,
         #[cfg(feature = "test-hooks")]

@@ -1,5 +1,5 @@
 //! File handoff stays claimed until receipt and interpretation are durable.
-use crate::{Error, config::Machine, deadline, evidence, invalid};
+use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_transport::folder::{Disposition, Item, Watch};
@@ -85,7 +85,7 @@ pub(super) async fn session(
     root: PathBuf,
     mut stop: watch::Receiver<bool>,
     mut closing: super::Closing,
-    capture: Option<&crate::capture::Capture>,
+    capture: Option<&evidence::capture::Capture>,
 ) -> Result<(), Error> {
     let context = evidence::Connection::new(machine)?;
     let machine = &context;
@@ -299,7 +299,7 @@ mod tests {
                 snapshot,
                 listener: None,
                 capture: false,
-                destination_limits: crate::delivery::limits(30),
+                destination_limits: crate::runtime::delivery::limits(30),
                 #[cfg(feature = "test-hooks")]
                 law_committed: None,
                 #[cfg(feature = "test-hooks")]

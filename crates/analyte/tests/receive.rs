@@ -1,7 +1,7 @@
 //! Synthetic localhost receive-path tests, tied to ADR 0003 and protocol scopes.
 #[path = "support/guard.rs"]
 mod guard;
-use analyte::{Error, config::Program, service};
+use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_store::{FreeSpace, Store};
 use guard::HANG_GUARD;
 use std::{path::Path, time::Duration};
@@ -637,16 +637,17 @@ async fn serve(
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
 ) -> Result<(), Error> {
-    let secrets = analyte::secrets::EnvironmentSecrets::load_with(&program, |name| {
-        Some(
-            if name.ends_with("API") {
-                "synthetic-api"
-            } else {
-                "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
-            }
-            .into(),
-        )
-    })?;
+    let secrets =
+        analyte::installation::secrets::EnvironmentSecrets::load_with(&program, |name| {
+            Some(
+                if name.ends_with("API") {
+                    "synthetic-api"
+                } else {
+                    "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+                }
+                .into(),
+            )
+        })?;
     service::serve_loopback_test(program, space, stop, secrets, None).await
 }
 
@@ -657,7 +658,7 @@ async fn plan11_status_reports_health_and_last_receipt_without_payloads_or_secre
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
     let mut store = service::open_store(&program, Box::new(Space(u64::MAX))).await?;
-    let lines = analyte::status::snapshot(&program, &store).await?;
+    let lines = analyte::operator::status::snapshot(&program, &store).await?;
     assert_eq!(lines.len(), 3);
     assert_eq!(lines[0], "order_sending_paused_after_restore=false");
     let destination = lines.get(1).ok_or("missing health")?;

@@ -1,8 +1,7 @@
 //! One cancellable owner evaluates bounded nonclinical policies (plan section 11).
 use crate::{
-    Error,
-    config::{Alert, Condition},
-    deadline,
+    Error, deadline,
+    installation::config::{Alert, Condition},
 };
 use analyte_model::Identifier;
 use analyte_store::{AlertKey, AlertState, Handle};

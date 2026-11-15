@@ -3,7 +3,7 @@ use super::{
     listener::Listener,
     sessions::{Session, Sessions},
 };
-use crate::{Error, config::Program};
+use crate::{Error, installation::config::Program};
 use analyte_model::Identifier;
 use axum::{
     Extension, Form, Router,
@@ -81,7 +81,7 @@ pub(crate) async fn prepare(
         host,
         store,
         machines,
-        destinations: crate::delivery::destinations(program, loopback)?,
+        destinations: crate::runtime::delivery::destinations(program, loopback)?,
         directory: program.data_directory().to_owned(),
         reserve: program.store_limits.reserve_bytes,
         _released: released,

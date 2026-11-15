@@ -1,5 +1,7 @@
 //! Service ownership, signal handling and bounded shutdown.
-use crate::{Error, config::Program, deadline, invalid, machine, space::Volume};
+use crate::{
+    Error, deadline, installation::config::Program, invalid, machine, runtime::space::Volume,
+};
 use analyte_store::{FreeSpace, Handle};
 use std::{
     future::Future,
@@ -69,16 +71,16 @@ pub async fn run(program: Program) -> Result<(), Error> {
 /// # Errors
 /// Reports invalid bounds, startup, signal and graceful shutdown failures.
 pub async fn run_bounded(program: Program, bound: Duration) -> Result<(), Error> {
-    let secrets = crate::secrets::EnvironmentSecrets::load(&program)?;
+    let secrets = crate::installation::secrets::EnvironmentSecrets::load(&program)?;
     serve_bounded(program, termination(), secrets, bound, None).await
 }
 
 pub(crate) async fn serve_bounded(
     program: Program,
     stop: impl Future<Output = Result<(), Error>>,
-    secrets: crate::secrets::EnvironmentSecrets,
+    secrets: crate::installation::secrets::EnvironmentSecrets,
     bound: Duration,
-    watchdog: Option<Arc<crate::shutdown::Watchdog>>,
+    watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
     if !(Duration::from_secs(30)..=Duration::from_secs(300)).contains(&bound) {
         return Err(invalid("shutdown bound must be 30 through 300 seconds"));
@@ -109,7 +111,7 @@ pub async fn serve(
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
 ) -> Result<(), Error> {
-    let secrets = crate::secrets::EnvironmentSecrets::load(&program)?;
+    let secrets = crate::installation::secrets::EnvironmentSecrets::load(&program)?;
     serve_with(
         program,
         space,
@@ -134,7 +136,7 @@ pub async fn serve_loopback_test(
     program: Program,
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
-    secrets: crate::secrets::EnvironmentSecrets,
+    secrets: crate::installation::secrets::EnvironmentSecrets,
     ready: Option<tokio::sync::oneshot::Sender<()>>,
 ) -> Result<(), Error> {
     serve_with(
@@ -155,7 +157,7 @@ pub async fn serve_loopback_test(
 struct Supervision {
     loopback: bool,
     shutdown_bound: Duration,
-    watchdog: Option<Arc<crate::shutdown::Watchdog>>,
+    watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
     ready: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
@@ -163,7 +165,7 @@ async fn serve_with(
     program: Program,
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
-    secrets: crate::secrets::EnvironmentSecrets,
+    secrets: crate::installation::secrets::EnvironmentSecrets,
     supervision: Supervision,
 ) -> Result<(), Error> {
     let Supervision {
@@ -185,10 +187,13 @@ async fn serve_with(
     };
     let watchdog = match watchdog {
         Some(watchdog) => watchdog,
-        None => Arc::new(crate::shutdown::Watchdog::new(shutdown_bound, None)?),
+        None => Arc::new(crate::runtime::shutdown::Watchdog::new(
+            shutdown_bound,
+            None,
+        )?),
     };
     let store_component = watchdog.component("store".into());
-    let destinations = crate::delivery::destinations(&program, loopback)?;
+    let destinations = crate::runtime::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
     let store = Arc::new(open_store(&program, space).await?);
     let paused = store
@@ -198,7 +203,7 @@ async fn serve_with(
         order_sending_paused_after_restore = paused,
         "store restore reconciliation status"
     );
-    crate::delivery::recover(&store).await?;
+    crate::runtime::delivery::recover(&store).await?;
     let admin = crate::admin::prepare(&program, store.clone(), loopback).await?;
     let admin_states = admin
         .as_ref()
@@ -235,7 +240,7 @@ async fn serve_with(
         delivery_owners.spawn(async move {
             let _component = component;
             analyte_sink::Worker::new(&store, &destinations, secrets.as_ref())
-                .run_draining(delivery_stopped, crate::delivery::SHUTDOWN_BUDGET)
+                .run_draining(delivery_stopped, crate::runtime::delivery::SHUTDOWN_BUDGET)
                 .await
         });
     }
@@ -259,14 +264,14 @@ async fn serve_with(
         let component = watchdog.component("alert-evaluator".into());
         alert_owners.spawn(async move {
             let _component = component;
-            crate::alerts::run(store, policies, destinations, interval, stop).await
+            crate::operator::alerts::run(store, policies, destinations, interval, stop).await
         });
     }
     let mut owners = JoinSet::new();
     let mut ready_to_close = Vec::new();
     let (close_transports, transports_closing) = watch::channel(false);
     for machine in program.machines {
-        let capture = crate::capture::Capture::new(
+        let capture = crate::evidence::capture::Capture::new(
             &machine,
             &program.data_directory,
             program.store_limits.reserve_bytes,
@@ -380,7 +385,7 @@ async fn serve_with(
         while admin_owners.join_next().await.is_some() {}
     }
     delivery_stop.send_replace(true);
-    let delivery_drained = tokio::time::timeout(crate::delivery::SHUTDOWN_BUDGET, async {
+    let delivery_drained = tokio::time::timeout(crate::runtime::delivery::SHUTDOWN_BUDGET, async {
         while let Some(owner) = delivery_owners.join_next().await {
             owner??;
         }

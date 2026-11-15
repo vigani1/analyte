@@ -52,10 +52,10 @@ async fn render(state: &Context) -> Result<String, Error> {
     html.push_str(super::pages::NAV);
     html.push_str("<dl>");
     let now = jiff::Timestamp::now().as_second();
-    let alerts = crate::alerts::active(&state.store).await?;
+    let alerts = crate::operator::alerts::active(&state.store).await?;
     row(&mut html, "Active alerts", &alerts.len().to_string());
     for alert in alerts {
-        let (kind, machine) = crate::alerts::signal(&alert.key);
+        let (kind, machine) = crate::operator::alerts::signal(&alert.key);
         row(&mut html, "Alert", kind);
         if let Some(machine) = machine {
             row(&mut html, "Alert machine", machine);
@@ -64,7 +64,7 @@ async fn render(state: &Context) -> Result<String, Error> {
         row(
             &mut html,
             "Raised age (seconds)",
-            &crate::alerts::age(&alert, now),
+            &crate::operator::alerts::age(&alert, now),
         );
         row(
             &mut html,

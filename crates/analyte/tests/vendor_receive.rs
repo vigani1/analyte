@@ -3,7 +3,7 @@
 mod guard;
 #[path = "../../poct/tests/peer_messages.rs"]
 mod poct_peer;
-use analyte::{Error, config::Program, service};
+use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_store::FreeSpace;
 use guard::HANG_GUARD;
 use std::{
@@ -99,16 +99,17 @@ impl Running {
         let mut program = Program::load(&path)?;
         program.set_loopback_destination_for_test("demo", url.clone())?;
         program.set_loopback_listener_for_test("synthetic", listener.try_clone()?)?;
-        let secrets = analyte::secrets::EnvironmentSecrets::load_with(&program, |name| {
-            Some(
-                if name.ends_with("API") {
-                    "synthetic-api"
-                } else {
-                    SECRET
-                }
-                .into(),
-            )
-        })?;
+        let secrets =
+            analyte::installation::secrets::EnvironmentSecrets::load_with(&program, |name| {
+                Some(
+                    if name.ends_with("API") {
+                        "synthetic-api"
+                    } else {
+                        SECRET
+                    }
+                    .into(),
+                )
+            })?;
         let space = Arc::new(AtomicU64::new(u64::MAX));
         let probe = Space(space.clone());
         let (stop, stopped) = oneshot::channel();
@@ -147,16 +148,17 @@ impl Running {
         let url = self.url.clone();
         program.set_loopback_destination_for_test("demo", url)?;
         program.set_loopback_listener_for_test("synthetic", self.listener.try_clone()?)?;
-        let secrets = analyte::secrets::EnvironmentSecrets::load_with(&program, |name| {
-            Some(
-                if name.ends_with("API") {
-                    "synthetic-api"
-                } else {
-                    SECRET
-                }
-                .into(),
-            )
-        })?;
+        let secrets =
+            analyte::installation::secrets::EnvironmentSecrets::load_with(&program, |name| {
+                Some(
+                    if name.ends_with("API") {
+                        "synthetic-api"
+                    } else {
+                        SECRET
+                    }
+                    .into(),
+                )
+            })?;
         let (stop, stopped) = oneshot::channel();
         let probe = Space(self.space.clone());
         let task = tokio::spawn(service::serve_loopback_test(

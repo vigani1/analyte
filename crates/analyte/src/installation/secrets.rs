@@ -38,7 +38,7 @@ impl EnvironmentSecrets {
     /// Loads every destination before admission, retaining no values in errors.
     /// # Errors
     /// Names a missing, empty or malformed credential.
-    pub fn load(program: &crate::config::Program) -> Result<Self, SecretError> {
+    pub fn load(program: &crate::installation::config::Program) -> Result<Self, SecretError> {
         Self::load_with(program, |key| std::env::var(key).ok())
     }
 
@@ -46,7 +46,7 @@ impl EnvironmentSecrets {
     /// # Errors
     /// Names a missing, empty or malformed credential.
     pub fn load_with(
-        program: &crate::config::Program,
+        program: &crate::installation::config::Program,
         lookup: impl Fn(&str) -> Option<String>,
     ) -> Result<Self, SecretError> {
         let read = |name: &Identifier| {
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn adr0008_missing_empty_and_invalid_credentials_name_only() -> Result<(), crate::Error> {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml");
-        let program = crate::config::Program::load(&path)?;
+        let program = crate::installation::config::Program::load(&path)?;
         for value in [None, Some(String::new())] {
             let error = super::EnvironmentSecrets::load_with(&program, |_| value.clone())
                 .err()

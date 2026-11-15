@@ -68,7 +68,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
         Ok(program)
     };
     let secrets = |program: &Program| {
-        crate::secrets::EnvironmentSecrets::load_with(program, |name| {
+        crate::installation::secrets::EnvironmentSecrets::load_with(program, |name| {
             Some(if name.ends_with("SIGNING") {
                 "whsec_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into()
             } else {
@@ -81,13 +81,16 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     // Exercise token refusal against an already migrated store; racing fresh
     // synchronous=FULL migrations against production's 5 s startup budget tests
     // disk speed instead of missing-token behavior.
-    let mut prepared =
-        crate::service::open_store_with_deadline(&missing, Box::new(Space), fixture_deadline()?)
-            .await
-            .map_err(|error| format!("admin lifecycle fixture migration: {error}"))?;
+    let mut prepared = crate::runtime::service::open_store_with_deadline(
+        &missing,
+        Box::new(Space),
+        fixture_deadline()?,
+    )
+    .await
+    .map_err(|error| format!("admin lifecycle fixture migration: {error}"))?;
     prepared.shutdown(fixture_deadline()?).await?;
     let injected = secrets(&missing)?;
-    let failure = crate::service::serve_loopback_test(
+    let failure = crate::runtime::service::serve_loopback_test(
         missing,
         Box::new(Space),
         std::future::pending(),
@@ -108,7 +111,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     let program = program()?;
     let injected = secrets(&program)?;
     let (stop, stopped) = tokio::sync::oneshot::channel();
-    let owner = tokio::spawn(crate::service::serve_loopback_test(
+    let owner = tokio::spawn(crate::runtime::service::serve_loopback_test(
         program,
         Box::new(Space),
         async {

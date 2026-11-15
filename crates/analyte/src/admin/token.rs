@@ -109,7 +109,7 @@ fn generate(
 /// # Errors
 /// Reports protected-directory, entropy, staging, flush or rename failures.
 pub fn rotate_token(directory: &Path) -> Result<String, crate::Error> {
-    crate::service::create_data_directory(directory)?;
+    crate::runtime::service::create_data_directory(directory)?;
     let token = generate(getrandom::fill)?;
     let pending = directory.join("admin-token.pending");
     let target = directory.join("admin-token");
