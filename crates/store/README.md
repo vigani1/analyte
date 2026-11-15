@@ -7,7 +7,7 @@ and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 2 is
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 3 is
 created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
 Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
@@ -83,3 +83,34 @@ Tokio runtime; the crate enables only `sync` and `time` features.
 Order events have disjoint CHECK-constrained provenance and per-order ordering.
 Claims expose durable earlier attempt counts. Health queries expose unresolved
 count, bytes, oldest age, pause and feed status. Hosts also check freshness.
+
+## Observation history (ADR 0003)
+
+Version 3 adds immutable observation revisions and frame provenance. The forward
+migration retains existing rows/triggers and indexes resolved interpretation
+history; contradictory legacy content at the same revision refuses migration
+rather than picking a winner. No old interpretation is rewritten.
+
+`interpret_reconciled` accepts mapped results, explicit correction evidence and
+positioned operator findings. One transaction assigns revisions, stores the
+interpretation, parks every finding/conflict and enqueues only eligible builder
+output. The builder sees assigned revisions before constructing delivery bytes.
+A retransmission matches any retained revision and cannot enqueue again.
+Changed content needs declared correction evidence or a withdrawn status;
+otherwise identity becomes unresolved and the item is parked. Machine identity
+namespaces observation history so independent analyzers cannot collide.
+
+Clinical content is canonical JSON of sample identity, processing mode and parts,
+with each part's host receive time removed. Receipt IDs and assigned revisions
+are not part of the digest. Source times and source status remain clinical
+evidence. The SHA-256 input is independent of receipt/retry receive time.
+
+The compatibility `interpret` method also reconciles history, but has no declared
+correction-code evidence and cannot fix prebuilt bytes after revision assignment;
+use the builder API for corrections. Both reject unsafe deliveries. Mapping
+findings are stored in the same transaction, not as a later best-effort write.
+
+`journal_frame` commits immutable machine/driver/config provenance before its
+frame journal write. A failed frame write may leave provenance without a frame;
+it never permits an ACK. Incomplete transfers are parked when closed. Read APIs
+provide bounded receipt and audit pages for the protected operator interface.

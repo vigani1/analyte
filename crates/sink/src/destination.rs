@@ -25,6 +25,10 @@ pub trait SecretsSource: Send + Sync {
 pub struct Limits {
     /// Deadline for the entire HTTP operation including body reads.
     pub request_timeout: Duration,
+    /// Deadline for each local store operation (claim, attempt record, order
+    /// page commit). Kept separate from `request_timeout`: a short HTTP budget
+    /// must never cut off recording an outcome the app already accepted.
+    pub store_timeout: Duration,
     /// Initial retry delay; at least one second because store schedules Unix seconds.
     pub backoff_min: Duration,
     /// Maximum retry delay, including Retry-After and jitter.
@@ -100,6 +104,8 @@ impl Destination {
             || !(base.scheme() == "https" || (test && base.scheme() == "http" && loopback))
             || limits.request_timeout.is_zero()
             || limits.request_timeout > Duration::from_secs(300)
+            || limits.store_timeout.is_zero()
+            || limits.store_timeout > Duration::from_secs(300)
             || limits.backoff_min.as_secs() == 0
             || limits.backoff_max < limits.backoff_min
             || limits.backoff_max > Duration::from_secs(86_400)
@@ -168,7 +174,7 @@ impl Destination {
         let sample = sample.clone();
         let freshness = self.limits.freshness.as_secs();
         Ok(store
-            .request(crate::deadline(self.limits.request_timeout)?, move |s| {
+            .request(crate::deadline(self.limits.store_timeout)?, move |s| {
                 s.orders(&id, &sample, now, freshness)
             })
             .await?)
@@ -184,7 +190,7 @@ impl Destination {
     ) -> Result<analyte_store::Health, Error> {
         let id = self.id.clone();
         let mut health = store
-            .request(crate::deadline(self.limits.request_timeout)?, move |s| {
+            .request(crate::deadline(self.limits.store_timeout)?, move |s| {
                 s.health(&id, now)
             })
             .await?;
@@ -204,6 +210,7 @@ mod tests {
     fn limits() -> Limits {
         Limits {
             request_timeout: Duration::from_secs(1),
+            store_timeout: Duration::from_secs(30),
             backoff_min: Duration::from_secs(1),
             backoff_max: Duration::from_secs(60),
             freshness: Duration::from_secs(10),

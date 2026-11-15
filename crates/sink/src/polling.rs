@@ -34,10 +34,9 @@ impl<'a> Poller<'a> {
         let id = self.destination.id.clone();
         let mut cursor = self
             .store
-            .request(
-                deadline(self.destination.limits.request_timeout)?,
-                move |s| s.cursor(&id),
-            )
+            .request(deadline(self.destination.limits.store_timeout)?, move |s| {
+                s.cursor(&id)
+            })
             .await?;
         for _ in 0..self.destination.limits.max_pages {
             let page = tokio::time::timeout(
@@ -49,10 +48,9 @@ impl<'a> Poller<'a> {
             let Some(page) = page else {
                 let id = self.destination.id.clone();
                 self.store
-                    .request(
-                        deadline(self.destination.limits.request_timeout)?,
-                        move |s| s.reset_orders(&id),
-                    )
+                    .request(deadline(self.destination.limits.store_timeout)?, move |s| {
+                        s.reset_orders(&id)
+                    })
                     .await?;
                 return Err(Error::PollStatus(410));
             };
@@ -76,10 +74,9 @@ impl<'a> Poller<'a> {
                 orders,
             };
             self.store
-                .request(
-                    deadline(self.destination.limits.request_timeout)?,
-                    move |s| s.order_page(&page),
-                )
+                .request(deadline(self.destination.limits.store_timeout)?, move |s| {
+                    s.order_page(&page)
+                })
                 .await?;
             if complete {
                 return Ok(());

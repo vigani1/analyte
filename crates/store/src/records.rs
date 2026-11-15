@@ -2,7 +2,7 @@ use analyte_model::{DeliveryId, Identifier, Reason, ResultContent, SampleId};
 use serde::{Deserialize, Serialize};
 
 /// Reproducible interpretation with exact effective config and typed result contents.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Interpretation {
     /// Driver name and version.
     pub driver: analyte_model::NamespacedId,
@@ -15,7 +15,7 @@ pub struct Interpretation {
 }
 
 /// Parsing never silently substitutes an empty successful result.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum Reading {
     /// Typed results retained as JSON.
     Results(Vec<ResultContent>),
@@ -89,7 +89,7 @@ pub struct Parked {
 }
 
 /// Permanent operator action, including resolution details.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Audit {
     /// Person or service responsible.
     pub actor: Identifier,
@@ -183,4 +183,15 @@ pub struct Health {
     pub snapshot_complete: bool,
     /// Store trusts the snapshot; the host must also check freshness.
     pub cache_trusted: bool,
+}
+
+/// Source configuration retained before the first frame ACK, even for an incomplete transfer.
+#[derive(Serialize, Deserialize)]
+pub struct FrameProvenance {
+    /// Installation machine identity.
+    pub machine: Identifier,
+    /// Driver name and version used for this conversation.
+    pub driver: analyte_model::NamespacedId,
+    /// Exact effective configuration, without secrets.
+    pub config: Vec<u8>,
 }
