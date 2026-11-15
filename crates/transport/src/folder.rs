@@ -155,3 +155,167 @@ impl Claimed {
         fs::rename(&self.path, destination.join("input")).map_err(|e| io_error(&self.path, e))
     }
 }
+
+/// Bounded directory watcher driven on the host's dedicated storage thread.
+/// Each scan makes at most 1024 observations; excess entries stop with an error.
+/// Claimed receipts are returned to the host, which archives or quarantines only
+/// after its durable consumer confirms completion.
+pub struct Watcher {
+    incoming: PathBuf,
+    claimed: PathBuf,
+    stable: Option<Duration>,
+    max_bytes: u64,
+    observations: std::collections::BTreeMap<PathBuf, Observation>,
+    next: u64,
+}
+
+impl Watcher {
+    /// Validates existing incoming/claimed directories and a bounded file size.
+    /// `None` requires the producer to rename complete files into incoming.
+    /// # Errors
+    /// Rejects invalid paths, zero stable periods and unsupported size bounds.
+    pub fn new(
+        incoming: PathBuf,
+        claimed: PathBuf,
+        stable: Option<Duration>,
+        max_bytes: u64,
+    ) -> Result<Self, Error> {
+        if !incoming.is_dir()
+            || !claimed.is_dir()
+            || incoming == claimed
+            || stable.is_some_and(|period| period.is_zero())
+            || !(1..=16_777_216).contains(&max_bytes)
+        {
+            return Err(Error::Invalid(incoming));
+        }
+        Ok(Self {
+            incoming,
+            claimed,
+            stable,
+            max_bytes,
+            observations: std::collections::BTreeMap::new(),
+            next: 0,
+        })
+    }
+
+    /// Scans regular files and atomically claims only completed ones.
+    /// Call on a dedicated thread at a host-controlled, cancellable poll interval.
+    /// # Errors
+    /// Reports file and directory errors and refuses more than 1024 entries.
+    pub fn scan(&mut self) -> Result<Vec<Claimed>, Error> {
+        let mut ready = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for (index, entry) in fs::read_dir(&self.incoming)
+            .map_err(|e| io_error(&self.incoming, e))?
+            .enumerate()
+        {
+            if index >= 1024 {
+                return Err(Error::Invalid(self.incoming.clone()));
+            }
+            let path = entry.map_err(|e| io_error(&self.incoming, e))?.path();
+            if !fs::symlink_metadata(&path)
+                .map_err(|e| io_error(&path, e))?
+                .is_file()
+            {
+                continue;
+            }
+            seen.insert(path.clone());
+            let complete = if let Some(stable) = self.stable {
+                match self.observations.entry(path.clone()) {
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        entry.insert(Observation::new(path.clone())?);
+                        false
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().ready(stable)?
+                    }
+                }
+            } else {
+                true
+            };
+            if complete {
+                ready.push(path);
+            }
+        }
+        self.observations.retain(|path, _| seen.contains(path));
+        let mut receipts = Vec::new();
+        for source in ready {
+            // Never replace a previous claim, including one left by a crash.
+            let destination = loop {
+                self.next = self
+                    .next
+                    .checked_add(1)
+                    .ok_or_else(|| Error::Invalid(self.claimed.clone()))?;
+                let destination = self.claimed.join(format!("receipt-{}", self.next));
+                if !destination.exists() {
+                    break destination;
+                }
+                if self.next > 1_000_000 {
+                    return Err(Error::Invalid(self.claimed.clone()));
+                }
+            };
+            receipts.push(Claimed::claim(&source, &destination, self.max_bytes)?);
+            self.observations.remove(&source);
+        }
+        Ok(receipts)
+    }
+
+    /// Finds up to 1024 receipts left in the claimed area after a crash.
+    /// # Errors
+    /// Reports malformed receipt directories and filesystem failures without deleting them.
+    pub fn recover(&self) -> Result<Vec<Claimed>, Error> {
+        let mut receipts = Vec::new();
+        for (index, entry) in fs::read_dir(&self.claimed)
+            .map_err(|e| io_error(&self.claimed, e))?
+            .enumerate()
+        {
+            if index >= 1024 {
+                return Err(Error::Invalid(self.claimed.clone()));
+            }
+            let directory = entry.map_err(|e| io_error(&self.claimed, e))?.path();
+            // An empty claim directory can remain if the process stopped before rename.
+            if directory.join("input").exists() {
+                receipts.push(Claimed::recover(&directory, self.max_bytes)?);
+            }
+        }
+        Ok(receipts)
+    }
+}
+
+impl Claimed {
+    /// Streams this receipt through the common ordered events and optional recorder.
+    /// The file stays claimed. Call `finish` only after the host confirms durable storage.
+    /// This read-only connection never sends queued dialog writes to the producer.
+    /// # Errors
+    /// Reports bounded file reads or event delivery failure, retaining the file.
+    pub fn deliver(&self, mut side: crate::IoSide) -> Result<(), Error> {
+        let bytes = self.read()?;
+        side.start(format!("folder path={}", self.path.display()))
+            .map_err(|e| io_error(&self.path, io::Error::other(e)))?;
+        let result = (|| {
+            let session = side.generation;
+            crate::serial::emit(&mut side, crate::Event::Opened { session })?;
+            for chunk in bytes.chunks(crate::CHUNK_LIMIT) {
+                if side.cancel.is_cancelled() {
+                    break;
+                }
+                crate::serial::emit(
+                    &mut side,
+                    crate::Event::Received {
+                        at: Instant::now(),
+                        bytes: chunk.to_vec(),
+                    },
+                )?;
+            }
+            side.stop();
+            let reason = if side.cancel.is_cancelled() {
+                crate::Reason::Cancelled
+            } else {
+                crate::Reason::Disconnect
+            };
+            crate::serial::emit(&mut side, crate::Event::Closed(reason))
+        })();
+        side.stop();
+        result.map_err(|e| io_error(&self.path, io::Error::other(e)))
+    }
+}

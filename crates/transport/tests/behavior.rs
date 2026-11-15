@@ -18,22 +18,31 @@ async fn loopback_preserves_bytes_and_disconnect() -> Result<(), Box<dyn Error>>
     };
     let peer = async {
         let mut socket = TcpStream::connect(address).await?;
-        assert!(matches!(dialog.receive().await?, Some(Event::Opened)));
+        assert!(matches!(
+            dialog.receive().await?,
+            Some(Event::Opened { .. })
+        ));
         socket.write_all(b"abc").await?;
-        socket.write_all(b"def").await?;
+        assert!(
+            matches!(dialog.receive().await?, Some(Event::Received { bytes, .. }) if bytes == b"abc")
+        );
+        socket.write_all(b"defghi").await?;
         let mut received = Vec::new();
         while received.len() < 6 {
             if let Some(Event::Received { bytes, .. }) = dialog.receive().await? {
                 received.extend(bytes);
             }
         }
-        assert_eq!(received, b"abcdef");
+        assert_eq!(received, b"defghi");
         dialog.write(b"reply".to_vec()).await?;
         let mut reply = [0; 5];
         socket.read_exact(&mut reply).await?;
         assert_eq!(&reply, b"reply");
         socket.shutdown().await?;
-        assert!(matches!(dialog.receive().await?, Some(Event::Disconnected)));
+        assert!(matches!(
+            dialog.receive().await?,
+            Some(Event::Closed(analyte_transport::Reason::Disconnect))
+        ));
         Ok::<_, Box<dyn Error>>(())
     };
     let (server, peer) =
@@ -50,9 +59,7 @@ async fn dropping_dialog_cancels_owner() -> Result<(), Box<dyn Error>> {
     let (stream, _) = listener.accept().await?;
     let (dialog, side) = connection(Limits::new(1, Duration::from_secs(1))?);
     drop(dialog);
-    tokio::time::timeout(Duration::from_millis(100), tcp::pump(stream, side))
-        .await?
-        .err();
+    tokio::time::timeout(Duration::from_millis(100), tcp::pump(stream, side)).await??;
     drop(socket);
     Ok(())
 }

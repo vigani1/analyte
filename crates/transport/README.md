@@ -1,49 +1,126 @@
 # analyte-transport
 
-Host-owned transport foundations. Bytes are opaque; TCP read boundaries are
-not message boundaries. Queue acceptance does not prove peer receipt. An
-interrupted write may already have sent a prefix and must not be retried blindly.
+Host-owned byte transports. They do not frame, parse, acknowledge, or interpret
+clinical messages. A successful queued write means queue acceptance, never peer
+receipt. A cancelled or failed write may have sent a prefix; do not retry it
+blindly. This crate is not a durable receipt store.
 
-Each TCP pump is a caller-owned future. Dropping it closes the socket. Dropping
-the dialog closes its queues and cancels the pump. Reads, writes and event queue
-backpressure have configured deadlines. There are no detached runtime tasks.
+## Connections and ownership
 
-Serial settings retain the exact port name. The replaceable blocking port seam
-requires bounded reads and writes. `serial::run` owns a scoped dedicated thread;
-call it outside the runtime's worker threads. It does not catch a thread panic
-and resume a protocol session.
+`connection(Limits)` creates bounded event and write queues without starting a
+task. Reads and queued writes contain at most 4096 bytes. Every connection has
+one I/O owner: a caller-owned TCP future, a server-owned task, or a dedicated
+blocking serial/storage thread. There are no detached tasks.
 
-Folder operations are synchronous storage operations for a dedicated host
-storage thread. A producer rename is preferred. Stable-file completion requires
-a producer agreement to stop modifying the file after the stable interval.
-Claimed receipts survive process failure. Recovery reopens `input` in each receipt
-directory. Archive and quarantine use fresh directories and never delete input.
-The maximum supported input size is 16 MiB. OS filesystem operations themselves
-are not cancellable by this API.
+The event stream contains `Opened { session }`, exact `Received { at, bytes }`,
+`Failed(reason)`, `Closed(reason)`, and independent `RecordingFailed` events.
+Reasons distinguish peer disconnect, host cancellation, operation timeout, I/O
+error kind and endpoint, missing serial device, and server connection limit.
+Socket read boundaries are not protocol message boundaries. Received timestamps
+use the monotonic clock immediately after the read completes.
 
-## Recording format v1
+Consume `Opened` before writing. Writes are tagged with that observed session;
+unobserved reconnects reject writes, and stale queued writes are not replayed.
+The session number is local transport state, not a clinical result identity.
+Dropping a dialog requests cancellation; `cancellation()` requests shutdown while
+keeping its event receiver open. Keep the owner and check its returned result:
+when a consumer refuses events longer than the deadline, the owner returns an
+explicit backpressure error. A saturated event queue cannot also guarantee room
+for a terminal event. No success is implied by that termination.
 
-Recordings contain protected raw bytes: keep them out of ordinary logs and use
-synthetic or de-identified content for fixtures. The host must create a directory
-with suitable access controls before enabling recording.
+## TCP
 
-The file is append-only. Every record consists of `ATR1` (four ASCII bytes), a
-one-byte kind (0=open/settings, 1=in, 2=out, 3=close/reason), a little-endian u128
-monotonic elapsed nanosecond timestamp, a little-endian u32 payload length, then
-that many exact bytes. Payloads are bounded to 4096 bytes. Elapsed time is relative
-to worker creation; open starts a session. A reader must reject an incomplete
-trailing record and must cap lengths before allocation. A session without a close
-record is incomplete, never evidence of a clean disconnect.
+`bind` requires an explicit address. `client` supervises reconnects to exactly one
+address with capped exponential delay and jitter. Supply a different scheduling
+seed per connection. `server`/`server_recorded` take an explicitly bound listener,
+a maximum connection count and a bounded notification sender. Excess sockets are
+closed and reported as `Refused { event: Failed(LimitReached), .. }`. Accepted
+connections each have their own ordered byte stream and owner task.
 
-The optional standalone tap uses a bounded nonblocking queue; saturation returns
-an error. The host must surface that failure and the worker's file error. The
-worker syncs each record. Drop the tap and join the worker to finish. An idle
-worker reports a timeout after one second. Recording is not a durable receipt
-store and cannot authorize a protocol acknowledgment.
+Cancel the dialog or server, then await its owner. TCP cancellation interrupts
+connect, idle reads, active writes and retry delays. Event delivery is bounded by
+the configured deadline. Server shutdown cancels and joins its owned task set
+within twice that deadline; dropping the server future aborts its task set.
+Cancellation never proves that an in-progress write had no effect.
 
-## Incomplete integration
+## Serial
 
-This is a foundation, not the completed transport task. Automatic recording tap
-integration, explicit failed events, reconnect supervision with capped backoff and
-jitter, server connection limits, serial vanished-port recovery, and a cancellable
-folder watcher still need implementation. Do not use this crate for patient data.
+`Settings` validates the exact port name, baud, framing, flow control and read/write
+timeout. `run_system` opens only that name. `run` provides the same supervision
+with a fake factory for tests. A missing device is reported as `PortVanished`;
+reopen attempts use capped backoff. An unrelated operating system I/O failure
+retains its portable error kind. No device discovery or fallback port is used.
+
+Call `run` or `run_system` from the host's blocking orchestration thread. It owns
+and joins a scoped dedicated I/O thread. Port implementations and their factories
+must bound their blocking operations; fake ports obey that same contract. During
+normal serial I/O cancellation is observed within the configured port timeout,
+plus any bounded event delivery already in progress. OS device open and filesystem
+calls cannot be forcibly interrupted through the safe standard/library APIs;
+shutdown guarantees assume responsive local drivers and filesystems. Do not put
+these calls on a Tokio runtime worker.
+
+## Folder handoff
+
+`Watcher` is driven on a dedicated storage thread at the host's cancellable poll
+interval. `scan` bounds each directory to 1024 entries. Inputs are bounded to
+16 MiB. Completion uses either a producer agreement to rename complete files into
+the incoming directory, or unchanged size and modification time for a configured
+stable interval. Stable observation cannot prove completeness without that
+producer agreement; rename handoff is preferred.
+
+Each claim atomically renames input into a fresh receipt directory on the same
+filesystem. Existing receipts are never replaced. `recover` finds files left in
+the claimed area after a crash. `Claimed::deliver` emits a read-only common
+connection, including its optional recorder; it does not delete or archive input.
+After durable host acceptance, call `finish` with a fresh archive directory, or a
+fresh quarantine directory after rejection. A cancelled/failed delivery leaves
+the claimed file available for recovery. Filesystem errors preserve input and
+include its path. This is process-crash recovery; the API does not promise
+power-loss durability of directory renames.
+
+## Optional recording: append-only format v1
+
+Create `recording(path, capacity)`, attach its tap with `IoSide::with_recording`,
+and run its `Worker` on an owned dedicated storage thread. For a TCP server,
+`server_recorded` accepts a per-peer tap factory. Use a separate file/worker per
+connection, including all reconnect sessions. TCP, serial and folder delivery
+record exact incoming chunks, successful outgoing write prefixes, settings,
+session boundaries and disconnect/failure reasons. Folder delivery is read-only.
+
+The tap never waits for disk: its queue is bounded and nonblocking. Saturation,
+worker closure and file failure produce a visible `RecordingFailed` event and
+disable that tap; transport bytes continue unchanged. The worker's returned error
+is authoritative even if the connection has already closed. The host must check
+it. Drop all taps, then join the worker to drain and finish. Idle receives poll
+with a one-second deadline and do not treat quiet connections as failed. Each
+written record is synchronized. As with other blocking filesystem operations,
+a stuck filesystem cannot be forcibly cancelled safely.
+
+Protect the recording directory before starting: it contains raw clinical bytes.
+Recordings never enter ordinary logs. Only synthetic/de-identified recordings
+belong in repository fixtures.
+
+Each record contains:
+
+- `ATR1`: four ASCII bytes identifying format v1.
+- Kind: u8, 0=settings/open, 1=in, 2=out, 3=close/failure reason.
+- Timestamp: little-endian u128 nanoseconds from worker creation (monotonic).
+- Payload length: little-endian u32, at most 4096.
+- Payload: exactly that many bytes.
+
+The file is opened append-only, never truncated. A reader must cap lengths before
+allocating and reject incomplete trailing records. Each `open` starts a session;
+a session without a close is incomplete. A new worker appended to an existing
+file has a new time origin, identified by its next open. A failure event followed
+by a closed event may produce two reason records. Recordings are evidence, not
+permission to acknowledge a machine.
+
+## Validation
+
+Synthetic tests cover ordered TCP bytes, split/combined writes, disconnect,
+client reconnect and cancellation during backoff, server refusal and shutdown,
+serial vanish/reopen to the same name, jitter bounds, session write isolation,
+recording round trips for TCP/serial/folder, recording queue/file failures,
+half-written folder input and claimed-file crash recovery. No test contacts
+hardware, live credentials or remote endpoints.
