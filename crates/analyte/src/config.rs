@@ -117,6 +117,13 @@ fn read(path: &Path) -> Result<String, Error> {
 }
 
 impl Program {
+    fn test_machine_mut(&mut self, id: &str) -> Result<&mut Machine, Error> {
+        self.machines
+            .iter_mut()
+            .find(|machine| machine.id.as_str() == id)
+            .ok_or_else(|| invalid("unknown test machine"))
+    }
+
     /// Installs a one-shot LAW raw-commit/pre-response pause on an injected loopback machine.
     /// # Errors
     /// Rejects unknown machines, non-LAW stacks and production listeners.
@@ -126,11 +133,7 @@ impl Program {
         id: &str,
         hook: std::sync::Arc<crate::test_hooks::Committed>,
     ) -> Result<(), Error> {
-        let machine = self
-            .machines
-            .iter_mut()
-            .find(|m| m.id.as_str() == id)
-            .ok_or_else(|| invalid("unknown test machine"))?;
+        let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none()
             || !matches!(
                 machine.snapshot.effective().stack(),
@@ -173,11 +176,7 @@ impl Program {
         id: &str,
         hook: std::sync::Arc<crate::test_hooks::AstmCommitted>,
     ) -> Result<(), Error> {
-        let machine = self
-            .machines
-            .iter_mut()
-            .find(|m| m.id.as_str() == id)
-            .ok_or_else(|| invalid("unknown test machine"))?;
+        let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none()
             || !matches!(
                 machine.snapshot.effective().stack(),
@@ -201,11 +200,7 @@ impl Program {
         id: &str,
         listener: std::net::TcpListener,
     ) -> Result<(), Error> {
-        let machine = self
-            .machines
-            .iter_mut()
-            .find(|m| m.id.as_str() == id)
-            .ok_or_else(|| invalid("unknown test machine"))?;
+        let machine = self.test_machine_mut(id)?;
         if !listener.local_addr()?.ip().is_loopback()
             || machine.snapshot.effective().stack().transport_kind()
                 != analyte_config::TransportKind::TcpServer
