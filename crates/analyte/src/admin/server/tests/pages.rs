@@ -296,7 +296,22 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             let mut bytes = b"<frame>".to_vec();
             bytes.extend(vec![b'B'; 4100]);
             bytes.extend(b"FRAME-TAIL");
-            s.frame(&transfer, 1, &bytes)?;
+            s.journal_frame(
+                &transfer,
+                1,
+                &bytes,
+                &analyte_store::FrameProvenance {
+                    machine: Identifier::new("synthetic")
+                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    driver: NamespacedId {
+                        namespace: Identifier::new("synthetic")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        value: Identifier::new("1")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    },
+                    config: b"synthetic config".to_vec(),
+                },
+            )?;
             s.park(&Parked {
                 kind: Identifier::new("transfer")
                     .map_err(|_| analyte_store::Error::InvalidInput)?,

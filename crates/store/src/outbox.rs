@@ -134,21 +134,4 @@ impl Store {
         tx.commit()?;
         Ok(ids.len())
     }
-
-    /// Explicitly releases a parked, conflicting or paused delivery with its existing bytes and ID.
-    /// Interrupted attempts use startup recovery instead; operator release records setup or evidence repair.
-    /// # Errors
-    /// Refuses pending/done items, oversized audit evidence or database failures.
-    pub fn release_delivery(&mut self, id: DeliveryId, audit: &Audit) -> Result<(), Error> {
-        let encoded = self.encode(audit)?;
-        self.bound(encoded.as_bytes())?;
-        let tx = self.db.transaction()?;
-        if tx.execute("UPDATE outbox SET state='pending',next_attempt=0 WHERE id=?1 AND state IN ('parked','paused','conflict')", [key(&id)?])? != 1 { return Err(Error::Conflict); }
-        tx.execute(
-            "INSERT INTO audit(evidence) VALUES (?1)",
-            [key(&(id, encoded))?],
-        )?;
-        tx.commit()?;
-        Ok(())
-    }
 }

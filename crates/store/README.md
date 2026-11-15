@@ -109,10 +109,9 @@ with each part's host receive time removed. Receipt IDs and assigned revisions
 are not part of the digest. Source times and source status remain clinical
 evidence. The SHA-256 input is independent of receipt/retry receive time.
 
-The compatibility `interpret` method also reconciles history, but has no declared
-correction-code evidence and cannot fix prebuilt bytes after revision assignment;
-use the builder API for corrections. Both reject unsafe deliveries. Mapping
-findings are stored in the same transaction, not as a later best-effort write.
+`interpret_reconciled` is the sole interpretation entry point for ordinary
+reception; builders receive assigned revisions before constructing delivery bytes.
+Mapping findings are stored in the same transaction.
 
 `journal_frame` commits immutable machine/driver/config provenance before its
 frame journal write. A failed frame write may leave provenance without a frame;
@@ -205,3 +204,9 @@ test filenames remain stable for mutation-coverage work.
 preflight callback. Defaults reserve one unowned item covering all tests. Preflight
 sees assigned identities inside the transaction; an error rolls back reservation,
 items and history. Callers retain any prepared payload locally until commit succeeds.
+
+The public write path for frames is `journal_frame`, which retains provenance.
+The internal frame insertion primitive also serves legacy-schema migration tests.
+Unfinished-transfer inspection is a crate-test helper; host receive tests inspect
+the protected journal directly after running the real service path. Operator
+resends use `resend_delivery`, including audited recovery from a setup pause.

@@ -146,8 +146,30 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
         Err(Error::Conflict)
     ));
     let reading = interpretation()?;
-    assert_eq!(store.interpret(metadata.id, &reading, &[])?, 1);
-    assert_eq!(store.interpret(metadata.id, &reading, &[])?, 2);
+    assert_eq!(
+        store
+            .interpret_reconciled(
+                metadata.id,
+                reading.clone(),
+                &[],
+                &[],
+                |_, _| Ok(Vec::new())
+            )
+            .map(|commit| commit.version)?,
+        1
+    );
+    assert_eq!(
+        store
+            .interpret_reconciled(
+                metadata.id,
+                reading.clone(),
+                &[],
+                &[],
+                |_, _| Ok(Vec::new())
+            )
+            .map(|commit| commit.version)?,
+        2
+    );
     assert!(
         store
             .db
@@ -170,7 +192,9 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
     store.db.execute_batch("CREATE TRIGGER reject_interpretation AFTER INSERT ON interpretations BEGIN INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('x',NEW.receipt,NEW.version,'d','k',x'00',x'00',1,'invalid',0); END;")?;
     assert!(
         store
-            .interpret(metadata.id, &interpretation()?, &[])
+            .interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| Ok(
+                Vec::new()
+            ))
             .is_err()
     );
     assert_eq!(
@@ -205,7 +229,9 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"raw")?;
     store.receive(&metadata, b"raw", b"config")?;
-    store.interpret(metadata.id, &interpretation()?, &[])?;
+    store.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let first = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     let correction = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     let other = DeliveryId::try_from(uuid::Uuid::now_v7())?;
@@ -291,7 +317,15 @@ fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
     store.receive(&metadata, b"invalid", b"config")?;
     let mut reading = interpretation()?;
     reading.outcome = Reading::Failed(Reason::new("invalid syntax")?);
-    store.interpret(metadata.id, &reading, &[])?;
+    store
+        .interpret_reconciled(
+            metadata.id,
+            reading.clone(),
+            &[],
+            &[],
+            |_, _| Ok(Vec::new()),
+        )
+        .map(|commit| commit.version)?;
     let audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("resolve")?,
@@ -451,12 +485,37 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
     };
     let id = delivery.id;
     assert_eq!(
-        store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?,
+        store
+            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| Ok(
+                vec![Delivery {
+                    id: delivery.id,
+                    destination: delivery.destination.clone(),
+                    ordering_key: OrderingKey {
+                        machine: delivery.ordering_key.machine.clone(),
+                        observation: delivery.ordering_key.observation.clone()
+                    },
+                    payload: delivery.payload.clone(),
+                    contract_version: delivery.contract_version,
+                }]
+            ))
+            .map(|commit| commit.version)?,
         1
     );
     assert!(
         store
-            .interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))
+            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| Ok(
+                vec![Delivery {
+                    id: delivery.id,
+                    destination: delivery.destination.clone(),
+                    ordering_key: OrderingKey {
+                        machine: delivery.ordering_key.machine.clone(),
+                        observation: delivery.ordering_key.observation.clone()
+                    },
+                    payload: delivery.payload.clone(),
+                    contract_version: delivery.contract_version,
+                }]
+            ))
+            .map(|commit| commit.version)
             .is_err()
     );
     assert!(store.interpretation(metadata.id, 2)?.is_none());
@@ -644,7 +703,9 @@ fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult
     };
     let metadata = receipt(b"raw")?;
     v1.receive(&metadata, b"raw", b"config")?;
-    v1.interpret(metadata.id, &interpretation()?, &[])?;
+    v1.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     seed_delivery(&v1, metadata.id, id, "key")?;
     v1.db.execute("UPDATE outbox SET state='in_flight'", [])?;
@@ -1081,7 +1142,9 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
     let mut store = open(&path)?;
     let metadata = receipt(b"raw")?;
     store.receive(&metadata, b"raw", b"config")?;
-    store.interpret(metadata.id, &interpretation()?, &[])?;
+    store.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let mut interrupted = None;
     for state in ["in_flight", "parked", "conflict", "paused", "done"] {
         let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
@@ -1223,7 +1286,20 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
         payload: b"immutable synthetic bytes".to_vec(),
         contract_version: 1,
     };
-    store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?;
+    store
+        .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
+            Ok(vec![Delivery {
+                id: delivery.id,
+                destination: delivery.destination.clone(),
+                ordering_key: OrderingKey {
+                    machine: delivery.ordering_key.machine.clone(),
+                    observation: delivery.ordering_key.observation.clone(),
+                },
+                payload: delivery.payload.clone(),
+                contract_version: delivery.contract_version,
+            }])
+        })
+        .map(|commit| commit.version)?;
     let mut audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("delivery-resend")?,
@@ -1321,7 +1397,20 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
         payload: b"old bytes".to_vec(),
         contract_version: 1,
     };
-    store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?;
+    store
+        .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
+            Ok(vec![Delivery {
+                id: delivery.id,
+                destination: delivery.destination.clone(),
+                ordering_key: OrderingKey {
+                    machine: delivery.ordering_key.machine.clone(),
+                    observation: delivery.ordering_key.observation.clone(),
+                },
+                payload: delivery.payload.clone(),
+                contract_version: delivery.contract_version,
+            }])
+        })
+        .map(|commit| commit.version)?;
     store.claim(0)?.ok_or("missing claim")?;
     store.attempted(delivery.id, &Attempt::Done, 0)?;
     store.db.execute(
@@ -1373,7 +1462,11 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
     store.receive(&metadata, b"original", b"config")?;
     let mut original = interpretation()?;
     original.outcome = Reading::Failed(Reason::new("test mapping missing")?);
-    store.interpret(metadata.id, &original, &[])?;
+    store
+        .interpret_reconciled(metadata.id, original.clone(), &[], &[], |_, _| {
+            Ok(Vec::new())
+        })
+        .map(|commit| commit.version)?;
     let before: String = store
         .db
         .query_row("SELECT evidence FROM interpretations", [], |r| r.get(0))?;

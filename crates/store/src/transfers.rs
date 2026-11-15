@@ -7,7 +7,12 @@ impl Store {
     /// Commits one ASTM frame before returning its monotonic journal sequence.
     /// # Errors
     /// Refuses closed transfers, oversized frames, invalid frame numbers or capacity failures.
-    pub fn frame(&mut self, transfer: &Identifier, number: u8, raw: &[u8]) -> Result<i64, Error> {
+    pub(super) fn frame(
+        &mut self,
+        transfer: &Identifier,
+        number: u8,
+        raw: &[u8],
+    ) -> Result<i64, Error> {
         self.bound(raw)?;
         self.capacity(raw.len())?;
         if number > 7 {
@@ -74,7 +79,8 @@ impl Store {
     /// Lists unfinished or aborted transfer IDs in a bounded page after an ID.
     /// # Errors
     /// Reports database failures.
-    pub fn incomplete(&self, after: &str) -> Result<Vec<String>, Error> {
+    #[cfg(test)]
+    pub(super) fn incomplete(&self, after: &str) -> Result<Vec<String>, Error> {
         let mut stmt = self.db.prepare(
             "SELECT id FROM transfers WHERE state!='complete' AND id>?1 ORDER BY id LIMIT ?2",
         )?;
@@ -121,25 +127,5 @@ impl Store {
             }
         }
         self.frame(transfer, number, raw)
-    }
-
-    /// Reads protected configuration evidence retained for a journaled transfer.
-    /// # Errors
-    /// Reports database failures or corrupt provenance.
-    pub fn frame_provenance(
-        &self,
-        transfer: &Identifier,
-    ) -> Result<Option<FrameProvenance>, Error> {
-        let evidence: Option<String> = self
-            .db
-            .query_row(
-                "SELECT evidence FROM frame_provenance WHERE transfer=?1",
-                [transfer.as_str()],
-                |row| row.get(0),
-            )
-            .optional()?;
-        evidence
-            .map(|e| serde_json::from_str(&e).map_err(Error::from))
-            .transpose()
     }
 }
