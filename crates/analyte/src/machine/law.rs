@@ -86,7 +86,7 @@ impl<'a, 'm> Host<'a, 'm> {
         link: Link,
     ) -> Result<Self, Error> {
         let mut options = settings.options();
-        options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit);
+        options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit());
         Ok(Self {
             machine,
             settings,
@@ -97,8 +97,8 @@ impl<'a, 'm> Host<'a, 'm> {
             orders,
             dialog: Dialog::new(
                 options,
-                Duration::from_millis(u64::from(settings.timeouts.receive_timeout_ms)),
-                Duration::from_millis(u64::from(settings.timeouts.send_timeout_ms)),
+                Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
+                Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
                 link,
             )?,
             clock: Instant::now(),
@@ -282,7 +282,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Action::WorkIssued => {
                 self.orders.issued(Duration::from_millis(u64::from(
-                    self.settings.policy.response_ms,
+                    self.settings.policy().response_ms(),
                 )))?;
                 if self.link == Link::WorkResponse {
                     let until = self

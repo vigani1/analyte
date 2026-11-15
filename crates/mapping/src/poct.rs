@@ -28,7 +28,7 @@ pub fn map(
         let mut processing = ProcessingMode::Unknown;
         let mut correction = false;
         if let analyte_config::Stack::Poct(settings) = machine.effective().stack()
-            && let Some(policy) = &settings.policy.identity
+            && let Some(policy) = &settings.policy().identity
         {
             processing = policy.processing;
             let service_index = part

@@ -15,7 +15,7 @@ The reproducer confirms acceptance/publication; it does not claim observed patie
 `plan11_rule7_restore_refuses_zero_page_limit_before_publishing` fails on unchanged
 production code: expected `InvalidInput`, got `Ok(...before-restore)`.
 [Failure output](evidence/store/restore-zero-page-limit.log). This failing test is
-intentionally retained as requested, not ignored or loosened. The PR stays draft. The owner reports this fixed on `fix/restore-limits` with a shared `Limits::validate()` and this regression unchanged. At resume, neither the branch nor PR was visible on origin and the fix was not on origin/main; merge and duplicate-test resolution are pending.
+intentionally retained as requested, not ignored or loosened. The PR stays draft. The owner reports this fixed on `fix/restore-limits` with a shared `Limits::validate()` and this regression unchanged. Fixed by [PR #88](https://github.com/vigani1/analyte/pull/88), merged at `b3270a4`. Merged origin/main with --signoff; retained main's exact restore regression once. Earlier failure logs and counts remain historical.
 
 ## Runs
 

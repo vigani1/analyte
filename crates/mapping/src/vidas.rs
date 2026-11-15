@@ -120,11 +120,11 @@ pub fn map_order(
     machine: &analyte_config::VidasStack,
     settings: &analyte_config::VidasOrders,
 ) -> Result<MachineOrder, OrderMappingError> {
-    let installed = &machine.policy;
+    let installed = &machine.policy();
     if !installed.download {
         return Err(OrderMappingError::Disabled);
     }
-    let patient = map_patient(order, &settings.patient_namespace)?;
+    let patient = map_patient(order, settings.patient_namespace())?;
     if patient.len() > 17 {
         return Err(OrderMappingError::Overlong("patient-id"));
     }
@@ -137,12 +137,12 @@ pub fn map_order(
     }
     if order.tests.is_empty()
         || order.tests.len() > 100
-        || order.tests.len() > machine.limits.records
-        || order.tests.len() > machine.limits.repetitions
+        || order.tests.len() > machine.limits().records()
+        || order.tests.len() > machine.limits().repetitions()
     {
         return Err(OrderMappingError::Representation);
     }
-    outbound_priority(&settings.priorities, order.priority)?;
+    outbound_priority(settings.priorities(), order.priority)?;
     let limit = match installed.sample_limit {
         analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
         analyte_config::VidasSampleLimit::Seventeen => {
@@ -152,7 +152,7 @@ pub fn map_order(
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
     for test in &order.tests {
-        let mapped = outbound_test(&settings.tests, test)?;
+        let mapped = outbound_test(settings.tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
             return Err(OrderMappingError::Representation);
         };
@@ -166,13 +166,13 @@ pub fn map_order(
             ],
             limit,
         )?;
-        if request.text().len() > machine.frame_limit {
+        if request.text().len() > machine.frame_limit() {
             return Err(OrderMappingError::Representation);
         }
         total_bytes = total_bytes
             .checked_add(request.text().len())
             .ok_or(OrderMappingError::Representation)?;
-        if total_bytes > machine.limits.bytes {
+        if total_bytes > machine.limits().bytes() {
             return Err(OrderMappingError::Representation);
         }
         requests.push(request);

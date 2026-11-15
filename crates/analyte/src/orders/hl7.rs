@@ -58,9 +58,9 @@ impl Connection {
         .await?
         {
             let wait = super::settings::hl7(machine)
-                .and_then(|orders| orders.send.as_ref())
+                .and_then(|orders| orders.send().as_ref())
                 .ok_or("send settings")?
-                .settings
+                .settings()
                 .response_ms;
             let until = Instant::now()
                 .checked_add(Duration::from_millis(u64::from(wait)))
@@ -199,11 +199,11 @@ impl Connection {
         let settings =
             super::settings::hl7(machine).ok_or_else(|| invalid("HL7 orders missing"))?;
         let query = settings
-            .query
+            .query()
             .as_ref()
             .ok_or_else(|| invalid("HL7 query policy missing"))?;
-        let policy = &query.policy;
-        let layout = &query.layout;
+        let policy = &query.policy();
+        let layout = &query.layout();
         let until = started
             .checked_add(Duration::from_millis(u64::from(policy.deadline_ms)))
             .ok_or_else(|| invalid("HL7 query deadline overflow"))?;

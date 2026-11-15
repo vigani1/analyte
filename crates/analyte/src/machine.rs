@@ -49,7 +49,7 @@ pub(crate) async fn run(
 ) -> Result<(), Error> {
     if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack()
         && matches!(
-            settings.policy.links,
+            settings.policy().links(),
             analyte_config::LawLinks::Independent { .. }
         )
     {

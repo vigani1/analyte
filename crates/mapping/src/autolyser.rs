@@ -64,12 +64,12 @@ pub fn map_order(
     settings: &analyte_config::AutolyserOrders,
 ) -> Result<MachineOrder, OrderMappingError> {
     use analyte_autolyser::syntax::{Field, List, PatientCode, Sample, Worklist};
-    if !machine.policy.download {
+    if !machine.policy().download {
         return Err(OrderMappingError::Disabled);
     }
-    let patient = map_patient(order, &settings.patient_namespace)?;
-    let clone = settings.clone;
-    let settings = &settings.tables;
+    let patient = map_patient(order, settings.patient_namespace())?;
+    let clone = settings.clone_enabled();
+    let settings = &settings.tables();
     if patient.len() > 15 {
         return Err(OrderMappingError::Overlong("patient-id"));
     }
@@ -84,7 +84,7 @@ pub fn map_order(
         "U" => Sample::Urine,
         _ => return Err(OrderMappingError::UnmappedSpecimenType),
     };
-    let priority = outbound_priority(&settings.priorities, order.priority)?;
+    let priority = outbound_priority(settings.priorities(), order.priority)?;
     let list = match &priority.machine {
         analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => List::Routine,
         analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => List::Stat,
@@ -115,20 +115,20 @@ pub fn map_order(
     }
     if order.tests.is_empty()
         || order.tests.len() > 99
-        || order.tests.len() > machine.limits.repetitions
+        || order.tests.len() > machine.limits().repetitions()
     {
         return Err(OrderMappingError::Representation);
     }
     let mut tests = Vec::new();
     for test in &order.tests {
-        let mapped = outbound_test(&settings.tests, test)?;
+        let mapped = outbound_test(settings.tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
             return Err(OrderMappingError::Representation);
         };
         tests.push(Field::<4>::new(code.as_bytes())?);
     }
     let worklist = Worklist::new(patient, list, sample, clone, position, tests)?;
-    if worklist.encode().len() > machine.limits.bytes {
+    if worklist.encode().len() > machine.limits().bytes() {
         return Err(OrderMappingError::Representation);
     }
     Ok(MachineOrder::Autolyser(worklist))

@@ -8,9 +8,9 @@ use analyte_model::Identifier;
 #[derive(Debug, Clone)]
 pub enum Stack {
     /// LIS02 records over a LIS01 serial or TCP link.
-    Astm(Box<AstmStack>),
+    Astm(RecordTransport<Box<AstmStack>, Box<FileAstmStack>>),
     /// Generic HL7 v2 receiver over MLLP/TCP.
-    Hl7(Box<Hl7Stack>),
+    Hl7(RecordTransport<Box<Hl7Stack>, Box<FileHl7Stack>>),
     /// IHE LAW Analyzer Manager over one persistent MLLP/TCP link.
     Law(Box<LawStack>),
     /// POCT1-A reviewer over TCP.
@@ -19,10 +19,6 @@ pub enum Stack {
     VidasLiteral(Box<VidasStack>),
     /// Autolyser polling over serial or TCP.
     Autolyser(Box<AutolyserStack>),
-    /// Watched-folder LIS02 records, without a wire dialog.
-    FileAstm(Box<FileAstmStack>),
-    /// Watched-folder HL7 records, without a wire dialog.
-    FileHl7(Box<FileHl7Stack>),
 }
 
 /// TCP connection direction; cannot select serial or folder transport.
@@ -36,137 +32,160 @@ pub enum TcpRole {
 
 /// Transport for a stack supporting either serial or TCP, never a watched folder.
 #[derive(Debug, Clone)]
-pub enum StreamTransport {
-    /// Serial transport always has installed serial settings.
-    Serial {
-        /// Installed serial parameters.
-        settings: Serial,
-        /// Deadline for external operations.
-        operation_timeout_ms: u32,
-    },
-    /// TCP transport has a direction and no serial parameters.
-    Tcp {
-        /// Connection direction.
-        role: TcpRole,
-        /// Deadline for external operations.
-        operation_timeout_ms: u32,
-    },
+pub struct StreamTransport {
+    kind: StreamKind,
+    operation_timeout_ms: u32,
+}
+
+/// Read-only physical stream selection; the owning transport validates its settings.
+#[derive(Debug, Clone)]
+pub enum StreamKind {
+    /// Installed serial settings.
+    Serial(Serial),
+    /// TCP connection direction.
+    Tcp(TcpRole),
+}
+
+impl StreamTransport {
+    /// Borrows the installed physical stream selection.
+    #[must_use]
+    pub fn kind(&self) -> &StreamKind {
+        &self.kind
+    }
+    /// Returns the validated, nonzero external-operation deadline.
+    #[must_use]
+    pub fn operation_timeout_ms(&self) -> u32 {
+        self.operation_timeout_ms
+    }
 }
 
 /// Validated TCP settings without serial or folder alternatives.
 #[derive(Debug, Clone)]
 pub struct TcpTransport {
     /// Connection direction.
-    pub role: TcpRole,
+    role: TcpRole,
     /// Deadline for external operations.
-    pub operation_timeout_ms: u32,
+    operation_timeout_ms: u32,
 }
 
 /// Receive and send deadlines shared by the host dialogs.
+/// Cloning validated settings never grants write access.
+/// ```compile_fail
+/// fn invalidate(settings: &analyte_config::DialogTimeouts) {
+///     let mut settings = settings.clone();
+///     settings.receive_timeout_ms = 0;
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct DialogTimeouts {
     /// Receive deadline.
-    pub receive_timeout_ms: u32,
+    receive_timeout_ms: u32,
     /// Send deadline.
-    pub send_timeout_ms: u32,
+    send_timeout_ms: u32,
 }
 
 /// Explicit syntax resource ceilings retained from the config.
+/// ```compile_fail
+/// fn invalidate(limits: &analyte_config::SyntaxLimits) {
+///     let mut limits = limits.clone();
+///     limits.bytes = 0;
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct SyntaxLimits {
     /// Total message bytes.
-    pub bytes: usize,
+    bytes: usize,
     /// Maximum records or segments.
-    pub records: usize,
+    records: usize,
     /// Maximum record bytes.
-    pub record_bytes: usize,
+    record_bytes: usize,
     /// Maximum fields.
-    pub fields: usize,
+    fields: usize,
     /// Maximum repetitions.
-    pub repetitions: usize,
+    repetitions: usize,
     /// Maximum components.
-    pub components: usize,
+    components: usize,
 }
 
 /// LIS02 syntax settings, without HL7-only options.
 #[derive(Debug, Clone)]
 pub struct AstmSyntax {
     /// Strict input encoding.
-    pub encoding: Encoding,
+    encoding: Encoding,
     /// Resource ceilings.
-    pub limits: SyntaxLimits,
+    limits: SyntaxLimits,
 }
 
 /// HL7 syntax settings with every required option present.
 #[derive(Debug, Clone)]
 pub struct Hl7Syntax {
     /// Strict input encoding.
-    pub encoding: Encoding,
+    encoding: Encoding,
     /// Negotiated HL7 edition.
-    pub edition: Edition,
+    edition: Edition,
     /// Negotiated segment ending.
-    pub terminator: Terminator,
+    terminator: Terminator,
     /// Malformed escape policy.
-    pub escapes: Escapes,
+    escapes: Escapes,
     /// Validated named vendor departure for UTF-8 in HL7 2.3.1.
-    pub allow_utf8_in_v231: bool,
+    allow_utf8_in_v231: bool,
     /// Resource ceilings.
-    pub limits: SyntaxLimits,
+    limits: SyntaxLimits,
 }
 
 /// Outbound field-based translations shared by ASTM and HL7.
 #[derive(Debug, Clone)]
 pub struct OrderTables {
     /// Exact outbound test translations.
-    pub tests: Vec<OutboundTest>,
+    tests: Vec<OutboundTest>,
     /// Explicit specimen translations; absence maps no values.
-    pub specimen_types: Option<Vec<OutboundSpecimen>>,
+    specimen_types: Option<Vec<OutboundSpecimen>>,
     /// Exact outbound priority translations.
-    pub priorities: Vec<OrderPriority>,
+    priorities: Vec<OrderPriority>,
 }
 
 /// Optional ASTM query policy and required O-record layout.
 #[derive(Debug, Clone)]
 pub struct AstmOrders {
     /// Outbound translations.
-    pub tables: OrderTables,
+    tables: OrderTables,
     /// Explicit query capability, if enabled.
-    pub query: Option<OrderQuery>,
+    query: Option<OrderQuery>,
     /// Explicit work-list permission.
-    pub send_ahead: bool,
+    send_ahead: bool,
     /// Required ASTM destinations.
-    pub layout: AstmOrderFields,
+    layout: AstmOrderFields,
 }
 
 /// An enabled HL7 query capability always carries its layout.
 #[derive(Debug, Clone)]
 pub struct Hl7Query {
     /// Deadline and untrusted-cache policy.
-    pub policy: OrderQuery,
+    policy: OrderQuery,
     /// Required legacy query layout.
-    pub layout: Hl7OrderQuery,
+    layout: Hl7OrderQuery,
 }
 
 /// An enabled unsolicited HL7 capability always has its namespace.
 #[derive(Debug, Clone)]
 pub struct Hl7SendOrders {
     /// Required header and specimen layout.
-    pub settings: Hl7Send,
+    settings: Hl7Send,
     /// Required assigning namespace.
-    pub placer_namespace: Identifier,
+    placer_namespace: Identifier,
 }
 
 /// Independent, explicitly enabled HL7 query and send capabilities.
 #[derive(Debug, Clone)]
 pub struct Hl7Orders {
     /// Optional assigning namespace for explicitly supplied patient identities.
-    pub patient_namespace: Option<Identifier>,
+    patient_namespace: Option<Identifier>,
     /// Outbound translations.
-    pub tables: OrderTables,
+    tables: OrderTables,
     /// Query capability; omission disables it.
-    pub query: Option<Hl7Query>,
+    query: Option<Hl7Query>,
     /// Send-ahead capability; omission disables it.
-    pub send: Option<Hl7SendOrders>,
+    send: Option<Hl7SendOrders>,
 }
 
 /// Validated LAW connection ownership, with no absent independent destination.
@@ -185,208 +204,208 @@ pub enum LawLinks {
 #[derive(Debug, Clone)]
 pub struct LawPolicy {
     /// Validated ownership and destination.
-    pub links: LawLinks,
+    links: LawLinks,
     /// Supported lookup scopes.
-    pub query_forms: Vec<LawQueryForm>,
+    query_forms: Vec<LawQueryForm>,
     /// Explicit peer capabilities.
-    pub peer: LawPeer,
+    peer: LawPeer,
     /// Query storage, lookup and reservation deadline.
-    pub query_deadline_ms: u32,
+    query_deadline_ms: u32,
     /// Application response deadline.
-    pub response_ms: u32,
+    response_ms: u32,
 }
 
 /// Enabled LAW work always has a layout, namespace and specimen mappings.
 #[derive(Debug, Clone)]
 pub struct LawOrders {
     /// Required LAW work layout.
-    pub work: LawWork,
+    work: LawWork,
     /// Exact outbound test translations.
-    pub tests: Vec<OutboundTest>,
+    tests: Vec<OutboundTest>,
     /// Required specimen translations.
-    pub specimen_types: Vec<OutboundSpecimen>,
+    specimen_types: Vec<OutboundSpecimen>,
     /// Exact priority translations.
-    pub priorities: Vec<OrderPriority>,
+    priorities: Vec<OrderPriority>,
     /// Required assigning namespace.
-    pub placer_namespace: Identifier,
+    placer_namespace: Identifier,
     /// Permission for unsolicited work.
-    pub send_ahead: bool,
+    send_ahead: bool,
 }
 
 /// VIDAS work lists carry only supported outbound settings.
 #[derive(Debug, Clone)]
 pub struct VidasOrders {
     /// Exact assay translations.
-    pub tests: Vec<OutboundTest>,
+    tests: Vec<OutboundTest>,
     /// Explicit accepted app priorities.
-    pub priorities: Vec<OrderPriority>,
+    priorities: Vec<OrderPriority>,
     /// Required patient assigning namespace.
-    pub patient_namespace: Identifier,
+    patient_namespace: Identifier,
     /// Explicit download permission.
-    pub send_ahead: bool,
+    send_ahead: bool,
 }
 
 /// Autolyser work lists carry installed clone behavior and patient namespace.
 #[derive(Debug, Clone)]
 pub struct AutolyserOrders {
     /// Outbound translations.
-    pub tables: OrderTables,
+    tables: OrderTables,
     /// Required patient assigning namespace.
-    pub patient_namespace: Identifier,
+    patient_namespace: Identifier,
     /// Explicit clone behavior, including false.
-    pub clone: bool,
+    clone: bool,
     /// Explicit download permission.
-    pub send_ahead: bool,
+    send_ahead: bool,
 }
 
 /// LIS01/LIS02 settings; no independently selectable layer kinds.
 #[derive(Debug, Clone)]
 pub struct AstmStack {
     /// Serial or TCP link.
-    pub transport: StreamTransport,
+    transport: StreamTransport,
     /// Maximum frame bytes including overhead.
-    pub frame_limit: usize,
+    frame_limit: usize,
     /// Required LIS01 checksum policy.
-    pub checksum_hex: ChecksumHex,
+    checksum_hex: ChecksumHex,
     /// Host receive and send deadlines.
-    pub timeouts: DialogTimeouts,
+    timeouts: DialogTimeouts,
     /// Required simultaneous-ENQ policy.
-    pub contention_priority: Priority,
+    contention_priority: Priority,
     /// LIS02 settings.
-    pub syntax: AstmSyntax,
+    syntax: AstmSyntax,
     /// Required field selectors and code tables.
-    pub mappings: Mappings,
+    mappings: Mappings,
     /// Explicit outbound capability; omission disables it.
-    pub orders: Option<AstmOrders>,
+    orders: Option<AstmOrders>,
 }
 
 /// Generic HL7 over MLLP/TCP.
 #[derive(Debug, Clone)]
 pub struct Hl7Stack {
     /// TCP link.
-    pub transport: TcpTransport,
+    transport: TcpTransport,
     /// Maximum MLLP payload bytes.
-    pub frame_limit: usize,
+    frame_limit: usize,
     /// Host receive and send deadlines.
-    pub timeouts: DialogTimeouts,
+    timeouts: DialogTimeouts,
     /// Required acknowledgment promise.
-    pub acknowledgment: Responsibility,
+    acknowledgment: Responsibility,
     /// Complete HL7 settings.
-    pub syntax: Hl7Syntax,
+    syntax: Hl7Syntax,
     /// Required field selectors and code tables.
-    pub mappings: Mappings,
+    mappings: Mappings,
     /// Explicit outbound capability; omission disables it.
-    pub orders: Option<Hl7Orders>,
+    orders: Option<Hl7Orders>,
 }
 
 /// LAW over MLLP/TCP with explicit connection ownership.
 #[derive(Debug, Clone)]
 pub struct LawStack {
     /// TCP link.
-    pub transport: TcpTransport,
+    transport: TcpTransport,
     /// Maximum MLLP payload bytes.
-    pub frame_limit: usize,
+    frame_limit: usize,
     /// Host receive and send deadlines.
-    pub timeouts: DialogTimeouts,
+    timeouts: DialogTimeouts,
     /// Required acknowledgment promise.
-    pub acknowledgment: Responsibility,
+    acknowledgment: Responsibility,
     /// LAW fixes HL7 2.5.1, UTF-8, CR endings and strict escapes.
-    pub limits: SyntaxLimits,
+    limits: SyntaxLimits,
     /// Required field selectors and code tables.
-    pub mappings: Mappings,
+    mappings: Mappings,
     /// Required Analyzer Manager policy.
-    pub policy: LawPolicy,
+    policy: LawPolicy,
     /// Explicit outbound capability; omission disables it.
-    pub orders: Option<LawOrders>,
+    orders: Option<LawOrders>,
 }
 
 /// Poct stack with its required installed policy.
 #[derive(Debug, Clone)]
 pub struct PoctStack {
     /// Supported connection settings.
-    pub transport: TcpTransport,
+    transport: TcpTransport,
     /// Maximum framed payload bytes.
-    pub frame_limit: usize,
+    frame_limit: usize,
     /// Host receive and send deadlines.
-    pub timeouts: DialogTimeouts,
+    timeouts: DialogTimeouts,
     /// Syntax resource ceilings.
-    pub limits: SyntaxLimits,
+    limits: SyntaxLimits,
     /// Required exact test and unit translations.
-    pub codes: CodeTables,
+    codes: CodeTables,
     /// Required installed protocol policy.
-    pub policy: Poct,
+    policy: Poct,
 }
 
 /// Vidas stack with its required installed policy.
 #[derive(Debug, Clone)]
 pub struct VidasStack {
     /// Supported connection settings.
-    pub transport: StreamTransport,
+    transport: StreamTransport,
     /// Maximum framed payload bytes.
-    pub frame_limit: usize,
+    frame_limit: usize,
     /// Host receive and send deadlines.
-    pub timeouts: DialogTimeouts,
+    timeouts: DialogTimeouts,
     /// Syntax resource ceilings.
-    pub limits: SyntaxLimits,
+    limits: SyntaxLimits,
     /// Required exact test and unit translations.
-    pub codes: CodeTables,
+    codes: CodeTables,
     /// Required installed protocol policy.
-    pub policy: Vidas,
+    policy: Vidas,
     /// Explicit outbound capability; omission disables it.
-    pub orders: Option<VidasOrders>,
+    orders: Option<VidasOrders>,
 }
 
 /// Autolyser stack with its required installed policy.
 #[derive(Debug, Clone)]
 pub struct AutolyserStack {
     /// Supported connection settings.
-    pub transport: StreamTransport,
+    transport: StreamTransport,
     /// Maximum framed payload bytes.
-    pub frame_limit: usize,
+    frame_limit: usize,
     /// Host receive and send deadlines.
-    pub timeouts: DialogTimeouts,
+    timeouts: DialogTimeouts,
     /// Syntax resource ceilings.
-    pub limits: SyntaxLimits,
+    limits: SyntaxLimits,
     /// Required exact test and unit translations.
-    pub codes: CodeTables,
+    codes: CodeTables,
     /// Required installed protocol policy.
-    pub policy: Autolyser,
+    policy: Autolyser,
     /// Explicit outbound capability; omission disables it.
-    pub orders: Option<AutolyserOrders>,
+    orders: Option<AutolyserOrders>,
 }
 
 /// Watched-folder records without any stream framing or acknowledgment policy.
 #[derive(Debug, Clone)]
 pub struct FileAstmStack {
     /// External operation deadline.
-    pub operation_timeout_ms: u32,
+    operation_timeout_ms: u32,
     /// Configured file payload ceiling.
-    pub frame_limit: usize,
+    frame_limit: usize,
     /// Host receive and send deadlines.
-    pub timeouts: DialogTimeouts,
+    timeouts: DialogTimeouts,
     /// Record syntax settings.
-    pub syntax: AstmSyntax,
+    syntax: AstmSyntax,
     /// Required field selectors and code tables.
-    pub mappings: Mappings,
+    mappings: Mappings,
     /// Retained configured outbound policy; file pickup performs no machine sends.
-    pub orders: Option<AstmOrders>,
+    orders: Option<AstmOrders>,
 }
 
 /// Watched-folder records without any stream framing or acknowledgment policy.
 #[derive(Debug, Clone)]
 pub struct FileHl7Stack {
     /// External operation deadline.
-    pub operation_timeout_ms: u32,
+    operation_timeout_ms: u32,
     /// Configured file payload ceiling.
-    pub frame_limit: usize,
+    frame_limit: usize,
     /// Host receive and send deadlines.
-    pub timeouts: DialogTimeouts,
+    timeouts: DialogTimeouts,
     /// Record syntax settings.
-    pub syntax: Hl7Syntax,
+    syntax: Hl7Syntax,
     /// Required field selectors and code tables.
-    pub mappings: Mappings,
+    mappings: Mappings,
     /// Retained configured outbound policy; file pickup performs no machine sends.
-    pub orders: Option<Hl7Orders>,
+    orders: Option<Hl7Orders>,
 }
 
 impl Stack {
@@ -420,7 +439,7 @@ impl Stack {
                 .expect("validated MLLP dialog requires acknowledgment policy")
         };
         match machine.dialog.kind {
-            DialogKind::AstmLink => Self::Astm(Box::new(AstmStack {
+            DialogKind::AstmLink => Self::Astm(RecordTransport::Stream(Box::new(AstmStack {
                 transport: stream(&machine.transport),
                 frame_limit,
                 timeouts,
@@ -435,8 +454,8 @@ impl Stack {
                 syntax: astm_syntax(&machine.syntax),
                 mappings: mappings(),
                 orders: machine.orders.as_ref().map(astm_orders),
-            })),
-            DialogKind::Hl7Receiver => Self::Hl7(Box::new(Hl7Stack {
+            }))),
+            DialogKind::Hl7Receiver => Self::Hl7(RecordTransport::Stream(Box::new(Hl7Stack {
                 transport: tcp(&machine.transport),
                 frame_limit,
                 timeouts,
@@ -444,7 +463,7 @@ impl Stack {
                 syntax: hl7_syntax(&machine.syntax),
                 mappings: mappings(),
                 orders: machine.orders.as_ref().map(hl7_orders),
-            })),
+            }))),
             DialogKind::LawManager => {
                 let law = machine
                     .law
@@ -544,22 +563,24 @@ impl Stack {
                 }),
             })),
             DialogKind::FilePickup => match machine.syntax.kind {
-                SyntaxKind::AstmLis02 => Self::FileAstm(Box::new(FileAstmStack {
-                    operation_timeout_ms: machine.transport.operation_timeout_ms,
-                    frame_limit,
-                    timeouts,
-                    syntax: astm_syntax(&machine.syntax),
-                    mappings: mappings(),
-                    orders: machine.orders.as_ref().map(astm_orders),
-                })),
-                SyntaxKind::Hl7V2 => Self::FileHl7(Box::new(FileHl7Stack {
+                SyntaxKind::AstmLis02 => {
+                    Self::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
+                        operation_timeout_ms: machine.transport.operation_timeout_ms,
+                        frame_limit,
+                        timeouts,
+                        syntax: astm_syntax(&machine.syntax),
+                        mappings: mappings(),
+                        orders: machine.orders.as_ref().map(astm_orders),
+                    })))
+                }
+                SyntaxKind::Hl7V2 => Self::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
                     operation_timeout_ms: machine.transport.operation_timeout_ms,
                     frame_limit,
                     timeouts,
                     syntax: hl7_syntax(&machine.syntax),
                     mappings: mappings(),
                     orders: machine.orders.as_ref().map(hl7_orders),
-                })),
+                }))),
                 SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
                     unreachable!("validated file pickup supports only LIS02 or HL7")
                 }
@@ -587,24 +608,21 @@ fn tcp(transport: &Transport) -> TcpTransport {
     reason = "private conversion runs only after validate_machine proves required sections and options"
 )]
 fn stream(transport: &Transport) -> StreamTransport {
-    match transport.kind {
-        TransportKind::Serial => StreamTransport::Serial {
-            settings: transport
+    let kind = match transport.kind {
+        TransportKind::Serial => StreamKind::Serial(
+            transport
                 .serial
                 .clone()
                 .expect("validated serial transport requires settings"),
-            operation_timeout_ms: transport.operation_timeout_ms,
-        },
-        TransportKind::TcpClient | TransportKind::TcpServer => {
-            let settings = tcp(transport);
-            StreamTransport::Tcp {
-                role: settings.role,
-                operation_timeout_ms: settings.operation_timeout_ms,
-            }
-        }
+        ),
+        TransportKind::TcpClient | TransportKind::TcpServer => StreamKind::Tcp(tcp(transport).role),
         TransportKind::WatchedFolder => {
             unreachable!("validated stream stack excludes watched folders")
         }
+    };
+    StreamTransport {
+        kind,
+        operation_timeout_ms: transport.operation_timeout_ms,
     }
 }
 
@@ -770,10 +788,10 @@ impl Stack {
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {
         match self {
-            Self::Astm(s) => &s.syntax.limits,
-            Self::Hl7(s) => &s.syntax.limits,
-            Self::FileAstm(s) => &s.syntax.limits,
-            Self::FileHl7(s) => &s.syntax.limits,
+            Self::Astm(RecordTransport::Stream(s)) => &s.syntax.limits,
+            Self::Hl7(RecordTransport::Stream(s)) => &s.syntax.limits,
+            Self::Astm(RecordTransport::Folder(s)) => &s.syntax.limits,
+            Self::Hl7(RecordTransport::Folder(s)) => &s.syntax.limits,
             Self::Law(s) => &s.limits,
             Self::Poct(s) => &s.limits,
             Self::VidasLiteral(s) => &s.limits,
@@ -785,10 +803,10 @@ impl Stack {
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         match self {
-            Self::Astm(s) => &s.timeouts,
-            Self::Hl7(s) => &s.timeouts,
-            Self::FileAstm(s) => &s.timeouts,
-            Self::FileHl7(s) => &s.timeouts,
+            Self::Astm(RecordTransport::Stream(s)) => &s.timeouts,
+            Self::Hl7(RecordTransport::Stream(s)) => &s.timeouts,
+            Self::Astm(RecordTransport::Folder(s)) => &s.timeouts,
+            Self::Hl7(RecordTransport::Folder(s)) => &s.timeouts,
             Self::Law(s) => &s.timeouts,
             Self::Poct(s) => &s.timeouts,
             Self::VidasLiteral(s) => &s.timeouts,
@@ -800,10 +818,10 @@ impl Stack {
     #[must_use]
     pub fn code_tables(&self) -> (&[TestMapping], &[UnitMapping]) {
         match self {
-            Self::Astm(s) => (&s.mappings.tests, &s.mappings.units),
-            Self::Hl7(s) => (&s.mappings.tests, &s.mappings.units),
-            Self::FileAstm(s) => (&s.mappings.tests, &s.mappings.units),
-            Self::FileHl7(s) => (&s.mappings.tests, &s.mappings.units),
+            Self::Astm(RecordTransport::Stream(s)) => (&s.mappings.tests, &s.mappings.units),
+            Self::Hl7(RecordTransport::Stream(s)) => (&s.mappings.tests, &s.mappings.units),
+            Self::Astm(RecordTransport::Folder(s)) => (&s.mappings.tests, &s.mappings.units),
+            Self::Hl7(RecordTransport::Folder(s)) => (&s.mappings.tests, &s.mappings.units),
             Self::Law(s) => (&s.mappings.tests, &s.mappings.units),
             Self::Poct(s) => (&s.codes.tests, &s.codes.units),
             Self::VidasLiteral(s) => (&s.codes.tests, &s.codes.units),
@@ -817,13 +835,15 @@ impl Stack {
     #[must_use]
     pub fn transport_kind(&self) -> TransportKind {
         match self {
-            Self::Astm(s) => stream_kind(&s.transport),
+            Self::Astm(RecordTransport::Stream(s)) => stream_kind(&s.transport),
             Self::VidasLiteral(s) => stream_kind(&s.transport),
             Self::Autolyser(s) => stream_kind(&s.transport),
-            Self::Hl7(s) => tcp_kind(s.transport.role),
+            Self::Hl7(RecordTransport::Stream(s)) => tcp_kind(s.transport.role),
             Self::Law(s) => tcp_kind(s.transport.role),
             Self::Poct(s) => tcp_kind(s.transport.role),
-            Self::FileAstm(_) | Self::FileHl7(_) => TransportKind::WatchedFolder,
+            Self::Astm(RecordTransport::Folder(_)) | Self::Hl7(RecordTransport::Folder(_)) => {
+                TransportKind::WatchedFolder
+            }
         }
     }
 
@@ -831,14 +851,14 @@ impl Stack {
     #[must_use]
     pub fn operation_timeout_ms(&self) -> u32 {
         match self {
-            Self::Astm(s) => stream_timeout(&s.transport),
+            Self::Astm(RecordTransport::Stream(s)) => stream_timeout(&s.transport),
             Self::VidasLiteral(s) => stream_timeout(&s.transport),
             Self::Autolyser(s) => stream_timeout(&s.transport),
-            Self::Hl7(s) => s.transport.operation_timeout_ms,
+            Self::Hl7(RecordTransport::Stream(s)) => s.transport.operation_timeout_ms,
             Self::Law(s) => s.transport.operation_timeout_ms,
             Self::Poct(s) => s.transport.operation_timeout_ms,
-            Self::FileAstm(s) => s.operation_timeout_ms,
-            Self::FileHl7(s) => s.operation_timeout_ms,
+            Self::Astm(RecordTransport::Folder(s)) => s.operation_timeout_ms,
+            Self::Hl7(RecordTransport::Folder(s)) => s.operation_timeout_ms,
         }
     }
 
@@ -852,14 +872,18 @@ impl Stack {
             TransportKind::WatchedFolder => "watched_folder",
         };
         match self {
-            Self::Astm(_) => [transport, "astm_lis01", "astm_link", "astm_lis02"],
-            Self::Hl7(_) => [transport, "mllp", "hl7_receiver", "hl7_v2"],
+            Self::Astm(RecordTransport::Stream(_)) => {
+                [transport, "astm_lis01", "astm_link", "astm_lis02"]
+            }
+            Self::Hl7(RecordTransport::Stream(_)) => [transport, "mllp", "hl7_receiver", "hl7_v2"],
             Self::Law(_) => [transport, "mllp", "law_manager", "hl7_v2"],
             Self::Poct(_) => [transport, "poct", "poct", "poct"],
             Self::VidasLiteral(_) => [transport, "vidas_literal", "vidas_literal", "vidas_literal"],
             Self::Autolyser(_) => [transport, "autolyser", "autolyser", "autolyser"],
-            Self::FileAstm(_) => [transport, "none", "file_pickup", "astm_lis02"],
-            Self::FileHl7(_) => [transport, "none", "file_pickup", "hl7_v2"],
+            Self::Astm(RecordTransport::Folder(_)) => {
+                [transport, "none", "file_pickup", "astm_lis02"]
+            }
+            Self::Hl7(RecordTransport::Folder(_)) => [transport, "none", "file_pickup", "hl7_v2"],
         }
     }
 }
@@ -871,22 +895,13 @@ fn tcp_kind(role: TcpRole) -> TransportKind {
     }
 }
 fn stream_kind(transport: &StreamTransport) -> TransportKind {
-    match transport {
-        StreamTransport::Serial { .. } => TransportKind::Serial,
-        StreamTransport::Tcp { role, .. } => tcp_kind(*role),
+    match transport.kind() {
+        StreamKind::Serial(_) => TransportKind::Serial,
+        StreamKind::Tcp(role) => tcp_kind(*role),
     }
 }
 fn stream_timeout(transport: &StreamTransport) -> u32 {
-    match transport {
-        StreamTransport::Serial {
-            operation_timeout_ms,
-            ..
-        }
-        | StreamTransport::Tcp {
-            operation_timeout_ms,
-            ..
-        } => *operation_timeout_ms,
-    }
+    transport.operation_timeout_ms()
 }
 
 impl Stack {
@@ -894,12 +909,601 @@ impl Stack {
     #[must_use]
     pub fn field_mappings(&self) -> Option<&Mappings> {
         match self {
-            Self::Astm(s) => Some(&s.mappings),
-            Self::FileAstm(s) => Some(&s.mappings),
-            Self::Hl7(s) => Some(&s.mappings),
-            Self::FileHl7(s) => Some(&s.mappings),
+            Self::Astm(RecordTransport::Stream(s)) => Some(&s.mappings),
+            Self::Astm(RecordTransport::Folder(s)) => Some(&s.mappings),
+            Self::Hl7(RecordTransport::Stream(s)) => Some(&s.mappings),
+            Self::Hl7(RecordTransport::Folder(s)) => Some(&s.mappings),
             Self::Law(s) => Some(&s.mappings),
             Self::Poct(_) | Self::VidasLiteral(_) | Self::Autolyser(_) => None,
         }
     }
+}
+
+impl TcpTransport {
+    /// Returns the validated role setting.
+    #[must_use]
+    pub fn role(&self) -> TcpRole {
+        self.role
+    }
+    /// Returns the validated operation timeout ms setting.
+    #[must_use]
+    pub fn operation_timeout_ms(&self) -> u32 {
+        self.operation_timeout_ms
+    }
+}
+impl DialogTimeouts {
+    /// Returns the validated receive timeout ms setting.
+    #[must_use]
+    pub fn receive_timeout_ms(&self) -> u32 {
+        self.receive_timeout_ms
+    }
+    /// Returns the validated send timeout ms setting.
+    #[must_use]
+    pub fn send_timeout_ms(&self) -> u32 {
+        self.send_timeout_ms
+    }
+}
+impl SyntaxLimits {
+    /// Returns the validated bytes setting.
+    #[must_use]
+    pub fn bytes(&self) -> usize {
+        self.bytes
+    }
+    /// Returns the validated records setting.
+    #[must_use]
+    pub fn records(&self) -> usize {
+        self.records
+    }
+    /// Returns the validated record bytes setting.
+    #[must_use]
+    pub fn record_bytes(&self) -> usize {
+        self.record_bytes
+    }
+    /// Returns the validated fields setting.
+    #[must_use]
+    pub fn fields(&self) -> usize {
+        self.fields
+    }
+    /// Returns the validated repetitions setting.
+    #[must_use]
+    pub fn repetitions(&self) -> usize {
+        self.repetitions
+    }
+    /// Returns the validated components setting.
+    #[must_use]
+    pub fn components(&self) -> usize {
+        self.components
+    }
+}
+impl AstmSyntax {
+    /// Returns the validated encoding setting.
+    #[must_use]
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+    /// Returns the validated limits setting.
+    #[must_use]
+    pub fn limits(&self) -> &SyntaxLimits {
+        &self.limits
+    }
+}
+impl Hl7Syntax {
+    /// Returns the validated encoding setting.
+    #[must_use]
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+    /// Returns the validated edition setting.
+    #[must_use]
+    pub fn edition(&self) -> Edition {
+        self.edition
+    }
+    /// Returns the validated terminator setting.
+    #[must_use]
+    pub fn terminator(&self) -> Terminator {
+        self.terminator
+    }
+    /// Returns the validated escapes setting.
+    #[must_use]
+    pub fn escapes(&self) -> Escapes {
+        self.escapes
+    }
+    /// Returns the validated allow utf8 in v231 setting.
+    #[must_use]
+    pub fn allow_utf8_in_v231(&self) -> bool {
+        self.allow_utf8_in_v231
+    }
+    /// Returns the validated limits setting.
+    #[must_use]
+    pub fn limits(&self) -> &SyntaxLimits {
+        &self.limits
+    }
+}
+impl OrderTables {
+    /// Returns the validated tests setting.
+    #[must_use]
+    pub fn tests(&self) -> &Vec<OutboundTest> {
+        &self.tests
+    }
+    /// Returns the validated specimen types setting.
+    #[must_use]
+    pub fn specimen_types(&self) -> &Option<Vec<OutboundSpecimen>> {
+        &self.specimen_types
+    }
+    /// Returns the validated priorities setting.
+    #[must_use]
+    pub fn priorities(&self) -> &Vec<OrderPriority> {
+        &self.priorities
+    }
+}
+impl AstmOrders {
+    /// Returns the validated tables setting.
+    #[must_use]
+    pub fn tables(&self) -> &OrderTables {
+        &self.tables
+    }
+    /// Returns the validated query setting.
+    #[must_use]
+    pub fn query(&self) -> &Option<OrderQuery> {
+        &self.query
+    }
+    /// Returns the validated send ahead setting.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.send_ahead
+    }
+    /// Returns the validated layout setting.
+    #[must_use]
+    pub fn layout(&self) -> &AstmOrderFields {
+        &self.layout
+    }
+}
+impl Hl7Query {
+    /// Returns the validated policy setting.
+    #[must_use]
+    pub fn policy(&self) -> &OrderQuery {
+        &self.policy
+    }
+    /// Returns the validated layout setting.
+    #[must_use]
+    pub fn layout(&self) -> &Hl7OrderQuery {
+        &self.layout
+    }
+}
+impl Hl7SendOrders {
+    /// Returns the validated settings setting.
+    #[must_use]
+    pub fn settings(&self) -> &Hl7Send {
+        &self.settings
+    }
+    /// Returns the validated placer namespace setting.
+    #[must_use]
+    pub fn placer_namespace(&self) -> &Identifier {
+        &self.placer_namespace
+    }
+}
+impl Hl7Orders {
+    /// Returns the validated patient namespace setting.
+    #[must_use]
+    pub fn patient_namespace(&self) -> &Option<Identifier> {
+        &self.patient_namespace
+    }
+    /// Returns the validated tables setting.
+    #[must_use]
+    pub fn tables(&self) -> &OrderTables {
+        &self.tables
+    }
+    /// Returns the validated query setting.
+    #[must_use]
+    pub fn query(&self) -> &Option<Hl7Query> {
+        &self.query
+    }
+    /// Returns the validated send setting.
+    #[must_use]
+    pub fn send(&self) -> &Option<Hl7SendOrders> {
+        &self.send
+    }
+}
+impl LawPolicy {
+    /// Returns the validated links setting.
+    #[must_use]
+    pub fn links(&self) -> LawLinks {
+        self.links
+    }
+    /// Returns the validated query forms setting.
+    #[must_use]
+    pub fn query_forms(&self) -> &[LawQueryForm] {
+        &self.query_forms
+    }
+    /// Returns the validated peer setting.
+    #[must_use]
+    pub fn peer(&self) -> &LawPeer {
+        &self.peer
+    }
+    /// Returns the validated query deadline ms setting.
+    #[must_use]
+    pub fn query_deadline_ms(&self) -> u32 {
+        self.query_deadline_ms
+    }
+    /// Returns the validated response ms setting.
+    #[must_use]
+    pub fn response_ms(&self) -> u32 {
+        self.response_ms
+    }
+}
+impl LawOrders {
+    /// Returns the validated work setting.
+    #[must_use]
+    pub fn work(&self) -> &LawWork {
+        &self.work
+    }
+    /// Returns the validated tests setting.
+    #[must_use]
+    pub fn tests(&self) -> &Vec<OutboundTest> {
+        &self.tests
+    }
+    /// Returns the validated specimen types setting.
+    #[must_use]
+    pub fn specimen_types(&self) -> &Vec<OutboundSpecimen> {
+        &self.specimen_types
+    }
+    /// Returns the validated priorities setting.
+    #[must_use]
+    pub fn priorities(&self) -> &Vec<OrderPriority> {
+        &self.priorities
+    }
+    /// Returns the validated placer namespace setting.
+    #[must_use]
+    pub fn placer_namespace(&self) -> &Identifier {
+        &self.placer_namespace
+    }
+    /// Returns the validated send ahead setting.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.send_ahead
+    }
+}
+impl VidasOrders {
+    /// Returns the validated tests setting.
+    #[must_use]
+    pub fn tests(&self) -> &Vec<OutboundTest> {
+        &self.tests
+    }
+    /// Returns the validated priorities setting.
+    #[must_use]
+    pub fn priorities(&self) -> &Vec<OrderPriority> {
+        &self.priorities
+    }
+    /// Returns the validated patient namespace setting.
+    #[must_use]
+    pub fn patient_namespace(&self) -> &Identifier {
+        &self.patient_namespace
+    }
+    /// Returns the validated send ahead setting.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.send_ahead
+    }
+}
+impl AutolyserOrders {
+    /// Returns the validated tables setting.
+    #[must_use]
+    pub fn tables(&self) -> &OrderTables {
+        &self.tables
+    }
+    /// Returns the validated patient namespace setting.
+    #[must_use]
+    pub fn patient_namespace(&self) -> &Identifier {
+        &self.patient_namespace
+    }
+    /// Returns the validated clone setting.
+    #[must_use]
+    pub fn clone_enabled(&self) -> bool {
+        self.clone
+    }
+    /// Returns the validated send ahead setting.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.send_ahead
+    }
+}
+impl AstmStack {
+    /// Returns the validated transport setting.
+    #[must_use]
+    pub fn transport(&self) -> &StreamTransport {
+        &self.transport
+    }
+    /// Returns the validated frame limit setting.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+    /// Returns the validated checksum hex setting.
+    #[must_use]
+    pub fn checksum_hex(&self) -> ChecksumHex {
+        self.checksum_hex
+    }
+    /// Returns the validated timeouts setting.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        &self.timeouts
+    }
+    /// Returns the validated contention priority setting.
+    #[must_use]
+    pub fn contention_priority(&self) -> Priority {
+        self.contention_priority
+    }
+    /// Returns the validated syntax setting.
+    #[must_use]
+    pub fn syntax(&self) -> &AstmSyntax {
+        &self.syntax
+    }
+    /// Returns the validated mappings setting.
+    #[must_use]
+    pub fn mappings(&self) -> &Mappings {
+        &self.mappings
+    }
+    /// Returns the validated orders setting.
+    #[must_use]
+    pub fn orders(&self) -> &Option<AstmOrders> {
+        &self.orders
+    }
+}
+impl Hl7Stack {
+    /// Returns the validated transport setting.
+    #[must_use]
+    pub fn transport(&self) -> &TcpTransport {
+        &self.transport
+    }
+    /// Returns the validated frame limit setting.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+    /// Returns the validated timeouts setting.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        &self.timeouts
+    }
+    /// Returns the validated acknowledgment setting.
+    #[must_use]
+    pub fn acknowledgment(&self) -> Responsibility {
+        self.acknowledgment
+    }
+    /// Returns the validated syntax setting.
+    #[must_use]
+    pub fn syntax(&self) -> &Hl7Syntax {
+        &self.syntax
+    }
+    /// Returns the validated mappings setting.
+    #[must_use]
+    pub fn mappings(&self) -> &Mappings {
+        &self.mappings
+    }
+    /// Returns the validated orders setting.
+    #[must_use]
+    pub fn orders(&self) -> &Option<Hl7Orders> {
+        &self.orders
+    }
+}
+impl LawStack {
+    /// Returns the validated transport setting.
+    #[must_use]
+    pub fn transport(&self) -> &TcpTransport {
+        &self.transport
+    }
+    /// Returns the validated frame limit setting.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+    /// Returns the validated timeouts setting.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        &self.timeouts
+    }
+    /// Returns the validated acknowledgment setting.
+    #[must_use]
+    pub fn acknowledgment(&self) -> Responsibility {
+        self.acknowledgment
+    }
+    /// Returns the validated limits setting.
+    #[must_use]
+    pub fn limits(&self) -> &SyntaxLimits {
+        &self.limits
+    }
+    /// Returns the validated mappings setting.
+    #[must_use]
+    pub fn mappings(&self) -> &Mappings {
+        &self.mappings
+    }
+    /// Returns the validated policy setting.
+    #[must_use]
+    pub fn policy(&self) -> &LawPolicy {
+        &self.policy
+    }
+    /// Returns the validated orders setting.
+    #[must_use]
+    pub fn orders(&self) -> &Option<LawOrders> {
+        &self.orders
+    }
+}
+impl PoctStack {
+    /// Returns the validated transport setting.
+    #[must_use]
+    pub fn transport(&self) -> &TcpTransport {
+        &self.transport
+    }
+    /// Returns the validated frame limit setting.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+    /// Returns the validated timeouts setting.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        &self.timeouts
+    }
+    /// Returns the validated limits setting.
+    #[must_use]
+    pub fn limits(&self) -> &SyntaxLimits {
+        &self.limits
+    }
+    /// Returns the validated codes setting.
+    #[must_use]
+    pub fn codes(&self) -> &CodeTables {
+        &self.codes
+    }
+    /// Returns the validated policy setting.
+    #[must_use]
+    pub fn policy(&self) -> &Poct {
+        &self.policy
+    }
+}
+impl VidasStack {
+    /// Returns the validated transport setting.
+    #[must_use]
+    pub fn transport(&self) -> &StreamTransport {
+        &self.transport
+    }
+    /// Returns the validated frame limit setting.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+    /// Returns the validated timeouts setting.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        &self.timeouts
+    }
+    /// Returns the validated limits setting.
+    #[must_use]
+    pub fn limits(&self) -> &SyntaxLimits {
+        &self.limits
+    }
+    /// Returns the validated codes setting.
+    #[must_use]
+    pub fn codes(&self) -> &CodeTables {
+        &self.codes
+    }
+    /// Returns the validated policy setting.
+    #[must_use]
+    pub fn policy(&self) -> &Vidas {
+        &self.policy
+    }
+    /// Returns the validated orders setting.
+    #[must_use]
+    pub fn orders(&self) -> &Option<VidasOrders> {
+        &self.orders
+    }
+}
+impl AutolyserStack {
+    /// Returns the validated transport setting.
+    #[must_use]
+    pub fn transport(&self) -> &StreamTransport {
+        &self.transport
+    }
+    /// Returns the validated frame limit setting.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+    /// Returns the validated timeouts setting.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        &self.timeouts
+    }
+    /// Returns the validated limits setting.
+    #[must_use]
+    pub fn limits(&self) -> &SyntaxLimits {
+        &self.limits
+    }
+    /// Returns the validated codes setting.
+    #[must_use]
+    pub fn codes(&self) -> &CodeTables {
+        &self.codes
+    }
+    /// Returns the validated policy setting.
+    #[must_use]
+    pub fn policy(&self) -> &Autolyser {
+        &self.policy
+    }
+    /// Returns the validated orders setting.
+    #[must_use]
+    pub fn orders(&self) -> &Option<AutolyserOrders> {
+        &self.orders
+    }
+}
+impl FileAstmStack {
+    /// Returns the validated operation timeout ms setting.
+    #[must_use]
+    pub fn operation_timeout_ms(&self) -> u32 {
+        self.operation_timeout_ms
+    }
+    /// Returns the validated frame limit setting.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+    /// Returns the validated timeouts setting.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        &self.timeouts
+    }
+    /// Returns the validated syntax setting.
+    #[must_use]
+    pub fn syntax(&self) -> &AstmSyntax {
+        &self.syntax
+    }
+    /// Returns the validated mappings setting.
+    #[must_use]
+    pub fn mappings(&self) -> &Mappings {
+        &self.mappings
+    }
+    /// Returns the validated orders setting.
+    #[must_use]
+    pub fn orders(&self) -> &Option<AstmOrders> {
+        &self.orders
+    }
+}
+impl FileHl7Stack {
+    /// Returns the validated operation timeout ms setting.
+    #[must_use]
+    pub fn operation_timeout_ms(&self) -> u32 {
+        self.operation_timeout_ms
+    }
+    /// Returns the validated frame limit setting.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+    /// Returns the validated timeouts setting.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        &self.timeouts
+    }
+    /// Returns the validated syntax setting.
+    #[must_use]
+    pub fn syntax(&self) -> &Hl7Syntax {
+        &self.syntax
+    }
+    /// Returns the validated mappings setting.
+    #[must_use]
+    pub fn mappings(&self) -> &Mappings {
+        &self.mappings
+    }
+    /// Returns the validated orders setting.
+    #[must_use]
+    pub fn orders(&self) -> &Option<Hl7Orders> {
+        &self.orders
+    }
+}
+
+/// Transport-specific settings for one record protocol. Folder pickup has no wire dialog.
+#[derive(Debug, Clone)]
+pub enum RecordTransport<S, F> {
+    /// Serial or TCP framing and conversation settings.
+    Stream(S),
+    /// Complete-file handoff settings, without wire acknowledgments.
+    Folder(F),
 }

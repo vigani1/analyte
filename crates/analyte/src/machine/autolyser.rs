@@ -30,14 +30,14 @@ pub(super) async fn session(
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     super::poll_custody::ensure_reconciled(store, machine).await?;
-    let policy = &settings.policy;
+    let policy = &settings.policy();
     let dialog = Dialog::new(Config {
         poll: ms(policy.poll_ms),
         ack: ms(policy.acknowledgment_ms),
         response: ms(policy.response_ms),
         inter_byte: ms(policy.interbyte_ms),
         storage: ms(policy.storage_ms),
-        max_bytes: settings.frame_limit,
+        max_bytes: settings.frame_limit(),
         controls: policy.controls,
         recovery: if policy.recover_last_on_poll {
             Recovery::LastOnPoll

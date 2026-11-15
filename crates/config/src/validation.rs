@@ -175,7 +175,44 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
         }
     };
     if !compatible {
-        return Err(Error::IncompatibleStack { path: path.into() });
+        return Err(Error::IncompatibleStack {
+            path: path.into(),
+            reason: match d.kind {
+                DialogKind::AstmLink => {
+                    "ASTM link requires serial/TCP, LIS01 framing and LIS02 syntax"
+                }
+                DialogKind::Hl7Receiver | DialogKind::LawManager => {
+                    "HL7/LAW requires TCP, MLLP framing and HL7 syntax"
+                }
+                DialogKind::Poct => "POCT requires TCP, POCT framing and POCT syntax",
+                DialogKind::VidasLiteral => {
+                    "VIDAS requires serial/TCP, Literal framing and Literal syntax"
+                }
+                DialogKind::Autolyser => {
+                    "Autolyser requires serial/TCP, Autolyser framing and syntax"
+                }
+                DialogKind::FilePickup => {
+                    "file pickup requires watched_folder, no framing, and ASTM or HL7 syntax"
+                }
+            },
+        });
+    }
+    let protocol_matches = match m.protocol {
+        Protocol::Astm => m.syntax.kind == SyntaxKind::AstmLis02,
+        Protocol::Hl7 => {
+            m.syntax.kind == SyntaxKind::Hl7V2 && m.dialog.kind != DialogKind::LawManager
+        }
+        Protocol::Law => m.dialog.kind == DialogKind::LawManager,
+        Protocol::Poct => m.syntax.kind == SyntaxKind::Poct,
+        Protocol::Vidas => m.syntax.kind == SyntaxKind::VidasLiteral,
+        Protocol::Autolyser => m.syntax.kind == SyntaxKind::Autolyser,
+    };
+    if !protocol_matches {
+        return Err(invalid(
+            path,
+            "protocol",
+            "selected protocol does not match syntax and dialog",
+        ));
     }
     if (d.kind == DialogKind::AstmLink) != d.contention_priority.is_some()
         || matches!(d.kind, DialogKind::Hl7Receiver | DialogKind::LawManager)

@@ -22,13 +22,13 @@ fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> R
         analyte_config::Stack::Law(_)
     ));
     assert_eq!(machine.evidence.level, EvidenceLevel::Documented);
-    let policy = &law(&config)?.policy;
+    let policy = &law(&config)?.policy();
     assert_eq!(
-        policy.query_forms,
+        policy.query_forms(),
         [LawQueryForm::Container, LawQueryForm::AllPending]
     );
-    assert_eq!(policy.query_deadline_ms, 1500);
-    assert_eq!(policy.response_ms, 1500);
+    assert_eq!(policy.query_deadline_ms(), 1500);
+    assert_eq!(policy.response_ms(), 1500);
     assert!(config.effective().hl7_options().is_some());
     // Each peer flag is independently declared; omission is never a default.
     for flag in [
@@ -45,7 +45,7 @@ fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> R
             "{flag}"
         );
         let changed = load(&LAW.replace(&format!("{flag} = false"), &format!("{flag} = true")))?;
-        let peer = law(&changed)?.policy.peer.capabilities();
+        let peer = law(&changed)?.policy().peer().capabilities();
         assert_eq!(
             [
                 peer.patient,
@@ -133,9 +133,9 @@ fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() ->
     let valid = load(&text)?;
     assert!(
         law(&valid)?
-            .orders
+            .orders()
             .as_ref()
-            .map(|orders| &orders.work)
+            .map(analyte_config::LawOrders::work)
             .is_some()
     );
     for bad in [
@@ -163,6 +163,7 @@ fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() ->
                 .split("[orders]")
                 .next()
                 .ok_or(Error::IncompatibleStack {
+                    reason: "LAW test requires LAW stack",
                     path: "fixture".into()
                 })?
         ))
@@ -223,7 +224,7 @@ fn adr0002_law_overrides_replace_policy_and_change_protected_provenance() -> Res
         ("overrides", &replacement),
     )?
     .validate()?;
-    assert_eq!(law(&config)?.policy.query_deadline_ms, 2500);
+    assert_eq!(law(&config)?.policy().query_deadline_ms(), 2500);
     assert_ne!(config.digest(), load(LAW)?.digest());
     let invalid = replacement.replace("query_deadline_ms = 2500", "query_deadline_ms = 0");
     assert!(
