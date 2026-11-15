@@ -224,6 +224,18 @@ impl Store {
         Ok(())
     }
 
+    /// Checks, without writing anything, whether new evidence of up to
+    /// `expected_bytes` would be admitted under the disk reserve and the
+    /// database size limit. Dialogs call this before accepting a new transfer
+    /// (for example before answering an ASTM ENQ, ADR 0003). It is a snapshot:
+    /// every later write checks capacity again and can still refuse.
+    /// # Errors
+    /// Returns `Error::Capacity` when admission would cross a limit, or the
+    /// specific error of a failed free-space probe.
+    pub fn admission(&self, expected_bytes: usize) -> Result<(), Error> {
+        self.capacity(expected_bytes)
+    }
+
     /// Commits exact bytes and effective config; supplied digests must match.
     /// # Errors
     /// Refuses insufficient capacity, oversized evidence, digest mismatches or duplicate IDs.
