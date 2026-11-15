@@ -1,0 +1,16 @@
+[package]
+name = "analyte-astm"
+description = "ASTM LIS02 record syntax: delimiters, escapes, records and the message hierarchy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true

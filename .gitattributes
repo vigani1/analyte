@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.pdf binary
+*.bin binary
+# Recorded analyzer conversations are exact bytes; never touch line endings.
+**/fixtures/** -text

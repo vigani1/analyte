@@ -13,3 +13,4 @@ replacement.
 | [0005](0005-evidence-levels.md)                 | Evidence levels for drivers and machine configs    |
 | [0006](0006-apache-2-license.md)                | Apache License 2.0                                 |
 | [0007](0007-standards-first.md)                 | Standards first, machines after                    |
+| [0008](0008-app-contract.md)                    | Contract with lab apps (version 1)                 |

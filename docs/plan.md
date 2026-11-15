@@ -97,6 +97,7 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-astm`      | ASTM record syntax                                           |
 | `analyte-hl7`       | HL7 v2 syntax, acknowledgments, LAW transactions             |
 | `analyte-config`    | Machine config files (TOML), validation, versions            |
+| `analyte-contract`  | The app contract: documents, signing, validation (ADR 0008)   |
 | `analyte-sink`      | Delivery to apps and order polling                           |
 | `analyte-sim`       | Fake machine and replay of recordings                        |
 | `analyte-receiver`  | Reference receiver: a small app that implements the contract |
@@ -287,8 +288,7 @@ to pass. The proven level comes only from real machines in phase 9.
 
 ## 14. Open decisions
 
-1. Exact JSON contract and signing scheme for any lab app (phase 1 ADR).
-2. Plugin mechanism (WASM components or out-of-process), decided only when a
+1. Plugin mechanism (WASM components or out-of-process), decided only when a
    real outside driver needs one.
 
 ## 15. Research behind this plan

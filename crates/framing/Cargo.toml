@@ -1,0 +1,16 @@
+[package]
+name = "analyte-framing"
+description = "Byte framing without I/O: ASTM LIS01 frames, MLLP, start/end blocks with checksums and line framing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true

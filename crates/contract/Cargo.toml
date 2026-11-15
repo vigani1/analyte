@@ -1,0 +1,16 @@
+[package]
+name = "analyte-contract"
+description = "The app contract, version 1 (ADR 0008): delivery and order documents, signing and validation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true

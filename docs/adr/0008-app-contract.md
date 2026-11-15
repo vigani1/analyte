@@ -1,0 +1,85 @@
+# 0008. Contract with lab apps (version 1)
+
+Status: accepted, 2026-11-15
+
+## Context
+
+Analyte delivers results to lab apps and reads orders from them, always over
+outbound HTTPS from the lab PC (ADR 0004). Any app must be able to implement
+the contract from its documentation alone, in any language. A lost answer,
+a retry or a restart must never create a duplicate clinical effect, and an
+app must be able to tell that a request really came from its Analyte.
+
+## Decision
+
+**Transport and format.** HTTPS with verified certificates. JSON in UTF-8.
+Every request and response carries `"contract_version": 1`. Within version 1,
+fields are only added, never changed or removed; receivers ignore fields they
+do not know. Each destination is configured with a base URL; the paths below
+are relative to it.
+
+**Authentication.**
+
+- Every request carries `Authorization: Bearer <api key>`, one key per
+  destination.
+- Every request with a body is also signed with the
+  [Standard Webhooks](https://www.standardwebhooks.com/) scheme:
+  `webhook-id` is the delivery ID, `webhook-timestamp` the send time, and
+  `webhook-signature` an HMAC-SHA256 over `id.timestamp.body` with the
+  destination's signing secret. Several signatures may be sent during secret
+  rotation. Receivers reject timestamps more than five minutes away from
+  their clock.
+
+**Results and events: `POST /results` and `POST /order-events`.**
+
+- The body is a delivery document with a `delivery_id` (a UUIDv7 created
+  once), the receipt it came from (ID, receive time, SHA-256 of the raw
+  bytes), the sample identity and every result with its identity, revision,
+  source status, value as written, parsed value, units and flags, as defined
+  in the contract document.
+- Retries and operator resends reuse the same ID and the exact same bytes;
+  only the signature headers are recomputed.
+- The app stores the delivery ID together with its effects before it
+  answers. Answers:
+  - `200` with `{"status": "accepted"}` or `{"status": "duplicate"}`: done;
+  - `409`: the same ID arrived with different content; Analyte parks it;
+  - `400` or `422` with `{"error": ..., "detail": ...}`: parked with the
+    app's reason;
+  - `401` or `403`: delivery to that destination pauses until the setup is
+    fixed;
+  - `408`, `429`, `5xx` or no answer: retried with capped exponential backoff
+    and jitter, honouring `Retry-After`;
+  - any other status: parked.
+- Order status changes (sent, accepted, rejected, done, cancel confirmed,
+  uncertain) travel to `POST /order-events` through the same outbox.
+
+**Orders: `GET /orders?cursor=<cursor>&limit=<n>`.**
+
+- Without a cursor the app returns a full snapshot, paged; with one, the
+  changes since it. Each page returns `orders`, `next_cursor` and
+  `complete` (true on the last page). The cursor is opaque to Analyte.
+- Each order carries its ID, version, state, sample ID, requested tests,
+  priority, optional target analyzers and expiry. A deleted or withdrawn
+  order arrives as a tombstone.
+- `410 Gone` means the cursor is no longer valid: Analyte marks its cache
+  untrusted and reloads the snapshot.
+- Analyte commits each page together with its cursor. The cache is trusted
+  only after a complete snapshot and while the last successful poll is
+  younger than the configured freshness limit.
+
+**Documentation and test vectors.** The full field list lives in
+`docs/contract/v1.md`. `docs/contract/vectors/` holds request and response
+examples, valid and invalid, with their expected outcomes and signatures, so
+any app can test itself without our reference receiver.
+
+## Consequences
+
+- Apps need idempotent storage keyed by delivery ID, a signature check and a
+  paged changes feed; the reference receiver (`analyte-receiver`) shows all
+  three.
+- Signing uses a published scheme with existing libraries in most languages;
+  Analyte invents no cryptography.
+- Two secrets per destination (API key and signing secret) must be stored
+  and rotated by the host, never by a driver.
+- A breaking change needs contract version 2, served alongside version 1
+  during migration.
