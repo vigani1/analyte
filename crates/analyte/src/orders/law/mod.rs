@@ -110,7 +110,31 @@ impl Connection {
             Ok(query) => query,
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                return Err(error.into());
+                return response_metadata(|response| {
+                    let location = error.location().filter(|location| location.field > 0);
+                    let detail = location
+                        .and_then(|location| {
+                            u16::try_from(location.field).ok().map(|field| AckError {
+                                segment: location.segment.as_bytes(),
+                                occurrence: 1,
+                                field,
+                                code: b"102",
+                                application_code: b"LAW-invalid-query",
+                            })
+                        })
+                        .unwrap_or(AckError::unlocated(b"102", b"LAW-invalid-query"));
+                    law::reject_trigger(
+                        message.raw(),
+                        response,
+                        error
+                            .acknowledgment_code()
+                            .ok_or("query failure has no ACK outcome")?,
+                        detail,
+                        options,
+                    )?
+                    .map(Reply::Response)
+                    .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
+                });
             }
         };
         let stack = super::settings::law(machine)?;

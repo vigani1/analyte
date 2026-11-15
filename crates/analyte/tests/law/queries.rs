@@ -865,3 +865,38 @@ async fn law_tf2b_b7_6_returned_work_must_match_downloaded_awos() -> Result<(), 
     reference.close().await?;
     Ok(())
 }
+
+// PaLM TF-2b Rev 11 B.7.1-B.7.2 pp.80-81; C.1 pp.84-85.
+#[tokio::test]
+async fn law_tf2b_b7_1_b7_2_host_correlates_errors_without_ack_loops() -> Result<(), Error> {
+    let (_temp, path, reference, running, mut peer) = setup(vec![], &definition(), false).await?;
+    let query = query(CONTAINER, "correlated");
+    let result = law_results::result("correlated", "\"\"", "run^ANALYZER", "1.0", "F");
+    for (message, code) in [
+        (query.replace("QPD|", "QPD|BROKEN"), b"AE".as_slice()),
+        (query.replace("QBP^Q11^QBP_Q11", "QBP^Q99^QBP_Q11"), b"AR"),
+        (query.replace("|2.5.1|", "|2.4|"), b"AR"),
+        (query.replace("LAB-27^IHE", "OTHER^IHE"), b"AR"),
+        (result.replace("OUL^R22^OUL_R22", "ORU^R01^ORU_R01"), b"AR"),
+        (format!("{query}@@@|bad\r"), b"AE"),
+    ] {
+        send(&mut peer, message.as_bytes()).await?;
+        let ack = packet(&mut peer).await?;
+        assert_eq!(field(&ack, b"MSA", 1)?, code);
+        assert_eq!(field(&ack, b"MSA", 2)?, b"correlated");
+        assert!(ack.segments().any(|s| s.id() == b"ERR"));
+    }
+    for kind in ["ACK^R22^ACK", "ORL^O34^ORL_O42", "RSP^K11^RSP_K11"] {
+        let ack = query
+            .replace("QBP^Q11^QBP_Q11", kind)
+            .replace("|2.5.1|", "|2.4|");
+        send(&mut peer, ack.as_bytes()).await?;
+        quiet(&mut peer).await?;
+    }
+    assert_eq!(count(&path, "receipts")?, 9);
+    assert_eq!(count(&path, "machine_orders")?, 0);
+    assert_eq!(count(&path, "outbox")?, 0);
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

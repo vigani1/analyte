@@ -400,3 +400,6 @@ mod content;
 pub use content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkNotes};
 
 mod observation;
+
+mod rejection;
+pub use rejection::reject_trigger;

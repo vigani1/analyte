@@ -180,7 +180,41 @@ async fn process(
         Ok(message) => message,
         Err(error) => {
             evidence::failed_reading(store, machine, id, &error.to_string()).await?;
-            return Err(error.into());
+            let (code, location) = match &error {
+                analyte_hl7::Error::Control {
+                    segment: "MSH",
+                    field,
+                } => (
+                    AckCode::Ar,
+                    u16::try_from(*field)
+                        .ok()
+                        .map(|field| self::error(b"MSH", field, b"102", b"LAW-control")),
+                ),
+                analyte_hl7::Error::UnsupportedCharset | analyte_hl7::Error::CharsetMismatch => (
+                    AckCode::Ar,
+                    Some(self::error(b"MSH", 18, b"102", b"LAW-control")),
+                ),
+                analyte_hl7::Error::Limit { .. }
+                | analyte_hl7::Error::Encoding
+                | analyte_hl7::Error::Truncation
+                | analyte_hl7::Error::Terminator
+                | analyte_hl7::Error::Segment(_)
+                | analyte_hl7::Error::Escape { .. }
+                | analyte_hl7::Error::CharacterEncoding
+                | analyte_hl7::Error::Control { .. }
+                | analyte_hl7::Error::NotStored
+                | analyte_hl7::Error::AckMode => (AckCode::Ae, None),
+            };
+            return response_metadata(|response| {
+                Ok(law::reject_trigger(
+                    payload,
+                    response,
+                    code,
+                    location.unwrap_or(AckError::unlocated(b"102", b"LAW-syntax")),
+                    options,
+                )?
+                .map(Reply::Response))
+            });
         }
     };
     let kind: Vec<_> = message
@@ -211,9 +245,16 @@ async fn process(
             "LAW transaction disabled: unsolicited work/response traffic is not enabled",
         )
         .await?;
-        return Err(invalid(
-            "LAW transaction disabled: unsolicited work/response traffic is not enabled",
-        ));
+        return response_metadata(|response| {
+            Ok(law::reject_trigger(
+                payload,
+                response,
+                AckCode::Ar,
+                error(b"MSH", 9, b"200", b"LAW-unsupported-trigger"),
+                options,
+            )?
+            .map(Reply::Response))
+        });
     }
     let (code, responsibility, location) = match law::receive_results(&message) {
         Ok(_) => {
@@ -247,6 +288,29 @@ async fn process(
         }
         Err(failure) => {
             evidence::failed_reading(store, machine, id, &failure.to_string()).await?;
+            if law::validate_control(&message, law::ControlDirection::Receive).is_err() {
+                let detail = failure
+                    .location()
+                    .filter(|l| l.field > 0)
+                    .and_then(|l| {
+                        u16::try_from(l.field)
+                            .ok()
+                            .map(|field| error(l.segment.as_bytes(), field, b"102", b"LAW-control"))
+                    })
+                    .unwrap_or(AckError::unlocated(b"102", b"LAW-control"));
+                return response_metadata(|response| {
+                    Ok(law::reject_trigger(
+                        payload,
+                        response,
+                        failure
+                            .acknowledgment_code()
+                            .ok_or("trigger failure lacks ACK outcome")?,
+                        detail,
+                        options,
+                    )?
+                    .map(Reply::Response))
+                });
+            }
             // The pure failure names a segment/field but not its occurrence. Only
             // report a wire location when the original proves it is unambiguous.
             let location = failure.location().filter(|location| {
