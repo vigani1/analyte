@@ -232,10 +232,9 @@ fn build(
         options.limits.message_bytes,
     )?;
     match subject {
-        Subject::NonPatient | Subject::Unspecified => {}
         // The optional patient group cannot be emitted without PID-5.
         // HL7 2.3.1 section 3.3.2; omit it when only an identifier is known.
-        Subject::Identifier { .. } => {}
+        Subject::NonPatient | Subject::Unspecified | Subject::Identifier { .. } => {}
         Subject::Patient(patient) => {
             scalar(patient.identifier, "PID", 3, 15, true)?;
             scalar(patient.namespace, "PID", 3, 20, true)?;
