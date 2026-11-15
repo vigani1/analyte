@@ -132,5 +132,6 @@ install it only on an explicitly injected loopback listener. It can pause,
 resume normal processing, or stop that connection; it cannot modify wire bytes
 or bypass storage. Pauses stop on cancellation, dropped control or a five-second
 deadline. Without the feature, both the hook and its call site compile out.
-Never enable `test-hooks` in release builds. Exercise its restart test with
+`test-hooks` is test-only and must never be enabled for release builds.
+Exercise its restart test with
 `cargo test -p analyte --all-features --test delivery recording`.
