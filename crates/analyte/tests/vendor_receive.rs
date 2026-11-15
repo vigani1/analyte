@@ -3,7 +3,7 @@
 mod guard;
 #[path = "../../poct/tests/peer_messages.rs"]
 mod poct_peer;
-use analyte::{Error, config::Program, service};
+use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_store::FreeSpace;
 use guard::HANG_GUARD;
 use std::{
@@ -99,7 +99,7 @@ impl Running {
         let mut program = Program::load(&path)?;
         program.set_loopback_destination_for_test("demo", url.clone())?;
         program.set_loopback_listener_for_test("synthetic", listener.try_clone()?)?;
-        let secrets = analyte::secrets::EnvironmentSecrets::load_with(&program, |name| {
+        let secrets = analyte::installation::secrets::Environment::load_with(&program, |name| {
             Some(
                 if name.ends_with("API") {
                     "synthetic-api"
@@ -147,7 +147,7 @@ impl Running {
         let url = self.url.clone();
         program.set_loopback_destination_for_test("demo", url)?;
         program.set_loopback_listener_for_test("synthetic", self.listener.try_clone()?)?;
-        let secrets = analyte::secrets::EnvironmentSecrets::load_with(&program, |name| {
+        let secrets = analyte::installation::secrets::Environment::load_with(&program, |name| {
             Some(
                 if name.ends_with("API") {
                     "synthetic-api"

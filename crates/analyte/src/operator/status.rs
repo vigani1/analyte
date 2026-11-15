@@ -1,5 +1,5 @@
 //! Nonclinical operator health snapshots.
-use crate::{Error, config::Program, deadline};
+use crate::{Error, deadline, installation::config::Program};
 use analyte_store::Handle;
 use std::collections::BTreeMap;
 
@@ -13,16 +13,16 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
         .request(deadline(), |store| store.restore_unreconciled())
         .await?;
     let mut lines = vec![format!("order_sending_paused_after_restore={paused}")];
-    for alert in crate::alerts::active(store).await? {
-        let (kind, machine) = crate::alerts::signal(&alert.key);
+    for alert in crate::operator::alerts::active(store).await? {
+        let (kind, machine) = crate::operator::alerts::signal(&alert.key);
         lines.push(format!(
             "alert={kind} machine={machine:?} responder={:?} raised_age_seconds={} last_value={:?}",
             alert.responder,
-            crate::alerts::age(&alert, now),
+            crate::operator::alerts::age(&alert, now),
             alert.value
         ));
     }
-    for destination in crate::delivery::destinations(program, false)? {
+    for destination in crate::runtime::delivery::destinations(program, false)? {
         let health = destination.health(store, now).await?;
         lines.push(format!("destination={} pending_count={} pending_bytes={} oldest_pending_age_seconds={:?} paused={} last_poll={:?} cache_trusted={}",
             destination.id().as_str(), health.pending_count, health.pending_bytes, health.oldest_pending_age,
@@ -102,7 +102,7 @@ pub async fn print(program: &Program) -> Result<(), Error> {
     let result = snapshot(program, &store).await;
     store.shutdown(deadline()).await?;
     for line in result? {
-        crate::output::line(&line)?;
+        crate::operator::output::line(&line)?;
     }
     Ok(())
 }

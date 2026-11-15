@@ -1,5 +1,5 @@
 //! Host-owned HL7 unsolicited work and cancellation; HL7 ch.4 and ADR 0003/0004.
-use crate::{Error, config::Machine, deadline};
+use crate::{Error, deadline, installation::config::Machine};
 use analyte_hl7::{
     Options,
     order::{self, OrderMessage, OrderResponse, Outcome},
@@ -31,7 +31,8 @@ fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<Order
             tests: &item.tests,
         })
         .collect::<Vec<_>>();
-    let metadata = crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
+    let metadata =
+        crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Hl7);
     Ok(command.map(&items, cancel, metadata.response()?)?)
 }
 

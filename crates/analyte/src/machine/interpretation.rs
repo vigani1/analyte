@@ -1,5 +1,5 @@
 //! Interpretation has no transport handle and cannot send orders or acknowledgments.
-use crate::{Error, config::Machine, deadline, evidence, invalid};
+use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
 use analyte_config::Stack;
 use analyte_model::{ReceiptId, Revision};
 use analyte_store::{Handle, InterpretationCommit, Reprocess};

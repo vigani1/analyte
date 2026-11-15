@@ -9,13 +9,14 @@ mod poll_custody;
 pub use interpretation::reprocess;
 mod connection_input;
 mod custody;
+pub(crate) mod hl7_response;
 mod law;
 mod poct;
 mod serial;
 mod settings;
 mod vidas;
 mod worker;
-use crate::{Error, config::Machine, invalid};
+use crate::{Error, installation::config::Machine, invalid};
 use analyte_config::TcpRole;
 use analyte_store::Handle;
 use analyte_transport::{Backoff, Limits, connection};
@@ -45,7 +46,7 @@ pub(crate) async fn run(
     mut stop: watch::Receiver<bool>,
     file_root: std::path::PathBuf,
     mut closing: Closing,
-    capture: Option<crate::capture::Capture>,
+    capture: Option<crate::evidence::capture::Capture>,
 ) -> Result<(), Error> {
     if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack()
         && matches!(
@@ -125,6 +126,7 @@ pub(crate) async fn run(
             if *stop.borrow() {
                 return Ok(());
             }
+            // Reconnect backoff is cancellable; this is not polling for completion.
             tokio::select! {
                 () = stopping(&mut stop) => return Ok(()),
                 () = tokio::time::sleep(Duration::from_millis(100)) => {}

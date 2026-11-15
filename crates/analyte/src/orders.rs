@@ -7,7 +7,7 @@ mod operator;
 mod reservation;
 pub(crate) mod sending;
 mod settings;
-use crate::{Error, config::Machine};
+use crate::{Error, installation::config::Machine};
 use analyte_contract::{EventFields, OrderEvent, Source, Text};
 use analyte_model::{Identifier, SampleId};
 use analyte_store::{MachineOrder, OrderEventDelivery};

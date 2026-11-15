@@ -719,7 +719,7 @@ async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservat
             .seed(vec![order("order-1", "000Ab12", None, 1)?])
             .await?;
         let mut loaded = program(&path, &reference.url)?;
-        let (hook, control) = analyte::test_hooks::Committed::new();
+        let (hook, control) = analyte::runtime::test_hooks::Committed::new();
         loaded.pause_law_committed_for_test("law", hook)?;
         let running = Running::start_program(loaded, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
