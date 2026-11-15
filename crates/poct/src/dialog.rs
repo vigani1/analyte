@@ -3,14 +3,18 @@ use crate::{
     AckKind, ApplicationError, Body, Capabilities, ControlId, EscapeReason, Message, Nullable,
     Outbound, TerminationReason,
 };
-use std::{collections::VecDeque, time::Duration};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    time::Duration,
+};
 
 /// Host limits and deadlines; these are policy, not claimed standard defaults.
 #[derive(Debug, Clone)]
 pub struct DialogConfig {
     /// Maximum uncommitted dynamic messages, including asynchronous observations.
     pub pending_messages: usize,
-    /// Maximum accepted bytes in any message.
+    /// Maximum accepted bytes in any message, and aggregate received control-ID bytes.
+    /// Each ID is nonempty, so this also bounds the number of retained IDs.
     pub message_bytes: usize,
     /// Generous wait for the device's next response.
     pub response_timeout: Duration,
@@ -203,6 +207,8 @@ pub struct Dialog {
     reads: bool,
     hello_received: Duration,
     last_sent: Option<ControlId>,
+    received_ids: BTreeSet<ControlId>,
+    received_id_bytes: usize,
 }
 
 impl Dialog {
@@ -231,6 +237,8 @@ impl Dialog {
             reads: true,
             hello_received: Duration::ZERO,
             last_sent: None,
+            received_ids: BTreeSet::new(),
+            received_id_bytes: 0,
         })
     }
 
@@ -331,6 +339,34 @@ impl Dialog {
             return Ok(());
         }
         let reference = message.header().control_id.clone();
+        if self.received_ids.contains(&reference) {
+            return self.refuse_protocol(
+                message,
+                "POCT reused incoming control ID",
+                EscapeReason::Other,
+                actions,
+            );
+        }
+        // A new final ACK closes this conversation; retaining it cannot affect
+        // any later decision. It must remain usable even when the ID budget filled.
+        let terminal_ack = matches!(self.phase, Phase::Ending(_))
+            && matches!(message.body(), Body::Acknowledgement { .. });
+        if !terminal_ack {
+            let Some(bytes) = self
+                .received_id_bytes
+                .checked_add(reference.as_str().len())
+                .filter(|bytes| *bytes <= self.config.message_bytes)
+            else {
+                return self.refuse_protocol(
+                    message,
+                    "POCT conversation control-ID budget exhausted",
+                    EscapeReason::CannotComplete,
+                    actions,
+                );
+            };
+            self.received_ids.insert(reference.clone());
+            self.received_id_bytes = bytes;
+        }
         match message.body() {
             Body::Hello {
                 device_id,
@@ -599,6 +635,32 @@ impl Dialog {
             .checked_add(self.config.response_timeout)
             .ok_or(DialogError::Exhausted)?;
         Ok(())
+    }
+
+    fn refuse_protocol(
+        &mut self,
+        message: Box<Message>,
+        reason: &'static str,
+        detail: EscapeReason,
+        actions: &mut Vec<DialogAction>,
+    ) -> Result<(), DialogError> {
+        let reference = message.header().control_id.clone();
+        let already_ending = matches!(self.phase, Phase::Ending(_));
+        actions.push(DialogAction::Park { message, reason });
+        self.send(
+            Outbound::Escape {
+                reference,
+                reason: detail,
+            },
+            actions,
+        )?;
+        if already_ending {
+            // Repeated bad traffic must not restart the termination deadline.
+            self.close(false, actions);
+            Ok(())
+        } else {
+            self.terminate(TerminationReason::Abnormal, actions)
+        }
     }
 
     fn unexpected(

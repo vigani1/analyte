@@ -1004,3 +1004,40 @@ async fn poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_
     run.parked("POCT syntax").await?;
     run.close().await
 }
+
+// POCT01-A2 B 5.13 p.99 and 3.4.2 p.74: reused IDs are protocol faults, not new results.
+#[tokio::test]
+async fn poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes() -> Result<(), Error> {
+    for reused in ["observation", "status"] {
+        let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+        poct_start(&mut run, &poct_peer::hello("hello")).await?;
+        let first =
+            poct_peer::observation("observation", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>");
+        run.peer.write_all(first.as_bytes()).await?;
+        xml(&mut run.peer).await?;
+        let repeated = poct_peer::observation(reused, true, "<OBS.value V=\"99.30\" U=\"mg/L\"/>");
+        run.peer.write_all(repeated.as_bytes()).await?;
+        let escape = xml(&mut run.peer).await?;
+        let escape = analyte_poct::Message::parse(&escape, poct_peer::limits())?;
+        assert!(
+            matches!(escape.body(), analyte_poct::Body::Escape { reference, .. } if reference.as_str() == reused)
+        );
+        run.stored(repeated.as_bytes(), "analyte-poct")?;
+        run.parked("POCT reused incoming control ID").await?;
+        run.result_value("12.30")?;
+        let end = xml(&mut run.peer).await?;
+        let end = analyte_poct::Message::parse(&end, poct_peer::limits())?;
+        assert!(matches!(end.body(), analyte_poct::Body::Terminate(_)));
+        let ack = poct_peer::message(
+            "ACK.R01",
+            "unique-end-ack",
+            &format!(
+                "<ACK><ACK.type_cd V=\"AA\"/>{}</ACK>",
+                poct_peer::field("ACK.ack_control_id", end.header().control_id.as_str())
+            ),
+        );
+        run.peer.write_all(ack.as_bytes()).await?;
+        run.close().await?;
+    }
+    Ok(())
+}

@@ -223,7 +223,13 @@ fn poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination()
         sends(&step(&mut dialog, DialogEvent::RequestObservations)?).as_slice(),
         [Outbound::RequestObservations]
     ));
-    step(&mut dialog, received(&eot())?)?;
+    // Each repeated topic has its own message ID (B 5.13), even when empty.
+    let repeated_eot = eot().replace("HDR.control_id V=\"eot\"", "HDR.control_id V=\"eot-again\"");
+    assert!(
+        step(&mut dialog, received(&repeated_eot)?)?
+            .iter()
+            .any(|a| matches!(a, DialogAction::TopicComplete))
+    );
     let finish = step(&mut dialog, DialogEvent::Finish)?;
     let id = finish
         .iter()
@@ -430,5 +436,108 @@ fn poct01_b4_1_2_invalid_capabilities_are_retained_and_termination_has_deadline(
         expired.last(),
         Some(DialogAction::Close { normal: false, .. })
     ));
+    Ok(())
+}
+
+// POCT01-A2 B 5.13 p.99, 3.4.2 p.74: every incoming message shares the ID namespace.
+#[test]
+fn poct01_b5_13_reused_id_before_commit_is_retained_not_accepted() -> Result<(), DialogError> {
+    let mut dialog = dialog(2)?;
+    startup(&mut dialog)?;
+    let first = step(&mut dialog, received(&observation("same"))?)?;
+    let repeated = observation("same").replace("7.20", "9.20");
+    let actions = step(&mut dialog, received(&repeated)?)?;
+    assert!(
+        matches!(actions.first(), Some(DialogAction::Park { message, .. }) if message.document().raw() == repeated.as_bytes())
+    );
+    assert!(
+        matches!(sends(&actions).as_slice(), [Outbound::Escape { reference, .. }, Outbound::Terminate(_)] if reference.as_str() == "same")
+    );
+    assert!(
+        !actions
+            .iter()
+            .any(|a| matches!(a, DialogAction::Store { .. }))
+    );
+    assert!(
+        sends(&complete(
+            &mut dialog,
+            ticket(&first)?,
+            CommitOutcome::Stored
+        )?)
+        .is_empty()
+    );
+    Ok(())
+}
+
+// POCT01-A2 B 5.13 p.99; AGENTS.md rule 7: no silent eviction when the budget fills.
+#[test]
+fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
+-> Result<(), DialogError> {
+    let mut config = DialogConfig {
+        pending_messages: 2,
+        message_bytes: 1024,
+        response_timeout: Duration::from_secs(180),
+        unannounced_ack_timeout: Duration::from_secs(20),
+    };
+    for (overflow, expected_reason) in [
+        (
+            observation(&"z".repeat(256)),
+            analyte_poct::EscapeReason::CannotComplete,
+        ),
+        (observation("hello"), analyte_poct::EscapeReason::Other),
+    ] {
+        let mut full = Dialog::new(config.clone(), ControlId::new("bounded")?)?;
+        startup(&mut full)?;
+        for n in 0..4 {
+            let id = format!("{n}{}", "x".repeat(245));
+            let actions = step(&mut full, received(&observation(&id))?)?;
+            complete(&mut full, ticket(&actions)?, CommitOutcome::Stored)?;
+        }
+        let actions = step(&mut full, received(&overflow)?)?;
+        assert!(
+            matches!(actions.first(), Some(DialogAction::Park { message, .. }) if message.document().raw() == overflow.as_bytes())
+        );
+        assert!(matches!(
+            sends(&actions).as_slice(),
+            [
+                Outbound::Escape {
+                    reason,
+                    ..
+                },
+                Outbound::Terminate(_)
+            ] if *reason == expected_reason
+        ));
+        // Even at capacity the correlated, unique terminal ACK must be usable.
+        let end_id = actions
+            .iter()
+            .find_map(|a| {
+                if let DialogAction::Send {
+                    control_id,
+                    body: Outbound::Terminate(_),
+                } = a
+                {
+                    Some(control_id.as_str())
+                } else {
+                    None
+                }
+            })
+            .ok_or(DialogError::State)?;
+        let ack = common::message(
+            "ACK.R01",
+            &"a".repeat(256),
+            &format!(
+                "<ACK><ACK.type_cd V=\"AA\"/>{}</ACK>",
+                common::field("ACK.ack_control_id", end_id)
+            ),
+        );
+        let closed = step(&mut full, received(&ack)?)?;
+        assert!(matches!(
+            closed.last(),
+            Some(DialogAction::Close { normal: true, .. })
+        ));
+    }
+    // A fresh conversation may reuse IDs from the previous one.
+    config.message_bytes = 65536;
+    startup(&mut Dialog::new(config, ControlId::new("new-session")?)?)?;
     Ok(())
 }

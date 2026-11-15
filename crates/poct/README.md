@@ -50,6 +50,19 @@ ACK or its existing deadline. Program tests:
 `poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw` and
 `poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack`.
 
+Received control IDs are conversation-local protocol identities (Appendix B
+section 5.13, printed p.99). The dialog retains all of them within an aggregate
+ID-byte budget equal to `DialogConfig.message_bytes`; nonempty IDs also bound
+the entry count and collection overhead. It never evicts IDs. Reuse is parked
+before Escape and abnormal Terminate, without mapping a second result. Budget
+exhaustion is separately parked and reports inability to complete the topic.
+A unique correlated terminal ACK remains usable at capacity; bad traffic cannot
+restart termination indefinitely. A new connection has a new index. Tests:
+`poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes`,
+`poct01_b5_13_reused_id_before_commit_is_retained_not_accepted`, and
+`poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids`.
+This set does not replace the store's independent result identity history.
+
 ## Identity and mapping
 
 The pure mapper returns unresolved identity because it has no installed machine

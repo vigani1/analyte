@@ -530,12 +530,12 @@ impl MessageError {
     #[must_use]
     pub fn acknowledgement_error(&self) -> crate::ApplicationError {
         match self {
-            Self::Xml(_) => crate::ApplicationError::DataType,
             Self::Data(data::DataError::MissingValue) | Self::MissingValue(_) => {
                 crate::ApplicationError::RequiredField
             }
             Self::Data(data::DataError::Code) => crate::ApplicationError::TableValue,
-            Self::Data(
+            Self::Xml(_)
+            | Self::Data(
                 data::DataError::Null
                 | data::DataError::MissingUnit
                 | data::DataError::Number
