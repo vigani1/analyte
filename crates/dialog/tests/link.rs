@@ -434,3 +434,32 @@ fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult
     assert!(acked.contains(&Action::Write(vec![ACK])));
     Ok(())
 }
+
+// LIS01-A2 ??6.5.2.4 p.10, 8.5.2.4 p.17: every frame reply renews reception.
+#[test]
+fn lis01_6_5_2_4_8_5_2_4_nak_at_29_expires_at_59() -> TestResult {
+    for kind in ["checksum", "conflict", "sequence"] {
+        let mut d = receiver();
+        let first = wire(b"H|x\r", FrameNumber::FIRST, Limit::default())?.remove(0);
+        let actions = feed(&mut d, 0, &first);
+        commit(&mut d, &actions, true);
+        let mut bad = wire(
+            b"H|y\r",
+            if kind == "sequence" {
+                FrameNumber::FIRST.next().next()
+            } else {
+                FrameNumber::FIRST
+            },
+            Limit::default(),
+        )?
+        .remove(0);
+        if kind == "checksum" {
+            *bad.get_mut(3).ok_or("frame short")? = b'z';
+        }
+        assert!(feed(&mut d, 29, &bad).contains(&Action::Write(vec![NAK])));
+        assert!(!step(&mut d, 30, Event::Tick).contains(&Action::Ended(End::Timeout)));
+        assert!(!step(&mut d, 58, Event::Tick).contains(&Action::Ended(End::Timeout)));
+        assert!(step(&mut d, 59, Event::Tick).contains(&Action::Ended(End::Timeout)));
+    }
+    Ok(())
+}
