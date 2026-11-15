@@ -16,3 +16,4 @@ replacement.
 | [0008](0008-app-contract.md)                    | Contract with lab apps (version 1)                 |
 | [0009](0009-recording-format.md)                | Recording format for fixtures and replay           |
 | [0010](0010-acknowledgment-boundaries.md)       | Acknowledgment boundaries for every protocol       |
+| [0011](0011-result-status-progression.md)       | Result status progression (refines ADR 0003)       |
