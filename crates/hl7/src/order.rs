@@ -153,3 +153,9 @@ impl OrderMessage {
         &self.message
     }
 }
+
+impl From<crate::encoder::Limit> for Error {
+    fn from(_: crate::encoder::Limit) -> Self {
+        Self::Limit
+    }
+}

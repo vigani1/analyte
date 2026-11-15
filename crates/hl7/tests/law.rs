@@ -69,7 +69,7 @@ fn law_tf2b_3_27_4_forbidden_missing_null_and_repeated_parameters_retain_bytes()
         "QPD|WOS_BY_RACK^Rack^IHELAW|tag||rack|x",
     ] {
         let message = query(body)?;
-        let original = message.serialize();
+        let original = message.encode();
         assert!(matches!(Query::new(&message), Err(Error::Content { .. })));
         assert_eq!(message.raw(), original);
     }
@@ -614,7 +614,7 @@ fn law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original()
     );
     body.push_str("TCD|mismatch^Mismatch^99LAB\r");
     let message = results_message("awos-1", &body)?;
-    let original = message.serialize();
+    let original = message.encode();
     let failure = Results::new(&message)
         .err()
         .ok_or("accepted mismatched TCD")?;
