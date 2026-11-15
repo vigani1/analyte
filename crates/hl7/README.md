@@ -105,15 +105,27 @@ edition, preserves QRD/QRF filters, renders QCK status, renders bounded complete
 DSR display lines, and reads correlated application ACK/Q03 replies. QAK-1 is
 empty for original-style queries. Lookup failure produces AE, never NF.
 
-Outstanding before integration: complete QRD/QRF datatype, table and predicate
-validation; typed filter interpretation; continuation and scheduling contracts;
-additional quantity units and escaped/non-ASCII display text; comprehensive
-negative fixtures. The constructor checks the supported envelope and selected
-required fields, not full HL7 conformance. The host must interpret every filter
-under the agreed interface before declaring its cache answer trusted. Display
-rows have no built-in laboratory meaning. These pure functions do not store,
-schedule, transmit, retry or change order states.
+QRD/QRF validation covers field presence, edition-specific lengths and fields,
+repetitions, closed query tables and the referenced numeric, timestamp, coded,
+person, range and timing composites (231 sections 2.24.4–5; 251 sections
+5.10.5.3–4, with their datatype definitions). Named synthetic negative fixtures
+cover the rules, alongside boundary and preservation tests. Earlier synthetic
+subject fixtures now supply their required XCN source table. Local codes,
+namespaces, repeated filters, escaped text, date precision and offsets stay as
+received. Explicit null criteria are rejected rather than silently ignored.
+
+The supported transaction remains a single deferred display query; record and
+tabular formats, immediate queries and continuation require separate transaction
+support. Outstanding before integration: typed interpretation of local filters;
+continuation and scheduling contracts; additional display quantity units and
+escaped/non-ASCII display output. The host must interpret every filter, including
+local codes, timestamps under its agreed timezone and requested timing, before
+declaring its cache answer trusted. Structural validation cannot establish that
+the host can satisfy those criteria. Display rows have no built-in laboratory
+meaning. These pure functions do not store, schedule, transmit, retry or change
+order states. Passing these tests does not establish whole-HL7 conformance or
+raise the documented evidence level.
 
 ORM/O01, ORR/O02, non-LAW OML/O21 and ORL/O22 are not implemented by this change.
-Checklist G and full required-field validation remain outstanding.
+Checklist G remains outstanding.
 

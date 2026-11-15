@@ -2,7 +2,7 @@
 use analyte_hl7::{ControlId, Message, Options, Response, query};
 
 fn request(version: &str) -> Result<Message, analyte_hl7::Error> {
-    Message::parse(format!("MSH|^~\\&|A|B|C|D|202611150900||QRY^Q02|q1|P|{version}\rQRD|20261115|D|D|tag|||5^LI|0001|ORD|TEST\rQRF|LAB\r").as_bytes(), Options::default())
+    Message::parse(format!("MSH|^~\\&|A|B|C|D|202611150900||QRY^Q02|q1|P|{version}\rQRD|20261115|D|D|tag|||5^LI|0001^^^^^^^LCL|ORD|TEST\rQRF|LAB\r").as_bytes(), Options::default())
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr() -> Result<(), analyte_
 proptest::proptest! {
     #[test]
     fn hl7_231_2_24_4_query_id_is_preserved(id in "[A-Za-z0-9]{1,10}") {
-        let bytes = format!("MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|q1|P|2.3.1\rQRD|20261115|D|D|{id}|||5^LI|0001|ORD|TEST\r");
+        let bytes = format!("MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|q1|P|2.3.1\rQRD|20261115|D|D|{id}|||5^LI|0001^^^^^^^LCL|ORD|TEST\r");
         let parsed = Message::parse(bytes.as_bytes(), Options::default());
         proptest::prop_assert!(parsed.is_ok());
         if let Ok(message) = parsed {
@@ -84,8 +84,8 @@ proptest::proptest! {
 fn hl7_231_2_24_4_rejects_vendor_quantity_and_missing_department() -> Result<(), analyte_hl7::Error>
 {
     for definition in [
-        b"QRD|20261115|D|D|tag|||RD|0001|ORD|TEST\r".as_slice(),
-        b"QRD|20261115|D|D|tag|||5^LI|0001|ORD\r",
+        b"QRD|20261115|D|D|tag|||RD|0001^^^^^^^LCL|ORD|TEST\r".as_slice(),
+        b"QRD|20261115|D|D|tag|||5^LI|0001^^^^^^^LCL|ORD\r",
     ] {
         let mut bytes = b"MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|q1|P|2.3.1\r".to_vec();
         bytes.extend_from_slice(definition);

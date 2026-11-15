@@ -4,6 +4,8 @@
 //! Unsupported filters remain available to the host; they must never be ignored.
 use crate::{AckCode, Field, Message, Msa, Msh, Segment, Version};
 
+mod validation;
+
 fn invalid(segment: &'static str, field: usize) -> crate::Error {
     crate::Error::Control { segment, field }
 }
@@ -25,7 +27,8 @@ impl<'a> Request<'a> {
     ///
     /// # Errors
     /// Returns the offending segment and field for missing or unsupported content.
-    /// This validates the supported envelope, not every composite datatype.
+    /// QRD/QRF validation preserves local filter values; the host must interpret
+    /// every filter before claiming that a cache answer is trusted.
     pub fn new(message: &'a Message) -> Result<Self, crate::Error> {
         let msh = Msh::new(message)?;
         let mut kind = msh.message_type();
@@ -54,52 +57,17 @@ impl<'a> Request<'a> {
             // Continuation needs a host-owned lifecycle; never process a partial lookup.
             return Err(invalid("DSC", 0));
         }
-        for (field, maximum) in [(1, 26), (2, 1), (3, 1), (4, 10), (7, 10)] {
-            let value = raw(definition, field);
-            if value.is_empty() || value == b"\"\"" || value.len() > maximum {
-                return Err(invalid("QRD", field));
-            }
+        validation::definition(definition, msh.version())?;
+        if let Some(filter) = filter {
+            validation::filter(filter, msh.version())?;
         }
+        // Other valid table entries require different response transactions.
+        // This API only renders deferred display replies, not record/tabular ones.
         if raw(definition, 2) != b"D" {
             return Err(invalid("QRD", 2));
         }
         if raw(definition, 3) != b"D" {
             return Err(invalid("QRD", 3));
-        }
-        // Repeated filters are preserved rather than collapsed to the first subject.
-        let maximum = match msh.version() {
-            Version::V231 => 60,
-            Version::V251 => 250,
-        };
-        for field in [8, 9, 10] {
-            let value = definition.field(field).ok_or(invalid("QRD", field))?;
-            for item in value.repetitions() {
-                if item.raw().is_empty() || item.raw() == b"\"\"" || item.raw().len() > maximum {
-                    return Err(invalid("QRD", field));
-                }
-            }
-        }
-        let mut quantity = raw(definition, 7).split(|b| *b == message.delimiters().component);
-        let amount = quantity.next().unwrap_or_default();
-        if amount.is_empty()
-            || !amount.iter().all(u8::is_ascii_digit)
-            || amount.iter().all(|b| *b == b'0')
-            || !matches!(
-                quantity.next(),
-                None | Some(b"" | b"CH" | b"LI" | b"PG" | b"RD" | b"ZO")
-            )
-            || quantity.next().is_some()
-        {
-            return Err(invalid("QRD", 7));
-        }
-        if let Some(filter) = filter {
-            let where_filter = filter.field(1).ok_or(invalid("QRF", 1))?;
-            if where_filter
-                .repetitions()
-                .any(|r| r.raw().is_empty() || r.raw().len() > 20 || r.raw() == b"\"\"")
-            {
-                return Err(invalid("QRF", 1));
-            }
         }
         Ok(Self {
             message,
