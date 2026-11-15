@@ -331,11 +331,22 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             check(segment, "ORC", 1, true, 2, 1)?;
         }
         b"PID" => {
-            check(segment, "PID", 3, true, 250, 1024)?;
-            check(segment, "PID", 5, true, 250, 1024)?;
+            check(segment, "PID", 3, true, 250, 1)?;
+            check(segment, "PID", 5, true, 250, 1)?;
+            if raw(segment, 5) != b"\"\""
+                && raw(segment, 5)
+                    .split(|b| *b == segment.delimiters.component)
+                    .nth(6)
+                    != Some(b"L".as_slice())
+            {
+                return Err(content("PID", 5));
+            }
         }
         b"PV1" => {
-            if raw(segment, 2) != b"U" {
+            if !matches!(
+                raw(segment, 2),
+                b"E" | b"I" | b"O" | b"P" | b"R" | b"B" | b"C" | b"N" | b"U"
+            ) {
                 return Err(content("PV1", 2));
             }
         }

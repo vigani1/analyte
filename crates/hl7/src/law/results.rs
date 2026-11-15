@@ -166,6 +166,8 @@ fn values(segment: Segment<'_>) -> Result<Vec<Value<'_>>, Error> {
 /// Parent of a retained supplemental segment, identified by source ordinal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Parent {
+    /// Observation about the specimen itself, before the container/order groups.
+    SpecimenObservation(usize),
     /// Patient segment ordinal.
     Patient(usize),
     /// Specimen segment ordinal.
@@ -176,6 +178,43 @@ pub enum Parent {
     Order(usize),
     /// Result segment ordinal.
     Observation(usize),
+}
+
+/// A typed specimen-level observation, distinct from an AWOS result.
+#[derive(Debug)]
+pub struct SpecimenObservation<'a> {
+    specimen: Segment<'a>,
+    segment: Segment<'a>,
+    values: Vec<Value<'a>>,
+}
+
+impl<'a> SpecimenObservation<'a> {
+    /// Returns the source specimen, including its original identities.
+    #[must_use]
+    pub fn specimen(&self) -> Segment<'a> {
+        self.specimen
+    }
+
+    /// Returns the original OBX with identity, status, units and equipment.
+    #[must_use]
+    pub fn segment(&self) -> Segment<'a> {
+        self.segment
+    }
+
+    /// Returns validated value repetitions without converting their spelling.
+    #[must_use]
+    pub fn values(&self) -> &[Value<'a>] {
+        &self.values
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ResultPhase {
+    NoResult,
+    Observation,
+    Detail,
+    Inventory,
+    Notes,
 }
 
 /// Note, inventory or detail segment with explicit source parent.
@@ -283,6 +322,7 @@ impl<'a> Observation<'a> {
 /// Atomically validated LAB-29 interpretation borrowing the complete original message.
 #[derive(Debug)]
 pub struct Results<'a> {
+    specimen_observations: Vec<SpecimenObservation<'a>>,
     message: &'a Message,
     observations: Vec<Observation<'a>>,
     attached: Vec<Attached<'a>>,
@@ -309,6 +349,9 @@ impl<'a> Results<'a> {
         let mut order = None;
         let mut parent = None;
         let mut observations: Vec<Observation<'a>> = Vec::new();
+        let mut specimen_observations = Vec::new();
+        let mut result_phase = ResultPhase::NoResult;
+        let mut has_container_inventory = false;
         let mut attached = Vec::new();
         let mut order_status = None;
         let mut order_count = 0usize;
@@ -317,7 +360,6 @@ impl<'a> Results<'a> {
         let mut has_patient = false;
         let mut has_visit = false;
         let mut has_timing = false;
-        let mut has_tcd = false;
         for (ordinal, segment) in message.segments().enumerate().skip(1) {
             super::profile::validate_segment(segment)?;
             match segment.id() {
@@ -361,6 +403,7 @@ impl<'a> Results<'a> {
                         return Err(content("SAC", 0));
                     }
                     container = Some(segment);
+                    has_container_inventory = false;
                     order = None;
                     parent = Some(Parent::Container(ordinal));
                 }
@@ -411,7 +454,16 @@ impl<'a> Results<'a> {
                     });
                 }
                 b"OBX" => {
-                    has_tcd = false;
+                    if order.is_none() && container.is_none() {
+                        let specimen = specimen.ok_or(content("SPM", 0))?;
+                        specimen_observations.push(SpecimenObservation {
+                            specimen,
+                            segment,
+                            values: values(segment)?,
+                        });
+                        parent = Some(Parent::SpecimenObservation(ordinal));
+                        continue;
+                    }
                     if !matches!(order_status, Some(b"IP" | b"CM")) {
                         return Err(content("OBX", 0));
                     }
@@ -434,30 +486,92 @@ impl<'a> Results<'a> {
                         values: values(segment)?,
                     };
                     observations.push(observation);
+                    result_phase = ResultPhase::Observation;
                     observation_count =
                         observation_count.checked_add(1).ok_or(content("OBX", 0))?;
                     parent = Some(Parent::Observation(ordinal));
                 }
                 b"TCD" => {
-                    if has_tcd {
-                        return Err(content("TCD", 0));
+                    match result_phase {
+                        ResultPhase::Observation => {}
+                        ResultPhase::NoResult
+                        | ResultPhase::Detail
+                        | ResultPhase::Inventory
+                        | ResultPhase::Notes => return Err(content("TCD", 0)),
                     }
-                    has_tcd = true;
+                    result_phase = ResultPhase::Detail;
                     if !matches!(parent, Some(Parent::Observation(_))) {
                         return Err(content("TCD", 0));
                     }
                     let observation = observations.last().ok_or(content("TCD", 0))?;
                     if raw(segment, 1) != observation.code() {
-                        return Err(content("TCD", 1));
+                        return Err(Error::Inconsistent {
+                            segment: "TCD",
+                            field: 1,
+                        });
                     }
                     attached.push(Attached {
                         parent: parent.ok_or(content("TCD", 0))?,
                         segment,
                     });
                 }
-                b"NTE" | b"INV" => {
+                b"NTE" => {
+                    match parent {
+                        Some(Parent::Patient(_)) => {}
+                        Some(Parent::Order(_)) => {
+                            if order_status.is_none() {
+                                return Err(content("ORC", 0));
+                            }
+                        }
+                        Some(Parent::Observation(_)) => {
+                            result_phase = ResultPhase::Notes;
+                        }
+                        Some(
+                            Parent::Specimen(_)
+                            | Parent::Container(_)
+                            | Parent::SpecimenObservation(_),
+                        )
+                        | None => return Err(content("NTE", 0)),
+                    }
                     attached.push(Attached {
                         parent: parent.ok_or(content("NTE", 0))?,
+                        segment,
+                    });
+                }
+                b"INV" => {
+                    match parent {
+                        Some(Parent::Container(_)) => {
+                            if has_container_inventory
+                                || specimen.is_none_or(|s| {
+                                    raw(s, 11).split(|b| *b == d.component).next()
+                                        != Some(b"Q".as_slice())
+                                })
+                            {
+                                return Err(content("INV", 0));
+                            }
+                            has_container_inventory = true;
+                        }
+                        Some(Parent::Observation(_)) => {
+                            match result_phase {
+                                ResultPhase::Observation
+                                | ResultPhase::Detail
+                                | ResultPhase::Inventory => {}
+                                ResultPhase::NoResult | ResultPhase::Notes => {
+                                    return Err(content("INV", 0));
+                                }
+                            }
+                            result_phase = ResultPhase::Inventory;
+                        }
+                        Some(
+                            Parent::Patient(_)
+                            | Parent::Specimen(_)
+                            | Parent::Order(_)
+                            | Parent::SpecimenObservation(_),
+                        )
+                        | None => return Err(content("INV", 0)),
+                    }
+                    attached.push(Attached {
+                        parent: parent.ok_or(content("INV", 0))?,
                         segment,
                     });
                 }
@@ -492,6 +606,7 @@ impl<'a> Results<'a> {
             }
         }
         Ok(Self {
+            specimen_observations,
             message,
             observations,
             attached,
@@ -502,6 +617,12 @@ impl<'a> Results<'a> {
     #[must_use]
     pub fn observations(&self) -> &[Observation<'a>] {
         &self.observations
+    }
+
+    /// Returns specimen observations without falsely assigning an AWOS to them.
+    #[must_use]
+    pub fn specimen_observations(&self) -> &[SpecimenObservation<'a>] {
+        &self.specimen_observations
     }
 
     /// Returns scoped notes, inventory, timing and order-control information.

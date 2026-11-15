@@ -9,6 +9,14 @@ use thiserror::Error;
 /// A LAW validation failure, without payload in its diagnostic.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// Individually valid fields contradict each other; reject the whole content.
+    #[error("inconsistent LAW content at {segment}-{field}")]
+    Inconsistent {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field.
+        field: usize,
+    },
     /// Base HL7 control validation failed.
     #[error(transparent)]
     Syntax(#[from] crate::Error),
@@ -281,7 +289,8 @@ pub use work::{
 mod results;
 
 pub use results::{
-    Attached, Observation, Parent, ResultStatus, Results, Value, result_acknowledgment,
+    Attached, Observation, Parent, ResultStatus, Results, SpecimenObservation, Value,
+    result_acknowledgment,
 };
 
 mod profile;
@@ -305,3 +314,7 @@ pub use failure::{
     ErrorLocation, Failure, receive_acknowledgment, receive_query, receive_results,
     receive_work_response,
 };
+
+mod content;
+
+pub use content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkNotes};

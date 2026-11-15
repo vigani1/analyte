@@ -51,6 +51,8 @@ Covered by source-named synthetic tests and a query property test:
 - LAB-28 work grouped by specimen/container, unique supplied AWOS IDs, explicit
   priority/dilution/repeat/reflex instructions gated by peer capabilities, and
   the restricted negative form with query identity echoes.
+- Outgoing app-supplied patient/visit, specimen, container and order details,
+  plus explicitly scoped notes, gated by peer capabilities.
 - ORL/O34 using ORL_O42; message acceptance separate from request outcomes;
   correlation and missing/unknown/duplicate responses; matching new/cancel
   outcomes and control/status pairs. Decisions never retract prior acceptance.
@@ -71,9 +73,9 @@ Not yet complete:
 - Every Appendix C field/component and option predicate and its individual test.
   The shared validator is not a complete LAW conformance validator.
 - Complete typed validation of all value composites and enhanced-content
-  relationships, specimen-level observations, and every message-group predicate.
-- Outgoing app-supplied patient/encounter, extended specimen/container/order
-  content and related observations; full capability/profile negotiation.
+  relationships and every message-group predicate. Specimen-level observations
+  are retained separately from AWOS results.
+- Related observations and full capability/profile negotiation.
   Related-observation and pooling manager options are not selected or implemented.
 - Qualified simulator evidence and host integration cases (durability failures,
   restart, lost replies, cancellation races, timing and external-data retention).

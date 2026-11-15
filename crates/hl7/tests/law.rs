@@ -260,6 +260,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
     )?;
     let message = work_order(
         &[a, b],
+        None,
         address(),
         response_metadata()?,
         work_capabilities(),
@@ -276,6 +277,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
     assert!(
         work_order(
             &[a, a],
+            None,
             address(),
             response_metadata()?,
             work_capabilities(),
@@ -293,6 +295,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
     assert!(
         work_order(
             &[instructed],
+            None,
             address(),
             response_metadata()?,
             work_capabilities(),
@@ -308,6 +311,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
     };
     let message = work_order(
         &[instructed],
+        None,
         address(),
         response_metadata()?,
         enabled,
@@ -380,6 +384,7 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
     )?;
     let sent = work_order(
         &[work],
+        None,
         address(),
         response_metadata()?,
         work_capabilities(),
@@ -396,6 +401,7 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
     )?;
     let cancellation = work_order(
         &[cancelled],
+        None,
         address(),
         response_metadata()?,
         work_capabilities(),
@@ -536,7 +542,7 @@ fn law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original()
     let original = message.serialize();
     assert!(matches!(
         Results::new(&message),
-        Err(Error::Content {
+        Err(Error::Inconsistent {
             segment: "TCD",
             field: 1
         })
@@ -809,4 +815,160 @@ fn work_capabilities() -> analyte_hl7::law::Capabilities {
         specimen: true,
         ..analyte_hl7::law::Capabilities::default()
     }
+}
+
+#[test]
+fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{
+        Field,
+        law::{
+            Awos, ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkAction,
+            work_order,
+        },
+    };
+    let specimen = SpecimenDetails {
+        parents: Some(b"parent&99LAB"),
+        risk: Some(b"RISK^Synthetic risk^99LAB"),
+        collection_time: Some(b"20260101100000^20260101100100"),
+        receipt_time: Some(b"20260101110000"),
+        ..SpecimenDetails::default()
+    };
+    let container = ContainerDetails {
+        carrier: Some(b"rack-01"),
+        carrier_position: Some(b"1"),
+        container_volume: Some(b"2.5"),
+        specimen_volume: Some(b"1.5"),
+        volume_units: Some(b"mL^mL^UCUM"),
+        dilution: Some(b"^1^:^2"),
+        ..ContainerDetails::default()
+    };
+    let order = OrderDetails {
+        group: Some(b"group-1&99LAB"),
+        facility: Some(b"Synthetic lab"),
+        provider: Some(b"provider-1"),
+        result_handling: None,
+    };
+    let awos = Awos::new(
+        b"awos-1",
+        b"sample&99LAB",
+        b"SER^Serum^HL70487",
+        b"P",
+        b"tube",
+        b"test^Test^99LAB",
+        WorkAction::New,
+    )?
+    .with_specimen_details(&specimen)
+    .with_container_details(&container)
+    .with_order_details(&order);
+    let patient = PatientInfo {
+        notes: &[b"Synthetic patient comment"],
+        identifiers: b"synthetic-001",
+        name: b"Synthetic^Patient^^^^^L",
+        birth: Some(b"20000101"),
+        sex: Some(b"U"),
+        race: None,
+        taxonomy: None,
+        visit: Some(Visit {
+            class: b"I",
+            location: Some(b"Ward^Room^Bed"),
+        }),
+    };
+    let mut capabilities = work_capabilities();
+    assert!(
+        work_order(
+            &[awos],
+            Some(patient),
+            address(),
+            response_metadata()?,
+            capabilities,
+            utf8_options()
+        )
+        .is_err()
+    );
+    capabilities.patient = true;
+    capabilities.container = true;
+    let message = work_order(
+        &[awos],
+        Some(patient),
+        address(),
+        response_metadata()?,
+        capabilities,
+        utf8_options(),
+    )?;
+    for (id, field, expected) in [
+        (b"PID".as_slice(), 3, b"synthetic-001".as_slice()),
+        (b"PV1", 2, b"I"),
+        (b"SPM", 3, b"parent&99LAB"),
+        (b"SPM", 16, b"RISK^Synthetic risk^99LAB"),
+        (b"SAC", 21, b"2.5"),
+        (b"SAC", 24, b"mL^mL^UCUM"),
+        (b"SAC", 29, b"^1^:^2"),
+        (b"ORC", 4, b"group-1&99LAB"),
+        (b"OBR", 16, b"provider-1"),
+    ] {
+        let segment = message
+            .segments()
+            .find(|s| s.id() == id)
+            .ok_or("missing segment")?;
+        assert_eq!(segment.field(field).map(Field::raw), Some(expected));
+    }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_3_29_4_specimen_observations_keep_scope_and_reject_orphan_groups()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::law::{Results, Value};
+    let message = results_message(
+        "awos-1",
+        &observation("test^Test^99LAB", "1", "NM", "1.20", "F"),
+    )?;
+    let source = std::str::from_utf8(message.raw())?;
+    let specimen_observation = observation(
+        "condition^Condition^99LAB",
+        "1",
+        "ST",
+        "synthetic condition",
+        "F",
+    );
+    let with_specimen_observation = source.replace(
+        "SAC|||000tube",
+        &format!("{specimen_observation}SAC|||000tube"),
+    );
+    let message = Message::parse(with_specimen_observation.as_bytes(), utf8_options())?;
+    let results = Results::new(&message)?;
+    assert_eq!(results.observations().len(), 1);
+    assert_eq!(results.specimen_observations().len(), 1);
+    assert!(matches!(
+        results
+            .specimen_observations()
+            .first()
+            .and_then(|o| o.values().first()),
+        Some(Value::Text(b"synthetic condition"))
+    ));
+    let orphan = format!("{source}SPM|2|||SER^Serum^HL70487|||||||P\rSAC|||orphan\r");
+    let message = Message::parse(orphan.as_bytes(), utf8_options())?;
+    assert!(Results::new(&message).is_err());
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c7_repetition_predicate_and_structured_numeric_validation()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::law::Results;
+    for (code, kind, value, valid) in [
+        ("test^Test^99LAB", "NM", "1~2", false),
+        ("raw^Raw^99LAB^S_RAW^Raw^IHELAW", "NM", "1~2", true),
+        ("test^Test^99LAB", "NM", "1,234", false),
+        ("test^Test^99LAB", "ST", "1,234", true),
+        ("test^Test^99LAB", "SN", "<^0.1", true),
+        ("test^Test^99LAB", "SN", "nonsense", false),
+        ("test^Test^99LAB", "NA", "1^2^3", true),
+        ("test^Test^99LAB", "NA", "1^word", false),
+    ] {
+        let message = results_message("awos-1", &observation(code, "1", kind, value, "F"))?;
+        assert_eq!(Results::new(&message).is_ok(), valid, "{kind}: {value}");
+    }
+    Ok(())
 }
