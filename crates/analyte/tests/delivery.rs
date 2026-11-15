@@ -397,6 +397,14 @@ async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_du
     let mut peer = connect(&path, "hl7").await?;
     assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
     service.stop().await?;
+    // The stopped program may have left an attempt queued on the not-yet-served
+    // listener. Close such leftovers so the receiver's first request is the
+    // recovery worker's, which is the behaviour under test.
+    while let Ok(Ok((stale, _))) =
+        tokio::time::timeout(Duration::from_millis(50), listener.accept()).await
+    {
+        drop(stale);
+    }
     let receiver_path = directory.path().join("reference.db");
     let mut reference = Reference::start(&receiver_path, listener, true).await?;
     let program = program(&path, &url)?;
