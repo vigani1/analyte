@@ -8,6 +8,10 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+default = []
+test-hooks = []
+
 [dependencies]
 analyte-poct = { workspace = true }
 analyte-vidas = { workspace = true }
@@ -38,6 +42,7 @@ jiff = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+analyte-sim = { workspace = true }
 analyte-receiver = { workspace = true }
 axum = { workspace = true }
 rusqlite = { workspace = true }

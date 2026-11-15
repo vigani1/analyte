@@ -103,6 +103,10 @@ pub(super) struct Running {
 impl Running {
     pub(super) fn start(path: &Fixture, url: &str, api: &str) -> Result<Self, Error> {
         let program = program(path, url)?;
+        Self::start_program(program, api)
+    }
+
+    pub(super) fn start_program(program: Program, api: &str) -> Result<Self, Error> {
         let secrets = secrets(&program, api)?;
         let (stop, stopped) = oneshot::channel();
         let task = tokio::spawn(service::serve_loopback_test(

@@ -101,29 +101,22 @@ fn recording_retains_exact_bytes_and_record_boundaries() -> Result<(), Box<dyn E
             .map_err(|_| "worker panic")??;
         Ok(())
     })?;
-    let bytes = std::fs::read(path)?;
-    let mut input = bytes.as_slice();
-    for (kind, expected) in [
-        (0_u8, b"TCP localhost".as_slice()),
-        (1, b"\0\xff00123".as_slice()),
-        (2, b"ack".as_slice()),
-        (3, b"disconnect".as_slice()),
-    ] {
-        let mut magic = [0; 4];
-        std::io::Read::read_exact(&mut input, &mut magic)?;
-        assert_eq!(&magic, b"ATR1");
-        let mut tag = [0; 1];
-        std::io::Read::read_exact(&mut input, &mut tag)?;
-        assert_eq!(tag, [kind]);
-        let mut timestamp = [0; 16];
-        std::io::Read::read_exact(&mut input, &mut timestamp)?;
-        let mut length = [0; 4];
-        std::io::Read::read_exact(&mut input, &mut length)?;
-        let mut payload = vec![0; usize::try_from(u32::from_le_bytes(length))?];
-        std::io::Read::read_exact(&mut input, &mut payload)?;
-        assert_eq!(payload, expected);
-    }
-    assert!(input.is_empty());
+    let (_, events) = analyte_transport::recording::read(
+        std::fs::File::open(path)?,
+        analyte_transport::recording::Limits::default(),
+    )?;
+    assert_eq!(
+        events
+            .iter()
+            .map(|e| e.bytes.as_slice())
+            .collect::<Vec<_>>(),
+        vec![
+            b"TCP localhost".as_slice(),
+            b"\0\xff00123".as_slice(),
+            b"ack".as_slice(),
+            b"disconnect".as_slice()
+        ]
+    );
     Ok(())
 }
 

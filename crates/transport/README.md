@@ -101,20 +101,15 @@ Protect the recording directory before starting: it contains raw clinical bytes.
 Recordings never enter ordinary logs. Only synthetic/de-identified recordings
 belong in repository fixtures.
 
-Each record contains:
+Recordings use ADR 0009 `.rec.jsonl`: a versioned header, then one event per
+line with direction, relative milliseconds, base64 bytes and optional link event.
+Live captures declare `machine` evidence and explicitly state they are NOT
+de-identified. They stay in the protected store. Use a fresh file for each worker;
+existing files are never truncated or extended by a new worker.
 
-- `ATR1`: four ASCII bytes identifying format v1.
-- Kind: u8, 0=settings/open, 1=in, 2=out, 3=close/failure reason.
-- Timestamp: little-endian u128 nanoseconds from worker creation (monotonic).
-- Payload length: little-endian u32, at most 4096.
-- Payload: exactly that many bytes.
-
-The file is opened append-only, never truncated. A reader must cap lengths before
-allocating and reject incomplete trailing records. Each `open` starts a session;
-a session without a close is incomplete. A new worker appended to an existing
-file has a new time origin, identified by its next open. A failure event followed
-by a closed event may produce two reason records. Recordings are evidence, not
-permission to acknowledge a machine.
+`recording::read` bounds file size, line length, event count and decoded bytes.
+Malformed lines fail with their one-based line number. Capture and replay share
+this codec. Recordings never authorize a protocol acknowledgment.
 
 ## Validation
 

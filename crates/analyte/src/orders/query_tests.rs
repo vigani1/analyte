@@ -24,6 +24,8 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     )?
     .validate()?;
     Ok(Machine {
+        #[cfg(feature = "test-hooks")]
+        astm_committed: None,
         id: analyte_model::Identifier::new("synthetic")?,
         snapshot,
         listener: None,

@@ -154,8 +154,9 @@ fn lis01_6_3_1_overlong_and_incomplete_evidence() -> Result<(), a::Error> {
     let wire = b"\x021AAAAAAA";
     let events: Vec<_> = wire.iter().filter_map(|b| d.push(*b)).collect();
     assert!(
-        matches!(events.first(), Some(a::Event::Rejected {error: a::Error::TooLong, raw}) if raw == wire)
+        matches!(events.first(), Some(a::Event::Rejected {error: a::Error::TooLong, raw}) if raw == wire.get(..8).unwrap_or_default())
     );
+    assert_eq!(events.last(), Some(&a::Event::Outside(b'A')));
     assert!(d.pending().is_empty());
     assert!(d.push(2).is_none());
     assert!(
@@ -176,4 +177,32 @@ fn lis01_6_4_link_control_inside_frame_is_reported_not_swallowed() {
                 if *c == control && raw.as_slice() == wire
         ));
     }
+}
+
+#[test]
+fn lis01_6_3_1_2_adr0003_rejected_frames_retain_stx_through_checksum_cr_lf() -> Result<(), a::Error>
+{
+    // Different defect locations obey the same envelope rule; no checksum special case.
+    for wire in [
+        b"\x021A\x0300\r\n".as_slice(),
+        b"\x028A\x0300\r\n",
+        b"\x021A\x03ZZ\r\n",
+        b"\x021A\x0375X\n",
+    ] {
+        let events = astm(wire);
+        assert!(matches!(events.as_slice(), [a::Event::Rejected { raw, .. }] if raw == wire));
+    }
+    let mut decoder = a::Decoder::new(a::Limit::new(8)?, a::HexPolicy::Strict);
+    let wire = b"\x028ABCDEF";
+    let events: Vec<_> = wire.iter().filter_map(|b| decoder.push(*b)).collect();
+    assert_eq!(
+        events,
+        vec![a::Event::Rejected {
+            error: a::Error::TooLong,
+            raw: wire.to_vec()
+        }]
+    );
+    assert!(decoder.pending().is_empty());
+    assert_eq!(decoder.push(b'Z'), Some(a::Event::Outside(b'Z')));
+    Ok(())
 }

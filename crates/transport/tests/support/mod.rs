@@ -1,23 +1,21 @@
-use std::{error::Error, io};
+use std::error::Error;
 pub(crate) type Record = (u8, u128, Vec<u8>);
-pub(crate) fn decode(mut input: &[u8]) -> Result<Vec<Record>, Box<dyn Error>> {
-    let mut records = Vec::new();
-    while !input.is_empty() {
-        let mut magic = [0; 4];
-        io::Read::read_exact(&mut input, &mut magic)?;
-        assert_eq!(&magic, b"ATR1");
-        let mut kind = [0];
-        io::Read::read_exact(&mut input, &mut kind)?;
-        let mut time = [0; 16];
-        io::Read::read_exact(&mut input, &mut time)?;
-        let mut length = [0; 4];
-        io::Read::read_exact(&mut input, &mut length)?;
-        let length = usize::try_from(u32::from_le_bytes(length))?;
-        assert!(length <= analyte_transport::CHUNK_LIMIT);
-        let mut bytes = vec![0; length];
-        io::Read::read_exact(&mut input, &mut bytes)?;
-        let tag = kind.first().copied().ok_or("missing tag")?;
-        records.push((tag, u128::from_le_bytes(time), bytes));
-    }
-    Ok(records)
+pub(crate) fn decode(input: &[u8]) -> Result<Vec<Record>, Box<dyn Error>> {
+    use analyte_transport::recording::{Direction, Limits, Link, read};
+    let (_, events) = read(input, Limits::default())?;
+    Ok(events
+        .into_iter()
+        .map(|e| {
+            let tag = match e.link {
+                Some(Link::Connect) => 0,
+                Some(Link::Disconnect) => 3,
+                Some(Link::Break) => 4,
+                None => match e.direction {
+                    Direction::MachineToHost => 1,
+                    Direction::HostToMachine => 2,
+                },
+            };
+            (tag, u128::from(e.time_ms), e.bytes)
+        })
+        .collect())
 }
