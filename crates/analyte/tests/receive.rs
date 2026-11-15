@@ -120,6 +120,15 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
         .interpretation(receipt.id, 1)?
         .ok_or("interpretation missing before AA")?;
     assert!(matches!(interpretation.outcome, analyte_store::Reading::Results(r) if r.len() == 1));
+    assert_eq!(
+        store
+            .health(
+                &analyte_model::Identifier::new("demo")?,
+                jiff::Timestamp::now().as_second()
+            )?
+            .pending_count,
+        1
+    );
     drop(store);
     let bad = String::from_utf8(ORU.to_vec())?
         .replace("SYN^Synthetic", "UNKNOWN^Synthetic")
@@ -131,6 +140,15 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
     .await?;
     assert!(String::from_utf8_lossy(&read_ack(&mut peer).await?).contains("MSA|AE|message2"));
     assert!(!stored(&program)?.parked(0)?.is_empty());
+    assert_eq!(
+        stored(&program)?
+            .health(
+                &analyte_model::Identifier::new("demo")?,
+                jiff::Timestamp::now().as_second()
+            )?
+            .pending_count,
+        1
+    );
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
     tokio::time::timeout(Duration::from_secs(3), service).await???;
     Ok(())
