@@ -435,7 +435,7 @@ fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult
     Ok(())
 }
 
-// LIS01-A2 ??6.5.2.4 p.10, 8.5.2.4 p.17: every frame reply renews reception.
+// LIS01-A2 sections 6.5.2.4 p.10, 8.5.2.4 p.17: every frame reply renews reception.
 #[test]
 fn lis01_6_5_2_4_8_5_2_4_nak_at_29_expires_at_59() -> TestResult {
     for kind in ["checksum", "conflict", "sequence"] {

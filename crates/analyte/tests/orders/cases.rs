@@ -527,9 +527,9 @@ async fn astm_context_exchange(
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     if !send {
-        assert_eq!(query(&mut peer, "000Ab12").await?, expected);
+        assert_astm_context(&query(&mut peer, "000Ab12").await?, expected)?;
     } else if rejection.is_none() {
-        assert_eq!(receive_orders(&mut peer).await?, expected);
+        assert_astm_context(&receive_orders(&mut peer).await?, expected)?;
     }
     if let Some(code) = rejection {
         machine_state(&path, "Rejected", 1).await?;
@@ -738,7 +738,7 @@ async fn lis02_6_12_p12_nonproduction_queries_never_reserve_or_send() -> Result<
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
-    // LIS02-A2 ?6.12 p.12: non-production queries cannot issue patient work.
+    // LIS02-A2 section 6.12 p.12: non-production queries cannot issue patient work.
     for (index, processing) in ["T", "D", "Q"].into_iter().enumerate() {
         astm(
             &mut peer,
@@ -766,5 +766,30 @@ async fn lis02_6_12_p12_nonproduction_queries_never_reserve_or_send() -> Result<
     drop(peer);
     service.stop().await?;
     reference.close().await?;
+    Ok(())
+}
+
+fn assert_astm_context(actual: &[u8], expected: &[u8]) -> Result<(), Error> {
+    let (header, body) = actual.split_at(
+        actual
+            .iter()
+            .position(|b| *b == b'\r')
+            .ok_or("header missing")?,
+    );
+    let time = header.rsplit(|b| *b == b'|').next().ok_or("time missing")?;
+    assert_eq!(time.len(), 19);
+    assert!(time.ends_with(b"+0000"));
+    assert!(
+        time.get(..14)
+            .ok_or("short timestamp")?
+            .iter()
+            .all(u8::is_ascii_digit)
+    );
+    let mut normalized = header
+        .get(..header.len().checked_sub(20).ok_or("short header")?)
+        .ok_or("header")?
+        .to_vec();
+    normalized.extend_from_slice(body);
+    assert_eq!(normalized, expected);
     Ok(())
 }

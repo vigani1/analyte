@@ -58,8 +58,8 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
     if queries.is_empty() {
         return Ok(None);
     }
-    // LIS02-A2 ?6.12 p.12: only production may reach the real order cache.
-    // ?12.3 pp.27?28 permits a query error, never a fabricated empty answer.
+    // LIS02-A2 section 6.12 p.12: only production may reach the real order cache.
+    // section 12.3 pp.27-28 permits a query error, never a fabricated empty answer.
     if messages
         .iter()
         .flat_map(Message::records)
@@ -262,7 +262,10 @@ pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
 
 /// Wraps mapped orders with independent patient groups and explicit termination.
 pub(crate) fn envelope(mut orders: Vec<Vec<u8>>, termination: u8) -> Vec<Vec<u8>> {
-    let mut records = vec![b"H|\\^&|||Analyte|||||||P|LIS2-A2\r".to_vec()];
+    let timestamp = jiff::Timestamp::now()
+        .strftime("%Y%m%d%H%M%S%z")
+        .to_string();
+    let mut records = vec![format!("H|\\^&|||Analyte|||||||P|LIS2-A2|{timestamp}\r").into_bytes()];
     for (index, order) in orders.drain(..).enumerate() {
         records.push(format!("P|{}\r", index.saturating_add(1)).into_bytes());
         records.push(order);
