@@ -1,19 +1,19 @@
 //! HL7 ch.4 outgoing work mapping from explicit tables.
-use super::WireMappingError as Error;
+use crate::orders::WireMappingError as Error;
 use analyte_hl7::{
     Options, Version,
     order::{self, OrderMessage},
 };
 
 /// Pure initiating HL7 command mapper; no storage, clocks or transport.
-pub struct Hl7Command {
+pub struct Command {
     settings: analyte_config::Hl7Orders,
     version: Version,
     options: Options,
-    app: super::AppOrder,
+    app: crate::orders::AppOrder,
     group: String,
 }
-impl Hl7Command {
+impl Command {
     /// Captures validated outgoing mappings and the app's exact group identity.
     /// # Errors
     /// Preserves disabled capability, patient requirements and group-length refusals.
@@ -64,7 +64,7 @@ impl Hl7Command {
             settings,
             version,
             options,
-            app: super::app_order(app)?,
+            app: crate::orders::app_order(app)?,
             group,
         })
     }
@@ -76,9 +76,9 @@ impl Hl7Command {
     /// Maps one already-reserved command with host-supplied response metadata.
     /// # Errors
     /// Preserves exact-code, identity, repertoire and protocol-bound refusals.
-    pub fn build(
+    pub fn map(
         &self,
-        items: &[super::OutboundItem<'_>],
+        items: &[crate::orders::OutboundItem<'_>],
         cancel: bool,
         response: analyte_hl7::Response<'_>,
     ) -> Result<OrderMessage, Error> {
@@ -137,7 +137,7 @@ impl Hl7Command {
         let sample = order::SampleId::new(self.app.sample.as_str().as_bytes())?;
         let source = match (&cfg.specimen_system, &self.app.specimen_type) {
             (Some(system), Some(specimen)) => {
-                let mapped = super::outbound_specimen(
+                let mapped = crate::outbound_codes::map_specimen(
                     self.settings.tables.specimen_types.as_deref(),
                     specimen,
                 )
@@ -160,9 +160,11 @@ impl Hl7Command {
             (Some(_), None) => return Err(Error::Context("HL7-missing-specimen-type")),
             (None, _) => None,
         };
-        let priority =
-            super::outbound_priority(&self.settings.tables.priorities, self.app.priority)
-                .map_err(|source| Error::lookup("HL7-unmapped-priority", source))?;
+        let priority = crate::outbound_codes::map_priority(
+            &self.settings.tables.priorities,
+            self.app.priority,
+        )
+        .map_err(|source| Error::lookup("HL7-unmapped-priority", source))?;
         let priority = match &priority.machine {
             analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
                 order::Priority::Routine
@@ -206,7 +208,7 @@ impl Hl7Command {
             let [test] = item.tests else {
                 return Err(Error::Context("HL7-send-item-must-cover-one-test"));
             };
-            let mapped = super::outbound_test(&self.settings.tables.tests, test)
+            let mapped = crate::outbound_codes::map_test(&self.settings.tables.tests, test)
                 .map_err(|source| Error::lookup("HL7-unmapped-test", source))?;
             let [code, text, system] = mapped.machine_components.as_slice() else {
                 return Err(Error::Context("HL7-test-components"));

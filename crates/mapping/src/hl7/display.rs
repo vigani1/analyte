@@ -1,11 +1,14 @@
-use super::{AppOrder, OrderMappingError, outbound_priority, outbound_specimen, outbound_test};
+use crate::orders::{AppOrder, OrderMappingError};
+use crate::outbound_codes::{
+    map_priority as outbound_priority, map_specimen as outbound_specimen, map_test as outbound_test,
+};
 use analyte_config::{DsrLine, Validated};
 
 /// Maps explicitly configured DSP text, preserving values and leaving absent context empty.
 /// Line order repeats for every test; no machine-specific positions are implicit.
 /// # Errors
 /// Refuses unmapped codes/priorities, namespace mismatches, delimiter injection and bounds.
-pub fn map_display(
+pub fn map(
     order: &AppOrder,
     order_id: &str,
     config: &Validated,

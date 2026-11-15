@@ -1,15 +1,15 @@
 //! LAW TF-2b C.6/C.7/C.9 outgoing code mapping; identities are supplied, never generated.
-use super::WireMappingError as Error;
+use crate::orders::WireMappingError as Error;
 use analyte_hl7::{Message, Options, law};
 use std::sync::Arc;
 /// Pure mapper for one app-authorized LAW command.
-pub struct LawCommand {
-    app: super::AppOrder,
+pub struct Command {
+    app: crate::orders::AppOrder,
     settings: Arc<analyte_config::LawOrders>,
     priority: bool,
     specimen: bool,
 }
-impl LawCommand {
+impl Command {
     /// Captures LAW mappings and the peer's explicitly configured capabilities.
     /// # Errors
     /// Preserves disabled LAW order capability errors.
@@ -22,7 +22,7 @@ impl LawCommand {
         };
         let peer = law.policy.peer.capabilities();
         Ok(Self {
-            app: super::app_order(app)?,
+            app: crate::orders::app_order(app)?,
             settings: Arc::new(
                 law.orders
                     .as_ref()
@@ -50,7 +50,7 @@ struct WireAwos {
     fields: law::WorkFields,
 }
 
-fn plain(value: &str) -> Result<&str, Error> {
+fn validate_field(value: &str) -> Result<&str, Error> {
     if !analyte_hl7::is_safe_field(
         value.as_bytes(),
         usize::MAX,
@@ -66,8 +66,8 @@ fn plain(value: &str) -> Result<&str, Error> {
 /// Maps every reserved AWOS using explicit specimen, test and priority translations.
 /// # Errors
 /// Preserves unmapped-code, repertoire, cardinality and LAW-profile failures.
-pub fn map_law_work(
-    commands: &[(&LawCommand, &[super::OutboundItem<'_>])],
+pub fn map_order(
+    commands: &[(&Command, &[crate::orders::OutboundItem<'_>])],
     action: law::WorkAction,
     options: Options,
     response: analyte_hl7::Response<'_>,
@@ -75,20 +75,24 @@ pub fn map_law_work(
     let (first, _) = commands.first().ok_or(Error::Context("LAW work empty"))?;
     let mut wire = Vec::new();
     for (command, items) in commands {
-        let sample = plain(command.app.sample.as_str())?;
+        let sample = validate_field(command.app.sample.as_str())?;
         let specimen = command
             .app
             .specimen_type
             .as_ref()
             .ok_or(Error::Context("LAW specimen type missing"))?;
-        let mapped = super::outbound_specimen(Some(&command.settings.specimen_types), specimen)
-            .map_err(|source| Error::lookup("LAW specimen type unmapped", source))?;
+        let mapped =
+            crate::outbound_codes::map_specimen(Some(&command.settings.specimen_types), specimen)
+                .map_err(|source| Error::lookup("LAW specimen type unmapped", source))?;
         let priority = if command.priority && action == law::WorkAction::New {
-            Some(plain(
-                super::outbound_priority(&command.settings.priorities, command.app.priority)
-                    .map_err(|source| Error::lookup("LAW priority unmapped", source))?
-                    .machine
-                    .as_str(),
+            Some(validate_field(
+                crate::outbound_codes::map_priority(
+                    &command.settings.priorities,
+                    command.app.priority,
+                )
+                .map_err(|source| Error::lookup("LAW priority unmapped", source))?
+                .machine
+                .as_str(),
             )?)
         } else {
             None
@@ -100,7 +104,7 @@ pub fn map_law_work(
             let [test] = item.tests else {
                 return Err(Error::Context("LAW item must cover one AWOS test"));
             };
-            let mapped_test = super::outbound_test(&command.settings.tests, test)
+            let mapped_test = crate::outbound_codes::map_test(&command.settings.tests, test)
                 .map_err(|source| Error::lookup("LAW test unmapped", source))?;
             wire.push(WireAwos {
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store
@@ -115,7 +119,7 @@ pub fn map_law_work(
                         sample,
                         command.settings.work.specimen_namespace.as_str(),
                         law::WorkCode {
-                            code: plain(mapped.machine.as_str())?,
+                            code: validate_field(mapped.machine.as_str())?,
                             text: "",
                             system: command.settings.work.specimen_system.as_str(),
                         },
@@ -145,7 +149,7 @@ pub fn map_law_work(
     Ok(law::work_order(
         &awos,
         None,
-        law_address(&first.settings.work),
+        address(&first.settings.work),
         response,
         capabilities,
         options,
@@ -154,7 +158,7 @@ pub fn map_law_work(
 
 /// Borrows the configured LAW addressing without changing its wire spelling.
 #[must_use]
-pub fn law_address(config: &analyte_config::LawWork) -> law::Address<'_> {
+pub fn address(config: &analyte_config::LawWork) -> law::Address<'_> {
     law::Address {
         application: config.application.as_str().as_bytes(),
         facility: config.facility.as_str().as_bytes(),

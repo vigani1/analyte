@@ -32,7 +32,7 @@ fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<Order
         })
         .collect::<Vec<_>>();
     let metadata = crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
-    Ok(command.build(&items, cancel, metadata.response()?)?)
+    Ok(command.map(&items, cancel, metadata.response()?)?)
 }
 
 pub(super) async fn next(

@@ -99,10 +99,11 @@ in `crates/analyte/tests/law/results.rs`; no hardware/Gazelle claim is made.
 
 All analyzer-to-model and model-to-analyzer translations live in this crate:
 ASTM, HL7, LAW, POCT, VIDAS and Autolyser. POCT observation conversion is in
-`poct`; conservative vendor/config adaptation is in `vendor`. Protocol crates
+`poct/observations.rs`; configured adaptations are in the corresponding
+`astm`, `hl7`, `law`, `poct`, `vidas` and `autolyser` modules. Protocol crates
 retain syntax views, wire builders and transaction rules, not model mapping.
 
-Every outgoing test, specimen and priority table lookup uses `orders/lookup`.
+Every outgoing test, specimen and priority table lookup uses `outbound_codes`.
 Matches retain exact namespaces, code spelling, component positions and configured
 priority text. Missing translations remain specific errors; there is no default
 or reverse lookup through incoming result tables. HL7/LAW command mappers receive

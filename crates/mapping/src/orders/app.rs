@@ -2,9 +2,7 @@ use analyte_model::{Identifier, NamespacedId, SampleId};
 /// Adapts validated app fields without inventing a code system or position.
 /// # Errors
 /// Preserves the exact common-model text constraint failure.
-pub fn app_order(
-    order: &analyte_contract::Order,
-) -> Result<super::AppOrder, analyte_model::TextError> {
+pub fn map(order: &analyte_contract::Order) -> Result<super::AppOrder, analyte_model::TextError> {
     let fields = order.fields();
     let tests = fields
         .tests
