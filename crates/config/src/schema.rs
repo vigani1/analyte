@@ -1,4 +1,7 @@
 //! Raw TOML configuration shapes belong at the configuration input boundary.
+mod vidas;
+pub use vidas::{AckPoint, ChecksumAcceptance, ChecksumInclusion, HexCase, Settings as Vidas};
+
 use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
 
@@ -669,42 +672,6 @@ impl From<VidasSampleLimit> for u8 {
             VidasSampleLimit::Seventeen => 17,
         }
     }
-}
-
-/// Explicit installed VIDAS Literal settings; no defaults.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Vidas {
-    /// ACK after ETX rather than checksum.
-    pub alternate: bool,
-    /// Maximum RS chunk bytes.
-    pub chunk: usize,
-    /// Uniform control suffix bytes.
-    pub suffix: Vec<u8>,
-    /// Include STX in checksum.
-    pub include_stx: bool,
-    /// Include suffix in checksum.
-    pub include_suffix: bool,
-    /// Emit uppercase hex.
-    pub uppercase: bool,
-    /// Accept either checksum case.
-    pub accept_either_case: bool,
-    /// Installed sample ID ceiling, twelve or seventeen.
-    pub sample_limit: VidasSampleLimit,
-    /// Peer ACK deadline.
-    pub acknowledgment_ms: u32,
-    /// Interbyte deadline.
-    pub interbyte_ms: u32,
-    /// Entire conversation deadline.
-    pub session_ms: u32,
-    /// Durable storage deadline.
-    pub commit_ms: u32,
-    /// Recorded retry setting, never automatic order replay.
-    pub retries: u16,
-    /// Recorded retry backoff.
-    pub backoff_ms: u32,
-    /// Permit explicit worklist downloads.
-    pub download: bool,
 }
 
 /// Autolyser connection timing and installed report layout.

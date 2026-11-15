@@ -101,10 +101,10 @@ pub fn map_order(
             if wire.len() >= options.limits.segments {
                 return Err(Error::Context("LAW query AWOS limit exceeded"));
             }
-            let [test] = item.tests else {
+            let [requested] = item.tests else {
                 return Err(Error::Context("LAW item must cover one AWOS test"));
             };
-            let mapped_test = crate::orders::codes::map_test(command.settings.tests(), test)
+            let mapped_test = crate::orders::codes::map_test(command.settings.tests(), requested)
                 .map_err(|source| Error::lookup("LAW test unmapped", source))?;
             wire.push(WireAwos {
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store
