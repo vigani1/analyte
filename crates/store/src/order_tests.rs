@@ -1279,3 +1279,57 @@ fn rule9_typed_trust_matrix_and_configured_age_boundary() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("command.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let owner = Identifier::new("owner")?;
+    let key = identity()?;
+    let record = store
+        .reserve_send_items_with(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            OrderItems::PerTest {
+                namespace: &Identifier::new("LAB")?,
+                identity_bytes: 50,
+            },
+            &owner,
+            |_| Ok(()),
+        )?
+        .map_err(std::io::Error::other)?
+        .0;
+    assert!(
+        store
+            .retain_order_command(&key, &Identifier::new("other")?, b"wrong-owner".to_vec())
+            .is_err()
+    );
+    store.retain_order_command(&key, &owner, b"synthetic original command".to_vec())?;
+    assert!(
+        store
+            .retain_order_command(&key, &owner, b"changed command".to_vec())
+            .is_err()
+    );
+    let placer = record.items.first().ok_or("item")?.placer.clone();
+    assert!(
+        store
+            .machine_order_by_placer(&Identifier::new("other-machine")?, &placer)?
+            .is_none()
+    );
+    drop(store);
+    let store = open(&path)?;
+    let retained = store
+        .machine_order_by_placer(&key.machine, &placer)?
+        .ok_or("retained command")?;
+    assert_eq!(
+        retained.original_command(),
+        Some(b"synthetic original command".as_slice())
+    );
+    Ok(())
+}

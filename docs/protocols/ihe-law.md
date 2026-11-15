@@ -114,7 +114,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Failures preserve original input and carry located content errors.
 - [x] **R** Reject inconsistent LAB-29 as a whole, including TCD-1/OBX-3 mismatch; retain bytes without applying a subset (TF-2b p.57; B.7.6, p.82).
   Tests: `law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original`.
-  Host revision conflicts return AR (B.7.6, p.82), while mapping failures remain AE. Tests: `law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c`, `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`. Originating-work consistency checks remain open below.
+  Host revision conflicts return AR (B.7.6, p.82), while mapping failures remain AE. Tests: `law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c`, `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`. Originating-work checks are covered by `law_tf2b_b7_6_returned_work_must_match_downloaded_awos` (B.3.1 pp.63?64; B.7.6 p.82): unknown/nonmatching placer, specimen identity/type, container and requested test reject the entire batch with AR and an ERR location; null-AWOS unsolicited results remain allowed. Prepared outbound work is retained with the reservation before I/O and survives restart. Missing legacy command evidence is rejected for operator review. `law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart` covers store ownership and immutability.
   No partial Results view escapes a failed message.
 - [ ] **R** Keep manager-sourced patient data authoritative; correct downloaded patient information through cancel/new-AWOS, not repeated work (TF-2b B.7.9, pp.82–83).
   Tests: `law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions`.
@@ -196,8 +196,7 @@ simulator conversation; see [validation evidence](../conformance/gazelle/README.
 - Complete capability/option/profile negotiation is absent. Explicit peer options
   and the single persistent-link scope have named tests below; automatic full-profile
   negotiation remains. Planned test: `law_negotiated_options_and_default_query_mode`.
-- LAW originating-work result validation and full cancellation-race qualification
-  remain. Work outcomes, restart, cancellation, durable receiving, duplicate/C
+- Full cancellation-race qualification remains. Work outcomes, restart, cancellation, durable receiving, duplicate/C
   delivery, deadlines and storage failures now have the named program matrix below.
   Planned broader qualification: `law_host_durable_lifecycle_recovery`.
 - Related-observation sending/reference resolution, full pooling workflows and
@@ -268,7 +267,7 @@ run the program with temporary stores and the reference receiver.
 - [x] Shared restore pause blocks both new work and cancel admission (ADR 0003, TF-2b 3.28.4). Test: `law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation`. Cancellation still rechecks the fresh trusted feed inside the shared transaction.
 - [x] An unmapped command is retained as Rejected without Sending or bytes (TF-2b 3.28.4; ADR 0003). Test: `law_tf2b_3_28_adr0003_unmapped_send_is_rejected_before_reservation_or_bytes`.
 - [ ] Independent directional connections and lifetime policy (TF-2b B.6, TF-2x 2.2.4). The persistent-link scope below supports one persistent link in either configured direction. Manager-initiated broadcast and analyzer-initiated query/result links operating independently, cross-link followup ownership, independent establishment and short-lived transaction connections remain unimplemented and explicitly unsupported in config. The current subset is not B.6-conformant.
-- [ ] Complete LAW actor qualification: returned-result content against originating work, remaining enhanced work groups/options, directional links, and a recorded Gazelle run. The existing receive/send/query/ORL deadlines are configurable and covered by source-named tests; that does not close the independent-link requirement.
+- [ ] Complete LAW actor qualification: remaining enhanced work groups/options, directional links, and a recorded Gazelle run. The existing receive/send/query/ORL deadlines are configurable and covered by source-named tests; that does not close the independent-link requirement.
 
 The runtime uses the shared order store (schema 6) and operator controls.
 
@@ -286,7 +285,7 @@ Evidence remains **documented**. No Gazelle or real-machine qualification occurr
 - [x] Client disconnect/first-byte timeout retains evidence, reconnects and never replays reserved work. Test: `crates/analyte/tests/law/connections.rs::law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work`.
 - [ ] Independent per-transaction/directional links: separate listeners/initiators, cross-link query followup ownership, independent establishment and short-lived lifetime policy remain. The explicit unsupported config mode prevents a full B.6 claim.
 - [ ] Gazelle qualification: record tool build, profile revision, actor/options, scenarios and validation results. Local synthetic tests are not simulator evidence.
-- [ ] Full actor/workflow qualification: validate returned result content against durable originating work; remaining enhanced content/groups, pooling/relationships and complete workflows remain as listed above. Isolate/parent needs app-supplied identities in a future contract; rack/tray forms are still explicitly rejected.
+- [ ] Full actor/workflow qualification: remaining enhanced content/groups, pooling/relationships and complete workflows remain as listed above. Isolate/parent needs app-supplied identities in a future contract; rack/tray forms are still explicitly rejected.
 - [x] Shared stored-byte reprocessing (ADR 0003 rules 2-4; TF-2b 3.29.4). The shared reprocessing path uses LAB-29 calls `evidence::interpret(store, machine, id)`; `machine/interpretation.rs` selects the LAW parser/views/mapper. Test: `law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix`. It repairs a mapping, preserves original raw/config and interpretation version 1, appends audited versions, resolves parking, delivers once and creates no second delivery or machine traffic on repeated reprocessing. Reprocessing a retained non-C conflict adds one failed version/audit and no revisions or deliveries. A 50-character LAW control ID prevents generic-HL7 fallback.
 
 ### Program end-to-end evidence index

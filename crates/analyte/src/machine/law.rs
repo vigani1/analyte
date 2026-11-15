@@ -222,6 +222,17 @@ async fn process(
                 evidence::InterpretationOutcome::Accepted => {
                     (AckCode::Aa, Responsibility::StoredAndInterpreted, None)
                 }
+                evidence::InterpretationOutcome::WorkConflict(location) => (
+                    AckCode::Ar,
+                    Responsibility::Stored,
+                    Some(AckError {
+                        segment: location.segment,
+                        occurrence: location.occurrence,
+                        field: location.field,
+                        code: b"207",
+                        application_code: b"LAW-inconsistent-work",
+                    }),
+                ),
                 evidence::InterpretationOutcome::Conflict => (
                     AckCode::Ar,
                     Responsibility::Stored,

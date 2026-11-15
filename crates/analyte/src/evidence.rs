@@ -82,6 +82,7 @@ pub(crate) enum InterpretationOutcome {
     Accepted,
     Failed,
     Conflict,
+    WorkConflict(crate::orders::law::validation::Mismatch),
 }
 
 pub(crate) async fn interpret(
@@ -130,6 +131,34 @@ pub(crate) async fn persist_mapping(
         | analyte_config::Stack::Poct(_)
         | analyte_config::Stack::VidasLiteral(_)
         | analyte_config::Stack::Autolyser(_) => false,
+    };
+    let work_conflict = if let analyte_config::Stack::Law(settings) =
+        machine.snapshot.effective().stack()
+    {
+        let receipt = store
+            .request(deadline(), move |s| {
+                s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+            })
+            .await?;
+        let payload = receipt.raw.get(1..receipt.raw.len().saturating_sub(2));
+        match payload
+            .and_then(|bytes| analyte_hl7::law::parse_message(bytes, settings.options()).ok())
+        {
+            Some(message) if analyte_hl7::law::receive_results(&message).is_ok() => {
+                crate::orders::law::validation::check(store, machine, &message, settings.options())
+                    .await?
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let mapping = if work_conflict.is_some() {
+        Err(invalid(
+            "LAW returned work differs from retained downloaded command; operator review required",
+        ))
+    } else {
+        mapping
     };
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
@@ -272,6 +301,7 @@ pub(crate) async fn persist_mapping(
         })
         .await?;
     let (result, successful) = result;
+    let successful = work_conflict.map_or(successful, InterpretationOutcome::WorkConflict);
     let accepted = matches!(successful, InterpretationOutcome::Accepted)
         && !result
             .outcomes
@@ -283,6 +313,9 @@ pub(crate) async fn persist_mapping(
         } else {
             match successful {
                 InterpretationOutcome::Conflict => InterpretationOutcome::Conflict,
+                InterpretationOutcome::WorkConflict(location) => {
+                    InterpretationOutcome::WorkConflict(location)
+                }
                 InterpretationOutcome::Accepted | InterpretationOutcome::Failed => {
                     InterpretationOutcome::Failed
                 }

@@ -774,3 +774,94 @@ async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Er
     }
     Ok(())
 }
+
+// IHE PaLM TF-2b Rev 11 B.3.1 pp.63-64 and B.7.6 p.82.
+#[tokio::test]
+async fn law_tf2b_b7_6_returned_work_must_match_downloaded_awos() -> Result<(), Error> {
+    let (_temp, path, mut reference, running, mut peer) = setup(
+        vec![order("order-1", "000Ab12", Some("law"), 1)?],
+        &definition().replace("specimen = false", "specimen = true"),
+        false,
+    )
+    .await?;
+    send(&mut peer, query(CONTAINER, "validate-work").as_bytes()).await?;
+    packet(&mut peer).await?;
+    let work = packet(&mut peer).await?;
+    orl(&mut peer, &work, &["OK"], false).await?;
+    vendor_support::state(&path, "Accepted").await?;
+    wait_state(&path, "done", 1).await?;
+    let awos = std::str::from_utf8(field(&work, b"OBR", 2)?)?;
+    let valid = law_results::result("valid", &format!("{awos}^LAB"), "", "12.30", "F")
+        .replace(
+            "sample-01&99LAB",
+            std::str::from_utf8(field(&work, b"SPM", 2)?)?,
+        )
+        .replace(
+            "00012a^LAB",
+            &format!("{}^LAB", std::str::from_utf8(field(&work, b"SAC", 3)?)?),
+        )
+        .replace(
+            "SYN^Synthetic^99LAB",
+            std::str::from_utf8(field(&work, b"OBR", 4)?)?,
+        );
+    running.stop().await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "law").await?;
+    let baseline = count(&path, "outbox")?;
+    for (id, bad, location) in [
+        (
+            "unknown",
+            valid.replace(&format!("{awos}^LAB"), "never-downloaded^LAB"),
+            "OBR^1^2",
+        ),
+        (
+            "namespace",
+            valid.replace(&format!("{awos}^LAB"), &format!("{awos}^OTHER")),
+            "OBR^1^2",
+        ),
+        (
+            "specimen",
+            valid.replace("000Ab12&", "different&"),
+            "SPM^1^2",
+        ),
+        (
+            "specimen-type",
+            valid.replace("SER^Serum^HL70487", "PLAS^Plasma^HL70487"),
+            "SPM^1^4",
+        ),
+        (
+            "container",
+            valid.replace("000Ab12^LAB", "different^LAB"),
+            "SAC^1^3",
+        ),
+        (
+            "test",
+            valid.replacen(
+                std::str::from_utf8(field(&work, b"OBR", 4)?)?,
+                "OTHER^Other^99LAB",
+                1,
+            ),
+            "OBR^1^4",
+        ),
+    ] {
+        let bad = bad.replace("|valid|", &format!("|{id}|"));
+        let unsolicited =
+            law_results::result("unused", "\"\"", "unsolicited-run^ANALYZER", "1.0", "F");
+        let (_, body) = unsolicited
+            .split_once('\r')
+            .ok_or("missing synthetic header")?;
+        let mixed = format!("{bad}{}", body.replacen("SPM|1|", "SPM|2|", 1));
+        send(&mut peer, mixed.as_bytes()).await?;
+        let ack = packet(&mut peer).await?;
+        assert_eq!(field(&ack, b"MSA", 1)?, b"AR", "{id}");
+        assert_eq!(field(&ack, b"ERR", 2)?, location.as_bytes(), "{id}");
+        assert_eq!(count(&path, "outbox")?, baseline);
+        assert_eq!(count(&path, "observation_revisions")?, 0);
+    }
+    send(&mut peer, valid.as_bytes()).await?;
+    assert_eq!(field(&packet(&mut peer).await?, b"MSA", 1)?, b"AA");
+    reference.event().await?;
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

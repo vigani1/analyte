@@ -215,6 +215,16 @@ impl Connection {
                 })
                 .await?
                 .map_err(std::io::Error::other)?;
+            let bytes = render(&[(&reserved.1, &reserved.0)], law::WorkAction::New, options)?
+                .raw()
+                .to_vec();
+            let identity = reserved.0.key.clone();
+            let owner = self.owner.clone();
+            store
+                .request(until, move |store| {
+                    store.retain_order_command(&identity, &owner, bytes)
+                })
+                .await?;
             prepared.push((reserved.1, reserved.0));
         }
         Ok(prepared)

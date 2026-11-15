@@ -94,7 +94,15 @@ async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c()
     .await?;
     let running = Running::start(&path, &reference.url, "synthetic-api")?;
     let mut peer = connect(&path, "law").await?;
-    let first = result("first", "awos-1^LAB", "other-id^ANALYZER", "12.30", "F");
+    // B.7.6 p.82: unknown non-null AWOS is rejected, not treated as unsolicited.
+    let unknown = result("never-downloaded", "awos-1^LAB", "", "12.30", "F");
+    assert!(
+        hl7(&mut peer, unknown.as_bytes())
+            .await?
+            .contains("MSA|AR|never-downloaded")
+    );
+    assert_eq!(count(&path, "outbox")?, 0);
+    let first = result("first", "\"\"", "awos-1^LAB", "12.30", "F");
     let ack = hl7(&mut peer, first.as_bytes()).await?;
     assert!(ack.contains("ACK^R22^ACK"), "{ack}");
     assert!(ack.contains("MSA|AA|first"), "{ack}");
@@ -110,20 +118,14 @@ async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c()
         .contains("MSA|AA|retransmit")
     );
     assert_eq!(count(&path, "outbox")?, 1);
-    let conflict = result("conflict", "awos-1^LAB", "other-id^ANALYZER", "99.9", "F");
+    let conflict = result("conflict", "\"\"", "awos-1^LAB", "99.9", "F");
     assert!(
         hl7(&mut peer, conflict.as_bytes())
             .await?
             .contains("MSA|AR|conflict")
     );
     assert_eq!(count(&path, "outbox")?, 1);
-    let correction = result(
-        "correction",
-        "awos-1^LAB",
-        "other-id^ANALYZER",
-        "13.40",
-        "C",
-    );
+    let correction = result("correction", "\"\"", "awos-1^LAB", "13.40", "C");
     assert!(
         hl7(&mut peer, correction.as_bytes())
             .await?
@@ -198,13 +200,16 @@ async fn law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_deli
     let mut peer = connect(&path, "law").await?;
     for (message, code) in [
         (
-            result("unknown-test", "awos-1^LAB", "", "12.30", "F")
+            result("unknown-test", "\"\"", "awos-1^LAB", "12.30", "F")
                 .replace("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB"),
             "AE",
         ),
-        (result("bad-status", "awos-1^LAB", "", "12.30", "D"), "AE"),
         (
-            result("bad-tcd", "awos-1^LAB", "", "12.30", "F") + "TCD|OTHER^Other^99LAB\r",
+            result("bad-status", "\"\"", "awos-1^LAB", "12.30", "D"),
+            "AE",
+        ),
+        (
+            result("bad-tcd", "\"\"", "awos-1^LAB", "12.30", "F") + "TCD|OTHER^Other^99LAB\r",
             "AR",
         ),
     ] {
@@ -250,8 +255,8 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     let mut peer = connect(&path, "law").await?;
     let first = result(
         "control-id-longer-than-generic-hl7-twenty",
+        "\"\"",
         "awos-1^LAB",
-        "",
         "12.30",
         "F",
     )
@@ -274,7 +279,7 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     let conflict = first
         .replace("control-id-longer-than-generic-hl7-twenty", "mixed")
         .replace("12.30", "99.9");
-    let new = result("new", "awos-2^LAB", "", "10.10", "F");
+    let new = result("new", "\"\"", "awos-2^LAB", "10.10", "F");
     let (_, new_body) = new.split_once('\r').ok_or("synthetic header absent")?;
     let mixed = format!("{conflict}{}", new_body.replacen("SPM|1|", "SPM|2|", 1));
     let ack = hl7(&mut peer, mixed.as_bytes()).await?;
@@ -291,8 +296,8 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     );
     assert!(hl7(&mut peer, new.as_bytes()).await?.contains("MSA|AA|new"));
     check(&reference.event().await?, "awos-2", "LAB", 0, "10.10")?;
-    let valid = result("mixed-mapping", "awos-3^LAB", "", "10.10", "F");
-    let unknown = result("unknown", "awos-4^LAB", "", "10.10", "F")
+    let valid = result("mixed-mapping", "\"\"", "awos-3^LAB", "10.10", "F");
+    let unknown = result("unknown", "\"\"", "awos-4^LAB", "10.10", "F")
         .replace("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB");
     let (_, unknown_body) = unknown.split_once('\r').ok_or("synthetic header absent")?;
     let mixed_mapping = format!("{valid}{}", unknown_body.replacen("SPM|1|", "SPM|2|", 1));
@@ -334,7 +339,7 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     let running = Running::start_program(loaded, "synthetic-api")?;
     let mut peer = connect(&path, "law").await?;
     let wire = analyte_framing::mllp::encode(
-        result("durable", "awos-1^LAB", "", "12.30", "F").as_bytes(),
+        result("durable", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
         analyte_framing::mllp::Limit::new(1048576)?,
     )?;
     peer.write_all(wire.get(..12).ok_or("synthetic prefix missing")?)
@@ -397,7 +402,7 @@ async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), 
         let mut peer = connect(&path, "law").await?;
         database(&path)?.execute_batch(&format!("CREATE TRIGGER synthetic_storage_failure BEFORE INSERT ON {table} BEGIN SELECT RAISE(FAIL,'synthetic-storage-failure'); END;"))?;
         let wire = analyte_framing::mllp::encode(
-            result("storage-failure", "awos-1^LAB", "", "12.30", "F").as_bytes(),
+            result("storage-failure", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
             analyte_framing::mllp::Limit::new(1048576)?,
         )?;
         peer.write_all(&wire).await?;
@@ -448,7 +453,7 @@ async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<
     ));
     let mut peer = connect(&path, "law").await?;
     let wire = analyte_framing::mllp::encode(
-        result("full", "awos-1^LAB", "", "12.30", "F").as_bytes(),
+        result("full", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
         analyte_framing::mllp::Limit::new(1048576)?,
     )?;
     peer.write_all(&wire).await?;
@@ -519,7 +524,7 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
         "{ack}"
     );
     assert!(!ack.contains("OML"));
-    let work = result("work1", "awos-1^LAB", "", "12.30", "F")
+    let work = result("work1", "\"\"", "awos-1^LAB", "12.30", "F")
         .replace("OUL^R22^OUL_R22", "OML^O33^OML_O33")
         .replace("LAB-29", "LAB-28");
     peer.write_all(&analyte_framing::mllp::encode(
@@ -558,7 +563,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     // LAW permits 50-character control IDs; the generic HL7 entry point does not.
     // Reprocessing must retain LAW validation/mapping rather than fall back to HL7.
     let control = "R".repeat(50);
-    let payload = result(&control, "awos-1^LAB", "", "12.30", "F");
+    let payload = result(&control, "\"\"", "awos-1^LAB", "12.30", "F");
     assert!(
         hl7(&mut peer, payload.as_bytes())
             .await?
@@ -662,7 +667,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     );
     // Reprocessing a retained non-C conflict must roll back its attempted audit
     // with the batch, then commit one failed version/audit and no revisions.
-    let conflicting = result("reprocess-conflict", "awos-1^LAB", "", "99.90", "F");
+    let conflicting = result("reprocess-conflict", "\"\"", "awos-1^LAB", "99.90", "F");
     assert!(
         hl7(&mut peer, conflicting.as_bytes())
             .await?

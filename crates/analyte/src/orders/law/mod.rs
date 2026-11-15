@@ -1,5 +1,6 @@
 //! LAW work exchanges, TF-2b 3.27/3.28; shared cache, reservations and item outcomes.
 mod sending;
+pub(crate) mod validation;
 mod work;
 use crate::{Error, config::Machine, deadline, evidence, invalid};
 use analyte_hl7::{AckCode, AckError, Message, Options, Responsibility, law};

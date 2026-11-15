@@ -36,11 +36,19 @@ pub struct MachineOrder {
     /// Durable command items; legacy v4 coverage is explicitly unknown.
     #[serde(default)]
     pub items: Vec<MachineOrderItem>,
+    #[serde(default)]
+    original_command: Option<Vec<u8>>,
 }
 
 const RESERVATION_OWNER_PREFIX: &str = "host-reserved:";
 
 impl MachineOrder {
+    /// Original prepared command, retained before I/O; absent for older reservations.
+    #[must_use]
+    pub fn original_command(&self) -> Option<&[u8]> {
+        self.original_command.as_deref()
+    }
+
     /// True only for the connection that admitted this cancellation request.
     #[must_use]
     pub fn cancel_requested_by(&self, owner: &Identifier) -> bool {
@@ -507,6 +515,7 @@ impl Store {
             updated_at: now,
             source_code: code,
             items: Vec::new(),
+            original_command: None,
         };
         record.items = create_items(&tx, &record, fields.tests, items, limit)?;
         if let Some(prepare) = prepare {
@@ -535,6 +544,56 @@ impl Store {
             )
             .optional()?;
         id.map(|id| load(&self.db, id)).transpose()
+    }
+
+    /// Retains immutable prepared bytes before I/O, only for an owned sending reservation.
+    /// Cancellation after this commit never grants permission to resend.
+    /// # Errors
+    /// Reports capacity, ownership, changed evidence or database failures.
+    pub fn retain_order_command(
+        &mut self,
+        identity: &MachineOrderKey,
+        owner: &Identifier,
+        bytes: Vec<u8>,
+    ) -> Result<(), Error> {
+        self.capacity(self.limits.record_bytes)?;
+        let limit = self.limits.record_bytes;
+        if bytes.is_empty() || bytes.len() > limit {
+            return Err(Error::InvalidInput);
+        }
+        let record = self.machine_order(identity)?.ok_or(Error::Conflict)?;
+        if !record.reserved_by(owner) || record.original_command.is_some() {
+            return Err(Error::Conflict);
+        }
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut record = record;
+        record.original_command = Some(bytes);
+        append(&tx, &record, None, limit)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Finds a retained command by machine and exact placer value; ambiguity is refused.
+    /// # Errors
+    /// Reports ambiguity or invalid/database evidence.
+    pub fn machine_order_by_placer(
+        &self,
+        machine: &Identifier,
+        placer: &str,
+    ) -> Result<Option<MachineOrder>, Error> {
+        let mut query = self.db.prepare("SELECT DISTINCT o.id FROM machine_orders o JOIN machine_order_items i ON i.machine_order=o.id WHERE o.machine=?1 AND i.placer=?2 LIMIT 2")?;
+        let ids = query
+            .query_map(params![machine.as_str(), placer], |row| {
+                row.get::<_, i64>(0)
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        match ids.as_slice() {
+            [] => Ok(None),
+            [id] => load(&self.db, *id).map(Some),
+            _ => Err(Error::Conflict),
+        }
     }
 
     /// Returns a bounded page without exposing cache payloads.
