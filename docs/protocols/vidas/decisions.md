@@ -144,6 +144,6 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: The PC can reject an assay after its transport ACK, and the nc flag
   concerns source assay state rather than clinical approval. Promoting either
   into app acceptance would invent an outcome the exchange does not establish.
-- **source**: [Research §§4–5](../../research/vidas.md#5-direction-and-operational-workflow);
+- **source**: [Research §§4–5](../../research/vidas.md#5-directions-and-request-download);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), distinct order states.
 - **test**: none yet.
