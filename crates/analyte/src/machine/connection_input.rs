@@ -37,7 +37,7 @@ use tokio::sync::watch;
 pub(super) async fn journaled(
     machine: &evidence::Connection<'_>,
     store: &Handle,
-    conn: &mut analyte_transport::Connection,
+    conn: &mut Connection,
     stop: &mut watch::Receiver<bool>,
     wait: Duration,
 ) -> Result<Input, Error> {
