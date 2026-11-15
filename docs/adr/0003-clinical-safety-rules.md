@@ -37,6 +37,17 @@ The core ones:
   a correction and a new run apart, the receipt is kept with its identity
   marked unresolved and shown to an operator. Different content under the
   same trusted identity is an error.
+- **Revisions are assigned by the store, in one transaction with the
+  interpretation**, from the identity (code, sub-ID, run, order) and the
+  retained history:
+  - no earlier result with that identity: a new result, revision 0, even when
+    the source marks it as a correction (the original was never seen);
+  - same identity and identical content: a retransmission; no new revision and
+    no new delivery;
+  - same identity, different content, and the source status is a declared
+    correction code or the result is withdrawn: the next revision;
+  - same identity, different content, and no correction evidence: a conflict,
+    parked for an operator, never resolved by guessing.
 - **Lookup failure is not "no orders".**
 
 Changing any of these rules needs a new ADR.
