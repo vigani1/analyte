@@ -91,70 +91,110 @@ pub(crate) async fn check(
                     return Ok(Some(unknown));
                 };
                 let original = law::parse_message(bytes, options)?;
-                let mut expected_spm = None;
-                let mut expected_sac = None;
-                let mut found = false;
-                for original in original.segments() {
-                    match original.id() {
-                        b"SPM" => {
-                            expected_spm = Some(original);
-                            expected_sac = None;
-                        }
-                        b"SAC" => expected_sac = Some(original),
-                        b"OBR" if raw(original, 2) == item.placer.as_bytes() => {
-                            found = true;
-                            if specimen.zip(expected_spm).is_none_or(|(a, b)| {
-                                !raw(b, 2).is_empty()
-                                    && raw(b, 2) != b"\"\""
-                                    && raw(a, 2) != raw(b, 2)
-                            }) {
-                                return Ok(Some(Mismatch {
-                                    segment: b"SPM",
-                                    occurrence: spm_count,
-                                    field: 2,
-                                }));
-                            }
-                            for field in [4_u16, 11] {
-                                if specimen
-                                    .zip(expected_spm)
-                                    .is_none_or(|(a, b)| !same_code(a, b, usize::from(field)))
-                                {
-                                    return Ok(Some(Mismatch {
-                                        segment: b"SPM",
-                                        occurrence: spm_count,
-                                        field,
-                                    }));
-                                }
-                            }
-                            if container.zip(expected_sac).is_none_or(|(a, b)| {
-                                components(a, 3).next() != components(b, 3).next()
-                            }) {
-                                return Ok(Some(Mismatch {
-                                    segment: b"SAC",
-                                    occurrence: sac_count,
-                                    field: 3,
-                                }));
-                            }
-                            if !same_code(segment, original, 4) {
-                                return Ok(Some(Mismatch {
-                                    segment: b"OBR",
-                                    occurrence: obr_count,
-                                    field: 4,
-                                }));
-                            }
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
-                if !found {
-                    return Ok(Some(unknown));
+                if let Some(mismatch) = compare_retained(
+                    &original,
+                    item.placer.as_str(),
+                    ReturnedWork {
+                        specimen,
+                        container,
+                        segment,
+                        spm_count,
+                        sac_count,
+                        obr_count,
+                    },
+                    unknown,
+                ) {
+                    return Ok(Some(mismatch));
                 }
             }
             _ => {}
         }
     }
     Ok(None)
+}
+
+struct ReturnedWork<'a> {
+    specimen: Option<Segment<'a>>,
+    container: Option<Segment<'a>>,
+    segment: Segment<'a>,
+    spm_count: u16,
+    sac_count: u16,
+    obr_count: u16,
+}
+
+fn compare_retained(
+    original: &Message,
+    placer: &str,
+    returned: ReturnedWork<'_>,
+    unknown: Mismatch,
+) -> Option<Mismatch> {
+    let ReturnedWork {
+        specimen,
+        container,
+        segment,
+        spm_count,
+        sac_count,
+        obr_count,
+    } = returned;
+    let mut expected_spm = None;
+    let mut expected_sac = None;
+    let mut found = false;
+    for original in original.segments() {
+        match original.id() {
+            b"SPM" => {
+                expected_spm = Some(original);
+                expected_sac = None;
+            }
+            b"SAC" => expected_sac = Some(original),
+            b"OBR" if raw(original, 2) == placer.as_bytes() => {
+                found = true;
+                if specimen.zip(expected_spm).is_none_or(|(a, b)| {
+                    !raw(b, 2).is_empty() && raw(b, 2) != b"\"\"" && raw(a, 2) != raw(b, 2)
+                }) {
+                    return Some(Mismatch {
+                        segment: b"SPM",
+                        occurrence: spm_count,
+                        field: 2,
+                    });
+                }
+                for field in [4_u16, 11] {
+                    if specimen
+                        .zip(expected_spm)
+                        .is_none_or(|(a, b)| !same_code(a, b, usize::from(field)))
+                    {
+                        return Some(Mismatch {
+                            segment: b"SPM",
+                            occurrence: spm_count,
+                            field,
+                        });
+                    }
+                }
+                if container
+                    .zip(expected_sac)
+                    .is_none_or(|(a, b)| components(a, 3).next() != components(b, 3).next())
+                {
+                    return Some(Mismatch {
+                        segment: b"SAC",
+                        occurrence: sac_count,
+                        field: 3,
+                    });
+                }
+                if !same_code(segment, original, 4) {
+                    return Some(Mismatch {
+                        segment: b"OBR",
+                        occurrence: obr_count,
+                        field: 4,
+                    });
+                }
+                break;
+            }
+            _ => {}
+        }
+    }
+    if !found {
+        return Some(unknown);
+    }
+    None
 }
 
 // Display text does not change a coded identifier; never equate different systems.
