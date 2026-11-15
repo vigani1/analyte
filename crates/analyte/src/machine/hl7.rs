@@ -36,17 +36,16 @@ pub(super) async fn session(
     } else {
         None
     };
+    if enabled {
+        dialog.enable_orders(settings.syntax.edition.into())?;
+    }
+    let mut input_evidence = Vec::new();
+    let mut write_error = None;
     let result = async {
         loop {
-            let ordinary = wake.map_or(Duration::from_secs(1), |d: Duration| {
+            let wait = wake.map_or(Duration::from_secs(1), |d: Duration| {
                 d.saturating_sub(start.elapsed())
             });
-            let wait = queries
-                .as_ref()
-                .and_then(|q| q.wake(machine))
-                .map_or(ordinary, |until| {
-                    ordinary.min(until.saturating_duration_since(Instant::now()))
-                });
 
             let event = tokio::select! {
                 biased;
@@ -76,16 +75,7 @@ pub(super) async fn session(
                 )
                 | None => Vec::new(),
             };
-            let bytes = if let Some(query) = &mut queries {
-                query.tick(store, machine).await?;
-                tokio::select! {
-                    biased;
-                    () = super::stopping(&mut stop) => break,
-                    result = query.input(store,machine,conn,bytes) => result?,
-                }
-            } else {
-                bytes
-            };
+            input_evidence = bytes.clone();
             let events = if bytes.is_empty() {
                 vec![Event::Tick]
             } else {
@@ -95,6 +85,34 @@ pub(super) async fn session(
                 let mut actions: VecDeque<_> = dialog.step(start.elapsed(), event)?.into();
                 while let Some(action) = actions.pop_front() {
                     match action {
+                        Action::ReceiptRetained(token) => {
+                            pending.remove(&(token.epoch(), token.ordinal())).ok_or("late receipt absent")?;
+                        }
+                        Action::Query { receipt: token, message, started, edition_matches } => {
+                            let id = pending.remove(&(token.epoch(), token.ordinal())).ok_or("query receipt absent")?;
+                            if !edition_matches {
+                                evidence::failed_reading(store,machine,id,"HL7 query edition differs from configured edition").await?;
+                            } else {
+                                let query = queries.as_mut().ok_or("HL7 query services absent")?;
+                                let reply = tokio::select! { biased; () = super::stopping(&mut stop) => return Ok(()), result = query.answer(store,machine,crate::orders::hl7::Request { message: &message, started: start.checked_add(started).ok_or("query clock overflow")?, receipt: id },&dialog,start) => result? };
+                                if let Some(reply) = reply { actions.extend(dialog.step(start.elapsed(), Event::QueryReply(&reply))?); }
+                            }
+                            actions.extend(dialog.step(start.elapsed(), Event::Tick)?);
+                        }
+                        Action::OrderResponse { receipt: token, message } => {
+                            pending.remove(&(token.epoch(), token.ordinal())).ok_or("order response receipt absent")?;
+                            queries.as_mut().ok_or("HL7 order services absent")?.order_response(store,Some(&message)).await?;
+                        }
+                        Action::OrderResponseTimeout => {
+                            queries.as_mut().ok_or("HL7 order services absent")?.order_response(store,None).await?;
+                        }
+                        Action::DisplayOutcome { receipt, accepted, code, detail } => {
+                            if let Some(token) = receipt {
+                                let id = pending.remove(&(token.epoch(), token.ordinal())).ok_or("display receipt absent")?;
+                                if let Some(detail) = detail { evidence::failed_reading(store,machine,id,&detail).await?; }
+                            }
+                            queries.as_mut().ok_or("HL7 display services absent")?.outcome(store,code,accepted).await?;
+                        }
                         Action::Commit(token, raw) => {
                             let id = ReceiptId::new();
                             match evidence::receive(store, machine, id, raw).await {
@@ -137,26 +155,26 @@ pub(super) async fn session(
                             actions.extend(dialog.step(start.elapsed(), event)?);
                         }
                         Action::ResponseNeeded(token, _) => {
-                            let id = uuid::Uuid::now_v7().simple().to_string();
-                            let id = id.get(12..).ok_or_else(|| invalid("response ID bound"))?;
-                            let timestamp = jiff::Timestamp::now()
-                                .strftime("%Y%m%d%H%M%S%z")
-                                .to_string();
+                            let metadata = crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
                             actions.extend(dialog.step(
                                 start.elapsed(),
                                 Event::Respond(
                                     token,
-                                    analyte_hl7::Response {
-                                        control_id: analyte_hl7::ControlId::new(id.as_bytes())?,
-                                        timestamp: timestamp.as_bytes(),
-                                    },
+                                    metadata.response()?,
                                 ),
                             )?);
                         }
-                        Action::Write(bytes) => {
-                            for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
-                                conn.write(chunk.to_vec()).await?;
+                        Action::QueryWrite { bytes, until, part } => {
+                            match conn.write_all(&bytes, Some(tokio::time::Instant::from_std(start.checked_add(until).ok_or("query write deadline overflow")?))).await {
+                                Ok(()) => actions.extend(dialog.step(start.elapsed(), Event::QueryWritten(part))?),
+                                Err(error) => {
+                                    actions.extend(dialog.step(start.elapsed(), Event::QueryWriteFailed(part))?);
+                                    write_error = Some(error);
+                                },
                             }
+                        }
+                        Action::Write(bytes) => {
+                            conn.write_all(&bytes, None).await?;
                         }
                         Action::Deadline(next) => wake = next,
                         Action::Rejected(error, bytes) => {
@@ -187,21 +205,32 @@ pub(super) async fn session(
                         }
                     }
                 }
+                if let Some(error) = write_error.take() { return Err(error.into()); }
             }
+            input_evidence.clear();
             if let Some(query) = &mut queries {
-                query.consumed();
-                tokio::select! {biased; ()=super::stopping(&mut stop)=>break,result=query.idle(store,machine,conn)=>result?,}
+                tokio::select! {biased; ()=super::stopping(&mut stop)=>break,result=query.idle(store,machine,conn,&mut dialog,start)=>result?,}
             }
-        }
-        // Disconnect exposes any partial block as protected rejection evidence.
-        for action in dialog.step(start.elapsed(), Event::Disconnect)? {
-            if let Action::Rejected(error, bytes) = action {
-                evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
-            }
+            wake = dialog.next_deadline();
         }
         Ok::<_, Error>(())
     }
     .await;
+    // A cancelled or failed host operation must expose partial input as well.
+    for action in dialog.step(start.elapsed(), Event::Disconnect)? {
+        if let Action::Rejected(error, bytes) = action {
+            evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+        }
+    }
+    if enabled && !input_evidence.is_empty() {
+        evidence::park_bytes(
+            store,
+            machine,
+            input_evidence,
+            "HL7 input processing interrupted",
+        )
+        .await?;
+    }
     if let Some(query) = &mut queries {
         query
             .close(

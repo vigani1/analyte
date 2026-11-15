@@ -3,3 +3,6 @@
 
 pub mod astm;
 pub mod hl7;
+
+/// IHE LAW connection and work-response state machines.
+pub mod law;

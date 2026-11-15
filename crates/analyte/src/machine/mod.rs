@@ -12,7 +12,6 @@ mod poct;
 mod serial;
 mod settings;
 mod vendor;
-mod vendor_model;
 mod vidas;
 mod worker;
 use crate::{Error, config::Machine, invalid};

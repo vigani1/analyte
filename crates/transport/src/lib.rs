@@ -186,6 +186,31 @@ impl Drop for Connection {
 }
 
 impl Connection {
+    /// Queues all bytes in bounded chunks, optionally within one absolute deadline.
+    /// With no overall deadline, the configured deadline applies separately to each chunk.
+    /// Cancellation or failure may leave a queued or transmitted prefix; never retry
+    /// an order implicitly. Success means queued, not acknowledged by the peer.
+    /// # Errors
+    /// Preserves per-chunk transport errors and reports the overall write deadline.
+    pub async fn write_all(
+        &self,
+        bytes: &[u8],
+        until: Option<tokio::time::Instant>,
+    ) -> Result<(), Error> {
+        let write = async {
+            for chunk in bytes.chunks(CHUNK_LIMIT) {
+                self.write(chunk.to_vec()).await?;
+            }
+            Ok(())
+        };
+        match until {
+            Some(until) => tokio::time::timeout_at(until, write)
+                .await
+                .map_err(|_| Error::Deadline("write all"))?,
+            None => write.await,
+        }
+    }
+
     /// Returns a handle that can request shutdown while keeping events readable.
     #[must_use]
     pub fn cancellation(&self) -> Cancellation {
@@ -439,6 +464,45 @@ mod tests {
             Some(Event::Opened { session: 2 })
         ));
         dialog.write(vec![4]).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn rule7_write_all_preserves_chunks_and_deadline_keeps_queued_prefix() -> Result<(), Error>
+    {
+        let (mut dialog, mut side) = connection(Limits::new(4, Duration::from_secs(1))?);
+        side.start("synthetic".into())?;
+        side.emit(Event::Opened {
+            session: side.generation,
+        })
+        .await?;
+        let _ = dialog.receive().await?;
+        let bytes: Vec<_> = (0..CHUNK_LIMIT * 2 + 7)
+            .map(|n| n.to_le_bytes()[0])
+            .collect();
+        dialog.write_all(&bytes, None).await?;
+        let mut recovered = Vec::new();
+        while let Ok(write) = side.writes.try_recv() {
+            assert!(write.bytes.len() <= CHUNK_LIMIT);
+            recovered.extend(write.bytes);
+        }
+        assert_eq!(recovered, bytes);
+
+        let (mut dialog, mut side) = connection(Limits::new(1, Duration::from_secs(1))?);
+        side.start("synthetic".into())?;
+        side.emit(Event::Opened {
+            session: side.generation,
+        })
+        .await?;
+        let _ = dialog.receive().await?;
+        let until = tokio::time::Instant::now() + Duration::from_millis(20);
+        assert!(matches!(
+            dialog.write_all(&bytes, Some(until)).await,
+            Err(Error::Deadline("write all"))
+        ));
+        let prefix = side.writes.try_recv().map_err(|_| Error::ConsumerClosed)?;
+        assert_eq!(Some(prefix.bytes.as_slice()), bytes.get(..CHUNK_LIMIT));
+        assert!(side.writes.try_recv().is_err());
         Ok(())
     }
 

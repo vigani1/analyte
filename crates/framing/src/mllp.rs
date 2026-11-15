@@ -167,6 +167,14 @@ fn valid(byte: u8) -> bool {
     byte > 31 || byte == CR
 }
 
+/// Borrows the content inside one MLLP Release 1 ?1.2 block envelope.
+/// Returns `None` if SB or the EB/CR trailer is missing. This does not validate
+/// the payload repertoire or size; use [`Decoder`] before interpreting input.
+#[must_use]
+pub fn payload(raw: &[u8]) -> Option<&[u8]> {
+    raw.strip_prefix(&[SB])?.strip_suffix(&[EB, CR])
+}
+
 /// Encodes permitted §1.2 payload bytes, without character conversion.
 /// # Errors
 /// Rejects an oversized payload or a forbidden control byte before allocation.

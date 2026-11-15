@@ -5,6 +5,9 @@ use analyte_hl7::{
 };
 use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
+mod orders;
+use orders::Orders;
+pub use orders::{DisplayReply, ReplyPart};
 
 /// Connection-scoped host request identity. The host must supply a unique epoch after restart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +111,12 @@ pub enum Event<'a> {
     Respond(ReceiptId, Response<'a>),
     /// Explicit outgoing message; never retried automatically.
     Send(&'a [u8]),
+    /// Reply prepared only after lookup and any required durable reservations.
+    QueryReply(&'a DisplayReply),
+    /// The requested reply part was queued by the transport within its budget.
+    QueryWritten(ReplyPart),
+    /// Issuance failed or became uncertain; never retry implicitly.
+    QueryWriteFailed(ReplyPart),
     /// Connection ended. Drop this dialog after consuming returned evidence.
     Disconnect,
 }
@@ -139,6 +148,48 @@ pub enum Action {
     Sent(Vec<u8>, Outcome),
     /// Unsolicited or mismatched acknowledgment retained for investigation.
     Unmatched(Vec<u8>),
+    /// A late routed receipt was retained after its exchange had already timed out.
+    ReceiptRetained(ReceiptId),
+    /// Durable query ready for host cache lookup; `started` is the first-byte time.
+    Query {
+        /// Committed receipt correlation.
+        receipt: ReceiptId,
+        /// Parsed message preserving original bytes.
+        message: Message,
+        /// First-byte time relative to this connection clock.
+        started: Duration,
+        /// Whether the query matches the configured edition.
+        edition_matches: bool,
+    },
+    /// Durable unsolicited-order response ready for retained-work reconciliation.
+    OrderResponse {
+        /// Committed receipt correlation.
+        receipt: ReceiptId,
+        /// Parsed message preserving original bytes.
+        message: Message,
+    },
+    /// The unsolicited-order response deadline expired; never resend implicitly.
+    OrderResponseTimeout,
+    /// DSR application ACK decision, made only after its raw receipt was committed.
+    DisplayOutcome {
+        /// Committed ACK receipt, absent for timeout.
+        receipt: Option<ReceiptId>,
+        /// True only for a correlated application AA.
+        accepted: bool,
+        /// Stable nonclinical outcome reason.
+        code: &'static str,
+        /// Validation diagnostic without raw payload.
+        detail: Option<String>,
+    },
+    /// Issue one reply part; feed back completion before issuing another part.
+    QueryWrite {
+        /// Exact framed bytes, for transport only.
+        bytes: Vec<u8>,
+        /// Absolute deadline relative to the connection clock.
+        until: Duration,
+        /// Identifies the issuance awaiting completion.
+        part: ReplyPart,
+    },
     /// Next absolute wake-up time.
     Deadline(Option<Duration>),
 }
@@ -251,12 +302,14 @@ pub struct Dialog {
     decoder: mllp::Decoder,
     pending: Option<Pending>,
     malformed: Option<(ReceiptId, Vec<u8>, Error)>,
-    queue: VecDeque<Vec<u8>>,
+    queue: VecDeque<(Vec<u8>, Duration)>,
     sending: Option<Sending>,
     error: Option<OwnedError>,
     now: Duration,
     deadline: Option<Duration>,
     closed: bool,
+    orders: Option<Orders>,
+    frame_started: Option<Duration>,
 }
 impl Dialog {
     /// Starts an idle connection with a host-selected unique incarnation.
@@ -275,6 +328,8 @@ impl Dialog {
             now: Duration::ZERO,
             deadline: None,
             closed: false,
+            orders: None,
+            frame_started: None,
         }
     }
 
@@ -288,6 +343,9 @@ impl Dialog {
         let end = now.checked_add(self.config.wait).ok_or(Error::Exhausted)?;
         self.now = now;
         let mut out = Vec::new();
+        if let Some(orders) = &mut self.orders {
+            orders.expire(now, &mut out);
+        }
         if self.deadline.is_some_and(|d| now >= d) {
             self.expire(&mut out);
         }
@@ -297,10 +355,13 @@ impl Dialog {
         if self.pending.is_none()
             && self.malformed.is_none()
             && self.sending.is_none()
+            && !self.orders.as_ref().is_some_and(Orders::committing)
             && !self.closed
-            && let Some(raw) = self.queue.pop_front()
+            && let Some((raw, started)) = self.queue.pop_front()
         {
+            self.frame_started = Some(started);
             self.receive(raw, &mut out);
+            self.frame_started = None;
         }
         if self.deadline.is_none()
             && ((self.pending.is_some() || self.malformed.is_some())
@@ -309,7 +370,7 @@ impl Dialog {
         {
             self.deadline = Some(end);
         }
-        out.push(Action::Deadline(self.deadline));
+        out.push(Action::Deadline(self.next_deadline()));
         Ok(out)
     }
 
@@ -319,9 +380,14 @@ impl Dialog {
         }
         match event {
             Event::Tick => {}
+            Event::QueryReply(reply) => self.prepare_reply(reply, out)?,
+            Event::QueryWritten(part) => self.reply_written(part, out)?,
+            Event::QueryWriteFailed(part) => self.reply_failed(part, out)?,
             Event::Byte(byte) => {
+                self.frame_started.get_or_insert(self.now);
                 if let Some(event) = self.decoder.push(byte) {
                     self.wire(event, out);
+                    self.frame_started = None;
                 }
             }
             Event::Send(raw) => {
@@ -360,6 +426,9 @@ impl Dialog {
                 }
             }
             Event::Committed(id) => {
+                if self.complete_order_commit(id, out)? {
+                    return Ok(());
+                }
                 if self.complete_malformed(id, out)? {
                     return Ok(());
                 }
@@ -379,6 +448,16 @@ impl Dialog {
                 self.deadline = None;
             }
             Event::CommitFailed(id) => {
+                if self
+                    .orders
+                    .as_mut()
+                    .is_some_and(|orders| orders.failed_commit(id))
+                {
+                    out.push(Action::Refused(Error::Syntax(
+                        analyte_hl7::Error::NotStored,
+                    )));
+                    return Ok(());
+                }
                 if !self.complete_malformed(id, out)? {
                     if !self
                         .pending
@@ -496,9 +575,13 @@ impl Dialog {
             mllp::Event::Block(raw) => {
                 if self.sending.is_some() {
                     self.ack(&raw, out);
-                } else if self.pending.is_some() || self.malformed.is_some() {
+                } else if self.pending.is_some()
+                    || self.malformed.is_some()
+                    || self.orders.as_ref().is_some_and(Orders::committing)
+                {
                     if self.queue.len() < self.config.queued {
-                        self.queue.push_back(raw);
+                        self.queue
+                            .push_back((raw, self.frame_started.unwrap_or(self.now)));
                     } else {
                         out.push(Action::QueueFull(raw));
                     }
@@ -511,13 +594,17 @@ impl Dialog {
 
     fn receive(&mut self, raw: Vec<u8>, out: &mut Vec<Action>) {
         // Preserve first: even malformed syntax must pass through the host's protected journal.
-        let result = payload(&raw)
+        let result = mllp::payload(&raw)
+            .ok_or(Error::Framing(mllp::Error::Incomplete))
             .and_then(|bytes| Message::parse(bytes, self.config.options).map_err(Error::from));
         match result.and_then(|message| {
             Msh::new(&message)?;
             Ok(message)
         }) {
             Ok(message) => {
+                if self.route_order(&raw, &message, out) {
+                    return;
+                }
                 if message.segments().any(|s| s.id() == b"MSA") {
                     out.push(Action::Unmatched(raw));
                     return;
@@ -553,8 +640,9 @@ impl Dialog {
     }
 
     fn ack(&mut self, raw: &[u8], out: &mut Vec<Action>) {
-        let parsed =
-            payload(raw).and_then(|p| Message::parse(p, self.config.options).map_err(Error::from));
+        let parsed = mllp::payload(raw)
+            .ok_or(Error::Framing(mllp::Error::Incomplete))
+            .and_then(|p| Message::parse(p, self.config.options).map_err(Error::from));
         let result = parsed.and_then(|message| {
             Msh::new(&message)?;
             let segment = message
@@ -627,14 +715,8 @@ impl Dialog {
         if let Some(event) = self.decoder.finish() {
             self.wire(event, out);
         }
+        self.frame_started = None;
     }
-}
-
-fn payload(raw: &[u8]) -> Result<&[u8], Error> {
-    raw.len()
-        .checked_sub(2)
-        .and_then(|end| raw.get(1..end))
-        .ok_or(Error::Framing(mllp::Error::Incomplete))
 }
 
 #[derive(Debug)]

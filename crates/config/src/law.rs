@@ -102,15 +102,6 @@ pub struct LawWork {
     pub specimen_system: analyte_model::Identifier,
 }
 
-fn plain(value: &str, max: usize) -> bool {
-    !value.is_empty()
-        && value.len() <= max
-        && value.is_ascii()
-        && !value
-            .bytes()
-            .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
-}
-
 pub(crate) fn validate_orders(
     machine: &MachineDocument,
     path: &str,
@@ -129,22 +120,38 @@ pub(crate) fn validate_orders(
         || orders.astm.is_some()
         || orders.clone.is_some()
         || orders.patient_namespace.is_some()
-        || orders
-            .placer_namespace
-            .as_ref()
-            .is_none_or(|namespace| !plain(namespace.as_str(), 18))
+        || orders.placer_namespace.as_ref().is_none_or(|namespace| {
+            !analyte_hl7::is_safe_field(
+                (namespace.as_str()).as_bytes(),
+                18,
+                analyte_hl7::FieldSyntax::Plain,
+            )
+        })
         || orders.specimen_types.as_ref().is_none_or(Vec::is_empty)
         || orders.tests.iter().any(|test| {
             test.machine_components.len() != 3
                 || test.machine_components.iter().enumerate().any(|(i, part)| {
                     if i == 1 {
-                        !part.is_empty() && !plain(part, 199)
+                        !part.is_empty()
+                            && !analyte_hl7::is_safe_field(
+                                (part).as_bytes(),
+                                199,
+                                analyte_hl7::FieldSyntax::Plain,
+                            )
                     } else {
-                        !plain(part, if i == 0 { 20 } else { 12 })
+                        !analyte_hl7::is_safe_field(
+                            (part).as_bytes(),
+                            if i == 0 { 20 } else { 12 },
+                            analyte_hl7::FieldSyntax::Plain,
+                        )
                     }
                 })
         })
-        || !plain(work.specimen_system.as_str(), 12)
+        || !analyte_hl7::is_safe_field(
+            (work.specimen_system.as_str()).as_bytes(),
+            12,
+            analyte_hl7::FieldSyntax::Plain,
+        )
     {
         return Err(invalid(
             path,
@@ -229,7 +236,13 @@ pub(crate) fn validate(machine: &MachineDocument, path: &str) -> Result<(), Erro
                 &work.container_namespace,
             ]
             .into_iter()
-            .any(|value| !plain(value.as_str(), 20)))
+            .any(|value| {
+                !analyte_hl7::is_safe_field(
+                    (value.as_str()).as_bytes(),
+                    20,
+                    analyte_hl7::FieldSyntax::Plain,
+                )
+            }))
     {
         return Err(invalid(
             path,

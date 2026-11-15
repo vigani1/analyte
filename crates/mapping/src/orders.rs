@@ -1,6 +1,10 @@
 //! Outbound mapping never searches or reverses the incoming result table.
-mod display;
-pub use display::map_display;
+mod app;
+pub use crate::hl7::Command as Hl7Command;
+pub use crate::hl7::map_display;
+pub use crate::law::{Command as LawCommand, address as law_address, map_order as map_law_work};
+use crate::outbound_codes::map_specimen as outbound_specimen;
+pub use app::map as app_order;
 
 use analyte_config::Validated;
 use analyte_model::{NamespacedId, SampleId, SamplePosition};
@@ -17,7 +21,7 @@ pub enum AppOrderPriority {
 }
 
 impl AppOrderPriority {
-    fn code(self) -> &'static str {
+    pub(super) fn code(self) -> &'static str {
         match self {
             Self::Routine => "routine",
             Self::Urgent => "urgent",
@@ -118,22 +122,22 @@ pub enum OrderMappingError {
 pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, OrderMappingError> {
     use analyte_config::Stack;
     match config.effective().stack() {
-        Stack::Astm(s) => astm(
+        Stack::Astm(s) => crate::astm::map_order(
             order,
             &s.syntax.limits,
             s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
-        Stack::FileAstm(s) => astm(
+        Stack::FileAstm(s) => crate::astm::map_order(
             order,
             &s.syntax.limits,
             s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
-        Stack::VidasLiteral(s) => vidas(
+        Stack::VidasLiteral(s) => crate::vidas::map_order(
             order,
             s,
             s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
-        Stack::Autolyser(s) => autolyser(
+        Stack::Autolyser(s) => crate::autolyser::map_order(
             order,
             s,
             s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
@@ -144,136 +148,8 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
     }
 }
 
-fn astm(
-    order: &AppOrder,
-    limits: &analyte_config::SyntaxLimits,
-    settings: &analyte_config::AstmOrders,
-) -> Result<MachineOrder, OrderMappingError> {
-    let astm = &settings.layout;
-    let settings = &settings.tables;
-    if order.tests.is_empty() || order.tests.len() > limits.repetitions {
-        return Err(OrderMappingError::Representation);
-    }
-    let mut tests = Vec::new();
-    for requested in &order.tests {
-        let mapped = settings
-            .tests
-            .iter()
-            .find(|t| t.app == *requested)
-            .ok_or_else(|| OrderMappingError::UnmappedTest(requested.clone()))?;
-        for part in &mapped.machine_components {
-            wire_text(part)?;
-        }
-        tests.push(mapped.machine_components.join("^"));
-    }
-    let priority = settings
-        .priorities
-        .iter()
-        .find(|p| p.app.as_str() == order.priority.code())
-        .ok_or(OrderMappingError::UnmappedPriority)?;
-    let mut fields: [String; 16] = std::array::from_fn(|_| String::new());
-    fields[0] = "O".into();
-    fields[1] = "1".into();
-    set(
-        &mut fields,
-        &astm.specimen,
-        order.sample.as_str(),
-        limits.components,
-    )?;
-    if let Some(position) = &astm.position {
-        let value = order
-            .position
-            .as_ref()
-            .ok_or(OrderMappingError::MissingPosition)?;
-        if value.slot.as_str().is_empty() {
-            return Err(OrderMappingError::MissingPosition);
-        }
-        set(
-            &mut fields,
-            position,
-            value.slot.as_str(),
-            limits.components,
-        )?;
-    }
-    if let Some(destination) = &astm.specimen_type {
-        let code = specimen_type(order, settings)?;
-        set(&mut fields, destination, code, limits.components)?;
-    }
-    let prefix = "^".repeat(usize::from(astm.test.component).saturating_sub(1));
-    if settings.tests.iter().any(|t| {
-        t.machine_components
-            .len()
-            .checked_add(prefix.len())
-            .is_none_or(|n| n > limits.components)
-    }) {
-        return Err(OrderMappingError::Representation);
-    }
-    fields[4] = tests
-        .iter()
-        .map(|t| format!("{prefix}{t}"))
-        .collect::<Vec<_>>()
-        .join("\\");
-    set(
-        &mut fields,
-        &astm.priority,
-        priority.machine.as_str(),
-        limits.components,
-    )?;
-    set(
-        &mut fields,
-        &astm.action,
-        astm.action_code.as_str(),
-        limits.components,
-    )?;
-    let last_field = if astm.specimen_type.is_some() { 16 } else { 12 };
-    let mut record = fields
-        .get(..last_field)
-        .ok_or(OrderMappingError::Representation)?
-        .join("|")
-        .into_bytes();
-    if record.len() > limits.record_bytes
-        || record.len().checked_add(1).is_none_or(|n| n > limits.bytes)
-    {
-        return Err(OrderMappingError::Representation);
-    }
-    record.push(b'\r');
-    Ok(MachineOrder::Astm(record))
-}
-
-fn set(
-    fields: &mut [String],
-    selected: &analyte_config::Field,
-    value: &str,
-    limit: usize,
-) -> Result<(), OrderMappingError> {
-    wire_text(value)?;
-    let component = usize::from(selected.component);
-    if component == 0 || component > limit {
-        return Err(OrderMappingError::Representation);
-    }
-    let field = fields
-        .get_mut(usize::from(selected.field).saturating_sub(1))
-        .ok_or(OrderMappingError::Representation)?;
-    *field = format!("{}{value}", "^".repeat(component.saturating_sub(1)));
-    Ok(())
-}
-
-fn wire_text(value: &str) -> Result<(), OrderMappingError> {
-    // This initial outbound repertoire refuses reserved characters rather than
-    // changing clinical identifiers or guessing a vendor escape convention.
-    if value.len() > 4096
-        || !value.is_ascii()
-        || value
-            .bytes()
-            .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b))
-    {
-        return Err(OrderMappingError::Representation);
-    }
-    Ok(())
-}
-
 // One shared patient boundary for all outbound stacks with an unqualified field.
-fn patient<'a>(
+pub(super) fn map_patient<'a>(
     order: &'a AppOrder,
     namespace: &analyte_model::Identifier,
 ) -> Result<&'a str, OrderMappingError> {
@@ -287,166 +163,7 @@ fn patient<'a>(
     Ok(patient.value.as_str())
 }
 
-fn vidas(
-    order: &AppOrder,
-    machine: &analyte_config::VidasStack,
-    settings: &analyte_config::VidasOrders,
-) -> Result<MachineOrder, OrderMappingError> {
-    let installed = &machine.policy;
-    if !installed.download {
-        return Err(OrderMappingError::Disabled);
-    }
-    let patient = patient(order, &settings.patient_namespace)?;
-    if patient.len() > 17 {
-        return Err(OrderMappingError::Overlong("patient-id"));
-    }
-    if order.sample.as_str().len() > usize::from(u8::from(installed.sample_limit)) {
-        return Err(OrderMappingError::Overlong("sample-id"));
-    }
-    // BCI A section 4 has no specimen-type destination; so is origin and si is empty.
-    if order.specimen_type.is_some() {
-        return Err(OrderMappingError::UnmappedSpecimenType);
-    }
-    if order.tests.is_empty()
-        || order.tests.len() > 100
-        || order.tests.len() > machine.limits.records
-        || order.tests.len() > machine.limits.repetitions
-    {
-        return Err(OrderMappingError::Representation);
-    }
-    if !settings
-        .priorities
-        .iter()
-        .any(|p| p.app.as_str() == order.priority.code())
-    {
-        return Err(OrderMappingError::UnmappedPriority);
-    }
-    let limit = match installed.sample_limit {
-        analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
-        analyte_config::VidasSampleLimit::Seventeen => {
-            analyte_vidas::syntax::SampleLimit::Seventeen
-        }
-    };
-    let mut requests = Vec::new();
-    let mut total_bytes = 0usize;
-    for test in &order.tests {
-        let mapped = settings
-            .tests
-            .iter()
-            .find(|t| t.app == *test)
-            .ok_or_else(|| OrderMappingError::UnmappedTest(test.clone()))?;
-        let [code] = mapped.machine_components.as_slice() else {
-            return Err(OrderMappingError::Representation);
-        };
-        let request = analyte_vidas::syntax::Message::build(
-            &[
-                ("mt", "mpr"),
-                ("pi", patient),
-                ("si", ""),
-                ("ci", order.sample.as_str()),
-                ("rt", code),
-            ],
-            limit,
-        )?;
-        if request.text().len() > machine.frame_limit {
-            return Err(OrderMappingError::Representation);
-        }
-        total_bytes = total_bytes
-            .checked_add(request.text().len())
-            .ok_or(OrderMappingError::Representation)?;
-        if total_bytes > machine.limits.bytes {
-            return Err(OrderMappingError::Representation);
-        }
-        requests.push(request);
-    }
-    Ok(MachineOrder::Vidas(requests))
-}
-
-fn autolyser(
-    order: &AppOrder,
-    machine: &analyte_config::AutolyserStack,
-    settings: &analyte_config::AutolyserOrders,
-) -> Result<MachineOrder, OrderMappingError> {
-    use analyte_autolyser::records::{Field, List, PatientCode, Sample, Worklist};
-    if !machine.policy.download {
-        return Err(OrderMappingError::Disabled);
-    }
-    let patient = patient(order, &settings.patient_namespace)?;
-    let clone = settings.clone;
-    let settings = &settings.tables;
-    if patient.len() > 15 {
-        return Err(OrderMappingError::Overlong("patient-id"));
-    }
-    let mut padded = [b' '; 15];
-    padded
-        .get_mut(..patient.len())
-        .ok_or(OrderMappingError::Overlong("patient-id"))?
-        .copy_from_slice(patient.as_bytes());
-    let patient = PatientCode::new(&padded)?;
-    let sample = match specimen_type(order, settings)? {
-        "S" => Sample::Serum,
-        "U" => Sample::Urine,
-        _ => return Err(OrderMappingError::UnmappedSpecimenType),
-    };
-    let priority = settings
-        .priorities
-        .iter()
-        .find(|p| p.app.as_str() == order.priority.code())
-        .ok_or(OrderMappingError::UnmappedPriority)?;
-    let list = match &priority.machine {
-        analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => List::Routine,
-        analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => List::Stat,
-        analyte_config::MachinePriority::Code(
-            analyte_config::PriorityCode::S
-            | analyte_config::PriorityCode::A
-            | analyte_config::PriorityCode::P
-            | analyte_config::PriorityCode::C
-            | analyte_config::PriorityCode::Prn,
-        )
-        | analyte_config::MachinePriority::Custom(_) => {
-            return Err(OrderMappingError::UnmappedPriority);
-        }
-    };
-    let position = order
-        .position
-        .as_ref()
-        .ok_or(OrderMappingError::MissingCupPosition)?;
-    let slot = position.slot.as_str();
-    if slot.is_empty() || slot.len() > 2 || !slot.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(OrderMappingError::InvalidCupPosition);
-    }
-    let position = slot
-        .parse::<u8>()
-        .map_err(|_| OrderMappingError::InvalidCupPosition)?;
-    if !(1..=99).contains(&position) {
-        return Err(OrderMappingError::InvalidCupPosition);
-    }
-    if order.tests.is_empty()
-        || order.tests.len() > 99
-        || order.tests.len() > machine.limits.repetitions
-    {
-        return Err(OrderMappingError::Representation);
-    }
-    let mut tests = Vec::new();
-    for test in &order.tests {
-        let mapped = settings
-            .tests
-            .iter()
-            .find(|t| t.app == *test)
-            .ok_or_else(|| OrderMappingError::UnmappedTest(test.clone()))?;
-        let [code] = mapped.machine_components.as_slice() else {
-            return Err(OrderMappingError::Representation);
-        };
-        tests.push(Field::<4>::new(code.as_bytes())?);
-    }
-    let worklist = Worklist::new(patient, list, sample, clone, position, tests)?;
-    if worklist.encode().len() > machine.limits.bytes {
-        return Err(OrderMappingError::Representation);
-    }
-    Ok(MachineOrder::Autolyser(worklist))
-}
-
-fn specimen_type<'a>(
+pub(super) fn map_specimen<'a>(
     order: &AppOrder,
     settings: &'a analyte_config::OrderTables,
 ) -> Result<&'a str, OrderMappingError> {
@@ -454,10 +171,51 @@ fn specimen_type<'a>(
         .specimen_type
         .as_ref()
         .ok_or(OrderMappingError::MissingSpecimenType)?;
-    settings
-        .specimen_types
-        .as_ref()
-        .and_then(|types| types.iter().find(|t| t.app == *requested))
-        .map(|mapping| mapping.machine.as_str())
-        .ok_or(OrderMappingError::UnmappedSpecimenType)
+    Ok(
+        outbound_specimen(settings.specimen_types.as_deref(), requested)?
+            .machine
+            .as_str(),
+    )
+}
+/// Borrowed reservation identities and requested app codes; storage remains host-owned.
+pub struct OutboundItem<'a> {
+    /// Stable placer identity assigned once by the store.
+    pub placer: &'a str,
+    /// Explicit retained assigning namespace, if the protocol carries it.
+    pub namespace: Option<&'a analyte_model::Identifier>,
+    /// Tests covered by this immutable reservation item.
+    pub tests: &'a [NamespacedId],
+}
+/// Mapping errors for initiating HL7/LAW work, retaining protocol-specific diagnostics.
+#[derive(Debug, thiserror::Error)]
+pub enum WireMappingError {
+    /// A specific input or capability refusal.
+    #[error("{0}")]
+    Context(&'static str),
+    /// A specific unmapped-code refusal with the shared lookup cause.
+    #[error("{context}")]
+    Lookup {
+        /// Stable protocol-specific diagnostic.
+        context: &'static str,
+        /// Specific shared mapping failure.
+        #[source]
+        source: OrderMappingError,
+    },
+    /// App evidence violates a common-model text bound.
+    #[error(transparent)]
+    Text(#[from] analyte_model::TextError),
+    /// HL7 syntax rejected mapped content.
+    #[error(transparent)]
+    Hl7(#[from] analyte_hl7::Error),
+    /// HL7 order builder rejected mapped content.
+    #[error(transparent)]
+    Order(#[from] analyte_hl7::order::Error),
+    /// LAW profile rejected mapped content.
+    #[error(transparent)]
+    Law(#[from] analyte_hl7::law::Error),
+}
+impl WireMappingError {
+    pub(super) fn lookup(context: &'static str, source: OrderMappingError) -> Self {
+        Self::Lookup { context, source }
+    }
 }
