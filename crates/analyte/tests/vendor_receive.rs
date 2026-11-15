@@ -723,8 +723,7 @@ async fn poct01_b5_7_host_never_sends_beyond_device_capacity() -> Result<(), Err
     );
     run.peer.write_all(hello.as_bytes()).await?;
     let mut response = [0u8; 1];
-    let received =
-        tokio::time::timeout(HANG_GUARD, run.peer.read(&mut response)).await??;
+    let received = tokio::time::timeout(HANG_GUARD, run.peer.read(&mut response)).await??;
     assert_eq!(
         received, 0,
         "an unfit reply must fail without sending or truncating it"
