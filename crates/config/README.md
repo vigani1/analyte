@@ -30,7 +30,7 @@ QC equality rules carry classification evidence, not acceptance decisions.
 
 After validation, `Effective::stack()` is the single runtime protocol selection.
 `Stack` has `Astm`, `Hl7`, `Law`, `Poct`, `VidasLiteral`, `Autolyser`,
-`FileAstm` and `FileHl7` variants. Each carries only its supported transport,
+ASTM and HL7 variants with a `RecordTransport::Folder` selection. Each carries only its supported transport,
 framing/dialog/syntax settings and required mapping tables or vendor policy.
 Serial transport carries installed serial settings; TCP-only stacks cannot select
 serial or file transport. Folder stacks cannot enter a stream dialog.
@@ -202,3 +202,10 @@ follow-ups and opens a separate outgoing connection per transaction. A query pee
 may close after RSP; work ownership survives that closure. Failed attempts are
 uncertain and never automatically resent. See the program's B.6 tests in
 `docs/protocols/law/README.md`; evidence remains documented.
+
+The required top-level `protocol` key selects `astm`, `hl7`, `law`, `poct`,
+`vidas` or `autolyser`. `[transport].kind` independently selects serial,
+TCP client/server or watched-folder pickup. ASTM and HL7 support complete-file
+pickup with `framing.kind = "none"` and `dialog.kind = "file_pickup"`.
+LAW and POCT require TCP; VIDAS and Autolyser require serial or TCP.
+Incompatible protocol, framing, dialog and transport selections fail loading.

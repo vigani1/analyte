@@ -447,13 +447,17 @@ fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -
 }
 
 fn hl7(config: &Validated) -> Result<&analyte_config::Hl7Stack, Box<dyn std::error::Error>> {
-    let analyte_config::Stack::Hl7(stack) = config.effective().stack() else {
+    let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
+        config.effective().stack()
+    else {
         return Err("HL7 fixture".into());
     };
     Ok(stack)
 }
 fn astm(config: &Validated) -> Result<&analyte_config::AstmStack, Box<dyn std::error::Error>> {
-    let analyte_config::Stack::Astm(stack) = config.effective().stack() else {
+    let analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(stack)) =
+        config.effective().stack()
+    else {
         return Err("ASTM fixture".into());
     };
     Ok(stack)
@@ -476,11 +480,13 @@ fn vendor_namespace(
         analyte_config::Stack::Autolyser(s) => {
             Ok(s.orders().as_ref().ok_or("orders")?.patient_namespace())
         }
-        analyte_config::Stack::Astm(_)
-        | analyte_config::Stack::Hl7(_)
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
+        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | analyte_config::Stack::Law(_)
         | analyte_config::Stack::Poct(_)
-        | analyte_config::Stack::FileAstm(_)
-        | analyte_config::Stack::FileHl7(_) => Err("vendor fixture".into()),
+        | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
+        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
+            Err("vendor fixture".into())
+        }
     }
 }

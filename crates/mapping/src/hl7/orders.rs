@@ -23,10 +23,14 @@ impl Command {
         options: Options,
     ) -> Result<Self, Error> {
         let (syntax, settings) = match config.effective().stack() {
-            analyte_config::Stack::Hl7(stack) => (&stack.syntax(), stack.orders().as_ref()),
-            analyte_config::Stack::FileHl7(stack) => (&stack.syntax(), stack.orders().as_ref()),
-            analyte_config::Stack::Astm(_)
-            | analyte_config::Stack::FileAstm(_)
+            analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) => {
+                (&stack.syntax(), stack.orders().as_ref())
+            }
+            analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(stack)) => {
+                (&stack.syntax(), stack.orders().as_ref())
+            }
+            analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
+            | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
             | analyte_config::Stack::Law(_)
             | analyte_config::Stack::Poct(_)
             | analyte_config::Stack::VidasLiteral(_)

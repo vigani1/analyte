@@ -181,7 +181,7 @@ impl Program {
         if machine.listener.is_none()
             || !matches!(
                 machine.snapshot.effective().stack(),
-                analyte_config::Stack::Astm(_)
+                analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
             )
         {
             return Err(invalid(
@@ -262,7 +262,7 @@ impl Program {
             .validate()?;
             if matches!(
                 snapshot.effective().stack(),
-                analyte_config::Stack::Astm(settings) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
+                analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
             ) {
                 return Err(invalid(
                     "ASTM receive dialog currently supports strict checksum hex only",

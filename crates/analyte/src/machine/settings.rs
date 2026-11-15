@@ -41,10 +41,12 @@ impl Link<'_> {
 
 pub(super) fn transport(stack: &Stack) -> Link<'_> {
     match stack {
-        Stack::Astm(s) => stream(s.transport(), Session::Astm(s)),
+        Stack::Astm(analyte_config::RecordTransport::Stream(s)) => {
+            stream(s.transport(), Session::Astm(s))
+        }
         Stack::VidasLiteral(s) => stream(s.transport(), Session::Vidas(s)),
         Stack::Autolyser(s) => stream(s.transport(), Session::Autolyser(s)),
-        Stack::Hl7(s) => Link::Tcp {
+        Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => Link::Tcp {
             session: Session::Hl7(s),
             role: s.transport().role(),
             timeout_ms: s.transport().operation_timeout_ms(),
@@ -59,11 +61,11 @@ pub(super) fn transport(stack: &Stack) -> Link<'_> {
             role: s.transport().role(),
             timeout_ms: s.transport().operation_timeout_ms(),
         },
-        Stack::FileAstm(s) => Link::Folder {
+        Stack::Astm(analyte_config::RecordTransport::Folder(s)) => Link::Folder {
             timeout_ms: s.operation_timeout_ms(),
             bytes: s.syntax().limits().bytes(),
         },
-        Stack::FileHl7(s) => Link::Folder {
+        Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => Link::Folder {
             timeout_ms: s.operation_timeout_ms(),
             bytes: s.syntax().limits().bytes(),
         },

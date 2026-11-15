@@ -122,12 +122,12 @@ pub enum OrderMappingError {
 pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, OrderMappingError> {
     use analyte_config::Stack;
     match config.effective().stack() {
-        Stack::Astm(s) => crate::astm::map_order(
+        Stack::Astm(analyte_config::RecordTransport::Stream(s)) => crate::astm::map_order(
             order,
             s.syntax().limits(),
             s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
-        Stack::FileAstm(s) => crate::astm::map_order(
+        Stack::Astm(analyte_config::RecordTransport::Folder(s)) => crate::astm::map_order(
             order,
             s.syntax().limits(),
             s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
@@ -142,9 +142,10 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
             s,
             s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
-        Stack::Hl7(_) | Stack::FileHl7(_) | Stack::Law(_) | Stack::Poct(_) => {
-            Err(OrderMappingError::Disabled)
-        }
+        Stack::Hl7(analyte_config::RecordTransport::Stream(_))
+        | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
+        | Stack::Law(_)
+        | Stack::Poct(_) => Err(OrderMappingError::Disabled),
     }
 }
 

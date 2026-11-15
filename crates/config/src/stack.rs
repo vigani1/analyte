@@ -8,9 +8,9 @@ use analyte_model::Identifier;
 #[derive(Debug, Clone)]
 pub enum Stack {
     /// LIS02 records over a LIS01 serial or TCP link.
-    Astm(Box<AstmStack>),
+    Astm(RecordTransport<Box<AstmStack>, Box<FileAstmStack>>),
     /// Generic HL7 v2 receiver over MLLP/TCP.
-    Hl7(Box<Hl7Stack>),
+    Hl7(RecordTransport<Box<Hl7Stack>, Box<FileHl7Stack>>),
     /// IHE LAW Analyzer Manager over one persistent MLLP/TCP link.
     Law(Box<LawStack>),
     /// POCT1-A reviewer over TCP.
@@ -19,10 +19,6 @@ pub enum Stack {
     VidasLiteral(Box<VidasStack>),
     /// Autolyser polling over serial or TCP.
     Autolyser(Box<AutolyserStack>),
-    /// Watched-folder LIS02 records, without a wire dialog.
-    FileAstm(Box<FileAstmStack>),
-    /// Watched-folder HL7 records, without a wire dialog.
-    FileHl7(Box<FileHl7Stack>),
 }
 
 /// TCP connection direction; cannot select serial or folder transport.
@@ -420,7 +416,7 @@ impl Stack {
                 .expect("validated MLLP dialog requires acknowledgment policy")
         };
         match machine.dialog.kind {
-            DialogKind::AstmLink => Self::Astm(Box::new(AstmStack {
+            DialogKind::AstmLink => Self::Astm(RecordTransport::Stream(Box::new(AstmStack {
                 transport: stream(&machine.transport),
                 frame_limit,
                 timeouts,
@@ -435,8 +431,8 @@ impl Stack {
                 syntax: astm_syntax(&machine.syntax),
                 mappings: mappings(),
                 orders: machine.orders.as_ref().map(astm_orders),
-            })),
-            DialogKind::Hl7Receiver => Self::Hl7(Box::new(Hl7Stack {
+            }))),
+            DialogKind::Hl7Receiver => Self::Hl7(RecordTransport::Stream(Box::new(Hl7Stack {
                 transport: tcp(&machine.transport),
                 frame_limit,
                 timeouts,
@@ -444,7 +440,7 @@ impl Stack {
                 syntax: hl7_syntax(&machine.syntax),
                 mappings: mappings(),
                 orders: machine.orders.as_ref().map(hl7_orders),
-            })),
+            }))),
             DialogKind::LawManager => {
                 let law = machine
                     .law
@@ -544,22 +540,24 @@ impl Stack {
                 }),
             })),
             DialogKind::FilePickup => match machine.syntax.kind {
-                SyntaxKind::AstmLis02 => Self::FileAstm(Box::new(FileAstmStack {
-                    operation_timeout_ms: machine.transport.operation_timeout_ms,
-                    frame_limit,
-                    timeouts,
-                    syntax: astm_syntax(&machine.syntax),
-                    mappings: mappings(),
-                    orders: machine.orders.as_ref().map(astm_orders),
-                })),
-                SyntaxKind::Hl7V2 => Self::FileHl7(Box::new(FileHl7Stack {
+                SyntaxKind::AstmLis02 => {
+                    Self::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
+                        operation_timeout_ms: machine.transport.operation_timeout_ms,
+                        frame_limit,
+                        timeouts,
+                        syntax: astm_syntax(&machine.syntax),
+                        mappings: mappings(),
+                        orders: machine.orders.as_ref().map(astm_orders),
+                    })))
+                }
+                SyntaxKind::Hl7V2 => Self::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
                     operation_timeout_ms: machine.transport.operation_timeout_ms,
                     frame_limit,
                     timeouts,
                     syntax: hl7_syntax(&machine.syntax),
                     mappings: mappings(),
                     orders: machine.orders.as_ref().map(hl7_orders),
-                })),
+                }))),
                 SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
                     unreachable!("validated file pickup supports only LIS02 or HL7")
                 }
@@ -770,10 +768,10 @@ impl Stack {
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {
         match self {
-            Self::Astm(s) => &s.syntax.limits,
-            Self::Hl7(s) => &s.syntax.limits,
-            Self::FileAstm(s) => &s.syntax.limits,
-            Self::FileHl7(s) => &s.syntax.limits,
+            Self::Astm(RecordTransport::Stream(s)) => &s.syntax.limits,
+            Self::Hl7(RecordTransport::Stream(s)) => &s.syntax.limits,
+            Self::Astm(RecordTransport::Folder(s)) => &s.syntax.limits,
+            Self::Hl7(RecordTransport::Folder(s)) => &s.syntax.limits,
             Self::Law(s) => &s.limits,
             Self::Poct(s) => &s.limits,
             Self::VidasLiteral(s) => &s.limits,
@@ -785,10 +783,10 @@ impl Stack {
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         match self {
-            Self::Astm(s) => &s.timeouts,
-            Self::Hl7(s) => &s.timeouts,
-            Self::FileAstm(s) => &s.timeouts,
-            Self::FileHl7(s) => &s.timeouts,
+            Self::Astm(RecordTransport::Stream(s)) => &s.timeouts,
+            Self::Hl7(RecordTransport::Stream(s)) => &s.timeouts,
+            Self::Astm(RecordTransport::Folder(s)) => &s.timeouts,
+            Self::Hl7(RecordTransport::Folder(s)) => &s.timeouts,
             Self::Law(s) => &s.timeouts,
             Self::Poct(s) => &s.timeouts,
             Self::VidasLiteral(s) => &s.timeouts,
@@ -800,10 +798,10 @@ impl Stack {
     #[must_use]
     pub fn code_tables(&self) -> (&[TestMapping], &[UnitMapping]) {
         match self {
-            Self::Astm(s) => (&s.mappings.tests, &s.mappings.units),
-            Self::Hl7(s) => (&s.mappings.tests, &s.mappings.units),
-            Self::FileAstm(s) => (&s.mappings.tests, &s.mappings.units),
-            Self::FileHl7(s) => (&s.mappings.tests, &s.mappings.units),
+            Self::Astm(RecordTransport::Stream(s)) => (&s.mappings.tests, &s.mappings.units),
+            Self::Hl7(RecordTransport::Stream(s)) => (&s.mappings.tests, &s.mappings.units),
+            Self::Astm(RecordTransport::Folder(s)) => (&s.mappings.tests, &s.mappings.units),
+            Self::Hl7(RecordTransport::Folder(s)) => (&s.mappings.tests, &s.mappings.units),
             Self::Law(s) => (&s.mappings.tests, &s.mappings.units),
             Self::Poct(s) => (&s.codes.tests, &s.codes.units),
             Self::VidasLiteral(s) => (&s.codes.tests, &s.codes.units),
@@ -817,13 +815,15 @@ impl Stack {
     #[must_use]
     pub fn transport_kind(&self) -> TransportKind {
         match self {
-            Self::Astm(s) => stream_kind(&s.transport),
+            Self::Astm(RecordTransport::Stream(s)) => stream_kind(&s.transport),
             Self::VidasLiteral(s) => stream_kind(&s.transport),
             Self::Autolyser(s) => stream_kind(&s.transport),
-            Self::Hl7(s) => tcp_kind(s.transport.role),
+            Self::Hl7(RecordTransport::Stream(s)) => tcp_kind(s.transport.role),
             Self::Law(s) => tcp_kind(s.transport.role),
             Self::Poct(s) => tcp_kind(s.transport.role),
-            Self::FileAstm(_) | Self::FileHl7(_) => TransportKind::WatchedFolder,
+            Self::Astm(RecordTransport::Folder(_)) | Self::Hl7(RecordTransport::Folder(_)) => {
+                TransportKind::WatchedFolder
+            }
         }
     }
 
@@ -831,14 +831,14 @@ impl Stack {
     #[must_use]
     pub fn operation_timeout_ms(&self) -> u32 {
         match self {
-            Self::Astm(s) => stream_timeout(&s.transport),
+            Self::Astm(RecordTransport::Stream(s)) => stream_timeout(&s.transport),
             Self::VidasLiteral(s) => stream_timeout(&s.transport),
             Self::Autolyser(s) => stream_timeout(&s.transport),
-            Self::Hl7(s) => s.transport.operation_timeout_ms,
+            Self::Hl7(RecordTransport::Stream(s)) => s.transport.operation_timeout_ms,
             Self::Law(s) => s.transport.operation_timeout_ms,
             Self::Poct(s) => s.transport.operation_timeout_ms,
-            Self::FileAstm(s) => s.operation_timeout_ms,
-            Self::FileHl7(s) => s.operation_timeout_ms,
+            Self::Astm(RecordTransport::Folder(s)) => s.operation_timeout_ms,
+            Self::Hl7(RecordTransport::Folder(s)) => s.operation_timeout_ms,
         }
     }
 
@@ -852,14 +852,18 @@ impl Stack {
             TransportKind::WatchedFolder => "watched_folder",
         };
         match self {
-            Self::Astm(_) => [transport, "astm_lis01", "astm_link", "astm_lis02"],
-            Self::Hl7(_) => [transport, "mllp", "hl7_receiver", "hl7_v2"],
+            Self::Astm(RecordTransport::Stream(_)) => {
+                [transport, "astm_lis01", "astm_link", "astm_lis02"]
+            }
+            Self::Hl7(RecordTransport::Stream(_)) => [transport, "mllp", "hl7_receiver", "hl7_v2"],
             Self::Law(_) => [transport, "mllp", "law_manager", "hl7_v2"],
             Self::Poct(_) => [transport, "poct", "poct", "poct"],
             Self::VidasLiteral(_) => [transport, "vidas_literal", "vidas_literal", "vidas_literal"],
             Self::Autolyser(_) => [transport, "autolyser", "autolyser", "autolyser"],
-            Self::FileAstm(_) => [transport, "none", "file_pickup", "astm_lis02"],
-            Self::FileHl7(_) => [transport, "none", "file_pickup", "hl7_v2"],
+            Self::Astm(RecordTransport::Folder(_)) => {
+                [transport, "none", "file_pickup", "astm_lis02"]
+            }
+            Self::Hl7(RecordTransport::Folder(_)) => [transport, "none", "file_pickup", "hl7_v2"],
         }
     }
 }
@@ -894,10 +898,10 @@ impl Stack {
     #[must_use]
     pub fn field_mappings(&self) -> Option<&Mappings> {
         match self {
-            Self::Astm(s) => Some(&s.mappings),
-            Self::FileAstm(s) => Some(&s.mappings),
-            Self::Hl7(s) => Some(&s.mappings),
-            Self::FileHl7(s) => Some(&s.mappings),
+            Self::Astm(RecordTransport::Stream(s)) => Some(&s.mappings),
+            Self::Astm(RecordTransport::Folder(s)) => Some(&s.mappings),
+            Self::Hl7(RecordTransport::Stream(s)) => Some(&s.mappings),
+            Self::Hl7(RecordTransport::Folder(s)) => Some(&s.mappings),
             Self::Law(s) => Some(&s.mappings),
             Self::Poct(_) | Self::VidasLiteral(_) | Self::Autolyser(_) => None,
         }
@@ -1482,4 +1486,13 @@ impl FileHl7Stack {
     pub fn orders(&self) -> &Option<Hl7Orders> {
         &self.orders
     }
+}
+
+/// Transport-specific settings for one record protocol. Folder pickup has no wire dialog.
+#[derive(Debug, Clone)]
+pub enum RecordTransport<S, F> {
+    /// Serial or TCP framing and conversation settings.
+    Stream(S),
+    /// Complete-file handoff settings, without wire acknowledgments.
+    Folder(F),
 }

@@ -163,6 +163,7 @@ fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() ->
                 .split("[orders]")
                 .next()
                 .ok_or(Error::IncompatibleStack {
+                    reason: "LAW test requires LAW stack",
                     path: "fixture".into()
                 })?
         ))

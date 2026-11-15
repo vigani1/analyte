@@ -142,10 +142,18 @@ pub(crate) fn map(
                 time,
             )?)
         }
-        Stack::Astm(settings) => map_astm(machine, payload, input, settings.syntax()),
-        Stack::FileAstm(settings) => map_astm(machine, payload, input, settings.syntax()),
-        Stack::Hl7(settings) => map_hl7(machine, payload, input, settings.syntax()),
-        Stack::FileHl7(settings) => map_hl7(machine, payload, input, settings.syntax()),
+        Stack::Astm(analyte_config::RecordTransport::Stream(settings)) => {
+            map_astm(machine, payload, input, settings.syntax())
+        }
+        Stack::Astm(analyte_config::RecordTransport::Folder(settings)) => {
+            map_astm(machine, payload, input, settings.syntax())
+        }
+        Stack::Hl7(analyte_config::RecordTransport::Stream(settings)) => {
+            map_hl7(machine, payload, input, settings.syntax())
+        }
+        Stack::Hl7(analyte_config::RecordTransport::Folder(settings)) => {
+            map_hl7(machine, payload, input, settings.syntax())
+        }
         Stack::Law(settings) => {
             let message = analyte_hl7::law::parse_message(payload, settings.options())?;
             let results = analyte_hl7::law::receive_results(&message)?;
@@ -206,13 +214,15 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::
     use analyte_framing::vidas::{Checksum, Config, Mode};
     let settings = match machine.snapshot.effective().stack() {
         Stack::VidasLiteral(settings) => settings,
-        Stack::Astm(_)
-        | Stack::Hl7(_)
+        Stack::Astm(analyte_config::RecordTransport::Stream(_))
+        | Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | Stack::Law(_)
         | Stack::Poct(_)
         | Stack::Autolyser(_)
-        | Stack::FileAstm(_)
-        | Stack::FileHl7(_) => return Err(invalid("VIDAS settings missing")),
+        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
+        | Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
+            return Err(invalid("VIDAS settings missing"));
+        }
     };
     let installed = &settings.policy();
     Ok(Config::new(
@@ -253,14 +263,16 @@ pub(crate) fn unpack<'a>(
     raw: &'a [u8],
 ) -> Result<std::borrow::Cow<'a, [u8]>, Error> {
     match machine.snapshot.effective().stack() {
-        Stack::FileAstm(_)
-        | Stack::FileHl7(_)
+        Stack::Astm(analyte_config::RecordTransport::Folder(_))
+        | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
         | Stack::Poct(_)
         | Stack::VidasLiteral(_)
         | Stack::Autolyser(_) => Ok(raw.into()),
-        Stack::Hl7(settings) => unpack_mllp(raw, settings.frame_limit()),
+        Stack::Hl7(analyte_config::RecordTransport::Stream(settings)) => {
+            unpack_mllp(raw, settings.frame_limit())
+        }
         Stack::Law(settings) => unpack_mllp(raw, settings.frame_limit()),
-        Stack::Astm(settings) => {
+        Stack::Astm(analyte_config::RecordTransport::Stream(settings)) => {
             use analyte_framing::astm::{Decoder, Event, HexPolicy, Limit};
             let mut decoder = Decoder::new(Limit::new(settings.frame_limit())?, HexPolicy::Strict);
             let mut payload = Vec::new();

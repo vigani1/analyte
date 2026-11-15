@@ -101,6 +101,7 @@ settings, not installation recommendations.
 ```toml
 # Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
 schema_version = 1
+protocol = "astm"
 name = "generic-synthetic"
 deviations = []
 [transport]

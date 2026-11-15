@@ -15,10 +15,10 @@ pub fn map(
 ) -> Result<Vec<Vec<u8>>, OrderMappingError> {
     use analyte_config::Stack;
     let orders = match config.effective().stack() {
-        Stack::Hl7(s) => s.orders().as_ref(),
-        Stack::FileHl7(s) => s.orders().as_ref(),
-        Stack::Astm(_)
-        | Stack::FileAstm(_)
+        Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => s.orders().as_ref(),
+        Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => s.orders().as_ref(),
+        Stack::Astm(analyte_config::RecordTransport::Stream(_))
+        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
         | Stack::Law(_)
         | Stack::Poct(_)
         | Stack::VidasLiteral(_)
