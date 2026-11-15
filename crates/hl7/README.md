@@ -541,9 +541,9 @@ These APIs remain pure and do not reserve, transmit, cancel or infer acceptance.
 The program integration declares `law_manager` and
 explicit peer capabilities in `analyte-config::LawPeer`. Its `capabilities()`
 method feeds this crate's existing capability intersection; the LAW views and
-builders remain the source of protocol rules. LAB-29 host receiving is enabled;
-query/work execution remains disabled.
-Planned host query scope is exact specimen/container ID and analyzer-specific
+builders remain the source of protocol rules. LAB-29 receiving and explicitly
+configured query-triggered LAB-28/ORL exchanges are enabled.
+Host query scope is exact specimen/container ID and analyzer-specific
 all-pending. Isolate/parent and rack/tray-position queries must receive an error;
 isolate/parent needs app-supplied identities in a future contract version.
 This checkpoint adds no simulator evidence.
@@ -555,3 +555,13 @@ generic HL7 builder still requires a location. The small API addition is tested
 by `law_tf2b_c1_unknown_error_location_is_omitted_never_invented`. Protocol
 failures retain their full causes in the protected interpretation. See the
 program's `tests/law/results.rs` for durable receiving/delivery evidence.
+
+Step 3 adds `CacheAnswer::Rejected` (QAK AR, no work followup), tested alongside
+empty/found/unavailable outcomes in `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`.
+Both work builders now use the LAW syntax entry point, retaining LAW's 50-character
+control ID boundary (`law_tf2b_c4_work_and_negative_builders_keep_fifty_character_control_ids`).
+The negative-query builder projects received EI values to the C.11 manager-authored
+EI.1 subset, while RSP retains its exact QPD echo. Qualified-container regression
+coverage is in `law_tf2b_3_28_4_negative_lab28_for_genuine_no_work`. Host reservation,
+ORL and failure evidence is in the program's `tests/law/queries.rs`. Unsolicited
+send-ahead/cancellation and full link conformance are still separate host gates.

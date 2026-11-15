@@ -2,6 +2,7 @@
 pub(crate) mod astm;
 pub(crate) mod hl7;
 mod hl7_send;
+pub(crate) mod law;
 mod operator;
 pub(crate) mod sending;
 use crate::{Error, config::Machine};

@@ -690,24 +690,7 @@ impl Store {
         now: i64,
         freshness: u64,
     ) -> Result<Lookup, Error> {
-        if self.restore_unreconciled()? {
-            return Ok(Lookup::NotTrusted);
-        }
-        let poll: Option<i64> = self
-            .db
-            .query_row(
-                "SELECT polled FROM feed WHERE destination=?1 AND complete=1 AND trusted=1",
-                [destination.as_str()],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let Some(age) = poll
-            .and_then(|p| now.checked_sub(p))
-            .and_then(|age| u64::try_from(age).ok())
-        else {
-            return Ok(Lookup::NotTrusted);
-        };
-        if age >= freshness {
+        if !self.trusted_order_lookup(destination, now, freshness)? {
             return Ok(Lookup::NotTrusted);
         }
         let mut stmt=self.db.prepare("SELECT evidence FROM orders WHERE destination=?1 AND sample=?2 AND tombstone=0 AND expiry>?3 AND generation=(SELECT generation FROM feed WHERE destination=?1) LIMIT ?4")?;
@@ -739,6 +722,15 @@ impl Store {
         } else {
             Ok(Lookup::Orders(orders))
         }
+    }
+
+    fn trusted_order_lookup(
+        &self,
+        destination: &Identifier,
+        now: i64,
+        freshness: u64,
+    ) -> Result<bool, Error> {
+        Ok(!self.restore_unreconciled()? && trusted_feed(&self.db, destination, now, freshness)?)
     }
 
     /// Uses SQLite online backup, then checks the restored copy before reporting success.

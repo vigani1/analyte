@@ -140,7 +140,7 @@ processing, specimen placement and response deadline are explicit. Test
 components are code/text/system. Position output is available only in ORM's
 other placer-owned OBR field; an OML position mapping is refused.
 
-## LAW configuration (LAB-29 runtime)
+## LAW configuration (results and query-triggered work)
 
 `examples/law.toml` selects `dialog.kind = "law_manager"`, MLLP and HL7
 2.5.1. LAW requires UTF-8, CR segments, strict escapes and store-and-forward
@@ -149,19 +149,28 @@ responsibility. `[law.peer]` explicitly declares every enhanced-content flag;
 implicitly enabled. Local overrides may replace the whole `[law]` policy.
 
 `law.query_forms` declares `container`, `all_pending`, or both, once each.
-Planned container queries use the existing SampleId lookup; all-pending is scoped to
-this analyzer. Query/work execution remains disabled. Isolate/parent and rack/tray-position queries are outside the
-host scope and must receive an unsupported-query error, never no-work.
+Container queries use the existing SampleId lookup; all-pending is scoped to
+this analyzer. Append `examples/law_orders.toml` to the LAW definition to enable
+queries and their LAB-28 followups. It declares `[law.work]` headers, explicit
+sample/specimen bindings and shared `[orders]` translations. Without that layout,
+query execution remains disabled. Isolate/parent and rack/tray-position queries
+receive QAK AR (unsupported query), never no-work.
 Isolate/parent needs app-supplied identities in a future contract version.
 Query and response deadlines must be 1 through 60000 milliseconds. LAW permits
 only explicit C correction status and cannot select legacy display queries or
 non-LAW order layouts.
 
 The declarations have documented evidence in `tests/law.rs`. The program now
-runs LAB-29 results on an analyzer-initiated TCP server link. Other connection
-roles and LAB-27/28 work execution remain disabled. Queries receive an error
-RSP without no-work or work followup; work/response traffic is retained and the
-connection closes, without an acknowledgment loop.
+runs LAB-29 results and configured LAB-27 query/followup exchanges. Other connection
+roles, unsolicited send-ahead and cancellation remain disabled. `send_ahead = true`
+is rejected for this checkpoint. Trusted empty uses the restricted negative
+LAB-28; untrusted, failed, stale, paused or late lookups receive an error RSP.
+
+The specimen namespace binds SPM-2 when supported; the container namespace binds
+qualified incoming queries to the app's SampleId. Manager-authored SAC and AWOS
+fields send EI.1 only, per the existing LAW profile; the shared item store retains
+the explicit placer namespace. For unqualified returned AWOS, select an explicit
+fixed result-mapping namespace. No namespace or AWOS is guessed.
 
 LAW identity selects OBR-2 AWOS (OBR-2.2 namespace or an explicit fixed fallback)
 and the complete OBX-4 OG. Config cannot replace these with arbitrary selectors

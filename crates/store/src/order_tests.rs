@@ -45,6 +45,130 @@ fn event(order: &MachineOrder) -> Result<OrderEventDelivery, Error> {
 }
 
 #[test]
+fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay() -> TestResult
+{
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("pending.db"))?;
+    let mut snapshot = page(1, "requested", false, 200)?;
+    snapshot.orders.clear();
+    for (id, state, target, expiry, tombstone) in [
+        ("a", "requested", Some("other"), 200, false),
+        ("b", "requested", Some("other"), 200, false),
+        ("c", "requested", Some("machine"), 200, false),
+        ("d", "requested", None, 200, false),
+        ("e", "cancelled", None, 200, false),
+        ("f", "requested", None, 101, false),
+        ("g", "requested", None, 200, true),
+        ("h", "requested", None, 200, false),
+    ] {
+        snapshot.orders.push(CachedOrder { id: Identifier::new(id)?, sample: SampleId::new("001a")?,
+            document: serde_json::json!({"version":1,"state":state,"tombstone":tombstone,"target_analyzers":target.map(|value| vec![value]),"tests":[{"namespace":"local","value":"test"}]}).to_string(), tombstone, expiry });
+    }
+    store.order_page(&snapshot)?;
+    let mut key = identity()?;
+    key.order = Identifier::new("h")?;
+    store
+        .reserve_send(&key, NonZeroU64::MIN, 101, 30)?
+        .map_err(std::io::Error::other)?;
+    store.limits.page_rows = 2;
+    let PendingOrders::Page { orders, after } =
+        store.pending_orders(&key.destination, &key.machine, "", 101, 30)?
+    else {
+        return Err("trusted page refused".into());
+    };
+    assert!(orders.is_empty());
+    let after = after.ok_or("filtered-empty must not terminate pagination")?;
+    assert_eq!(after.as_str(), "b");
+    let mut cursor = after.as_str().to_owned();
+    let mut found = Vec::new();
+    loop {
+        let PendingOrders::Page { orders, after } =
+            store.pending_orders(&key.destination, &key.machine, &cursor, 101, 30)?
+        else {
+            return Err("trusted page refused".into());
+        };
+        assert!(orders.len() <= 2);
+        found.extend(orders.into_iter().map(|order| order.id.as_str().to_owned()));
+        match after {
+            Some(after) => cursor = after.as_str().to_owned(),
+            None => break,
+        }
+    }
+    assert_eq!(found, ["c", "d"]);
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("trust.db"))?;
+    let key = identity()?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    for (now, trusted) in [(99, false), (100, true), (129, true), (130, false)] {
+        assert_eq!(
+            matches!(
+                store.orders(&key.destination, &SampleId::new("001a")?, now, 30)?,
+                Lookup::Orders(_)
+            ),
+            trusted
+        );
+        assert_eq!(
+            matches!(
+                store.pending_orders(&key.destination, &key.machine, "", now, 30)?,
+                PendingOrders::Page { .. }
+            ),
+            trusted
+        );
+    }
+    for update in [
+        "UPDATE feed SET complete=0",
+        "UPDATE feed SET trusted=0",
+        "UPDATE feed SET polled=102",
+    ] {
+        store.order_page(&page(1, "requested", false, 200)?)?;
+        store.db.execute_batch(update)?;
+        assert!(matches!(
+            store.orders(&key.destination, &SampleId::new("001a")?, 101, 30)?,
+            Lookup::NotTrusted
+        ));
+        assert!(matches!(
+            store.pending_orders(&key.destination, &key.machine, "", 101, 30)?,
+            PendingOrders::NotTrusted
+        ));
+    }
+    store.reset_orders(&key.destination)?;
+    assert!(matches!(
+        store.pending_orders(&key.destination, &key.machine, "", 101, 30)?,
+        PendingOrders::NotTrusted
+    ));
+    let mut empty = page(1, "requested", false, 200)?;
+    empty.orders.clear();
+    store.order_page(&empty)?;
+    let PendingOrders::Page { orders, after } =
+        store.pending_orders(&key.destination, &key.machine, "", 101, 30)?
+    else {
+        return Err("new generation should be trusted".into());
+    };
+    assert!(orders.is_empty() && after.is_none());
+    store.audit(&Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 101,
+        reason: analyte_model::Reason::new("synthetic restore")?,
+    })?;
+    assert!(matches!(
+        store.orders(&key.destination, &SampleId::new("001a")?, 101, 30)?,
+        Lookup::NotTrusted
+    ));
+    assert!(matches!(
+        store.pending_orders(&key.destination, &key.machine, "", 101, 30)?,
+        PendingOrders::NotTrusted
+    ));
+    Ok(())
+}
+
+#[test]
 fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("orders.db");

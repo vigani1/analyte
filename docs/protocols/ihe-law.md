@@ -38,16 +38,16 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
 
 - [ ] **R** Support LAB-27 responder, LAB-28 initiator and LAB-29 responder; preserve unique AWOS and work linkage (TF-1 §§5.1–5.1.1, pp.33–34; §5.4.1, pp.41–42).
   Tests: `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`, `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`, `law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_notes`.
-  Pure transaction APIs only; LAW host routing, durable AWOS correlation and connection integration remain.
+  Host results and configured queries with their required work/ORL followups now have the step-2/3 matrices below. Unsolicited send-ahead, cancellation, originating-work result correlation and independent directional links remain; this is not complete actor conformance.
 - [ ] **R** Answer supported peer query forms, support broadcast and assume query mode unless configured otherwise (TF-1 §5.1.1.2, p.34).
   Tests: `law_tf2b_3_27_4_query_forms_and_conditional_fields`.
-  Pure query forms and broadcast rendering are tested. Host config declares container/all-pending only (`crates/config/tests/law.rs::law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms`). Host transactions/default query mode remain unwired; isolate/parent needs app-supplied identities in a future contract version, and rack/tray-position lookup remains unsupported.
+  Pure query forms and broadcast rendering are tested. Host config declares container/all-pending only (`crates/config/tests/law.rs::law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms`); the step-3 host matrix now covers both. Broadcast/send-ahead remains disabled. Isolate/parent needs app-supplied identities in a future contract version; rack/tray/informational-position forms are explicitly rejected by the host, without a no-work claim.
 - [x] **R** Apply LAW M/R/RE/RE.AN/C/X usages, cardinality, length, data-type and empty/null rules (TF-2b §§2.2.1–2.2.3, pp.9–14; Appendix A, p.59).
   Tests: `law_tf2b_2_2_usage_cardinality_length_and_null_rules`, `law_tf2b_c2_c5_c7_x_fields_components_and_composite_send_ceilings`.
   Field-profile tests also span law_control.rs, law_patient.rs, law_specimen.rs and law_order.rs; cross-message negotiation is separate.
 - [ ] **R** Support enhanced content and implementation profiles; transaction ID first in MSH-21, correct option identifiers and conditional usages (TF-2b §2.2.4, pp.14–24; C.4, pp.90–95).
   Tests: `law_tf2b_c4_msh_21_m_ei_required_components_lengths_first_transaction`, `law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_results`.
-  Explicit content/profile selection is tested. Host peer declarations are tested by `crates/config/tests/law.rs::law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options`; host builders are not yet wired. Automatic option/profile negotiation is absent.
+  Explicit content/profile selection and host peer declarations are tested by `crates/config/tests/law.rs::law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options`. Query work now selects only supplied basic/specimen/priority content intersected with peer support (`law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_peer_support` in the program). Other enhanced host work content and automatic option/profile negotiation remain absent.
 - [x] **S** Send enhanced data only to supporting peers (TF-1 §5.1.1.2, p.34).
   Tests: `law_tf2b_c11_c12_explicit_profile_cannot_enlarge_peer_send_capabilities`, `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`.
   Outgoing supported builders intersect explicit content selection with peer capabilities.
@@ -65,16 +65,16 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Tests distinguish genuine empty work from unavailable lookup.
 - [x] **R/C** Handle container, isolate, rack/position, tray/position, all-pending and informational location forms as applicable to connected peers (TF-1 §§5.2.1–5.2.5, pp.36–37; TF-2b QPD definition, pp.35–41).
   Tests: `law_tf2b_3_27_4_query_forms_and_conditional_fields`, `law_tf2b_2_2_4_2_c11_c12_negative_query_echoes_each_scope_without_invented_ids`.
-  All six supported query scopes have synthetic evidence.
+  All six pure query scopes have synthetic evidence. The running program supports container and all-pending only; known unsupported forms return QAK AR (`law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work`). This checked row is pure view/build support, not a claim of all-form host support.
 - [ ] **R** Send work in OML and process ORL for every AWOS, including all applicable groups/fields (TF-2b §3.28.4.1.2, pp.47–51).
   Tests: `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`, `law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively`.
-  Supported builders and per-AWOS responses are covered. Related-observation and pooling work groups are not built.
+  Supported builders and per-AWOS responses are covered, including query-triggered host work/ORL (`law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`). Unsolicited send-ahead, cancellation, related-observation and pooling work groups remain outside this checkpoint.
 - [x] **R** Distinguish new-work OK/UA and cancel CR/UC from message acceptance (TF-2b §3.28.4.1.3, pp.51–52).
   Tests: `law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively`.
   Every permitted/refused request-specific control/status pair is checked.
-- [ ] **R** Use restricted negative LAB-28 structure for genuine no-work; preserve query scope and analyzer-specific deadline (TF-2b §2.2.4.2, p.16; §§3.27.4–3.28.4, pp.34–52).
+- [x] **R** Use restricted negative LAB-28 structure for genuine no-work; preserve query scope and analyzer-specific deadline (TF-2b §2.2.4.2, p.16; §§3.27.4–3.28.4, pp.34–52).
   Tests: `law_tf2b_2_2_4_2_c11_c12_negative_query_echoes_each_scope_without_invented_ids`.
-  All restricted negative-query forms are covered; analyzer-specific host deadline remains an integration gap.
+  Host evidence for the selected forms: `law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_orl_without_items`, `law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage`, and `law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_effects` in `crates/analyte/tests/law/queries.rs`. No items are reserved for negative work. Unsupported forms return an error rather than negative work.
 - [ ] **R** Preserve uncertain prior acceptance; duplicate-AWOS UA must not undo the original accepted request (TF-2b §3.28.4.1.3, p.51).
   Tests: `law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions`.
   Parser decisions preserve uncertainty; persistent duplicate/retry/lifecycle integration remains.
@@ -86,7 +86,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
 
 - [ ] **R** Receive OUL and return ACK with required structures/fields; correlate known AWOS to originating work (TF-2b §3.29.4, pp.53–58).
   Tests: `law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability`.
-  Host LAB-29 receive/ACK is now covered by the step-2 matrix below (including durable raw/interpretation boundaries and error ACKs). Correlation to durable originating work remains blocked on LAB-28 integration; this combined row stays unchecked.
+  Host LAB-29 receive/ACK is covered by the step-2 matrix below. Query work is now durably reserved, but validation of returned result content against that originating work is not yet wired; this combined row stays unchecked.
 - [x] **R, host boundary** Store the exact LAB-29 MLLP block before interpretation/ACK; AA only after durable interpretation, with no partial batch delivery on a conflict (TF-2b §3.29.4; B.7; ADR 0003).
   Tests in `crates/analyte/tests/law/results.rs`: `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack`, `law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa`, `law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa`, `law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_delivery`, `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`.
 - [x] **R** Support unsolicited/unassigned work cases; do not reject all results merely because no downloaded AWOS exists (TF-1 §5.4.2; TF-2b §3.29.4, C.8, pp.53–58,113–118).
@@ -222,7 +222,7 @@ At step 1 no host checklist row closed: activation was refused pending host
 transactions. Step 2 replaces that startup guard with the dedicated LAB-29
 receiver and keeps query/work execution disabled, as documented below.
 
-## Program integration checkpoint: step 2 — LAB-29 only
+## Program integration checkpoint: step 2 — LAB-29 only (historical)
 
 Evidence remains **documented**, using synthetic program/reference-receiver
 traffic and temporary protected stores. No Gazelle or real-machine qualification.
@@ -257,3 +257,46 @@ and storage failure close without positive acceptance. LAB-27 cache lookup,
 the all-pending store API, LAB-28, original-work correlation, directional work
 links, cancellation/restart, full supplemental relationships and Gazelle remain.
 No step-3 implementation is included.
+
+## Program integration checkpoint: step 3 — LAB-27 and query-triggered LAB-28
+
+Evidence remains **documented**. The program uses the existing LAW query/work
+views and builders, shared order cache and durable per-AWOS item path. It does
+not implement unsolicited send-ahead or cancellation in this step. Independent
+LAW connection direction/topology and simulator qualification remain unchecked.
+
+- [x] Store raw QBP before lookup/response. Test: `law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservation`.
+- [x] Support configured container/SampleId and analyzer-specific all-pending queries, with shared trust/freshness and bounded coherent paging. Tests: `law_tf2b_3_27_4_all_pending_pages_filter_other_analyzers_and_keep_every_awos`, `law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`.
+- [x] Unsupported known forms use QAK AR, never no-work. Test: `law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work` (rack, tray, isolate/parent and informational rack). Isolate/parent still needs app-supplied identities in a future contract version.
+- [x] Fresh trusted empty builds the existing restricted negative LAB-28 without items; its ORL is correlated/retained and audited, with no order changes. Tests: `law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_orl_without_items`, `law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_effects`.
+- [x] Cache failure, staleness, absent/incomplete snapshot, unreachable app, restore pause and elapsed query budget are errors, not empty. Tests: `law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not_no_work`, `law_tf2b_3_27_4_unreachable_app_without_snapshot_never_answers_no_work`, `law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not_empty`, `law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage`.
+- [x] Included work is preflighted and reserved through shared per-test items before positive RSP/work output; one item is one AWOS. Preparation failure is not a partial positive response. Tests: `law_tf2b_3_27_3_28_preflight_and_reservation_failure_cannot_emit_positive_rsp_or_work`, `law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`.
+- [x] ORL bytes are durable before per-AWOS OK/UA reaches `finish_order_items`. Matching uses AWOS IDs, including reordered replies; no reply/disconnect/invalid correlation becomes Uncertain, with no resend. Tests: `law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`, `law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain`.
+- [x] Supplied specimen/priority work content is intersected with explicit peer support; repeat/reflex permissions are never generated. Test: `law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_peer_support`.
+
+These thirteen tests live in `crates/analyte/tests/law/queries.rs`, compiled in
+`tests/delivery.rs`, and use synthetic peers, a temporary store and the reference
+receiver. The store read has its own two tests in `crates/store/src/order_tests.rs`:
+`law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay`
+and `law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust`.
+The one new public read, `pending_orders`, shares the existing age predicate with
+SampleId lookup and reservations, and shares the restore-aware lookup gate.
+No schema or contract changed.
+
+Config requires explicit `[law.work]` bindings plus shared `[orders]` translations;
+`send_ahead = true` is rejected. Test: `crates/config/tests/law.rs::law_tf2b_3_27_query_work_requires_explicit_bindings_and_rejects_send_ahead`.
+Results-only configuration still returns a query error without work.
+
+Small pure-code corrections use the LAW syntax entry point in both LAB-28
+builders (C.4's 50-character control ID) and send only C.11-supported EI.1 in
+negative SAC fields. The complete QPD is still echoed in RSP and retained raw.
+Tests: `law_tf2b_c4_work_and_negative_builders_keep_fifty_character_control_ids`,
+`law_tf2b_3_28_4_negative_lab28_for_genuine_no_work`, and the extended
+`law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup` for QAK AR.
+Source: [IHE PaLM TF-2b Rev 11, 3.27/3.28, B.7.7 and Appendix C](https://www.ihe.net/uploadedFiles/Documents/PaLM/IHE_PaLM_TF_Vol2b.pdf).
+
+Remaining: unsolicited send-ahead and cancellation (step 4), returned-result
+validation against durable originating work, independent directional links,
+full enhanced work workflows, restart qualification and Gazelle. Step 4 was not
+started. Earlier historical checkpoint gaps above are superseded only by the
+explicitly named step-3 evidence; unchecked actor/conformance gates stay open.

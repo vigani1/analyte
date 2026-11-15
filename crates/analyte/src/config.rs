@@ -77,7 +77,7 @@ fn read(path: &Path) -> Result<String, Error> {
 }
 
 impl Program {
-    /// Installs a one-shot LAB-29 raw-commit/pre-ACK pause on an injected loopback machine.
+    /// Installs a one-shot LAW raw-commit/pre-response pause on an injected loopback machine.
     /// # Errors
     /// Rejects unknown machines, non-LAW stacks and production listeners.
     #[cfg(feature = "test-hooks")]

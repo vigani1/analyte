@@ -398,17 +398,32 @@ no reply, disconnect, cancel accepted/refused through the reference app feed,
 restart while Sending, no resend, actual placer-ID overflow, overlong ORC-4,
 and paused restore admission. They do not qualify a physical analyzer.
 
-## LAW result-only checkpoint (step 2)
+## LAW query-triggered work checkpoint (step 3)
 
-The dedicated LAW runtime currently receives LAB-29 only. Results do not reserve
-or send orders. Valid LAB-27 requests are retained and answered with an error
-RSP (no no-work answer and no LAB-28 followup). Incoming work/response traffic
-is retained and the connection closes; it never starts an ACK loop. The runtime
-only accepts an analyzer-initiated TCP server role at this checkpoint.
+The explicit `[law.work]` and shared `[orders]` tables enable LAB-27 by container
+ID or all pending work for this analyzer. Raw QBP is durable before lookup or
+response. One bounded `Store::pending_orders` read API shares the existing cache
+trust rule, including freshness, generation and restore pause. Multi-page reads
+run in one store-owner request; a filtered-empty page with a cursor is not no-work.
+Size/deadline exhaustion is an error. Sample IDs retain their original spelling.
 
-LAB-27 cache lookup/all-pending, shared per-AWOS reservation, LAB-28 issuance,
-ORL item outcomes, cancellation and durable originating-work correlation remain
-for later numbered steps. No new store read API or order workflow is included
-in step 2. Guard evidence is
+Query-triggered followups use the pure LAW builders and the shared per-test item
+reservation path (one AWOS per explicitly requested test). The store supplies
+placer identity and retains its configured namespace; LAW emits EI.1 only.
+Preflight occurs before Sending commits, and the complete multi-order message
+is built before positive output. Partial preparation failure reconciles any
+owned reservations as Uncertain, never a resend or partial positive work list.
+
+Correlated ORL outcomes go through `finish_order_items`; MSA AA alone is not
+acceptance. Replies are matched by AWOS, not array position. Timeouts, disconnects,
+late/invalid ORL and lost store responses preserve uncertainty. A repeated query
+cannot reserve any prior order again. Fresh, authoritative empty produces the
+restricted negative LAB-28 without items; its ORL is retained and correlation is
+audited without an order transition. Unsupported forms use QAK AR; failed/stale/
+untrusted/paused/late lookups use AE. Neither makes a no-work claim.
+
+`tests/law/queries.rs` names the source sections for thirteen program/reference-receiver
+tests. Results-only config without a work layout remains covered by
 `tests/law/results.rs::law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_acceptance`.
-Evidence stays documented.
+Send-ahead and cancellation (step 4), original-work result correlation, independent
+directional links and hardware/Gazelle qualification remain. Evidence is documented.

@@ -247,7 +247,7 @@ restarted by recovery actions. Inspect the log after a forced stop, preserve the
 store and follow the existing recovery/reconciliation procedures. Never replay
 an uncertain machine order merely because a service was restarted.
 
-## LAW results runtime (step 2)
+## LAW results and query runtime (steps 2–3)
 
 `law_manager` now runs a dedicated LAB-29 receiver on an analyzer-initiated TCP
 server link. Its complete MLLP block and configuration provenance are durable
@@ -266,12 +266,34 @@ cannot register revisions or deliver its otherwise-new subset; a later accepted
 retry can still deliver those results. The shared transaction rolls back the
 batch before its failed interpretation is parked. Units and values keep source spelling.
 
-LAB-27 cache answers and LAB-28 execution remain disabled: valid queries get an
-error RSP without followup; work/response traffic is retained and the connection
-closes. No orders are reserved or sent. Other connection roles remain disabled.
+LAB-27 is enabled by the explicit query-work layout in the config crate's
+`examples/law_orders.toml`. It supports exact SampleId/container and analyzer-specific
+all-pending lookup. The latter pages through one new store read using the same
+trust/freshness/restore rule as SampleId lookup. Unsupported forms receive QAK AR;
+unavailable, stale, failed, paused or late answers receive AE, never no-work.
+
+Positive availability owns a built LAB-28 followup before the RSP can be issued.
+Each AWOS is a shared durable per-test item, reserved and preflighted before any
+positive output. ORL bytes are stored before per-AWOS acceptance/rejection reaches
+`finish_order_items`, matched by ID even when reply order differs. Missing replies,
+disconnects and invalid correlation become Uncertain; reservations forbid replay.
+Trusted empty uses the crate's restricted negative followup with no reservation;
+its ORL is correlated and audited without changing an order. Query budgets start
+at the first MLLP byte, including raw storage and reservations. Response timers
+start at followup issuance. Cancellation cleanup retains every submitted key so
+a committed reservation can be recovered even if its caller lost the response.
+
+Unsolicited work, send-ahead, cancellation, other connection roles and independent
+LAW link topology remain disabled/unqualified pending later steps. Results-only
+config still rejects queries without a work layout. No full actor conformance is
+claimed at this checkpoint.
 `tests/law/results.rs` contains nine synthetic program/reference-receiver cases,
 including a durable-commit pause, raw/interpretation storage failures, low disk,
 unsolicited results, complete OG run identities and partial-block expiry.
 `tests/receive.rs::law_tf2b_3_29_manager_selects_dedicated_receiver_without_startup_io`
-checks startup selection/role restriction. Evidence remains documented; work
-correlation, cancellation/restart workflows and Gazelle qualification remain.
+checks startup selection/role restriction. `tests/law/queries.rs` adds thirteen
+program/reference-receiver cases, including paging past a full page for other
+analyzers, blocked cache access, an unreachable receiver, restore pause, late
+queries, item reservation storage failure, ORL outcomes and no replay. Evidence
+remains documented; originating-work result correlation, send-ahead/cancellation,
+restart qualification and Gazelle remain.

@@ -1,4 +1,5 @@
 //! LAB-29 responder (TF-2b 3.29.4/B.7); all protocol views and ACK rules stay in hl7.
+use crate::orders::law::{Connection, Reply, response_metadata};
 use crate::{Error, config::Machine, evidence, invalid};
 use analyte_framing::mllp;
 use analyte_hl7::{AckCode, AckError, Options, Responsibility, law};
@@ -27,11 +28,16 @@ pub(super) async fn session(
     let receive = Duration::from_millis(u64::from(config.dialog.receive_timeout_ms));
     let send = Duration::from_millis(u64::from(config.dialog.send_timeout_ms));
     let mut until = None;
+    let mut orders = Connection::new()?;
     let result = async {
         loop {
             let event = tokio::select! {
                 biased;
                 () = super::stopping(&mut stop) => break,
+                () = async { match orders.due() { Some(until) => tokio::time::sleep_until(until.into()).await, None => std::future::pending().await } } => {
+                    orders.tick(store).await?;
+                    continue;
+                },
                 () = async { match until { Some(until) => tokio::time::sleep_until(until).await, None => std::future::pending().await } } => {
                     return Err(invalid("LAW receive deadline expired"));
                 },
@@ -49,23 +55,31 @@ pub(super) async fn session(
                         let end = *until.get_or_insert(now.checked_add(receive).ok_or("LAW receive deadline overflow")?);
                         if let Some(event) = decoder.push(byte) {
                             let processing_stop = stop.clone();
+                            let started = end.into_std().checked_sub(receive).ok_or("LAW first-byte clock underflow")?;
                             let response = tokio::select! {
                                 biased;
                                 () = super::stopping(&mut stop) => return Ok(()),
-                                result = tokio::time::timeout_at(end, process(store, machine, event, options, processing_stop)) => result.map_err(|_| invalid("LAW processing deadline expired; no acceptance promised"))??,
+                                result = tokio::time::timeout_at(end, process(store, machine, event, options, processing_stop, &mut orders, started)) => result.map_err(|_| invalid("LAW processing deadline expired; no acceptance promised"))??,
                             };
-                            if let Some(message) = response {
+                            let (response, has_followup) = match response {
+                                None => (Vec::new(), false),
+                                Some(Reply::Response(message)) => (vec![message], false),
+                                Some(Reply::Followup { response, work }) => (vec![response, work], true),
+                            };
+                            let write_end = if has_followup { orders.due().map(tokio::time::Instant::from_std).map_or(end, |due| due.min(end)) } else { end };
+                            for message in response {
                                 let bytes = mllp::encode(message.raw(), limit)?;
                                 let send_until = tokio::time::Instant::now().checked_add(send).ok_or("LAW send deadline overflow")?;
                                 tokio::select! {
                                     biased;
                                     () = super::stopping(&mut stop) => return Ok(()),
-                                    result = tokio::time::timeout_at(end.min(send_until), async {
+                                    result = tokio::time::timeout_at(write_end.min(send_until), async {
                                         for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) { conn.write(chunk.to_vec()).await?; }
                                         Ok::<_, Error>(())
                                     }) => result.map_err(|_| invalid("LAW response send deadline expired"))??,
                                 }
                             }
+                            if has_followup { orders.issued(Duration::from_millis(u64::from(config.law.as_ref().ok_or("LAW options absent")?.response_ms)))?; }
                             until = if decoder.pending().is_empty() { None } else { Some(end) };
                         }
                     }
@@ -78,6 +92,16 @@ pub(super) async fn session(
         }
         Ok(())
     }.await;
+    orders
+        .close(
+            store,
+            if result.is_err() {
+                "LAW-session-error"
+            } else {
+                "LAW-disconnect"
+            },
+        )
+        .await?;
     if let Some(mllp::Event::Rejected { raw, error }) = decoder.finish() {
         evidence::park_bytes(store, machine, raw, &error.to_string()).await?;
     }
@@ -90,7 +114,9 @@ async fn process(
     event: mllp::Event,
     options: Options,
     mut _stop: watch::Receiver<bool>,
-) -> Result<Option<analyte_hl7::Message>, Error> {
+    orders: &mut Connection,
+    started: std::time::Instant,
+) -> Result<Option<Reply>, Error> {
     let raw = match event {
         mllp::Event::Block(raw) => raw,
         mllp::Event::Rejected { raw, error } => {
@@ -124,36 +150,27 @@ async fn process(
         .split(|b| Some(b) == message.delimiters().bytes().get(1))
         .take(4)
         .collect();
+    if kind == [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
+        return orders
+            .answer(store, machine, &message, id, started, options)
+            .await
+            .map(Some);
+    }
+    if kind == [b"ORL".as_slice(), b"O34", b"ORL_O42"] {
+        orders.orl(store, machine, &message, id).await?;
+        return Ok(None);
+    }
     if kind != [b"OUL".as_slice(), b"R22", b"OUL_R22"] {
         // Responses must never start an acknowledgment loop. No LAB-28 is issued here.
         evidence::failed_reading(
             store,
             machine,
             id,
-            "LAW transaction disabled: only LAB-29 results are enabled",
+            "LAW transaction disabled: unsolicited work/response traffic is not enabled",
         )
         .await?;
-        if kind == [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
-            let query = law::receive_query(&message)?;
-            return response_metadata(|response| {
-                Ok(Some(
-                    law::query_response(
-                        query,
-                        law::CacheAnswer::Unavailable(AckError::unlocated(
-                            b"207",
-                            b"LAW-LAB27-disabled",
-                        )),
-                        response,
-                        Responsibility::Stored,
-                        options,
-                    )?
-                    .message()
-                    .clone(),
-                ))
-            });
-        }
         return Err(invalid(
-            "LAW transaction disabled: only LAB-29 results are enabled",
+            "LAW transaction disabled: unsolicited work/response traffic is not enabled",
         ));
     }
     let (code, responsibility, location) = match law::receive_results(&message) {
@@ -205,14 +222,17 @@ async fn process(
         }
     };
     response_metadata(|response| {
-        Ok(law::result_acknowledgment(
-            &message,
-            response,
-            code,
-            responsibility,
-            location,
-            options,
-        )?)
+        Ok(
+            law::result_acknowledgment(
+                &message,
+                response,
+                code,
+                responsibility,
+                location,
+                options,
+            )?
+            .map(Reply::Response),
+        )
     })
 }
 
@@ -229,17 +249,4 @@ fn error<'a>(
         code,
         application_code,
     }
-}
-
-fn response_metadata<T>(
-    build: impl FnOnce(analyte_hl7::Response<'_>) -> Result<T, Error>,
-) -> Result<T, Error> {
-    let id = uuid::Uuid::now_v7().simple().to_string();
-    let timestamp = jiff::Timestamp::now()
-        .strftime("%Y%m%d%H%M%S%z")
-        .to_string();
-    build(analyte_hl7::Response {
-        control_id: law::control_id(id.as_bytes())?,
-        timestamp: timestamp.as_bytes(),
-    })
 }

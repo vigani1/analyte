@@ -52,6 +52,9 @@ impl LawPeer {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Law {
+    /// Explicit query-triggered work layout; absence leaves query execution disabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work: Option<LawWork>,
     /// Explicit supported lookup scopes; no positional or parent-ID inference.
     pub query_forms: Vec<LawQueryForm>,
     /// Peer-declared enhanced-content support, consumed by existing LAW builders.
@@ -60,6 +63,82 @@ pub struct Law {
     pub query_deadline_ms: u32,
     /// LAB-28 application response deadline after issuance.
     pub response_ms: u32,
+}
+
+/// Explicit header and sample/specimen bindings for query-triggered LAB-28.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LawWork {
+    /// Sending application.
+    pub application: analyte_model::Identifier,
+    /// Sending facility.
+    pub facility: analyte_model::Identifier,
+    /// Receiving application.
+    pub peer_application: analyte_model::Identifier,
+    /// Receiving facility.
+    pub peer_facility: analyte_model::Identifier,
+    /// Explicit assigning authority when the app `SampleId` is used as a specimen ID.
+    pub specimen_namespace: analyte_model::Identifier,
+    /// Authority binding for qualified incoming container IDs. Outbound SAC uses EI.1 only.
+    pub container_namespace: analyte_model::Identifier,
+    /// Explicit patient-specimen role; QC authorization is not inferred.
+    pub specimen_role: analyte_model::Identifier,
+    /// Coding system for the mapped SPM-4 specimen type.
+    pub specimen_system: analyte_model::Identifier,
+}
+
+fn plain(value: &str, max: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max
+        && value.is_ascii()
+        && !value
+            .bytes()
+            .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
+}
+
+pub(crate) fn validate_orders(
+    machine: &Machine,
+    path: &str,
+    orders: &crate::Orders,
+) -> Result<(), Error> {
+    let Some(work) = machine.law.as_ref().and_then(|law| law.work.as_ref()) else {
+        return Err(invalid(
+            path,
+            "law.work",
+            "LAW outbound mappings require an explicit query work layout",
+        ));
+    };
+    if orders.send_ahead
+        || orders.query.is_some()
+        || orders.hl7.is_some()
+        || orders.hl7_send.is_some()
+        || orders.astm.is_some()
+        || orders.clone.is_some()
+        || orders.patient_namespace.is_some()
+        || orders
+            .placer_namespace
+            .as_ref()
+            .is_none_or(|namespace| !plain(namespace.as_str(), 18))
+        || orders.specimen_types.as_ref().is_none_or(Vec::is_empty)
+        || orders.tests.iter().any(|test| {
+            test.machine_components.len() != 3
+                || test.machine_components.iter().enumerate().any(|(i, part)| {
+                    if i == 1 {
+                        !part.is_empty() && !plain(part, 199)
+                    } else {
+                        !plain(part, if i == 0 { 20 } else { 12 })
+                    }
+                })
+        })
+        || !plain(work.specimen_system.as_str(), 12)
+    {
+        return Err(invalid(
+            path,
+            "orders",
+            "LAW queries require per-test code/text/system, placer namespace and specimen mappings; send-ahead, legacy and patient layouts are disabled",
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn validate(machine: &Machine, path: &str) -> Result<(), Error> {
@@ -73,6 +152,26 @@ pub(crate) fn validate(machine: &Machine, path: &str) -> Result<(), Error> {
     let Some(law) = &machine.law else {
         return Ok(());
     };
+    if let Some(work) = &law.work
+        && (machine.orders.is_none()
+            || work.specimen_role.as_str() != "P"
+            || [
+                &work.application,
+                &work.facility,
+                &work.peer_application,
+                &work.peer_facility,
+                &work.specimen_namespace,
+                &work.container_namespace,
+            ]
+            .into_iter()
+            .any(|value| !plain(value.as_str(), 20)))
+    {
+        return Err(invalid(
+            path,
+            "law.work",
+            "provide explicit bounded headers, specimen/container namespaces, P role and outbound mappings",
+        ));
+    }
     if machine.syntax.edition != Some(Edition::V251)
         || machine.syntax.encoding != Encoding::Utf8
         || machine.syntax.terminator != Some(Terminator::Cr)

@@ -5,6 +5,8 @@ mod autolyser_cases;
 mod hl7_order_cases;
 #[path = "orders/hl7_send.rs"]
 mod hl7_send_cases;
+#[path = "law/queries.rs"]
+mod law_queries;
 #[path = "law/results.rs"]
 mod law_results;
 #[path = "orders/cases.rs"]

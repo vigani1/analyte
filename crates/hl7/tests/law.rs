@@ -126,6 +126,17 @@ fn law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup()
             QueryFollowup::None,
             b"AE".as_slice(),
         ),
+        (
+            CacheAnswer::Rejected(AckError {
+                segment: b"QPD",
+                occurrence: 1,
+                field: 3,
+                code: b"207",
+                application_code: b"unsupported-query",
+            }),
+            QueryFollowup::None,
+            b"AR".as_slice(),
+        ),
     ] {
         let result = query_response(
             request,
@@ -335,6 +346,7 @@ fn law_tf2b_3_28_4_negative_lab28_for_genuine_no_work() -> Result<(), Box<dyn st
             "QPD|WOS^Work Order Step^IHELAW|tag|000tube",
             b"000tube".as_slice(),
         ),
+        ("QPD|WOS^Work Order Step^IHELAW|tag|000tube^LAB", b"000tube"),
         ("QPD|WOS_ALL^Work Order Step All^IHELAW|tag", b"\"\""),
     ] {
         let request = query(body)?;
@@ -363,6 +375,56 @@ fn law_tf2b_3_28_4_negative_lab28_for_genuine_no_work() -> Result<(), Box<dyn st
             Some(b"20260101120000".as_slice())
         );
     }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c4_work_and_negative_builders_keep_fifty_character_control_ids()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{
+        Field, Response,
+        law::{Awos, Capabilities, WorkAction},
+    };
+    let id = [b'a'; 50];
+    let response = Response {
+        control_id: analyte_hl7::law::control_id(&id)?,
+        timestamp: b"20260101120000+0000",
+    };
+    let awos = Awos::new(
+        b"awos-1",
+        b"sample&LAB",
+        b"SER^Serum^HL70487",
+        b"P",
+        b"tube",
+        b"test^Test^99LAB",
+        WorkAction::New,
+    )?;
+    let positive = analyte_hl7::law::work_order(
+        &[awos],
+        None,
+        address(),
+        response,
+        Capabilities::default(),
+        utf8_options(),
+    )?;
+    let request = query("QPD|WOS^Work Order Step^IHELAW|tag|tube^LAB")?;
+    let negative = analyte_hl7::law::negative_work(
+        Query::new(&request)?,
+        address(),
+        response,
+        utf8_options(),
+    )?;
+    for message in [positive, negative] {
+        assert_eq!(
+            message
+                .segments()
+                .next()
+                .and_then(|s| s.field(10))
+                .map(Field::raw),
+            Some(id.as_slice())
+        );
+    }
+    assert!(analyte_hl7::law::control_id(&[b'a'; 51]).is_err());
     Ok(())
 }
 

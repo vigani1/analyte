@@ -195,3 +195,20 @@ resending new work, independently of subsequent app versions.
 Aggregate source summaries list item states and bounded diagnostic names; full
 machine reasons stay unchanged on every item. A long collection of reasons
 cannot overflow the aggregate text field and roll back otherwise valid evidence.
+
+## Trusted analyzer-pending lookup (LAW step 3)
+
+`pending_orders(destination, machine, after, now, freshness)` is the one new read
+API for analyzer-specific all-pending queries. It shares the SampleId lookup's
+restore, completeness, trust and clock-age rule, and the existing reservation
+path uses that same age predicate. It scans bounded ordered pages, filtering
+expired/tombstoned, non-requested, wrong-target and previously reserved work.
+One extra bounded sentinel row detects continuation. A filtered-empty page may
+still have an `after` cursor; only an exhausted trusted scan establishes empty.
+Read all pages in one store-owner request for a coherent answer and cap the
+aggregate work/deadline in the caller. A reservation remains mandatory before I/O.
+
+Tests `law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay`
+and `law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust`
+cover paging, targeting, prior reservations, expiry/tombstones, future/stale clocks,
+reset generations and restore pause. No schema or contract change is involved.

@@ -146,6 +146,19 @@ pub enum Lookup {
     NotTrusted,
 }
 
+/// One trusted bounded page of pending work, or no authoritative answer.
+pub enum PendingOrders {
+    /// Restore, incomplete/untrusted cache, staleness or a future clock prevents lookup.
+    NotTrusted,
+    /// At most `Limits::page_rows` current, requested, unreserved orders for this analyzer.
+    Page {
+        /// Work addressed to this analyzer, or unrestricted work.
+        orders: Vec<CachedOrder>,
+        /// Continue after the last scanned ID; an empty filtered page may still have a next page.
+        after: Option<Identifier>,
+    },
+}
+
 /// Disjoint endpoint categories; their ordering domains never overlap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeliveryKind {

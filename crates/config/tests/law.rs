@@ -130,6 +130,55 @@ fn law_tf2b_3_29_4_config_allows_corrections_only_by_explicit_c() {
 }
 
 #[test]
+fn law_tf2b_3_27_query_work_requires_explicit_bindings_and_rejects_send_ahead() -> Result<(), Error>
+{
+    let layout = include_str!("../examples/law_orders.toml");
+    let text = format!("{LAW}\n{layout}");
+    let valid = load(&text)?;
+    assert!(
+        valid
+            .effective()
+            .machine()
+            .law
+            .as_ref()
+            .and_then(|law| law.work.as_ref())
+            .is_some()
+    );
+    for bad in [
+        text.replace("send_ahead = false", "send_ahead = true"),
+        text.replace("placer_namespace = \"LAB\"", ""),
+        text.replace("specimen_role = \"P\"", "specimen_role = \"Q\""),
+        text.replace(
+            "container_namespace = \"LAB\"",
+            "container_namespace = \"L^AB\"",
+        ),
+        text.replace(
+            "[\"SYN\",\"Synthetic\",\"99LAB\"]",
+            "[\"SYN|bad\",\"Synthetic\",\"99LAB\"]",
+        ),
+        text.replace(
+            "specimen_types = [{app={namespace=\"types\",value=\"SERUM\"},machine=\"SER\"}]",
+            "specimen_types = []",
+        ),
+    ] {
+        assert!(load(&bad).is_err());
+    }
+    assert!(
+        load(&format!(
+            "{LAW}\n{}",
+            layout
+                .split("[orders]")
+                .next()
+                .ok_or(Error::IncompatibleStack {
+                    path: "fixture".into()
+                })?
+        ))
+        .is_err()
+    );
+    Ok(())
+}
+
+#[test]
 fn law_tf2b_3_29_4_b3_config_cannot_replace_awos_or_truncate_og_identity() {
     for bad in [
         LAW.replace(
