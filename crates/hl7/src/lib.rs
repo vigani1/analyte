@@ -2,12 +2,14 @@
 #![forbid(unsafe_code)]
 
 mod ack;
-mod encoder;
 mod datatypes;
+mod encoder;
 mod syntax;
+mod version;
 mod views;
 pub use ack::*;
 pub use syntax::*;
+pub use version::Version;
 pub use views::*;
 
 /// Pure IHE LAW query views; see module documentation for current scope.

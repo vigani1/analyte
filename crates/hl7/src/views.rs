@@ -1,4 +1,4 @@
-use crate::{Error, Field, Message, Segment};
+use crate::{Error, Field, Message, Segment, Version};
 
 /// A nonempty bounded message identity; preserves spelling without numeric conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,14 +36,6 @@ impl<'a> ControlId<'a> {
     }
 }
 
-/// Edition selected exclusively from MSH-12.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Version {
-    /// HL7 2.3.1.
-    V231,
-    /// HL7 2.5.1.
-    V251,
-}
 /// Conditional acknowledgment request from HL7 table 0155.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Condition {
@@ -186,16 +178,11 @@ impl<'a> Msh<'a> {
                 field: 11,
             });
         }
-        let version = match first_component(required(segment, 12)?) {
-            b"2.3.1" => Version::V231,
-            b"2.5.1" => Version::V251,
-            _ => {
-                return Err(Error::Control {
-                    segment: "MSH",
-                    field: 12,
-                });
-            }
-        };
+        let version =
+            Version::parse(first_component(required(segment, 12)?)).ok_or(Error::Control {
+                segment: "MSH",
+                field: 12,
+            })?;
         let message_type = required(segment, 9)?;
         let type_parts: Vec<_> = message_type
             .raw()
@@ -240,12 +227,15 @@ impl<'a> Msh<'a> {
                 | b"VXR"
                 | b"VXX"
         );
-        let omitted_trigger = version == Version::V231 && response;
-        if (version == Version::V251 && type_parts.len() != 3)
+        let omitted_trigger = version.rules().optional_response_trigger && response;
+        if (version.rules().message_lengths.is_some() && type_parts.len() != 3)
             || type_parts.len() > 3
             || (type_parts.len() < 2 && !omitted_trigger)
             || type_parts.iter().enumerate().any(|(index, part)| {
-                (version == Version::V251 && part.len() > if index == 2 { 7 } else { 3 })
+                (version
+                    .rules()
+                    .message_lengths
+                    .is_some_and(|lengths| part.len() > lengths.get(index).copied().unwrap_or(0)))
                     || (part.is_empty() && !(index == 1 && omitted_trigger))
                     || !part.iter().all(|b| b.is_ascii_alphanumeric() || *b == b'_')
             })
@@ -258,7 +248,9 @@ impl<'a> Msh<'a> {
         // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
         // 2.3.1 retains optional usage. Validate a supplied TS in either edition.
         let timestamp = segment.field(7);
-        if version == Version::V251 || timestamp.is_some_and(|field| !field.raw().is_empty()) {
+        if version.rules().required_timestamp
+            || timestamp.is_some_and(|field| !field.raw().is_empty())
+        {
             let field = required(segment, 7)?;
             let mut repetitions = field.repetitions();
             let valid = repetitions.next().is_some_and(|value| {

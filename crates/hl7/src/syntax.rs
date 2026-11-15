@@ -296,7 +296,7 @@ impl Message {
             .split(|b| *b == delimiters.component)
             .next()
             .unwrap_or_default();
-        if !(matches!(version_id, b"2.3.1" | b"2.5.1") || (law && version_id.starts_with(b"2.5"))) {
+        if crate::Version::parse_wire(version_id, law).is_none() {
             return Err(Error::Control {
                 segment: "MSH",
                 field: 12,
@@ -305,7 +305,10 @@ impl Message {
         let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
             b"" | b"ASCII" => Charset::Ascii,
             b"8859/1" => Charset::Latin1,
-            b"UNICODE UTF-8" if version_id != b"2.3.1" || options.allow_utf8_in_v231 => {
+            b"UNICODE UTF-8"
+                if crate::Version::parse_wire(version_id, law) != Some(crate::Version::V231)
+                    || options.allow_utf8_in_v231 =>
+            {
                 Charset::Utf8
             }
             _ => return Err(Error::UnsupportedCharset),
