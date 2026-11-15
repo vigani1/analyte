@@ -18,6 +18,7 @@ pub struct Machine {
 
 /// Validated program settings. Paths are resolved relative to the program file.
 pub struct Program {
+    pub(crate) loopback_destinations: std::collections::BTreeMap<String, String>,
     pub(crate) signing_rotation: std::collections::BTreeMap<String, Vec<analyte_model::Identifier>>,
     /// Protected directory containing the database and journals.
     pub(crate) data_directory: PathBuf,
@@ -162,6 +163,7 @@ impl Program {
             }
         }
         Ok(Self {
+            loopback_destinations: std::collections::BTreeMap::new(),
             signing_rotation: file.signing_rotation,
             data_directory: base.join(file.data_directory),
             store_limits: analyte_store::Limits {
@@ -177,6 +179,26 @@ impl Program {
 }
 
 impl Program {
+    /// Overrides a known destination for synthetic loopback HTTP tests only.
+    /// Production `serve` and `run` reject programs containing these overrides.
+    /// # Errors
+    /// Rejects unknown destinations; the test service validates literal loopback URLs.
+    pub fn set_loopback_destination_for_test(
+        &mut self,
+        name: &str,
+        url: String,
+    ) -> Result<(), Error> {
+        if !self
+            .machines
+            .iter()
+            .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
+        {
+            return Err(invalid("unknown test destination"));
+        }
+        self.loopback_destinations.insert(name.into(), url);
+        Ok(())
+    }
+
     /// Borrows the protected directory without permitting mutation of validated settings.
     #[must_use]
     pub fn data_directory(&self) -> &Path {

@@ -136,6 +136,7 @@ pub(super) async fn session(
     store: &Handle,
     root: PathBuf,
     mut stop: watch::Receiver<bool>,
+    mut closing: super::Closing,
 ) -> Result<(), Error> {
     let (owner, mut files) = Owner::start(
         PathBuf::from(&machine.snapshot.effective().site().endpoint),
@@ -159,6 +160,9 @@ pub(super) async fn session(
         Ok(())
     }
     .await;
+    if *stop.borrow() {
+        closing.after_commits().await?;
+    }
     owner.close().await?;
     result
 }

@@ -98,7 +98,7 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(service::serve(
+    let service = tokio::spawn(serve(
         Program::load(&path)?,
         Box::new(Space(u64::MAX)),
         async {
@@ -161,7 +161,7 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(service::serve(
+    let service = tokio::spawn(serve(
         Program::load(&path)?,
         Box::new(Space(u64::MAX)),
         async {
@@ -228,14 +228,10 @@ async fn adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded() -> Result<
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(service::serve(
-        Program::load(&path)?,
-        Box::new(Space(0)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let service = tokio::spawn(serve(Program::load(&path)?, Box::new(Space(0)), async {
+        stop.await?;
+        Ok(())
+    }));
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
     assert_eq!(
@@ -277,14 +273,10 @@ async fn adr0003_hl7_full_disk_never_returns_positive_ack() -> Result<(), Error>
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(service::serve(
-        Program::load(&path)?,
-        Box::new(Space(0)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let service = tokio::spawn(serve(Program::load(&path)?, Box::new(Space(0)), async {
+        stop.await?;
+        Ok(())
+    }));
     let mut peer = connect(&program).await?;
     peer.write_all(&analyte_framing::mllp::encode(
         ORU,
@@ -316,7 +308,7 @@ async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<()
     std::fs::write(&path, file)?;
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(service::serve(
+    let service = tokio::spawn(serve(
         Program::load(&path)?,
         Box::new(Space(u64::MAX)),
         async {
@@ -470,7 +462,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
         incoming.join("result.hl7"),
     )?;
     let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(service::serve(
+    let service = tokio::spawn(serve(
         Program::load(&path)?,
         Box::new(Space(u64::MAX)),
         async {
@@ -514,7 +506,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(service::serve(
+    let service = tokio::spawn(serve(
         Program::load(&path)?,
         Box::new(Space(u64::MAX)),
         async {
@@ -583,4 +575,22 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
     tokio::time::timeout(Duration::from_secs(3), service).await???;
     Ok(())
+}
+
+async fn serve(
+    program: Program,
+    space: Box<dyn FreeSpace>,
+    stop: impl Future<Output = Result<(), Error>>,
+) -> Result<(), Error> {
+    let secrets = analyte::secrets::EnvironmentSecrets::load_with(&program, |name| {
+        Some(
+            if name.ends_with("API") {
+                "synthetic-api"
+            } else {
+                "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+            }
+            .into(),
+        )
+    })?;
+    service::serve_loopback_test(program, space, stop, secrets).await
 }

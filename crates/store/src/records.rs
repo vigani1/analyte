@@ -65,6 +65,9 @@ pub struct OrderingKey {
 /// Each attempt records its recovery decision and reason.
 #[derive(Serialize)]
 pub enum Attempt {
+    /// Outcome unknown because the app attempt was interrupted; retry is idempotent.
+    #[serde(rename = "uncertain (interrupted)")]
+    Interrupted,
     /// App durably accepted or already received the delivery.
     Done,
     /// Uncertain or transient outcome, retry with the same bytes after this Unix second.

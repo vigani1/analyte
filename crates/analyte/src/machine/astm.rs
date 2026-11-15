@@ -146,6 +146,5 @@ pub(super) async fn session(
         )
         .await?;
     }
-    conn.cancellation().cancel();
     result
 }

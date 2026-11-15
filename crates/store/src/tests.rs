@@ -1071,3 +1071,69 @@ fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing(
     );
     Ok(())
 }
+
+#[test]
+fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("recover.db");
+    let mut store = open(&path)?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    store.interpret(metadata.id, &interpretation()?, &[])?;
+    let mut interrupted = None;
+    for state in ["in_flight", "parked", "conflict", "paused", "done"] {
+        let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
+        seed_delivery(&store, metadata.id, id, state)?;
+        store.db.execute(
+            "UPDATE outbox SET state=?2 WHERE id=?1",
+            params![key(&id)?, state],
+        )?;
+        if state == "in_flight" {
+            interrupted = Some(id);
+        }
+    }
+    drop(store);
+    let mut store = open(&path)?;
+    let audit = Audit {
+        actor: Identifier::new("startup")?,
+        action: Identifier::new("recover")?,
+        targets: vec![],
+        time: 42,
+        reason: Reason::new("uncertain (interrupted); ADR 0008 idempotent receiver")?,
+    };
+    assert_eq!(store.recover_in_flight(42, &audit)?, 1);
+    assert_eq!(store.recover_in_flight(42, &audit)?, 0);
+    let id = interrupted.ok_or("missing interrupted ID")?;
+    let attempts: (String, i64) = store.db.query_row(
+        "SELECT outcome,time FROM attempts WHERE delivery=?1",
+        [key(&id)?],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    assert_eq!(attempts, (key(&Attempt::Interrupted)?, 42));
+    let audits = store.audits(0)?;
+    let (_, entry) = audits.first().ok_or("missing audit")?;
+    assert_eq!(
+        entry.targets,
+        vec![Identifier::new(&uuid::Uuid::from(id).to_string())?]
+    );
+    assert!(entry.reason.as_str().contains("ADR 0008"));
+    for state in ["parked", "conflict", "paused", "done"] {
+        let count: i64 =
+            store
+                .db
+                .query_row("SELECT count(*) FROM outbox WHERE state=?1", [state], |r| {
+                    r.get(0)
+                })?;
+        assert_eq!(count, 1);
+    }
+    // A paused destination blocks even a recovered item until operator repair.
+    assert!(store.claim(42)?.is_none());
+    store
+        .db
+        .execute("UPDATE outbox SET state='done' WHERE state='paused'", [])?;
+    let claim = store.claim(42)?.ok_or("not recovered")?;
+    assert_eq!(claim.id, id);
+    assert_eq!(claim.payload, [0, 17, 34]);
+    assert_eq!(claim.earlier_attempts, 1);
+    Ok(())
+}

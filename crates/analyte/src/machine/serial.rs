@@ -45,6 +45,7 @@ pub(super) async fn run(
     store: &Handle,
     limits: Limits,
     stop: watch::Receiver<bool>,
+    mut closing: super::Closing,
 ) -> Result<(), Error> {
     let serial = machine
         .snapshot
@@ -95,6 +96,9 @@ pub(super) async fn run(
             break result;
         }
     };
+    if *stop.borrow() {
+        closing.after_commits().await?;
+    }
     drop(conn);
     owner.close().await?;
     result

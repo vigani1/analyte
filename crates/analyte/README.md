@@ -50,14 +50,23 @@ produces a negative protocol response or closes the session, with a nonclinical
 structured diagnostic. Failed parses and all mapping findings stay protected.
 
 Store revision assignment follows ADR 0003, including delayed retransmissions,
-corrections without originals and conflicting identities. The receive-only
-service retains interpretations without enqueueing deliveries. The delivery
-worker and order poller startup seam is in `service::serve`; this release issues
-no machine orders and never answers a query with invented empty orders.
+corrections without originals and conflicting identities. New and corrected
+eligible production results each enqueue one immutable delivery in the same
+transaction as their interpretation. Retransmissions, conflicts, parked results,
+training and debug do not enqueue. One supervised worker serves all destinations,
+and one poller per destination maintains the order cache. Startup automatically
+recovers interrupted app attempts with an audit per delivery under ADR 0008.
+No machine orders are issued; queries never receive invented empty orders.
 
 Ctrl-C, termination on Unix and Ctrl-Break on Windows stop admission. Owners
-finish submitted commits, close transports and join, then the store drains and
-closes. Machine and store shutdown budgets are 15 and 5 seconds respectively.
+finish submitted commits (15 seconds), then the delivery worker stops claiming
+and drains its current attempt (5 seconds, retaining the HTTP deadline). Pollers
+stop, transports close and join (5 seconds), and the store drains and closes
+(5 seconds). Interrupted claims retry after restart with the same ID and bytes.
+Delivery/store failures stop the service visibly. Individual machine failures
+remain isolated. HTTP requests have a 3-second deadline, local delivery storage
+operations 2 seconds, idle claims back off 100 ms, retries range from 1?60 seconds,
+and order polls run every 5 seconds with a 30-second freshness policy.
 As with the store's existing worker, an uninterruptible operating-system flush
 cannot safely be forcibly cancelled; owner destructors join rather than detach.
 
@@ -67,8 +76,8 @@ output. Paths are passed as data, never interpolated into executable scripts.
 Missing utilities, permission errors and invalid output refuse admission.
 Installing a faster native probe later does not change the storage boundary.
 
-Delivery, polling, service installers, the admin webpage, retention and real
-machine validation are outside this PR. Serial hardware and Linux runtime
+Service installers, the admin webpage, retention and real machine validation
+are outside this PR. Serial hardware and Linux runtime
 verification remain CI/lab work; localhost integration tests run on Windows here.
 
 Credentials are loaded by the host at startup from `ANALYTE_SECRET_<NAME>`:

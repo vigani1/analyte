@@ -29,10 +29,14 @@ result or a rejected/conflicting delivery creates operator evidence. Outbox IDs,
 payloads, digests, destinations and keys cannot change. Claiming is serialized
 through the writer: every unresolved earlier delivery blocks its own destination
 and observation key, while unrelated keys can proceed. Setup pause blocks the
-whole destination. An in-flight item after a crash is uncertain: an operator
-must reconcile it and explicitly release the existing delivery with an audit
-entry. Release does not invent new bytes or a new ID. This store never sends
-orders to a machine.
+whole destination. At startup, before starting the sole worker, the host calls
+`recover_in_flight(now, audit)` until it returns zero. Each bounded page commits
+atomically: only interrupted `in_flight` app deliveries receive an Interrupted
+attempt (uncertain outcome), a separate audit naming the delivery and ADR 0008
+idempotent receiver reason, and immediate pending eligibility. IDs and exact bytes
+never change. A startup failure must prevent worker startup; retrying recovery is
+safe. Parked, conflict and paused entries require audited operator release.
+This store never sends orders to a machine.
 
 Order pages and cursors commit together. A 410 reset increments a snapshot
 generation, so an order absent from a replacement snapshot cannot become active
