@@ -51,7 +51,8 @@ impl Failure {
             Self::QueryRejected { location } => return Some(*location),
         };
         match error {
-            Error::Subcomponent { segment, field, .. }
+            Error::DilutionDefinition { segment, field, .. }
+            | Error::Subcomponent { segment, field, .. }
             | Error::Authority { segment, field, .. }
             | Error::Component { segment, field, .. }
             | Error::Content { segment, field }
@@ -102,7 +103,8 @@ fn triggered(error: Error) -> Failure {
             segment: "MSH",
             field: 9 | 12 | 15 | 16 | 18 | 21,
         }) => Failure::ContentReject(error),
-        Error::Subcomponent { .. }
+        Error::DilutionDefinition { .. }
+        | Error::Subcomponent { .. }
         | Error::Authority { .. }
         | Error::Component { .. }
         | Error::Content { .. }

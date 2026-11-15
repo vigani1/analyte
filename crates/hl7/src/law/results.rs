@@ -257,10 +257,17 @@ pub struct Observation<'a> {
     specimen: Segment<'a>,
     container: Segment<'a>,
     status: ResultStatus,
+    detail: Option<super::TestDetail<'a>>,
     values: Vec<Value<'a>>,
 }
 
 impl<'a> Observation<'a> {
+    /// Returns validated TCD data with original dilution spelling and adjustment knowledge.
+    #[must_use]
+    pub fn test_detail(&self) -> Option<super::TestDetail<'a>> {
+        self.detail
+    }
+
     /// Returns the source AWOS, or none for an analyzer-created unsolicited order.
     #[must_use]
     pub fn awos(&self) -> Option<Identity<'a>> {
@@ -453,16 +460,14 @@ impl<'a> Results<'a> {
                     parent = Some(Parent::Order(ordinal));
                 }
                 b"ORC" => {
-                    if order.is_none() || raw(segment, 1) != b"SC" || order_status.is_some() {
+                    if order.is_none()
+                        || super::OrderControl::parse(raw(segment, 1))?
+                            != super::OrderControl::StatusChange
+                        || order_status.is_some()
+                    {
                         return Err(content("ORC", 1));
                     }
-                    if !matches!(raw(segment, 5), b"SC" | b"IP" | b"CM" | b"CA")
-                        || !raw(segment, 2).is_empty()
-                        || !raw(segment, 9).is_empty()
-                    {
-                        return Err(content("ORC", 5));
-                    }
-                    order_status = Some(raw(segment, 5));
+                    order_status = Some(super::OrderStatus::parse(raw(segment, 5))?);
                     attached.push(Attached {
                         parent: parent.ok_or(content("ORC", 0))?,
                         segment,
@@ -489,8 +494,10 @@ impl<'a> Results<'a> {
                         parent = Some(Parent::SpecimenObservation(ordinal));
                         continue;
                     }
-                    if !matches!(order_status, Some(b"IP" | b"CM")) {
-                        return Err(content("OBX", 0));
+                    match order_status {
+                        Some(super::OrderStatus::InProgress | super::OrderStatus::Complete) => {}
+                        Some(super::OrderStatus::Scheduled | super::OrderStatus::Cancelled)
+                        | None => return Err(content("OBX", 0)),
                     }
                     for field in [3, 4, 11] {
                         if raw(segment, field).is_empty() {
@@ -508,6 +515,7 @@ impl<'a> Results<'a> {
                         specimen: specimen.ok_or(content("SPM", 0))?,
                         container: container.ok_or(content("SAC", 0))?,
                         status: status(raw(segment, 11))?,
+                        detail: None,
                         values: values(segment)?,
                     };
                     observations.push(observation);
@@ -529,12 +537,18 @@ impl<'a> Results<'a> {
                         return Err(content("TCD", 0));
                     }
                     let observation = observations.last().ok_or(content("TCD", 0))?;
-                    if raw(segment, 1) != observation.code() {
+                    if !super::order::same_test(raw(segment, 1), observation.code()) {
                         return Err(Error::Inconsistent {
                             segment: "TCD",
                             field: 1,
                         });
                     }
+                    observations.last_mut().ok_or(content("TCD", 0))?.detail =
+                        Some(super::TestDetail::from_validated(
+                            segment,
+                            profile,
+                            super::ControlDirection::Receive,
+                        ));
                     attached.push(Attached {
                         parent: parent.ok_or(content("TCD", 0))?,
                         segment,
@@ -663,8 +677,8 @@ impl<'a> Results<'a> {
     }
 }
 
-fn check_complete(order_status: Option<&[u8]>, count: usize) -> Result<(), Error> {
-    if order_status == Some(b"CM") && count == 0 {
+fn check_complete(order_status: Option<super::OrderStatus>, count: usize) -> Result<(), Error> {
+    if order_status == Some(super::OrderStatus::Complete) && count == 0 {
         return Err(content("OBX", 0));
     }
     Ok(())

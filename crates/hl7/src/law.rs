@@ -9,6 +9,17 @@ use thiserror::Error;
 /// A LAW validation failure, without payload in its diagnostic.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// The app has not supplied a matching test/type/factor definition.
+    #[error("unresolved dilution definition at {segment}-{field}.{component}")]
+    DilutionDefinition {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field position.
+        field: usize,
+        /// One-based component position.
+        component: usize,
+    },
+
     /// A nested primitive violates its profiled usage, length or datatype.
     #[error("LAW subcomponent rejected at {segment}-{field}.{component}.{subcomponent}")]
     Subcomponent {
@@ -338,6 +349,14 @@ pub use control::{ControlDirection, parse_message, validate_control};
 mod patient;
 
 mod specimen;
+
+mod order;
+
+mod tcd;
+
+pub use order::{OrderControl, OrderStatus};
+
+pub use tcd::{Dilution, DilutionBinding, DilutionMeaning, ResultAdjustment, TestDetail};
 
 mod profile;
 

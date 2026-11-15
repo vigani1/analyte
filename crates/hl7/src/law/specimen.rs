@@ -256,7 +256,7 @@ fn ei(value: &[u8], number: usize, direction: ControlDirection) -> Result<(), Er
 
 // NM is a signed decimal spelling, not a floating point computation. This
 // avoids rounding or overflow while retaining exactly what the app supplied.
-fn numeric(value: &[u8]) -> bool {
+pub(super) fn numeric(value: &[u8]) -> bool {
     let unsigned = if matches!(value.first(), Some(b'+' | b'-')) {
         value.get(1..).unwrap_or_default()
     } else {

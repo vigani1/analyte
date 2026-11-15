@@ -180,17 +180,44 @@ fn identifier(
 ) -> Result<(), Error> {
     primitive(part(value, 1), true, 50, component_error("PID", 3, 1))?;
     let authority = part(value, 4);
-    let mut parts = authority.split(|b| *b == b'&');
+    authority_value(authority, "PID", 3, 4, profile, direction)?;
+    extras(value, b'^', &[1, 4], direction, |position| {
+        component_error("PID", 3, position)
+    })?;
+    if direction == ControlDirection::Send
+        && (characters(authority) > 227 || characters(value) > 278)
+    {
+        return Err(content("PID", 3));
+    }
+    Ok(())
+}
+
+/// Validates a nested HD and checks mixed authority names against host bindings.
+pub(super) fn authority_value(
+    value: &[u8],
+    name: &'static str,
+    number: usize,
+    component: usize,
+    profile: Profile<'_>,
+    direction: ControlDirection,
+) -> Result<(), Error> {
+    let location = |subcomponent| Error::Subcomponent {
+        segment: name,
+        field: number,
+        component,
+        subcomponent,
+    };
+    let mut parts = value.split(|b| *b == b'&');
     let namespace = parts.next().unwrap_or_default();
     let universal = parts.next().unwrap_or_default();
     let kind = parts.next().unwrap_or_default();
-    primitive(namespace, false, 20, sub(4, 1))?;
-    primitive(universal, false, 199, sub(4, 2))?;
+    primitive(namespace, false, 20, location(1))?;
+    primitive(universal, false, 199, location(2))?;
     if universal.is_empty() {
-        excluded(kind, direction, sub(4, 3))?;
+        excluded(kind, direction, location(3))?;
     } else {
-        primitive(kind, true, 6, sub(4, 3))?;
-        universal_type(kind, sub(4, 3))?;
+        primitive(kind, true, 6, location(3))?;
+        universal_type(kind, location(3))?;
     }
     if !namespace.is_empty() && !universal.is_empty() {
         let known = profile
@@ -202,22 +229,17 @@ fn identifier(
         });
         if !known || conflict {
             return Err(Error::Authority {
-                segment: "PID",
-                field: 3,
-                component: 4,
+                segment: name,
+                field: number,
+                component,
             });
         }
     }
-    extras(authority, b'&', &[1, 2, 3], direction, |position| {
-        sub(4, position)
+    extras(value, b'&', &[1, 2, 3], direction, |position| {
+        location(position)
     })?;
-    extras(value, b'^', &[1, 4], direction, |position| {
-        component_error("PID", 3, position)
-    })?;
-    if direction == ControlDirection::Send
-        && (characters(authority) > 227 || characters(value) > 278)
-    {
-        return Err(content("PID", 3));
+    if direction == ControlDirection::Send && characters(value) > 227 {
+        return Err(component_error(name, number, component));
     }
     Ok(())
 }

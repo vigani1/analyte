@@ -857,7 +857,7 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
         ..ContainerDetails::default()
     };
     let order = OrderDetails {
-        group: Some(b"group-1&99LAB"),
+        group: Some(b"group-1"),
         facility: Some(b"Synthetic lab"),
         provider: Some(b"provider-1"),
         result_handling: None,
@@ -917,7 +917,7 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
         (b"SAC", 21, b"2.5"),
         (b"SAC", 24, b"mL^mL^UCUM"),
         (b"SAC", 29, b"^1^:^2"),
-        (b"ORC", 4, b"group-1&99LAB"),
+        (b"ORC", 4, b"group-1"),
         (b"OBR", 16, b"provider-1"),
     ] {
         let segment = message

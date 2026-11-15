@@ -73,7 +73,7 @@ Covered by source-named synthetic tests and a query property test:
 
 Not yet complete:
 
-- Completion of groups 4-5: ORC/OBR/TQ1/TCD and OBX/NTE/INV.
+- Completion of group 5: OBX/NTE/INV; this round adds no group-5 field rules.
 - Every remaining Appendix C field/component and option predicate and its individual test.
   The shared validator is not a complete LAW conformance validator.
 - Complete typed validation of all value composites and enhanced-content
@@ -224,6 +224,81 @@ There are no additional # lengths in C.11/C.12. Positive/negative source tests
 are in `tests/law_specimen.rs`, including all six negative-query scopes and
 actual build/receive cases. These field validators do not establish full LAW
 message-group, lifecycle or simulator conformance.
+
+## LAW order, timing and test-detail fields covered (group 4)
+
+The exact supported positions from Appendix C.6/C.8/C.13/C.14 are:
+
+- **ORC:** 1, 2, 4, 5, 8, 9, 21 and 27. Order control is a closed
+  `OrderControl` enum with transaction/direction restrictions; DC belongs only
+  to the restricted negative query. Analyzer order status is a closed
+  `OrderStatus` enum, with the ORL control/status/request matrix checked
+  exhaustively. The manager excludes 2/5/8/27. Analyzer ORL requires EI.1 in
+  field 2; OUL excludes it. Group EIP.1/EI.1 is available and singleton;
+  analyzer reflex parents use the same supported identity and may repeat.
+  Other EI/EIP components are X. Manager event time is mandatory TS.1 to
+  seconds; available analyzer field 27 permits a date or seconds timestamp.
+  Both exclude timezone and precision. Available ordering facility uses
+  XON.1; its 50# name is retained in full. `Awos::with_transaction_time`
+  supplies an earlier initiating event; otherwise the caller asserts that
+  the response timestamp also identifies the initiating event.
+- **OBR:** 2, 3, 4, 11, 16 and 49. Required AWOS ID and available analyzer
+  filler ID use EI.1 with a hard 50-character limit; explicit null AWOS is
+  accepted only from an analyzer. Mandatory test CE supports required
+  identifier, description and coding system (LN, JC10 or a vendor namespace).
+  Reflex action is analyzer-only, available when selected and restricted to
+  G. Available manager ordering provider supports XCN.1, FN.1 in XCN.2,
+  XCN.3/4/5 and nested HD in XCN.9. Hard ID/authority limits, HD.3's
+  universal-ID predicate and trusted mixed-authority bindings are checked;
+  name primitives marked # are preserved beyond their nominal length.
+  Result handling is absent or RE. C.6.1's manager-column RE for OBR-49
+  conflicts with the subsequent prose's X; this implementation follows the
+  manager column. Analyzer field 49 depends on LAW_RESULT_EXT.
+- **TQ1:** 9 only. LAW_PRIORITY gates the whole segment. Its mandatory CWE
+  supports required identifier/system, available description and the C.14
+  limits. The standard system is HL70485 with R/S; vendor systems may use
+  their own code. An explicitly selected receive priority option requires
+  timing in each reported order group; manager timing remains available.
+- **TCD:** 1, 2, 3, 5, 6, 7, 8, 9, 10 and 11. Required test CE uses the
+  OBR test subset and must match OBR-4 on send or OBX-3 on receive. Dilution
+  fields 2/3/5 check the profiled SN components and positive 1:n denominator;
+  only manager field 2 also permits deferred + or - with no denominator.
+  Fields 3/5 are manager-only. LAW_DILUTIONS gates these fields and field 11,
+  whose CWE has a required identifier/vendor system and optional description.
+  Explicit selection requires a TCD with factor or type. When both are
+  present, a trusted test-specific `DilutionBinding` must establish their
+  consistency; unknown associations and conflicts fail with a located error.
+  Bindings preserve exact factor spellings and do not derive a number from
+  a dilution code. Manager rerun/reflex permissions (6/7) require Y/N when
+  LAW_AM_RR_CONTROL is selected. Repeat status (8) requires the C.13
+  O/R/D/F CE subset when LAW_AM_RR is selected. These manager fields are X
+  on receive. C.13.1's R columns govern selected 6/7/8 despite the following
+  descriptions using RE. Available manager consumption (9) checks CQ.1 NM
+  and CQ.2 CE with required unit identifier, optional description and UCUM.
+  Analyzer pooling option selects mandatory positive integral NM field 10.
+
+Other fields and unsupported components/subcomponents are X: omitted on send,
+ignored but retained on receive. All listed fields are singletons except
+ORC-8. Required/available usage, nulls, primitive datatypes, character limits,
+nested components and encoded send ceilings are validated at the existing
+parser boundary in both directions. The supported SN and CQ shapes are typed
+through `TestDetail`; no observation value is calculated. Original numeric
+spelling and dilution-type bytes remain accessible. `DilutionMeaning`
+distinguishes current-run requests, rerun requests, prediluent content and
+reported factors. `ResultAdjustment` records AlreadyApplied, NotApplied or
+Unknown from the host's explicit analyzer contract, including type-only
+reports. Unknown reported adjustment is flagged for host reconciliation.
+The presence of a dilution factor never proves that a result was multiplied.
+
+Work builders, ORL acceptance and received results apply these profiles.
+`Profile::receive` accepts supported enhanced content without assuming an
+unprovided option negotiation; explicit option setters enforce selected
+requirements. Pooling field validation adds no pooling workflow. Positive and
+negative source cases and build/receive integrations are in
+`tests/law_order.rs`. The earlier group fixture containing an EI namespace in
+ORC-4 was corrected: C.8.4 supports only EIP.1/EI.1 there. Evidence remains
+**documented**; complete message structure, lifecycle and simulator
+conformance are still outside the field coverage claimed here.
 
 ## Recording a Gazelle run
 

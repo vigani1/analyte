@@ -6,6 +6,17 @@ use crate::{Message, Segment};
 /// The profile validates content; it never resolves identities by guessing.
 #[derive(Debug, Clone, Copy)]
 pub struct Profile<'a> {
+    pub(super) dilution: bool,
+    pub(super) dilution_required: bool,
+    pub(super) manager_repeat: bool,
+    pub(super) repeat_control: bool,
+    pub(super) priority: bool,
+    pub(super) priority_required: bool,
+    pub(super) analyzer_reflex: bool,
+    pub(super) external_results: bool,
+    pub(super) pooling_analyzer: bool,
+    pub(super) dilution_bindings: &'a [super::DilutionBinding<'a>],
+    pub(super) result_adjustment: super::ResultAdjustment,
     pub(super) patient: bool,
     pub(super) specimen: bool,
     pub(super) container: bool,
@@ -21,6 +32,17 @@ impl<'a> Profile<'a> {
     #[must_use]
     pub fn receive() -> Self {
         Self {
+            dilution: true,
+            dilution_required: false,
+            manager_repeat: false,
+            repeat_control: false,
+            priority: true,
+            priority_required: false,
+            analyzer_reflex: true,
+            external_results: true,
+            pooling_analyzer: false,
+            dilution_bindings: &[],
+            result_adjustment: super::ResultAdjustment::Unknown,
             patient: true,
             specimen: true,
             container: true,
@@ -31,10 +53,26 @@ impl<'a> Profile<'a> {
         }
     }
 
+    /// Selects received ORL field predicates for independent segment validation.
+    /// Whole-message validation derives this context from MSH-9 automatically.
+    #[must_use]
+    pub fn receive_work_response() -> Self {
+        Self {
+            results_message: false,
+            ..Self::receive()
+        }
+    }
+
     /// Selects outgoing content from the connected peer's declared capabilities.
     #[must_use]
     pub fn for_peer(capabilities: super::Capabilities) -> Self {
         Self {
+            dilution: capabilities.dilution,
+            dilution_required: capabilities.dilution,
+            manager_repeat: capabilities.manager_repeat,
+            repeat_control: capabilities.repeat_control,
+            priority: capabilities.priority,
+            priority_required: capabilities.priority,
             patient: capabilities.patient,
             specimen: capabilities.specimen,
             container: capabilities.container,
@@ -54,6 +92,66 @@ impl<'a> Profile<'a> {
     #[must_use]
     pub fn with_pooling_outside(mut self, selected: bool) -> Self {
         self.pooling_outside = selected;
+        self
+    }
+
+    /// Selects `LAW_DILUTIONS`; selection requires a factor or a type in each TCD.
+    #[must_use]
+    pub fn with_dilution(mut self, selected: bool) -> Self {
+        self.dilution = selected;
+        self.dilution_required = selected;
+        self
+    }
+
+    /// Selects analyzer reflex parent/action support.
+    #[must_use]
+    pub fn with_analyzer_reflex(mut self, selected: bool) -> Self {
+        self.analyzer_reflex = selected;
+        self
+    }
+
+    /// Selects externally persisted result handling on analyzer messages.
+    #[must_use]
+    pub fn with_external_results(mut self, selected: bool) -> Self {
+        self.external_results = selected;
+        self
+    }
+
+    /// Selects priority segment support.
+    #[must_use]
+    pub fn with_priority(mut self, selected: bool) -> Self {
+        self.priority = selected;
+        self.priority_required = selected;
+        self
+    }
+
+    /// Selects the required manager repeat-status and permission fields independently.
+    #[must_use]
+    pub fn with_repeat_options(mut self, status: bool, permissions: bool) -> Self {
+        self.manager_repeat = status;
+        self.repeat_control = permissions;
+        self
+    }
+
+    /// Selects field validation of on-analyzer pooling; no pooling workflow is authorized.
+    #[must_use]
+    pub fn with_pooling_analyzer(mut self, selected: bool) -> Self {
+        self.pooling_analyzer = selected;
+        self
+    }
+
+    /// Supplies host-asserted test/type/factor definitions; an unknown pair is unresolved.
+    #[must_use]
+    pub fn with_dilution_bindings(mut self, bindings: &'a [super::DilutionBinding<'a>]) -> Self {
+        self.dilution_bindings = bindings;
+        self
+    }
+
+    /// Records trusted knowledge about whether reported values already include dilution.
+    /// Unknown is preserved by default; this crate never adjusts an observation value.
+    #[must_use]
+    pub fn with_result_adjustment(mut self, adjustment: super::ResultAdjustment) -> Self {
+        self.result_adjustment = adjustment;
         self
     }
 
@@ -77,7 +175,9 @@ impl<'a> Profile<'a> {
             && message
                 .segments()
                 .find(|s| s.id() == b"ORC")
-                .is_some_and(|s| raw(s, 1) == b"DC")
+                .is_some_and(|s| {
+                    super::OrderControl::parse(raw(s, 1)) == Ok(super::OrderControl::Discontinue)
+                })
             && message
                 .segments()
                 .find(|s| s.id() == b"SPM")
@@ -85,6 +185,7 @@ impl<'a> Profile<'a> {
                     super::control::part(raw(s, 11), 1) == b"U"
                         && super::control::part(raw(s, 11), 3) == b"IHELAW"
                 });
+        super::order::validate_links(message, self, direction)?;
         let mut ordinal = 0usize;
         for segment in message.segments() {
             self.validate_segment(segment, direction)?;
@@ -111,6 +212,8 @@ impl<'a> Profile<'a> {
             b"MSH" | b"MSA" | b"ERR" => super::control::validate_segment(segment, direction),
             b"PID" | b"PV1" => super::patient::validate(segment, self, direction),
             b"SPM" | b"SAC" => super::specimen::validate(segment, self, direction),
+            b"ORC" | b"OBR" | b"TQ1" => super::order::validate(segment, self, direction),
+            b"TCD" => super::tcd::validate(segment, self, direction),
             _ => validate_segment(segment),
         }
     }
@@ -248,6 +351,13 @@ fn coded(
 /// # Errors
 /// Returns a segment/field location for missing fields, excess repetitions or invalid codes.
 pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
+    if matches!(segment.id(), b"ORC" | b"OBR" | b"TQ1") {
+        return super::order::validate(segment, Profile::receive(), super::ControlDirection::Send);
+    }
+    if segment.id() == b"TCD" {
+        return super::tcd::validate(segment, Profile::receive(), super::ControlDirection::Send);
+    }
+
     if matches!(segment.id(), b"SPM" | b"SAC") {
         return super::specimen::validate(
             segment,
@@ -268,14 +378,10 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
     let (name, allowed): (&str, &[usize]) = match segment.id() {
         b"NTE" => ("NTE", &[1, 2, 3, 4]),
         b"INV" => ("INV", &[1, 2, 3, 4, 12, 16]),
-        b"OBR" => ("OBR", &[2, 3, 4, 11, 16, 17, 49]),
         b"OBX" => (
             "OBX",
             &[1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 16, 18, 19, 21, 29],
         ),
-        b"ORC" => ("ORC", &[1, 2, 4, 5, 8, 9, 21, 27]),
-        b"TCD" => ("TCD", &[1, 2, 3, 5, 6, 7, 8, 9, 10, 11]),
-        b"TQ1" => ("TQ1", &[9]),
         b"QPD" | b"RCP" | b"QAK" => return Ok(()),
         _ => return Err(content("LAW", 0)),
     };
@@ -309,11 +415,6 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
                 check(segment, "INV", field, true, 250, 1)?;
                 coded(segment, "INV", field, false)?;
             }
-        }
-        b"OBR" => {
-            check(segment, "OBR", 2, true, 50, 1)?;
-            check(segment, "OBR", 4, true, 250, 1)?;
-            coded(segment, "OBR", 4, true)?;
         }
         b"OBX" => {
             positive_integer(raw(segment, 1), "OBX", 1)?;
@@ -421,17 +522,6 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             if equipment.repetitions().count() < 2 {
                 return Err(content("OBX", 18));
             }
-        }
-        b"ORC" => {
-            check(segment, "ORC", 1, true, 2, 1)?;
-        }
-        b"TCD" => {
-            check(segment, "TCD", 1, true, 250, 1)?;
-            coded(segment, "TCD", 1, true)?;
-        }
-        b"TQ1" => {
-            check(segment, "TQ1", 9, true, 250, 1)?;
-            coded(segment, "TQ1", 9, false)?;
         }
         b"QPD" | b"RCP" | b"QAK" => {}
         _ => return Err(content("LAW", 0)),
