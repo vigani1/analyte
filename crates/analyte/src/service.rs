@@ -202,6 +202,23 @@ async fn serve_with(
         });
     }
     let (shutdown, stopping) = watch::channel(false);
+    let mut alert_owners = JoinSet::new();
+    if !program.alerts().is_empty() {
+        let store = store.clone();
+        let policies = program.alerts().to_vec();
+        let interval = program.alert_interval();
+        let destinations = program
+            .machines()
+            .iter()
+            .map(|machine| machine.snapshot.effective().site().destination.name.clone())
+            .collect();
+        let stop = stopping.clone();
+        let component = watchdog.component("alert-evaluator".into());
+        alert_owners.spawn(async move {
+            let _component = component;
+            crate::alerts::run(store, policies, destinations, interval, stop).await
+        });
+    }
     let mut owners = JoinSet::new();
     let mut ready_to_close = Vec::new();
     let (close_transports, transports_closing) = watch::channel(false);
@@ -236,6 +253,13 @@ async fn serve_with(
     let result = loop {
         tokio::select! {
             result = &mut stop => break result,
+            owner = alert_owners.join_next(), if !alert_owners.is_empty() => {
+                break match owner {
+                    Some(Ok(Err(error))) => Err(error),
+                    Some(Err(error)) => Err(error.into()),
+                    Some(Ok(Ok(()))) | None => Err(invalid("alert evaluator stopped unexpectedly")),
+                };
+            }
             owner = admin_owners.join_next(), if !admin_owners.is_empty() => {
                 break match owner {
                     Some(Ok(Err(error))) => Err(error),
@@ -277,7 +301,13 @@ async fn serve_with(
         .unwrap_or(tokio::time::Instant::now());
     // Admin reads drain alongside machine commits, without adding a new stage
     // to the process shutdown budget or delaying machine admission shutdown.
-    let (admin_drained, commits_drained) = tokio::join!(
+    let (alerts_drained, admin_drained, commits_drained) = tokio::join!(
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(owner) = alert_owners.join_next().await {
+                owner??;
+            }
+            Ok::<_, Error>(())
+        }),
         tokio::time::timeout(Duration::from_secs(5), async {
             while let Some(owner) = admin_owners.join_next().await {
                 owner??;
@@ -290,6 +320,10 @@ async fn serve_with(
             }
         })
     );
+    if !matches!(alerts_drained, Ok(Ok(()))) {
+        alert_owners.abort_all();
+        while alert_owners.join_next().await.is_some() {}
+    }
     if !matches!(admin_drained, Ok(Ok(()))) {
         admin_owners.abort_all();
         while admin_owners.join_next().await.is_some() {}
@@ -329,6 +363,7 @@ async fn serve_with(
         .await?;
     drop(store);
     drop(store_component);
+    alerts_drained.map_err(|_| invalid("alert evaluator shutdown exceeded 5 seconds"))??;
     admin_drained.map_err(|_| invalid("admin shutdown exceeded 5 seconds"))??;
     commits_drained.map_err(|_| invalid("receive commits exceeded 15 seconds"))?;
     drained.map_err(|_| invalid("transport shutdown exceeded 5 seconds"))??;

@@ -23,6 +23,19 @@ CREATE TRIGGER frame_activity AFTER INSERT ON frames WHEN EXISTS(SELECT 1 FROM f
  ON CONFLICT(machine) DO UPDATE SET time=max(time,excluded.time);
 END;
 CREATE INDEX alert_oldest_pending ON outbox(enqueued_at) WHERE state!='done';
-CREATE INDEX alert_open_parked ON parked(id) WHERE resolution IS NULL;
-CREATE INDEX alert_uncertain_orders ON machine_orders(id) WHERE state='"Uncertain"';
+CREATE TABLE alert_counts(kind TEXT PRIMARY KEY, value INTEGER NOT NULL CHECK(typeof(value)='integer' AND value>=0));
+INSERT INTO alert_counts VALUES('parked',(SELECT count(*) FROM parked WHERE resolution IS NULL));
+INSERT INTO alert_counts VALUES('uncertain',(SELECT count(*) FROM machine_orders WHERE state='"Uncertain"'));
+CREATE TRIGGER alert_parked_insert AFTER INSERT ON parked WHEN NEW.resolution IS NULL BEGIN
+ UPDATE alert_counts SET value=value+1 WHERE kind='parked';
+END;
+CREATE TRIGGER alert_parked_resolution AFTER UPDATE OF resolution ON parked BEGIN
+ UPDATE alert_counts SET value=value+(NEW.resolution IS NULL)-(OLD.resolution IS NULL) WHERE kind='parked';
+END;
+CREATE TRIGGER alert_uncertain_insert AFTER INSERT ON machine_orders WHEN NEW.state='"Uncertain"' BEGIN
+ UPDATE alert_counts SET value=value+1 WHERE kind='uncertain';
+END;
+CREATE TRIGGER alert_uncertain_transition AFTER UPDATE OF state ON machine_orders BEGIN
+ UPDATE alert_counts SET value=value+(NEW.state='"Uncertain"')-(OLD.state='"Uncertain"') WHERE kind='uncertain';
+END;
 PRAGMA user_version=6;

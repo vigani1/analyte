@@ -1,6 +1,7 @@
 //! Bounded program TOML and machine snapshots, with no secret values.
 mod alerts;
 use crate::{Error, invalid};
+pub(crate) use alerts::Condition;
 pub use alerts::{Alert, AlertConfigError, AlertKind};
 use analyte_config::{Draft, Validated};
 use serde::Deserialize;

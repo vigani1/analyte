@@ -224,12 +224,12 @@ impl Store {
                 Some(oldest)
             }
             AlertKey::UncertainOrders => Some(self.db.query_row(
-                "SELECT count(*) FROM machine_orders WHERE state='\"Uncertain\"'",
+                "SELECT value FROM alert_counts WHERE kind='uncertain'",
                 [],
                 |r| r.get(0),
             )?),
             AlertKey::ParkedItems => Some(self.db.query_row(
-                "SELECT count(*) FROM parked WHERE resolution IS NULL",
+                "SELECT value FROM alert_counts WHERE kind='parked'",
                 [],
                 |r| r.get(0),
             )?),
@@ -390,6 +390,22 @@ mod tests {
         Ok(())
     }
 
+    // Plan section 11: failure to retain history must roll back the state transition.
+    #[test]
+    fn plan11_alert_state_and_history_commit_atomically() -> TestResult {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("atomic.db"))?;
+        store.db.execute_batch("CREATE TRIGGER reject_alert BEFORE INSERT ON alert_history BEGIN SELECT RAISE(ABORT,'test history failure'); END;")?;
+        assert!(
+            store
+                .evaluate_alert(&AlertKey::RestorePaused, "duty officer", true, Some(1), 10)
+                .is_err()
+        );
+        assert!(store.alert_state(&AlertKey::RestorePaused)?.is_none());
+        assert!(store.alert_history(0)?.is_empty());
+        Ok(())
+    }
+
     // Plan section 11: the disk alert can record its transition inside the admission reserve.
     #[test]
     fn plan11_disk_alert_does_not_require_free_admission_capacity() -> TestResult {
@@ -413,7 +429,9 @@ mod tests {
         let store = open(&path)?;
         store.db.execute_batch("DROP TRIGGER receipt_activity; DROP TRIGGER frame_activity;
             DROP TABLE machine_activity; DROP TABLE alert_history; DROP TABLE alert_state;
-            DROP INDEX alert_oldest_pending; DROP INDEX alert_open_parked; DROP INDEX alert_uncertain_orders;
+            DROP INDEX alert_oldest_pending; DROP TRIGGER alert_parked_insert; DROP TRIGGER alert_parked_resolution;
+            DROP TRIGGER alert_uncertain_insert; DROP TRIGGER alert_uncertain_transition;
+            DROP TABLE alert_counts;
             PRAGMA user_version=5;")?;
         let metadata = serde_json::json!({"machine":"busy","received_at":"1970-01-01T00:01:30Z"});
         store.db.execute(

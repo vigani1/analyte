@@ -50,24 +50,59 @@ pub enum AlertKind {
     RestorePaused,
 }
 
-/// Validated policy. Fields cannot be changed after boundary validation.
+/// Validated policy. Each signal owns exactly the fields it needs.
 #[derive(Debug, Clone)]
 pub struct Alert {
-    kind: AlertKind,
-    threshold: Option<u64>,
+    condition: Condition,
     responder: String,
-    machine: Option<analyte_model::Identifier>,
 }
+
+#[derive(Debug, Clone)]
+pub(crate) enum Condition {
+    OldestUndelivered(u64),
+    MachineSilent(analyte_model::Identifier, u64),
+    DiskReserve { margin: u64, below: u64 },
+    OrderCacheStale(u64),
+    UncertainOrders(u64),
+    ParkedItems(u64),
+    RestorePaused,
+}
+
 impl Alert {
+    #[cfg(test)]
+    pub(crate) fn for_test(text: &str) -> Result<Self, crate::Error> {
+        Ok(toml::from_str::<DraftAlert>(text)?.validate(1024)?)
+    }
+
+    pub(crate) fn condition(&self) -> &Condition {
+        &self.condition
+    }
+
     /// Returns the supported signal.
     #[must_use]
     pub fn kind(&self) -> AlertKind {
-        self.kind
+        match self.condition {
+            Condition::OldestUndelivered(_) => AlertKind::OldestUndelivered,
+            Condition::MachineSilent(_, _) => AlertKind::MachineSilent,
+            Condition::DiskReserve { .. } => AlertKind::DiskReserve,
+            Condition::OrderCacheStale(_) => AlertKind::OrderCacheStale,
+            Condition::UncertainOrders(_) => AlertKind::UncertainOrders,
+            Condition::ParkedItems(_) => AlertKind::ParkedItems,
+            Condition::RestorePaused => AlertKind::RestorePaused,
+        }
     }
-    /// Returns seconds, bytes, or count; restore pause has no threshold.
+    /// Returns seconds, bytes or count; restore pause has no threshold.
     #[must_use]
     pub fn threshold(&self) -> Option<u64> {
-        self.threshold
+        match self.condition {
+            Condition::OldestUndelivered(value)
+            | Condition::MachineSilent(_, value)
+            | Condition::OrderCacheStale(value)
+            | Condition::UncertainOrders(value)
+            | Condition::ParkedItems(value) => Some(value),
+            Condition::DiskReserve { margin, .. } => Some(margin),
+            Condition::RestorePaused => None,
+        }
     }
     /// Borrows the named role or person.
     #[must_use]
@@ -77,7 +112,15 @@ impl Alert {
     /// Borrows the selected busy machine, if any.
     #[must_use]
     pub fn machine(&self) -> Option<&analyte_model::Identifier> {
-        self.machine.as_ref()
+        match &self.condition {
+            Condition::MachineSilent(machine, _) => Some(machine),
+            Condition::OldestUndelivered(_)
+            | Condition::DiskReserve { .. }
+            | Condition::OrderCacheStale(_)
+            | Condition::UncertainOrders(_)
+            | Condition::ParkedItems(_)
+            | Condition::RestorePaused => None,
+        }
     }
 }
 
@@ -110,35 +153,60 @@ impl DraftAlert {
         if (kind == AlertKind::MachineSilent) != self.machine.is_some() {
             return Err(AlertConfigError::Machine);
         }
-        match kind {
-            AlertKind::OldestUndelivered
-            | AlertKind::MachineSilent
-            | AlertKind::OrderCacheStale => {
-                if !(1..=31_536_000).contains(&self.threshold.ok_or(AlertConfigError::Threshold)?) {
-                    return Err(AlertConfigError::Threshold);
-                }
-            }
-            AlertKind::DiskReserve => {
-                reserve
-                    .checked_add(self.threshold.ok_or(AlertConfigError::Threshold)?)
-                    .ok_or(AlertConfigError::Threshold)?;
-            }
+        let threshold = match kind {
             AlertKind::RestorePaused => {
                 if self.threshold.is_some() {
                     return Err(AlertConfigError::Threshold);
                 }
+                None
             }
-            AlertKind::UncertainOrders | AlertKind::ParkedItems => {
-                if self.threshold.is_none_or(|value| value > i64::MAX as u64) {
-                    return Err(AlertConfigError::Threshold);
-                }
+            AlertKind::OldestUndelivered
+            | AlertKind::MachineSilent
+            | AlertKind::DiskReserve
+            | AlertKind::OrderCacheStale
+            | AlertKind::UncertainOrders
+            | AlertKind::ParkedItems => Some(self.threshold.ok_or(AlertConfigError::Threshold)?),
+        };
+        let condition = match (kind, threshold) {
+            (AlertKind::RestorePaused, None) => Condition::RestorePaused,
+            (
+                AlertKind::OldestUndelivered
+                | AlertKind::MachineSilent
+                | AlertKind::OrderCacheStale,
+                Some(age),
+            ) if !(1..=31_536_000).contains(&age) => return Err(AlertConfigError::Threshold),
+            (AlertKind::OldestUndelivered, Some(age)) => Condition::OldestUndelivered(age),
+            (AlertKind::MachineSilent, Some(age)) => {
+                Condition::MachineSilent(self.machine.ok_or(AlertConfigError::Machine)?, age)
             }
-        }
+            (AlertKind::OrderCacheStale, Some(age)) => Condition::OrderCacheStale(age),
+            (AlertKind::DiskReserve, Some(margin)) => Condition::DiskReserve {
+                margin,
+                below: reserve
+                    .checked_add(margin)
+                    .ok_or(AlertConfigError::Threshold)?,
+            },
+            (AlertKind::UncertainOrders | AlertKind::ParkedItems, Some(count))
+                if count > i64::MAX as u64 =>
+            {
+                return Err(AlertConfigError::Threshold);
+            }
+            (AlertKind::UncertainOrders, Some(count)) => Condition::UncertainOrders(count),
+            (AlertKind::ParkedItems, Some(count)) => Condition::ParkedItems(count),
+            (AlertKind::RestorePaused, Some(_))
+            | (
+                AlertKind::OldestUndelivered
+                | AlertKind::MachineSilent
+                | AlertKind::DiskReserve
+                | AlertKind::OrderCacheStale
+                | AlertKind::UncertainOrders
+                | AlertKind::ParkedItems,
+                None,
+            ) => return Err(AlertConfigError::Threshold),
+        };
         Ok(Alert {
-            kind,
-            threshold: self.threshold,
+            condition,
             responder: self.responder,
-            machine: self.machine,
         })
     }
 }
