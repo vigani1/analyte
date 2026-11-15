@@ -87,6 +87,22 @@ What this means:
 | ---------------------- | ---------------------------------------------------------------------------------------- |
 | The lab                | Software versions; cobas host test code screen and trace log copy; VIDAS PC version (decides a 12 or 17 character ID); which tests run on which machine; one de-identified recording per machine |
 | Dialab service         | Whether a sample barcode reader can be fitted to REF 20010D, its cost, and the TCP/IP settings |
+| The lab (machine settings) | Biolyte 2000 serial flow control; iFlash 1200 response deadlines; Swelab Lumi framing, character encoding, HL7 version and where it puts the sample ID |
+
+### Before machine configs (phase 7)
+
+A first attempt at the four configs stopped rather than guess. Besides the
+settings above, config cannot yet express:
+
+- cobas e 411: a test code with a dilution part inside one ASTM component
+  (split on `/`), and per-test choice of a numeric or a qualitative result;
+- iFlash 1200: the legacy HL7 query dialog (being built in phase 3), its own
+  result-status handling and QC sent as parallel OBR-only groups.
+
+These become small, general config features in the mapping and HL7 layers,
+each tested from its source, after the open standards work merges. A machine
+quirk that config cannot express is added as a new named deviation in code,
+never as a guess.
 
 ## Reference receiver
 
