@@ -411,3 +411,41 @@ pub(super) fn timing(value: Repetition<'_>, version: Version) -> bool {
     }
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hl7_231_4_4_and_251_2_a_50_order_sequence_required_fields_and_lengths() {
+        let valid: &[&[u8]] = &[
+            b"S", b"placer", b"", b"filler", b"", b"", b"", b"uid1", b"", b"uid2",
+        ];
+        assert!(sequence(valid, Version::V231));
+        assert!(sequence(valid, Version::V251));
+        for field in [2_usize, 4, 8, 10] {
+            let mut missing = valid.to_vec();
+            missing[field - 1] = b"";
+            assert!(sequence(&missing, Version::V231));
+            assert!(!sequence(&missing, Version::V251));
+            let mut longer = valid.to_vec();
+            longer[field - 1] = b"1234567890123456";
+            assert!(sequence(&longer, Version::V231));
+            assert!(!sequence(&longer, Version::V251));
+        }
+    }
+
+    #[test]
+    fn hl7_231_2_8_3_and_251_2_a_6_coded_component_lengths() {
+        for (field, maximum) in [(0, 20), (1, 199), (2, 20), (3, 20), (4, 199), (5, 20)] {
+            let at_limit = vec![b'A'; maximum];
+            let beyond = vec![b'A'; maximum + 1];
+            let mut parts = vec![b"".as_slice(); 6];
+            parts[field] = &at_limit;
+            assert!(coded_parts(&parts, false, Version::V251));
+            parts[field] = &beyond;
+            assert!(coded_parts(&parts, false, Version::V231));
+            assert!(!coded_parts(&parts, false, Version::V251));
+        }
+    }
+}
