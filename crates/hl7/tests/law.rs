@@ -615,13 +615,12 @@ fn law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original()
     body.push_str("TCD|mismatch^Mismatch^99LAB\r");
     let message = results_message("awos-1", &body)?;
     let original = message.serialize();
-    assert!(matches!(
-        Results::new(&message),
-        Err(Error::Inconsistent {
-            segment: "TCD",
-            field: 1
-        })
-    ));
+    let failure = Results::new(&message)
+        .err()
+        .ok_or("accepted mismatched TCD")?;
+    assert!(
+        matches!(failure, Error::AtSegment {occurrence:1,source} if matches!(*source,Error::Inconsistent {segment:"TCD",field:1}))
+    );
     assert_eq!(message.raw(), original);
     Ok(())
 }
@@ -877,6 +876,7 @@ fn law_tf2b_b7_trigger_rejection_and_query_processing_errors_have_distinct_actio
         failure.location(),
         Some(ErrorLocation {
             segment: "QPD",
+            occurrence: None,
             field: 3
         })
     );
@@ -902,12 +902,14 @@ fn law_tf2b_b7_trigger_rejection_and_query_processing_errors_have_distinct_actio
         failure.location(),
         Some(ErrorLocation {
             segment: "TCD",
+            occurrence: Some(1),
             field: 1
         })
     );
     let failure = Failure::QueryRejected {
         location: ErrorLocation {
             segment: "QPD",
+            occurrence: None,
             field: 3,
         },
     };

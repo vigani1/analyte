@@ -111,18 +111,7 @@ impl Connection {
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
                 return response_metadata(|response| {
-                    let location = error.location().filter(|location| location.field > 0);
-                    let detail = location
-                        .and_then(|location| {
-                            u16::try_from(location.field).ok().map(|field| AckError {
-                                segment: location.segment.as_bytes(),
-                                occurrence: 1,
-                                field,
-                                code: b"102",
-                                application_code: b"LAW-invalid-query",
-                            })
-                        })
-                        .unwrap_or(AckError::unlocated(b"102", b"LAW-invalid-query"));
+                    let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
                     law::reject_trigger(
                         message.raw(),
                         response,

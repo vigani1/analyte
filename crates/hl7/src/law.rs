@@ -9,6 +9,15 @@ use thiserror::Error;
 /// A LAW validation failure, without payload in its diagnostic.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// Validation retained the actual one-based occurrence of the offending segment.
+    #[error("LAW segment occurrence {occurrence}: {source}")]
+    AtSegment {
+        /// Occurrence among segments with the same identifier, across the whole message.
+        occurrence: usize,
+        /// Original specific validation failure; wrapped at most once by validation.
+        #[source]
+        source: Box<Error>,
+    },
     /// The app has not supplied a matching test/type/factor definition.
     #[error("unresolved dilution definition at {segment}-{field}.{component}")]
     DilutionDefinition {
@@ -74,6 +83,46 @@ pub enum Error {
         /// One-based field, or zero for segment cardinality/order.
         field: usize,
     },
+}
+
+impl Error {
+    pub(super) fn base(&self) -> &Self {
+        let mut error = self;
+        while let Self::AtSegment { source, .. } = error {
+            error = source;
+        }
+        error
+    }
+    pub(super) fn occurrence(&self) -> Option<usize> {
+        if let Self::AtSegment { occurrence, .. } = self {
+            Some(*occurrence)
+        } else {
+            None
+        }
+    }
+    // Only attach the current segment when the failure identifies that segment.
+    // Missing groups and errors referring to an earlier group remain unlocated.
+    pub(super) fn at_segment(self, segment: Segment<'_>, occurrence: usize) -> Self {
+        let named = match self.base() {
+            Self::DilutionDefinition { segment, .. }
+            | Self::Subcomponent { segment, .. }
+            | Self::Authority { segment, .. }
+            | Self::Component { segment, .. }
+            | Self::Inconsistent { segment, .. }
+            | Self::Content { segment, .. }
+            | Self::Syntax(crate::Error::Control { segment, .. }) => Some(*segment),
+            Self::AtSegment { .. } | Self::Syntax(_) => None,
+        };
+        if self.occurrence().is_none() && named.is_some_and(|name| name.as_bytes() == segment.id())
+        {
+            Self::AtSegment {
+                occurrence,
+                source: Box::new(self),
+            }
+        } else {
+            self
+        }
+    }
 }
 
 fn content(segment: &'static str, field: usize) -> Error {

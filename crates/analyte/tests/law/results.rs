@@ -709,3 +709,56 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     reference.close().await?;
     Ok(())
 }
+
+// PaLM TF-2b Rev 11 B.7.1-B.7.2 pp.80-81; C.1 pp.84-85.
+#[tokio::test]
+async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = vendor_config(temp.path(), "law", &definition())?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "law").await?;
+    let first = result("second-obx", "\"\"", "run^ANALYZER", "1.0", "F");
+    let obx = first.split("OBX|").nth(1).ok_or("synthetic OBX missing")?;
+    let second = format!("OBX|{}", obx.replacen("1|NM|", "2|NM|", 1));
+    for (payload, location) in [
+        (
+            format!("{first}{}", second.replace("|F|", "|D|")),
+            "OBX^2^11",
+        ),
+        (
+            format!("{first}{}", second.replacen("OBX|2|", "OBX|3|", 1)),
+            "OBX^2^1",
+        ),
+        (
+            format!("{}{second}", first.replace("|F|", "|D|")),
+            "OBX^1^11",
+        ),
+    ] {
+        let ack = hl7(&mut peer, payload.as_bytes()).await?;
+        assert!(ack.contains("MSA|AE|second-obx"), "{ack}");
+        assert!(ack.contains(&format!("ERR||{location}|")), "{ack}");
+        assert_eq!(count(&path, "outbox")?, 0);
+        assert_eq!(count(&path, "observation_revisions")?, 0);
+        let raw: Vec<u8> = database(&path)?.query_row(
+            "SELECT raw FROM receipts ORDER BY rowid DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(
+            raw,
+            analyte_framing::mllp::encode(
+                payload.as_bytes(),
+                analyte_framing::mllp::Limit::new(1048576)?
+            )?
+        );
+    }
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

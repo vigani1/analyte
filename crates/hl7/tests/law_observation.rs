@@ -938,13 +938,12 @@ fn law_tf2b_c5_nte_sequence_is_local_to_consecutive_group() -> TestResult {
     let good = result_message(&[], &format!("{first}{second}"))?;
     law::Results::new(&good)?;
     let bad = result_message(&[], &format!("{first}{first}"))?;
-    assert!(matches!(
-        law::Results::new(&bad),
-        Err(Error::Content {
-            segment: "NTE",
-            field: 1
-        })
-    ));
+    let failure = law::Results::new(&bad)
+        .err()
+        .ok_or("accepted invalid NTE")?;
+    assert!(
+        matches!(failure, Error::AtSegment {occurrence:2,source} if matches!(*source,Error::Content {segment:"NTE",field:1}))
+    );
     let message = message(&format!(
         "{first}{}{}",
         fields("OBX", ControlDirection::Receive, &[])?,
@@ -1131,13 +1130,12 @@ fn law_tf2b_c2_control_inventory_co_predicate_and_result_ownership() -> TestResu
         source.replace("CO^^HL70384", "MR^^HL70384").as_bytes(),
         options(),
     )?;
-    assert!(matches!(
-        law::Results::new(&bad),
-        Err(Error::Content {
-            segment: "INV",
-            field: 3
-        })
-    ));
+    let failure = law::Results::new(&bad)
+        .err()
+        .ok_or("accepted invalid INV")?;
+    assert!(
+        matches!(failure, Error::AtSegment {occurrence:1,source} if matches!(*source,Error::Content {segment:"INV",field:3}))
+    );
     let bad = law::parse_message(
         source.replace("Q^^HL70369", "Q^^99LAB").as_bytes(),
         options(),

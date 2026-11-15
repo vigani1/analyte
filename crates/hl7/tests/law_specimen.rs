@@ -1257,9 +1257,12 @@ fn law_tf2b_c11_am_carrier_tray_only_without_sac3_with_sac4() -> TestResult {
             ..Capabilities::default()
         })
         .validate_message(&failing, ControlDirection::Send),
-        Err(law::Error::Content {
-            segment: "SAC",
-            field: 10
+        Err(law::Error::AtSegment {
+            occurrence: 1,
+            source: Box::new(law::Error::Content {
+                segment: "SAC",
+                field: 10
+            })
         })
     );
     for (identity, position) in [(10, 11), (13, 14)] {

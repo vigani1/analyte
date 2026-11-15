@@ -289,15 +289,7 @@ async fn process(
         Err(failure) => {
             evidence::failed_reading(store, machine, id, &failure.to_string()).await?;
             if law::validate_control(&message, law::ControlDirection::Receive).is_err() {
-                let detail = failure
-                    .location()
-                    .filter(|l| l.field > 0)
-                    .and_then(|l| {
-                        u16::try_from(l.field)
-                            .ok()
-                            .map(|field| error(l.segment.as_bytes(), field, b"102", b"LAW-control"))
-                    })
-                    .unwrap_or(AckError::unlocated(b"102", b"LAW-control"));
+                let detail = failure.acknowledgment_error(&message, b"102", b"LAW-control");
                 return response_metadata(|response| {
                     Ok(law::reject_trigger(
                         payload,
@@ -311,36 +303,12 @@ async fn process(
                     .map(Reply::Response))
                 });
             }
-            // The pure failure names a segment/field but not its occurrence. Only
-            // report a wire location when the original proves it is unambiguous.
-            let location = failure.location().filter(|location| {
-                location.field > 0
-                    && message
-                        .segments()
-                        .filter(|s| s.id() == location.segment.as_bytes())
-                        .count()
-                        == 1
-            });
             (
                 failure
                     .acknowledgment_code()
                     .ok_or("LAW result failure has no ACK outcome")?,
                 Responsibility::Stored,
-                Some(
-                    match location.and_then(|location| {
-                        u16::try_from(location.field)
-                            .ok()
-                            .map(|field| (location, field))
-                    }) {
-                        Some((location, field)) => error(
-                            location.segment.as_bytes(),
-                            field,
-                            b"102",
-                            b"LAW-invalid-results",
-                        ),
-                        None => AckError::unlocated(b"102", b"LAW-invalid-results"),
-                    },
-                ),
+                Some(failure.acknowledgment_error(&message, b"102", b"LAW-invalid-results")),
             )
         }
     };
