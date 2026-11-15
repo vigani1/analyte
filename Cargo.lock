@@ -114,6 +114,19 @@ version = "0.1.0"
 [[package]]
 name = "analyte-store"
 version = "0.1.0"
+dependencies = [
+ "analyte-model",
+ "jiff",
+ "proptest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "analyte-transport"
