@@ -206,12 +206,16 @@ impl<'a> Profile<'a> {
         super::order::validate_links(message, self, direction)?;
         let mut ordinal = 0usize;
         let mut note_sequence = 0usize;
+        let mut occurrences = std::collections::BTreeMap::<&[u8], usize>::new();
         for segment in message.segments() {
-            self.validate_segment(segment, direction)?;
+            let occurrence = occurrences.entry(segment.id()).or_default();
+            *occurrence = occurrence.checked_add(1).ok_or(content("MSH", 0))?;
+            self.validate_segment(segment, direction)
+                .map_err(|error| error.at_segment(segment, *occurrence))?;
             if segment.id() == b"NTE" {
                 note_sequence = note_sequence.checked_add(1).ok_or(content("NTE", 1))?;
                 if raw(segment, 1) != note_sequence.to_string().as_bytes() {
-                    return Err(content("NTE", 1));
+                    return Err(content("NTE", 1).at_segment(segment, *occurrence));
                 }
             } else {
                 note_sequence = 0;
@@ -219,7 +223,7 @@ impl<'a> Profile<'a> {
             if segment.id() == b"SPM" {
                 ordinal = ordinal.checked_add(1).ok_or(content("SPM", 1))?;
                 if super::specimen::set_id(raw(segment, 1)) != Some(ordinal) {
-                    return Err(content("SPM", 1));
+                    return Err(content("SPM", 1).at_segment(segment, *occurrence));
                 }
             }
         }

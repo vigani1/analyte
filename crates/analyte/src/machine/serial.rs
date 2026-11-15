@@ -16,7 +16,7 @@ impl Drop for Owner {
     fn drop(&mut self) {
         self.cancellation.cancel();
         if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+            super::worker::report_join("serial", &thread.join());
         }
     }
 }
@@ -43,18 +43,13 @@ impl Owner {
 pub(super) async fn run(
     machine: &Machine,
     store: &Handle,
+    link: super::settings::SerialLink<'_>,
     limits: Limits,
     stop: watch::Receiver<bool>,
     mut closing: super::Closing,
+    capture: Option<&crate::capture::Capture>,
 ) -> Result<(), Error> {
-    let serial = machine
-        .snapshot
-        .effective()
-        .machine()
-        .transport
-        .serial
-        .as_ref()
-        .ok_or_else(|| invalid("serial settings absent"))?;
+    let serial = link.settings;
     let parity = match serial.parity {
         analyte_config::Parity::None => serialport::Parity::None,
         analyte_config::Parity::Odd => serialport::Parity::Odd,
@@ -81,6 +76,10 @@ pub(super) async fn run(
         Duration::from_millis(100),
     )?;
     let (mut conn, side) = analyte_transport::connection(limits);
+    let side = match capture {
+        Some(capture) => capture.attach(side),
+        None => side,
+    };
     let cancellation = conn.cancellation();
     let retry = super::retry()?;
     let thread = thread::Builder::new()
@@ -91,7 +90,7 @@ pub(super) async fn run(
         thread: Some(thread),
     };
     let result = loop {
-        let result = super::session(machine, store, &mut conn, stop.clone()).await;
+        let result = super::session(machine, link.session, store, &mut conn, stop.clone()).await;
         if result.is_err() || *stop.borrow() {
             break result;
         }
@@ -102,4 +101,35 @@ pub(super) async fn run(
     drop(conn);
     owner.close().await?;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
+    #[test]
+    fn safety_rule_10_drop_reports_worker_error_and_panic_without_payloads() {
+        for panic in [false, true] {
+            let worker = thread::spawn(move || {
+                if panic {
+                    std::panic::panic_any("protected-panic-token");
+                }
+                Err(analyte_transport::Error::Deadline("protected-error-token"))
+            });
+            let output = super::super::worker::tests::capture(|| {
+                drop(Owner {
+                    cancellation: Cancellation::default(),
+                    thread: Some(worker),
+                });
+            });
+            assert!(output.contains("worker=\"serial\""), "{output}");
+            assert!(output.contains(if panic {
+                "worker_panic"
+            } else {
+                "worker_error"
+            }));
+            assert!(!output.contains("protected-"));
+        }
+    }
 }

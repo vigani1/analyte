@@ -1,5 +1,5 @@
 //! Explicit outbound settings, independent of result mappings.
-use crate::{Error, Field, Group, Machine, SyntaxKind, invalid};
+use crate::{Error, Field, Group, MachineDocument, SyntaxKind, invalid};
 use analyte_model::{Identifier, NamespacedId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -44,6 +44,54 @@ pub struct OutboundSpecimen {
     pub machine: Identifier,
 }
 
+/// Fixed priority codes used by HL7 TQ fields and Autolyser work lists.
+/// R and T have protocol-specific meanings; no meaning is inferred across stacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PriorityCode {
+    /// Wire code R.
+    R,
+    /// Wire code S.
+    S,
+    /// Wire code A.
+    A,
+    /// Wire code P.
+    P,
+    /// Wire code C.
+    C,
+    /// Wire code T.
+    T,
+    /// Wire code PRN.
+    #[serde(rename = "PRN")]
+    Prn,
+}
+
+/// A fixed wire code or explicit custom text for configurable ASTM interfaces.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MachinePriority {
+    /// A supported fixed wire code.
+    Code(PriorityCode),
+    /// Explicit custom text; rejected for stacks with fixed priority tables.
+    Custom(Identifier),
+}
+
+impl MachinePriority {
+    /// Returns the exact configured spelling for field-based output.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Code(PriorityCode::R) => "R",
+            Self::Code(PriorityCode::S) => "S",
+            Self::Code(PriorityCode::A) => "A",
+            Self::Code(PriorityCode::P) => "P",
+            Self::Code(PriorityCode::C) => "C",
+            Self::Code(PriorityCode::T) => "T",
+            Self::Code(PriorityCode::Prn) => "PRN",
+            Self::Custom(value) => value.as_str(),
+        }
+    }
+}
+
 /// Priority translations are independent of inbound tables.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -51,7 +99,7 @@ pub struct OrderPriority {
     /// App priority: routine, urgent or stat.
     pub app: Identifier,
     /// Exact machine priority.
-    pub machine: Identifier,
+    pub machine: MachinePriority,
 }
 
 /// ASTM O-record destinations; fields retain their standard ownership.
@@ -125,10 +173,28 @@ pub struct Hl7OrderQuery {
     pub acknowledgment_ms: u32,
 }
 
+/// Supported HL7 MSH-11 processing IDs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Hl7Processing {
+    /// Production processing.
+    #[serde(rename = "P")]
+    Production,
+    /// Training processing.
+    #[serde(rename = "T")]
+    Training,
+    /// Debugging processing.
+    #[serde(rename = "D")]
+    Debugging,
+}
+
 /// Explicit unsolicited HL7 order interface; edition selects ORM or OML.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Hl7Send {
+    /// Require PID patient identification. Contract v1 has no names, so orders
+    /// for this interface are rejected before reservation rather than inventing PID-5.
+    #[serde(default)]
+    pub require_patient_identification: bool,
     /// Outgoing MSH-3.
     pub application: Identifier,
     /// Outgoing MSH-5.
@@ -138,7 +204,7 @@ pub struct Hl7Send {
     /// Outgoing MSH-6, empty if absent.
     pub peer_facility: Option<Identifier>,
     /// Explicit MSH-11 P, T or D.
-    pub processing: Identifier,
+    pub processing: Hl7Processing,
     /// Application response deadline, also used for cancellation.
     pub response_ms: u32,
     /// ORM specimen placement: OBR-18 or OBR-19; OML uses SPM-2.
@@ -181,8 +247,8 @@ pub struct Orders {
 }
 
 impl Orders {
-    fn validate_stack(&self, machine: &Machine, path: &str) -> Result<(), Error> {
-        if machine.law.is_some() {
+    fn validate_stack(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
+        if machine.dialog.kind == crate::DialogKind::LawManager {
             return crate::law::validate_orders(machine, path, self);
         }
         if machine.syntax.kind != SyntaxKind::Hl7V2
@@ -273,7 +339,7 @@ impl Orders {
         Ok(())
     }
 
-    fn validate_hl7(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+    fn validate_hl7(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
         if self.astm.is_some()
             || self.clone.is_some()
             || self.send_ahead != self.hl7_send.is_some()
@@ -311,7 +377,6 @@ impl Orders {
                     .into_iter()
                     .flatten()
                     .any(|value| !plain(value) || value.as_str().len() > 20)
-                || !matches!(send.processing.as_str(), "P" | "T" | "D")
                 || !(1..=60_000).contains(&send.response_ms)
             {
                 return Err(invalid(
@@ -457,7 +522,7 @@ impl Orders {
             None => return Err(invalid(path, "syntax.edition", "HL7 requires an edition")),
         };
         let wire = format!(
-            "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02|config|P|{edition}\rQRD|{}\r",
+            "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02^QRY_Q02|config|P|{edition}\rQRD|{}\r",
             fields.join("|")
         );
         let syntax = analyte_hl7::Message::parse(wire.as_bytes(), analyte_hl7::Options::default())
@@ -503,7 +568,7 @@ impl Orders {
     }
 
     /// Refuses ambiguous tables, unbounded queries and invalid field ownership.
-    pub(crate) fn validate(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+    pub(crate) fn validate(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
         let fail = || {
             invalid(
                 path,
@@ -596,15 +661,30 @@ impl Orders {
             ));
         }
         if machine.syntax.kind == SyntaxKind::Autolyser
-            && self
-                .priorities
-                .iter()
-                .any(|p| !matches!(p.machine.as_str(), "T" | "R"))
+            && self.priorities.iter().any(|p| {
+                !matches!(
+                    p.machine,
+                    MachinePriority::Code(PriorityCode::T | PriorityCode::R)
+                )
+            })
         {
             return Err(invalid(
                 path,
                 "orders.priorities",
                 "Autolyser list codes are T (routine) and R (STAT)",
+            ));
+        }
+        if machine.syntax.kind == SyntaxKind::Hl7V2
+            && self.hl7_send.is_some()
+            && self
+                .priorities
+                .iter()
+                .any(|p| matches!(p.machine, MachinePriority::Custom(_)))
+        {
+            return Err(invalid(
+                path,
+                "orders.priorities",
+                "HL7 send priorities must be R, S, A, P, C, T or PRN",
             ));
         }
         let mut priorities = HashSet::new();
@@ -650,7 +730,7 @@ impl Orders {
     }
 }
 
-fn order_field(field: &Field, number: u16, machine: &Machine) -> bool {
+fn order_field(field: &Field, number: u16, machine: &MachineDocument) -> bool {
     matches!(field.group, Group::Order)
         && field.record.as_str() == "O"
         && field.field == number

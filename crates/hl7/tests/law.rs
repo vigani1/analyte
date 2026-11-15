@@ -615,13 +615,12 @@ fn law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original()
     body.push_str("TCD|mismatch^Mismatch^99LAB\r");
     let message = results_message("awos-1", &body)?;
     let original = message.serialize();
-    assert!(matches!(
-        Results::new(&message),
-        Err(Error::Inconsistent {
-            segment: "TCD",
-            field: 1
-        })
-    ));
+    let failure = Results::new(&message)
+        .err()
+        .ok_or("accepted mismatched TCD")?;
+    assert!(
+        matches!(failure, Error::AtSegment {occurrence:1,source} if matches!(*source,Error::Inconsistent {segment:"TCD",field:1}))
+    );
     assert_eq!(message.raw(), original);
     Ok(())
 }
@@ -719,17 +718,21 @@ fn law_tf2b_c1_unknown_error_location_is_omitted_never_invented()
         err.field(3).map(analyte_hl7::Field::raw),
         Some(b"207^^HL70357".as_slice())
     );
-    assert!(
-        analyte_hl7::acknowledgment(
-            &message,
-            response_metadata()?,
-            AckCode::Ae,
-            Responsibility::Stored,
-            Some(unknown),
-            utf8_options()
-        )
-        .is_err()
-    );
+    // HL7 2.5.1 section 2.15.5.2 also permits an unvalued generic ERR-2.
+    let generic = analyte_hl7::acknowledgment(
+        &message,
+        response_metadata()?,
+        AckCode::Ae,
+        Responsibility::Stored,
+        Some(unknown),
+        utf8_options(),
+    )?
+    .ok_or("generic ACK missing")?;
+    let err = generic
+        .segments()
+        .find(|s| s.id() == b"ERR")
+        .ok_or("ERR missing")?;
+    assert!(err.field(2).is_none_or(|f| f.raw().is_empty()));
     let inconsistent = AckError {
         occurrence: 1,
         ..unknown
@@ -877,6 +880,7 @@ fn law_tf2b_b7_trigger_rejection_and_query_processing_errors_have_distinct_actio
         failure.location(),
         Some(ErrorLocation {
             segment: "QPD",
+            occurrence: None,
             field: 3
         })
     );
@@ -902,12 +906,14 @@ fn law_tf2b_b7_trigger_rejection_and_query_processing_errors_have_distinct_actio
         failure.location(),
         Some(ErrorLocation {
             segment: "TCD",
+            occurrence: Some(1),
             field: 1
         })
     );
     let failure = Failure::QueryRejected {
         location: ErrorLocation {
             segment: "QPD",
+            occurrence: None,
             field: 3,
         },
     };

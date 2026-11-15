@@ -1,5 +1,5 @@
 //! Synthetic configuration evidence; IHE `PaLM` TF-2b Rev 11 sections 2.2, 3.27, 3.29.
-use analyte_config::{DialogKind, Draft, Error, EvidenceLevel, LawQueryForm};
+use analyte_config::{Draft, Error, EvidenceLevel, LawQueryForm};
 
 const LAW: &str = include_str!("../examples/law.toml");
 const SITE: &str = include_str!("../examples/site.toml");
@@ -17,15 +17,18 @@ fn load(text: &str) -> Result<analyte_config::Validated, Error> {
 fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> Result<(), Error> {
     let config = load(LAW)?;
     let machine = config.effective().machine();
-    assert_eq!(machine.dialog.kind, DialogKind::LawManager);
+    assert!(matches!(
+        config.effective().stack(),
+        analyte_config::Stack::Law(_)
+    ));
     assert_eq!(machine.evidence.level, EvidenceLevel::Documented);
-    let law = machine.law.as_ref().expect("LAW declaration");
+    let policy = &law(&config)?.policy;
     assert_eq!(
-        law.query_forms,
+        policy.query_forms,
         [LawQueryForm::Container, LawQueryForm::AllPending]
     );
-    assert_eq!(law.query_deadline_ms, 1500);
-    assert_eq!(law.response_ms, 1500);
+    assert_eq!(policy.query_deadline_ms, 1500);
+    assert_eq!(policy.response_ms, 1500);
     assert!(config.effective().hl7_options().is_some());
     // Each peer flag is independently declared; omission is never a default.
     for flag in [
@@ -42,14 +45,7 @@ fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> R
             "{flag}"
         );
         let changed = load(&LAW.replace(&format!("{flag} = false"), &format!("{flag} = true")))?;
-        let peer = changed
-            .effective()
-            .machine()
-            .law
-            .as_ref()
-            .expect("LAW")
-            .peer
-            .capabilities();
+        let peer = law(&changed)?.policy.peer.capabilities();
         assert_eq!(
             [
                 peer.patient,
@@ -136,12 +132,10 @@ fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() ->
     load(&text.replace("send_ahead = false", "send_ahead = true"))?;
     let valid = load(&text)?;
     assert!(
-        valid
-            .effective()
-            .machine()
-            .law
+        law(&valid)?
+            .orders
             .as_ref()
-            .and_then(|law| law.work.as_ref())
+            .map(|orders| &orders.work)
             .is_some()
     );
     for bad in [
@@ -229,16 +223,7 @@ fn adr0002_law_overrides_replace_policy_and_change_protected_provenance() -> Res
         ("overrides", &replacement),
     )?
     .validate()?;
-    assert_eq!(
-        config
-            .effective()
-            .machine()
-            .law
-            .as_ref()
-            .expect("LAW")
-            .query_deadline_ms,
-        2500
-    );
+    assert_eq!(law(&config)?.policy.query_deadline_ms, 2500);
     assert_ne!(config.digest(), load(LAW)?.digest());
     let invalid = replacement.replace("query_deadline_ms = 2500", "query_deadline_ms = 0");
     assert!(
@@ -254,7 +239,7 @@ fn adr0002_law_overrides_replace_policy_and_change_protected_provenance() -> Res
 }
 
 #[test]
-fn law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_independent_links()
+fn law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint()
 -> Result<(), Error> {
     for role in ["tcp_server", "tcp_client"] {
         load(&LAW.replace("kind = \"tcp_server\"", &format!("kind = \"{role}\"")))?;
@@ -264,8 +249,24 @@ fn law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_in
         "connection_mode = \"independent_per_transaction\"",
     );
     assert!(
-        matches!(load(&unsupported), Err(Error::Invalid { key, reason, .. }) if key=="law.connection_mode" && reason.contains("independent per-transaction LAW links are not supported"))
+        matches!(load(&unsupported), Err(Error::Invalid { key, .. }) if key=="law.outbound_endpoint")
     );
+    let independent =
+        unsupported.replace("[law]", "[law]\noutbound_endpoint = \"127.0.0.1:15100\"");
+    load(&independent)?;
+    assert!(load(&independent.replace("kind = \"tcp_server\"", "kind = \"tcp_client\"")).is_err());
+    assert!(load(&independent.replace("127.0.0.1:15100", "0.0.0.0:0")).is_err());
+    assert!(load(&independent.replace("independent_per_transaction", "persistent")).is_err());
     assert!(load(&LAW.replace("connection_mode = \"persistent\"", "")).is_err());
     Ok(())
+}
+
+fn law(config: &analyte_config::Validated) -> Result<&analyte_config::LawStack, Error> {
+    let analyte_config::Stack::Law(stack) = config.effective().stack() else {
+        return Err(Error::ProtocolSettings {
+            path: "fixture".into(),
+            protocol: "law",
+        });
+    };
+    Ok(stack)
 }

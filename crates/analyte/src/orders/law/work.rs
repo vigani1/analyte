@@ -7,8 +7,7 @@ use std::sync::Arc;
 
 pub(super) struct Command {
     pub(super) app: analyte_mapping::AppOrder,
-    pub(super) settings: Arc<analyte_config::Orders>,
-    pub(super) work: Arc<analyte_config::LawWork>,
+    pub(super) settings: Arc<analyte_config::LawOrders>,
     pub(super) priority: bool,
     pub(super) specimen: bool,
 }
@@ -17,18 +16,16 @@ impl Command {
         machine: &crate::config::Machine,
         app: &analyte_contract::Order,
     ) -> Result<Self, Error> {
-        let cfg = machine.snapshot.effective().machine();
-        let law = cfg.law.as_ref().ok_or("LAW settings absent")?;
-        let peer = law.peer.capabilities();
+        let law = super::super::settings::law(machine)?;
+        let peer = law.policy.peer.capabilities();
         Ok(Self {
             app: super::super::app_order(app)?,
             settings: Arc::new(
-                cfg.orders
+                law.orders
                     .as_ref()
                     .ok_or("LAW order mappings absent")?
                     .clone(),
             ),
-            work: Arc::new(law.work.as_ref().ok_or("LAW work layout absent")?.clone()),
             priority: peer.priority,
             specimen: peer.specimen,
         })
@@ -74,8 +71,8 @@ pub(super) fn render(
         let mapped = command
             .settings
             .specimen_types
-            .as_ref()
-            .and_then(|types| types.iter().find(|entry| entry.app == *specimen))
+            .iter()
+            .find(|entry| entry.app == *specimen)
             .ok_or("LAW specimen type unmapped")?;
         let priority = if command.priority && action == law::WorkAction::New {
             let app = match command.app.priority {
@@ -116,12 +113,15 @@ pub(super) fn render(
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store
                 // still retains the explicit logical namespace beside this identity.
                 id: item.placer.clone(),
-                specimen: format!("{sample}&{}", command.work.specimen_namespace.as_str()),
+                specimen: format!(
+                    "{sample}&{}",
+                    command.settings.work.specimen_namespace.as_str()
+                ),
                 container: sample.to_owned(),
                 specimen_type: format!(
                     "{}^^{}",
                     plain(mapped.machine.as_str())?,
-                    command.work.specimen_system.as_str()
+                    command.settings.work.specimen_system.as_str()
                 ),
                 test: mapped_test.machine_components.join("^"),
                 priority: priority.clone(),
@@ -135,7 +135,7 @@ pub(super) fn render(
                 item.id.as_bytes(),
                 item.specimen.as_bytes(),
                 item.specimen_type.as_bytes(),
-                first.work.specimen_role.as_str().as_bytes(),
+                first.settings.work.specimen_role.as_str().as_bytes(),
                 item.container.as_bytes(),
                 item.test.as_bytes(),
                 action,
@@ -155,7 +155,7 @@ pub(super) fn render(
         Ok(law::work_order(
             &awos,
             None,
-            address(&first.work),
+            address(&first.settings.work),
             response,
             capabilities,
             options,

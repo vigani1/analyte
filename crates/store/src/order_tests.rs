@@ -45,6 +45,97 @@ fn event(order: &MachineOrder) -> Result<OrderEventDelivery, Error> {
 }
 
 #[test]
+fn adr0003_typed_ownership_ignores_reason_prefixes_and_cancel_replay_keeps_full_version()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("typed-owners.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let key = identity()?;
+    let owner = Identifier::new("connection:part")?;
+    let record = store
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions {
+                owner: Some(&owner),
+                ..Default::default()
+            },
+        )?
+        .map_err(std::io::Error::other)?;
+    assert!(record.reserved_by(&owner));
+    assert!(!record.reserved_by(&Identifier::new("part")?));
+    // A peer-supplied reason that resembles the historical ownership convention
+    // must not admit a host cancellation or create a replay-blocking version.
+    let uncertain = store.transition_order(
+        record.id,
+        OrderState::Uncertain,
+        SourceText::new("app-cancel:9:other")?,
+        102,
+        event,
+    )?;
+    assert!(!uncertain.cancel_requested_by(&Identifier::new("other")?));
+    assert_eq!(
+        store.db.query_row(
+            "SELECT count(*) FROM machine_order_history WHERE cancel_version IS NOT NULL",
+            [],
+            |row| row.get::<_, i64>(0)
+        )?,
+        0
+    );
+    store.reconcile_order(
+        record.id,
+        OrderState::Accepted,
+        &Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("reconcile")?,
+            targets: vec![Identifier::new(&record.id.to_string())?],
+            time: 103,
+            reason: analyte_model::Reason::new("synthetic acceptance evidence")?,
+        },
+        event,
+    )?;
+    let version = NonZeroU64::new(u64::MAX).ok_or("invalid version")?;
+    store.order_page(&page(version.get(), "cancel_requested", false, 200)?)?;
+    assert_eq!(
+        store
+            .cancel_candidates(&key.destination, &key.machine, 104, 30)?
+            .len(),
+        1
+    );
+    let cancelled = store.request_order_cancel(record.id, version, 104, &owner, 30, event)?;
+    assert!(cancelled.cancel_requested_by(&owner));
+    assert!(!cancelled.cancel_requested_by(&Identifier::new("part")?));
+    assert!(
+        store
+            .cancel_candidates(&key.destination, &key.machine, 104, 30)?
+            .is_empty()
+    );
+    assert!(matches!(
+        store.request_order_cancel(record.id, version, 104, &owner, 30, event),
+        Err(Error::Conflict)
+    ));
+    drop(store);
+    let store = open(&path)?;
+    assert!(
+        store
+            .machine_order(&key)?
+            .ok_or("missing cancellation")?
+            .cancel_requested_by(&owner)
+    );
+    assert!(
+        store
+            .cancel_candidates(&key.destination, &key.machine, 104, 30)?
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[test]
 fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay() -> TestResult
 {
     let temp = tempfile::tempdir()?;
@@ -56,7 +147,7 @@ fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_re
         ("b", "requested", Some("other"), 200, false),
         ("c", "requested", Some("machine"), 200, false),
         ("d", "requested", None, 200, false),
-        ("e", "cancelled", None, 200, false),
+        ("e", "cancel_confirmed", None, 200, false),
         ("f", "requested", None, 101, false),
         ("g", "requested", None, 200, true),
         ("h", "requested", None, 200, false),
@@ -68,7 +159,15 @@ fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_re
     let mut key = identity()?;
     key.order = Identifier::new("h")?;
     store
-        .reserve_send(&key, NonZeroU64::MIN, 101, 30)?
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions::default(),
+        )?
         .map_err(std::io::Error::other)?;
     store.limits.page_rows = 2;
     let PendingOrders::Page { orders, after } =
@@ -175,7 +274,15 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
     let mut store = open(&path)?;
     store.order_page(&page(1, "requested", false, 200)?)?;
     let reserved = store
-        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30)?
+        .reserve_send(
+            &OrderReservation {
+                identity: &identity()?,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions::default(),
+        )?
         .map_err(std::io::Error::other)?;
     assert_eq!(reserved.state, OrderState::Sending);
     assert_eq!(
@@ -195,7 +302,15 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
         0
     );
     assert!(matches!(
-        store.reserve_send(&identity()?, NonZeroU64::MIN, 101, 30)?,
+        store.reserve_send(
+            &OrderReservation {
+                identity: &identity()?,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30
+            },
+            ReserveOptions::default()
+        )?,
         Err(SendRefusal::AlreadyReserved)
     ));
     let uncertain = store.transition_order(
@@ -222,7 +337,15 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
     store.order_page(&page(2, "requested", false, 200)?)?;
     let version = NonZeroU64::new(2).ok_or("version")?;
     assert!(matches!(
-        store.reserve_send(&identity()?, version, 103, 30)?,
+        store.reserve_send(
+            &OrderReservation {
+                identity: &identity()?,
+                version,
+                now: 103,
+                freshness: 30
+            },
+            ReserveOptions::default()
+        )?,
         Err(SendRefusal::AlreadyReserved)
     ));
     let audit = Audit {
@@ -292,7 +415,7 @@ fn adr0004_cancel_expiry_version_trust_and_builder_failure_never_reserve() -> Te
     ] {
         store.order_page(&page(version, state, tombstone, expiry)?)?;
         assert!(
-            matches!(store.reserve_send(&identity()?,NonZeroU64::MIN,now,30)?,Err(reason) if reason == expected)
+            matches!(store.reserve_send(&OrderReservation { identity: &identity()?, version: NonZeroU64::MIN, now, freshness: 30 }, ReserveOptions::default())?,Err(reason) if reason == expected)
         );
     }
     store.order_page(&page(1, "requested", false, 200)?)?;
@@ -348,7 +471,7 @@ fn plan11_schema3_to6_preserves_rows_and_triggers() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        6
+        SCHEMA_VERSION
     );
     assert_eq!(
         store
@@ -377,17 +500,41 @@ fn adr0004_sending_reservations_survive_restart_and_plan11_listing_is_filtered_a
     let mut store = open(&path)?;
     store.order_page(&page(1, "requested", false, 200)?)?;
     let first = store
-        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30)?
+        .reserve_send(
+            &OrderReservation {
+                identity: &identity()?,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions::default(),
+        )?
         .map_err(std::io::Error::other)?;
     let mut second_key = identity()?;
     second_key.machine = Identifier::new("second-machine")?;
     let second = store
-        .reserve_send(&second_key, NonZeroU64::MIN, 101, 30)?
+        .reserve_send(
+            &OrderReservation {
+                identity: &second_key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions::default(),
+        )?
         .map_err(std::io::Error::other)?;
     drop(store);
     let mut store = open(&path)?;
     assert!(matches!(
-        store.reserve_send(&identity()?, NonZeroU64::MIN, 102, 30)?,
+        store.reserve_send(
+            &OrderReservation {
+                identity: &identity()?,
+                version: NonZeroU64::MIN,
+                now: 102,
+                freshness: 30
+            },
+            ReserveOptions::default()
+        )?,
         Err(SendRefusal::AlreadyReserved)
     ));
     store.limits.page_rows = 1;
@@ -425,21 +572,39 @@ fn adr0004_sending_reservations_survive_restart_and_plan11_listing_is_filtered_a
     Ok(())
 }
 
+fn test_groups(
+    names: &[&str],
+) -> Result<Vec<Vec<analyte_model::NamespacedId>>, analyte_model::TextError> {
+    names
+        .iter()
+        .map(|name| {
+            Ok(vec![analyte_model::NamespacedId {
+                namespace: Identifier::new("local")?,
+                value: Identifier::new(name)?,
+            }])
+        })
+        .collect()
+}
+
 fn reserve_two(store: &mut Store) -> Result<MachineOrder, Box<dyn std::error::Error>> {
     let mut page = page(1, "requested", false, 200)?;
     page.orders.first_mut().ok_or("missing fixture")?.document = serde_json::json!({"version":1,"state":"requested","tombstone":false,"tests":[{"namespace":"local","value":"a"},{"namespace":"local","value":"b"}]}).to_string();
     store.order_page(&page)?;
     Ok(store
-        .reserve_send_items(
+        .reserve_send(
             &OrderReservation {
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 101,
                 freshness: 30,
             },
-            OrderItems::PerTest {
-                namespace: &Identifier::new("lab")?,
-                identity_bytes: 22,
+            ReserveOptions {
+                items: OrderItems::Groups {
+                    groups: &test_groups(&["a", "b"])?,
+                    namespace: Some(&Identifier::new("lab")?),
+                    max_identity_bytes: 18,
+                },
+                ..Default::default()
             },
         )?
         .map_err(std::io::Error::other)?)
@@ -487,7 +652,15 @@ fn adr0003_0004_items_are_atomic_retained_and_never_reserved_again() -> TestResu
     })?;
     assert_eq!(restored.first().ok_or("missing order")?.items.len(), 2);
     assert!(matches!(
-        store.reserve_send(&identity()?, NonZeroU64::MIN, 102, 30)?,
+        store.reserve_send(
+            &OrderReservation {
+                identity: &identity()?,
+                version: NonZeroU64::MIN,
+                now: 102,
+                freshness: 30
+            },
+            ReserveOptions::default()
+        )?,
         Err(SendRefusal::AlreadyReserved)
     ));
     store.transition_order(
@@ -681,16 +854,22 @@ fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() 
     store.order_page(&page(1, "requested", false, 200)?)?;
     for namespace in ["n".repeat(22), "n".repeat(256)] {
         assert!(matches!(
-            store.reserve_send_items(
+            store.reserve_send(
                 &OrderReservation {
                     identity: &identity()?,
                     version: NonZeroU64::MIN,
                     now: 101,
                     freshness: 30
                 },
-                OrderItems::PerTest {
-                    namespace: &Identifier::new(&namespace)?,
-                    identity_bytes: 22
+                ReserveOptions {
+                    items: OrderItems::Groups {
+                        groups: &test_groups(&["test"])?,
+                        namespace: Some(&Identifier::new(&namespace)?),
+                        max_identity_bytes: 22usize
+                            .saturating_sub(namespace.len())
+                            .saturating_sub(1)
+                    },
+                    ..Default::default()
                 }
             ),
             Err(Error::ItemIdentityTooLong)
@@ -789,7 +968,7 @@ fn adr0004_cancel_refusal_restores_sent_and_missing_cancel_is_uncertain() -> Tes
         assert!(result.source_code.as_str().contains("CancelRefused"));
         assert!(
             store
-                .order_candidates(&identity()?.destination, &identity()?.machine, "")?
+                .order_candidates(&identity()?.destination, &identity()?.machine, "", 101, 30)?
                 .is_empty()
         );
     }
@@ -812,11 +991,23 @@ fn adr0003_cancelled_query_wait_can_only_claim_its_retained_reservation_owner() 
     let first = Identifier::new("connection-one")?;
     let second = Identifier::new("connection-two")?;
     let record = store
-        .reserve_send_owned(&reservation, &first)?
+        .reserve_send(
+            &reservation,
+            ReserveOptions {
+                owner: Some(&first),
+                ..Default::default()
+            },
+        )?
         .map_err(std::io::Error::other)?;
     assert_eq!(record.source_code.as_str(), "host-reserved:connection-one");
     assert!(matches!(
-        store.reserve_send_owned(&reservation, &second)?,
+        store.reserve_send(
+            &reservation,
+            ReserveOptions {
+                owner: Some(&second),
+                ..Default::default()
+            }
+        )?,
         Err(SendRefusal::AlreadyReserved)
     ));
     drop(store);
@@ -848,7 +1039,15 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
     store.order_page(&page(1, "requested", false, 200)?)?;
     store.backup(&backup, Instant::now() + Duration::from_secs(5))?;
     let order = store
-        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30)?
+        .reserve_send(
+            &OrderReservation {
+                identity: &identity()?,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions::default(),
+        )?
         .map_err(std::io::Error::other)?;
     assert_eq!(order.state, OrderState::Sending);
     let mut audit = Audit {
@@ -892,7 +1091,15 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
     let mut store = open(&path)?;
     assert!(store.restore_unreconciled()?);
     assert!(matches!(
-        store.reserve_send(&identity()?, NonZeroU64::MIN, 103, 30)?,
+        store.reserve_send(
+            &OrderReservation {
+                identity: &identity()?,
+                version: NonZeroU64::MIN,
+                now: 103,
+                freshness: 30
+            },
+            ReserveOptions::default()
+        )?,
         Err(SendRefusal::RestoreUnreconciled)
     ));
     assert!(matches!(
@@ -914,7 +1121,15 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
     );
     assert!(
         store
-            .reserve_send(&identity()?, NonZeroU64::MIN, 103, 30)?
+            .reserve_send(
+                &OrderReservation {
+                    identity: &identity()?,
+                    version: NonZeroU64::MIN,
+                    now: 103,
+                    freshness: 30
+                },
+                ReserveOptions::default()
+            )?
             .is_ok()
     );
     Ok(())
@@ -941,17 +1156,27 @@ fn plan11_restore_pause_blocks_hl7_items_and_owned_dsr_in_shared_transaction() -
         freshness: 30,
     };
     assert!(matches!(
-        store.reserve_send_items(
+        store.reserve_send(
             &candidate,
-            OrderItems::PerTest {
-                namespace: &Identifier::new("lab")?,
-                identity_bytes: 22
+            ReserveOptions {
+                items: OrderItems::Groups {
+                    groups: &test_groups(&["test"])?,
+                    namespace: Some(&Identifier::new("lab")?),
+                    max_identity_bytes: 18
+                },
+                ..Default::default()
             }
         )?,
         Err(SendRefusal::RestoreUnreconciled)
     ));
     assert!(matches!(
-        store.reserve_send_owned(&candidate, &Identifier::new("connection")?)?,
+        store.reserve_send(
+            &candidate,
+            ReserveOptions {
+                owner: Some(&Identifier::new("connection")?),
+                ..Default::default()
+            }
+        )?,
         Err(SendRefusal::RestoreUnreconciled)
     ));
     for table in [
@@ -973,11 +1198,15 @@ fn plan11_restore_pause_blocks_hl7_items_and_owned_dsr_in_shared_transaction() -
     store.resume_after_restore(&audit)?;
     assert!(
         store
-            .reserve_send_items(
+            .reserve_send(
                 &candidate,
-                OrderItems::PerTest {
-                    namespace: &Identifier::new("lab")?,
-                    identity_bytes: 22
+                ReserveOptions {
+                    items: OrderItems::Groups {
+                        groups: &test_groups(&["test"])?,
+                        namespace: Some(&Identifier::new("lab")?),
+                        max_identity_bytes: 18
+                    },
+                    ..Default::default()
                 }
             )?
             .is_ok()
@@ -1000,19 +1229,22 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
     let owner = Identifier::new("connection")?;
     let namespace = Identifier::new("LAB")?;
     assert!(matches!(
-        store.reserve_send_items_with(
+        store.reserve_send(
             &candidate,
-            OrderItems::PerTest {
-                namespace: &namespace,
-                identity_bytes: 22
-            },
-            &owner,
-            |record| -> Result<(), Error> {
-                assert_eq!(
-                    record.items.first().ok_or(Error::InvalidInput)?.placer,
-                    format!("{}-1", record.id)
-                );
-                Err(Error::InvalidInput)
+            ReserveOptions {
+                items: OrderItems::Groups {
+                    groups: &test_groups(&["test"])?,
+                    namespace: Some(&namespace),
+                    max_identity_bytes: 18
+                },
+                owner: Some(&owner),
+                prepare: Some(&mut |record| -> Result<(), Error> {
+                    assert_eq!(
+                        record.items.first().ok_or(Error::InvalidInput)?.placer,
+                        format!("{}-1", record.id)
+                    );
+                    Err(Error::InvalidInput)
+                }),
             }
         ),
         Err(Error::InvalidInput)
@@ -1040,14 +1272,17 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
         reason: analyte_model::Reason::new("synthetic restore")?,
     })?;
     assert!(matches!(
-        store.reserve_send_items_with(
+        store.reserve_send(
             &candidate,
-            OrderItems::PerTest {
-                namespace: &namespace,
-                identity_bytes: 22
-            },
-            &owner,
-            |_| -> Result<(), Error> { Err(Error::InvalidInput) }
+            ReserveOptions {
+                items: OrderItems::Groups {
+                    groups: &test_groups(&["test"])?,
+                    namespace: Some(&namespace),
+                    max_identity_bytes: 18
+                },
+                owner: Some(&owner),
+                prepare: Some(&mut |_| -> Result<(), Error> { Err(Error::InvalidInput) }),
+            }
         )?,
         Err(SendRefusal::RestoreUnreconciled)
     ));
@@ -1069,5 +1304,407 @@ fn adr0003_0008_item_reasons_are_lossless_when_aggregate_summary_is_bounded() ->
     assert_eq!(rejected.state, OrderState::Rejected);
     assert!(rejected.source_code.as_str().len() < 200);
     assert!(rejected.items.iter().all(|item| item.source_code == reason));
+    Ok(())
+}
+
+// ADR 0003 rule 8: an aggregate Uncertain state never authorizes rewriting a terminal item.
+#[test]
+fn adr0003_rule8_operator_reconciliation_checks_items_and_rolls_back() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("reconcile-items.db"))?;
+    let record = reserve_two(&mut store)?;
+    let outcomes = [ItemDecision::Uncertain, ItemDecision::Rejected]
+        .into_iter()
+        .zip([1, 2])
+        .map(|(decision, index)| {
+            Ok(ItemOutcome {
+                index,
+                decision,
+                code: SourceText::new("peer-evidence")?,
+            })
+        })
+        .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
+    let uncertain = store.finish_order_items(record.id, &outcomes, 102, event)?;
+    assert_eq!(uncertain.state, OrderState::Uncertain);
+    let history: i64 =
+        store
+            .db
+            .query_row("SELECT count(*) FROM machine_order_item_history", [], |r| {
+                r.get(0)
+            })?;
+    let audit_count: i64 = store
+        .db
+        .query_row("SELECT count(*) FROM audit", [], |r| r.get(0))?;
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("orders-reconcile")?,
+        targets: vec![Identifier::new(&record.id.to_string())?],
+        time: 103,
+        reason: analyte_model::Reason::new("synthetic operator evidence")?,
+    };
+    assert!(matches!(
+        store.reconcile_order(record.id, OrderState::Accepted, &audit, event),
+        Err(Error::OrderTransition(analyte_model::TransitionError {
+            from: OrderState::Rejected,
+            to: OrderState::Accepted
+        }))
+    ));
+    let retained = store.machine_order(&record.key)?.ok_or("missing order")?;
+    assert_eq!(
+        serde_json::to_value(&retained)?,
+        serde_json::to_value(&uncertain)?
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM machine_order_item_history", [], |r| r
+                .get::<_, i64>(0))?,
+        history
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM audit", [], |r| r.get::<_, i64>(0))?,
+        audit_count
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
+    Ok(())
+}
+
+// ADR 0003 rule 8 / ORDERS.md: refusal restores retained item state, not a past aggregate snapshot.
+#[test]
+fn adr0003_rule8_cancel_refusal_uses_cancel_from_not_history_json() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("cancel-from.db"))?;
+    let record = reserve_two(&mut store)?;
+    let outcomes = [1, 2].map(|index| ItemOutcome {
+        index,
+        decision: ItemDecision::Sent,
+        code: SourceText::new("AA").expect("constant"),
+    });
+    store.finish_order_items(record.id, &outcomes, 102, event)?;
+    let cancelled = store.transition_order(
+        record.id,
+        OrderState::CancelRequested,
+        SourceText::new("CA")?,
+        103,
+        event,
+    )?;
+    assert!(
+        cancelled
+            .items
+            .iter()
+            .all(|item| item.cancel_from == Some(OrderState::Sent))
+    );
+    // Deliberately conflicting historical aggregate: the current per-item evidence must win.
+    let mut past = cancelled.clone();
+    past.state = OrderState::Accepted;
+    for snapshot in [&past, &cancelled] {
+        store.db.execute(
+            "INSERT INTO machine_order_history(machine_order,evidence) VALUES (?1,?2)",
+            rusqlite::params![record.id, serde_json::to_string(snapshot)?],
+        )?;
+    }
+    let outcomes = [1, 2].map(|index| ItemOutcome {
+        index,
+        decision: ItemDecision::CancelRefused,
+        code: SourceText::new("UC").expect("constant"),
+    });
+    let restored = store.finish_order_items(record.id, &outcomes, 104, event)?;
+    assert_eq!(restored.state, OrderState::Sent);
+    assert!(
+        restored
+            .items
+            .iter()
+            .all(|item| item.state == OrderState::Sent)
+    );
+    Ok(())
+}
+
+// ADR 0004 / safety rule 9: all order readers, reservations and alerts share one trust decision.
+#[test]
+fn rule9_typed_trust_matrix_and_configured_age_boundary() -> TestResult {
+    for case in [
+        "unknown",
+        "incomplete",
+        "paused",
+        "stale",
+        "trusted",
+        "future",
+    ] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("trust.db"))?;
+        let key = identity()?;
+        if case != "unknown" {
+            let mut snapshot = page(1, "requested", false, 1000)?;
+            snapshot.complete = case != "incomplete";
+            snapshot.polled = if case == "future" {
+                131
+            } else if case == "paused" {
+                120
+            } else {
+                100
+            };
+            store.order_page(&snapshot)?;
+        }
+        if case == "paused" {
+            store.audit(&Audit {
+                actor: Identifier::new("operator")?,
+                action: Identifier::new("store-restore")?,
+                targets: vec![],
+                time: 101,
+                reason: analyte_model::Reason::new("synthetic restore")?,
+            })?;
+        }
+        let freshness = if case == "trusted" { 31 } else { 30 };
+        let expected = match case {
+            "unknown" | "future" => OrderTrust::Unknown,
+            "incomplete" => OrderTrust::Incomplete,
+            "paused" => OrderTrust::RestorePaused,
+            "stale" => OrderTrust::Stale { age: 30 },
+            "trusted" => OrderTrust::Trusted { age: 30 },
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            store.order_trust(&key.destination, 130, freshness)?,
+            expected
+        );
+        let lookup = store.orders(&key.destination, &SampleId::new("001a")?, 130, freshness)?;
+        let pending = store.pending_orders(&key.destination, &key.machine, "", 130, freshness)?;
+        assert_eq!(!matches!(lookup, Lookup::NotTrusted), expected.is_trusted());
+        assert_eq!(
+            !matches!(pending, PendingOrders::NotTrusted),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store
+                .order_candidates(&key.destination, &key.machine, "", 130, freshness)
+                .is_ok(),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store
+                .cancel_candidates(&key.destination, &key.machine, 130, freshness)
+                .is_ok(),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store.alert_value(
+                &AlertKey::OrderCacheStale,
+                130,
+                &[(key.destination.clone(), freshness)]
+            )?,
+            if expected.is_trusted() {
+                Some(30)
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            store
+                .reserve_send(
+                    &OrderReservation {
+                        identity: &key,
+                        version: NonZeroU64::MIN,
+                        now: 130,
+                        freshness
+                    },
+                    ReserveOptions::default()
+                )?
+                .is_ok(),
+            expected.is_trusted()
+        );
+    }
+    Ok(())
+}
+
+// ADR 0003 rules 4/8: caller grouping cannot omit, duplicate or invent cached tests.
+#[test]
+fn adr0003_caller_groups_are_exact_and_identity_budget_has_no_namespace_assumptions() -> TestResult
+{
+    let temp = tempfile::tempdir()?;
+    let long_namespace = Identifier::new(&"n".repeat(256))?;
+    for (case, namespace) in [None, Some(&long_namespace)].into_iter().enumerate() {
+        let path = temp.path().join(format!("grouping-{case}.db"));
+        let mut store = open(&path)?;
+        let mut cached = page(1, "requested", false, 200)?;
+        cached.orders.first_mut().ok_or("missing order")?.document = serde_json::json!({
+            "version":1,"state":"requested","tombstone":false,
+            "tests":[{"namespace":"local","value":"a"},{"namespace":"local","value":"b"},{"namespace":"local","value":"c"}]
+        }).to_string();
+        store.order_page(&cached)?;
+        let key = identity()?;
+        let candidate = OrderReservation {
+            identity: &key,
+            version: NonZeroU64::MIN,
+            now: 101,
+            freshness: 30,
+        };
+        for groups in [
+            vec![],
+            vec![vec![]],
+            test_groups(&["a", "b"])?,
+            test_groups(&["a", "a", "c"])?,
+            test_groups(&["a", "b", "unknown"])?,
+        ] {
+            assert!(matches!(
+                store.reserve_send(
+                    &candidate,
+                    ReserveOptions {
+                        items: OrderItems::Groups {
+                            groups: &groups,
+                            namespace,
+                            max_identity_bytes: 3
+                        },
+                        ..Default::default()
+                    }
+                ),
+                Err(Error::InvalidInput)
+            ));
+        }
+        let one_per_test = test_groups(&["c", "a", "b"])?;
+        let first = one_per_test
+            .first()
+            .ok_or("missing c")?
+            .iter()
+            .chain(one_per_test.get(1).ok_or("missing a")?)
+            .cloned()
+            .collect::<Vec<_>>();
+        let groups = vec![first, one_per_test.get(2).ok_or("missing b")?.clone()];
+        assert!(matches!(
+            store.reserve_send(
+                &candidate,
+                ReserveOptions {
+                    items: OrderItems::Groups {
+                        groups: &groups,
+                        namespace,
+                        max_identity_bytes: 2
+                    },
+                    ..Default::default()
+                }
+            ),
+            Err(Error::ItemIdentityTooLong)
+        ));
+        for table in [
+            "machine_orders",
+            "machine_order_items",
+            "machine_order_history",
+            "machine_order_item_history",
+            "outbox",
+        ] {
+            assert_eq!(
+                store
+                    .db
+                    .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| row
+                        .get::<_, i64>(0))?,
+                0
+            );
+        }
+        let order = store
+            .reserve_send(
+                &candidate,
+                ReserveOptions {
+                    items: OrderItems::Groups {
+                        groups: &groups,
+                        namespace,
+                        max_identity_bytes: 3,
+                    },
+                    ..Default::default()
+                },
+            )?
+            .map_err(std::io::Error::other)?;
+        assert_eq!(
+            order
+                .items
+                .iter()
+                .map(|item| item.tests.clone())
+                .collect::<Vec<_>>(),
+            groups
+        );
+        assert!(
+            order
+                .items
+                .iter()
+                .all(|item| item.placer.len() == 3 && item.placer_namespace.as_ref() == namespace)
+        );
+        drop(store);
+        let store = open(&path)?;
+        assert_eq!(
+            store
+                .machine_order(&key)?
+                .ok_or("missing reservation")?
+                .items
+                .iter()
+                .map(|item| item.tests.clone())
+                .collect::<Vec<_>>(),
+            groups
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("command.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let owner = Identifier::new("owner")?;
+    let key = identity()?;
+    let groups = vec![vec![analyte_model::NamespacedId {
+        namespace: Identifier::new("local")?,
+        value: Identifier::new("test")?,
+    }]];
+    let namespace = Identifier::new("LAB")?;
+    let record = store
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions {
+                items: OrderItems::Groups {
+                    groups: &groups,
+                    namespace: Some(&namespace),
+                    max_identity_bytes: 46,
+                },
+                owner: Some(&owner),
+                prepare: None,
+            },
+        )?
+        .map_err(std::io::Error::other)?;
+    assert!(
+        store
+            .retain_order_command(&key, &Identifier::new("other")?, b"wrong-owner".to_vec())
+            .is_err()
+    );
+    store.retain_order_command(&key, &owner, b"synthetic original command".to_vec())?;
+    assert!(
+        store
+            .retain_order_command(&key, &owner, b"changed command".to_vec())
+            .is_err()
+    );
+    let placer = record.items.first().ok_or("item")?.placer.clone();
+    assert!(
+        store
+            .machine_order_by_placer(&Identifier::new("other-machine")?, &placer)?
+            .is_none()
+    );
+    drop(store);
+    let store = open(&path)?;
+    let retained = store
+        .machine_order_by_placer(&key.machine, &placer)?
+        .ok_or("retained command")?;
+    assert_eq!(
+        retained.original_command(),
+        Some(b"synthetic original command".as_slice())
+    );
     Ok(())
 }

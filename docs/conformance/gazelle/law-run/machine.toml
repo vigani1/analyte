@@ -1,0 +1,92 @@
+# Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
+schema_version = 1
+name = "gazelle-law-analyzer"
+deviations = []
+[transport]
+kind = "tcp_client"
+operation_timeout_ms = 10000
+
+[framing]
+kind = "mllp"
+limit = 1048576
+
+[dialog]
+kind = "law_manager"
+receive_timeout_ms = 30000
+send_timeout_ms = 15000
+acknowledgment = "store_and_forward"
+[syntax]
+kind = "hl7_v2"
+encoding = "utf8"
+edition = "v251"
+terminator = "cr"
+escapes = "reject"
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 128
+repetitions = 128
+components = 128
+[mappings]
+tests = [{machine_code="SYN", machine_system="99LAB", app_code="DEMO", app_system="demo"}]
+units = [{original="mg/L^mg/L^UCUM", ucum="mg/L"}]
+qc = []
+[mappings.sample]
+source = "barcode"
+[mappings.sample.field]
+group = "order"
+record = "SAC"
+field = 3
+component = 1
+repetition = 1
+[mappings.identity]
+order_id = {group="order",record="OBR",field=2,component=1,repetition=1}
+order_namespace = {field={group="order",record="OBR",field=2,component=2,repetition=1}}
+sub_id = {group="observation",record="OBX",field=4,component=1,repetition=1}
+run = []
+correction_status_codes = ["C"]
+[evidence]
+level = "documented"
+[[evidence.capabilities]]
+model = "synthetic"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "tcp_client"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []
+
+[law]
+connection_mode = "persistent"
+query_forms = ["container", "all_pending"]
+query_deadline_ms = 10000
+response_ms = 10000
+[law.peer]
+patient = false
+container = false
+specimen = false
+dilution = false
+manager_repeat = false
+repeat_control = false
+priority = false
+
+# Synthetic LAW work policy to append to examples/law.toml; documented only.
+[law.work]
+application = "ANALYTE-TEST"
+facility = "ANALYTE-TEST"
+peer_application = "OM_LAB_ANALYZER"
+peer_facility = "IHE"
+specimen_namespace = "ANALYTE-TEST"
+container_namespace = "ANALYTE-TEST"
+specimen_role = "P"
+specimen_system = "HL70487"
+
+[orders]
+# Set true to admit unsolicited LAB-28 on the current connection.
+send_ahead = true
+placer_namespace = "ANALYTE-TEST"
+tests = [{app={namespace="synthetic",value="TEST"},machine_components=["SYN","Synthetic","99LAB"]}]
+priorities = [{app="routine",machine="R"}]
+specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]

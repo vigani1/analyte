@@ -289,6 +289,9 @@ pub struct Syntax {
     pub terminator: Option<Terminator>,
     /// Required only for HL7.
     pub escapes: Option<Escapes>,
+    /// Named vendor departure for the later UTF-8 code in HL7 2.3.1.
+    #[serde(default)]
+    pub allow_utf8_in_v231: bool,
     /// Total message bytes.
     pub bytes: usize,
     /// Maximum records or segments.
@@ -503,7 +506,7 @@ pub struct Evidence {
 /// Shipped definition contains protocol and mapping rules only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Machine {
+pub(crate) struct MachineDocument {
     /// Required only for the LAW Analyzer Manager stack.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub law: Option<crate::Law>,
@@ -542,6 +545,9 @@ pub struct Machine {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Destination {
+    /// Maximum trusted order-cache age in seconds, shared by every host path.
+    #[serde(default = "default_order_freshness")]
+    pub freshness_seconds: u64,
     /// Destination identity.
     pub name: Identifier,
     /// HTTPS base URL without user info, query or fragment.
@@ -606,6 +612,8 @@ pub struct CodeTables {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Poct {
+    /// Explicit trusted POCT source identity policy; absence keeps results unresolved.
+    pub identity: Option<PoctIdentity>,
     /// Maximum pending custody requests.
     pub pending_messages: usize,
     /// Maximum XML nesting depth.
@@ -618,6 +626,37 @@ pub struct Poct {
     pub response_ms: u32,
     /// ACK budget when DCP omits it.
     pub acknowledgment_ms: u32,
+}
+
+/// Installed VIDAS sample ID ceiling; only documented layouts are representable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "u8", into = "u8")]
+pub enum VidasSampleLimit {
+    /// Twelve-character installed layout.
+    Twelve,
+    /// Seventeen-character installed layout.
+    Seventeen,
+}
+
+impl TryFrom<u8> for VidasSampleLimit {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            12 => Ok(Self::Twelve),
+            17 => Ok(Self::Seventeen),
+            _ => Err("VIDAS sample_limit must be 12 or 17"),
+        }
+    }
+}
+
+impl From<VidasSampleLimit> for u8 {
+    fn from(value: VidasSampleLimit) -> Self {
+        match value {
+            VidasSampleLimit::Twelve => 12,
+            VidasSampleLimit::Seventeen => 17,
+        }
+    }
 }
 
 /// Explicit installed VIDAS Literal settings; no defaults.
@@ -639,7 +678,7 @@ pub struct Vidas {
     /// Accept either checksum case.
     pub accept_either_case: bool,
     /// Installed sample ID ceiling, twelve or seventeen.
-    pub sample_limit: u8,
+    pub sample_limit: VidasSampleLimit,
     /// Peer ACK deadline.
     pub acknowledgment_ms: u32,
     /// Interbyte deadline.
@@ -678,28 +717,6 @@ pub struct Autolyser {
     pub download: bool,
 }
 
-impl Machine {
-    /// Returns the single configured test table, for either mapping family.
-    #[must_use]
-    pub fn tests(&self) -> &[TestMapping] {
-        match (&self.mappings, &self.codes) {
-            (Some(mapping), None) => &mapping.tests,
-            (None, Some(codes)) => &codes.tests,
-            (None, None) | (Some(_), Some(_)) => &[],
-        }
-    }
-
-    /// Returns the single configured unit table, for either mapping family.
-    #[must_use]
-    pub fn units(&self) -> &[UnitMapping] {
-        match (&self.mappings, &self.codes) {
-            (Some(mapping), None) => &mapping.units,
-            (None, Some(codes)) => &codes.units,
-            (None, None) | (Some(_), Some(_)) => &[],
-        }
-    }
-}
-
 /// Exact source codes for dilution application; all other values stay unknown.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -723,4 +740,18 @@ pub enum ValueKind {
     /// Preserve existing protocol interpretation.
     #[default]
     Either,
+}
+
+fn default_order_freshness() -> u64 {
+    30
+}
+
+/// Installed POCT identity evidence, never inferred from values or receipt IDs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PoctIdentity {
+    /// Require the device sequence in addition to device, observation time and analyte.
+    pub sequence_number: bool,
+    /// Explicit installed processing mode; no source mode is inferred from Hello.
+    pub processing: analyte_model::ProcessingMode,
 }

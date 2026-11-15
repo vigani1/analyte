@@ -96,7 +96,7 @@ pub(crate) fn age(state: &AlertState, now: i64) -> String {
 async fn evaluate(
     store: &Handle,
     policies: &[Alert],
-    destinations: &[Identifier],
+    destinations: &[(Identifier, u64)],
     now: i64,
 ) -> Result<(), Error> {
     for policy in policies {
@@ -125,7 +125,7 @@ async fn evaluate(
 pub(crate) async fn run(
     store: Arc<Handle>,
     policies: Vec<Alert>,
-    destinations: Vec<Identifier>,
+    destinations: Vec<(Identifier, u64)>,
     interval: Duration,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
@@ -211,7 +211,7 @@ mod tests {
             VALUES('delivery','order_event','SAMPLE-PRIVATE-00012','lab','SAMPLE-PRIVATE-00012',x'00',zeroblob(32),1,'pending',0,90);
             INSERT INTO parked(evidence) VALUES('SAMPLE-PRIVATE-00012');
             INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code)
-            VALUES('lab','SAMPLE-PRIVATE-00012','busy','1','"Uncertain"',90,90,'test');
+            VALUES('lab','SAMPLE-PRIVATE-00012','busy','1','Uncertain',90,90,'test');
             INSERT INTO audit(evidence) VALUES('{"action":"store-restore"}');"#)?;
         let policies = [
             "oldest_undelivered",
@@ -225,7 +225,7 @@ mod tests {
         .map(policy)
         .into_iter()
         .collect::<Result<Vec<_>, _>>()?;
-        let destinations = [Identifier::new("lab")?];
+        let destinations = [(Identifier::new("lab")?, 30)];
         // Disk is clear at reserve+margin; ages raise exactly at their threshold.
         assert!(!raised(&policies[2], Some(1034)));
         space.store(1033, Ordering::SeqCst);
@@ -261,7 +261,7 @@ mod tests {
             UPDATE feed SET polled=101;
             UPDATE outbox SET state='done';
             UPDATE parked SET resolution='resolved';
-            UPDATE machine_orders SET state='"Done"';
+            UPDATE machine_orders SET state='Done';
             INSERT INTO audit(evidence) VALUES('{"action":"orders-resume-after-restore"}');"#,
         )?;
         space.store(1034, Ordering::SeqCst);

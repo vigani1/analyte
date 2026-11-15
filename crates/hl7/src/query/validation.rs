@@ -156,7 +156,7 @@ mod tests {
             for format in ["D", "R", "T"] {
                 for priority in ["D", "I"] {
                     let bytes = format!(
-                        "MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|m|P|{edition}\rQRD|20261115|{format}|{priority}|tag|||5^LI|^Synthetic|LOCAL|LOCAL\r"
+                        "MSH|^~\\&|A|B|C|D|20261115||QRY^Q02^QRY_Q02|m|P|{edition}\rQRD|20261115|{format}|{priority}|tag|||5^LI|^Synthetic|LOCAL|LOCAL\r"
                     );
                     let message =
                         crate::Message::parse(bytes.as_bytes(), crate::Options::default())?;

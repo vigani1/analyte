@@ -1,6 +1,9 @@
 //! Synthetic localhost receive-path tests, tied to ADR 0003 and protocol scopes.
+#[path = "support/guard.rs"]
+mod guard;
 use analyte::{Error, config::Program, service};
 use analyte_store::{FreeSpace, Store};
+use guard::HANG_GUARD;
 use std::{path::Path, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -54,10 +57,9 @@ fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_start
             .ok_or("LAW machine absent")?
             .snapshot()
             .effective()
-            .machine()
-            .dialog
-            .kind,
-        analyte_config::DialogKind::LawManager
+            .stack()
+            .layer_names()[2],
+        "law_manager"
     );
     assert!(!temp.path().join("data").exists());
     std::fs::write(
@@ -73,9 +75,8 @@ fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_start
             .ok_or("LAW machine absent")?
             .snapshot()
             .effective()
-            .machine()
-            .transport
-            .kind,
+            .stack()
+            .transport_kind(),
         analyte_config::TransportKind::TcpClient
     );
     assert!(!temp.path().join("data").exists());
@@ -92,7 +93,7 @@ async fn connect(program: &Program) -> Result<TcpStream, Error> {
         .site()
         .endpoint;
     let until = tokio::time::Instant::now()
-        .checked_add(Duration::from_secs(5))
+        .checked_add(HANG_GUARD)
         .unwrap_or(tokio::time::Instant::now());
     loop {
         if let Ok(stream) = TcpStream::connect(endpoint).await {
@@ -120,7 +121,7 @@ fn stored(program: &Program) -> Result<Store, Error> {
 }
 
 async fn read_ack(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         let mut bytes = Vec::new();
         while bytes.len() < 4096 {
             let byte = peer.read_u8().await?;
@@ -134,11 +135,10 @@ async fn read_ack(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
     .await?
 }
 
-const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
+const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
 
 #[tokio::test]
-async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() -> Result<(), Error>
-{
+async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -169,33 +169,47 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
         store
             .health(
                 &analyte_model::Identifier::new("demo")?,
-                jiff::Timestamp::now().as_second()
+                jiff::Timestamp::now().as_second(),
+                30
             )?
             .pending_count,
         1
     );
     drop(store);
-    let bad = String::from_utf8(ORU.to_vec())?
-        .replace("SYN^Synthetic", "UNKNOWN^Synthetic")
-        .replace("message1", "message2");
+    let mut bad = String::from_utf8(ORU.to_vec())?.replace("message1", "message2");
+    bad.push_str("OBX|2|NM|UNKNOWN^Synthetic^synthetic||12.30|mg/L|||||F\r");
     peer.write_all(&analyte_framing::mllp::encode(
         bad.as_bytes(),
         analyte_framing::mllp::Limit::new(1048576)?,
     )?)
     .await?;
-    assert!(String::from_utf8_lossy(&read_ack(&mut peer).await?).contains("MSA|AE|message2"));
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AE|message2"));
+    assert!(ack.contains("ERR||OBX^2^3|207|E|operator-review"), "{ack}");
     assert!(!stored(&program)?.parked(0)?.is_empty());
     assert_eq!(
         stored(&program)?
             .health(
                 &analyte_model::Identifier::new("demo")?,
-                jiff::Timestamp::now().as_second()
+                jiff::Timestamp::now().as_second(),
+                30
             )?
             .pending_count,
         1
     );
+    let conflict = String::from_utf8(ORU.to_vec())?
+        .replace("message1", "message3")
+        .replace("12.30", "99.10");
+    peer.write_all(&analyte_framing::mllp::encode(
+        conflict.as_bytes(),
+        analyte_framing::mllp::Limit::new(1048576)?,
+    )?)
+    .await?;
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AE|message3"));
+    assert!(ack.contains("ERR|||207|E|operator-review"), "{ack}");
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -216,10 +230,7 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     ));
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-        6
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     let payload = b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
     let frames = analyte_framing::astm::encode(
         payload,
@@ -230,20 +241,23 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     for frame in frames {
         wire.extend_from_slice(&frame);
         peer.write_all(&frame).await?;
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-            6
-        );
+        assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
         let store = stored(&program)?;
-        let transfers = store.incomplete("")?;
-        let transfer = analyte_model::Identifier::new(
-            transfers.first().ok_or("no frame journal before ACK")?,
+        let journal = rusqlite::Connection::open_with_flags(
+            program.data_directory().join("analyte.db"),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
         )?;
+        let transfer: String = journal.query_row(
+            "SELECT id FROM transfers WHERE state!='complete' ORDER BY id LIMIT 1",
+            [],
+            |row| row.get(0),
+        )?;
+        let transfer = analyte_model::Identifier::new(&transfer)?;
         assert!(!store.frames(&transfer, 0)?.is_empty());
     }
     peer.write_all(b"\x04").await?;
     let until = tokio::time::Instant::now()
-        .checked_add(Duration::from_secs(3))
+        .checked_add(HANG_GUARD)
         .unwrap_or(tokio::time::Instant::now());
     loop {
         let store = stored(&program)?;
@@ -263,7 +277,7 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -279,13 +293,10 @@ async fn adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded() -> Result<
     }));
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-        21
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 21);
     assert!(stored(&program)?.receipts("")?.is_empty());
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -332,7 +343,7 @@ async fn adr0003_hl7_full_disk_never_returns_positive_ack() -> Result<(), Error>
     assert!(String::from_utf8_lossy(&ack).contains("MSA|AR|message1"));
     assert!(stored(&program)?.receipts("")?.is_empty());
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -369,7 +380,7 @@ async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<()
     .await?;
     assert!(String::from_utf8_lossy(&read_ack(&mut peer).await?).contains("MSA|AA|message1"));
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -516,7 +527,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
         },
     ));
     let until = tokio::time::Instant::now()
-        .checked_add(Duration::from_secs(5))
+        .checked_add(HANG_GUARD)
         .ok_or("deadline overflow")?;
     loop {
         let store = stored(&program)?;
@@ -539,7 +550,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     assert!(!incoming.join("result.hl7").exists());
     Ok(())
 }
@@ -561,10 +572,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     ));
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-        6
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     let first = analyte_framing::astm::encode(
         b"H|\\^&||||||||||P|LIS2-A2|20261115120000\r",
         analyte_framing::astm::FrameNumber::FIRST,
@@ -572,17 +580,19 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     )?;
     for frame in first {
         peer.write_all(&frame).await?;
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-            6
-        );
+        assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     }
     let store = stored(&program)?;
-    let transfers = store.incomplete("")?;
-    let transfer = analyte_model::Identifier::new(transfers.first().ok_or("transfer missing")?)?;
-    let provenance = store
-        .frame_provenance(&transfer)?
-        .ok_or("frame provenance missing before ACK")?;
+    // Inspect the durable journal written by the real receive path before its ACK.
+    let journal = rusqlite::Connection::open_with_flags(
+        program.data_directory().join("analyte.db"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    let evidence: String = journal.query_row(
+        "SELECT evidence FROM frame_provenance WHERE transfer=(SELECT id FROM transfers WHERE state!='complete' ORDER BY id LIMIT 1)",
+        [], |row| row.get(0),
+    )?;
+    let provenance: analyte_store::FrameProvenance = serde_json::from_str(&evidence)?;
     assert_eq!(
         provenance.config,
         program
@@ -598,7 +608,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     // End the socket so its ordered Received event precedes Closed deterministically.
     peer.shutdown().await?;
     let until = tokio::time::Instant::now()
-        .checked_add(Duration::from_secs(3))
+        .checked_add(HANG_GUARD)
         .ok_or("deadline overflow")?;
     loop {
         let store = stored(&program)?;
@@ -618,7 +628,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -718,7 +728,7 @@ async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_a
     .await?;
     assert!(String::from_utf8(read_ack(&mut peer).await?)?.contains("MSA|AE"));
     shutdown.send(()).map_err(|_| "shutdown lost")?;
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(HANG_GUARD, owner).await???;
     let store = stored(&program)?;
     let receipt = store.receipts("")?.first().ok_or("receipt missing")?.id;
     let parked = store.parked(0)?.first().ok_or("parked missing")?.id;
@@ -777,5 +787,61 @@ async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_a
             .iter()
             .all(|(_, a)| a.actor.as_str() == "operator")
     );
+    Ok(())
+}
+
+// ADR 0003 / AGENTS.md safety rule 3: provenance belongs to the connection that read bytes.
+#[tokio::test]
+async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let program = Program::load(&path)?;
+    let (shutdown, stop) = oneshot::channel();
+    let service = tokio::spawn(serve(
+        Program::load(&path)?,
+        Box::new(Space(u64::MAX)),
+        async {
+            stop.await?;
+            Ok(())
+        },
+    ));
+    let mut peer = connect(&program).await?;
+    for control in ["message1", "message2"] {
+        let raw = String::from_utf8(ORU.to_vec())?.replace("message1", control);
+        peer.write_all(&analyte_framing::mllp::encode(
+            raw.as_bytes(),
+            analyte_framing::mllp::Limit::new(1048576)?,
+        )?)
+        .await?;
+        read_ack(&mut peer).await?;
+    }
+    drop(peer);
+    let mut peer = connect(&program).await?;
+    let raw = String::from_utf8(ORU.to_vec())?.replace("message1", "message3");
+    peer.write_all(&analyte_framing::mllp::encode(
+        raw.as_bytes(),
+        analyte_framing::mllp::Limit::new(1048576)?,
+    )?)
+    .await?;
+    read_ack(&mut peer).await?;
+    let store = stored(&program)?;
+    let receipts = store.receipts("")?;
+    assert_eq!(receipts.len(), 3);
+    let metadata = receipts
+        .iter()
+        .map(|r| {
+            store
+                .receipt(r.id)?
+                .ok_or("receipt absent")
+                .map(|r| r.metadata)
+                .map_err(Error::from)
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    assert_eq!(metadata[0].connection, metadata[1].connection);
+    assert_ne!(metadata[0].connection, metadata[2].connection);
+    assert_ne!(metadata[0].connection, metadata[0].machine);
+    drop(store);
+    shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }

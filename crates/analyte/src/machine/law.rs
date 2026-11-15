@@ -1,6 +1,7 @@
 //! LAW program exchanges; all protocol views, builders and ACK rules stay in hl7.
+pub(super) mod independent;
 use crate::orders::law::{Connection, Reply, response_metadata};
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_framing::mllp;
 use analyte_hl7::{AckCode, AckError, Options, Responsibility, law};
 use analyte_model::ReceiptId;
@@ -11,22 +12,30 @@ use tokio::sync::watch;
 /// Cancellation may leave a durable receipt/interpretation, never permission to resend work.
 /// The first-byte deadline includes raw commit, interpretation and response issuance.
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
+    settings: &analyte_config::LawStack,
+    store: &Handle,
+    conn: &mut analyte_transport::Connection,
+    stop: watch::Receiver<bool>,
+) -> Result<(), Error> {
+    session_with_outbound(machine, settings, store, conn, stop, None).await
+}
+
+async fn session_with_outbound(
+    machine: &evidence::Connection<'_>,
+    settings: &analyte_config::LawStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
+    outbound: Option<&tokio::sync::mpsc::Sender<independent::Work>>,
 ) -> Result<(), Error> {
-    let config = machine.snapshot.effective().machine();
-    let mut options = machine
-        .snapshot
-        .effective()
-        .hl7_options()
-        .ok_or("LAW syntax absent")?;
-    options.limits.message_bytes = options.limits.message_bytes.min(config.framing.limit);
+    let config = settings;
+    let mut options = settings.options();
+    options.limits.message_bytes = options.limits.message_bytes.min(config.frame_limit);
     let limit = mllp::Limit::new(options.limits.message_bytes)?;
     let mut decoder = mllp::Decoder::new(limit);
-    let receive = Duration::from_millis(u64::from(config.dialog.receive_timeout_ms));
-    let send = Duration::from_millis(u64::from(config.dialog.send_timeout_ms));
+    let receive = Duration::from_millis(u64::from(config.timeouts.receive_timeout_ms));
+    let send = Duration::from_millis(u64::from(config.timeouts.send_timeout_ms));
     let mut until = None;
     let mut orders = Connection::new()?;
     let mut opened = false;
@@ -45,7 +54,7 @@ pub(super) async fn session(
                     return Err(invalid("LAW receive deadline expired"));
                 },
                 () = async { idle.tick().await; } => {
-                    if opened && decoder.pending().is_empty() {
+                    if outbound.is_none() && opened && decoder.pending().is_empty() {
                         let outgoing = tokio::select! {
                             biased;
                             () = super::stopping(&mut stop) => break,
@@ -65,7 +74,7 @@ pub(super) async fn session(
                                 () = super::stopping(&mut stop) => break,
                                 result = write(conn, &message, limit, end.into()) => result?,
                             }
-                            orders.issued(Duration::from_millis(u64::from(config.law.as_ref().ok_or("LAW options absent")?.response_ms)))?;
+                            orders.issued(Duration::from_millis(u64::from(config.policy.response_ms)))?;
                         }
                     }
                     continue;
@@ -90,12 +99,28 @@ pub(super) async fn session(
                                 () = super::stopping(&mut stop) => return Ok(()),
                                 result = tokio::time::timeout_at(end, process(store, machine, event, options, processing_stop, &mut orders, started)) => result.map_err(|_| invalid("LAW processing deadline expired; no acceptance promised"))??,
                             };
+                            let mut ready=None;
+                            let mut followup_deadline=None;
+                            let response=match (response,outbound) {
+                                (Some(Reply::Followup {response,work}),Some(sender))=> {
+                                    followup_deadline=orders.due();
+                                    let (notify,wait)=tokio::sync::oneshot::channel();
+                                    let pending=independent::Work {orders:std::mem::replace(&mut orders,Connection::new()?),message:work,ready:wait};
+                                    if let Err(error)=sender.try_send(pending) {
+                                        orders=error.into_inner().orders;
+                                        return Err(invalid("LAW outbound queue unavailable; reserved work not issued"));
+                                    }
+                                    ready=Some(notify);
+                                    Some(Reply::Response(response))
+                                }
+                                (response,_)=>response,
+                            };
                             let (response, has_followup) = match response {
                                 None => (Vec::new(), false),
                                 Some(Reply::Response(message)) => (vec![message], false),
                                 Some(Reply::Followup { response, work }) => (vec![response, work], true),
                             };
-                            let write_end = if has_followup { orders.due().map(tokio::time::Instant::from_std).map_or(end, |due| due.min(end)) } else { end };
+                            let write_end = followup_deadline.or_else(||has_followup.then(||orders.due()).flatten()).map(tokio::time::Instant::from_std).map_or(end,|due|due.min(end));
                             for message in response {
                                 let send_until = tokio::time::Instant::now().checked_add(send).ok_or("LAW send deadline overflow")?;
                                 tokio::select! {
@@ -104,15 +129,18 @@ pub(super) async fn session(
                                     result = write(conn, &message, limit, write_end.min(send_until)) => result?,
                                 }
                             }
-                            if has_followup { orders.issued(Duration::from_millis(u64::from(config.law.as_ref().ok_or("LAW options absent")?.response_ms)))?; }
+                            if let Some(ready)=ready { let _ = ready.send(()); }
+                            if has_followup { orders.issued(Duration::from_millis(u64::from(config.policy.response_ms)))?; }
                             until = if decoder.pending().is_empty() { None } else { Some(end) };
                         }
                     }
                 }
                 analyte_transport::Event::Closed(_) => break,
                 analyte_transport::Event::Opened { .. } => { opened = true; },
-                analyte_transport::Event::Failed(_)
-                | analyte_transport::Event::RecordingFailed(_) => {},
+                analyte_transport::Event::Failed(reason) => {
+                    tracing::warn!(machine = machine.id.as_str(), error_kind = ?reason, "LAW transport attempt failed");
+                },
+                analyte_transport::Event::RecordingFailed(_) => {},
             }
         }
         Ok(())
@@ -153,7 +181,7 @@ async fn write(
 
 async fn process(
     store: &Handle,
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     event: mllp::Event,
     options: Options,
     mut _stop: watch::Receiver<bool>,
@@ -181,7 +209,40 @@ async fn process(
         Ok(message) => message,
         Err(error) => {
             evidence::failed_reading(store, machine, id, &error.to_string()).await?;
-            return Err(error.into());
+            let (code, location) = match &error {
+                analyte_hl7::Error::Control {
+                    segment: "MSH",
+                    field,
+                } => (
+                    AckCode::Ar,
+                    u16::try_from(*field)
+                        .ok()
+                        .map(|field| header_error(field, b"102", b"LAW-control")),
+                ),
+                analyte_hl7::Error::UnsupportedCharset | analyte_hl7::Error::CharsetMismatch => {
+                    (AckCode::Ar, Some(header_error(18, b"102", b"LAW-control")))
+                }
+                analyte_hl7::Error::Limit { .. }
+                | analyte_hl7::Error::Encoding
+                | analyte_hl7::Error::Truncation
+                | analyte_hl7::Error::Terminator
+                | analyte_hl7::Error::Segment(_)
+                | analyte_hl7::Error::Escape { .. }
+                | analyte_hl7::Error::CharacterEncoding
+                | analyte_hl7::Error::Control { .. }
+                | analyte_hl7::Error::NotStored
+                | analyte_hl7::Error::AckMode => (AckCode::Ae, None),
+            };
+            return response_metadata(|response| {
+                Ok(law::reject_trigger(
+                    payload,
+                    response,
+                    code,
+                    location.unwrap_or(AckError::unlocated(b"102", b"LAW-syntax")),
+                    options,
+                )?
+                .map(Reply::Response))
+            });
         }
     };
     let kind: Vec<_> = message
@@ -212,55 +273,77 @@ async fn process(
             "LAW transaction disabled: unsolicited work/response traffic is not enabled",
         )
         .await?;
-        return Err(invalid(
-            "LAW transaction disabled: unsolicited work/response traffic is not enabled",
-        ));
+        return response_metadata(|response| {
+            Ok(law::reject_trigger(
+                payload,
+                response,
+                AckCode::Ar,
+                header_error(9, b"200", b"LAW-unsupported-trigger"),
+                options,
+            )?
+            .map(Reply::Response))
+        });
     }
+    let error_location;
     let (code, responsibility, location) = match law::receive_results(&message) {
         Ok(_) => {
-            let accepted = evidence::interpret(store, machine, id).await?;
-            if accepted {
-                (AckCode::Aa, Responsibility::StoredAndInterpreted, None)
-            } else {
-                (
-                    AckCode::Ae,
+            // TF-2b Rev 11 B.7.6 (p.82): inconsistent content rejects the whole batch.
+            let (outcome, location) = evidence::interpret_with_location(store, machine, id).await?;
+            error_location = location;
+            match outcome {
+                evidence::InterpretationOutcome::Accepted => {
+                    (AckCode::Aa, Responsibility::StoredAndInterpreted, None)
+                }
+                evidence::InterpretationOutcome::WorkConflict(location) => (
+                    AckCode::Ar,
+                    Responsibility::Stored,
+                    Some(AckError {
+                        segment: location.segment,
+                        occurrence: location.occurrence,
+                        field: location.field,
+                        code: b"207",
+                        application_code: b"LAW-inconsistent-work",
+                    }),
+                ),
+                evidence::InterpretationOutcome::Conflict => (
+                    AckCode::Ar,
                     Responsibility::Stored,
                     Some(AckError::unlocated(b"207", b"operator-review")),
-                )
+                ),
+                evidence::InterpretationOutcome::Failed => (
+                    AckCode::Ae,
+                    Responsibility::Stored,
+                    Some(super::hl7_error::build(
+                        error_location.as_ref(),
+                        b"207",
+                        b"operator-review",
+                    )),
+                ),
             }
         }
         Err(failure) => {
             evidence::failed_reading(store, machine, id, &failure.to_string()).await?;
-            // The pure failure names a segment/field but not its occurrence. Only
-            // report a wire location when the original proves it is unambiguous.
-            let location = failure.location().filter(|location| {
-                location.field > 0
-                    && message
-                        .segments()
-                        .filter(|s| s.id() == location.segment.as_bytes())
-                        .count()
-                        == 1
-            });
+            if law::validate_control(&message, law::ControlDirection::Receive).is_err() {
+                let detail = failure.acknowledgment_error(&message, b"102", b"LAW-control");
+                return response_metadata(|response| {
+                    Ok(law::reject_trigger(
+                        payload,
+                        response,
+                        failure
+                            .acknowledgment_code()
+                            .ok_or("trigger failure lacks ACK outcome")?,
+                        detail,
+                        options,
+                    )?
+                    .map(Reply::Response))
+                });
+            }
             (
                 failure
                     .acknowledgment_code()
                     .ok_or("LAW result failure has no ACK outcome")?,
                 Responsibility::Stored,
-                Some(
-                    match location.and_then(|location| {
-                        u16::try_from(location.field)
-                            .ok()
-                            .map(|field| (location, field))
-                    }) {
-                        Some((location, field)) => error(
-                            location.segment.as_bytes(),
-                            field,
-                            b"102",
-                            b"LAW-invalid-results",
-                        ),
-                        None => AckError::unlocated(b"102", b"LAW-invalid-results"),
-                    },
-                ),
+                Some(failure.acknowledgment_error(&message, b"102", b"LAW-invalid-results")),
             )
         }
     };
@@ -279,14 +362,10 @@ async fn process(
     })
 }
 
-fn error<'a>(
-    segment: &'a [u8],
-    field: u16,
-    code: &'a [u8],
-    application_code: &'a [u8],
-) -> AckError<'a> {
+// Correlation recovery still identifies the original first MSH when its control fields fail.
+fn header_error<'a>(field: u16, code: &'a [u8], application_code: &'a [u8]) -> AckError<'a> {
     AckError {
-        segment,
+        segment: b"MSH",
         occurrence: 1,
         field,
         code,

@@ -18,23 +18,37 @@ edition; a family name or an Ethernet socket does not establish a protocol.
 | --- | --- | --- |
 | ASTM LIS01/LIS02 | [ASTM scope](protocols/astm.md) | [ASTM example](../crates/config/examples/astm.toml) |
 | HL7 v2 legacy over MLLP | [HL7 scope](protocols/hl7.md) | [HL7 example](../crates/config/examples/hl7.toml) |
-| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](protocols/ihe-law.md) | [LAW example](../crates/config/examples/law.toml) plus [query/work settings](../crates/config/examples/law_orders.toml); one persistent TCP client/server link |
+| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](protocols/ihe-law.md) | [LAW example](../crates/config/examples/law.toml) plus [query/work settings](../crates/config/examples/law_orders.toml); persistent TCP client/server or independent directional links |
 | POCT01-A2 | [POCT scope](protocols/poct1-a.md) | [POCT example](../crates/config/examples/poct.toml), Observation Reviewer role |
 | VIDAS Literal or Autolyser | [Protocol index](protocols/README.md), then vendor interface rules | [VIDAS](../crates/config/examples/vidas_literal.toml) or [Autolyser](../crates/config/examples/autolyser.toml) |
 
 There are no vendor-specific pages in that protocol index yet. Use the
 [config reference](../crates/config/README.md) and [order guide](../crates/analyte/ORDERS.md)
-for their implemented policies. The LAW runtime carries LAB-27 queries, LAB-28
-work/cancellation and LAB-29 results on one persistent link in the configured
-TCP client/server direction. Declare `law.connection_mode = "persistent"` and
-the peer's supported options explicitly. Queries support exact specimen/container
-ID (SampleId) and all pending work for this analyzer; append the query/work
-settings example to enable queries and their work followups, and select
-`orders.send_ahead = true` for unsolicited work.
+for their implemented policies. LAW supports two explicit topologies. Use
+`law.connection_mode = "persistent"` for one TCP client/server link carrying all
+three transactions. For the B.6 directional topology, select
+`transport.kind = "tcp_server"`, set the site endpoint to Analyte's LAB-27/LAB-29 listening address,
+and set these fields inside the existing `[law]` table:
 
-Independent per-transaction links are rejected by config validation.
+```toml
+connection_mode = "independent_per_transaction"
+outbound_endpoint = "192.0.2.11:7001" # replace with the confirmed analyzer LAB-28 listener
+```
+
+The analyzer initiates queries/results; the host opens a separate outbound
+connection for each LAB-28 work/cancel transaction. The analyzer may close either
+socket between transactions. Query follow-up work survives closure of the query
+socket. A failed outbound attempt remains reserved/uncertain and is never retried
+by reconnect or restart; use operator reconciliation when its outcome is unknown.
+Confirm both listening addresses and the analyzer's topology with its manual.
+
+Declare peer options explicitly. Queries support exact specimen/container ID
+(SampleId) and all pending work for this analyzer; append the query/work settings
+example to enable queries and follow-ups, and select `orders.send_ahead = true`
+for unsolicited work. Both modes use the same restore-pause and reservation rules.
+
 Isolate/parent and rack/tray queries remain unsupported and receive an error,
-never no-work. Full originating-work result validation, remaining enhanced
+never no-work. Originating-work checks have local tests; remaining enhanced
 workflows and a recorded Gazelle run remain open in the LAW checklist. Evidence
 is documented, without real-machine qualification. A LAW definition uses the
 LAW profile rather than a legacy HL7 layout. A new format needs review

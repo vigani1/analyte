@@ -1,5 +1,5 @@
 //! HL7 store-and-forward ACK decisions follow durable interpretation.
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -10,43 +10,27 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
+    settings: &analyte_config::Hl7Stack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let mut options = machine
-        .snapshot
-        .effective()
-        .hl7_options()
-        .ok_or_else(|| invalid("HL7 options absent"))?;
-    options.limits.message_bytes = options
-        .limits
-        .message_bytes
-        .min(machine.snapshot.effective().machine().framing.limit);
+    let mut options = settings.syntax.options();
+    options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit);
     let config = Config::new(
         options,
-        Duration::from_millis(u64::from(
-            machine
-                .snapshot
-                .effective()
-                .machine()
-                .dialog
-                .receive_timeout_ms,
-        )),
+        Duration::from_millis(u64::from(settings.timeouts.receive_timeout_ms)),
         1,
     )?;
     let mut dialog = Dialog::new(config, 0);
     let start = Instant::now();
     let mut wake = None;
     let mut pending = BTreeMap::new();
-    let enabled = machine
-        .snapshot
-        .effective()
-        .machine()
+    let enabled = settings
         .orders
         .as_ref()
-        .is_some_and(|o| o.hl7.is_some() || o.hl7_send.is_some());
+        .is_some_and(|o| o.query.is_some() || o.send.is_some());
     let mut queries = if enabled {
         Some(crate::orders::hl7::Connection::new(options)?)
     } else {
@@ -139,20 +123,14 @@ pub(super) async fn session(
                             let id = pending
                                 .remove(&(token.epoch(), token.ordinal()))
                                 .ok_or_else(|| invalid("HL7 receipt correlation missing"))?;
-                            let success =
-                                evidence::interpret(store, machine, id).await?;
-                            let event = if success {
+                            let (outcome, location) =
+                                evidence::interpret_with_location(store, machine, id).await?;
+                            let event = if matches!(outcome,evidence::InterpretationOutcome::Accepted) {
                                 Event::Interpreted(token)
                             } else {
                                 Event::NotInterpretable(
                                     token,
-                                    analyte_hl7::AckError {
-                                        segment: b"OBX",
-                                        occurrence: 1,
-                                        field: 1,
-                                        code: b"207",
-                                        application_code: b"operator-review",
-                                    },
+                                    super::hl7_error::build(location.as_ref(), b"207", b"operator-review"),
                                     false,
                                 )
                             };
@@ -204,7 +182,7 @@ pub(super) async fn session(
                                 "HL7 host phase timed out; receipt requires reconciliation",
                             ));
                         }
-                        Action::Sent(_, _) => {
+                        Action::Sent(_, _) | Action::CommitAccepted(_) => {
                             return Err(invalid("unexpected outgoing HL7 outcome"));
                         }
                     }

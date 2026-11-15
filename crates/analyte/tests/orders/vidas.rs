@@ -1,6 +1,7 @@
 //! Synthetic BCI A sections 3-5 / PC sections 10-24 to 10-26 and ADR 0004/0008.
 use super::vendor_support::*;
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -55,7 +56,7 @@ async fn packet(peer: &mut TcpStream) -> Result<(), Error> {
     peer.write_all(b"\x06").await?;
     let expected = framing()?.encode(b"mtmpr|pi000PatA|si|ci000Ab12|rtSYN|")?;
     let mut received = vec![0; expected.len()];
-    tokio::time::timeout(Duration::from_secs(5), peer.read_exact(&mut received)).await??;
+    tokio::time::timeout(HANG_GUARD, peer.read_exact(&mut received)).await??;
     assert_eq!(received, expected);
     Ok(())
 }
@@ -110,6 +111,7 @@ async fn vidas_bci_a_ch3_5_all_assays_confirm_once_sent_survives_restart() -> Re
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
     let mut peer = connect(&path, "vidas").await?;
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
             .await
             .is_err()
@@ -141,6 +143,7 @@ async fn vidas_bci_a_ch3_adr0004_ack_timeout_is_uncertain_never_resends() -> Res
     drop(peer);
     let mut peer = connect(&path, "vidas").await?;
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
             .await
             .is_err()
@@ -192,6 +195,7 @@ async fn adr0004_rule8_vidas_restart_during_send_recovers_sending_without_replay
     )
     .await?;
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
             .await
             .is_err()
@@ -206,6 +210,7 @@ async fn rejection(value: serde_json::Value, code: &str) -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(value).await?;
     event(&path, &temp.path().join("receiver.db"), "Rejected", code).await?;
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
             .await
             .is_err()
@@ -259,7 +264,7 @@ async fn adr0004_vidas_cancelled_before_send_has_no_wire_or_app_send_event() -> 
     let mut value = order()?;
     value["state"] = "cancel_requested".into();
     let (_temp, path, reference, service, mut peer) = setup(value).await?;
-    tokio::time::timeout(Duration::from_secs(8), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let count: i64 =
                 database(&path)?.query_row("SELECT count(*) FROM orders", [], |r| r.get(0))?;
@@ -281,6 +286,7 @@ async fn adr0004_vidas_cancelled_before_send_has_no_wire_or_app_send_event() -> 
         0
     );
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
             .await
             .is_err()
@@ -340,7 +346,7 @@ async fn vidas_bci_a_ch3_park_mid_send_commits_uncertain_same_round_then_closes(
     .await?;
     let mut byte = [0];
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut byte)).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut byte)).await??,
         0
     );
     service.stop().await?;

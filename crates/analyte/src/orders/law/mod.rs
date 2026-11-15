@@ -1,5 +1,6 @@
 //! LAW work exchanges, TF-2b 3.27/3.28; shared cache, reservations and item outcomes.
 mod sending;
+pub(crate) mod validation;
 mod work;
 use crate::{Error, config::Machine, deadline, evidence, invalid};
 use analyte_hl7::{AckCode, AckError, Message, Options, Responsibility, law};
@@ -109,16 +110,24 @@ impl Connection {
             Ok(query) => query,
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                return Err(error.into());
+                return response_metadata(|response| {
+                    let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
+                    law::reject_trigger(
+                        message.raw(),
+                        response,
+                        error
+                            .acknowledgment_code()
+                            .ok_or("query failure has no ACK outcome")?,
+                        detail,
+                        options,
+                    )?
+                    .map(Reply::Response)
+                    .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
+                });
             }
         };
-        let settings = machine
-            .snapshot
-            .effective()
-            .machine()
-            .law
-            .as_ref()
-            .ok_or("LAW policy absent")?;
+        let stack = super::settings::law(machine)?;
+        let settings = &stack.policy;
         let supported = match query.scope() {
             law::Scope::Container(_) => settings
                 .query_forms
@@ -145,7 +154,7 @@ impl Connection {
                 options,
             );
         }
-        if settings.work.is_none() {
+        if stack.orders.is_none() {
             evidence::failed_reading(store, machine, receipt, "LAW query work layout is disabled")
                 .await?;
             return reply(
@@ -203,12 +212,13 @@ impl Connection {
         until: Instant,
         options: Options,
     ) -> Result<Reply, Error> {
-        let cfg = machine.snapshot.effective().machine();
+        let freshness = machine.destination_limits.freshness.as_secs();
+        let cfg = super::settings::law(machine)?;
         let work = Arc::new(
-            cfg.law
+            cfg.orders
                 .as_ref()
-                .and_then(|law| law.work.as_ref())
                 .ok_or("LAW work layout absent")?
+                .work
                 .clone(),
         );
         let sample = match query.scope() {
@@ -242,7 +252,7 @@ impl Connection {
                 let now = jiff::Timestamp::now().as_second();
                 let mut found = Vec::new();
                 if let Some(sample) = sample {
-                    match store.orders(&destination, &sample, now, super::FRESHNESS_SECONDS)? {
+                    match store.orders(&destination, &sample, now, freshness)? {
                         Lookup::Orders(orders) => {
                             for order in orders {
                                 let key = MachineOrderKey {
@@ -264,13 +274,7 @@ impl Connection {
                         if Instant::now() >= until {
                             return Err(analyte_store::Error::Timeout);
                         }
-                        match store.pending_orders(
-                            &destination,
-                            &target,
-                            &after,
-                            now,
-                            super::FRESHNESS_SECONDS,
-                        )? {
+                        match store.pending_orders(&destination, &target, &after, now, freshness)? {
                             PendingOrders::NotTrusted => {
                                 return Err(analyte_store::Error::Conflict);
                             }

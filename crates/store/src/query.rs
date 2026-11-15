@@ -26,56 +26,18 @@ pub struct Frame {
 pub struct ParkedItem {
     /// Stable local identity used for resolution.
     pub id: i64,
-    /// Original reason and links as stored JSON.
+    /// Canonical protected reason, links and context as stored JSON.
     pub evidence: String,
     /// Actor, time and method of resolution, absent while open.
     pub resolution: Option<String>,
 }
 
 impl ParkedItem {
-    /// Decodes retained structured or legacy parking evidence without rewriting it.
+    /// Decodes the canonical protected parking record.
     /// # Errors
-    /// Refuses corrupt or unrecognized evidence instead of inventing receipt links.
+    /// Refuses corrupt evidence instead of inventing receipt links.
     pub fn details(&self) -> Result<crate::Parked, Error> {
-        let value: serde_json::Value = serde_json::from_str(&self.evidence)?;
-        if value.is_object() {
-            return Ok(serde_json::from_value(value)?);
-        }
-        let kind = value
-            .get(0)
-            .and_then(serde_json::Value::as_str)
-            .ok_or(Error::Corruption)?;
-        let target = value
-            .get(1)
-            .and_then(serde_json::Value::as_str)
-            .ok_or(Error::Corruption)?;
-        let target = match kind {
-            "interpretation_failure" | "result_reconciliation" | "parked" | "conflict" => {
-                serde_json::from_str::<String>(target)?
-            }
-            "incomplete_transfer" => target.to_owned(),
-            _ => return Err(Error::Corruption),
-        };
-        let reason = match kind {
-            "result_reconciliation" => format!(
-                "result reconciliation: {}",
-                value
-                    .get(3)
-                    .and_then(serde_json::Value::as_str)
-                    .ok_or(Error::Corruption)?
-            ),
-            "interpretation_failure" | "parked" | "conflict" | "incomplete_transfer" => value
-                .get(2)
-                .and_then(serde_json::Value::as_str)
-                .ok_or(Error::Corruption)?
-                .to_owned(),
-            _ => return Err(Error::Corruption),
-        };
-        Ok(crate::Parked {
-            kind: Identifier::new(kind).map_err(|_| Error::Corruption)?,
-            reason: analyte_model::Reason::new(&reason).map_err(|_| Error::Corruption)?,
-            targets: vec![Identifier::new(&target).map_err(|_| Error::Corruption)?],
-        })
+        Ok(serde_json::from_str::<crate::parked::ParkingEvidence>(&self.evidence)?.details)
     }
 }
 
@@ -173,6 +135,25 @@ impl Store {
                 Ok(order)
             })
             .transpose()
+    }
+
+    /// Reads the first interpreted receipt for a machine connection, with digest checks.
+    /// Connection context is evidence, never a substitute for a result identity.
+    /// # Errors
+    /// Reports corrupt metadata, digest mismatches or database failures.
+    pub fn first_interpreted_connection_receipt(
+        &self,
+        machine: &Identifier,
+        connection: &Identifier,
+    ) -> Result<Option<Receipt>, Error> {
+        let id: Option<String> = self.db.query_row(
+            "SELECT r.id FROM receipts r WHERE json_extract(r.metadata,'$.machine')=?1 AND json_extract(r.metadata,'$.connection')=?2 AND EXISTS (SELECT 1 FROM interpretations i WHERE i.receipt=r.id) ORDER BY r.rowid LIMIT 1",
+            params![machine.as_str(), connection.as_str()], |r| r.get(0),
+        ).optional()?;
+        match id {
+            Some(id) => self.receipt(serde_json::from_str(&id)?),
+            None => Ok(None),
+        }
     }
 
     /// Reads complete receipt evidence without altering its interpretation.
@@ -304,15 +285,20 @@ impl Store {
     ) -> Result<(), Error> {
         self.bound(&event.payload)?;
         self.capacity(event.payload.len())?;
-        self.db.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,'order_event',?2,?3,?2,?4,?5,?6,'pending',0,?7)", params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,crate::digest(&event.payload).0.as_slice(),event.contract_version,now])?;
+        self.db.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?8,?2,?3,?2,?4,?5,?6,?9,0,?7)", params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,crate::digest(&event.payload).0.as_slice(),event.contract_version,now,crate::DeliveryKind::OrderEvent,crate::DeliveryState::Pending])?;
         Ok(())
     }
 
     /// Reads one consistent destination snapshot without exposing clinical bytes.
     /// # Errors
     /// Returns database or aggregate overflow failures.
-    pub fn health(&self, destination: &Identifier, now: i64) -> Result<crate::Health, Error> {
-        let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state='paused'),0) FROM outbox WHERE destination=?1 AND state!='done'",[destination.as_str()], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
+    pub fn health(
+        &self,
+        destination: &Identifier,
+        now: i64,
+        freshness: u64,
+    ) -> Result<crate::Health, Error> {
+        let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state=?2),0) FROM outbox WHERE destination=?1 AND state!=?3",params![destination.as_str(),crate::DeliveryState::Paused,crate::DeliveryState::Done], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
         let feed: Option<(i64, bool, bool)> = self
             .db
             .query_row(
@@ -330,7 +316,7 @@ impl Store {
             paused,
             last_successful_poll: feed.map(|f| f.0),
             snapshot_complete: feed.is_some_and(|f| f.1),
-            cache_trusted: feed.is_some_and(|f| f.1 && f.2),
+            cache_trusted: self.order_trust(destination, now, freshness)?.is_trusted(),
         })
     }
 }

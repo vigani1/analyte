@@ -1,6 +1,6 @@
 //! VIDAS upload custody, with installed checksum, suffix and timer policy.
 use super::vendor::{self, Input, ms};
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_vidas::{
@@ -40,16 +40,13 @@ struct ConnectionState {
 }
 
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
+    settings: &analyte_config::VidasStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let settings = machine.snapshot.effective().machine();
-    let installed = settings
-        .vidas
-        .as_ref()
-        .ok_or_else(|| invalid("VIDAS settings missing"))?;
+    let installed = &settings.policy;
     let config = super::interpretation::vidas_config(machine)?;
     let policy = Policy {
         acknowledgment: ms(installed.acknowledgment_ms),
@@ -157,7 +154,8 @@ pub(super) async fn session(
                     } else {
                         "VIDAS-transfer-disconnected"
                     };
-                    let _ = state.dialog.on(Event::Disconnected);
+                    state.actions.extend(state.dialog.on(Event::Disconnected));
+                    process_inline(&mut state, machine, store, conn, installed).await?;
                     return Ok(());
                 }
                 Input::Bytes(bytes) => {
@@ -250,17 +248,19 @@ fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
     state.timers = [None; 4];
     state.idle = false;
     state.end_code = "VIDAS-transfer-error";
-    state.actions = state.dialog.start().into();
+    state.actions.extend(state.dialog.start());
     Ok(())
 }
 
 async fn process_inline(
     state: &mut ConnectionState,
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     installed: &analyte_config::Vidas,
 ) -> Result<bool, Error> {
+    let mut failure = None;
+    let mut complete = false;
     while let Some(action) = state.actions.pop_front() {
         match action {
             Action::Send(bytes) => {
@@ -295,12 +295,13 @@ async fn process_inline(
                         state.actions.extend(state.dialog.on(Event::Stored));
                     }
                     Ok(Err(error)) => {
-                        let _ = state.dialog.on(Event::StorageFailed);
-                        return Err(error);
+                        state.actions.extend(state.dialog.on(Event::StorageFailed));
+                        failure = Some(error);
                     }
                     Err(_) => {
-                        let _ = state.dialog.on(Event::StorageFailed);
-                        return Err(invalid("VIDAS commit deadline exceeded; custody uncertain"));
+                        state.actions.extend(state.dialog.on(Event::StorageFailed));
+                        failure =
+                            Some(invalid("VIDAS commit deadline exceeded; custody uncertain"));
                     }
                 }
             }
@@ -321,8 +322,13 @@ async fn process_inline(
                 if state.end_code == "VIDAS-transfer-error" {
                     state.end_code = "VIDAS-transfer-refused-or-unexpected";
                 }
-                evidence::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await?;
-                return Err(invalid("VIDAS transfer parked; reconcile before reconnect"));
+                let parked = evidence::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
+                if let Err(error) = parked {
+                    return Err(vendor::effect_failure(failure, error));
+                }
+                if failure.is_none() {
+                    failure = Some(invalid("VIDAS transfer parked; reconcile before reconnect"));
+                }
             }
             Action::Complete => {
                 if let Some(order) = state.active.as_ref() {
@@ -340,14 +346,17 @@ async fn process_inline(
                         state.dialog = Dialog::upload(state.config.clone(), state.policy.clone())?;
                         state.start = Instant::now();
                         state.timers = [None; 4];
-                        state.actions = state.dialog.start().into();
+                        state.actions.extend(state.dialog.start());
                         state.idle = true;
                     }
                 } else {
-                    return Ok(true);
+                    complete = true;
                 }
             }
         }
     }
-    Ok(false)
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(complete),
+    }
 }

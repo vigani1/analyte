@@ -45,7 +45,7 @@ async fn plan11_adr0003_mapping_repaired_once_retransmission_conflict_and_origin
 -> Result<(), Error> {
     let hl7 =
         include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
-    let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
+    let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
     let raw = analyte_framing::mllp::encode(raw, analyte_framing::mllp::Limit::new(1048576)?)?;
     exercise(&hl7, raw).await?;
     let astm = include_str!("../../../../config/examples/astm.toml")
@@ -76,7 +76,13 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let mut store = crate::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
-    evidence::receive(&store, machine, id, raw.clone()).await?;
+    evidence::receive(
+        &store,
+        &evidence::Connection::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
     assert!(!evidence::interpret(&store, machine, id).await?);
     let (parked, original) = store
         .request(deadline(), move |s| {
@@ -239,7 +245,13 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
         };
         let mut store = crate::service::open_store(&current, Box::new(Space)).await?;
         let id = ReceiptId::new();
-        evidence::receive(&store, machine, id, raw.clone()).await?;
+        evidence::receive(
+            &store,
+            &evidence::Connection::new(machine)?,
+            id,
+            raw.clone(),
+        )
+        .await?;
         assert!(!evidence::interpret(&store, machine, id).await?);
         let parked = store.request(deadline(), move |s| {
             let version = s.interpretation(id, 1)?.ok_or(analyte_store::Error::Corruption)?;
@@ -267,12 +279,18 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
                 Ok(())
             })
             .await?;
-        if machine.snapshot.effective().machine().syntax.kind == analyte_config::SyntaxKind::Poct {
+        if matches!(machine.snapshot.effective().stack(), Stack::Poct(_)) {
             // Control receipts are retained too; reprocessing them never becomes a
             // machine query or an invented empty result success (rule 9).
             for control in [poct_peer::hello("hello"), poct_peer::status("status", "1")] {
                 let id = ReceiptId::new();
-                evidence::receive(&store, machine, id, control.into_bytes()).await?;
+                evidence::receive(
+                    &store,
+                    &evidence::Connection::new(machine)?,
+                    id,
+                    control.into_bytes(),
+                )
+                .await?;
                 reprocess(&store, machine, action(id, None)?).await?;
                 store
                     .request(deadline(), move |s| {
@@ -294,5 +312,108 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
         );
         store.shutdown(deadline()).await?;
     }
+    Ok(())
+}
+
+// ADR 0003 / AGENTS.md safety rule 3: original and reprocessed config provenance is retained.
+#[tokio::test]
+async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Result<(), Error> {
+    let temp = crate::admin::private_tempdir()?;
+    let definition =
+        include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
+    let old = program(temp.path(), &definition, "127.0.0.1:5600")?;
+    let mut store = crate::service::open_store(&old, Box::new(Space)).await?;
+    let original = old.machines().first().ok_or("missing machine")?;
+    let id = ReceiptId::new();
+    let connection = evidence::Connection::new(original)?;
+    evidence::receive(&store, &connection, id, b"unparseable original".to_vec()).await?;
+    evidence::failed_reading(&store, original, id, "synthetic failure").await?;
+    let changed = program(temp.path(), &definition, "127.0.0.1:5601")?;
+    let current = changed.machines().first().ok_or("missing machine")?;
+    evidence::park_bytes(
+        &store,
+        &evidence::Connection::new(current)?,
+        b"unparseable changed".to_vec(),
+        "synthetic parking",
+    )
+    .await?;
+    reprocess(&store, current, action(id, None)?).await?;
+    let old_config = original.snapshot.canonical().as_bytes().to_vec();
+    let new_config = current.snapshot.canonical().as_bytes().to_vec();
+    let old_digest = original.snapshot.digest();
+    let new_digest = current.snapshot.digest();
+    store
+        .request(deadline(), move |s| {
+            let receipt = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
+            let first = s
+                .interpretation(id, 1)?
+                .ok_or(analyte_store::Error::UnknownReceipt)?;
+            let second = s
+                .interpretation(id, 2)?
+                .ok_or(analyte_store::Error::UnknownReceipt)?;
+            assert_eq!(receipt.config, old_config);
+            assert_eq!(receipt.metadata.config_digest.0, old_digest);
+            assert_eq!(first.config_version, receipt.metadata.config_version);
+            assert_eq!(first.config, old_config);
+            assert_eq!(second.config, new_config);
+            assert_ne!(first.config_version, second.config_version);
+            assert_eq!(
+                second.config_version.as_str(),
+                new_digest
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>()
+            );
+            for summary in s.receipts("")? {
+                let parked = s
+                    .receipt(summary.id)?
+                    .ok_or(analyte_store::Error::UnknownReceipt)?;
+                if parked.raw == b"unparseable changed" {
+                    assert_eq!(parked.metadata.config_version, second.config_version);
+                    assert_eq!(parked.metadata.config_digest.0, new_digest);
+                    assert_eq!(
+                        s.interpretation(summary.id, 1)?
+                            .ok_or(analyte_store::Error::UnknownReceipt)?
+                            .config_version,
+                        second.config_version
+                    );
+                }
+            }
+            Ok(())
+        })
+        .await?;
+    store.shutdown(deadline()).await?;
+    Ok(())
+}
+
+// ADR 0004: site policy becomes destination Limits, rather than a host constant.
+#[test]
+fn rule9_destination_config_sets_operational_freshness_and_rejects_zero() -> Result<(), Error> {
+    let temp = crate::admin::private_tempdir()?;
+    let definition =
+        include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
+    let loaded = program(temp.path(), &definition, "127.0.0.1:5600")?;
+    assert_eq!(
+        loaded.machines()[0].destination_limits.freshness.as_secs(),
+        30
+    );
+    let site = temp.path().join("site.toml");
+    let original = std::fs::read_to_string(&site)?;
+    for seconds in [7, 120] {
+        std::fs::write(
+            &site,
+            format!("{original}\nfreshness_seconds = {seconds}\n"),
+        )?;
+        let configured = Program::load(&temp.path().join("program.toml"))?;
+        assert_eq!(
+            configured.machines()[0]
+                .destination_limits
+                .freshness
+                .as_secs(),
+            seconds
+        );
+    }
+    std::fs::write(&site, format!("{original}\nfreshness_seconds = 0\n"))?;
+    assert!(Program::load(&temp.path().join("program.toml")).is_err());
     Ok(())
 }

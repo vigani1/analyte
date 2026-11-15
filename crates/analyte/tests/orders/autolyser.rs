@@ -1,6 +1,7 @@
 //! Rev18 chapter 23 pp.175-179 and ADR 0004/0008, synthetic peers only.
 use super::vendor_support::*;
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -69,11 +70,12 @@ async fn insertion(peer: &mut TcpStream, path: &Path, clone: bool) -> Result<(),
         b"000PatA        TSN0301SYN 201\x04"
     };
     let mut bytes = vec![0; expected.len()];
-    tokio::time::timeout(Duration::from_secs(5), peer.read_exact(&mut bytes)).await??;
+    tokio::time::timeout(HANG_GUARD, peer.read_exact(&mut bytes)).await??;
     assert_eq!(bytes, expected);
     Ok(())
 }
 async fn only_polls(peer: &mut TcpStream) -> Result<(), Error> {
+    // Deliberate quiet window: only empty polls may arrive.
     let until = tokio::time::Instant::now()
         .checked_add(Duration::from_millis(700))
         .ok_or("test deadline overflow")?;
@@ -85,7 +87,7 @@ async fn only_polls(peer: &mut TcpStream) -> Result<(), Error> {
     }
 }
 async fn wait_count(path: &Path, sql: &str, expected: i64) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let found: i64 = database(path)?.query_row(sql, [], |r| r.get(0))?;
             if found == expected {
@@ -99,7 +101,7 @@ async fn wait_count(path: &Path, sql: &str, expected: i64) -> Result<(), Error> 
 async fn closed(peer: &mut TcpStream) -> Result<(), Error> {
     let mut bytes = [0];
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut bytes)).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut bytes)).await??,
         0
     );
     Ok(())
@@ -123,7 +125,12 @@ async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_sta
         .await?;
         // Clear the next poll's custody guard before shutting down.
         empty_poll(&mut peer).await?;
-        wait_count(&path, "SELECT count(*) FROM parked WHERE resolution IS NULL AND evidence LIKE '%autolyser_poll_custody%'", 0).await?;
+        wait_count(
+            &path,
+            "SELECT count(*) FROM poll_intents WHERE state IN ('pending','uncertain')",
+            0,
+        )
+        .await?;
         service.stop().await?;
         drop(peer);
         let service = Running::start(&path, &reference.url, "synthetic-api")?;
@@ -147,7 +154,24 @@ async fn autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_or
 -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?, false).await?;
     assert_eq!(byte(&mut peer).await?, 2);
+    assert_eq!(
+        database(&path)?.query_row(
+            "SELECT count(*) FROM poll_intents WHERE state IN ('pending','uncertain')",
+            [],
+            |row| row.get::<_, i64>(0)
+        )?,
+        1
+    );
     closed(&mut peer).await?;
+    wait_count(
+        &path,
+        "SELECT count(*) FROM poll_intents WHERE state='uncertain'",
+        1,
+    )
+    .await?;
+    let mut reconnect = connect(&path, "autolyser").await?;
+    closed(&mut reconnect).await?;
+    wait_count(&path, "SELECT count(*) FROM poll_intents", 1).await?;
     no_event(&path).await?;
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
@@ -342,12 +366,21 @@ async fn adr0004_autolyser_cancelled_before_send_has_no_insertion_or_send_event(
     let mut value = order()?;
     value["state"] = "cancel_requested".into();
     let (temp, path, reference, service, mut peer) = setup(value, false).await?;
+    // The cancelled order must be in the cache before "never sent" means anything;
+    // wait for the poll to commit it instead of racing the first poll.
+    tokio::time::timeout(HANG_GUARD, async {
+        loop {
+            let cached = database(&path)?
+                .query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?;
+            if cached == 1 {
+                return Ok::<_, Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await??;
     only_polls(&mut peer).await?;
     no_event(&path).await?;
-    assert_eq!(
-        database(&path)?.query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?,
-        1
-    );
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
             .get::<_, i64>(0))?,

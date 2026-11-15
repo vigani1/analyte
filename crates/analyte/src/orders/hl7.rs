@@ -45,8 +45,8 @@ impl Connection {
                 machine
                     .snapshot
                     .effective()
-                    .machine()
-                    .dialog
+                    .stack()
+                    .timeouts()
                     .receive_timeout_ms,
             )))
         });
@@ -65,7 +65,7 @@ impl Connection {
     pub(crate) async fn idle(
         &mut self,
         store: &Handle,
-        machine: &Machine,
+        machine: &evidence::Connection<'_>,
         conn: &mut analyte_transport::Connection,
     ) -> Result<(), Error> {
         if self.awaiting.is_some() || self.exchange.is_some() || !self.decoder.pending().is_empty()
@@ -82,14 +82,11 @@ impl Connection {
         )
         .await?
         {
-            let wait = machine
-                .snapshot
-                .effective()
-                .machine()
-                .orders
-                .as_ref()
-                .and_then(|orders| orders.hl7_send.as_ref())
+            let wait = super::settings::hl7(machine)
+                .map(|settings| settings.orders)
+                .and_then(|orders| orders.send.as_ref())
                 .ok_or("send settings")?
+                .settings
                 .response_ms;
             let until = Instant::now()
                 .checked_add(Duration::from_millis(u64::from(wait)))
@@ -110,7 +107,11 @@ impl Connection {
     pub(crate) fn consumed(&mut self) {
         self.input_evidence.clear();
     }
-    pub(crate) async fn tick(&mut self, store: &Handle, machine: &Machine) -> Result<(), Error> {
+    pub(crate) async fn tick(
+        &mut self,
+        store: &Handle,
+        machine: &evidence::Connection<'_>,
+    ) -> Result<(), Error> {
         if self
             .exchange
             .as_ref()
@@ -135,8 +136,8 @@ impl Connection {
                     machine
                         .snapshot
                         .effective()
-                        .machine()
-                        .dialog
+                        .stack()
+                        .timeouts()
                         .receive_timeout_ms,
                 ))
         }) {
@@ -147,7 +148,7 @@ impl Connection {
     pub(crate) async fn close(
         &mut self,
         store: &Handle,
-        machine: &Machine,
+        machine: &evidence::Connection<'_>,
         code: &str,
     ) -> Result<(), Error> {
         for identity in self.reserving.drain(..) {
@@ -186,7 +187,11 @@ impl Connection {
         }
         self.partial(store, machine).await
     }
-    async fn partial(&mut self, store: &Handle, machine: &Machine) -> Result<(), Error> {
+    async fn partial(
+        &mut self,
+        store: &Handle,
+        machine: &evidence::Connection<'_>,
+    ) -> Result<(), Error> {
         if let Some(mllp::Event::Rejected { raw, error }) = self.decoder.finish() {
             evidence::park_bytes(store, machine, raw, &error.to_string()).await?;
         }
@@ -246,7 +251,7 @@ impl Connection {
     pub(crate) async fn input(
         &mut self,
         store: &Handle,
-        machine: &Machine,
+        machine: &evidence::Connection<'_>,
         conn: &mut analyte_transport::Connection,
         bytes: Vec<u8>,
     ) -> Result<Vec<u8>, Error> {
@@ -383,6 +388,7 @@ impl Connection {
         started: Instant,
         receipt: ReceiptId,
     ) -> Result<(), Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         let request = match query::Request::new(message) {
             Ok(request) => request,
             Err(error) => {
@@ -390,21 +396,15 @@ impl Connection {
                 return Ok(());
             }
         };
-        let settings = machine
-            .snapshot
-            .effective()
-            .machine()
-            .orders
-            .as_ref()
+        let settings = super::settings::hl7(machine)
+            .map(|settings| settings.orders)
             .ok_or_else(|| invalid("HL7 orders missing"))?;
-        let policy = settings
+        let query = settings
             .query
             .as_ref()
             .ok_or_else(|| invalid("HL7 query policy missing"))?;
-        let layout = settings
-            .hl7
-            .as_ref()
-            .ok_or_else(|| invalid("HL7 query layout missing"))?;
+        let policy = &query.policy;
+        let layout = &query.layout;
         let until = started
             .checked_add(Duration::from_millis(u64::from(policy.deadline_ms)))
             .ok_or_else(|| invalid("HL7 query deadline overflow"))?;
@@ -497,7 +497,7 @@ impl Connection {
                                                 identity: &identity,
                                                 version,
                                                 now: jiff::Timestamp::now().as_second(),
-                                                freshness: super::FRESHNESS_SECONDS,
+                                                freshness,
                                             },
                                             reason,
                                             super::event,
@@ -548,6 +548,7 @@ impl Connection {
                 until,
                 &mut self.active,
                 Some(self.owner.clone()),
+                machine.destination_limits.freshness.as_secs(),
             )
             .await?
             {
@@ -675,7 +676,7 @@ async fn write(
 fn edition_matches(machine: &Machine, version: analyte_hl7::Version) -> bool {
     matches!(
         (
-            machine.snapshot.effective().machine().syntax.edition,
+            super::settings::hl7(machine).map(|settings| settings.syntax.edition),
             version
         ),
         (
@@ -713,6 +714,8 @@ mod tests {
         )?
         .validate()?;
         let machine = Machine {
+            capture: false,
+            destination_limits: crate::delivery::limits(30),
             #[cfg(feature = "test-hooks")]
             law_committed: None,
             id: Identifier::new("synthetic")?,
@@ -766,14 +769,17 @@ mod tests {
                     }],
                 })?;
                 store
-                    .reserve_send_owned(
+                    .reserve_send(
                         &analyte_store::OrderReservation {
                             identity: &identity,
                             version: std::num::NonZeroU64::MIN,
                             now,
                             freshness: 30,
                         },
-                        &original_owner,
+                        analyte_store::ReserveOptions {
+                            owner: Some(&original_owner),
+                            ..Default::default()
+                        },
                     )?
                     .map_err(|_| analyte_store::Error::Conflict)
             })
@@ -785,7 +791,13 @@ mod tests {
             .ok_or("options")?;
         let mut other = Connection::new(options)?;
         other.reserving.push(key.clone());
-        other.close(&store, &machine, "HL7-DSR-disconnect").await?;
+        other
+            .close(
+                &store,
+                &evidence::Connection::new(&machine)?,
+                "HL7-DSR-disconnect",
+            )
+            .await?;
         let identity = key.clone();
         let current = store
             .request(deadline(), move |store| store.machine_order(&identity))
@@ -797,7 +809,11 @@ mod tests {
         original.owner = owner;
         original.reserving.push(key.clone());
         original
-            .close(&store, &machine, "HL7-DSR-disconnect")
+            .close(
+                &store,
+                &evidence::Connection::new(&machine)?,
+                "HL7-DSR-disconnect",
+            )
             .await?;
         let current = store
             .request(deadline(), move |store| store.machine_order(&key))

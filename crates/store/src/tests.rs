@@ -26,7 +26,7 @@ pub(super) fn open(path: &Path) -> Result<Store, Error> {
     Store::open(path, limits(), Box::new(Space(u64::MAX)))
 }
 
-fn receipt(raw: &[u8]) -> Result<ReceiptMetadata, Box<dyn std::error::Error>> {
+pub(super) fn receipt(raw: &[u8]) -> Result<ReceiptMetadata, Box<dyn std::error::Error>> {
     Ok(ReceiptMetadata {
         id: ReceiptId::try_from(uuid::Uuid::now_v7())?,
         raw_digest: digest(raw),
@@ -58,8 +58,8 @@ fn adr0003_frame_committed_before_ack_survives_restart() -> TestResult {
     let transfer = Identifier::new("transfer-1")?;
     {
         let mut store = open(&path)?;
-        let first = store.frame(&transfer, 1, b"frame-one")?;
-        assert!(store.frame(&transfer, 2, b"frame-two")? > first);
+        let first = store.frame(&transfer, FrameSequence::new(1, 7)?, b"frame-one")?;
+        assert!(store.frame(&transfer, FrameSequence::new(2, 7)?, b"frame-two")? > first);
     }
     let store = open(&path)?;
     assert_eq!(store.incomplete("")?, vec!["transfer-1"]);
@@ -93,7 +93,11 @@ fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
         Err(Error::Capacity)
     ));
     assert!(matches!(
-        store.frame(&Identifier::new("transfer")?, 0, b"frame"),
+        store.frame(
+            &Identifier::new("transfer")?,
+            FrameSequence::new(0, 7)?,
+            b"frame"
+        ),
         Err(Error::Capacity)
     ));
     assert_eq!(store.raw(metadata.id)?, None);
@@ -109,7 +113,7 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        6
+        SCHEMA_VERSION
     );
     assert_eq!(
         store
@@ -129,9 +133,9 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
             .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    store.db.execute_batch("PRAGMA user_version=7")?;
+    store.db.execute_batch("PRAGMA user_version=10")?;
     drop(store);
-    assert!(matches!(open(&path), Err(Error::SchemaTooNew(7))));
+    assert!(matches!(open(&path), Err(Error::SchemaTooNew(10))));
     Ok(())
 }
 
@@ -146,8 +150,30 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
         Err(Error::Conflict)
     ));
     let reading = interpretation()?;
-    assert_eq!(store.interpret(metadata.id, &reading, &[])?, 1);
-    assert_eq!(store.interpret(metadata.id, &reading, &[])?, 2);
+    assert_eq!(
+        store
+            .interpret_reconciled(
+                metadata.id,
+                reading.clone(),
+                &[],
+                &[],
+                |_, _| Ok(Vec::new())
+            )
+            .map(|commit| commit.version)?,
+        1
+    );
+    assert_eq!(
+        store
+            .interpret_reconciled(
+                metadata.id,
+                reading.clone(),
+                &[],
+                &[],
+                |_, _| Ok(Vec::new())
+            )
+            .map(|commit| commit.version)?,
+        2
+    );
     assert!(
         store
             .db
@@ -170,7 +196,9 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
     store.db.execute_batch("CREATE TRIGGER reject_interpretation AFTER INSERT ON interpretations BEGIN INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('x',NEW.receipt,NEW.version,'d','k',x'00',x'00',1,'invalid',0); END;")?;
     assert!(
         store
-            .interpret(metadata.id, &interpretation()?, &[])
+            .interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| Ok(
+                Vec::new()
+            ))
             .is_err()
     );
     assert_eq!(
@@ -205,7 +233,9 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"raw")?;
     store.receive(&metadata, b"raw", b"config")?;
-    store.interpret(metadata.id, &interpretation()?, &[])?;
+    store.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let first = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     let correction = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     let other = DeliveryId::try_from(uuid::Uuid::now_v7())?;
@@ -291,7 +321,15 @@ fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
     store.receive(&metadata, b"invalid", b"config")?;
     let mut reading = interpretation()?;
     reading.outcome = Reading::Failed(Reason::new("invalid syntax")?);
-    store.interpret(metadata.id, &reading, &[])?;
+    store
+        .interpret_reconciled(
+            metadata.id,
+            reading.clone(),
+            &[],
+            &[],
+            |_, _| Ok(Vec::new()),
+        )
+        .map(|commit| commit.version)?;
     let audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("resolve")?,
@@ -408,6 +446,7 @@ fn production_result(
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![ResultPart {
             test: name,
             values: EvidenceList::new(vec![ResultValue {
+                decoded_text: None,
                 original: SourceText::new("positive")?,
                 parsed: ValueInterpretation::Text,
             }])?,
@@ -451,12 +490,37 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
     };
     let id = delivery.id;
     assert_eq!(
-        store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?,
+        store
+            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| Ok(
+                vec![Delivery {
+                    id: delivery.id,
+                    destination: delivery.destination.clone(),
+                    ordering_key: OrderingKey {
+                        machine: delivery.ordering_key.machine.clone(),
+                        observation: delivery.ordering_key.observation.clone()
+                    },
+                    payload: delivery.payload.clone(),
+                    contract_version: delivery.contract_version,
+                }]
+            ))
+            .map(|commit| commit.version)?,
         1
     );
     assert!(
         store
-            .interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))
+            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| Ok(
+                vec![Delivery {
+                    id: delivery.id,
+                    destination: delivery.destination.clone(),
+                    ordering_key: OrderingKey {
+                        machine: delivery.ordering_key.machine.clone(),
+                        observation: delivery.ordering_key.observation.clone()
+                    },
+                    payload: delivery.payload.clone(),
+                    contract_version: delivery.contract_version,
+                }]
+            ))
+            .map(|commit| commit.version)
             .is_err()
     );
     assert!(store.interpretation(metadata.id, 2)?.is_none());
@@ -549,12 +613,17 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
     let mut store = open(&temp.path().join("store.db"))?;
     let complete = Identifier::new("complete")?;
     let aborted = Identifier::new("aborted")?;
-    store.frame(&complete, 1, b"first")?;
-    store.frame(&aborted, 1, b"partial")?;
+    store.frame(&complete, FrameSequence::new(1, 7)?, b"first")?;
+    store.frame(&aborted, FrameSequence::new(1, 7)?, b"partial")?;
     let metadata = receipt(b"first")?;
     store.receive(&metadata, b"first", b"config")?;
-    store.finish_transfer(&complete, Some(metadata.id))?;
-    store.finish_transfer(&aborted, None)?;
+    store.finish_transfer(&complete, TransferOutcome::Complete(metadata.id))?;
+    store.finish_transfer(
+        &aborted,
+        TransferOutcome::Incomplete(Reason::new(
+            "ASTM transfer ended before a complete receipt was retained",
+        )?),
+    )?;
     assert_eq!(store.incomplete("")?, vec!["aborted"]);
     assert_eq!(
         store
@@ -568,7 +637,7 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
         Some(b"partial".as_slice())
     );
     assert!(matches!(
-        store.frame(&complete, 2, b"late"),
+        store.frame(&complete, FrameSequence::new(2, 7)?, b"late"),
         Err(Error::Conflict)
     ));
     assert_eq!(
@@ -644,12 +713,18 @@ fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult
     };
     let metadata = receipt(b"raw")?;
     v1.receive(&metadata, b"raw", b"config")?;
-    v1.interpret(metadata.id, &interpretation()?, &[])?;
+    v1.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     seed_delivery(&v1, metadata.id, id, "key")?;
     v1.db.execute("UPDATE outbox SET state='in_flight'", [])?;
     v1.attempted(id, &Attempt::RetryAt(10), 0)?;
-    v1.frame(&Identifier::new("transfer")?, 1, b"frame")?;
+    v1.frame(
+        &Identifier::new("transfer")?,
+        FrameSequence::new(1, 7)?,
+        b"frame",
+    )?;
     let audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("test")?,
@@ -791,7 +866,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
     assert_eq!(claim.earlier_attempts, 0);
     store.attempted(claim.id, &Attempt::RetryAt(20), 12)?;
     assert_eq!(store.claim(12)?.ok_or(Error::Corruption)?.id, other.id);
-    let health = store.health(&destination, 15)?;
+    let health = store.health(&destination, 15, 30)?;
     assert_eq!(
         (
             health.pending_count,
@@ -809,7 +884,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
         polled: 15,
         orders: vec![],
     })?;
-    let health = store.health(&destination, 15)?;
+    let health = store.health(&destination, 15, 30)?;
     assert_eq!(health.last_successful_poll, Some(15));
     assert!(!health.snapshot_complete);
     assert!(!health.cache_trusted);
@@ -820,9 +895,9 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
         polled: 16,
         orders: vec![],
     })?;
-    assert!(store.health(&destination, 16)?.cache_trusted);
+    assert!(store.health(&destination, 16, 30)?.cache_trusted);
     store.reset_orders(&destination)?;
-    assert!(!store.health(&destination, 16)?.cache_trusted);
+    assert!(!store.health(&destination, 16, 30)?.cache_trusted);
 
     drop(store);
     let mut store = open(&path)?;
@@ -830,7 +905,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
     assert_eq!(retry.id, event.id);
     assert_eq!(retry.earlier_attempts, 1);
     store.attempted(retry.id, &Attempt::Paused(Reason::new("credentials")?), 20)?;
-    assert!(store.health(&destination, 21)?.paused);
+    assert!(store.health(&destination, 21, 30)?.paused);
     assert!(store.claim(21)?.is_none());
     // CHECK constraints reject both kinds carrying the other's provenance.
     assert!(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','order_event','receipt',1,'o','app','o',x'00',x'00',1,'pending',0)",[]).is_err());
@@ -967,7 +1042,11 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
         "INSERT INTO interpretations VALUES (?1,1,?2)",
         params![key(&metadata.id)?, key(&evidence)?],
     )?;
-    v2.frame(&Identifier::new("legacy-transfer")?, 1, b"legacy-frame")?;
+    v2.frame(
+        &Identifier::new("legacy-transfer")?,
+        FrameSequence::new(1, 7)?,
+        b"legacy-frame",
+    )?;
     let triggers: Vec<String> = v2
         .db
         .prepare("SELECT name FROM sqlite_master WHERE type='trigger'")?
@@ -989,7 +1068,7 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        6
+        SCHEMA_VERSION
     );
     for trigger in triggers {
         assert_eq!(
@@ -1081,7 +1160,9 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
     let mut store = open(&path)?;
     let metadata = receipt(b"raw")?;
     store.receive(&metadata, b"raw", b"config")?;
-    store.interpret(metadata.id, &interpretation()?, &[])?;
+    store.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let mut interrupted = None;
     for state in ["in_flight", "parked", "conflict", "paused", "done"] {
         let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
@@ -1223,7 +1304,20 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
         payload: b"immutable synthetic bytes".to_vec(),
         contract_version: 1,
     };
-    store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?;
+    store
+        .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
+            Ok(vec![Delivery {
+                id: delivery.id,
+                destination: delivery.destination.clone(),
+                ordering_key: OrderingKey {
+                    machine: delivery.ordering_key.machine.clone(),
+                    observation: delivery.ordering_key.observation.clone(),
+                },
+                payload: delivery.payload.clone(),
+                contract_version: delivery.contract_version,
+            }])
+        })
+        .map(|commit| commit.version)?;
     let mut audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("delivery-resend")?,
@@ -1321,7 +1415,20 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
         payload: b"old bytes".to_vec(),
         contract_version: 1,
     };
-    store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?;
+    store
+        .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
+            Ok(vec![Delivery {
+                id: delivery.id,
+                destination: delivery.destination.clone(),
+                ordering_key: OrderingKey {
+                    machine: delivery.ordering_key.machine.clone(),
+                    observation: delivery.ordering_key.observation.clone(),
+                },
+                payload: delivery.payload.clone(),
+                contract_version: delivery.contract_version,
+            }])
+        })
+        .map(|commit| commit.version)?;
     store.claim(0)?.ok_or("missing claim")?;
     store.attempted(delivery.id, &Attempt::Done, 0)?;
     store.db.execute(
@@ -1373,7 +1480,11 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
     store.receive(&metadata, b"original", b"config")?;
     let mut original = interpretation()?;
     original.outcome = Reading::Failed(Reason::new("test mapping missing")?);
-    store.interpret(metadata.id, &original, &[])?;
+    store
+        .interpret_reconciled(metadata.id, original.clone(), &[], &[], |_, _| {
+            Ok(Vec::new())
+        })
+        .map(|commit| commit.version)?;
     let before: String = store
         .db
         .query_row("SELECT evidence FROM interpretations", [], |r| r.get(0))?;
@@ -1509,5 +1620,241 @@ fn rule3_interpretation_digest_verified_legacy_evidence_still_reads() -> TestRes
         .remove("config_digest");
     let legacy: Interpretation = serde_json::from_value(encoded)?;
     assert_eq!(legacy.config, evidence.config);
+    Ok(())
+}
+
+#[test]
+fn adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("status-table.db"))?;
+    let policy = StatusLifecycle {
+        transitions: &[("draft", "ready")],
+        withheld: &["draft"],
+        single_run: &[],
+        run: |_| None,
+    };
+    for (index, status, expected) in [
+        (0, "draft", RevisionOutcome::New(analyte_model::Revision(0))),
+        (
+            1,
+            "ready",
+            RevisionOutcome::Correction(analyte_model::Revision(1)),
+        ),
+        (2, "draft", RevisionOutcome::Conflict),
+    ] {
+        let metadata = receipt(b"synthetic")?;
+        store.receive(&metadata, b"synthetic", b"config")?;
+        let mut result = production_result(metadata.id)?;
+        let mut parts = result.parts.as_slice().to_vec();
+        parts.first_mut().ok_or(Error::Corruption)?.source_status =
+            analyte_model::SourceText::new(status)?;
+        result.parts =
+            analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
+        if let Some(sample) = &mut result.sample {
+            sample.id = SampleId::new(&format!("sample-{index}"))?;
+        }
+        assert_eq!(policy.may_deliver(&result), status != "draft");
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![result]);
+        let commit = store.interpret_with_lifecycle(
+            metadata.id,
+            evidence,
+            (&[true], &[]),
+            policy,
+            |_, _| Ok(vec![]),
+        )?;
+        assert_eq!(commit.outcomes, [expected]);
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("batch-status.db"))?;
+    let policy = StatusLifecycle {
+        transitions: &[("draft", "draft"), ("draft", "ready")],
+        withheld: &[],
+        single_run: &[],
+        run: |_| None,
+    };
+    let make = |receipt,
+                status: &str|
+     -> Result<analyte_model::ResultContent, Box<dyn std::error::Error>> {
+        let mut result = production_result(receipt)?;
+        let mut parts = result.parts.as_slice().to_vec();
+        parts.first_mut().ok_or(Error::Corruption)?.source_status =
+            analyte_model::SourceText::new(status)?;
+        result.parts =
+            analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
+        Ok(result)
+    };
+    let first = receipt(b"synthetic")?;
+    store.receive(&first, b"synthetic", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![make(first.id, "draft")?, make(first.id, "ready")?]);
+    let commit = store.interpret_with_lifecycle(
+        first.id,
+        evidence,
+        (&[false, false], &[]),
+        policy,
+        |_, _| Ok(vec![]),
+    )?;
+    assert_eq!(
+        commit.outcomes,
+        [
+            RevisionOutcome::New(analyte_model::Revision(0)),
+            RevisionOutcome::Correction(analyte_model::Revision(1))
+        ]
+    );
+    let second = receipt(b"synthetic")?;
+    store.receive(&second, b"synthetic", b"config")?;
+    let mut result = make(second.id, "draft")?;
+    result.sample.as_mut().ok_or(Error::Corruption)?.id = SampleId::new("changed")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result]);
+    let commit =
+        store.interpret_with_lifecycle(second.id, evidence, (&[false], &[]), policy, |_, _| {
+            Ok(vec![])
+        })?;
+    assert_eq!(commit.outcomes, [RevisionOutcome::Conflict]);
+    Ok(())
+}
+
+#[test]
+fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("withheld.db"))?;
+    let metadata = receipt(b"synthetic")?;
+    store.receive(&metadata, b"synthetic", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+    let policy = StatusLifecycle {
+        transitions: &[],
+        withheld: &["F"],
+        single_run: &[],
+        run: |_| None,
+    };
+    let result = store.interpret_with_lifecycle(
+        metadata.id,
+        evidence,
+        (&[false], &[]),
+        policy,
+        |evidence, _| {
+            let Reading::Results(results) = &evidence.outcome else {
+                return Err(Error::InvalidInput);
+            };
+            let Some(analyte_model::IdentityStatus::Resolved(identity)) =
+                results.first().map(|r| &r.identity)
+            else {
+                return Err(Error::InvalidInput);
+            };
+            Ok(vec![Delivery {
+                id: DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| Error::InvalidInput)?,
+                destination: Identifier::new("app").map_err(|_| Error::InvalidInput)?,
+                ordering_key: OrderingKey {
+                    machine: metadata.machine.clone(),
+                    observation: identity.observation.clone(),
+                },
+                payload: b"must not deliver".to_vec(),
+                contract_version: 1,
+            }])
+        },
+    );
+    assert!(matches!(result, Err(Error::InvalidInput)));
+    for table in ["interpretations", "observation_revisions", "outbox"] {
+        assert_eq!(
+            store
+                .db
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))?,
+            0
+        );
+    }
+    Ok(())
+}
+
+// ADR 0003; POCT01-A2 B 3.2 pp.71-72: provenance offsets must not create results.
+#[test]
+fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evidence() -> TestResult
+{
+    use analyte_model::{EvidenceList, Identifier, NonEmptyEvidenceList, Revision, SourceNode};
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("legacy-offsets.db");
+    let mut store = open(&path)?;
+    let first = receipt(b"original")?;
+    store.receive(&first, b"original", b"config")?;
+    let mut result = production_result(first.id)?;
+    let mut parts = result.parts.as_slice().to_vec();
+    parts.first_mut().ok_or(Error::Corruption)?.source_path =
+        EvidenceList::new(vec![SourceNode {
+            occurrence: 5,
+            kind: Identifier::new("OBS")?,
+            sequence: None,
+            status: None,
+        }])?;
+    result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
+    let mut old_parts = serde_json::to_value(&result.parts)?;
+    for part in old_parts.as_array_mut().ok_or(Error::Corruption)? {
+        part.as_object_mut()
+            .ok_or(Error::Corruption)?
+            .remove("received_at");
+    }
+    // Construct the previous released algorithm's digest, including source offsets.
+    let old_digest = digest(&serde_json::to_vec(&(
+        &result.sample,
+        result.processing,
+        old_parts,
+    ))?);
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result.clone()]);
+    let analyte_model::IdentityStatus::Resolved(identity) = &result.identity else {
+        return Err(Error::Corruption.into());
+    };
+    let receipt_key = key(&first.id)?;
+    let identity_key = key(&(&first.machine, &identity.observation))?;
+    store.db.execute(
+        "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
+        params![receipt_key, key(&evidence)?],
+    )?;
+    store.db.execute(
+        "INSERT INTO observation_revisions VALUES (?1,0,?2,1,?3)",
+        params![identity_key, receipt_key, old_digest.0.as_slice()],
+    )?;
+    drop(store);
+    let mut store = open(&path)?;
+    let second = receipt(b"resent")?;
+    store.receive(&second, b"resent", b"config")?;
+    result.receipt = second.id;
+    let mut parts = result.parts.as_slice().to_vec();
+    parts.first_mut().ok_or(Error::Corruption)?.source_path =
+        EvidenceList::new(vec![SourceNode {
+            occurrence: 6,
+            kind: Identifier::new("OBS")?,
+            sequence: None,
+            status: None,
+        }])?;
+    result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
+    evidence.outcome = Reading::Results(vec![result]);
+    let commit =
+        store.interpret_reconciled(second.id, evidence, &[false], &[], |_, outcomes| {
+            assert_eq!(outcomes, &[RevisionOutcome::Retransmission(Revision(0))]);
+            Ok(vec![])
+        })?;
+    assert_eq!(
+        commit.outcomes,
+        vec![RevisionOutcome::Retransmission(Revision(0))]
+    );
+    assert_eq!(
+        store.receipt(first.id)?.ok_or(Error::Corruption)?.raw,
+        b"original"
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        1
+    );
     Ok(())
 }

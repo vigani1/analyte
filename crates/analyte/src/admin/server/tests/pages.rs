@@ -60,11 +60,12 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             limits,
             Box::new(Space),
             4,
-            crate::deadline(),
+            fixture_deadline()?,
         )
-        .await?,
+        .await
+        .map_err(|error| format!("admin pages fixture migration: {error}"))?,
     );
-    let (receipt_id, parked_id, other_receipt) = store.request(crate::deadline(), |store| {
+    let (receipt_id, parked_id, other_receipt) = store.request(fixture_deadline()?, |store| {
         let id = |text: &str| Identifier::new(text).map_err(|_| analyte_store::Error::InvalidInput);
         let mut first = None;
         for name in ["first", "second"] {
@@ -76,7 +77,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             let parked_id = store.park(&Parked {kind: id(name)?, reason: Reason::new("<script>hostile reason</script>").map_err(|_| analyte_store::Error::InvalidInput)?, targets: vec![target]})?;
             store.order_page(&OrderPage {destination: id("app")?, cursor: id(name)?, complete: true, polled: 100, orders: vec![CachedOrder {id: id(name)?, sample: SampleId::new("<script>sample</script>").map_err(|_| analyte_store::Error::InvalidInput)?, document: serde_json::json!({"id": name,"version":1,"state":"requested","sample_id":"<script>sample</script>","tests":[{"namespace":"local","value":"<test>"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string(), tombstone: false, expiry: 200}]})?;
             let key = analyte_store::MachineOrderKey {destination: id("app")?, order: id(name)?, machine: id("machine")?};
-            let record = store.reserve_send(&key, std::num::NonZeroU64::MIN, 101, 30)?.map_err(|_| analyte_store::Error::Conflict)?;
+            let record = store.reserve_send(&analyte_store::OrderReservation { identity: &key, version: std::num::NonZeroU64::MIN, now: 101, freshness: 30 }, analyte_store::ReserveOptions::default())?.map_err(|_| analyte_store::Error::Conflict)?;
             store.transition_order(record.id, OrderState::Uncertain, analyte_model::SourceText::new("timeout").map_err(|_| analyte_store::Error::InvalidInput)?, 102, |order| Ok(analyte_store::OrderEventDelivery {id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidInput)?, destination: order.key.destination.clone(), order_id: order.key.order.clone(), payload: b"not a raw view".to_vec(), contract_version: 1}))?;
             if let Some((receipt, parked)) = first {
                 store.audit(&Audit {actor: id("operator")?, action: id("store-restore")?, targets: Vec::new(), time: 103, reason: Reason::new("synthetic restore").map_err(|_| analyte_store::Error::InvalidInput)?})?;
@@ -95,6 +96,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             running: Arc::new(AtomicBool::new(true)),
         });
     }
+    let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
         config_path: directory.path().join("program.toml"),
         token: Token::load(directory.path())?,
@@ -106,6 +108,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         destinations: Vec::new(),
         directory: directory.path().to_owned(),
         reserve: 1,
+        _released: released,
     });
     let server = Server {
         listener: Listener {
@@ -113,6 +116,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        released: release,
         owners: BTreeMap::new(),
     };
     let (stop, stopped) = watch::channel(false);
@@ -201,7 +205,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     assert!(!unrelated.starts_with("HTTP/1.1 200"));
     assert!(!unrelated.contains("RAW"));
     let count = store
-        .request(crate::deadline(), |s| Ok(s.audits(1)?.len()))
+        .request(fixture_deadline()?, |s| Ok(s.audits(1)?.len()))
         .await?;
     assert_eq!(count, 0);
     for _ in 0..2 {
@@ -222,7 +226,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     .await?;
     assert!(tail.starts_with("HTTP/1.1 200"));
     assert!(tail.contains("TAIL"));
-    let first_audit = store.request(crate::deadline(), |s| s.audits(1)).await?;
+    let first_audit = store.request(fixture_deadline()?, |s| s.audits(1)).await?;
     let (sequence, audit) = first_audit.first().ok_or("raw audit absent")?;
     assert_eq!(audit.action.as_str(), "admin-raw-view");
     assert_eq!(audit.reason.as_str(), "review");
@@ -235,13 +239,13 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     );
     let sequence = *sequence;
     let second = store
-        .request(crate::deadline(), move |s| s.audits(sequence))
+        .request(fixture_deadline()?, move |s| s.audits(sequence))
         .await?;
     assert_eq!(second.len(), 1);
     let sequence = second.first().ok_or("second audit missing")?.0;
     assert_eq!(
         store
-            .request(crate::deadline(), move |s| Ok(s.audits(sequence)?.len()))
+            .request(fixture_deadline()?, move |s| Ok(s.audits(sequence)?.len()))
             .await?,
         1
     );
@@ -255,7 +259,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     // Current cache evidence is explicitly distinguished from a reservation's
     // historical version; operator reads never resend or reconcile an order.
     store
-        .request(crate::deadline(), |s| {
+        .request(fixture_deadline()?, |s| {
             let destination =
                 Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?;
             let key = Identifier::new("first").map_err(|_| analyte_store::Error::InvalidInput)?;
@@ -286,13 +290,28 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     assert!(mismatch.contains("Machine test: local: &lt;test&gt;"));
     assert!(mismatch.contains("&lt;newtest&gt;"));
     let frame_park = store
-        .request(crate::deadline(), |s| {
+        .request(fixture_deadline()?, |s| {
             let transfer =
                 Identifier::new("transfer").map_err(|_| analyte_store::Error::InvalidInput)?;
             let mut bytes = b"<frame>".to_vec();
             bytes.extend(vec![b'B'; 4100]);
             bytes.extend(b"FRAME-TAIL");
-            s.frame(&transfer, 1, &bytes)?;
+            s.journal_frame(
+                &transfer,
+                analyte_store::FrameSequence::new(1, 7)?,
+                &bytes,
+                &analyte_store::FrameProvenance {
+                    machine: Identifier::new("synthetic")
+                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    driver: NamespacedId {
+                        namespace: Identifier::new("synthetic")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        value: Identifier::new("1")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    },
+                    config: b"synthetic config".to_vec(),
+                },
+            )?;
             s.park(&Parked {
                 kind: Identifier::new("transfer")
                     .map_err(|_| analyte_store::Error::InvalidInput)?,
@@ -335,10 +354,10 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     assert!(!refused.contains("RAW"));
     assert!(!refused.contains("3c 73 63"));
     rusqlite::Connection::open(database)?.execute_batch("DROP TRIGGER test_refuse_raw_audit;")?;
+    drop(state);
     stop.send_replace(true);
     tokio::time::timeout(Duration::from_secs(5), owner).await???;
-    drop(state);
     let mut store = Arc::try_unwrap(store).map_err(|_| "pages retained store")?;
-    store.shutdown(crate::deadline()).await?;
+    store.shutdown(fixture_deadline()?).await?;
     Ok(())
 }

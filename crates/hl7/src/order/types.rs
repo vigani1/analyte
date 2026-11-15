@@ -43,7 +43,7 @@ impl<'a> OrderId<'a> {
         namespace: &'a [u8],
         universal: Option<(&'a [u8], &'a [u8])>,
     ) -> Result<Self, Error> {
-        scalar(id, "EI", 1, 22, true)?;
+        scalar(id, "EI", 1, super::EI_MAX_BYTES, true)?;
         scalar(namespace, "EI", 2, 20, universal.is_none())?;
         let mut length = id
             .len()
@@ -62,7 +62,7 @@ impl<'a> OrderId<'a> {
                 .and_then(|n| n.checked_add(2))
                 .ok_or(Error::Limit)?;
         }
-        if length > 22 {
+        if length > super::EI_MAX_BYTES {
             return Err(invalid("EI", 1));
         }
         Ok(Self {
@@ -279,7 +279,7 @@ pub enum Subject<'a> {
     NonPatient,
     /// Patient context was not supplied; this does not assert nonpatient work.
     Unspecified,
-    /// Only the supplied identifier is known; no patient name is synthesized.
+    /// Only an identifier is known; omit the optional PID group without a required name.
     Identifier {
         /// Literal patient ID.
         identifier: &'a [u8],

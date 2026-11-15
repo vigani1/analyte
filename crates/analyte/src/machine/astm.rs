@@ -1,6 +1,6 @@
 //! ASTM journaling precedes every data ACK (ADR 0003).
 use crate::orders::astm::{Pending, Request};
-use crate::{Error, config::Machine, deadline, evidence, invalid};
+use crate::{Error, deadline, evidence, invalid};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
@@ -11,28 +11,28 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
+    settings: &analyte_config::AstmStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let settings = machine.snapshot.effective().machine();
     let timers = Timers {
-        establish: Duration::from_millis(u64::from(settings.dialog.send_timeout_ms)),
-        frame: Duration::from_millis(u64::from(settings.dialog.send_timeout_ms)),
-        receive: Duration::from_millis(u64::from(settings.dialog.receive_timeout_ms)),
+        establish: Duration::from_millis(u64::from(settings.timeouts.send_timeout_ms)),
+        frame: Duration::from_millis(u64::from(settings.timeouts.send_timeout_ms)),
+        receive: Duration::from_millis(u64::from(settings.timeouts.receive_timeout_ms)),
         commit: Duration::from_secs(5),
         ..Timers::default()
     };
     let config = Config::new(
-        analyte_framing::astm::Limit::new(settings.framing.limit)?,
+        analyte_framing::astm::Limit::new(settings.frame_limit)?,
         timers,
-        match settings.dialog.contention_priority {
-            Some(analyte_config::Priority::Host) => Role::Instrument,
-            Some(analyte_config::Priority::Instrument) | None => Role::Computer,
+        match settings.contention_priority {
+            analyte_config::Priority::Host => Role::Instrument,
+            analyte_config::Priority::Instrument => Role::Computer,
         },
-        settings.syntax.bytes,
-        settings.syntax.records,
+        settings.syntax.limits.bytes,
+        settings.syntax.limits.records,
         true,
     )?;
     let epoch = Epoch(uuid::Uuid::now_v7().as_u128());
@@ -99,7 +99,7 @@ pub(super) async fn session(
                 if let Event::Byte(byte) = &event {
                     if *byte == analyte_framing::astm::STX { partial.clear(); }
                     if *byte == analyte_framing::astm::STX || !partial.is_empty() {
-                        if partial.len() > settings.framing.limit { return Err(invalid("ASTM partial frame bound exceeded")); }
+                        if partial.len() > settings.frame_limit { return Err(invalid("ASTM partial frame bound exceeded")); }
                         partial.push(*byte);
                     }
                 }
@@ -114,7 +114,7 @@ pub(super) async fn session(
                         response = crate::orders::astm::failure(machine);
                         response_deadline = None;
                     }
-                    let expected = settings.framing.limit.checked_add(machine.snapshot.canonical().len()).ok_or_else(|| invalid("ASTM admission size overflow"))?;
+                    let expected = settings.frame_limit.checked_add(machine.snapshot.canonical().len()).ok_or_else(|| invalid("ASTM admission size overflow"))?;
                     let capacity = store.request(deadline(), move |s| s.admission(expected)).await;
                     if let Err(error) = &capacity { tracing::error!(machine = machine.id.as_str(), error_kind = %error, "storage admission refused"); }
                     actions.extend(dialog.step(start.elapsed(), Event::Capacity(capacity.is_ok()))?);
@@ -130,10 +130,11 @@ pub(super) async fn session(
                             let transfer_id = Identifier::new(&format!("{:032x}-{}", id.epoch().0, id.transfer()))?;
                             transfer = Some(transfer_id.clone());
                             let number = bytes.get(1).and_then(|b| b.checked_sub(b'0')).ok_or_else(|| invalid("ASTM frame number missing"))?;
-                            if raw.len().checked_add(bytes.len()).is_none_or(|n| n > settings.syntax.bytes) { return Err(invalid("ASTM transfer wire-byte bound exceeded")); }
+                            if raw.len().checked_add(bytes.len()).is_none_or(|n| n > settings.syntax.limits.bytes) { return Err(invalid("ASTM transfer wire-byte bound exceeded")); }
                             raw.extend_from_slice(&bytes);
                             let provenance = analyte_store::FrameProvenance { machine: machine.id.clone(), driver: evidence::driver(machine)?, config: machine.snapshot.canonical().as_bytes().to_vec() };
-                            let committed = store.request(deadline(), move |s| s.journal_frame(&transfer_id, number, &bytes, &provenance)).await;
+                            let sequence = analyte_store::FrameSequence::new(number, analyte_framing::astm::FrameNumber::MAX.value())?;
+                            let committed = store.request(deadline(), move |s| s.journal_frame(&transfer_id, sequence, &bytes, &provenance)).await;
                             if let Err(error) = &committed { tracing::error!(machine = machine.id.as_str(), error_kind = %error, "ASTM frame commit refused"); }
                             #[cfg(feature = "test-hooks")]
                             if committed.is_ok() && let Some(hook) = &machine.astm_committed {
@@ -143,7 +144,7 @@ pub(super) async fn session(
                         }
                         Action::Record(record) => {
                             if record.first() == Some(&b'Q') && query_started.is_none() { query_started = Some(Instant::now()); }
-                            if payload.len().checked_add(record.len()).is_none_or(|n| n > settings.syntax.bytes) { return Err(invalid("ASTM message bound exceeded")); }
+                            if payload.len().checked_add(record.len()).is_none_or(|n| n > settings.syntax.limits.bytes) { return Err(invalid("ASTM message bound exceeded")); }
                             payload.extend_from_slice(&record);
                         }
                         Action::Ended(end) => {
@@ -163,9 +164,9 @@ pub(super) async fn session(
                                             }
                                         },
                                     }
-                                    store.request(deadline(), move |s| s.finish_transfer(&transfer_id, Some(id))).await?;
+                                    store.request(deadline(), move |s| s.finish_transfer(&transfer_id, analyte_store::TransferOutcome::Complete(id))).await?;
                                 } else {
-                                    store.request(deadline(), move |s| s.finish_transfer(&transfer_id, None)).await?;
+                                    finish_incomplete(store, transfer_id).await?;
                                 }
                             }
                             raw.clear(); payload.clear(); query_started = None;
@@ -199,9 +200,7 @@ pub(super) async fn session(
         .await?;
     }
     if let Some(transfer) = transfer {
-        store
-            .request(deadline(), move |s| s.finish_transfer(&transfer, None))
-            .await?;
+        finish_incomplete(store, transfer).await?;
     }
     if !partial.is_empty() {
         evidence::park_bytes(
@@ -213,4 +212,18 @@ pub(super) async fn session(
         .await?;
     }
     result
+}
+
+async fn finish_incomplete(store: &Handle, transfer: Identifier) -> Result<(), Error> {
+    let reason =
+        analyte_model::Reason::new("ASTM transfer ended before a complete receipt was retained")?;
+    store
+        .request(deadline(), move |store| {
+            store.finish_transfer(
+                &transfer,
+                analyte_store::TransferOutcome::Incomplete(reason),
+            )
+        })
+        .await?;
+    Ok(())
 }

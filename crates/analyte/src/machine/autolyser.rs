@@ -1,6 +1,6 @@
 //! Host-polled Autolyser connection; a corrupt report blocks R until L recovery.
 use super::vendor::{self, Input, ms};
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_autolyser::dialog::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -15,31 +15,28 @@ struct ConnectionState {
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
     ready: bool,
     recovering: bool,
-    guard: Option<i64>,
+    guard: Option<analyte_store::PollIntentId>,
     active: Option<analyte_store::MachineOrder>,
     cursor: String,
     end_code: &'static str,
 }
 
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
+    settings: &analyte_config::AutolyserStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     super::autolyser_custody::ensure_reconciled(store, machine).await?;
-    let settings = machine.snapshot.effective().machine();
-    let policy = settings
-        .autolyser
-        .as_ref()
-        .ok_or_else(|| invalid("Autolyser policy missing"))?;
+    let policy = &settings.policy;
     let dialog = Dialog::new(Config {
         poll: ms(policy.poll_ms),
         ack: ms(policy.acknowledgment_ms),
         response: ms(policy.response_ms),
         inter_byte: ms(policy.interbyte_ms),
         storage: ms(policy.storage_ms),
-        max_bytes: settings.framing.limit,
+        max_bytes: settings.frame_limit,
         controls: policy.controls,
         recovery: if policy.recover_last_on_poll {
             Recovery::LastOnPoll
@@ -107,7 +104,7 @@ pub(super) async fn session(
                             let actions = state
                                 .dialog
                                 .step(state.start.elapsed(), Event::Download(&worklist));
-                            if process(actions, &mut state, machine, store, conn).await? {
+                            if process(actions, &mut state, machine, store, conn, policy).await? {
                                 return Ok(());
                             }
                             Vec::new()
@@ -115,7 +112,7 @@ pub(super) async fn session(
                             vec![Event::Poll(Request::Next)]
                         }
                     } else {
-                        if process(actions, &mut state, machine, store, conn).await? {
+                        if process(actions, &mut state, machine, store, conn, policy).await? {
                             return Ok(());
                         }
                         if state.wake <= state.start.elapsed() {
@@ -131,7 +128,7 @@ pub(super) async fn session(
                     state.guard = Some(super::autolyser_custody::reserve(store, machine).await?);
                 }
                 let actions = state.dialog.step(state.start.elapsed(), event);
-                if process(actions, &mut state, machine, store, conn).await? {
+                if process(actions, &mut state, machine, store, conn, policy).await? {
                     return Ok(());
                 }
             }
@@ -141,8 +138,16 @@ pub(super) async fn session(
         }
     }
     .await;
-    if let Some(order) = state.active.as_ref() {
-        crate::orders::sending::uncertain(store, order, state.end_code).await?;
+    let mut result = result;
+    if let Err(effect) =
+        super::autolyser_custody::uncertain(store, state.guard, machine, state.end_code).await
+    {
+        result = Err(vendor::effect_failure(result.err(), effect));
+    }
+    if let Some(order) = state.active.as_ref()
+        && let Err(effect) = crate::orders::sending::uncertain(store, order, state.end_code).await
+    {
+        result = Err(vendor::effect_failure(result.err(), effect));
     }
     result
 }
@@ -150,9 +155,10 @@ pub(super) async fn session(
 async fn process(
     actions: Vec<Action>,
     state: &mut ConnectionState,
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
+    policy: &analyte_config::Autolyser,
 ) -> Result<bool, Error> {
     let ConnectionState {
         dialog,
@@ -166,15 +172,9 @@ async fn process(
         end_code,
         ..
     } = state;
-    let policy = machine
-        .snapshot
-        .effective()
-        .machine()
-        .autolyser
-        .as_ref()
-        .ok_or_else(|| invalid("Autolyser policy missing"))?;
     let mut actions: VecDeque<_> = actions.into();
     let mut close = false;
+    let mut failure = None;
     while let Some(action) = actions.pop_front() {
         match action {
             Action::Write(bytes) => {
@@ -198,13 +198,13 @@ async fn process(
                         actions.extend(dialog.step(start.elapsed(), Event::Stored(token)));
                     }
                     Ok(Err(error)) => {
-                        let _ = dialog.step(start.elapsed(), Event::StoreFailed(token));
-                        return Err(error);
+                        actions.extend(dialog.step(start.elapsed(), Event::StoreFailed(token)));
+                        failure = Some(error);
                     }
                     Err(_) => {
                         *end_code = "Autolyser-storage-timeout";
-                        let _ = dialog.step(start.elapsed(), Event::StoreFailed(token));
-                        return Err(invalid(
+                        actions.extend(dialog.step(start.elapsed(), Event::StoreFailed(token)));
+                        failure = Some(invalid(
                             "Autolyser storage deadline exceeded; custody uncertain",
                         ));
                     }
@@ -249,8 +249,18 @@ async fn process(
                 }
                 *ready = false;
                 *recovering = true;
-                if let Some((id, _)) = receipt.take() {
-                    vendor::failed(machine, store, id, &format!("Autolyser: {error}")).await?;
+                let reason = format!("Autolyser: {error}");
+                let parked = match receipt.take() {
+                    Some((id, _)) => vendor::failed(machine, store, id, &reason).await,
+                    None => evidence::park_bytes(store, machine, Vec::new(), &reason).await,
+                };
+                if let Err(error) = parked {
+                    return Err(vendor::effect_failure(failure, error));
+                }
+                if let Err(error) =
+                    super::autolyser_custody::uncertain(store, *guard, machine, &reason).await
+                {
+                    return Err(vendor::effect_failure(failure, error));
                 }
             }
             Action::Empty => {
@@ -288,13 +298,23 @@ async fn process(
             }
             Action::Uncertain => {
                 *ready = false;
+                super::autolyser_custody::uncertain(
+                    store,
+                    *guard,
+                    machine,
+                    "Autolyser poll response outcome uncertain",
+                )
+                .await?;
             }
             Action::Refused(error) => return Err(error.into()),
             Action::Close => close = true,
             Action::Deadline(deadline) => *wake = deadline,
         }
     }
-    Ok(close)
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(close),
+    }
 }
 
 fn park_code(error: &analyte_autolyser::dialog::Error) -> String {

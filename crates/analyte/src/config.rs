@@ -13,6 +13,8 @@ use std::{
 
 /// A machine's installation identity and validated effective settings.
 pub struct Machine {
+    pub(crate) capture: bool,
+    pub(crate) destination_limits: analyte_sink::Limits,
     #[cfg(feature = "test-hooks")]
     pub(crate) law_committed: Option<std::sync::Arc<crate::test_hooks::Committed>>,
     #[cfg(feature = "test-hooks")]
@@ -95,6 +97,8 @@ struct Limits {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Entry {
+    #[serde(default)]
+    capture: bool,
     id: analyte_model::Identifier,
     definition: PathBuf,
     site: PathBuf,
@@ -128,8 +132,10 @@ impl Program {
             .find(|m| m.id.as_str() == id)
             .ok_or_else(|| invalid("unknown test machine"))?;
         if machine.listener.is_none()
-            || machine.snapshot.effective().machine().dialog.kind
-                != analyte_config::DialogKind::LawManager
+            || !matches!(
+                machine.snapshot.effective().stack(),
+                analyte_config::Stack::Law(_)
+            )
         {
             return Err(invalid(
                 "commit hook requires injected LAW loopback listener",
@@ -173,8 +179,10 @@ impl Program {
             .find(|m| m.id.as_str() == id)
             .ok_or_else(|| invalid("unknown test machine"))?;
         if machine.listener.is_none()
-            || machine.snapshot.effective().machine().dialog.kind
-                != analyte_config::DialogKind::AstmLink
+            || !matches!(
+                machine.snapshot.effective().stack(),
+                analyte_config::Stack::Astm(_)
+            )
         {
             return Err(invalid(
                 "commit hook requires injected ASTM loopback listener",
@@ -199,7 +207,7 @@ impl Program {
             .find(|m| m.id.as_str() == id)
             .ok_or_else(|| invalid("unknown test machine"))?;
         if !listener.local_addr()?.ip().is_loopback()
-            || machine.snapshot.effective().machine().transport.kind
+            || machine.snapshot.effective().stack().transport_kind()
                 != analyte_config::TransportKind::TcpServer
             || listener.local_addr()?.to_string() != machine.snapshot.effective().site().endpoint
         {
@@ -253,36 +261,46 @@ impl Program {
             )?
             .validate()?;
             if matches!(
-                snapshot.effective().machine().framing.checksum_hex,
-                Some(analyte_config::ChecksumHex::AcceptLowercase)
+                snapshot.effective().stack(),
+                analyte_config::Stack::Astm(settings) if settings.checksum_hex == analyte_config::ChecksumHex::AcceptLowercase
             ) {
                 return Err(invalid(
                     "ASTM receive dialog currently supports strict checksum hex only",
                 ));
             }
-            if snapshot
-                .effective()
-                .machine()
-                .transport
-                .operation_timeout_ms
-                > 60_000
-            {
+            if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
                 return Err(invalid(
                     "receive transport operation timeout cannot exceed 60000 ms",
                 ));
             }
             if snapshot.canonical().len() > file.store.record_bytes
-                || snapshot.effective().machine().syntax.bytes > file.store.record_bytes
+                || snapshot.effective().stack().limits().bytes > file.store.record_bytes
             {
                 return Err(invalid(
                     "store record limit is smaller than machine message or effective config",
                 ));
             }
+            if entry.capture
+                && (!entry
+                    .id
+                    .as_str()
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+                    || matches!(entry.id.as_str(), "." | ".."))
+            {
+                return Err(invalid(
+                    "capture machine ID must be one directory component",
+                ));
+            }
             machines.push(Machine {
+                capture: entry.capture,
                 #[cfg(feature = "test-hooks")]
                 law_committed: None,
                 #[cfg(feature = "test-hooks")]
                 astm_committed: None,
+                destination_limits: crate::delivery::limits(
+                    snapshot.effective().site().destination.freshness_seconds,
+                ),
                 id: entry.id,
                 snapshot,
                 listener: None,
@@ -305,7 +323,8 @@ impl Program {
                 other.name == destination.name
                     && (other.base_url != destination.base_url
                         || other.api_key_name != destination.api_key_name
-                        || other.signing_key_name != destination.signing_key_name)
+                        || other.signing_key_name != destination.signing_key_name
+                        || other.freshness_seconds != destination.freshness_seconds)
             }) {
                 return Err(invalid("inconsistent shared destination"));
             }

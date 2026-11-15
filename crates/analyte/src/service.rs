@@ -24,6 +24,16 @@ impl Drop for AdminOwner {
 /// # Errors
 /// Reports directory, migration, integrity or worker failures.
 pub async fn open_store(program: &Program, space: Box<dyn FreeSpace>) -> Result<Handle, Error> {
+    open_store_with_deadline(program, space, deadline()).await
+}
+
+// Fixture setup may migrate many tables on a slow filesystem. Its hang guard is
+// independent of the unchanged production startup policy in open_store.
+pub(crate) async fn open_store_with_deadline(
+    program: &Program,
+    space: Box<dyn FreeSpace>,
+    until: Instant,
+) -> Result<Handle, Error> {
     create_data_directory(&program.data_directory)?;
     let limits = analyte_store::Limits {
         reserve_bytes: program.store_limits.reserve_bytes,
@@ -37,7 +47,7 @@ pub async fn open_store(program: &Program, space: Box<dyn FreeSpace>) -> Result<
         limits,
         space,
         32,
-        deadline(),
+        until,
     )
     .await?)
 }
@@ -210,7 +220,12 @@ async fn serve_with(
         let destinations = program
             .machines()
             .iter()
-            .map(|machine| machine.snapshot.effective().site().destination.name.clone())
+            .map(|machine| {
+                (
+                    machine.snapshot.effective().site().destination.name.clone(),
+                    machine.destination_limits.freshness.as_secs(),
+                )
+            })
             .collect();
         let stop = stopping.clone();
         let component = watchdog.component("alert-evaluator".into());
@@ -223,6 +238,11 @@ async fn serve_with(
     let mut ready_to_close = Vec::new();
     let (close_transports, transports_closing) = watch::channel(false);
     for machine in program.machines {
+        let capture = crate::capture::Capture::new(
+            &machine,
+            &program.data_directory,
+            program.store_limits.reserve_bytes,
+        );
         let admin_state = AdminOwner(admin_states.get(machine.id.as_str()).cloned());
         let store = store.clone();
         let stop = stopping.clone();
@@ -243,7 +263,7 @@ async fn serve_with(
             let _admin_state = admin_state;
             let _component = component;
             let id = machine.id.clone();
-            if let Err(error) = machine::run(machine, store, stop, file_root, closing).await {
+            if let Err(error) = machine::run(machine, store, stop, file_root, closing, capture).await {
                 tracing::error!(machine = id.as_str(), error_kind = %error, "machine owner stopped");
             }
             ready.send_replace(true);

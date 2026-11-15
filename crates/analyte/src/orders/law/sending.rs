@@ -17,28 +17,37 @@ impl Connection {
         machine: &Machine,
         options: Options,
     ) -> Result<Option<Message>, Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         if self.exchange.is_some() {
             return Ok(None);
         }
-        let cfg = machine.snapshot.effective().machine();
-        let Some(settings) = cfg
-            .orders
-            .as_ref()
-            .filter(|_| cfg.law.as_ref().is_some_and(|law| law.work.is_some()))
-        else {
+        let cfg = super::super::settings::law(machine)?;
+        let Some(settings) = &cfg.orders else {
             return Ok(None);
         };
         let until = Instant::now()
-            .checked_add(Duration::from_millis(u64::from(cfg.dialog.send_timeout_ms)))
+            .checked_add(Duration::from_millis(u64::from(
+                cfg.timeouts.send_timeout_ms,
+            )))
             .ok_or("LAW preparation deadline overflow")?;
         let destination = super::super::destination(machine);
         let target = machine.id.clone();
         let cancels = store
             .request(until, move |store| {
-                if store.restore_unreconciled()? {
+                if !store
+                    .order_trust(&destination, jiff::Timestamp::now().as_second(), freshness)?
+                    .is_trusted()
+                {
                     return Ok(None);
                 }
-                store.cancel_candidates(&destination, &target).map(Some)
+                store
+                    .cancel_candidates(
+                        &destination,
+                        &target,
+                        jiff::Timestamp::now().as_second(),
+                        freshness,
+                    )
+                    .map(Some)
             })
             .await?;
         let Some(cancels) = cancels else {
@@ -60,7 +69,7 @@ impl Connection {
                         version,
                         jiff::Timestamp::now().as_second(),
                         &owner,
-                        super::super::FRESHNESS_SECONDS,
+                        freshness,
                         super::super::event,
                     )
                 })
@@ -121,7 +130,7 @@ impl Connection {
                                         identity: &key,
                                         version,
                                         now: jiff::Timestamp::now().as_second(),
-                                        freshness: super::super::FRESHNESS_SECONDS,
+                                        freshness,
                                     },
                                     reason,
                                     super::super::event,
@@ -161,6 +170,7 @@ impl Connection {
         until: Instant,
         options: Options,
     ) -> Result<Vec<(Command, MachineOrder)>, Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         let mut prepared = Vec::new();
         for cached in cached {
             let app: analyte_contract::Order =
@@ -180,35 +190,58 @@ impl Connection {
             let version = app.fields().version;
             let identity = key.clone();
             let owner = self.owner.clone();
-            let namespace = command
-                .settings
-                .placer_namespace
-                .clone()
-                .ok_or("LAW placer namespace absent")?;
+            let namespace = command.settings.placer_namespace.clone();
+            let groups = command
+                .app
+                .tests
+                .iter()
+                .cloned()
+                .map(|test| vec![test])
+                .collect::<Vec<_>>();
+            // Keep the existing logical identity budget; rendering independently owns
+            // LAW's EI.1-only wire form and validates it against the profile.
+            let max_identity_bytes = law::AWOS_ID_MAX_BYTES
+                .saturating_sub(namespace.as_str().len())
+                .saturating_sub(1);
             self.reserving.push(key);
             let reserved = store
                 .request(until, move |store| {
-                    store.reserve_send_items_with(
-                        &OrderReservation {
-                            identity: &identity,
-                            version,
-                            now: jiff::Timestamp::now().as_second(),
-                            freshness: super::super::FRESHNESS_SECONDS,
-                        },
-                        OrderItems::PerTest {
-                            namespace: &namespace,
-                            identity_bytes: 50,
-                        },
-                        &owner,
-                        |record| {
-                            render(&[(&command, record)], law::WorkAction::New, options)
-                                .map_err(analyte_store::Error::DeliveryBuild)?;
-                            Ok(command)
-                        },
-                    )
+                    store
+                        .reserve_send(
+                            &OrderReservation {
+                                identity: &identity,
+                                version,
+                                now: jiff::Timestamp::now().as_second(),
+                                freshness,
+                            },
+                            analyte_store::ReserveOptions {
+                                items: OrderItems::Groups {
+                                    groups: &groups,
+                                    namespace: Some(&namespace),
+                                    max_identity_bytes,
+                                },
+                                owner: Some(&owner),
+                                prepare: Some(&mut |record| {
+                                    render(&[(&command, record)], law::WorkAction::New, options)
+                                        .map_err(analyte_store::Error::DeliveryBuild)?;
+                                    Ok(())
+                                }),
+                            },
+                        )
+                        .map(|reserved| reserved.map(|record| (record, command)))
                 })
                 .await?
                 .map_err(std::io::Error::other)?;
+            let bytes = render(&[(&reserved.1, &reserved.0)], law::WorkAction::New, options)?
+                .raw()
+                .to_vec();
+            let identity = reserved.0.key.clone();
+            let owner = self.owner.clone();
+            store
+                .request(until, move |store| {
+                    store.retain_order_command(&identity, &owner, bytes)
+                })
+                .await?;
             prepared.push((reserved.1, reserved.0));
         }
         Ok(prepared)

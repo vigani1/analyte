@@ -1,7 +1,7 @@
 //! HL7 2.5.1 sections 2.9.2/2.9.3 over MLLP R1. Evidence: documented.
 use analyte_framing::mllp;
 use analyte_hl7::{
-    AckCode, AckError, AckMode, Message, Msa, Msh, Options, Response, Responsibility,
+    AckCode, AckError, AckMode, Condition, Message, Msa, Msh, Options, Response, Responsibility,
 };
 use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
@@ -65,6 +65,22 @@ pub enum Error {
     /// Another conversation is active.
     #[error("connection busy")]
     Busy,
+    /// A correlated response belongs to another acknowledgment phase.
+    #[error("unexpected acknowledgment {received:?} while awaiting {expected:?}")]
+    AckPhase {
+        /// Negotiated pending phase.
+        expected: AckPhase,
+        /// Received acknowledgment code.
+        received: AckCode,
+    },
+    /// The code reports an outcome that the negotiated condition suppresses.
+    #[error("acknowledgment {received:?} violates condition {condition:?}")]
+    AckCondition {
+        /// Negotiated outcome condition.
+        condition: Condition,
+        /// Received acknowledgment code.
+        received: AckCode,
+    },
     /// Framing defect.
     #[error(transparent)]
     Framing(#[from] mllp::Error),
@@ -117,6 +133,8 @@ pub enum Action {
     Refused(Error),
     /// Host phase expired; late replies must be reconciled by the host.
     TimedOut(ReceiptId),
+    /// Peer explicitly committed the message; application processing is still pending.
+    CommitAccepted(Vec<u8>),
     /// Sender outcome, correlated to its original MSH-10.
     Sent(Vec<u8>, Outcome),
     /// Unsolicited or mismatched acknowledgment retained for investigation.
@@ -132,8 +150,80 @@ pub enum Outcome {
     Accepted(AckCode),
     /// Explicit negative response.
     Rejected(AckCode),
+    /// Issued with neither acceptance nor application acknowledgment requested.
+    /// This is not evidence that the peer accepted or processed it.
+    NotRequested,
     /// Reply lost, connection ended or deadline expired after issuance.
     Uncertain,
+}
+
+/// Distinct acknowledgment phases retained in sender diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AckPhase {
+    /// Safe-storage acceptance response.
+    Accept,
+    /// Application processing response.
+    Application,
+}
+
+#[derive(Debug)]
+enum Waiting {
+    Accept {
+        condition: Condition,
+        application: Option<Condition>,
+    },
+    Application(Condition),
+}
+#[derive(Debug)]
+struct Sending {
+    id: Vec<u8>,
+    waiting: Waiting,
+}
+impl Sending {
+    fn acknowledge(&mut self, code: AckCode) -> Result<Option<Outcome>, Error> {
+        let accept_code = matches!(code, AckCode::Ca | AckCode::Ce | AckCode::Cr);
+        let success = matches!(code, AckCode::Ca | AckCode::Aa);
+        let (condition, application) = match self.waiting {
+            Waiting::Accept {
+                condition,
+                application,
+            } if accept_code => (condition, application),
+            // ER suppresses CA: a later application response may be the first reply.
+            Waiting::Accept {
+                condition: Condition::Error,
+                application: Some(application),
+            } if !accept_code => (application, None),
+            Waiting::Accept { .. } => {
+                return Err(Error::AckPhase {
+                    expected: AckPhase::Accept,
+                    received: code,
+                });
+            }
+            Waiting::Application(condition) if !accept_code => (condition, None),
+            Waiting::Application(_) => {
+                return Err(Error::AckPhase {
+                    expected: AckPhase::Application,
+                    received: code,
+                });
+            }
+        };
+        if !condition.requests(success) {
+            return Err(Error::AckCondition {
+                condition,
+                received: code,
+            });
+        }
+        if code == AckCode::Ca
+            && let Some(application) = application
+        {
+            self.waiting = Waiting::Application(application);
+            return Ok(None);
+        }
+        Ok(Some(match code {
+            AckCode::Aa | AckCode::Ca => Outcome::Accepted(code),
+            AckCode::Ae | AckCode::Ar | AckCode::Ce | AckCode::Cr => Outcome::Rejected(code),
+        }))
+    }
 }
 
 #[derive(Debug)]
@@ -162,7 +252,7 @@ pub struct Dialog {
     pending: Option<Pending>,
     malformed: Option<(ReceiptId, Vec<u8>, Error)>,
     queue: VecDeque<Vec<u8>>,
-    sending: Option<Vec<u8>>,
+    sending: Option<Sending>,
     error: Option<OwnedError>,
     now: Duration,
     deadline: Option<Duration>,
@@ -242,10 +332,32 @@ impl Dialog {
                     return Err(Error::Busy);
                 }
                 let message = Message::parse(raw, self.config.options)?;
-                let id = Msh::new(&message)?.control_id().to_vec();
+                let msh = Msh::new(&message)?;
+                let id = msh.control_id().to_vec();
+                let waiting = match msh.mode() {
+                    AckMode::Original => Some(Waiting::Application(Condition::Always)),
+                    AckMode::Enhanced {
+                        accept,
+                        application,
+                    } => {
+                        let application = application.filter(|c| *c != Condition::Never);
+                        if let Some(condition) = accept.filter(|c| *c != Condition::Never) {
+                            Some(Waiting::Accept {
+                                condition,
+                                application,
+                            })
+                        } else {
+                            application.map(Waiting::Application)
+                        }
+                    }
+                };
                 let wire = mllp::encode(raw, self.config.limit)?;
-                self.sending = Some(id);
                 out.push(Action::Write(wire));
+                if let Some(waiting) = waiting {
+                    self.sending = Some(Sending { id, waiting });
+                } else {
+                    out.push(Action::Sent(id, Outcome::NotRequested));
+                }
             }
             Event::Committed(id) => {
                 if self.complete_malformed(id, out)? {
@@ -320,8 +432,8 @@ impl Dialog {
                 self.deadline = None;
             }
             Event::Disconnect => {
-                if let Some(id) = self.sending.take() {
-                    out.push(Action::Sent(id, Outcome::Uncertain));
+                if let Some(sending) = self.sending.take() {
+                    out.push(Action::Sent(sending.id, Outcome::Uncertain));
                 }
                 if let Some(event) = self.decoder.finish() {
                     self.wire(event, out);
@@ -453,15 +565,22 @@ impl Dialog {
             Ok((msa.control_id().to_vec(), msa.code()))
         });
         if let Ok((id, code)) = result
-            && self.sending.as_ref() == Some(&id)
+            && let Some(sending) = self.sending.as_mut()
+            && sending.id == id
         {
-            let outcome = match code {
-                AckCode::Aa | AckCode::Ca => Outcome::Accepted(code),
-                AckCode::Ae | AckCode::Ar | AckCode::Ce | AckCode::Cr => Outcome::Rejected(code),
-            };
-            self.sending = None;
-            self.deadline = None;
-            out.push(Action::Sent(id, outcome));
+            match sending.acknowledge(code) {
+                Ok(Some(outcome)) => {
+                    self.sending = None;
+                    self.deadline = None;
+                    out.push(Action::Sent(id, outcome));
+                }
+                Ok(None) => {
+                    // The application phase gets its own bounded wait.
+                    self.deadline = None;
+                    out.push(Action::CommitAccepted(id));
+                }
+                Err(error) => out.push(Action::Parked(raw.to_vec(), error)),
+            }
             return;
         }
         out.push(Action::Unmatched(raw.to_vec()));
@@ -488,8 +607,8 @@ impl Dialog {
             out.push(Action::Parked(raw, error));
         }
         self.deadline = None;
-        if let Some(id) = self.sending.take() {
-            out.push(Action::Sent(id, Outcome::Uncertain));
+        if let Some(sending) = self.sending.take() {
+            out.push(Action::Sent(sending.id, Outcome::Uncertain));
         }
         if let Some(pending) = self.pending.as_ref() {
             let id = pending.id;

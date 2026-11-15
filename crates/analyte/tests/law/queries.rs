@@ -1,5 +1,6 @@
 //! Synthetic program/reference-receiver LAB-27 and query-triggered LAB-28, TF-2b 3.27/3.28/B.7.
 use super::*;
+use crate::support::HANG_GUARD;
 #[path = "connections.rs"]
 mod connections;
 #[path = "work.rs"]
@@ -12,7 +13,13 @@ use tokio::{
 fn definition() -> String {
     format!(
         "{}\n{}",
-        include_str!("../../../config/examples/law.toml"),
+        include_str!("../../../config/examples/law.toml")
+            .replace(
+                "operation_timeout_ms = 10000",
+                "operation_timeout_ms = 60000"
+            )
+            .replace("response_ms = 1500", "response_ms = 30000")
+            .replace("query_deadline_ms = 1500", "query_deadline_ms = 30000"),
         include_str!("../../../config/examples/law_orders.toml")
     )
 }
@@ -51,8 +58,24 @@ async fn setup(
     settings: &str,
     paused: bool,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_with_freshness(orders, settings, paused, 30).await
+}
+async fn setup_with_freshness(
+    orders: Vec<analyte_contract::Order>,
+    settings: &str,
+    paused: bool,
+    freshness: u64,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", settings)?;
+    let site = temp.path().join("hl7-site.toml");
+    std::fs::write(
+        &site,
+        format!(
+            "{}\nfreshness_seconds = {freshness}\n",
+            std::fs::read_to_string(&site)?
+        ),
+    )?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),
         TcpListener::bind("127.0.0.1:0").await?,
@@ -67,7 +90,7 @@ async fn setup(
     }
     let running = Running::start(&path, &reference.url, "synthetic-api")?;
     let peer = connect(&path, "law").await?;
-    ready(&path).await?;
+    wait_feed(&path).await?;
     Ok((temp, path, reference, running, peer))
 }
 async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
@@ -101,22 +124,7 @@ async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
         .await?;
     Ok(())
 }
-async fn ready(path: &Path) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if database(path)?.query_row(
-                "SELECT count(*) FROM feed WHERE complete=1 AND trusted=1",
-                [],
-                |r| r.get::<_, i64>(0),
-            )? == 1
-            {
-                return Ok::<_, Error>(());
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await?
-}
+
 fn query(qpd: &str, id: &str) -> String {
     format!(
         "MSH|^~\\&|SYN|LAB|HOST|LAB|20261115120000+0000||QBP^Q11^QBP_Q11|{id}|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\rQPD|{qpd}\rRCP|I||R^Real Time^HL70394\r"
@@ -139,7 +147,7 @@ async fn send(peer: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 async fn packet(peer: &mut TcpStream) -> Result<analyte_hl7::Message, Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         assert_eq!(peer.read_u8().await?, 11);
         let mut bytes = Vec::new();
         loop {
@@ -226,6 +234,7 @@ fn count(path: &Path, table: &str) -> Result<i64, Error> {
 }
 async fn quiet(peer: &mut TcpStream) -> Result<(), Error> {
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(60), peer.read_u8())
             .await
             .is_err(),
@@ -234,7 +243,7 @@ async fn quiet(peer: &mut TcpStream) -> Result<(), Error> {
     Ok(())
 }
 async fn wait_audit(path: &Path) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let found: i64 = database(path)?.query_row(
                 "SELECT count(*) FROM audit WHERE json_extract(evidence,'$.action')='LAW-negative-query-ORL'",
@@ -312,14 +321,12 @@ async fn law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_
                 codes
                     .iter()
                     .map(|code| (
-                        format!(
-                            "\"{}\"",
-                            if *code == "OK" {
-                                "Accepted"
-                            } else {
-                                "Rejected"
-                            }
-                        ),
+                        if *code == "OK" {
+                            "Accepted"
+                        } else {
+                            "Rejected"
+                        }
+                        .to_owned(),
                         "LAB".to_owned()
                     ))
                     .collect::<Vec<_>>()
@@ -479,7 +486,7 @@ async fn law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not
 async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage() -> Result<(), Error>
 {
     for form in [CONTAINER, ALL] {
-        let settings = definition().replace("query_deadline_ms = 1500", "query_deadline_ms = 50");
+        let settings = definition().replace("query_deadline_ms = 30000", "query_deadline_ms = 50");
         let (_temp, path, reference, running, mut peer) = setup(
             vec![order("order-1", "000Ab12", None, 1)?],
             &settings,
@@ -491,6 +498,7 @@ async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage()
             analyte_framing::mllp::Limit::new(1048576)?,
         )?;
         peer.write_all(bytes.get(..12).ok_or("prefix")?).await?;
+        // Deliberately exceed the configured 50 ms first-byte query budget.
         tokio::time::sleep(Duration::from_millis(100)).await;
         peer.write_all(bytes.get(12..).ok_or("suffix")?).await?;
         let rsp = packet(&mut peer).await?;
@@ -508,7 +516,11 @@ async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage()
 async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain()
 -> Result<(), Error> {
     for action in ["timeout", "disconnect", "wrong-correlation"] {
-        let settings = definition().replace("response_ms = 1500", "response_ms = 200");
+        let settings = if action == "timeout" {
+            definition().replace("response_ms = 30000", "response_ms = 200")
+        } else {
+            definition()
+        };
         let (_temp, path, reference, running, mut peer) = setup(
             vec![order("order-1", "000Ab12", None, 2)?],
             &settings,
@@ -570,6 +582,8 @@ async fn law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not
     for change in [
         "UPDATE feed SET polled=0",
         "UPDATE feed SET trusted=0,complete=0",
+        "DELETE FROM orders; DELETE FROM feed",
+        "INSERT INTO audit(evidence) VALUES ('{\"action\":\"store-restore\"}')",
     ] {
         let (_temp, path, reference, running, mut peer) = setup(
             vec![order("order-1", "000Ab12", None, 1)?],
@@ -584,7 +598,10 @@ async fn law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not
             assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"AE");
             quiet(&mut peer).await?;
         }
-        assert_eq!(count(&path, "orders")?, 1);
+        assert_eq!(
+            count(&path, "orders")?,
+            if change.starts_with("DELETE") { 0 } else { 1 }
+        );
         assert_eq!(count(&path, "machine_orders")?, 0);
         running.stop().await?;
     }
@@ -706,7 +723,7 @@ async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservat
         loaded.pause_law_committed_for_test("law", hook)?;
         let running = Running::start_program(loaded, "synthetic-api")?;
         let mut peer = connect(&path, "law").await?;
-        ready(&path).await?;
+        wait_feed(&path).await?;
         let request = query(form, "durable");
         send(&mut peer, request.as_bytes()).await?;
         control.reached().await?;
@@ -730,5 +747,157 @@ async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservat
         running.stop().await?;
         reference.close().await?;
     }
+    Ok(())
+}
+
+// ADR 0004 / rule 9 / LAW TF-2b 3.27.4: only configured fresh emptiness is a negative work answer.
+#[tokio::test]
+async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Error> {
+    for freshness in [10, 120] {
+        let (_temp, path, reference, running, mut peer) =
+            setup_with_freshness(Vec::new(), &definition(), false, freshness).await?;
+        reference.close().await?;
+        database(&path)?.execute(
+            "UPDATE feed SET polled=?1",
+            [jiff::Timestamp::now().as_second() - 50],
+        )?;
+        send(&mut peer, query(ALL, "configured-age").as_bytes()).await?;
+        let response = packet(&mut peer).await?;
+        if freshness == 10 {
+            assert_eq!(field(&response, b"QAK", 2)?, b"AE");
+        } else {
+            assert_eq!(field(&response, b"QAK", 2)?, b"OK");
+            let negative = packet(&mut peer).await?;
+            assert_eq!(field(&negative, b"ORC", 1)?, b"DC");
+            orl(&mut peer, &negative, &[], false).await?;
+        }
+        running.stop().await?;
+    }
+    Ok(())
+}
+
+// IHE PaLM TF-2b Rev 11 B.3.1 pp.63-64 and B.7.6 p.82.
+#[tokio::test]
+async fn law_tf2b_b7_6_returned_work_must_match_downloaded_awos() -> Result<(), Error> {
+    let (_temp, path, mut reference, running, mut peer) = setup(
+        vec![order("order-1", "000Ab12", Some("law"), 1)?],
+        &definition().replace("specimen = false", "specimen = true"),
+        false,
+    )
+    .await?;
+    send(&mut peer, query(CONTAINER, "validate-work").as_bytes()).await?;
+    packet(&mut peer).await?;
+    let work = packet(&mut peer).await?;
+    orl(&mut peer, &work, &["OK"], false).await?;
+    vendor_support::state(&path, "Accepted").await?;
+    wait_state(&path, "done", 1).await?;
+    let awos = std::str::from_utf8(field(&work, b"OBR", 2)?)?;
+    let valid = law_results::result("valid", &format!("{awos}^LAB"), "", "12.30", "F")
+        .replace(
+            "sample-01&99LAB",
+            std::str::from_utf8(field(&work, b"SPM", 2)?)?,
+        )
+        .replace(
+            "00012a^LAB",
+            &format!("{}^LAB", std::str::from_utf8(field(&work, b"SAC", 3)?)?),
+        )
+        .replace(
+            "SYN^Synthetic^99LAB",
+            std::str::from_utf8(field(&work, b"OBR", 4)?)?,
+        );
+    running.stop().await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "law").await?;
+    let baseline = count(&path, "outbox")?;
+    for (id, bad, location) in [
+        (
+            "unknown",
+            valid.replace(&format!("{awos}^LAB"), "never-downloaded^LAB"),
+            "OBR^1^2",
+        ),
+        (
+            "namespace",
+            valid.replace(&format!("{awos}^LAB"), &format!("{awos}^OTHER")),
+            "OBR^1^2",
+        ),
+        (
+            "specimen",
+            valid.replace("000Ab12&", "different&"),
+            "SPM^1^2",
+        ),
+        (
+            "specimen-type",
+            valid.replace("SER^Serum^HL70487", "PLAS^Plasma^HL70487"),
+            "SPM^1^4",
+        ),
+        (
+            "container",
+            valid.replace("000Ab12^LAB", "different^LAB"),
+            "SAC^1^3",
+        ),
+        (
+            "test",
+            valid.replacen(
+                std::str::from_utf8(field(&work, b"OBR", 4)?)?,
+                "OTHER^Other^99LAB",
+                1,
+            ),
+            "OBR^1^4",
+        ),
+    ] {
+        let bad = bad.replace("|valid|", &format!("|{id}|"));
+        let unsolicited =
+            law_results::result("unused", "\"\"", "unsolicited-run^ANALYZER", "1.0", "F");
+        let (_, body) = unsolicited
+            .split_once('\r')
+            .ok_or("missing synthetic header")?;
+        let mixed = format!("{bad}{}", body.replacen("SPM|1|", "SPM|2|", 1));
+        send(&mut peer, mixed.as_bytes()).await?;
+        let ack = packet(&mut peer).await?;
+        assert_eq!(field(&ack, b"MSA", 1)?, b"AR", "{id}");
+        assert_eq!(field(&ack, b"ERR", 2)?, location.as_bytes(), "{id}");
+        assert_eq!(count(&path, "outbox")?, baseline);
+        assert_eq!(count(&path, "observation_revisions")?, 0);
+    }
+    send(&mut peer, valid.as_bytes()).await?;
+    assert_eq!(field(&packet(&mut peer).await?, b"MSA", 1)?, b"AA");
+    reference.event().await?;
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+// PaLM TF-2b Rev 11 B.7.1-B.7.2 pp.80-81; C.1 pp.84-85.
+#[tokio::test]
+async fn law_tf2b_b7_1_b7_2_host_correlates_errors_without_ack_loops() -> Result<(), Error> {
+    let (_temp, path, reference, running, mut peer) = setup(vec![], &definition(), false).await?;
+    let query = query(CONTAINER, "correlated");
+    let result = law_results::result("correlated", "\"\"", "run^ANALYZER", "1.0", "F");
+    for (message, code) in [
+        (query.replace("QPD|", "QPD|BROKEN"), b"AE".as_slice()),
+        (query.replace("QBP^Q11^QBP_Q11", "QBP^Q99^QBP_Q11"), b"AR"),
+        (query.replace("|2.5.1|", "|2.4|"), b"AR"),
+        (query.replace("LAB-27^IHE", "OTHER^IHE"), b"AR"),
+        (result.replace("OUL^R22^OUL_R22", "ORU^R01^ORU_R01"), b"AR"),
+        (format!("{query}@@@|bad\r"), b"AE"),
+    ] {
+        send(&mut peer, message.as_bytes()).await?;
+        let ack = packet(&mut peer).await?;
+        assert_eq!(field(&ack, b"MSA", 1)?, code);
+        assert_eq!(field(&ack, b"MSA", 2)?, b"correlated");
+        assert!(ack.segments().any(|s| s.id() == b"ERR"));
+    }
+    for kind in ["ACK^R22^ACK", "ORL^O34^ORL_O42", "RSP^K11^RSP_K11"] {
+        let ack = query
+            .replace("QBP^Q11^QBP_Q11", kind)
+            .replace("|2.5.1|", "|2.4|");
+        send(&mut peer, ack.as_bytes()).await?;
+        quiet(&mut peer).await?;
+    }
+    assert_eq!(count(&path, "receipts")?, 9);
+    assert_eq!(count(&path, "machine_orders")?, 0);
+    assert_eq!(count(&path, "outbox")?, 0);
+    running.stop().await?;
+    reference.close().await?;
     Ok(())
 }

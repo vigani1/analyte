@@ -15,6 +15,7 @@ use axum::{
 };
 use std::{
     collections::BTreeMap,
+    future::IntoFuture as _,
     sync::{Arc, atomic::AtomicBool},
     time::Duration,
 };
@@ -36,11 +37,14 @@ pub(super) struct Context {
     pub(super) destinations: Vec<analyte_sink::Destination>,
     pub(super) directory: std::path::PathBuf,
     pub(super) reserve: u64,
+    // Struct fields drop in declaration order: notify only after store is released.
+    _released: tokio::sync::oneshot::Sender<()>,
 }
 
 pub(crate) struct Server {
     listener: Listener,
     app: Router,
+    released: tokio::sync::oneshot::Receiver<()>,
     pub(crate) owners: BTreeMap<String, Arc<AtomicBool>>,
 }
 
@@ -68,6 +72,7 @@ pub(crate) async fn prepare(
         .iter()
         .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
         .collect();
+    let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
         config_path: program.source_path.clone(),
         token,
@@ -79,6 +84,7 @@ pub(crate) async fn prepare(
         destinations: crate::delivery::destinations(program, loopback)?,
         directory: program.data_directory().to_owned(),
         reserve: program.store_limits.reserve_bytes,
+        _released: released,
     });
     Ok(Some(Server {
         listener: Listener {
@@ -86,6 +92,7 @@ pub(crate) async fn prepare(
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state),
+        released: release,
         owners,
     }))
 }
@@ -94,13 +101,27 @@ impl Server {
     /// Shutdown stops admission and drains active requests; the service bounds and
     /// joins this owner. Cancellation can leave an already submitted read running.
     pub(crate) async fn run(self, mut stop: watch::Receiver<bool>) -> Result<(), Error> {
-        axum::serve(self.listener, self.app)
-            .with_graceful_shutdown(async move {
-                crate::machine::stopping(&mut stop).await;
-            })
-            .await?;
-        Ok(())
+        drain_server(
+            axum::serve(self.listener, self.app)
+                .with_graceful_shutdown(async move {
+                    crate::machine::stopping(&mut stop).await;
+                })
+                .into_future(),
+            self.released,
+        )
+        .await
     }
+}
+
+// Axum's completion signal precedes destruction of its connection futures.
+// The service must not close storage until their router state has also dropped.
+async fn drain_server(
+    served: impl Future<Output = std::io::Result<()>>,
+    released: tokio::sync::oneshot::Receiver<()>,
+) -> Result<(), Error> {
+    served.await?;
+    let _ = released.await;
+    Ok(())
 }
 
 fn router(state: Arc<Context>) -> Router {

@@ -38,12 +38,7 @@ pub(crate) enum Request {
 
 /// Recognizes supported query intent without normalizing specimen identifiers.
 pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Request>, Error> {
-    if machine
-        .snapshot
-        .effective()
-        .machine()
-        .orders
-        .as_ref()
+    if super::settings::astm(machine)
         .and_then(|o| o.query.as_ref())
         .is_none()
     {
@@ -62,6 +57,16 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
         .collect();
     if queries.is_empty() {
         return Ok(None);
+    }
+    // LIS02-A2 section 6.12 p.12: only production may reach the real order cache.
+    // section 12.3 pp.27-28 permits a query error, never a fabricated empty answer.
+    if messages
+        .iter()
+        .flat_map(Message::records)
+        .filter_map(analyte_astm::Header::new)
+        .any(|header| header.processing_id().is_none_or(|id| id.raw() != b"P"))
+    {
+        return Ok(Some(Request::Unsupported));
     }
     if queries.len() != 1
         || messages
@@ -125,12 +130,7 @@ impl<'a> Pending<'a> {
         samples: Vec<SampleId>,
         started: Instant,
     ) -> Result<Self, Error> {
-        let query = machine
-            .snapshot
-            .effective()
-            .machine()
-            .orders
-            .as_ref()
+        let query = super::settings::astm(machine)
             .and_then(|o| o.query.as_ref())
             .ok_or_else(|| invalid("query capability absent"))?;
         let until = started
@@ -160,10 +160,11 @@ async fn answer(
     samples: Vec<SampleId>,
     until: Instant,
 ) -> Result<Option<Reply>, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
     let mut records = Vec::new();
     let mut candidates = Vec::new();
     let mut bytes = 0usize;
-    let limits = &machine.snapshot.effective().machine().syntax;
+    let limits = machine.snapshot.effective().stack().limits();
     for sample in samples {
         let answer = super::lookup(store, machine, sample, until).await?;
         match answer {
@@ -201,7 +202,7 @@ async fn answer(
                                             identity: &identity,
                                             version,
                                             now: jiff::Timestamp::now().as_second(),
-                                            freshness: super::FRESHNESS_SECONDS,
+                                            freshness,
                                         },
                                         reason,
                                         super::event,
@@ -246,12 +247,7 @@ async fn answer(
 }
 /// Applies the explicit failure policy without manufacturing an empty answer.
 pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
-    match machine
-        .snapshot
-        .effective()
-        .machine()
-        .orders
-        .as_ref()?
+    match super::settings::astm(machine)?
         .query
         .as_ref()?
         .when_untrusted
@@ -266,7 +262,10 @@ pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
 
 /// Wraps mapped orders with independent patient groups and explicit termination.
 pub(crate) fn envelope(mut orders: Vec<Vec<u8>>, termination: u8) -> Vec<Vec<u8>> {
-    let mut records = vec![b"H|\\^&|||Analyte|||||||P|1\r".to_vec()];
+    let timestamp = jiff::Timestamp::now()
+        .strftime("%Y%m%d%H%M%S%z")
+        .to_string();
+    let mut records = vec![format!("H|\\^&|||Analyte|||||||P|LIS2-A2|{timestamp}\r").into_bytes()];
     for (index, order) in orders.drain(..).enumerate() {
         records.push(format!("P|{}\r", index.saturating_add(1)).into_bytes());
         records.push(order);

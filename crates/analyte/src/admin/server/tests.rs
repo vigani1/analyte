@@ -28,6 +28,13 @@ impl analyte_store::FreeSpace for Space {
     }
 }
 
+// Fixture migration/seeding is not an assertion about production latency.
+fn fixture_deadline() -> Result<std::time::Instant, Error> {
+    std::time::Instant::now()
+        .checked_add(Duration::from_secs(30))
+        .ok_or_else(|| "admin fixture deadline overflow".into())
+}
+
 // Plan section 11: the actual program refuses absent tokens before opening the
 // endpoint, owns the enabled server, and joins it before closing the store.
 #[tokio::test(flavor = "multi_thread")]
@@ -71,6 +78,14 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     };
     drop(reserved);
     let missing = program()?;
+    // Exercise token refusal against an already migrated store; racing fresh
+    // synchronous=FULL migrations against production's 5 s startup budget tests
+    // disk speed instead of missing-token behavior.
+    let mut prepared =
+        crate::service::open_store_with_deadline(&missing, Box::new(Space), fixture_deadline()?)
+            .await
+            .map_err(|error| format!("admin lifecycle fixture migration: {error}"))?;
+    prepared.shutdown(fixture_deadline()?).await?;
     let injected = secrets(&missing)?;
     let failure = crate::service::serve_loopback_test(
         missing,
@@ -81,10 +96,13 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     .await
     .err()
     .ok_or("missing credential unexpectedly admitted")?;
-    assert!(matches!(
-        failure.downcast_ref::<super::super::TokenError>(),
-        Some(super::super::TokenError::Missing)
-    ));
+    assert!(
+        matches!(
+            failure.downcast_ref::<super::super::TokenError>(),
+            Some(super::super::TokenError::Missing)
+        ),
+        "expected missing token after fixture migration, received: {failure}"
+    );
     let token = super::super::rotate_token(&directory.path().join("data"))?;
     let program = program()?;
     let injected = secrets(&program)?;
@@ -186,12 +204,13 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
             limits,
             Box::new(Space),
             4,
-            crate::deadline(),
+            fixture_deadline()?,
         )
-        .await?,
+        .await
+        .map_err(|error| format!("admin overview fixture migration: {error}"))?,
     );
     store
-        .request(crate::deadline(), move |store| {
+        .request(fixture_deadline()?, move |store| {
             store.evaluate_alert(&analyte_store::AlertKey::RestorePaused,
                 "<script>responder('duty')&</script>", true, Some(1), 100)?;
             store.evaluate_alert(&analyte_store::AlertKey::MachineSilent(
@@ -253,7 +272,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
                     machine: id("machine")?,
                 };
                 let reserved = store
-                    .reserve_send(&key, std::num::NonZeroU64::MIN, 101, 30)?
+                    .reserve_send(&analyte_store::OrderReservation { identity: &key, version: std::num::NonZeroU64::MIN, now: 101, freshness: 30 }, analyte_store::ReserveOptions::default())?
                     .map_err(|_| analyte_store::Error::Conflict)?;
                 store.transition_order(
                     reserved.id,
@@ -286,6 +305,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
         .await?;
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
+    let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
         config_path: directory.path().join("program.toml"),
         token: Token::load(directory.path())?,
@@ -314,6 +334,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
         )?],
         directory: directory.path().to_owned(),
         reserve: 1,
+        _released: released,
     });
     let server = Server {
         listener: Listener {
@@ -321,6 +342,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        released: release,
         owners: BTreeMap::new(),
     };
     let (stop, stopped) = watch::channel(false);
@@ -458,12 +480,12 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     // A peer that never finishes its headers must not prevent bounded shutdown.
     let mut slow = tokio::net::TcpStream::connect(&host).await?;
     slow.write_all(b"GET / HTTP/1.1\r\n").await?;
+    drop(state);
     stop.send_replace(true);
     tokio::time::timeout(Duration::from_secs(5), owner).await???;
     drop(slow);
-    drop(state);
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retained store after shutdown")?;
-    store.shutdown(crate::deadline()).await?;
+    store.shutdown(fixture_deadline()?).await?;
     let captured = logs.0.lock().map_err(|_| "log capture poisoned")?;
     let captured = String::from_utf8_lossy(&captured);
     assert!(captured.contains("admin authentication refused"));
@@ -479,5 +501,23 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     ] {
         assert!(!captured.contains(secret));
     }
+    Ok(())
+}
+
+// AGENTS ownership: HTTP completion can precede the last router state destructor.
+#[tokio::test]
+async fn plan11_admin_drain_waits_for_router_state_release() -> Result<(), Error> {
+    use std::{future::Future as _, task::Poll};
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let mut drain = Box::pin(drain_server(std::future::ready(Ok(())), released));
+    // Poll HTTP completion synchronously while the final state owner is held.
+    // No scheduler, socket timing or elapsed-time assertion determines the verdict.
+    let poll = std::future::poll_fn(|cx| Poll::Ready(drain.as_mut().poll(cx))).await;
+    assert!(
+        poll.is_pending(),
+        "HTTP completion must not precede state release"
+    );
+    drop(release);
+    drain.await?;
     Ok(())
 }

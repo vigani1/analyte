@@ -3,6 +3,7 @@
 
 pub mod admin;
 mod alerts;
+mod capture;
 pub mod config;
 mod delivery;
 mod evidence;

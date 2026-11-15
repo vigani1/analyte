@@ -1,4 +1,5 @@
 //! Synthetic cases from plan §6, ADR 0002/0003 and AGENTS clinical rules 3–8.
+use analyte_model::OrderTransition;
 use analyte_model::*;
 use proptest::prelude::*;
 use serde::{
@@ -46,6 +47,7 @@ fn rule5_no_guessed_decimal_or_lost_tokens() -> Result<(), Box<dyn std::error::E
     ] {
         assert!(Decimal::new(raw).is_err());
         let value = ResultValue {
+            decoded_text: None,
             original: SourceText::new(raw)?,
             parsed: ValueInterpretation::Text,
         };
@@ -82,26 +84,42 @@ fn rule7_lists_reject_unbounded_deserialization() {
 #[test]
 fn rule8_lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result<(), TransitionError>
 {
-    let sending = OrderState::Requested.transition(OrderState::Sending)?;
-    let sent = sending.transition(OrderState::Sent)?;
-    let accepted = sent.transition(OrderState::Accepted)?;
-    assert_eq!(accepted.transition(OrderState::Done)?, OrderState::Done);
-    let cancel = accepted.transition(OrderState::CancelRequested)?;
+    let sending =
+        OrderState::Requested.transition(OrderTransition::Advance(OrderState::Sending))?;
+    let sent = sending.transition(OrderTransition::Advance(OrderState::Sent))?;
+    let accepted = sent.transition(OrderTransition::Advance(OrderState::Accepted))?;
     assert_eq!(
-        cancel.transition(OrderState::CancelConfirmed)?,
+        accepted.transition(OrderTransition::Advance(OrderState::Done))?,
+        OrderState::Done
+    );
+    let cancel = accepted.transition(OrderTransition::Advance(OrderState::CancelRequested))?;
+    assert_eq!(
+        cancel.transition(OrderTransition::Advance(OrderState::CancelConfirmed))?,
         OrderState::CancelConfirmed
     );
-    let uncertain = sent.transition(OrderState::Uncertain)?;
+    let uncertain = sent.transition(OrderTransition::Advance(OrderState::Uncertain))?;
     assert_eq!(
-        uncertain.transition(OrderState::Sent),
+        uncertain.transition(OrderTransition::Advance(OrderState::Sent)),
         Err(TransitionError {
             from: uncertain,
             to: OrderState::Sent
         })
     );
-    assert!(uncertain.transition(OrderState::Requested).is_err());
-    assert!(OrderState::Done.transition(OrderState::Sent).is_err());
-    assert!(OrderState::Requested.transition(OrderState::Done).is_err());
+    assert!(
+        uncertain
+            .transition(OrderTransition::Advance(OrderState::Requested))
+            .is_err()
+    );
+    assert!(
+        OrderState::Done
+            .transition(OrderTransition::Advance(OrderState::Sent))
+            .is_err()
+    );
+    assert!(
+        OrderState::Requested
+            .transition(OrderTransition::Advance(OrderState::Done))
+            .is_err()
+    );
     Ok(())
 }
 
@@ -157,6 +175,7 @@ fn plan6_analyte_revision_is_independent_of_source_action() -> Result<(), Box<dy
 #[test]
 fn plan6_repeated_typed_and_unsupported_values_survive() -> Result<(), Box<dyn std::error::Error>> {
     let value = ResultValue {
+        decoded_text: None,
         original: SourceText::new("raw composite")?,
         parsed: ValueInterpretation::Unsupported {
             source_type: Identifier::new("LOCAL")?,
@@ -264,6 +283,7 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
         .into_iter()
         .map(|parsed| {
             Ok(ResultValue {
+                decoded_text: None,
                 original: SourceText::new("original composite")?,
                 parsed,
             })
@@ -272,6 +292,7 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
     let supported_part = ResultPart {
         test: named.clone(),
         values: EvidenceList::new(vec![ResultValue {
+            decoded_text: None,
             original: SourceText::new("<0.10")?,
             parsed: ValueInterpretation::Numeric(NumericValue {
                 number: Decimal::new("0.10")?,

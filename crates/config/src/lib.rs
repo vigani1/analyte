@@ -4,12 +4,14 @@
 mod law;
 mod orders;
 mod schema;
+mod stack;
 mod validation;
 pub use law::*;
 pub use orders::*;
 pub use schema::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+pub use stack::*;
 use validation::{validate_machine, validate_site};
 
 /// Maximum bytes accepted per TOML layer, before parsing or allocation.
@@ -139,18 +141,58 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
 /// Parsed layers awaiting semantic validation; cannot be activated.
 #[derive(Debug)]
 pub struct Draft {
-    machine: Machine,
+    machine: MachineDocument,
     site: Site,
     overrides: Overrides,
     paths: [String; 3],
 }
 
-/// Fully checked effective settings; fields cannot be mutated or deserialized.
-#[derive(Debug, Serialize)]
+/// Validated machine metadata and its one supported protocol stack.
+/// Only validation can construct this type; it cannot be deserialized or mutated in a snapshot.
+#[derive(Debug)]
+pub struct Machine {
+    /// Definition identity.
+    pub name: analyte_model::Identifier,
+    /// Named, validated compatibility departures.
+    pub deviations: Vec<Deviation>,
+    /// Declared evidence; validation never promotes it.
+    pub evidence: Evidence,
+    stack: Stack,
+}
+
+impl Machine {
+    /// Returns the required test translation table for this stack.
+    #[must_use]
+    pub fn tests(&self) -> &[TestMapping] {
+        self.stack.code_tables().0
+    }
+
+    /// Returns the required unit translation table for this stack.
+    #[must_use]
+    pub fn units(&self) -> &[UnitMapping] {
+        self.stack.code_tables().1
+    }
+}
+
+/// Fully checked runtime settings, separate from the unchanged provenance document.
+#[derive(Debug)]
 pub struct Effective {
-    schema_version: u32,
     machine: Machine,
     site: Site,
+    document: toml::Value,
+}
+
+impl Serialize for Effective {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.document.serialize(serializer)
+    }
+}
+
+#[derive(Serialize)]
+struct Canonical<'a> {
+    schema_version: u32,
+    machine: &'a MachineDocument,
+    site: &'a Site,
 }
 
 /// Immutable validated snapshot with exact canonical bytes and SHA-256.
@@ -230,14 +272,25 @@ impl Draft {
         let path = self.paths.get(2).map_or("overrides", String::as_str);
         validate_machine(&self.machine, path)?;
         validate_site(&self.site, &self.machine.transport, path)?;
-        let effective = Effective {
+        let stack = Stack::from_validated(&self.machine);
+        // Preserve the existing sorted TOML layout, including explicit input settings
+        // that have no runtime role. Runtime consumers cannot access this document.
+        let document = toml::Value::try_from(Canonical {
             schema_version: 1,
-            machine: self.machine,
+            machine: &self.machine,
+            site: &self.site,
+        })?;
+        let canonical = toml::to_string(&document)?;
+        let effective = Effective {
+            machine: Machine {
+                name: self.machine.name,
+                deviations: self.machine.deviations,
+                evidence: self.machine.evidence,
+                stack,
+            },
             site: self.site,
+            document,
         };
-        // A TOML value table sorts keys; whitespace, comments and input table order cannot affect identity.
-        let table = toml::Value::try_from(&effective)?;
-        let canonical = toml::to_string(&table)?;
         let digest = Sha256::digest(canonical.as_bytes()).into();
         Ok(Validated {
             effective,
@@ -282,7 +335,13 @@ impl Active {
 }
 
 impl Effective {
-    /// Returns validated protocol settings and mappings.
+    /// Returns the single supported stack built from the effective validated layers.
+    #[must_use]
+    pub fn stack(&self) -> &Stack {
+        &self.machine.stack
+    }
+
+    /// Returns validated identity, deviations and evidence; protocol settings are in `stack()`.
     #[must_use]
     pub fn machine(&self) -> &Machine {
         &self.machine
@@ -296,47 +355,36 @@ impl Effective {
 }
 
 impl Effective {
-    /// Returns LIS02 parser limits only when ASTM syntax was selected.
+    /// Returns LIS02 parser limits only for ASTM record stacks.
     #[must_use]
     pub fn astm_limits(&self) -> Option<analyte_astm::Limits> {
-        let s = &self.machine.syntax;
-        (s.kind == SyntaxKind::AstmLis02).then_some(analyte_astm::Limits {
-            bytes: s.bytes,
-            record: s.record_bytes,
-            fields: s.fields,
-            repeats: s.repetitions,
-            components: s.components,
-        })
+        match &self.machine.stack {
+            Stack::Astm(s) => Some(s.syntax.parser_limits()),
+            Stack::FileAstm(s) => Some(s.syntax.parser_limits()),
+            Stack::Hl7(_)
+            | Stack::Law(_)
+            | Stack::Poct(_)
+            | Stack::VidasLiteral(_)
+            | Stack::Autolyser(_)
+            | Stack::FileHl7(_) => None,
+        }
     }
 
-    /// Returns the exact HL7 syntax options only when HL7 was selected.
+    /// Returns negotiated HL7 options, including LAW's fixed policy, only for HL7 stacks.
     #[must_use]
     pub fn hl7_options(&self) -> Option<analyte_hl7::Options> {
-        let s = &self.machine.syntax;
-        if s.kind != SyntaxKind::Hl7V2 {
-            return None;
+        match &self.machine.stack {
+            Stack::Hl7(s) => Some(s.syntax.options()),
+            Stack::FileHl7(s) => Some(s.syntax.options()),
+            Stack::Law(s) => Some(s.options()),
+            Stack::Astm(_)
+            | Stack::FileAstm(_)
+            | Stack::Poct(_)
+            | Stack::VidasLiteral(_)
+            | Stack::Autolyser(_) => None,
         }
-        Some(analyte_hl7::Options {
-            charset: match s.encoding {
-                Encoding::Ascii => analyte_hl7::Charset::Ascii,
-                Encoding::Latin1 => analyte_hl7::Charset::Latin1,
-                Encoding::Utf8 => analyte_hl7::Charset::Utf8,
-            },
-            terminator: match s.terminator? {
-                Terminator::Cr => analyte_hl7::Terminator::Cr,
-                Terminator::CrLf => analyte_hl7::Terminator::CrLf,
-                Terminator::Lf => analyte_hl7::Terminator::Lf,
-            },
-            escapes: match s.escapes? {
-                Escapes::Reject => analyte_hl7::EscapePolicy::Reject,
-                Escapes::Preserve => analyte_hl7::EscapePolicy::Preserve,
-            },
-            limits: analyte_hl7::Limits {
-                message_bytes: s.bytes,
-                segments: s.records,
-                fields: s.fields,
-                repetitions: s.repetitions,
-            },
-        })
     }
 }
+
+#[cfg(test)]
+mod tests;

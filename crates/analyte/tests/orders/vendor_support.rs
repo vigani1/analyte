@@ -1,12 +1,13 @@
 //! Shared assertions for synthetic vendor order exchanges.
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::{io::AsyncReadExt, net::TcpStream};
 pub(super) async fn state(path: &Path, expected: &str) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(8), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let found: i64 = database(path)?.query_row(
                 "SELECT count(*) FROM machine_orders WHERE state=?1",
-                [format!("\"{expected}\"")],
+                [expected],
                 |r| r.get(0),
             )?;
             if found == 1 {
@@ -18,7 +19,7 @@ pub(super) async fn state(path: &Path, expected: &str) -> Result<(), Error> {
     .await?
 }
 pub(super) async fn byte(peer: &mut TcpStream) -> Result<u8, Error> {
-    Ok(tokio::time::timeout(Duration::from_secs(8), peer.read_u8()).await??)
+    Ok(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??)
 }
 pub(super) async fn no_event(path: &Path) -> Result<(), Error> {
     assert_eq!(

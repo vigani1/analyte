@@ -14,7 +14,7 @@ pub(super) struct Exchange {
     pub(super) message: OrderMessage,
 }
 struct Command {
-    settings: analyte_config::Orders,
+    settings: analyte_config::Hl7Orders,
     version: Version,
     options: Options,
     app: analyte_mapping::AppOrder,
@@ -26,20 +26,34 @@ impl Command {
         app: &analyte_contract::Order,
         options: Options,
     ) -> Result<Self, Error> {
-        let settings = machine
-            .snapshot
-            .effective()
-            .machine()
-            .orders
-            .clone()
-            .ok_or("HL7 orders absent")?;
-        let version = match machine.snapshot.effective().machine().syntax.edition {
-            Some(analyte_config::Edition::V231) => Version::V231,
-            Some(analyte_config::Edition::V251) => Version::V251,
-            None => return Err(invalid("HL7 edition absent")),
+        let configured = super::settings::hl7(machine).ok_or("HL7 orders absent")?;
+        let settings = configured.orders.clone();
+        if settings
+            .send
+            .as_ref()
+            .is_some_and(|send| send.settings.require_patient_identification)
+        {
+            return Err(invalid(
+                "HL7-patient-name-required-but-not-carried-by-contract",
+            ));
+        }
+        let version = match configured.syntax.edition {
+            analyte_config::Edition::V231 => Version::V231,
+            analyte_config::Edition::V251 => Version::V251,
         };
         let group = app.fields().id.as_str().to_owned();
-        if group.len() > 22 {
+        let namespace = settings
+            .send
+            .as_ref()
+            .ok_or("HL7 send config absent")?
+            .placer_namespace
+            .as_str();
+        if group
+            .len()
+            .checked_add(namespace.len())
+            .and_then(|n| n.checked_add(1))
+            .is_none_or(|n| n > order::EI_MAX_BYTES)
+        {
             return Err(invalid("HL7-app-order-id-too-long-for-ORC-4"));
         }
         Ok(Self {
@@ -53,9 +67,10 @@ impl Command {
     fn build(&self, record: &MachineOrder, cancel: bool) -> Result<OrderMessage, Error> {
         let cfg = self
             .settings
-            .hl7_send
+            .send
             .as_ref()
             .ok_or("HL7 send config absent")?;
+        let cfg = &cfg.settings;
         let timestamp = jiff::Timestamp::now()
             .strftime("%Y%m%d%H%M%S%z")
             .to_string();
@@ -76,11 +91,10 @@ impl Command {
             control_id: analyte_hl7::ControlId::new(id.as_bytes())?,
             timestamp: order::Timestamp::new(timestamp.as_bytes())?,
             version: self.version,
-            processing: match cfg.processing.as_str() {
-                "P" => order::Processing::Production,
-                "T" => order::Processing::Training,
-                "D" => order::Processing::Debugging,
-                _ => return Err(invalid("HL7 processing configuration")),
+            processing: match cfg.processing {
+                analyte_config::Hl7Processing::Production => order::Processing::Production,
+                analyte_config::Hl7Processing::Training => order::Processing::Training,
+                analyte_config::Hl7Processing::Debugging => order::Processing::Debugging,
             },
         };
         if cancel {
@@ -118,6 +132,7 @@ impl Command {
             (Some(system), Some(specimen)) => {
                 let mapped = self
                     .settings
+                    .tables
                     .specimen_types
                     .as_ref()
                     .and_then(|types| types.iter().find(|value| value.app == *specimen))
@@ -142,6 +157,7 @@ impl Command {
         };
         let priority = self
             .settings
+            .tables
             .priorities
             .iter()
             .find(|priority| {
@@ -153,15 +169,31 @@ impl Command {
                     }
             })
             .ok_or("HL7-unmapped-priority")?;
-        let priority = match priority.machine.as_str() {
-            "R" => order::Priority::Routine,
-            "S" => order::Priority::Stat,
-            "A" => order::Priority::Asap,
-            "P" => order::Priority::Preop,
-            "C" => order::Priority::Callback,
-            "T" => order::Priority::TimingCritical,
-            "PRN" => order::Priority::AsNeeded,
-            _ => return Err(invalid("HL7-unsupported-priority")),
+        let priority = match &priority.machine {
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
+                order::Priority::Routine
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::S) => {
+                order::Priority::Stat
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::A) => {
+                order::Priority::Asap
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::P) => {
+                order::Priority::Preop
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::C) => {
+                order::Priority::Callback
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => {
+                order::Priority::TimingCritical
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::Prn) => {
+                order::Priority::AsNeeded
+            }
+            analyte_config::MachinePriority::Custom(_) => {
+                return Err(invalid("HL7-unsupported-priority"));
+            }
         };
         let mut orders = Vec::new();
         for item in &record.items {
@@ -183,6 +215,7 @@ impl Command {
             };
             let mapped = self
                 .settings
+                .tables
                 .tests
                 .iter()
                 .find(|mapped| mapped.app == *test)
@@ -261,21 +294,29 @@ pub(super) async fn next(
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
-    let settings = machine
-        .snapshot
-        .effective()
-        .machine()
-        .orders
-        .as_ref()
+    let freshness = machine.destination_limits.freshness.as_secs();
+    let settings = super::settings::hl7(machine)
+        .map(|settings| settings.orders)
         .ok_or("HL7 settings missing")?;
-    if !settings.send_ahead {
+    let Some(send) = &settings.send else {
         return Ok(None);
-    }
+    };
     let dest = super::destination(machine);
     let target = machine.id.clone();
     let cancels = store
         .request(deadline(), move |store| {
-            store.cancel_candidates(&dest, &target)
+            if !store
+                .order_trust(&dest, jiff::Timestamp::now().as_second(), freshness)?
+                .is_trusted()
+            {
+                return Ok(Vec::new());
+            }
+            store.cancel_candidates(
+                &dest,
+                &target,
+                jiff::Timestamp::now().as_second(),
+                freshness,
+            )
         })
         .await?;
     for (record, cached) in cancels {
@@ -293,7 +334,7 @@ pub(super) async fn next(
                     version,
                     jiff::Timestamp::now().as_second(),
                     &owner,
-                    super::FRESHNESS_SECONDS,
+                    freshness,
                     super::event,
                 )
             })
@@ -323,37 +364,58 @@ pub(super) async fn next(
         let command = match Command::new(machine, &app, options) {
             Ok(command) => command,
             Err(error) => {
-                reject(store, key, version, &error.to_string()).await?;
+                reject(store, key, version, &error.to_string(), freshness).await?;
                 continue;
             }
         };
-        let namespace = settings
-            .placer_namespace
-            .clone()
-            .ok_or("HL7 placer namespace missing")?;
+        let namespace = send.placer_namespace.clone();
+        let groups = command
+            .app
+            .tests
+            .iter()
+            .cloned()
+            .map(|test| vec![test])
+            .collect::<Vec<_>>();
+        let max_identity_bytes = order::EI_MAX_BYTES
+            .saturating_sub(namespace.as_str().len())
+            .saturating_sub(1);
         let identity = key.clone();
         let owner = owner.clone();
         reserving.push(key.clone());
         let reserved = store
             .request(deadline(), move |store| {
-                store.reserve_send_items_with(
+                let mut message = None;
+                let record = store.reserve_send(
                     &OrderReservation {
                         identity: &identity,
                         version,
                         now: jiff::Timestamp::now().as_second(),
-                        freshness: super::FRESHNESS_SECONDS,
+                        freshness,
                     },
-                    OrderItems::PerTest {
-                        namespace: &namespace,
-                        identity_bytes: 22,
+                    analyte_store::ReserveOptions {
+                        items: OrderItems::Groups {
+                            groups: &groups,
+                            namespace: Some(&namespace),
+                            max_identity_bytes,
+                        },
+                        owner: Some(&owner),
+                        prepare: Some(&mut |record| {
+                            message = Some(
+                                command
+                                    .build(record, false)
+                                    .map_err(analyte_store::Error::DeliveryBuild)?,
+                            );
+                            Ok(())
+                        }),
                     },
-                    &owner,
-                    |record| {
-                        command
-                            .build(record, false)
-                            .map_err(analyte_store::Error::DeliveryBuild)
-                    },
-                )
+                )?;
+                match record {
+                    Ok(record) => Ok(Ok((
+                        record,
+                        message.ok_or(analyte_store::Error::InvalidInput)?,
+                    ))),
+                    Err(refusal) => Ok(Err(refusal)),
+                }
             })
             .await;
         match reserved {
@@ -364,11 +426,25 @@ pub(super) async fn next(
             }
             Err(analyte_store::Error::ItemIdentityTooLong) => {
                 reserving.clear();
-                reject(store, key, version, "HL7-placer-identity-too-long").await?;
+                reject(
+                    store,
+                    key,
+                    version,
+                    "HL7-placer-identity-too-long",
+                    freshness,
+                )
+                .await?;
             }
             Err(analyte_store::Error::DeliveryBuild(error)) => {
                 reserving.clear();
-                reject(store, key, version, &format!("HL7-order-preflight:{error}")).await?;
+                reject(
+                    store,
+                    key,
+                    version,
+                    &format!("HL7-order-preflight:{error}"),
+                    freshness,
+                )
+                .await?;
             }
             Err(error) => return Err(error.into()),
         }
@@ -380,6 +456,7 @@ async fn reject(
     key: MachineOrderKey,
     version: std::num::NonZeroU64,
     reason: &str,
+    freshness: u64,
 ) -> Result<(), Error> {
     let reason = SourceText::new(reason)?;
     let result = store
@@ -389,7 +466,7 @@ async fn reject(
                     identity: &key,
                     version,
                     now: jiff::Timestamp::now().as_second(),
-                    freshness: super::FRESHNESS_SECONDS,
+                    freshness,
                 },
                 reason,
                 super::event,

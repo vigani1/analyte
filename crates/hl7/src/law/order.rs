@@ -420,6 +420,7 @@ pub(super) fn validate_links(
     let mut awaiting = false;
     let mut in_order = false;
     let mut needs_priority = false;
+    let mut tcd_occurrence = 0_usize;
     for segment in message.segments() {
         match segment.id() {
             b"OBR" if direction == ControlDirection::Send => {
@@ -468,12 +469,14 @@ pub(super) fn validate_links(
                 reference = None;
             }
             b"TCD" => {
+                tcd_occurrence = tcd_occurrence.checked_add(1).ok_or(content("TCD", 0))?;
                 let reference = reference.ok_or(content("TCD", 0))?;
                 if !same_test(raw(segment, 1), reference) {
                     return Err(Error::Inconsistent {
                         segment: "TCD",
                         field: 1,
-                    });
+                    }
+                    .at_segment(segment, tcd_occurrence));
                 }
                 awaiting = false;
             }

@@ -1,13 +1,13 @@
 # analyte-store
 
-One protected SQLite database holds receipt evidence, the ASTM frame journal,
+One protected SQLite database holds receipt evidence, the bounded frame journal,
 versioned readings, parked items, immutable deliveries, attempts, order pages and
 audit entries. The host must protect the database directory (including WAL, SHM
 and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 6 is
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 9 is
 created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
 Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
@@ -17,7 +17,7 @@ nonzero timeout capped at 30 seconds. These guarantees still require a local
 filesystem and storage hardware that honor flush requests. See SQLite's
 [PRAGMA documentation](https://sqlite.org/pragma.html).
 
-`frame` commits independently before returning the sequence a dialog may ACK.
+`journal_frame` commits independently before returning the sequence a dialog may ACK.
 Incomplete and aborted transfers retain every frame; recovery is paged by
 transfer ID and sequence. `finish_transfer` can link only to an existing receipt.
 Receipts include exact effective config bytes and checked SHA-256 digests.
@@ -86,7 +86,7 @@ Tokio runtime; the crate enables only `sync` and `time` features.
 
 Order events have disjoint CHECK-constrained provenance and per-order ordering.
 Claims expose durable earlier attempt counts. Health queries expose unresolved
-count, bytes, oldest age, pause and feed status. Hosts also check freshness.
+count, bytes, oldest age, pause and feed status. Hosts supply the destination freshness to the shared typed trust decision.
 
 ## Observation history (ADR 0003)
 
@@ -109,10 +109,9 @@ with each part's host receive time removed. Receipt IDs and assigned revisions
 are not part of the digest. Source times and source status remain clinical
 evidence. The SHA-256 input is independent of receipt/retry receive time.
 
-The compatibility `interpret` method also reconciles history, but has no declared
-correction-code evidence and cannot fix prebuilt bytes after revision assignment;
-use the builder API for corrections. Both reject unsafe deliveries. Mapping
-findings are stored in the same transaction, not as a later best-effort write.
+`interpret_reconciled` is the sole interpretation entry point for ordinary
+reception; builders receive assigned revisions before constructing delivery bytes.
+Mapping findings are stored in the same transaction.
 
 `journal_frame` commits immutable machine/driver/config provenance before its
 frame journal write. A failed frame write may leave provenance without a frame;
@@ -124,13 +123,18 @@ provide bounded receipt and audit pages for the protected operator interface.
 
 Schema v5 is a forward-only migration; v4 and its histories are unchanged.
 Each new reservation creates retained command items and append-only item history
-in the same transaction, without an app event. ASTM/vendor records and query
-displays use one item covering all app tests. HL7 send-ahead uses one item per
-test through `reserve_send_items`. EI.1 is `<machine-order-id>-<item-index>`;
-SQLite's retained AUTOINCREMENT parent ID and the one-based index own uniqueness.
-The host supplies the required configured EI.2 namespace; it is retained with
-the item so configuration changes cannot alter a later cancellation identity. Encoded identity
-limits refuse the transaction; no truncation or partial reservation is possible.
+in the same transaction, without an app event. `OrderItems::Together` covers the
+current cached test list in one command. `OrderItems::Groups` retains the explicit
+groups and order supplied by the caller, after checking that they partition the
+cached tests exactly. Empty, missing, duplicate or invented coverage refuses the
+transaction. Local identity `<machine-order-id>-<item-index>` is unique through
+SQLite's retained AUTOINCREMENT parent ID and the one-based index. The optional
+logical namespace is retained so config changes cannot alter cancellation identity.
+
+The caller supplies `max_identity_bytes` for the generated local identity after
+accounting for its encoding overhead. The store does not choose a delimiter,
+protocol grouping or composite identity limit. A too-small budget rolls back the
+whole reservation; no truncation or partial reservation is possible.
 
 V4 did not retain original test coverage. Its migrated orders get one item with
 `coverage_known=false`, empty coverage, and `migration-v5-coverage-unavailable`
@@ -173,3 +177,143 @@ Tests `law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_neve
 and `law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust`
 cover paging, targeting, prior reservations, expiry/tombstones, future/stale clocks,
 reset generations and restore pause. No schema or contract change is involved.
+
+Orders and items use the model's single lifecycle transition function, including
+audited operator reconciliation. Cancellation refusal restores the retained
+per-item `cancel_from` states rather than searching historical aggregate JSON.
+Correlated HL7/LAW replies may accept or reject a reserved Sending exchange.
+
+`Store::order_trust` distinguishes Trusted, Stale, Incomplete, RestorePaused and
+Unknown. Lookups, candidate reads, transaction admission and cache alerts use
+that rule; only Trusted can establish no orders. Cached state is typed and
+shares the model eligibility function with the host. Cancellation scans filter
+typed states in bounded pages rather than comparing state text in SQL.
+
+## Implementation ownership
+
+`open` owns integrity checks and forward migrations; `capacity` owns admission
+and size limits. `receipts` retains raw inputs, `transfers` journals frames and
+provenance, `outbox` owns claims and attempts, `parked` owns operator parking and
+audit writes, `feed` owns cache writes and trust, and `backup` owns online copies.
+`revisions` owns interpretation transactions.
+
+Machine-order eligibility, reservation, listing, cancellation admission and item
+exchange completion live under `machine_orders/`. The parent module retains
+shared lifecycle types and transaction helpers so state changes and history
+writes still have one implementation. These boundaries do not change the
+schema, public API, transaction boundaries or evidence formats. Existing store
+test filenames remain stable for mutation-coverage work.
+
+`reserve_send(candidate, options)` is the single reservation entry point.
+`ReserveOptions` selects connection ownership, item grouping and an optional pure
+preflight callback. Defaults reserve one unowned item covering all tests. Preflight
+sees assigned identities inside the transaction; an error rolls back reservation,
+items and history. Callers retain any prepared payload locally until commit succeeds.
+
+The public write path for frames is `journal_frame`, which retains provenance.
+The internal frame insertion primitive also serves legacy-schema migration tests.
+Unfinished-transfer inspection is a crate-test helper; host receive tests inspect
+the protected journal directly after running the real service path. Operator
+resends use `resend_delivery`, including audited recovery from a setup pause.
+
+## Schema 7: typed persistence (ADR 0003 rules 2/3/8)
+
+Order/item SQL states use plain lifecycle names rather than JSON string literals.
+`sql_types` owns the SQLite codecs for lifecycle state, delivery state, delivery
+kind and ownership kind; callers bind typed values and reject unknown SQL values.
+The model remains independent of SQLite. Delivery encodings and immutable bytes
+remain unchanged.
+
+Each lifecycle history row now has checked `owner_kind`, `owner_id` and
+`cancel_version` columns. Ownership checks read those columns, and cancellation
+replay checks use an indexed, exact version comparison. Versions are canonical
+unsigned decimal strings so the full `u64` range survives SQLite's signed integer
+limit. The human-readable source codes remain unchanged for evidence compatibility;
+they no longer decide ownership. Only migration interprets the old prefixes.
+For historical cancellations it preserves the old final-colon-component ownership
+rule, including an empty component that could never match a valid owner. New
+cancellations retain the supplied full connection ID explicitly.
+
+All parking writes use one object containing `kind`, `reason`, `targets` and
+`context`. Context retains interpretation version and result position where the
+old tuples carried them. Migration preserves each exact former JSON string in
+`original_evidence`, including resolved parking and Autolyser custody guards.
+Canonical and original evidence are immutable; resolution still appends an audit.
+No custody intent table or protocol behavior is introduced in this migration.
+
+The table rebuild follows [SQLite's documented procedure](https://www.sqlite.org/lang_altertable.html#making_other_kinds_of_table_schema_changes).
+The forward migration copies every order and item with its existing identity,
+retains the reservation AUTOINCREMENT high-water mark, leaves history JSON and
+other evidence untouched, and preserves the alert counters. It decodes one
+bounded legacy record at a time. An unknown, corrupt or oversized record refuses
+the upgrade with its table and row identity; the whole schema-7 transaction rolls
+back rather than discarding or guessing evidence.
+
+`migration_tests.rs` exercises all eight retained order/item states, all six
+delivery states and both delivery kinds, unowned/reservation/cancellation forms,
+colon-containing owners, the maximum cancellation version, all five legacy tuple
+kinds (including older tuples without version context), structured custody parking,
+and both open and resolved rows. It compares
+every original table/row, checks ownership and replay meaning, retained bytes,
+foreign-key integrity, counters and reservation identity allocation, and proves
+that unreadable parking or ownership rolls the upgrade back without changing legacy
+rows. Noncanonical cancellation-version tokens are refused rather than normalized
+into replay guards.
+
+## Schema 8: caller-owned protocol constraints
+
+`FrameSequence::new(number, maximum)` validates a byte-sized sequence against the
+caller's inclusive bound before journal writes. The store has no ASTM rollover
+rule. Schema 8 widens the old frame-column constraint to the byte domain; it keeps
+all frame bytes, transfer links, journal IDs, the AUTOINCREMENT high-water mark,
+evidence protections and machine activity. Copying old frames does not generate
+new activity. The migration test compares every table before and after upgrading
+a real schema-7 fixture and tests a sequence above seven, rejection above the
+caller bound, the byte maximum, closed transfers and reopening.
+
+`TransferOutcome::Complete` links retained receipt evidence;
+`TransferOutcome::Incomplete` requires the caller's typed reason. The host owns
+ASTM-specific explanations and supplies the framing crate's sequence maximum.
+HL7 and LAW callers build one group per test and calculate the remaining identity
+budget using named constants from `analyte-hl7`. Existing wire limits and the
+logical namespace budgets are preserved; the store does not know their encodings.
+
+## Schema 9: typed cursor custody
+
+`begin_poll_intent(machine, reason)` atomically retains a Pending intent, an
+immutable history entry and linked operator-visible parked evidence before the
+host transmits a cursor-changing poll. An indexed machine/state query,
+`unconfirmed_poll_intent`, replaces parked-page scans. Admission rechecks this
+predicate in an immediate transaction: Pending and Uncertain both block a new poll.
+A lost store reply may leave Pending committed, so cancellation never proves the
+poll was not admitted or transmitted.
+
+`record_poll_outcome` accepts Confirmed or Uncertain with a targeted audit and
+reason, retaining previous reasons in append-only history. Confirmation reconciles
+the linked parked evidence in the same transaction when every intent linked to it
+is confirmed; confirming one machine never clears another machine's uncertainty. Confirmed is terminal; late
+cleanup or a repeated confirmation cannot downgrade it or replay that identity.
+The existing audited `parked resolve` path also reconciles linked intents
+atomically. Parked rows remain operator evidence; they no longer own poll state.
+Capacity, history or audit failures roll the entire operation back.
+
+The forward migration imports every legacy `autolyser_poll_custody` row without
+changing or deleting any parked row, original JSON or resolution. Unresolved rows
+become Uncertain; a legacy resolution becomes Confirmed. Reasons and exact old
+resolution evidence are retained without inventing times or attribution. Multiple
+guards for a machine continue to block it until all are reconciled; a shared guard
+continues to cover each distinct named machine. A guard without a machine refuses
+the upgrade with its table and row identity and leaves schema 8 intact.
+
+The Autolyser host records observed failures as Uncertain and treats an interrupted
+Pending intent as uncertain when reconnecting. It confirms only after the existing
+dialog establishes retained response custody. The operator can inspect and reconcile
+the linked parked item using the existing commands; no protocol parser or order
+lifecycle rule is added to the store.
+
+Tests cover admission before wire output, unknown-outcome reconnect blocking,
+Pending/Uncertain/Confirmed transitions, restart, independent machines, terminal
+confirmation, capacity refusal, transactional audit/history failures and operator
+resolution. Migration tests include both resolved and unresolved guards beyond the
+old 128-page limit, exact retention of every original table/row, duplicate targets,
+multiple guards and refusal when the machine identity is missing.

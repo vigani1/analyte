@@ -1,0 +1,14 @@
+# Run from the repository root; data stays in the ignored protected runtime area.
+schema_version = 1
+data_directory = "../../../../data/gazelle-law-run"
+[store]
+reserve_bytes = 1073741824
+database_bytes = 10737418240
+record_bytes = 2097152
+page_rows = 100
+busy_timeout_ms = 1000
+[[machines]]
+id = "gazelle-law"
+definition = "machine.toml"
+site = "site.toml"
+capture = true

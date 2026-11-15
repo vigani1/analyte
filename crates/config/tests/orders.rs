@@ -55,21 +55,11 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
             VENDOR_ORDERS.to_owned()
         };
         let valid = vendor_config(&definition, &section)?;
-        let orders = valid
-            .effective()
-            .machine()
-            .orders
-            .as_ref()
-            .ok_or("orders")?;
-        assert_eq!(
-            orders
-                .patient_namespace
-                .as_ref()
-                .ok_or("namespace")?
-                .as_str(),
-            "synthetic-patients"
-        );
-        assert!(orders.astm.is_none());
+        assert_eq!(vendor_namespace(&valid)?.as_str(), "synthetic-patients");
+        assert!(matches!(
+            valid.effective().stack(),
+            analyte_config::Stack::VidasLiteral(_) | analyte_config::Stack::Autolyser(_)
+        ));
         invalid_key(
             vendor_config(
                 &definition,
@@ -83,19 +73,7 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
         }
         let exact = section.replace("synthetic-patients", "000LabA");
         let valid = vendor_config(&definition, &exact)?;
-        assert_eq!(
-            valid
-                .effective()
-                .machine()
-                .orders
-                .as_ref()
-                .ok_or("orders")?
-                .patient_namespace
-                .as_ref()
-                .ok_or("namespace")?
-                .as_str(),
-            "000LabA"
-        );
+        assert_eq!(vendor_namespace(&valid)?.as_str(), "000LabA");
     }
     Ok(())
 }
@@ -112,14 +90,8 @@ fn autolyser_rev18_ch23_clone_requires_explicit_true_or_false() -> TestResult {
         let section = format!("{}clone = {value}\n", autolyser_orders());
         let valid = vendor_config(&definition, &section)?;
         assert_eq!(
-            valid
-                .effective()
-                .machine()
-                .orders
-                .as_ref()
-                .ok_or("orders")?
-                .clone,
-            Some(value)
+            autolyser(&valid)?.orders.as_ref().ok_or("orders")?.clone,
+            value
         );
         assert!(valid.canonical().contains(&format!("clone = {value}")));
     }
@@ -284,12 +256,10 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     let section = include_str!("../examples/hl7_orders.toml");
     let valid = vendor_config(definition, section)?;
     assert!(
-        valid
-            .effective()
-            .machine()
+        hl7(&valid)?
             .orders
             .as_ref()
-            .and_then(|o| o.hl7.as_ref())
+            .and_then(|o| o.query.as_ref())
             .is_some()
     );
     for (invalid, key) in [
@@ -384,10 +354,6 @@ fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -
             "orders.hl7_send",
         ),
         (
-            section.replace(r#"processing = "T""#, r#"processing = "unknown""#),
-            "orders.hl7_send",
-        ),
-        (
             section.replace("sample_field = 18", "sample_field = 17"),
             "orders.hl7_send.position_field",
         ),
@@ -405,6 +371,112 @@ fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -
     ] {
         invalid_key(vendor_config(definition, &invalid), key);
     }
+    let invalid_processing = section.replace(r#"processing = "T""#, r#"processing = "unknown""#);
+    assert!(matches!(
+        vendor_config(definition, &invalid_processing),
+        Err(analyte_config::Error::Schema { .. })
+    ));
     assert!(config(section).is_err());
     Ok(())
+}
+
+#[test]
+fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -> TestResult {
+    use analyte_config::{Hl7Processing, MachinePriority, PriorityCode};
+    let definition = include_str!("../examples/hl7.toml");
+    let section = include_str!("../examples/hl7_send.toml");
+    for (wire, expected) in [
+        ("P", Hl7Processing::Production),
+        ("T", Hl7Processing::Training),
+        ("D", Hl7Processing::Debugging),
+    ] {
+        let section = section.replace(r#"processing = "T""#, &format!("processing = \"{wire}\""));
+        let valid = vendor_config(definition, &section)?;
+        assert_eq!(
+            hl7(&valid)?
+                .orders
+                .as_ref()
+                .expect("orders")
+                .send
+                .as_ref()
+                .expect("HL7 send")
+                .settings
+                .processing,
+            expected
+        );
+        assert!(
+            valid
+                .canonical()
+                .contains(&format!("processing = \"{wire}\""))
+        );
+    }
+    for (wire, expected) in [
+        ("R", PriorityCode::R),
+        ("S", PriorityCode::S),
+        ("A", PriorityCode::A),
+        ("P", PriorityCode::P),
+        ("C", PriorityCode::C),
+        ("T", PriorityCode::T),
+        ("PRN", PriorityCode::Prn),
+    ] {
+        let section = section.replace(r#"machine="R""#, &format!("machine=\"{wire}\""));
+        let valid = vendor_config(definition, &section)?;
+        assert!(
+            matches!(hl7(&valid)?.orders.as_ref().expect("orders").tables.priorities.first().expect("priority").machine, MachinePriority::Code(code) if code == expected)
+        );
+    }
+    invalid_key(
+        vendor_config(
+            definition,
+            &section.replace(r#"machine="R""#, r#"machine="custom""#),
+        ),
+        "orders.priorities",
+    );
+    // Configurable ASTM priority text must not be restricted to HL7 table 0485.
+    let astm_text =
+        include_str!("../examples/orders.toml").replace(r#"machine="R""#, r#"machine="custom""#);
+    let valid = config(&astm_text)?;
+    assert!(
+        matches!(&astm(&valid)?.orders.as_ref().expect("orders").tables.priorities.first().expect("priority").machine, MachinePriority::Custom(value) if value.as_str() == "custom")
+    );
+    Ok(())
+}
+
+fn hl7(config: &Validated) -> Result<&analyte_config::Hl7Stack, Box<dyn std::error::Error>> {
+    let analyte_config::Stack::Hl7(stack) = config.effective().stack() else {
+        return Err("HL7 fixture".into());
+    };
+    Ok(stack)
+}
+fn astm(config: &Validated) -> Result<&analyte_config::AstmStack, Box<dyn std::error::Error>> {
+    let analyte_config::Stack::Astm(stack) = config.effective().stack() else {
+        return Err("ASTM fixture".into());
+    };
+    Ok(stack)
+}
+fn autolyser(
+    config: &Validated,
+) -> Result<&analyte_config::AutolyserStack, Box<dyn std::error::Error>> {
+    let analyte_config::Stack::Autolyser(stack) = config.effective().stack() else {
+        return Err("Autolyser fixture".into());
+    };
+    Ok(stack)
+}
+fn vendor_namespace(
+    config: &Validated,
+) -> Result<&analyte_model::Identifier, Box<dyn std::error::Error>> {
+    match config.effective().stack() {
+        analyte_config::Stack::VidasLiteral(s) => {
+            Ok(&s.orders.as_ref().ok_or("orders")?.patient_namespace)
+        }
+        analyte_config::Stack::Autolyser(s) => {
+            Ok(&s.orders.as_ref().ok_or("orders")?.patient_namespace)
+        }
+        analyte_config::Stack::Astm(_)
+        | analyte_config::Stack::Hl7(_)
+        | analyte_config::Stack::Law(_)
+        | analyte_config::Stack::Poct(_)
+        | analyte_config::Stack::FileAstm(_)
+        | analyte_config::Stack::FileHl7(_) => Err("vendor fixture".into()),
+    }
 }

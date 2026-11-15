@@ -29,7 +29,7 @@ impl Drop for Owner {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+            super::worker::report_join("folder", &thread.join());
         }
     }
 }
@@ -39,6 +39,7 @@ impl Owner {
         incoming: PathBuf,
         root: PathBuf,
         limit: u64,
+        mut recorder: Option<Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>>,
     ) -> Result<(Self, tokio::sync::mpsc::Receiver<Item>), Error> {
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
@@ -62,6 +63,22 @@ impl Owner {
                             return Ok(());
                         }
                         let bytes = claim.read()?;
+                        if let Some(tap) = recorder.as_mut().and_then(|factory| factory()) {
+                            use analyte_transport::recording::Kind;
+                            let result = tap
+                                .record(Kind::Open, Instant::now(), b"watched folder receipt")
+                                .and_then(|()| {
+                                    for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
+                                        tap.record(Kind::In, Instant::now(), chunk)?;
+                                    }
+                                    tap.record(Kind::Close, Instant::now(), b"file read complete")
+                                });
+                            if let Err(error) = result {
+                                // Tap::record publishes every failure to the shared worker state.
+                                // The capture worker logs once and persists the failed markers.
+                                tracing::debug!(error_kind = %error, "watched-folder capture failure handed to recorder worker");
+                            }
+                        }
                         let (reply, response) = mpsc::sync_channel(1);
                         let mut item = Item {
                             bytes,
@@ -134,14 +151,22 @@ impl Owner {
 pub(super) async fn session(
     machine: &Machine,
     store: &Handle,
+    bytes: usize,
     root: PathBuf,
     mut stop: watch::Receiver<bool>,
     mut closing: super::Closing,
+    capture: Option<&crate::capture::Capture>,
 ) -> Result<(), Error> {
+    let context = evidence::Connection::new(machine)?;
+    let machine = &context;
     let (owner, mut files) = Owner::start(
         PathBuf::from(&machine.snapshot.effective().site().endpoint),
         root,
-        u64::try_from(machine.snapshot.effective().machine().syntax.bytes)?,
+        u64::try_from(bytes)?,
+        capture.map(|c| {
+            Box::new(c.factory())
+                as Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>
+        }),
     )?;
     let result = async {
         loop {
@@ -165,4 +190,35 @@ pub(super) async fn session(
     }
     owner.close().await?;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
+    #[test]
+    fn safety_rule_10_drop_reports_worker_error_and_panic_without_payloads() {
+        for panic in [false, true] {
+            let worker = thread::spawn(move || {
+                if panic {
+                    std::panic::panic_any("protected-panic-token");
+                }
+                Err(invalid("protected-error-token"))
+            });
+            let output = super::super::worker::tests::capture(|| {
+                drop(Owner {
+                    stop: Arc::new(AtomicBool::new(false)),
+                    thread: Some(worker),
+                });
+            });
+            assert!(output.contains("worker=\"folder\""), "{output}");
+            assert!(output.contains(if panic {
+                "worker_panic"
+            } else {
+                "worker_error"
+            }));
+            assert!(!output.contains("protected-"));
+        }
+    }
 }

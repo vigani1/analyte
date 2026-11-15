@@ -106,7 +106,8 @@ stop, transports close and join (5 seconds), and the store drains and closes
 Delivery/store failures stop the service visibly. Individual machine failures
 remain isolated. HTTP requests have a 3-second deadline, local delivery storage
 operations 2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
-and order polls run every 5 seconds with a 30-second freshness policy.
+and order polls run every 5 seconds. Site destination `freshness_seconds`
+(default 30, nonzero) sets `Limits.freshness` for lookups, reservations and alerts.
 An uninterruptible operating-system flush cannot be cancelled within a worker;
 owner destructors join rather than detach. The process watchdog enforces the
 overall stop deadline even when such a join blocks; see Running as a service.
@@ -168,6 +169,13 @@ and configure the patient namespace and outbound codes. Successful transfer
 means Sent, never Accepted. Interrupted orders become Uncertain and are never
 automatically replayed. Autolyser host-initiated insertions use the same durable path after a completed
 host poll, with an explicit specimen-medium table, clone flag and cup position.
+Before a cursor-changing poll, the host durably reserves a typed poll intent.
+Pending or uncertain custody blocks another poll, including across reconnects.
+Observed failures retain their reason; confirmation requires the existing dialog's
+response-custody evidence. The protected parked list still shows the linked guard.
+Use the audited `parked resolve` command only after checking the machine's cursor
+and retained responses: it reconciles the typed intent and keeps the parked row.
+An upgrade imports old custody guards without deleting their evidence.
 
 ## Test-only boundary hooks
 
@@ -477,3 +485,51 @@ The program receives results, answers supported queries and sends/cancels work
 on one persistent TCP link in either configured direction. Evidence remains
 **documented**. The [LAW checklist](../../docs/protocols/ihe-law.md) owns the
 current test matrix and remaining actor/simulator qualification gates.
+
+Folder and serial worker shutdown reports worker errors and panics separately,
+without including error text or panic payloads in ordinary logs.
+
+Receipt and interpretation config versions are the lowercase SHA-256 digest of
+the canonical effective config. Each host connection has a fresh UUID, shared by
+its receipts and parked evidence; a watched-folder session has its own UUID.
+
+VIDAS, Autolyser and POCT disconnect and storage-failure dialog effects are
+processed before the host returns. Parking retains the reason with the existing
+transport evidence; a failed parking write is reported alongside its original error.
+
+## Capturing conversations
+
+Plan ?10 and ADR 0009: set `capture = true` on a `[[machines]]` entry in the
+**program** TOML, then restart. It defaults to false and does not belong in the
+shipped machine definition. Capture-enabled machine IDs use ASCII letters,
+digits, underscores or hyphens so each names exactly one directory.
+
+Every successful TCP connection (client or server), serial open and watched-folder
+receipt gets a separate UUID-named `.rec.jsonl` file under
+`<data_directory>/captures/<machine>/`. The existing transport recorder preserves
+exact bytes, directions, chunk boundaries and relative times. Live headers declare
+`machine` evidence and `NOT de-identified`; they do not qualify a driver.
+
+These files **contain patient data**. Keep them in the protected store, apply the
+installation ACL on Windows, and never put them in ordinary logs (rule 10).
+Directories and files use owner-only permissions on Unix. Before sharing, work
+on a copy: remove or replace every patient and specimen identifier consistently,
+inspect every decoded event (including link metadata), and record the review in
+the header de-identification statement. Preserve the protected original. Synthetic
+simulator captures may be labelled `simulator` only after reviewing their content;
+never relabel a patient capture as synthetic.
+
+Recording is optional evidence, not clinical custody. A recording error disables
+that connection's capture; receiving, ACKs and delivery continue. One specific
+error is logged without payloads. `analyte status <program.toml>` shows retained
+capture failure status; a missing failure is not proof of completeness. Failure
+markers live in the protected data directory (`capture-<machine>.failure` and
+`<recording-name>.failed`). They remain until an operator archives them after
+review. If status cannot be persisted, the log reports that failure too.
+
+Each recorder has a 64-event queue and the ADR 0009 codec's file/event/byte limits.
+The host bounds unfinished workers to 16 per machine and joins them at shutdown.
+Before each write it requires the store's configured reserve plus a 16 MiB margin;
+unknown capacity stops recording. A saturated queue, limit or low disk ends capture
+visibly rather than silently omitting bytes. Incomplete/failed captures are not
+conformance evidence. Capture does not acknowledge data or change replay policy.

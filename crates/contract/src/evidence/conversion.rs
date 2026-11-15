@@ -65,6 +65,7 @@ impl From<&analyte_model::NumericValue> for NumericValue {
 impl From<&analyte_model::ResultValue> for ResultValue {
     fn from(v: &analyte_model::ResultValue) -> Self {
         Self {
+            decoded_text: v.decoded_text.as_ref().map(Into::into),
             original: (&v.original).into(),
             parsed: (&v.parsed).into(),
         }
@@ -386,6 +387,21 @@ impl From<&analyte_model::ValueInterpretation> for ValueInterpretation {
                 source_type: source_type.into(),
                 reason: reason.into(),
             },
+        }
+    }
+}
+
+impl From<OrderState> for analyte_model::OrderState {
+    fn from(state: OrderState) -> Self {
+        match state {
+            OrderState::Requested => Self::Requested,
+            OrderState::Sent => Self::Sent,
+            OrderState::Accepted => Self::Accepted,
+            OrderState::Done => Self::Done,
+            OrderState::Rejected => Self::Rejected,
+            OrderState::CancelRequested => Self::CancelRequested,
+            OrderState::CancelConfirmed => Self::CancelConfirmed,
+            OrderState::Uncertain => Self::Uncertain,
         }
     }
 }

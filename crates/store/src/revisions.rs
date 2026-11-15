@@ -1,7 +1,9 @@
 //! Transactional observation history (ADR 0003).
+mod status;
 use crate::{Delivery, Error, Interpretation, Reading, Store, digest, key};
 use analyte_model::{IdentityStatus, ReceiptId, ResultContent, ResultStatus, Revision};
 use rusqlite::{OptionalExtension, params};
+pub use status::StatusLifecycle;
 
 /// Store decision for one result, in input order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,9 +12,9 @@ pub enum RevisionOutcome {
     New(Revision),
     /// Already retained content; never enqueue another delivery.
     Retransmission(Revision),
-    /// Changed content with explicit correction or withdrawal evidence.
+    /// Changed content with permitted source progression, correction or withdrawal evidence.
     Correction(Revision),
-    /// Changed content without correction evidence; parked.
+    /// Changed content without an allowed source transition or correction evidence; parked.
     Conflict,
     /// Source did not provide a usable identity; parked.
     Unresolved,
@@ -32,6 +34,19 @@ fn clinical_digest(result: &ResultContent) -> Result<analyte_model::Digest, Erro
         for part in parts {
             if let Some(fields) = part.as_object_mut() {
                 fields.remove("received_at");
+                // Source offsets locate immutable evidence, not clinical content.
+                // An optional resend field can shift every later XML/record offset.
+                // Keep source kinds, sequences and statuses in the comparison.
+                if let Some(path) = fields
+                    .get_mut("source_path")
+                    .and_then(serde_json::Value::as_array_mut)
+                {
+                    for node in path {
+                        if let Some(node) = node.as_object_mut() {
+                            node.remove("occurrence");
+                        }
+                    }
+                }
             }
         }
     }
@@ -63,7 +78,13 @@ impl Store {
     where
         F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
     {
-        self.reconcile(receipt, evidence, (corrections, findings), None, build)
+        self.reconcile(
+            receipt,
+            evidence,
+            (corrections, findings, None),
+            None,
+            build,
+        )
     }
 
     /// Reinterprets retained bytes under current provenance, appending a version.
@@ -89,7 +110,56 @@ impl Store {
         self.reconcile(
             action.receipt,
             evidence,
-            (corrections, findings),
+            (corrections, findings, None),
+            Some(action),
+            build,
+        )
+    }
+
+    /// Reconciles using a caller-owned status transition/reporting table (ADR 0011).
+    /// Identical retained content is still a retransmission; a table cannot authorize delivery of it.
+    /// # Errors
+    /// Reports the same atomic validation, capacity and storage failures as `interpret_reconciled`.
+    pub fn interpret_with_lifecycle<F>(
+        &mut self,
+        receipt: ReceiptId,
+        evidence: Interpretation,
+        mapping: (&[bool], &[crate::Parked]),
+        lifecycle: StatusLifecycle<'_>,
+        build: F,
+    ) -> Result<InterpretationCommit, Error>
+    where
+        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
+    {
+        self.reconcile(
+            receipt,
+            evidence,
+            (mapping.0, mapping.1, Some(lifecycle)),
+            None,
+            build,
+        )
+    }
+    /// Reprocesses with caller-owned lifecycle rules, keeping the same atomic audit boundary.
+    /// # Errors
+    /// Reports invalid actions and the same atomic failures as `reprocess_reconciled`.
+    pub fn reprocess_with_lifecycle<F>(
+        &mut self,
+        action: &crate::Reprocess,
+        evidence: Interpretation,
+        mapping: (&[bool], &[crate::Parked]),
+        lifecycle: StatusLifecycle<'_>,
+        build: F,
+    ) -> Result<InterpretationCommit, Error>
+    where
+        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
+    {
+        if action.audit.action.as_str() != "receipt-reprocess" {
+            return Err(Error::InvalidInput);
+        }
+        self.reconcile(
+            action.receipt,
+            evidence,
+            (mapping.0, mapping.1, Some(lifecycle)),
             Some(action),
             build,
         )
@@ -99,14 +169,14 @@ impl Store {
         &mut self,
         receipt: ReceiptId,
         mut evidence: Interpretation,
-        mapping: (&[bool], &[crate::Parked]),
+        mapping: (&[bool], &[crate::Parked], Option<StatusLifecycle<'_>>),
         action: Option<&crate::Reprocess>,
         build: F,
     ) -> Result<InterpretationCommit, Error>
     where
         F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
     {
-        let (corrections, findings) = mapping;
+        let (corrections, findings, lifecycle) = mapping;
         let stored = self.receipt(receipt)?.ok_or(Error::UnknownReceipt)?;
         if action.is_none()
             && (evidence.config != stored.config
@@ -128,7 +198,12 @@ impl Store {
         }
         let findings = findings
             .iter()
-            .map(|finding| self.encode(finding))
+            .map(|finding| {
+                self.encode(&crate::parked::ParkingEvidence {
+                    details: finding.clone(),
+                    context: None,
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let limit = self.limits.record_bytes;
         let receipt_key = key(&receipt)?;
@@ -147,19 +222,54 @@ impl Store {
         )?;
         let mut outcomes = Vec::new();
         let mut revisions: Vec<(String, i64, analyte_model::Digest)> = Vec::new();
+        let mut staged = Vec::<(String, ResultContent)>::new();
         if let Reading::Results(results) = &mut evidence.outcome {
             for (result, correction) in results.iter_mut().zip(corrections) {
                 if result.receipt != receipt {
                     return Err(Error::InvalidInput);
                 }
+                let candidate = result.clone();
                 let content = clinical_digest(result)?;
                 let IdentityStatus::Resolved(identity) = &mut result.identity else {
                     outcomes.push(RevisionOutcome::Unresolved);
                     continue;
                 };
                 let identity_key = key(&(&stored.metadata.machine, &identity.observation))?;
+                if let Some(policy) = lifecycle
+                    && status::other_final_run(
+                        &tx,
+                        &stored.metadata.machine,
+                        &candidate,
+                        &staged,
+                        policy,
+                        self.limits.page_rows,
+                        limit,
+                    )?
+                {
+                    result.identity = IdentityStatus::Unresolved(
+                        analyte_model::Reason::new(
+                            "multiple final runs under the same order and test",
+                        )
+                        .map_err(|_| Error::InvalidInput)?,
+                    );
+                    outcomes.push(RevisionOutcome::Conflict);
+                    continue;
+                }
                 // A delayed retransmission may refer to any retained revision, not just the latest.
                 let same: Option<i64> = tx.query_row("SELECT revision FROM observation_revisions WHERE identity_key=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1", params![identity_key, content.0.as_slice()], |r| r.get(0)).optional()?;
+                // Older digests included source offsets. Compare retained typed evidence
+                // on a miss; do not rewrite history or silently treat old results as new.
+                let same = match same {
+                    Some(revision) => Some(revision),
+                    None => same_retained_content(
+                        &tx,
+                        &identity_key,
+                        &identity.observation,
+                        &content,
+                        self.limits.page_rows,
+                        limit,
+                    )?,
+                };
                 let same = revisions
                     .iter()
                     .rev()
@@ -188,19 +298,33 @@ impl Store {
                     .as_slice()
                     .iter()
                     .any(|p| p.status == ResultStatus::Withdrawn);
+                let progression = if let Some(policy) = lifecycle.filter(|_| previous.is_some()) {
+                    let prior = staged
+                        .iter()
+                        .rev()
+                        .find(|(key, _)| key == &identity_key)
+                        .map(|(_, result)| result.clone())
+                        .map(Ok)
+                        .unwrap_or_else(|| {
+                            status::latest(&tx, &identity_key, limit)
+                                .and_then(|result| result.ok_or(Error::Corruption))
+                        })?;
+                    policy.permits(&prior, &candidate)
+                } else {
+                    lifecycle.is_none() && (*correction || withdrawn)
+                };
                 let outcome = match previous {
                     None => RevisionOutcome::New(Revision(0)),
-                    Some(previous) if *correction || withdrawn => {
-                        RevisionOutcome::Correction(Revision(
-                            u64::try_from(previous.checked_add(1).ok_or(Error::Conflict)?)
-                                .map_err(|_| Error::Corruption)?,
-                        ))
-                    }
+                    Some(previous) if progression => RevisionOutcome::Correction(Revision(
+                        u64::try_from(previous.checked_add(1).ok_or(Error::Conflict)?)
+                            .map_err(|_| Error::Corruption)?,
+                    )),
                     Some(_) => RevisionOutcome::Conflict,
                 };
                 match outcome {
                     RevisionOutcome::New(revision) | RevisionOutcome::Correction(revision) => {
                         identity.revision = revision;
+                        staged.push((identity_key.clone(), result.clone()));
                         revisions.push((
                             identity_key,
                             i64::try_from(revision.0).map_err(|_| Error::Conflict)?,
@@ -299,7 +423,7 @@ impl Store {
         }
         for delivery in deliveries {
             let eligible = match &evidence.outcome {
-                Reading::Results(results) => results.iter().zip(&outcomes).any(|(r,o)| r.may_deliver_to_production() && matches!(o, RevisionOutcome::New(_) | RevisionOutcome::Correction(_)) && matches!(&r.identity, IdentityStatus::Resolved(id) if id.observation == delivery.ordering_key.observation)),
+                Reading::Results(results) => results.iter().zip(&outcomes).any(|(r,o)| r.may_deliver_to_production() && lifecycle.is_none_or(|policy|policy.may_deliver(r)) && matches!(o, RevisionOutcome::New(_) | RevisionOutcome::Correction(_)) && matches!(&r.identity, IdentityStatus::Resolved(id) if id.observation == delivery.ordering_key.observation)),
                 Reading::Failed(_) => false,
             };
             if !eligible
@@ -308,30 +432,30 @@ impl Store {
             {
                 return Err(Error::InvalidInput);
             }
-            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'pending',0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version])?;
+            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version,crate::DeliveryState::Pending])?;
         }
         match &evidence.outcome {
             Reading::Failed(reason) => {
                 tx.execute(
                     "INSERT INTO parked(evidence) VALUES (?1)",
-                    [key(&(
+                    [crate::parked::evidence(
                         "interpretation_failure",
-                        &receipt_key,
-                        reason,
-                        version,
-                    ))?],
+                        &serde_json::from_str::<String>(&receipt_key)?,
+                        reason.as_str(),
+                        Some(crate::parked::ParkingContext::Interpretation { version }),
+                    )?],
                 )?;
             }
             Reading::Results(results) => {
                 if action.is_some() && results.is_empty() && findings_empty {
                     tx.execute(
                         "INSERT INTO parked(evidence) VALUES (?1)",
-                        [key(&(
+                        [crate::parked::evidence(
                             "interpretation_failure",
-                            &receipt_key,
+                            &serde_json::from_str::<String>(&receipt_key)?,
                             "reprocessing produced no results",
-                            version,
-                        ))?],
+                            Some(crate::parked::ParkingContext::Interpretation { version }),
+                        )?],
                     )?;
                 }
                 for (index, (result, outcome)) in results.iter().zip(&outcomes).enumerate() {
@@ -343,13 +467,15 @@ impl Store {
                     {
                         tx.execute(
                             "INSERT INTO parked(evidence) VALUES (?1)",
-                            [key(&(
+                            [crate::parked::evidence(
                                 "result_reconciliation",
-                                &receipt_key,
-                                index,
-                                format!("{outcome:?}"),
-                                version,
-                            ))?],
+                                &serde_json::from_str::<String>(&receipt_key)?,
+                                &format!("result reconciliation: {outcome:?}"),
+                                Some(crate::parked::ParkingContext::Result {
+                                    version: Some(version),
+                                    index,
+                                }),
+                            )?],
                         )?;
                     }
                 }
@@ -431,4 +557,43 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+fn same_retained_content(
+    tx: &rusqlite::Transaction<'_>,
+    identity_key: &str,
+    observation: &analyte_model::ObservationIdentity,
+    content: &analyte_model::Digest,
+    maximum_rows: usize,
+    maximum_bytes: usize,
+) -> Result<Option<i64>, Error> {
+    let bound = maximum_rows
+        .checked_add(1)
+        .ok_or(Error::RevisionHistoryLimit)?;
+    let mut statement = tx.prepare("SELECT r.revision,i.evidence FROM observation_revisions r JOIN interpretations i ON i.receipt=r.receipt AND i.version=r.interpretation_version WHERE r.identity_key=?1 ORDER BY r.revision DESC LIMIT ?2")?;
+    let mut rows = statement.query(params![
+        identity_key,
+        i64::try_from(bound).map_err(|_| Error::RevisionHistoryLimit)?
+    ])?;
+    let mut count = 0usize;
+    while let Some(row) = rows.next()? {
+        if count >= maximum_rows {
+            return Err(Error::RevisionHistoryLimit);
+        }
+        count = count.checked_add(1).ok_or(Error::RevisionHistoryLimit)?;
+        let revision: i64 = row.get(0)?;
+        let encoded: String = row.get(1)?;
+        if encoded.len() > maximum_bytes {
+            return Err(Error::Corruption);
+        }
+        let evidence: Interpretation = serde_json::from_str(&encoded)?;
+        let Reading::Results(results) = evidence.outcome else {
+            return Err(Error::Corruption);
+        };
+        let retained = results.iter().find(|result| matches!(&result.identity, IdentityStatus::Resolved(identity) if &identity.observation == observation && i64::try_from(identity.revision.0).ok() == Some(revision))).ok_or(Error::Corruption)?;
+        if clinical_digest(retained)? == *content {
+            return Ok(Some(revision));
+        }
+    }
+    Ok(None)
 }
