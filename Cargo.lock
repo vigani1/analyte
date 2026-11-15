@@ -150,6 +150,11 @@ dependencies = [
 [[package]]
 name = "analyte-vidas"
 version = "0.1.0"
+dependencies = [
+ "analyte-model",
+ "proptest",
+ "thiserror",
+]
 
 [[package]]
 name = "anstream"
