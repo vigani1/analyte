@@ -5,6 +5,7 @@ pub mod config;
 mod delivery;
 mod evidence;
 mod machine;
+pub mod orders;
 pub mod output;
 pub mod secrets;
 pub mod service;

@@ -4,10 +4,12 @@
 
 mod identity;
 mod map;
+mod orders;
 mod result;
 mod source;
 mod time;
 mod value;
+pub use orders::*;
 
 use analyte_config::{SyntaxKind, Validated};
 use analyte_model::*;

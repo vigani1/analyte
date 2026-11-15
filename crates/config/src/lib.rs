@@ -1,8 +1,10 @@
 //! Bounded configuration loading and immutable activation snapshots (ADR 0002).
 #![forbid(unsafe_code)]
 
+mod orders;
 mod schema;
 mod validation;
+pub use orders::*;
 pub use schema::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -189,6 +191,9 @@ impl Draft {
         }
         if let Some(v) = o.mappings {
             self.machine.mappings = Some(v);
+        }
+        if let Some(v) = o.orders {
+            self.machine.orders = Some(v);
         }
         if let Some(v) = o.deviations {
             self.machine.deviations = v;

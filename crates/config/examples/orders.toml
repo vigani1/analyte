@@ -1,0 +1,14 @@
+# Synthetic opt-in section appended to the ASTM teaching definition.
+[orders]
+send_ahead = true
+tests = [{app={namespace="demo",value="DEMO"},machine_components=["", "", "", "SEND"]}]
+priorities = [{app="routine",machine="R"}]
+[orders.query]
+deadline_ms = 1000
+when_untrusted = "error"
+[orders.astm]
+specimen = {group="order",record="O",field=3,component=1,repetition=1}
+test = {group="order",record="O",field=5,component=1,repetition=1}
+priority = {group="order",record="O",field=6,component=1,repetition=1}
+action = {group="order",record="O",field=12,component=1,repetition=1}
+action_code = "N"

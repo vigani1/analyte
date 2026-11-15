@@ -90,6 +90,9 @@ fn field(field: &Field, syntax: SyntaxKind, path: &str, key: &str) -> Result<(),
 }
 
 pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
+    if let Some(orders) = &m.orders {
+        orders.validate(m, path)?;
+    }
     let t = &m.transport;
     if !(1..=300_000).contains(&t.operation_timeout_ms) {
         return Err(invalid(

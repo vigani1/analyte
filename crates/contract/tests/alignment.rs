@@ -279,7 +279,7 @@ fn adr0008_modes_statuses_and_provenance_variants_survive() -> Result<(), Box<dy
         (analyte_model::OrderState::Uncertain, "uncertain"),
     ] {
         assert_eq!(
-            serde_json::to_value(analyte_contract::evidence::OrderState::from(&model))?,
+            serde_json::to_value(analyte_contract::evidence::OrderState::try_from(&model)?)?,
             json!(expected)
         );
         let mut event: Value =
@@ -288,6 +288,15 @@ fn adr0008_modes_statuses_and_provenance_variants_survive() -> Result<(), Box<dy
         let _: analyte_contract::OrderEvent = decode(&serde_json::to_vec(&event)?)?;
     }
     Ok(())
+}
+
+#[test]
+fn rule8_internal_sending_has_no_contract_representation() {
+    assert!(matches!(
+        analyte_contract::evidence::OrderState::try_from(&analyte_model::OrderState::Sending),
+        Err(analyte_contract::DocumentError::InternalOrderState)
+    ));
+    assert!(decode::<analyte_contract::evidence::OrderState>(b"\"sending\"").is_err());
 }
 
 #[test]

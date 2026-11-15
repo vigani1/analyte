@@ -479,6 +479,9 @@ pub struct Evidence {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Machine {
+    /// Explicit outbound behavior; omission disables queries and work lists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orders: Option<crate::Orders>,
     /// Must be one.
     pub schema_version: u32,
     /// Definition identity.
@@ -537,6 +540,8 @@ pub struct Site {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Overrides {
+    /// Explicit replacement of outbound behavior.
+    pub orders: Option<crate::Orders>,
     /// Must be one.
     pub schema_version: u32,
     /// Replacement transport settings.

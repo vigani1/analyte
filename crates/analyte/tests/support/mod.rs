@@ -135,7 +135,7 @@ pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error>
         .effective()
         .site()
         .endpoint;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    let stream = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Ok(stream) = TcpStream::connect(address).await {
                 return Ok::<_, Error>(stream);
@@ -143,7 +143,25 @@ pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error>
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
-    .await?
+    .await??;
+    // Listeners are bound before the service starts, so an accepted connection
+    // does not prove the store exists; wait until the latest schema is present.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let ready = database(path).is_ok_and(|db| {
+                db.query_row("SELECT count(*) FROM machine_orders", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .is_ok()
+            });
+            if ready {
+                return Ok::<_, Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await??;
+    Ok(stream)
 }
 
 pub(super) async fn hl7(peer: &mut TcpStream, message: &[u8]) -> Result<String, Error> {
@@ -181,10 +199,12 @@ pub(super) async fn astm(peer: &mut TcpStream, message: &[u8]) -> Result<(), Err
 }
 
 pub(super) fn database(path: &Path) -> Result<rusqlite::Connection, Error> {
-    let connection = rusqlite::Connection::open(
+    // Never create the file: only the service may create and migrate its store.
+    let connection = rusqlite::Connection::open_with_flags(
         path.parent()
             .ok_or("parent missing")?
             .join("data/analyte.db"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
     connection.busy_timeout(Duration::from_secs(1))?;
     Ok(connection)
