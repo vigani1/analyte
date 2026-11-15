@@ -1,4 +1,5 @@
 //! HL7 store-and-forward ACK decisions follow durable interpretation.
+use super::connection_input::{self, Input};
 use crate::{Error, evidence, invalid};
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};
 use analyte_model::ReceiptId;
@@ -51,15 +52,14 @@ pub(super) async fn session(
                 biased;
                 () = super::stopping(&mut stop) => break,
                 () = tokio::time::sleep(wait) => None,
-                event = conn.receive() => match event {
-                    Ok(Some(event)) => Some(event),
-                    Ok(None) => break,
+                event = connection_input::receive(conn) => match event {
+                    Ok(event) => Some(event),
                     Err(analyte_transport::Error::Deadline(_)) => None,
                     Err(error) => return Err(error.into()),
                 },
             };
             let bytes = match event {
-                Some(analyte_transport::Event::Opened { session }) => {
+                Some(Input::Opened { session }) => {
                     tracing::info!(
                         machine = machine.id.as_str(),
                         session,
@@ -67,13 +67,13 @@ pub(super) async fn session(
                     );
                     Vec::new()
                 }
-                Some(analyte_transport::Event::Received { bytes, .. }) => bytes,
-                Some(analyte_transport::Event::Closed(_)) => break,
+                Some(Input::Bytes { bytes }) => bytes,
+                Some(Input::Closed(_)) => break,
                 Some(
-                    analyte_transport::Event::Failed(_)
-                    | analyte_transport::Event::RecordingFailed(_),
+                    Input::Failed(_)
+                    | Input::RecordingFailed(_),
                 )
-                | None => Vec::new(),
+                | Some(Input::Tick) | None => transport_failure_as_empty_input(),
             };
             input_evidence = bytes.clone();
             let events = if bytes.is_empty() {
@@ -148,7 +148,7 @@ pub(super) async fn session(
                             } else {
                                 Event::NotInterpretable(
                                     token,
-                                    super::hl7_error::build(location.as_ref(), b"207", b"operator-review"),
+                                    super::error_location::build(location.as_ref(), b"207", b"operator-review"),
                                     false,
                                 )
                             };
@@ -245,4 +245,10 @@ pub(super) async fn session(
             .await?;
     }
     result
+}
+
+// Compatibility: a failed transport attempt advances the dialog with empty input.
+// It does not imply EOF or durable acceptance of a message.
+fn transport_failure_as_empty_input() -> Vec<u8> {
+    Vec::new()
 }

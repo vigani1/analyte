@@ -1,5 +1,6 @@
 //! Host-polled Autolyser connection; a corrupt report blocks R until L recovery.
-use super::vendor::{self, Input, ms};
+use super::connection_input::Input;
+use super::custody::{self, ms};
 use crate::{Error, evidence, invalid};
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
@@ -28,7 +29,7 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    super::autolyser_custody::ensure_reconciled(store, machine).await?;
+    super::poll_custody::ensure_reconciled(store, machine).await?;
     let policy = &settings.policy;
     let dialog = Dialog::new(Config {
         poll: ms(policy.poll_ms),
@@ -61,7 +62,7 @@ pub(super) async fn session(
     let result = async {
         loop {
             state.end_code = "Autolyser-input-failed";
-            let input = vendor::input(
+            let input = super::connection_input::journaled(
                 machine,
                 store,
                 conn,
@@ -69,9 +70,12 @@ pub(super) async fn session(
                 state.wake.saturating_sub(state.start.elapsed()),
             )
             .await?;
-            let ended = matches!(input, Input::End);
+            let ended = matches!(
+                input,
+                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_)
+            );
             state.end_code = match &input {
-                Input::End => {
+                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
                     if *stop.borrow() {
                         "Autolyser-transfer-cancelled"
                     } else {
@@ -79,14 +83,14 @@ pub(super) async fn session(
                     }
                 }
                 Input::Tick => "Autolyser-transfer-timeout",
-                Input::Opened | Input::Bytes(_) => "Autolyser-transfer-error",
+                Input::Opened { .. } | Input::Bytes { .. } => "Autolyser-transfer-error",
             };
             let events = match input {
-                Input::Opened => {
+                Input::Opened { .. } => {
                     state.ready = false;
                     vec![Event::Poll(Request::Next)]
                 }
-                Input::Bytes(bytes) => bytes.into_iter().map(Event::Byte).collect(),
+                Input::Bytes { bytes } => bytes.into_iter().map(Event::Byte).collect(),
                 Input::Tick => {
                     let actions = state.dialog.step(state.start.elapsed(), Event::Tick);
                     // Tick alone can initiate L recovery. Never interleave R with it.
@@ -121,11 +125,13 @@ pub(super) async fn session(
                         Vec::new()
                     }
                 }
-                Input::End => vec![Event::Disconnect],
+                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+                    vec![Event::Disconnect]
+                }
             };
             for event in events {
                 if matches!(event, Event::Poll(Request::Next)) {
-                    state.guard = Some(super::autolyser_custody::reserve(store, machine).await?);
+                    state.guard = Some(super::poll_custody::reserve(store, machine).await?);
                 }
                 let actions = state.dialog.step(state.start.elapsed(), event);
                 if process(actions, &mut state, machine, store, conn, policy).await? {
@@ -140,14 +146,14 @@ pub(super) async fn session(
     .await;
     let mut result = result;
     if let Err(effect) =
-        super::autolyser_custody::uncertain(store, state.guard, machine, state.end_code).await
+        super::poll_custody::uncertain(store, state.guard, machine, state.end_code).await
     {
-        result = Err(vendor::effect_failure(result.err(), effect));
+        result = Err(custody::effect_failure(result.err(), effect));
     }
     if let Some(order) = state.active.as_ref()
         && let Err(effect) = crate::orders::sending::uncertain(store, order, state.end_code).await
     {
-        result = Err(vendor::effect_failure(result.err(), effect));
+        result = Err(custody::effect_failure(result.err(), effect));
     }
     result
 }
@@ -179,7 +185,7 @@ async fn process(
         match action {
             Action::Write(bytes) => {
                 *end_code = "Autolyser-write-failed";
-                vendor::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
+                custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
                 *end_code = "Autolyser-transfer-error";
             }
             Action::Store(token, raw) => {
@@ -228,7 +234,7 @@ async fn process(
                 }
                 *ready = true;
                 *recovering = false;
-                super::autolyser_custody::complete(store, guard, machine).await?;
+                super::poll_custody::complete(store, guard, machine).await?;
             }
             Action::Park(error) => {
                 if let Some(order) = active.as_ref() {
@@ -255,19 +261,19 @@ async fn process(
                     None => evidence::park_bytes(store, machine, Vec::new(), &reason).await,
                 };
                 if let Err(error) = parked {
-                    return Err(vendor::effect_failure(failure, error));
+                    return Err(custody::effect_failure(failure, error));
                 }
                 if let Err(error) =
-                    super::autolyser_custody::uncertain(store, *guard, machine, &reason).await
+                    super::poll_custody::uncertain(store, *guard, machine, &reason).await
                 {
-                    return Err(vendor::effect_failure(failure, error));
+                    return Err(custody::effect_failure(failure, error));
                 }
             }
             Action::Empty => {
                 receipt.take();
                 *ready = !*recovering;
                 if !*recovering {
-                    super::autolyser_custody::complete(store, guard, machine).await?;
+                    super::poll_custody::complete(store, guard, machine).await?;
                 }
             }
             Action::Insertion(reception) => {
@@ -298,7 +304,7 @@ async fn process(
             }
             Action::Uncertain => {
                 *ready = false;
-                super::autolyser_custody::uncertain(
+                super::poll_custody::uncertain(
                     store,
                     *guard,
                     machine,

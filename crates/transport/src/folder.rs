@@ -319,3 +319,159 @@ impl Claimed {
         result.map_err(|e| io_error(&self.path, io::Error::other(e)))
     }
 }
+
+/// Host reply after durable receipt and interpretation; no reply preserves the claim.
+#[derive(Clone, Copy)]
+pub enum Disposition {
+    /// Move the claim to the archive.
+    Archive,
+    /// Move the claim to quarantine.
+    Quarantine,
+}
+/// One claimed file and its completion reply channel.
+pub struct Item {
+    /// Byte connection owned by the host until completion.
+    pub connection: crate::Connection,
+    /// Reply only after the host's custody decision.
+    pub completed: std::sync::mpsc::SyncSender<Disposition>,
+}
+// A file is delivered serially: one queued chunk/command and a five-second
+// handoff/operation budget bound memory and waits without declaring clinical acceptance.
+const FILE_CHANNEL_LIMIT: usize = 1;
+const HANDOFF_TIMEOUT: Duration = Duration::from_secs(5);
+fn handoff_deadline() -> Instant {
+    Instant::now()
+        .checked_add(HANDOFF_TIMEOUT)
+        .unwrap_or_else(Instant::now)
+}
+/// Blocking watch/claim/deliver owner. Run on a dedicated, joined thread.
+/// Archive and quarantine are reachable only after a host reply; cancellation,
+/// a lost reply or delivery failure leaves the claim recoverable on restart.
+pub struct Watch {
+    /// Producer rename handoff directory.
+    pub incoming: PathBuf,
+    /// Protected claim/archive/quarantine root.
+    pub root: PathBuf,
+    /// Maximum file size.
+    pub limit: u64,
+}
+impl Watch {
+    /// Drives claimed files until cancellation or the host disconnects.
+    /// # Errors
+    /// Preserves filesystem and transport causes; never finishes a failed handoff.
+    pub fn run(
+        self,
+        cancelled: &std::sync::atomic::AtomicBool,
+        sender: &tokio::sync::mpsc::Sender<Item>,
+        mut recorder: Option<Box<dyn FnMut() -> Option<crate::recording::Tap> + Send>>,
+        mut finish_name: impl FnMut() -> String,
+    ) -> Result<(), WatchError> {
+        use std::{
+            sync::{atomic::Ordering, mpsc},
+            thread,
+        };
+        let Self {
+            incoming,
+            root,
+            limit,
+        } = self;
+        let claimed = root.join("claimed");
+        fs::create_dir_all(&claimed)?;
+        fs::create_dir_all(root.join("archive"))?;
+        fs::create_dir_all(root.join("quarantine"))?;
+        // Completion is producer rename into incoming, never a guessed stable size.
+        let mut watcher = Watcher::new(incoming, claimed, None, limit)?;
+        let mut claims = watcher.recover()?;
+        while !cancelled.load(Ordering::Acquire) {
+            if claims.is_empty() {
+                claims = watcher.scan()?;
+            }
+            for claim in claims.drain(..) {
+                if cancelled.load(Ordering::Acquire) {
+                    return Ok(());
+                }
+                let (connection, mut side) =
+                    crate::connection(crate::Limits::new(FILE_CHANNEL_LIMIT, HANDOFF_TIMEOUT)?);
+                if let Some(tap) = recorder.as_mut().and_then(|factory| factory()) {
+                    side = side.with_recording(tap);
+                }
+                let cancellation = connection.cancellation();
+                let (reply, response) = mpsc::sync_channel(1);
+                let mut item = Item {
+                    connection,
+                    completed: reply,
+                };
+                let until = handoff_deadline();
+                loop {
+                    match sender.try_send(item) {
+                        Ok(()) => break,
+                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                            return Ok(());
+                        }
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(returned)) => {
+                            item = returned;
+                        }
+                    }
+                    if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
+                        return Ok(());
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                }
+                if let Err(error) = claim.deliver(side) {
+                    let interrupted = match &error {
+                        Error::Io { source, .. } => source
+                            .get_ref()
+                            .and_then(|source| source.downcast_ref::<crate::Error>())
+                            .is_some_and(|source| {
+                                matches!(
+                                    source,
+                                    crate::Error::ConsumerClosed | crate::Error::Deadline(_)
+                                )
+                            }),
+                        Error::Oversized(_) | Error::Invalid(_) => false,
+                    };
+                    if interrupted
+                        && (cancelled.load(Ordering::Acquire) || cancellation.is_cancelled())
+                    {
+                        return Ok(());
+                    }
+                    return Err(error.into());
+                }
+                // A lost reply leaves the source claimed; a restart reprocesses it safely.
+                let until = handoff_deadline();
+                let disposition = loop {
+                    match response.recv_timeout(Duration::from_millis(10)) {
+                        Ok(disposition) => break disposition,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
+                                return Ok(());
+                            }
+                        }
+                    }
+                };
+                let area = match disposition {
+                    Disposition::Archive => "archive",
+                    Disposition::Quarantine => "quarantine",
+                };
+                claim.finish(&root.join(area).join(finish_name()))?;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        Ok(())
+    }
+}
+
+/// Specific failures from the blocking file owner.
+#[derive(Debug, thiserror::Error)]
+pub enum WatchError {
+    /// Claim or completion operation failed.
+    #[error(transparent)]
+    File(#[from] Error),
+    /// Directory creation failed.
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    /// Connection limit validation failed.
+    #[error(transparent)]
+    Transport(#[from] crate::Error),
+}
