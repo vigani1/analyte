@@ -25,6 +25,27 @@ which apply to people and coding assistants alike.
 - Each machine config or driver states its evidence level (proven, simulated
   or documented) and never raises it without the evidence.
 
+## Service test concurrency and startup benchmark
+
+To repeat the manual capacity measurement (creates and
+removes a synthetic store of at least 2 GiB in a temporary directory), run:
+
+```text
+cargo test -p analyte-store --release startup_timing_two_gib_synthetic_store -- --ignored --nocapture
+```
+
+Windows measurement, 2026-11-15: a 2,150,469,632-byte synthetic store took
+1.713..1.775 seconds for integrity checking, 24.014 seconds for upgrade startup
+(v7 to v8: 21.042 seconds; v8 to v9: 1.483 seconds), and 1.604..1.630 seconds
+for current-schema restarts. These are local disk/cache measurements.
+
+The global test-thread override was removed after the startup fix. Three concurrent
+full analyte integration binaries with default threads passed in 35.19, 35.64 and
+35.49 seconds (127 passed, one external-network test ignored in each). Concurrent
+comparison runs with explicit four and two threads took 66.85 and 126.31 seconds.
+These runs also overlapped compilation; the numbers describe that load rather than
+an isolated performance benchmark. No fixture semaphore was needed.
+
 ## AI-assisted contributions
 
 AI tools are allowed, with these conditions:

@@ -1,4 +1,5 @@
 //! ASTM journaling precedes every data ACK (ADR 0003).
+use super::connection_input::{self, Input};
 use crate::orders::astm::{Pending, Request};
 use crate::{Error, deadline, evidence, invalid};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
@@ -57,9 +58,8 @@ pub(super) async fn session(
                 () = super::stopping(&mut stop) => break,
                 () = std::future::ready(()), if response.is_some() && wake.is_none() => None,
                 () = tokio::time::sleep(wake.map_or(Duration::from_secs(1), |d: Duration| d.saturating_sub(start.elapsed()))) => None,
-                event = conn.receive() => match event {
-                    Ok(Some(event)) => Some(event),
-                    Ok(None) => break,
+                event = connection_input::receive(conn) => match event {
+                    Ok(event) => Some(event),
                     Err(analyte_transport::Error::Deadline(_)) => None,
                     Err(error) => return Err(error.into()),
                 },
@@ -71,14 +71,14 @@ pub(super) async fn session(
                 },
             };
             let bytes = match event {
-                Some(analyte_transport::Event::Opened { session }) => {
+                Some(Input::Opened { session }) => {
                     tracing::info!(machine = machine.id.as_str(), session, "ASTM connection opened");
                     dialog = Dialog::new(config.clone(), Epoch(uuid::Uuid::now_v7().as_u128()));
                     Vec::new()
                 }
-                Some(analyte_transport::Event::Received { bytes, .. }) => bytes,
-                Some(analyte_transport::Event::Closed(_)) => break,
-                Some(analyte_transport::Event::Failed(_) | analyte_transport::Event::RecordingFailed(_)) | None => Vec::new(),
+                Some(Input::Bytes { bytes }) => bytes,
+                Some(Input::Closed(_)) => break,
+                Some(Input::Failed(_) | Input::RecordingFailed(_)) | Some(Input::Tick) | None => Vec::new(),
             };
             let outgoing = if bytes.is_empty() && wake.is_none() && response.is_none() && pending.is_none() && Instant::now() >= next_order_poll {
                 next_order_poll = Instant::now().checked_add(Duration::from_secs(1)).ok_or_else(||invalid("order poll deadline overflow"))?;

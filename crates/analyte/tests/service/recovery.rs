@@ -42,7 +42,7 @@ async fn forced_exit_child() -> Result<(), Error> {
     )?;
     let mut loaded = program(&path, &url)?;
     loaded.stall_store_on_shutdown_for_test()?;
-    let running = Running::start_program(loaded, "synthetic-api")?;
+    let running = Running::start_program(loaded, "synthetic-api").await?;
     let mut astm_peer = connect(&path, "astm").await?;
     tokio::time::timeout(HANG_GUARD, async {
         while database(&path)?
@@ -175,7 +175,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
     );
     let mut loaded = Program::load(&path)?;
     loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
-    let restarted = Running::start_program(loaded, "synthetic-api")?;
+    let restarted = Running::start_program(loaded, "synthetic-api").await?;
     let duplicate = reference.event().await?;
     assert!(duplicate.outcome.contains("duplicate"));
     assert_eq!(duplicate.id, original.id);

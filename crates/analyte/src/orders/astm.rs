@@ -6,7 +6,6 @@ use analyte_model::SampleId;
 use analyte_store::{Handle, Lookup};
 use std::{future::Future, pin::Pin, time::Instant};
 #[cfg(test)]
-#[path = "query_tests.rs"]
 mod tests;
 
 type LookupFuture<'a> = Pin<Box<dyn Future<Output = Result<Option<Reply>, Error>> + Send + 'a>>;
@@ -195,20 +194,10 @@ async fn answer(
                                 machine: machine.id.clone(),
                             };
                             let version = fields.version;
-                            let rejected = store
-                                .request(until, move |store| {
-                                    store.reject_unsent(
-                                        &analyte_store::OrderReservation {
-                                            identity: &identity,
-                                            version,
-                                            now: jiff::Timestamp::now().as_second(),
-                                            freshness,
-                                        },
-                                        reason,
-                                        super::event,
-                                    )
-                                })
-                                .await?;
+                            let rejected = super::reservation::reject(
+                                store, until, identity, version, freshness, reason,
+                            )
+                            .await?;
                             if let Err(refusal) = rejected {
                                 tracing::info!(reason=%refusal,"query mapping rejection was superseded before recording");
                             }

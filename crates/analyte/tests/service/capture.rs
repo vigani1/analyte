@@ -70,7 +70,7 @@ async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_
                 b"deliberately block capture directory",
             )?;
         }
-        let running = Running::start_program(program, "synthetic-api")?;
+        let running = Running::start_program(program, "synthetic-api").await?;
         let mut peer = if let Some(listener) = &listener {
             tokio::time::timeout(HANG_GUARD, listener.accept())
                 .await??

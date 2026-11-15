@@ -98,21 +98,12 @@ async fn server(
                 completed=sessions.join_next(),if !sessions.is_empty()=>{
                     if let Some(completed)=completed { report(&machine,completed.map_err(|error|task_failure(&error))?); }
                 },
-                accepted=listener.accept(),if sessions.len()<4=>{
+                accepted=listener.accept(),if sessions.len()<SESSION_LIMIT=>{
                     let (stream,_)=accepted?;
-                    let machine=machine.clone();let store=store.clone();let settings=settings.clone();let outbound=outbound.clone();let stop=sessions_rx.clone();let capture=capture.clone();
-                    sessions.spawn(async move {
-                        let limits=analyte_transport::Limits::new(16,Duration::from_millis(u64::from(settings.transport.operation_timeout_ms)))?;
-                        let (mut conn,side)=analyte_transport::connection(limits);
-                        let side=match &capture {Some(capture)=>capture.attach(side),None=>side};
-                        let context=evidence::Connection::new(&machine)?;
-                        let dialog=async move {
-                            let result=super::session_with_outbound(&context,&settings,&store,&mut conn,stop,Some(&outbound)).await;
-                            conn.cancellation().cancel();drop(conn);result
-                        };
-                        let (result,transport)=tokio::join!(dialog,analyte_transport::tcp::pump(stream,side));
-                        transport?;result
-                    });
+                    sessions.spawn(accepted_connection(
+                        stream, machine.clone(), store.clone(), settings.clone(),
+                        outbound.clone(), sessions_rx.clone(), capture.clone(),
+                    ));
                 }
             }
         }
@@ -136,6 +127,49 @@ async fn server(
     }
     result
 }
+// Bound concurrent inbound dialogs; excess connections remain in the listener backlog.
+const SESSION_LIMIT: usize = 4;
+// Bound queued transport events and commands per link, independently of dialog admission.
+const CHANNEL_LIMIT: usize = 16;
+
+async fn accepted_connection(
+    stream: TcpStream,
+    machine: Arc<Machine>,
+    store: Arc<Handle>,
+    settings: Arc<LawStack>,
+    outbound: mpsc::Sender<Work>,
+    stop: watch::Receiver<bool>,
+    capture: Option<Arc<crate::capture::Capture>>,
+) -> Result<(), Error> {
+    let limits = analyte_transport::Limits::new(
+        CHANNEL_LIMIT,
+        Duration::from_millis(u64::from(settings.transport.operation_timeout_ms)),
+    )?;
+    let (mut conn, side) = analyte_transport::connection(limits);
+    let side = match &capture {
+        Some(capture) => capture.attach(side),
+        None => side,
+    };
+    let context = evidence::Connection::new(&machine)?;
+    let dialog = async move {
+        let result = super::session_with_outbound(
+            &context,
+            &settings,
+            &store,
+            &mut conn,
+            stop,
+            Some(&outbound),
+        )
+        .await;
+        conn.cancellation().cancel();
+        drop(conn);
+        result
+    };
+    let (result, transport) = tokio::join!(dialog, analyte_transport::tcp::pump(stream, side));
+    transport?;
+    result
+}
+
 // Join diagnostics must not expose a panic payload from a source transaction.
 fn task_failure(error: &tokio::task::JoinError) -> Error {
     if error.is_panic() {
@@ -248,7 +282,7 @@ async fn exchange(
         result=tokio::time::timeout_at(until.into(),TcpStream::connect(outbound))=>result.map_err(|_|invalid("LAW outbound connect deadline"))??,
     };
     let limits = analyte_transport::Limits::new(
-        16,
+        CHANNEL_LIMIT,
         Duration::from_millis(u64::from(settings.transport.operation_timeout_ms)),
     )?;
     let (mut conn, side) = analyte_transport::connection(limits);

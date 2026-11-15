@@ -103,7 +103,7 @@ pub(crate) async fn interpret_with_location(
 ) -> Result<
     (
         InterpretationOutcome,
-        Option<crate::machine::hl7_error::Location>,
+        Option<crate::machine::error_location::Location>,
     ),
     Error,
 > {
@@ -119,7 +119,7 @@ pub(crate) async fn interpret_with_location(
         .hl7_options()
         .and_then(|options| {
             let payload = crate::machine::interpretation::unpack(machine, &receipt.raw).ok()?;
-            crate::machine::hl7_error::mapping_location(&mapping, &payload, options.terminator)
+            crate::machine::error_location::mapping_location(&mapping, &payload, options.terminator)
         });
     let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
     Ok((accepted, location))

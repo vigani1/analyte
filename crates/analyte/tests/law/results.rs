@@ -93,7 +93,7 @@ async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c()
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     // B.7.6 p.82: unknown non-null AWOS is rejected, not treated as unsolicited.
     let unknown = result("never-downloaded", "awos-1^LAB", "", "12.30", "F");
@@ -161,7 +161,7 @@ async fn law_tf2b_3_29_4_unsolicited_uses_explicit_analyzer_order_not_invented_a
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     let message = result("unsolicited", "\"\"", "run-1^ANALYZER", "12.30", "F");
     assert!(
@@ -197,7 +197,7 @@ async fn law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_deli
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     for (message, code) in [
         (
@@ -252,7 +252,7 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     let first = result(
         "control-id-longer-than-generic-hl7-twenty",
@@ -338,7 +338,7 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     let mut loaded = program(&path, &reference.url)?;
     let (hook, control) = analyte::test_hooks::Committed::new();
     loaded.pause_law_committed_for_test("law", hook)?;
-    let running = Running::start_program(loaded, "synthetic-api")?;
+    let running = Running::start_program(loaded, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     let wire = analyte_framing::mllp::encode(
         result("durable", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
@@ -402,7 +402,7 @@ async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), 
             false,
         )
         .await?;
-        let running = Running::start(&path, &reference.url, "synthetic-api")?;
+        let running = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         database(&path)?.execute_batch(&format!("CREATE TRIGGER synthetic_storage_failure BEFORE INSERT ON {table} BEGIN SELECT RAISE(FAIL,'synthetic-storage-failure'); END;"))?;
         let wire = analyte_framing::mllp::encode(
@@ -454,6 +454,7 @@ async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<
             Ok(())
         },
         credentials,
+        None,
     ));
     let mut peer = connect(&path, "law").await?;
     let wire = analyte_framing::mllp::encode(
@@ -489,7 +490,7 @@ async fn law_tf2b_3_29_4_mllp_partial_block_deadline_parks_original_without_aa()
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     let partial = b"\x0bMSH|^~\\&|A";
     peer.write_all(partial).await?;
@@ -517,7 +518,7 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     let query = "MSH|^~\\&|A|AF|M|MF|20260101120000+0000||QBP^Q11^QBP_Q11|query1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\rQPD|WOS^Work Order Step^IHELAW|tag1|00012a^LAB\rRCP|I||R^Real Time^HL70394\r";
     let ack = hl7(&mut peer, query.as_bytes()).await?;
@@ -557,7 +558,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     // LAW permits 50-character control IDs; the generic HL7 entry point does not.
     // Reprocessing must retain LAW validation/mapping rather than fall back to HL7.
@@ -650,7 +651,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
         })
         .await?;
     store.shutdown(until()?).await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     check(&reference.event().await?, "awos-1", "LAB", 0, "12.30")?;
     wait_state(&path, "done", 1).await?;
@@ -726,7 +727,7 @@ async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     let first = result("second-obx", "\"\"", "run^ANALYZER", "1.0", "F");
     let obx = first.split("OBX|").nth(1).ok_or("synthetic OBX missing")?;
@@ -781,7 +782,7 @@ async fn law_adr0011_c7_all_status_moves_and_unverified_delivery() -> Result<(),
                 false,
             )
             .await?;
-            let mut running = Running::start(&path, &reference.url, "synthetic-api")?;
+            let mut running = Running::start(&path, &reference.url, "synthetic-api").await?;
             let mut peer = connect(&path, "law").await?;
             let first = result("before", "\"\"", "lifecycle^ANALYZER", "1.0", before);
             assert!(
@@ -791,7 +792,7 @@ async fn law_adr0011_c7_all_status_moves_and_unverified_delivery() -> Result<(),
             );
             if before == "R" && after == "F" {
                 running.stop().await?;
-                running = Running::start(&path, &reference.url, "synthetic-api")?;
+                running = Running::start(&path, &reference.url, "synthetic-api").await?;
                 peer = connect(&path, "law").await?;
             }
             let permitted = matches!(
@@ -850,7 +851,7 @@ async fn law_adr0011_c7_only_one_final_run_in_history_or_batch() -> Result<(), E
             false,
         )
         .await?;
-        let running = Running::start(&path, &reference.url, "synthetic-api")?;
+        let running = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         let first = result("run-one", "\"\"", "order^ANALYZER", "1.0", "F")
             .replace("^99LAB|1|1.0", "^99LAB|1^1^1|1.0");
@@ -874,7 +875,7 @@ async fn law_adr0011_c7_only_one_final_run_in_history_or_batch() -> Result<(), E
             );
             reference.event().await?;
             running.stop().await?;
-            let running = Running::start(&path, &reference.url, "synthetic-api")?;
+            let running = Running::start(&path, &reference.url, "synthetic-api").await?;
             let mut peer = connect(&path, "law").await?;
             assert!(
                 hl7(&mut peer, second.as_bytes())

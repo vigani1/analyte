@@ -6,6 +6,8 @@ mod backup;
 mod capacity;
 mod feed;
 mod open;
+mod startup;
+pub use startup::{DEFAULT_STARTUP_TIMEOUT, StartupStep};
 mod outbox;
 mod parked;
 mod polls;
@@ -55,6 +57,12 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Startup exceeded its budget; the active migration transaction is rolled back.
+    #[error("store startup deadline expired during {step}")]
+    StartupTimeout {
+        /// The operation active when the deadline expired.
+        step: StartupStep,
+    },
     /// Legacy content comparison exceeded the configured reconciliation row bound.
     #[error("observation history comparison exceeds page_rows; operator reconciliation required")]
     RevisionHistoryLimit,

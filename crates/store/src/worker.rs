@@ -23,7 +23,9 @@ pub struct Handle {
 impl Handle {
     /// Starts a worker; opening and migration happen on that thread.
     /// # Errors
-    /// Refuses zero queue capacity or thread creation failures. Opening errors reach requests.
+    /// Refuses invalid queue capacity, thread creation and opening failures. A startup
+    /// timeout names its active step; cancellation interrupts SQLite and joins the owner
+    /// after rollback. Earlier committed migration versions are preserved.
     pub async fn start(
         path: PathBuf,
         limits: Limits,
@@ -36,10 +38,12 @@ impl Handle {
         }
         let (sender, mut receiver) = mpsc::channel::<Request>(capacity);
         let (ready, opened) = oneshot::channel();
+        let startup = crate::startup::Startup::new(deadline);
+        let opening = startup.clone();
         let thread = thread::Builder::new()
             .name("analyte-store".into())
             .spawn(move || {
-                let mut store = match Store::open(&path, limits, space) {
+                let mut store = match Store::open_with_startup(&path, limits, space, &opening) {
                     Ok(store) => {
                         if ready.send(Ok(())).is_err() {
                             return;
@@ -61,9 +65,20 @@ impl Handle {
             sender: Some(sender),
             thread: Some(thread),
         };
+        // Cancellation must interrupt startup before Handle's Drop joins its worker.
+        struct CancelStartup(crate::startup::Startup);
+        impl Drop for CancelStartup {
+            fn drop(&mut self) {
+                self.0.cancel();
+            }
+        }
+        let _cancel = CancelStartup(startup.clone());
         tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), opened)
             .await
-            .map_err(|_| Error::Timeout)?
+            .map_err(|_| {
+                startup.cancel();
+                startup.error()
+            })?
             .map_err(|_| Error::Closed)??;
         Ok(handle)
     }
