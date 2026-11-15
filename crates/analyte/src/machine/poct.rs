@@ -17,6 +17,9 @@ use tokio::sync::watch;
 /// Syntax and POCT containment remain the protocol crate's responsibility.
 fn frame_length(raw: &[u8], maximum_depth: usize) -> Result<Option<usize>, Error> {
     let mut reader = quick_xml::Reader::from_reader(raw);
+    // Boundaries need balanced depth even for a mismatched tag name. The syntax
+    // reader rejects it afterwards, while retaining the complete rejected root.
+    reader.config_mut().check_end_names = false;
     let mut depth = 0usize;
     loop {
         match reader.read_event() {
@@ -137,16 +140,9 @@ pub(super) async fn session(
                     let length = match frame_length(&raw, policy.depth) {
                         Ok(Some(length)) => length,
                         Ok(None) => continue,
-                        Err(error) => {
-                            evidence::park_bytes(
-                                store,
-                                machine,
-                                std::mem::take(&mut raw),
-                                &error.to_string(),
-                            )
-                            .await?;
-                            return Err(error);
-                        }
+                        // Parse the retained bytes through the syntax boundary to
+                        // classify a framing failure and recover a Hello header.
+                        Err(_) => raw.len(),
                     };
                     let wire = raw
                         .get(..length)
@@ -156,6 +152,8 @@ pub(super) async fn session(
                     let message = match Message::parse(&wire, limits) {
                         Ok(message) => message,
                         Err(error) => {
+                            let reference = analyte_poct::hello_error_reference(&wire, limits);
+                            let ack_error = error.acknowledgement_error();
                             evidence::park_bytes(
                                 store,
                                 machine,
@@ -163,6 +161,29 @@ pub(super) async fn session(
                                 &format!("POCT syntax: {error}"),
                             )
                             .await?;
+                            if let Some(reference) = reference {
+                                let actions = dialog.step(
+                                    start.elapsed(),
+                                    DialogEvent::InvalidHello {
+                                        reference,
+                                        error: ack_error,
+                                    },
+                                )?;
+                                if process(
+                                    actions,
+                                    &mut dialog,
+                                    start,
+                                    machine,
+                                    store,
+                                    conn,
+                                    settings,
+                                )
+                                .await?
+                                {
+                                    return Ok(());
+                                }
+                                continue;
+                            }
                             return Err(error.into());
                         }
                     };
@@ -269,6 +290,10 @@ async fn process(
                 actions.extend(
                     dialog.step(start.elapsed(), DialogEvent::Committed { ticket, outcome })?,
                 );
+            }
+            DialogAction::Park { message, reason } => {
+                evidence::park_bytes(store, machine, message.document().raw().to_vec(), reason)
+                    .await?;
             }
             DialogAction::Send { control_id, body } => {
                 let mut limits = limits;

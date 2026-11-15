@@ -402,3 +402,33 @@ fn poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack() -> Res
     ));
     Ok(())
 }
+
+// POCT01-A2 B 4.1.2 p.78: semantic Hello failure sends error ACK then END, not close.
+#[test]
+fn poct01_b4_1_2_invalid_capabilities_are_retained_and_termination_has_deadline()
+-> Result<(), DialogError> {
+    let mut dialog = dialog(2)?;
+    let raw = common::hello("bad").replace(
+        "<DSC.max_message_sz NULL=\"PINF\"/>",
+        "<DSC.max_message_sz V=\"0\"/>",
+    );
+    step(&mut dialog, received(&raw)?)?;
+    let actions = step(&mut dialog, DialogEvent::HelloDecision(true))?;
+    assert!(
+        matches!(actions.first(), Some(DialogAction::Park { message, .. }) if message.document().raw() == raw.as_bytes())
+    );
+    assert!(
+        matches!(sends(&actions).as_slice(), [Outbound::ApplicationError { reference, error: ApplicationError::UnsupportedValue }, Outbound::Terminate(analyte_poct::TerminationReason::Abnormal)] if reference.as_str() == "bad")
+    );
+    assert!(
+        !actions
+            .iter()
+            .any(|a| matches!(a, DialogAction::Close { .. }))
+    );
+    let expired = dialog.step(Duration::from_secs(180), DialogEvent::Tick)?;
+    assert!(matches!(
+        expired.last(),
+        Some(DialogAction::Close { normal: false, .. })
+    ));
+    Ok(())
+}

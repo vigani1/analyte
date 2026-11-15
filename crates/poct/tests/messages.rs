@@ -235,3 +235,36 @@ fn poct01_b_12_probability_accepts_signed_zero_and_endpoints() -> Result<(), Mes
     }
     Ok(())
 }
+
+// POCT01-A2 B 4.1.2 p.78; only a unique, bounded Hello header authorizes a reference.
+#[test]
+fn poct01_b4_1_2_error_reference_is_not_guessed_from_body_or_ambiguous_header() {
+    let raw = hello("header-only").replace("</DEV>", "</broken>");
+    assert_eq!(
+        analyte_poct::hello_error_reference(raw.as_bytes(), limits())
+            .map(|id| id.as_str().to_owned()),
+        Some("header-only".into())
+    );
+    for raw in [
+        raw.replace("<HDR.control_id V=\"header-only\"/>", ""),
+        raw.replace(
+            "<HDR.control_id V=\"header-only\"/>",
+            "<HDR.control_id V=\"one\"/><HDR.control_id V=\"two\"/>",
+        ),
+        raw.replace(
+            "<HDR.control_id V=\"header-only\"/>",
+            "<HDR.control_id V=\"one\" NULL=\"UNK\"/>",
+        ),
+        raw.replace("<HDR>", "<DEV><HDR>"),
+        raw.replace("HEL.R01", "OBS.R01"),
+        raw.replace(
+            "<HDR.control_id V=\"header-only\"/>",
+            "<!--<HDR.control_id V=\"forged\"/>-->",
+        ),
+    ] {
+        assert!(analyte_poct::hello_error_reference(raw.as_bytes(), limits()).is_none());
+    }
+    let mut small = limits();
+    small.message_bytes = 10;
+    assert!(analyte_poct::hello_error_reference(raw.as_bytes(), small).is_none());
+}

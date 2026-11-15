@@ -41,6 +41,15 @@ proven driver.
   tickets from `Close` with durable storage. Reconnection needs a fresh host
   session ID. A late completion never produces an ACK in the old conversation.
 
+Invalid Hello syntax with a complete, unique header control ID is parked before
+an error ACK and abnormal Terminate (Appendix B section 4.1.2, p.78). Recovery
+never guesses an ID from body text or an ambiguous header. Uninterpretable
+capabilities follow the same retained-error-ACK-Terminate order; a plain host
+policy rejection remains distinct. The dialog waits for the correlated final
+ACK or its existing deadline. Program tests:
+`poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw` and
+`poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack`.
+
 ## Identity and mapping
 
 The pure mapper returns unresolved identity because it has no installed machine

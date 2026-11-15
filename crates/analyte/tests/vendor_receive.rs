@@ -913,3 +913,94 @@ async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Resu
     );
     run.close_with_deliveries(2).await
 }
+
+// POCT01-A2 Appendix B 4.1.2 p.78, 3.4.1 p.73: error ACK precedes abnormal END.
+#[tokio::test]
+async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> Result<(), Error> {
+    let base = poct_peer::hello("bad-hello");
+    for (raw, code, reason) in [
+        (
+            base.replace(
+                "DSC.connection_profile_cd V=\"SA\"",
+                "DSC.connection_profile_cd V=\"invalid\"",
+            ),
+            "103",
+            "POCT syntax",
+        ),
+        (
+            base.replace("<DEV.device_id V=\"A1-B2-C3-D4-E5-F6-07-08\"/>", ""),
+            "101",
+            "POCT syntax",
+        ),
+        (base.replace("</DEV>", "</BROKEN>"), "102", "POCT syntax"),
+        (
+            base.replace(
+                "<DSC.max_message_sz NULL=\"PINF\"/>",
+                "<DSC.max_message_sz V=\"0\"/>",
+            ),
+            "200",
+            "POCT Hello capabilities",
+        ),
+        (
+            base.replace("HDR.version_id V=\"POCT01\"", "HDR.version_id V=\"POCT02\""),
+            "201",
+            "POCT syntax",
+        ),
+    ] {
+        let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+        run.peer.write_all(raw.as_bytes()).await?;
+        let ack = xml(&mut run.peer).await?;
+        let ack = analyte_poct::Message::parse(&ack, poct_peer::limits())?;
+        assert!(
+            matches!(ack.body(), analyte_poct::Body::Acknowledgement { kind: analyte_poct::AckKind::Error, reference } if reference.as_str() == "bad-hello")
+        );
+        assert!(
+            String::from_utf8(ack.document().raw().to_vec())?
+                .contains(&format!("ACK.error_detail_cd V=\"{code}\""))
+        );
+        // Both retention and parking have completed before the error response.
+        run.stored(raw.as_bytes(), "analyte-poct")?;
+        run.parked(reason).await?;
+        let end = xml(&mut run.peer).await?;
+        let end = analyte_poct::Message::parse(&end, poct_peer::limits())?;
+        assert!(
+            matches!(end.body(), analyte_poct::Body::Terminate(code) if matches!(code, analyte_poct::Nullable::Value(code) if code.value == "ABN"))
+        );
+        let final_ack = poct_peer::message(
+            "ACK.R01",
+            "end-ack",
+            &format!(
+                "<ACK><ACK.type_cd V=\"AA\"/>{}</ACK>",
+                poct_peer::field("ACK.ack_control_id", end.header().control_id.as_str())
+            ),
+        );
+        run.peer.write_all(final_ack.as_bytes()).await?;
+        let mut byte = [0];
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(5), run.peer.read(&mut byte)).await??,
+            0
+        );
+        run.close().await?;
+    }
+    Ok(())
+}
+
+// POCT01-A2 B 4.1.2 p.78; AGENTS.md rule 4: never guess a reply reference.
+#[tokio::test]
+async fn poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack()
+-> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let raw = poct_peer::hello("one").replace(
+        "<HDR.control_id V=\"one\"/>",
+        "<HDR.control_id V=\"one\"/><HDR.control_id V=\"two\"/>",
+    );
+    run.peer.write_all(raw.as_bytes()).await?;
+    let mut byte = [0];
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), run.peer.read(&mut byte)).await??,
+        0
+    );
+    run.stored(raw.as_bytes(), "analyte-poct")?;
+    run.parked("POCT syntax").await?;
+    run.close().await
+}

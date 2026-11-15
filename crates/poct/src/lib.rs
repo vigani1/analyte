@@ -16,7 +16,7 @@ mod structure;
 pub use data::{Code, DataError, Null, Nullable, Quantity, Timestamp, Value};
 pub use message::{
     AckKind, Body, Capabilities, ControlId, Header, Message, MessageError, Observation, Profile,
-    Role, Service,
+    Role, Service, hello_error_reference,
 };
 
 mod build;

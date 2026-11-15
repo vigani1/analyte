@@ -78,6 +78,13 @@ pub enum CommitOutcome {
 pub enum DialogEvent {
     /// A structurally checked received message. Host retains rejected raw receipts.
     Received(Box<Message>),
+    /// Host has durably parked invalid Hello bytes and recovered a unique header ID.
+    InvalidHello {
+        /// Source control ID, never guessed from body content.
+        reference: ControlId,
+        /// Error classified by the syntax boundary.
+        error: ApplicationError,
+    },
     /// Host policy accepts or rejects the inspected device.
     HelloDecision(bool),
     /// A specific durable storage request completed, possibly out of order.
@@ -115,6 +122,13 @@ pub enum DialogAction {
         ticket: CommitId,
         /// Exact received evidence and typed content.
         message: Box<Message>,
+    },
+    /// Park rejected source evidence before issuing subsequent protocol responses.
+    Park {
+        /// Exact rejected message, never processed as an accepted result.
+        message: Box<Message>,
+        /// Protocol reason without payloads.
+        reason: &'static str,
     },
     /// Build and issue this message in action order; host supplies creation time.
     Send {
@@ -254,6 +268,17 @@ impl Dialog {
             DialogEvent::Received(message) => {
                 self.response_deadline = response_deadline;
                 self.receive(message, &mut actions)?;
+            }
+            DialogEvent::InvalidHello { reference, error } => {
+                if matches!(self.phase, Phase::Hello) {
+                    self.send(
+                        Outbound::ApplicationError { reference, error },
+                        &mut actions,
+                    )?;
+                    self.terminate(TerminationReason::Abnormal, &mut actions)?;
+                } else {
+                    self.close(false, &mut actions);
+                }
             }
             DialogEvent::HelloDecision(accepted) => self.decide_hello(accepted, &mut actions)?,
             DialogEvent::Committed { ticket, outcome } => {
@@ -400,7 +425,7 @@ impl Dialog {
         let Phase::Inspect(message) = std::mem::replace(&mut self.phase, Phase::HelloCommit) else {
             return Err(DialogError::State);
         };
-        let mut supported = accepted;
+        let mut supported = true;
         if let Body::Hello {
             application_timeout,
             capabilities,
@@ -444,15 +469,28 @@ impl Dialog {
                 }
             }
         }
-        if !supported {
+        if !supported || !accepted {
+            let reference = message.header().control_id.clone();
+            actions.push(DialogAction::Park {
+                message,
+                reason: if supported {
+                    "POCT Hello rejected by host policy"
+                } else {
+                    "POCT Hello capabilities could not be interpreted"
+                },
+            });
             self.send(
                 Outbound::ApplicationError {
-                    reference: message.header().control_id.clone(),
+                    reference,
                     error: ApplicationError::UnsupportedValue,
                 },
                 actions,
             )?;
-            self.close(false, actions);
+            if supported {
+                self.close(false, actions);
+            } else {
+                self.terminate(TerminationReason::Abnormal, actions)?;
+            }
         } else {
             self.store(message, Purpose::Hello, actions)?;
         }
