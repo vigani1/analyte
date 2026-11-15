@@ -1,10 +1,13 @@
 # Analyte plan
 
-Status, 2026-11-15: phase 1 is done (a fake result reaches the reference
-receiver, failure paths included). The protocol crates for ASTM, HL7 v2,
-POCT01-A2, IHE LAW (transactions; profile rules in progress) and the VIDAS and
-Autolyser vendor formats are built at the documented level. Everything is
-documented level; nothing has met a real machine yet.
+Status, 2026-11-15: phases 1, 2, 3, 5, 6 and 8 are built at the documented
+level, and phase 4 (IHE LAW) has its full profile rules; its program wiring is
+in progress. The program receives and parks results from every stack, answers
+machine queries and sends work lists for ASTM, HL7 legacy, VIDAS and Autolyser
+through one durable order path that never resends. Recordings replay through
+the program (fake machine). From phase 9: OS services, safe restore and the
+release process exist; the admin page is in progress. Phase 7 machine configs
+wait on the lab's settings and recordings. Nothing has met a real machine yet.
 
 ## 1. Goal
 
