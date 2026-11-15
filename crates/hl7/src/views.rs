@@ -489,3 +489,6 @@ impl<'a> ErrView<'a> {
         }
     }
 }
+
+mod location;
+pub use location::*;
