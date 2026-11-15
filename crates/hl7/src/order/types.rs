@@ -1,3 +1,4 @@
+//! Typed outbound order fields belong to the HL7 order syntax boundary.
 use super::{Error, invalid};
 
 pub(super) fn scalar(

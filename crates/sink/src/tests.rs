@@ -1,3 +1,4 @@
+//! Sink behavior tests belong beside delivery and polling to guard the HTTP boundary.
 #[path = "../../analyte/tests/support/guard.rs"]
 mod guard;
 use super::*;

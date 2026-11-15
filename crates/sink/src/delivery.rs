@@ -1,3 +1,4 @@
+//! Result delivery orchestration belongs to the sink boundary, preserving retry identity.
 use crate::{Destination, Error, SecretsSource, body, cancelled, deadline};
 use analyte_contract::{ResponseAction, classify_response};
 use analyte_model::{DeliveryId, Identifier, IdentityStatus, ReceiptMetadata, ResultContent};

@@ -1,0 +1,48 @@
+Mutation: crates/store/src/revisions/status.rs:24:43: replace == with != in status
+Original full log: target\store-resume\custody-status-final\mutants.out\log\crates__store__src__revisions__status.rs_line_24_col_43.log
+Failing-test output excerpt:
+
+running 7 tests
+test tests::adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it ... FAILED
+test tests::adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice ... FAILED
+test tests::adr0011_withheld_delivery_builder_is_refused_atomically ... ok
+test tests::mutation_adr0011_progression_uses_the_requested_observation_and_unanimous_source_status ... FAILED
+test tests::mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_original ... ok
+test tests::mutation_adr0003_adr0011_retained_interpretation_byte_bound_is_inclusive ... ok
+test tests::mutation_adr0011_single_final_run_is_scoped_by_machine_order_and_test ... ok
+
+failures:
+
+---- tests::adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it stdout ----
+
+thread 'tests::adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it' (14040) panicked at crates\store\src\tests.rs:1669:9:
+assertion `left == right` failed
+  left: [Conflict]
+ right: [Correction(Revision(1))]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tests::adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice stdout ----
+
+thread 'tests::adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice' (33304) panicked at crates\store\src\tests.rs:1706:5:
+assertion `left == right` failed
+  left: [New(Revision(0)), Conflict]
+ right: [New(Revision(0)), Correction(Revision(1))]
+
+---- tests::mutation_adr0011_progression_uses_the_requested_observation_and_unanimous_source_status stdout ----
+
+thread 'tests::mutation_adr0011_progression_uses_the_requested_observation_and_unanimous_source_status' (5840) panicked at crates\store\src\tests.rs:2865:9:
+assertion `left == right` failed
+  left: [Conflict]
+ right: [Correction(Revision(1))]
+
+
+failures:
+    tests::adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it
+    tests::adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice
+    tests::mutation_adr0011_progression_uses_the_requested_observation_and_unanimous_source_status
+
+test result: FAILED. 4 passed; 3 failed; 0 ignored; 0 measured; 93 filtered out; finished in 1.73s
+
+error: test failed, to rerun pass `-p analyte-store --lib`
+
+*** result: Failure(101)

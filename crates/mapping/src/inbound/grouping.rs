@@ -1,8 +1,9 @@
 //! Replacement grouping and mapping orchestration.
 use crate::FieldSyntax;
-use crate::source::Source;
+use crate::MappedResult;
+use crate::inbound::source::Source;
+use crate::inbound::{identity, result, value};
 use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, present, text};
-use crate::{MappedResult, identity, result, value};
 use analyte_config::Validated;
 use analyte_model::*;
 
@@ -99,8 +100,8 @@ pub(crate) fn message(
                 .unwrap_or_default();
             // The message may declare non-default delimiters: never split one as data.
             let header = source.nodes.first().and_then(|n| match n.record {
-                crate::source::Record::Astm(r) => Some(r.raw()),
-                crate::source::Record::Hl7(_) => None,
+                crate::inbound::source::Record::Astm(r) => Some(r.raw()),
+                crate::inbound::source::Record::Hl7(_) => None,
             });
             let collision = header
                 .and_then(|h| h.get(1..5))

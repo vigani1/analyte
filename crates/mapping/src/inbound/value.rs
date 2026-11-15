@@ -1,5 +1,5 @@
 //! Typed value interpretation never replaces original wire text.
-use crate::source::Source;
+use crate::inbound::source::Source;
 use crate::{Error, Output, Position, Problem, finding, identifier, list, text};
 use analyte_model::*;
 

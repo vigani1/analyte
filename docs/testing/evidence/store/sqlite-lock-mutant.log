@@ -1,0 +1,217 @@
+
+*** crates/store/src/lib.rs:162:17: delete match arm rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked in <impl From<rusqlite::Error> for Error>::from
+
+*** mutation diff:
+--- crates/store/src/lib.rs
++++ delete match arm rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked in <impl From<rusqlite::Error> for Error>::from
+@@ -154,19 +154,17 @@
+                 reason = "SQLite error codes are external and non-exhaustive; unknown failures retain their cause"
+             )]
+             match code.code {
+                 rusqlite::ErrorCode::DiskFull => return Self::DiskFull,
+                 rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase => {
+                     return Self::Corruption;
+                 }
+                 rusqlite::ErrorCode::ConstraintViolation => return Self::Conflict,
+-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked => {
+-                    return Self::Timeout;
+-                }
++                 /* ~ changed by cargo-mutants ~ */
+                 _ => {} // Other SQLite errors retain their diagnostic cause.
+             }
+         }
+         Self::Sqlite(error)
+     }
+ }
+ 
+ /// Host-provided capacity probe; errors refuse new evidence rather than guessing.
+
+
+*** C:\\Users\\super\\.rustup\\toolchains\\1.100.0-x86_64-pc-windows-msvc\\bin\\cargo.exe test --no-run --verbose --package=analyte-store@0.1.0 --all-features
+       Fresh unicode-ident v1.0.27
+       Fresh cfg-if v1.0.5
+       Fresh rand_core v0.10.1
+       Fresh once_cell v1.21.4
+       Fresh windows-link v0.2.1
+       Fresh shlex v2.0.1
+       Fresh find-msvc-tools v0.1.15
+       Fresh typenum v1.20.1
+       Fresh pkg-config v0.3.34
+       Fresh proc-macro2 v1.0.107
+       Fresh hybrid-array v0.4.15
+       Fresh cc v1.11.2
+       Fresh vcpkg v0.2.15
+       Fresh jiff-tzdb v0.1.10
+       Fresh foldhash v0.2.0
+       Fresh regex-syntax v0.8.11
+       Fresh cpufeatures v0.3.1
+       Fresh quote v1.0.47
+       Fresh getrandom v0.4.3
+       Fresh serde_core v1.0.229
+       Fresh autocfg v1.5.1
+       Fresh pin-project-lite v0.2.17
+       Fresh block-buffer v0.12.1
+       Fresh crypto-common v0.2.2
+       Fresh jiff-tzdb-platform v0.1.3
+       Fresh hashbrown v0.17.1
+       Fresh syn v3.0.10
+       Fresh syn v2.0.119
+       Fresh tracing-core v0.1.36
+       Fresh windows-sys v0.61.2
+       Fresh jiff-core v0.1.7
+       Fresh const-oid v0.10.3
+       Fresh fastrand v2.5.0
+       Fresh bitflags v2.13.2
+       Fresh uuid v1.29.2
+       Fresh serde_derive v1.0.229
+       Fresh thiserror-impl v2.0.21
+       Fresh tracing-attributes v0.1.31
+       Fresh libsqlite3-sys v0.40.0
+       Fresh jiff v0.2.45
+       Fresh tempfile v3.27.0
+       Fresh digest v0.11.3
+       Fresh zmij v1.0.23
+       Fresh hashlink v0.12.2
+       Fresh regex-automata v0.4.18
+       Fresh itoa v1.0.19
+       Fresh tracing v0.1.44
+       Fresh serde v1.0.229
+       Fresh thiserror v2.0.21
+       Fresh quick-error v1.2.3
+       Fresh fnv v1.0.7
+       Fresh smallvec v1.16.5
+       Fresh bit-vec v0.10.2
+       Fresh wait-timeout v0.2.1
+       Fresh memchr v2.8.3
+       Fresh fallible-iterator v0.3.0
+       Fresh fallible-streaming-iterator v0.1.9
+       Fresh lazy_static v1.5.1
+       Fresh sha2 v0.11.1
+       Fresh analyte-model v0.1.0 (C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\crates\model)
+       Fresh rusty-fork v0.3.1
+       Fresh sharded-slab v0.1.7
+       Fresh rusqlite v0.42.0
+       Fresh bit-set v0.11.1
+       Fresh serde_json v1.0.154
+       Fresh num-traits v0.2.19
+       Fresh matchers v0.2.0
+       Fresh rand v0.10.3
+       Fresh tokio v1.54.1
+       Fresh chacha20 v0.10.2
+       Fresh rand_xorshift v0.5.0
+       Fresh thread_local v1.1.10
+       Fresh core_detect v1.0.0
+       Fresh unarray v0.1.4
+       Fresh tracing-subscriber v0.3.23
+       Dirty analyte-store v0.1.0 (C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\crates\store): the file `crates\store\src\lib.rs` has changed (13439246517.596595600s, 9s after last build at 13439246508.058243100s)
+   Compiling analyte-store v0.1.0 (C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\crates\store)
+       Fresh proptest v1.12.0
+     Running `C:\Users\super\.rustup\toolchains\1.100.0-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name analyte_store --edition=2024 crates\store\src\lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat,unused-externs-silent --emit=dep-info,link -C embed-bitcode=no -C debuginfo=2 --warn=clippy::wildcard_enum_match_arm --warn=clippy::unwrap_used --warn=unused_qualifications --deny=unused_must_use --forbid=unsafe_code --warn=unreachable_pub --warn=clippy::unimplemented --warn=clippy::todo --warn=clippy::semicolon_if_nothing_returned --warn=clippy::redundant_closure_for_method_calls --warn=clippy::print_stdout --warn=clippy::print_stderr --warn=clippy::panic --warn=clippy::needless_pass_by_value --warn=clippy::must_use_candidate --warn=clippy::missing_panics_doc --warn=clippy::missing_errors_doc --warn=missing_docs --warn=clippy::match_wildcard_for_single_variants --warn=clippy::match_same_arms --warn=clippy::manual_let_else --warn=clippy::indexing_slicing --warn=clippy::explicit_iter_loop --warn=clippy::expect_used --warn=clippy::doc_markdown --warn=clippy::dbg_macro --warn=clippy::checked_conversions --warn=clippy::cast_sign_loss --warn=clippy::cast_possible_wrap --warn=clippy::cast_possible_truncation --warn=clippy::cast_lossless --warn=clippy::arithmetic_side_effects --warn=clippy::allow_attributes_without_reason --test --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=0e7764c605fda6d0 -C extra-filename=-55c6a7309d5cc2ae --out-dir C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\analyte-store/55c6a7309d5cc2ae\out -C incremental=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\incremental -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\bit-set/01a404f2ea7b9d5e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\bit-vec/9d2f653de4432038\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\bitflags/6eb967e6348884f8\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\block-buffer/21563e730d4fb2d3\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\cfg-if/c8bd55c15862100f\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\chacha20/544791728c36390e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\const-oid/3f8c8a4d9714f63a\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\core_detect/5206b2636f9e935b\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\cpufeatures/feac0efd605099d5\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\crypto-common/edbca1e7d7959bc5\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\digest/b05ae6ac97e9d025\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\fallible-iterator/eee9e4858ef23105\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\fallible-streaming-iterator/372c2f2a068dd6bf\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\fastrand/acd001f6999773e9\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\fnv/43d6eee65dfcf3f8\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\foldhash/af27a94e555119aa\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\getrandom/ec2931bd12a4249d\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\hashbrown/b57f7e72680b7777\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\hashlink/021552bcea92c37e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\hybrid-array/99c3851797025f91\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\itoa/b3ce467e042e560e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff-core/d4464005d9fb75f4\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff-tzdb-platform/1c0503484ae80f94\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff-tzdb/77cfe55d345ed240\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff/df2c281abfce15a1\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\lazy_static/1b4559e793036338\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\libsqlite3-sys/da608bbf264fe80c\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\matchers/6b7d3469430b6d3d\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\memchr/b65c699358e9b5bb\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\num-traits/af55e165d89c7d55\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\once_cell/eab454589b4b43eb\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\pin-project-lite/005d564969f928d9\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\quick-error/b8ed89236bc692cc\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\rand/c88a85c084393521\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\rand_core/cbe181224bfcf4b3\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\rand_xorshift/25fa279037a35873\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\regex-automata/7205d511c1e1df54\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\regex-syntax/52838b168ecdd46c\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\rusty-fork/5cfde481a211f1df\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde/9a03e119471e689e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde_core/4c1b5ae881fdcdac\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde_derive/4d3d1aa57df9614a\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\sharded-slab/f83d0baa351781a8\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\smallvec/239a7408ce00ebdd\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tempfile/9444cd3066751ae9\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\thiserror-impl/f50408d0d7f98d6d\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\thiserror/bf433d853540e249\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\thread_local/82cd30a73b644e81\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tracing-attributes/6ca943dcf8c9f40d\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tracing-core/a4937a00c0ecfb1f\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tracing/f4acd9fe86ba4ca6\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\typenum/e4d374bfb478db2e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\unarray/837b976d93ea01e0\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\uuid/e597065d3290cdf1\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\wait-timeout/35ecbe0cead5bdad\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\windows-link/2970197bc9f37b90\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\windows-sys/e4179ccaedb2456f\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\zmij/4473c5315a992209\out --extern analyte_model=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\analyte-model/5bacaa13fba8bb62\out\libanalyte_model-5bacaa13fba8bb62.rlib --extern jiff=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff/df2c281abfce15a1\out\libjiff-df2c281abfce15a1.rlib --extern proptest=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\proptest/01c74f5d17e4410d\out\libproptest-01c74f5d17e4410d.rlib --extern rusqlite=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\rusqlite/64be51ae5e280402\out\librusqlite-64be51ae5e280402.rlib --extern serde=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde/9a03e119471e689e\out\libserde-9a03e119471e689e.rlib --extern serde_json=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde_json/e8ba0a790f8589c7\out\libserde_json-e8ba0a790f8589c7.rlib --extern sha2=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\sha2/a2a0b5293ce19dd3\out\libsha2-a2a0b5293ce19dd3.rlib --extern tempfile=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tempfile/9444cd3066751ae9\out\libtempfile-9444cd3066751ae9.rlib --extern thiserror=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\thiserror/bf433d853540e249\out\libthiserror-bf433d853540e249.rlib --extern tokio=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tokio/0b4c1cfd81fb8f4d\out\libtokio-0b4c1cfd81fb8f4d.rlib --extern tracing=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tracing/f4acd9fe86ba4ca6\out\libtracing-f4acd9fe86ba4ca6.rlib --extern tracing_subscriber=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tracing-subscriber/f78f4e11143a098c\out\libtracing_subscriber-f78f4e11143a098c.rlib --extern uuid=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\uuid/e597065d3290cdf1\out\libuuid-e597065d3290cdf1.rlib --force-warn=unused_crate_dependencies -L native=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\libsqlite3-sys/ad3617a9457fadcc\out`
+     Running `C:\Users\super\.rustup\toolchains\1.100.0-x86_64-pc-windows-msvc\bin\rustc.exe --crate-name analyte_store --edition=2024 crates\store\src\lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat,unused-externs-silent --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 --warn=clippy::wildcard_enum_match_arm --warn=clippy::unwrap_used --warn=unused_qualifications --deny=unused_must_use --forbid=unsafe_code --warn=unreachable_pub --warn=clippy::unimplemented --warn=clippy::todo --warn=clippy::semicolon_if_nothing_returned --warn=clippy::redundant_closure_for_method_calls --warn=clippy::print_stdout --warn=clippy::print_stderr --warn=clippy::panic --warn=clippy::needless_pass_by_value --warn=clippy::must_use_candidate --warn=clippy::missing_panics_doc --warn=clippy::missing_errors_doc --warn=missing_docs --warn=clippy::match_wildcard_for_single_variants --warn=clippy::match_same_arms --warn=clippy::manual_let_else --warn=clippy::indexing_slicing --warn=clippy::explicit_iter_loop --warn=clippy::expect_used --warn=clippy::doc_markdown --warn=clippy::dbg_macro --warn=clippy::checked_conversions --warn=clippy::cast_sign_loss --warn=clippy::cast_possible_wrap --warn=clippy::cast_possible_truncation --warn=clippy::cast_lossless --warn=clippy::arithmetic_side_effects --warn=clippy::allow_attributes_without_reason --check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, values())" -C metadata=780c41d3fdff4712 -C extra-filename=-aa3d11bd400553e9 --out-dir C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\analyte-store/aa3d11bd400553e9\out -C incremental=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\incremental -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\bitflags/6eb967e6348884f8\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\block-buffer/21563e730d4fb2d3\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\cfg-if/c8bd55c15862100f\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\const-oid/3f8c8a4d9714f63a\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\cpufeatures/feac0efd605099d5\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\crypto-common/edbca1e7d7959bc5\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\digest/b05ae6ac97e9d025\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\fallible-iterator/eee9e4858ef23105\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\fallible-streaming-iterator/372c2f2a068dd6bf\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\foldhash/af27a94e555119aa\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\getrandom/ec2931bd12a4249d\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\hashbrown/b57f7e72680b7777\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\hashlink/021552bcea92c37e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\hybrid-array/99c3851797025f91\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\itoa/b3ce467e042e560e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff-core/d4464005d9fb75f4\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff-tzdb-platform/1c0503484ae80f94\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff-tzdb/77cfe55d345ed240\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\jiff/df2c281abfce15a1\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\libsqlite3-sys/da608bbf264fe80c\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\memchr/b65c699358e9b5bb\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\once_cell/eab454589b4b43eb\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\pin-project-lite/005d564969f928d9\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\rand_core/cbe181224bfcf4b3\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde/9a03e119471e689e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde_core/4c1b5ae881fdcdac\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde_derive/4d3d1aa57df9614a\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\smallvec/239a7408ce00ebdd\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\thiserror-impl/f50408d0d7f98d6d\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\thiserror/bf433d853540e249\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tracing-attributes/6ca943dcf8c9f40d\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tracing-core/a4937a00c0ecfb1f\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\typenum/e4d374bfb478db2e\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\uuid/e597065d3290cdf1\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\windows-link/2970197bc9f37b90\out -L dependency=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\zmij/4473c5315a992209\out --extern analyte_model=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\analyte-model/5bacaa13fba8bb62\out\libanalyte_model-5bacaa13fba8bb62.rmeta --extern rusqlite=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\rusqlite/64be51ae5e280402\out\librusqlite-64be51ae5e280402.rmeta --extern serde=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde/9a03e119471e689e\out\libserde-9a03e119471e689e.rmeta --extern serde_json=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\serde_json/e8ba0a790f8589c7\out\libserde_json-e8ba0a790f8589c7.rmeta --extern sha2=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\sha2/a2a0b5293ce19dd3\out\libsha2-a2a0b5293ce19dd3.rmeta --extern thiserror=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\thiserror/bf433d853540e249\out\libthiserror-bf433d853540e249.rmeta --extern tokio=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tokio/0b4c1cfd81fb8f4d\out\libtokio-0b4c1cfd81fb8f4d.rmeta --extern tracing=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\tracing/f4acd9fe86ba4ca6\out\libtracing-f4acd9fe86ba4ca6.rmeta --force-warn=unused_crate_dependencies -L native=C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\libsqlite3-sys/ad3617a9457fadcc\out`
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.03s
+  Executable `C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\analyte-store/55c6a7309d5cc2ae\out\analyte_store-55c6a7309d5cc2ae.exe`
+
+*** result: Success
+
+*** C:\\Users\\super\\.rustup\\toolchains\\1.100.0-x86_64-pc-windows-msvc\\bin\\cargo.exe test --verbose --package=analyte-store@0.1.0 --all-features adr0003_rule7_sqlite_lock_failures
+    Blocking waiting for file lock on package cache
+       Fresh unicode-ident v1.0.27
+       Fresh proc-macro2 v1.0.107
+       Fresh cfg-if v1.0.5
+       Fresh quote v1.0.47
+       Fresh rand_core v0.10.1
+       Fresh getrandom v0.4.3
+       Fresh once_cell v1.21.4
+       Fresh windows-link v0.2.1
+       Fresh serde_core v1.0.229
+       Fresh syn v3.0.10
+       Fresh find-msvc-tools v0.1.15
+       Fresh typenum v1.20.1
+       Fresh shlex v2.0.1
+       Fresh cc v1.11.2
+       Fresh hybrid-array v0.4.15
+       Fresh autocfg v1.5.1
+       Fresh vcpkg v0.2.15
+       Fresh regex-syntax v0.8.11
+       Fresh pkg-config v0.3.34
+       Fresh windows-sys v0.61.2
+       Fresh syn v2.0.119
+       Fresh foldhash v0.2.0
+       Fresh jiff-tzdb v0.1.10
+       Fresh cpufeatures v0.3.1
+       Fresh pin-project-lite v0.2.17
+       Fresh fastrand v2.5.0
+       Fresh tempfile v3.27.0
+       Fresh jiff-tzdb-platform v0.1.3
+       Fresh hashbrown v0.17.1
+       Fresh tracing-attributes v0.1.31
+       Fresh regex-automata v0.4.18
+       Fresh block-buffer v0.12.1
+       Fresh crypto-common v0.2.2
+       Fresh serde_derive v1.0.229
+       Fresh thiserror-impl v2.0.21
+       Fresh tracing-core v0.1.36
+       Fresh const-oid v0.10.3
+       Fresh fnv v1.0.7
+       Fresh bitflags v2.13.2
+       Fresh quick-error v1.2.3
+       Fresh jiff-core v0.1.7
+       Fresh wait-timeout v0.2.1
+       Fresh bit-vec v0.10.2
+       Fresh lazy_static v1.5.1
+       Fresh thiserror v2.0.21
+       Fresh serde v1.0.229
+       Fresh matchers v0.2.0
+       Fresh sharded-slab v0.1.7
+       Fresh rusty-fork v0.3.1
+       Fresh jiff v0.2.45
+       Fresh bit-set v0.11.1
+       Fresh tracing v0.1.44
+       Fresh digest v0.11.3
+       Fresh libsqlite3-sys v0.40.0
+       Fresh num-traits v0.2.19
+       Fresh hashlink v0.12.2
+       Fresh zmij v1.0.23
+       Fresh chacha20 v0.10.2
+       Fresh uuid v1.29.2
+       Fresh rand v0.10.3
+       Fresh rand_xorshift v0.5.0
+       Fresh thread_local v1.1.10
+       Fresh unarray v0.1.4
+       Fresh smallvec v1.16.5
+       Fresh itoa v1.0.19
+       Fresh fallible-streaming-iterator v0.1.9
+       Fresh fallible-iterator v0.3.0
+       Fresh core_detect v1.0.0
+       Fresh memchr v2.8.3
+       Fresh analyte-model v0.1.0 (C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\crates\model)
+       Fresh sha2 v0.11.1
+       Fresh tokio v1.54.1
+       Fresh proptest v1.12.0
+       Fresh tracing-subscriber v0.3.23
+       Fresh rusqlite v0.42.0
+       Fresh serde_json v1.0.154
+       Fresh analyte-store v0.1.0 (C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\crates\store)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+     Running `C:\Users\super\AppData\Local\Temp\cargo-mutants-t3-3eebd17c-275a01987eda2e57-dUCv4g.tmp\target\debug\build\analyte-store/55c6a7309d5cc2ae\out\analyte_store-55c6a7309d5cc2ae.exe adr0003_rule7_sqlite_lock_failures`
+
+running 1 test
+test tests::adr0003_rule7_sqlite_lock_failures_remain_specific_timeouts ... FAILED
+
+failures:
+
+---- tests::adr0003_rule7_sqlite_lock_failures_remain_specific_timeouts stdout ----
+
+thread 'tests::adr0003_rule7_sqlite_lock_failures_remain_specific_timeouts' (34368) panicked at crates\store\src\tests.rs:1870:9:
+assertion failed: matches!(Error::from(error), Error::Timeout)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::adr0003_rule7_sqlite_lock_failures_remain_specific_timeouts
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 81 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p analyte-store --lib`
+
+*** result: Failure(101)

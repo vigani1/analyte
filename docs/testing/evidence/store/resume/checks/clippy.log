@@ -1,0 +1,6 @@
+cargo.exe :     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.31s
+At line:2 char:190
++ ... STEXITCODE; & "$HOME/.cargo/bin/cargo.exe" clippy --all-targets --all ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Finished `d...get(s) in 0.31s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError

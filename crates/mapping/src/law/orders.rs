@@ -82,11 +82,11 @@ pub fn map_order(
             .as_ref()
             .ok_or(Error::Context("LAW specimen type missing"))?;
         let mapped =
-            crate::outbound_codes::map_specimen(Some(command.settings.specimen_types()), specimen)
+            crate::orders::codes::map_specimen(Some(command.settings.specimen_types()), specimen)
                 .map_err(|source| Error::lookup("LAW specimen type unmapped", source))?;
         let priority = if command.priority && action == law::WorkAction::New {
             Some(validate_field(
-                crate::outbound_codes::map_priority(
+                crate::orders::codes::map_priority(
                     command.settings.priorities(),
                     command.app.priority,
                 )
@@ -104,7 +104,7 @@ pub fn map_order(
             let [test] = item.tests else {
                 return Err(Error::Context("LAW item must cover one AWOS test"));
             };
-            let mapped_test = crate::outbound_codes::map_test(command.settings.tests(), test)
+            let mapped_test = crate::orders::codes::map_test(command.settings.tests(), test)
                 .map_err(|source| Error::lookup("LAW test unmapped", source))?;
             wire.push(WireAwos {
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store

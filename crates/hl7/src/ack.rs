@@ -1,3 +1,4 @@
+//! HL7 acknowledgment syntax belongs beside message grammar, without custody decisions.
 use crate::{AckCode, AckMode, Error, Message, Msh, Options, Version};
 
 /// Caller-reported processing state, with no implicit positive default.
