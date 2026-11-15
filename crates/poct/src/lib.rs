@@ -20,8 +20,8 @@ pub use message::{
     Role, Service, hello_error_reference,
 };
 
-mod build;
-pub use build::{ApplicationError, EscapeReason, Outbound, TerminationReason, build};
+mod encode;
+pub use encode::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
 
 mod duplicate;
 pub use duplicate::{

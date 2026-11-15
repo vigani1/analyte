@@ -1,5 +1,5 @@
 //! Only configured identity and sample evidence can resolve a result.
-use crate::source::Source;
+use crate::inbound::source::Source;
 use crate::{Error, Output, Problem, finding, identifier, present, text};
 use analyte_config::Validated;
 use analyte_config::{NoSubId, OrderNamespace, SubId};
@@ -40,8 +40,8 @@ pub(crate) fn observation(
 ) -> Result<Option<ObservationIdentity>, Error> {
     if let Some(observations) = law {
         let segment = source.nodes.get(index).and_then(|node| match node.record {
-            crate::source::Record::Hl7(segment) => Some(segment),
-            crate::source::Record::Astm(_) => None,
+            crate::inbound::source::Record::Hl7(segment) => Some(segment),
+            crate::inbound::source::Record::Astm(_) => None,
         });
         let observation =
             segment.and_then(|segment| observations.get(&segment.raw().as_ptr()).copied());

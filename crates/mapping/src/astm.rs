@@ -1,7 +1,8 @@
 //! ASTM code and evidence mapping (LIS02-A2); no I/O or protocol dialog state.
+use crate::inbound::{grouping, source};
+use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_specimen};
-use crate::outbound_codes::{map_priority as outbound_priority, map_test as outbound_test};
-use crate::{Error, Input, Output, Position, astm_syntax, map, source};
+use crate::{Error, Input, Output, Position, astm_syntax};
 use analyte_config::Validated;
 /// Maps one parsed LIS02 message, retaining hierarchy and original value text.
 /// # Errors
@@ -51,7 +52,7 @@ pub fn map(
         analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
     };
     source.attach_comments()?;
-    map::message(&source, config, input, None)
+    grouping::message(&source, config, input, None)
 }
 
 /// Maps explicit ASTM order fields without guessing missing codes or context.

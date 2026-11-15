@@ -1,9 +1,10 @@
 //! Outbound mapping never searches or reverses the incoming result table.
 mod app;
+pub(crate) mod codes;
 pub use crate::hl7::Command as Hl7Command;
 pub use crate::hl7::map_display;
 pub use crate::law::{Command as LawCommand, address as law_address, map_order as map_law_work};
-use crate::outbound_codes::map_specimen as outbound_specimen;
+use crate::orders::codes::map_specimen as outbound_specimen;
 pub use app::map as app_order;
 
 use analyte_config::Validated;
