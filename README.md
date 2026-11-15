@@ -1,0 +1,18 @@
+# Analyte
+
+Connect any lab analyzer to any lab app.
+
+Analyte is a small program that runs on the lab PC next to the analyzers. It
+talks to each machine in its own protocol (ASTM, HL7, IHE LAW, POCT1-A or a
+vendor format), stores every message safely, and passes results and orders
+to a lab app over HTTPS in one common format.
+
+**Status:** planning. Nothing is built yet. See [docs/plan.md](docs/plan.md).
+
+- Machines are added with a config file, not new code, whenever they speak a
+  standard protocol.
+- Every driver and machine config states how far it has been proven: on a real
+  machine, with an official simulator, or from documents only.
+- Written in Rust. One program for Windows and Linux.
+
+Licensed under the [Apache License 2.0](LICENSE).

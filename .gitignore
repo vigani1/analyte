@@ -1,0 +1,23 @@
+# Rust build output
+/target/
+
+# Local copies of standards and vendor manuals. Their licenses forbid
+# redistribution, so they never enter the repository.
+/references/
+
+# Local runtime data: stores, spools, captures with patient data
+/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Secrets and local settings
+.env
+.env.*
+*.local.toml
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
