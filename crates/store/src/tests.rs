@@ -3112,3 +3112,44 @@ fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> T
     assert_eq!(store.audits(0)?.len(), 1);
     Ok(())
 }
+
+#[test]
+fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("current.db");
+    let source = temp.path().join("backup.db");
+    drop(open(&source)?);
+    let mut current = open(&path)?;
+    let metadata = receipt(b"current custody")?;
+    current.receive(&metadata, b"current custody", b"config")?;
+    drop(current);
+    // No available bytes can admit even one byte above the configured disk reserve.
+    let probe = Store::open(&temp.path().join("probe.db"), limits(), Box::new(Space(0)))?;
+    assert!(matches!(probe.admission(1), Err(Error::Capacity)));
+    drop(probe);
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 42,
+        reason: Reason::new("synthetic recovery")?,
+    };
+    let result = Store::restore(
+        &path,
+        &source,
+        limits(),
+        Box::new(Space(0)),
+        &audit,
+        Instant::now() + HANG_GUARD,
+    );
+    assert!(
+        matches!(result, Err(Error::Capacity)),
+        "restore published despite exhausted disk reserve: {result:?}"
+    );
+    assert_eq!(
+        open(&path)?.raw(metadata.id)?,
+        Some(b"current custody".to_vec())
+    );
+    assert!(!path.with_extension("before-restore").exists());
+    Ok(())
+}
