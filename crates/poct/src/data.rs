@@ -115,6 +115,9 @@ impl Timestamp {
     /// # Errors
     /// Rejects invalid dates, invalid offsets and malformed precision.
     pub fn parse(value: &str) -> Result<Self, DataError> {
+        if value.len() > 256 {
+            return Err(DataError::Time);
+        }
         let split = value.char_indices().find(|(i, c)| {
             *i >= 4 && matches!(c, '+' | '-') && value.get(..*i).is_some_and(|s| s.contains('T'))
         });

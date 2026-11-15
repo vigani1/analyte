@@ -19,3 +19,8 @@ pub use message::{
 
 mod build;
 pub use build::{ApplicationError, EscapeReason, Outbound, TerminationReason, build};
+
+mod dialog;
+pub use dialog::{
+    CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogError, DialogEvent,
+};
