@@ -32,7 +32,7 @@ impl Store {
     /// Commits one bounded frame before returning its monotonic journal sequence.
     /// # Errors
     /// Refuses closed transfers, oversized frames, invalid frame numbers or capacity failures.
-    pub(super) fn frame(
+    pub(crate) fn frame(
         &mut self,
         transfer: &Identifier,
         sequence: FrameSequence,
@@ -102,7 +102,7 @@ impl Store {
     /// # Errors
     /// Reports database failures.
     #[cfg(test)]
-    pub(super) fn incomplete(&self, after: &str) -> Result<Vec<String>, Error> {
+    pub(crate) fn incomplete(&self, after: &str) -> Result<Vec<String>, Error> {
         let mut stmt = self.db.prepare(
             "SELECT id FROM transfers WHERE state!='complete' AND id>?1 ORDER BY id LIMIT ?2",
         )?;

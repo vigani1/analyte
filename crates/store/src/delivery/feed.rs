@@ -89,7 +89,7 @@ impl Store {
         Self::order_trust_on(&self.db, destination, now, freshness)
     }
 
-    pub(super) fn order_trust_on(
+    pub(crate) fn order_trust_on(
         db: &Connection,
         destination: &Identifier,
         now: i64,

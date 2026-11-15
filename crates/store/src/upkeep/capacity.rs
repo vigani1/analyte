@@ -4,18 +4,18 @@ use rusqlite::Connection;
 use std::path::Path;
 
 impl Store {
-    pub(super) fn bound(&self, bytes: &[u8]) -> Result<(), Error> {
+    pub(crate) fn bound(&self, bytes: &[u8]) -> Result<(), Error> {
         if bytes.len() > self.limits.record_bytes {
             return Err(Error::InvalidInput);
         }
         Ok(())
     }
 
-    pub(super) fn capacity(&self, bytes: usize) -> Result<(), Error> {
+    pub(crate) fn capacity(&self, bytes: usize) -> Result<(), Error> {
         Self::capacity_on(&self.db, &self.path, &self.limits, &*self.space, bytes)
     }
 
-    pub(super) fn capacity_on(
+    pub(crate) fn capacity_on(
         db: &Connection,
         path: &Path,
         limits: &Limits,
@@ -45,7 +45,7 @@ impl Store {
     /// disk reserve beside the current store, and the restored store must stay
     /// under the database size limit. The same reserve and limit as ordinary
     /// admission, so restore cannot publish what normal intake would refuse.
-    pub(super) fn restore_capacity(
+    pub(crate) fn restore_capacity(
         source: &Connection,
         path: &Path,
         limits: &Limits,

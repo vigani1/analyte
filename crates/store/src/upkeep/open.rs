@@ -45,7 +45,7 @@ impl Store {
         Self::open_locked_starting(path, limits, space, lock, startup)
     }
 
-    pub(super) fn open_locked(
+    pub(crate) fn open_locked(
         path: &Path,
         limits: Limits,
         space: Box<dyn FreeSpace>,
@@ -157,7 +157,7 @@ impl Store {
         })
     }
 
-    pub(super) fn integrity(db: &Connection) -> Result<(), Error> {
+    pub(crate) fn integrity(db: &Connection) -> Result<(), Error> {
         tracing::info!(step = "integrity check", "store integrity check started");
         let started = std::time::Instant::now();
         let outcome = (|| {

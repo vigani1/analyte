@@ -13,7 +13,7 @@ pub struct Reprocess {
     pub audit: Audit,
 }
 
-pub(super) fn check_parked(tx: &Transaction<'_>, id: i64, receipt: ReceiptId) -> Result<(), Error> {
+pub(crate) fn check_parked(tx: &Transaction<'_>, id: i64, receipt: ReceiptId) -> Result<(), Error> {
     let evidence: Option<String> = tx
         .query_row(
             "SELECT evidence FROM parked WHERE id=?1 AND resolution IS NULL",
@@ -38,7 +38,7 @@ pub(super) fn check_parked(tx: &Transaction<'_>, id: i64, receipt: ReceiptId) ->
     Ok(())
 }
 
-pub(super) fn audit_evidence(
+pub(crate) fn audit_evidence(
     action: &Reprocess,
     version: i64,
     successful: bool,

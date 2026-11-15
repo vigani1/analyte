@@ -703,7 +703,7 @@ fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult
     let path = temp.path().join("v1.db");
     // Exercise the original v1 schema and APIs before opening through migration.
     let db = Connection::open(&path)?;
-    db.execute_batch(include_str!("schema.sql"))?;
+    db.execute_batch(include_str!("upkeep/schema.sql"))?;
     for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
         db.execute_batch(&format!("CREATE TRIGGER immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
     }
@@ -1028,7 +1028,7 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("v2.db");
     let mut db = Connection::open(&path)?;
-    db.execute_batch(include_str!("schema.sql"))?;
+    db.execute_batch(include_str!("upkeep/schema.sql"))?;
     Store::migrate_v2(&mut db)?;
     let mut v2 = Store {
         _lock: Store::lock(&path, false)?,
@@ -2592,7 +2592,7 @@ fn mutation_adr0003_migration_bounds_metadata_and_interpretation_independently_a
 -> TestResult {
     for case in ["at", "metadata-over", "interpretation-over"] {
         let mut db = Connection::open_in_memory()?;
-        db.execute_batch(include_str!("schema.sql"))?;
+        db.execute_batch(include_str!("upkeep/schema.sql"))?;
         Store::migrate_v2(&mut db)?;
         let metadata = receipt(b"legacy")?;
         let mut evidence = interpretation()?;
@@ -2668,7 +2668,7 @@ fn mutation_adr0003_migration_refuses_conflicting_legacy_revision_and_accepts_re
 -> TestResult {
     for conflicting in [false, true] {
         let mut db = Connection::open_in_memory()?;
-        db.execute_batch(include_str!("schema.sql"))?;
+        db.execute_batch(include_str!("upkeep/schema.sql"))?;
         Store::migrate_v2(&mut db)?;
         let metadata = receipt(b"legacy")?;
         db.execute(
@@ -3222,7 +3222,7 @@ fn mutation_plan11_restore_accepts_schema_one_and_refuses_nonpositive_schema() -
         let source = temp.path().join("source.db");
         drop(open(&path)?);
         let db = Connection::open(&source)?;
-        db.execute_batch(include_str!("schema.sql"))?;
+        db.execute_batch(include_str!("upkeep/schema.sql"))?;
         db.pragma_update(None, "user_version", version)?;
         drop(db);
         let audit = Audit {
@@ -3371,7 +3371,7 @@ fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit(
         (&source, &backup, b"backup original".as_slice()),
     ] {
         let db = Connection::open(file)?;
-        db.execute_batch(include_str!("schema.sql"))?;
+        db.execute_batch(include_str!("upkeep/schema.sql"))?;
         db.execute(
             "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
             params![key(&metadata.id)?, key(metadata)?, raw, b"config"],

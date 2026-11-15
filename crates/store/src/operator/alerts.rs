@@ -471,11 +471,11 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("old.db");
         let mut db = rusqlite::Connection::open(&path)?;
-        db.execute_batch(include_str!("schema.sql"))?;
+        db.execute_batch(include_str!("../upkeep/schema.sql"))?;
         Store::migrate_v2(&mut db)?;
         Store::migrate_v3(&mut db, 65_536)?;
-        db.execute_batch(include_str!("migration_v4.sql"))?;
-        db.execute_batch(include_str!("migration_v5.sql"))?;
+        db.execute_batch(include_str!("../upkeep/migration_v4.sql"))?;
+        db.execute_batch(include_str!("../upkeep/migration_v5.sql"))?;
         let metadata = serde_json::json!({"machine":"busy","received_at":"1970-01-01T00:01:30Z"});
         db.execute(
             "INSERT INTO receipts VALUES('synthetic',?1,x'00',x'00')",

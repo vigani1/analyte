@@ -8,12 +8,12 @@ use std::{collections::BTreeMap, num::NonZeroU64, path::Path};
 
 fn legacy(path: &Path) -> Result<Connection, Error> {
     let mut db = Connection::open(path)?;
-    db.execute_batch(include_str!("schema.sql"))?;
+    db.execute_batch(include_str!("upkeep/schema.sql"))?;
     Store::migrate_v2(&mut db)?;
     Store::migrate_v3(&mut db, 65_536)?;
-    db.execute_batch(include_str!("migration_v4.sql"))?;
-    db.execute_batch(include_str!("migration_v5.sql"))?;
-    db.execute_batch(include_str!("migration_v6.sql"))?;
+    db.execute_batch(include_str!("upkeep/migration_v4.sql"))?;
+    db.execute_batch(include_str!("upkeep/migration_v5.sql"))?;
+    db.execute_batch(include_str!("upkeep/migration_v6.sql"))?;
     Ok(db)
 }
 
@@ -580,7 +580,7 @@ fn adr0003_v7_bad_owner_rolls_back_and_unknown_sql_values_are_never_defaulted() 
 fn version8(path: &Path) -> Result<Connection, Error> {
     let mut db = legacy(path)?;
     Store::migrate_v7(&mut db, 65_536)?;
-    db.execute_batch(include_str!("migration_v8.sql"))?;
+    db.execute_batch(include_str!("upkeep/migration_v8.sql"))?;
     Ok(db)
 }
 
