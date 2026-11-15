@@ -40,6 +40,7 @@ pub struct Program {
     pub(crate) data_directory: PathBuf,
     /// Explicit storage budgets.
     pub(crate) store_limits: analyte_store::Limits,
+    store_startup_timeout: Duration,
     /// Independently supervised machines.
     pub(crate) machines: Vec<Machine>,
 }
@@ -87,6 +88,12 @@ impl Admin {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Limits {
+    #[serde(
+        rename = "startup_timeout_seconds",
+        default = "default_startup_timeout",
+        deserialize_with = "startup_timeout"
+    )]
+    startup_timeout: Duration,
     reserve_bytes: u64,
     database_bytes: u64,
     record_bytes: usize,
@@ -357,6 +364,7 @@ impl Program {
             loopback_destinations: std::collections::BTreeMap::new(),
             signing_rotation: file.signing_rotation,
             data_directory: base.join(file.data_directory),
+            store_startup_timeout: file.store.startup_timeout,
             store_limits: analyte_store::Limits {
                 reserve_bytes: file.store.reserve_bytes,
                 database_bytes: file.store.database_bytes,
@@ -370,6 +378,12 @@ impl Program {
 }
 
 impl Program {
+    /// Total bounded store-opening, integrity-check and migration budget.
+    #[must_use]
+    pub fn store_startup_timeout(&self) -> Duration {
+        self.store_startup_timeout
+    }
+
     /// Returns the bounded evaluation interval.
     #[must_use]
     pub fn alert_interval(&self) -> Duration {
@@ -520,6 +534,45 @@ mod alert_program_tests {
             error.downcast_ref::<AlertConfigError>(),
             Some(&AlertConfigError::Interval)
         );
+        Ok(())
+    }
+}
+
+fn default_startup_timeout() -> Duration {
+    analyte_store::DEFAULT_STARTUP_TIMEOUT
+}
+fn startup_timeout<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Duration, D::Error> {
+    let seconds = u64::deserialize(deserializer)?;
+    if !(30..=3600).contains(&seconds) {
+        return Err(serde::de::Error::custom(
+            "store.startup_timeout_seconds must be between 30 and 3600 seconds",
+        ));
+    }
+    Ok(Duration::from_secs(seconds))
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+    const BASE: &str = "reserve_bytes=1\ndatabase_bytes=100000000\nrecord_bytes=65536\npage_rows=100\nbusy_timeout_ms=1000\n";
+    #[test]
+    fn startup_budget_is_typed_defaulted_and_bounded() -> Result<(), Error> {
+        let limits: Limits = toml::from_str(BASE)?;
+        assert_eq!(limits.startup_timeout, Duration::from_secs(600));
+        for seconds in [30, 3600] {
+            let limits: Limits =
+                toml::from_str(&format!("{BASE}startup_timeout_seconds={seconds}"))?;
+            assert_eq!(limits.startup_timeout, Duration::from_secs(seconds));
+        }
+        for seconds in [0, 29, 3601] {
+            let error =
+                toml::from_str::<Limits>(&format!("{BASE}startup_timeout_seconds={seconds}"))
+                    .err()
+                    .ok_or("invalid startup budget accepted")?;
+            assert!(error.to_string().contains("between 30 and 3600 seconds"));
+        }
         Ok(())
     }
 }

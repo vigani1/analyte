@@ -647,7 +647,7 @@ async fn serve(
             .into(),
         )
     })?;
-    service::serve_loopback_test(program, space, stop, secrets).await
+    service::serve_loopback_test(program, space, stop, secrets, None).await
 }
 
 #[tokio::test]

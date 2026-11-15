@@ -185,6 +185,22 @@ signing_key_name = "demo-signing"
 schema_version = 1
 ```
 
+### Store startup budget
+
+`[store].startup_timeout_seconds` bounds opening, full integrity verification
+and migration together. It defaults to 600 seconds; validation accepts 30 through
+3600 seconds. Ordinary store requests retain their separate short deadlines.
+Startup logs contain the active step,
+migration versions and elapsed milliseconds, never stored payloads. A timeout
+names its step. SQLite cancellation rolls back the active migration transaction;
+earlier committed versions remain valid and the next startup resumes from them.
+A commit already completed when cancellation arrives remains fully committed.
+
+Set this program-level `[store]` setting in `analyte.toml`, not in the machine's
+`site.toml`. Measure opening and upgrade startup on the deployment's storage;
+choose a budget within the supported range that leaves headroom for store
+growth, disk contention and future migrations.
+
 ### Map received results
 
 In `mappings.tests`, `machine_code` and `machine_system` select an exact source

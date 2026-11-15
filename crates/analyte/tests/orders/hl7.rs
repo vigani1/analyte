@@ -58,7 +58,7 @@ async fn setup_with_freshness(
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let peer = connect(&path, "hl7").await?;
     tokio::time::timeout(HANG_GUARD, async {
         loop {

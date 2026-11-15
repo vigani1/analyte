@@ -97,7 +97,7 @@ async fn setup_with_patient_requirement(
             )
             .await?;
     }
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let peer = connect(&path, "hl7").await?;
     Ok((temp, path, reference, service, peer))
 }
@@ -237,7 +237,7 @@ async fn hl7_251_no_reply_disconnect_and_restart_never_resend() -> Result<(), Er
         }
         outcome(&path, "Uncertain").await?;
         service.stop().await?;
-        let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+        let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "hl7").await?;
         assert!(
             // Deliberate quiet window: no reply may arrive.
@@ -363,7 +363,7 @@ async fn adr0003_hl7_restart_during_sending_recovers_items_without_resend() -> R
     })
     .await?;
     state(&path, "Sending").await?;
-    let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+    let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "hl7").await?;
     outcome(&path, "Uncertain").await?;
     let code: String =
