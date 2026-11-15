@@ -1037,7 +1037,7 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
     let backup = temp.path().join("backup.db");
     let mut store = open(&path)?;
     store.order_page(&page(1, "requested", false, 200)?)?;
-    store.backup(&backup, Instant::now() + Duration::from_secs(5))?;
+    store.backup(&backup, Instant::now() + tests::HANG_GUARD)?;
     let order = store
         .reserve_send(
             &OrderReservation {
@@ -1064,7 +1064,7 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
             tests::limits(),
             Box::new(tests::Space(u64::MAX)),
             &audit,
-            Instant::now() + Duration::from_secs(5)
+            Instant::now() + tests::HANG_GUARD
         ),
         Err(Error::InUse)
     ));
@@ -1075,7 +1075,7 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
         tests::limits(),
         Box::new(tests::Space(u64::MAX)),
         &audit,
-        Instant::now() + Duration::from_secs(5),
+        Instant::now() + tests::HANG_GUARD,
     )?;
     assert!(kept.exists());
     let old = open(&kept)?;

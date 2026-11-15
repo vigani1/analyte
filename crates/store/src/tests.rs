@@ -2,6 +2,9 @@ use super::*;
 use analyte_model::Reason;
 use proptest::prelude::*;
 
+/// Upper bound so a broken test cannot hang; never part of the behaviour under test.
+pub(crate) const HANG_GUARD: Duration = Duration::from_secs(60);
+
 pub(super) type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 pub(super) struct Space(pub(super) u64);
@@ -359,7 +362,7 @@ fn plan11_online_backup_restores_exact_receipts() -> TestResult {
     store.backup(
         &target,
         Instant::now()
-            .checked_add(Duration::from_secs(2))
+            .checked_add(HANG_GUARD)
             .ok_or(Error::Timeout)?,
     )?;
     let restored = open(&target)?;
@@ -550,7 +553,7 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
         .build()?;
     runtime.block_on(async {
         let deadline = Instant::now()
-            .checked_add(Duration::from_secs(2))
+            .checked_add(HANG_GUARD)
             .ok_or(Error::Timeout)?;
         let mut handle = Handle::start(
             path.clone(),
@@ -594,7 +597,7 @@ fn plan11_worker_open_reports_newer_schema_specifically() -> TestResult {
         .enable_time()
         .build()?;
     let deadline = Instant::now()
-        .checked_add(Duration::from_secs(2))
+        .checked_add(HANG_GUARD)
         .ok_or(Error::Timeout)?;
     let result = runtime.block_on(Handle::start(
         path,
@@ -1245,7 +1248,7 @@ fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() ->
             limits(),
             Box::new(Space(u64::MAX)),
             &audit,
-            Instant::now() + Duration::from_secs(5)
+            Instant::now() + HANG_GUARD
         ),
         Err(Error::Corruption)
     ));
@@ -1258,7 +1261,7 @@ fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() ->
             limits(),
             Box::new(Space(u64::MAX)),
             &audit,
-            Instant::now() + Duration::from_secs(5)
+            Instant::now() + HANG_GUARD
         ),
         Err(Error::SchemaTooNew(999))
     ));

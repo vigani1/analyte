@@ -54,6 +54,8 @@ the data, flag it and stop; never guess.
   deliberate seam. A wrapper that only forwards or renames goes.
 - **One change, one place:** if supporting a new machine or rule touches many
   unrelated files, move the boundary instead.
+- **Layout and names:** every protocol and machine follows the template in
+  [ADR 0012](docs/adr/0012-uniform-layout-and-naming.md).
 - **Folders:** group files by a clear owner (layer, then role). Split a module
   when it has a separate responsibility, not to meet a file count. File names
   never repeat their folder (`astm/frame.rs`, not `astm/astm_frame.rs`).
