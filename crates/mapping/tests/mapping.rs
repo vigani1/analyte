@@ -6,6 +6,8 @@ use proptest::prelude::*;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+mod mutation;
+
 // HL7 2.5.1 sections 2.7.4, 2.15.9.18: decode characters once, then delimiter escapes.
 #[test]
 fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
