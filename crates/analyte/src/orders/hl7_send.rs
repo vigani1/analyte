@@ -28,6 +28,15 @@ impl Command {
     ) -> Result<Self, Error> {
         let configured = super::settings::hl7(machine).ok_or("HL7 orders absent")?;
         let settings = configured.orders.clone();
+        if settings
+            .send
+            .as_ref()
+            .is_some_and(|send| send.settings.require_patient_identification)
+        {
+            return Err(invalid(
+                "HL7-patient-name-required-but-not-carried-by-contract",
+            ));
+        }
         let version = match configured.syntax.edition {
             analyte_config::Edition::V231 => Version::V231,
             analyte_config::Edition::V251 => Version::V251,

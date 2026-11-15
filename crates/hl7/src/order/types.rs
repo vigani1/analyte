@@ -279,7 +279,7 @@ pub enum Subject<'a> {
     NonPatient,
     /// Patient context was not supplied; this does not assert nonpatient work.
     Unspecified,
-    /// Only the supplied identifier is known; no patient name is synthesized.
+    /// Only an identifier is known; omit the optional PID group without a required name.
     Identifier {
         /// Literal patient ID.
         identifier: &'a [u8],

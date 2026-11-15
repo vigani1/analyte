@@ -233,25 +233,9 @@ fn build(
     )?;
     match subject {
         Subject::NonPatient | Subject::Unspecified => {}
-        Subject::Identifier {
-            identifier,
-            namespace,
-        } => {
-            scalar(identifier, "PID", 3, 15, true)?;
-            scalar(namespace, "PID", 3, 20, true)?;
-            let mut cx = identifier.to_vec();
-            cx.extend_from_slice(b"^^^");
-            cx.extend_from_slice(namespace);
-            if header.version == Version::V231 && cx.len() > 20 {
-                return Err(invalid("PID", 3));
-            }
-            segment(
-                &mut output,
-                b"PID",
-                &[b"1", b"", &cx],
-                options.limits.message_bytes,
-            )?;
-        }
+        // The optional patient group cannot be emitted without PID-5.
+        // HL7 2.3.1 section 3.3.2; omit it when only an identifier is known.
+        Subject::Identifier { .. } => {}
         Subject::Patient(patient) => {
             scalar(patient.identifier, "PID", 3, 15, true)?;
             scalar(patient.namespace, "PID", 3, 20, true)?;

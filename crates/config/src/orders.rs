@@ -191,6 +191,10 @@ pub enum Hl7Processing {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Hl7Send {
+    /// Require PID patient identification. Contract v1 has no names, so orders
+    /// for this interface are rejected before reservation rather than inventing PID-5.
+    #[serde(default)]
+    pub require_patient_identification: bool,
     /// Outgoing MSH-3.
     pub application: Identifier,
     /// Outgoing MSH-5.

@@ -1008,12 +1008,8 @@ fn hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context() ->
     assert_eq!(detail.field(15).ok_or(Error::Limit)?.raw(), b"");
     assert_eq!(detail.field(18).ok_or(Error::Limit)?.raw(), b"000aB");
     assert_eq!(detail.field(19).ok_or(Error::Limit)?.raw(), b"007b");
-    assert!(
-        enriched
-            .message()
-            .segments()
-            .any(|s| s.raw() == b"PID|1||000Patient^^^LAB")
-    );
+    // HL7 2.3.1 section 3.3.2 p.3-36: PID-5 is required when PID is present.
+    assert!(!enriched.message().segments().any(|s| s.id() == b"PID"));
     assert!(
         order::context(
             &built,
