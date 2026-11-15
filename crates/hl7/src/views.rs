@@ -184,68 +184,7 @@ impl<'a> Msh<'a> {
                 segment: "MSH",
                 field: 12,
             })?;
-        let message_type = required(segment, 9)?;
-        let type_parts: Vec<_> = message_type
-            .raw()
-            .split(|b| *b == segment.delimiters.component)
-            .collect();
-        // HL7 2.3.1 section 2.24.1.9 permits omitted response/ACK triggers.
-        let response = matches!(
-            type_parts.first().copied().unwrap_or_default(),
-            b"ACK"
-                | b"ADR"
-                | b"DOC"
-                | b"DSR"
-                | b"EDR"
-                | b"ERP"
-                | b"MFD"
-                | b"MFK"
-                | b"MFR"
-                | b"ORD"
-                | b"ORF"
-                | b"ORN"
-                | b"ORR"
-                | b"ORS"
-                | b"OSR"
-                | b"PPT"
-                | b"PPV"
-                | b"PRR"
-                | b"PTR"
-                | b"QCK"
-                | b"R0R"
-                | b"RPA"
-                | b"RPI"
-                | b"RPL"
-                | b"RRA"
-                | b"RRD"
-                | b"RRE"
-                | b"RRG"
-                | b"RRI"
-                | b"RRO"
-                | b"SQR"
-                | b"SRR"
-                | b"TBR"
-                | b"VXR"
-                | b"VXX"
-        );
-        let omitted_trigger = version.rules().optional_response_trigger && response;
-        if (version.rules().message_lengths.is_some() && type_parts.len() != 3)
-            || type_parts.len() > 3
-            || (type_parts.len() < 2 && !omitted_trigger)
-            || type_parts.iter().enumerate().any(|(index, part)| {
-                (version
-                    .rules()
-                    .message_lengths
-                    .is_some_and(|lengths| part.len() > lengths.get(index).copied().unwrap_or(0)))
-                    || (part.is_empty() && !(index == 1 && omitted_trigger))
-                    || !part.iter().all(|b| b.is_ascii_alphanumeric() || *b == b'_')
-            })
-        {
-            return Err(Error::Control {
-                segment: "MSH",
-                field: 9,
-            });
-        }
+        validate_message_type(segment, version)?;
         // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
         // 2.3.1 retains optional usage. Validate a supplied TS in either edition.
         let timestamp = segment.field(7);
@@ -485,3 +424,69 @@ impl<'a> ErrView<'a> {
 
 mod location;
 pub use location::*;
+
+fn validate_message_type(segment: Segment<'_>, version: Version) -> Result<(), Error> {
+    let message_type = required(segment, 9)?;
+    let type_parts: Vec<_> = message_type
+        .raw()
+        .split(|b| *b == segment.delimiters.component)
+        .collect();
+    // HL7 2.3.1 section 2.24.1.9 permits omitted response/ACK triggers.
+    let response = matches!(
+        type_parts.first().copied().unwrap_or_default(),
+        b"ACK"
+            | b"ADR"
+            | b"DOC"
+            | b"DSR"
+            | b"EDR"
+            | b"ERP"
+            | b"MFD"
+            | b"MFK"
+            | b"MFR"
+            | b"ORD"
+            | b"ORF"
+            | b"ORN"
+            | b"ORR"
+            | b"ORS"
+            | b"OSR"
+            | b"PPT"
+            | b"PPV"
+            | b"PRR"
+            | b"PTR"
+            | b"QCK"
+            | b"R0R"
+            | b"RPA"
+            | b"RPI"
+            | b"RPL"
+            | b"RRA"
+            | b"RRD"
+            | b"RRE"
+            | b"RRG"
+            | b"RRI"
+            | b"RRO"
+            | b"SQR"
+            | b"SRR"
+            | b"TBR"
+            | b"VXR"
+            | b"VXX"
+    );
+    let omitted_trigger = version.rules().optional_response_trigger && response;
+    if (version.rules().message_lengths.is_some() && type_parts.len() != 3)
+        || type_parts.len() > 3
+        || (type_parts.len() < 2 && !omitted_trigger)
+        || type_parts.iter().enumerate().any(|(index, part)| {
+            (version
+                .rules()
+                .message_lengths
+                .is_some_and(|lengths| part.len() > lengths.get(index).copied().unwrap_or(0)))
+                || (part.is_empty() && !(index == 1 && omitted_trigger))
+                || !part.iter().all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+        })
+    {
+        return Err(Error::Control {
+            segment: "MSH",
+            field: 9,
+        });
+    }
+    Ok(())
+}
