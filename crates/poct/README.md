@@ -1,6 +1,6 @@
 # POCT01-A2 Observation Reviewer
 
-Evidence level: **documented**. The crate implements the mandatory Basic Profile
+Evidence level: **documented**. The crate provides Basic Profile components
 as a pure library: bounded XML syntax and typed messages, reviewer builders,
 conversation state machine, observation duplicate comparison and common-model
 mapping. Tests use independently written synthetic messages. There is no real
@@ -41,29 +41,68 @@ proven driver.
   tickets from `Close` with durable storage. Reconnection needs a fresh host
   session ID. A late completion never produces an ACK in the old conversation.
 
+Invalid Hello syntax with a complete, unique header control ID is parked before
+an error ACK and abnormal Terminate (Appendix B section 4.1.2, p.78). Recovery
+never guesses an ID from body text or an ambiguous header. Uninterpretable
+capabilities follow the same retained-error-ACK-Terminate order; a plain host
+policy rejection remains distinct. The dialog waits for the correlated final
+ACK or its existing deadline. Program tests:
+`poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw` and
+`poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack`.
+
+Received control IDs are conversation-local protocol identities (Appendix B
+section 5.13, printed p.99). The dialog retains all of them within an aggregate
+ID-byte budget equal to `DialogConfig.message_bytes`; nonempty IDs also bound
+the entry count and collection overhead. It never evicts IDs. Reuse is parked
+before Escape and abnormal Terminate, without mapping a second result. Budget
+exhaustion is separately parked and reports inability to complete the topic.
+A unique correlated terminal ACK remains usable at capacity; bad traffic cannot
+restart termination indefinitely. A new connection has a new index. Tests:
+`poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes`,
+`poct01_b5_13_reused_id_before_commit_is_retained_not_accepted`, and
+`poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids`.
+This set does not replace the store's independent result identity history.
+
 ## Identity and mapping
 
-A POCT analyte code identifies the test, not its individual run. Service sequence
-numbers can wrap. The mapper therefore returns **unresolved** identity rather than
-inventing a key from a patient, timestamp, ordinal, value or receipt ID. Host
-reconciliation must supply sufficient trusted source evidence for the common
-model's observation identity before result recording/delivery. The store assigns
-revisions atomically from retained identity/content history under ADR 0003; this
-crate never derives a revision from a source status or service sequence.
+The pure mapper returns unresolved identity because it has no installed machine
+policy or retained Hello. The program opts in explicitly through
+`poct.identity = { sequence_number = true, processing = "Production" }`.
+Omitting that table keeps the conservative unresolved behavior; both fields are
+required when the table is present. Processing mode is an explicit installation
+setting, never inferred from a missing source field.
 
-`DuplicateIndex` keys on configured device plus trusted observation identity and
-revision. Comparison evidence omits message headers, retransmission reason and
-sibling observations, while retaining the observation and its service context.
-Attribute order and object indentation do not create new observations. Changed
-content under the same trusted identity/revision is a conflict and never replaces
-prior evidence. New revisions and independently identified reruns remain separate.
+The configured identity is scoped by machine and the device ID from its complete,
+parsed, durably stored Hello (Appendix B section 5.5, p.95). The source analyte
+code/system and the exact `SVC.observation_dttm` identify the observation; when
+`sequence_number = true`, `SVC.sequence_nbr` is also required. Ordered run values
+use the shared mapping layer's bounded, length-prefixed encoding. Sequence is
+never used alone: it may wrap (section 5.21, Table 46, p.105). The common model's
+namespaced scope slot holds `poct-device` and the device ID; it does not assert
+that the device sent an order. Missing declared evidence stays unresolved and
+parked. The original XML and source positions remain protected evidence.
 
-The index is bounded and never evicts history. The host must compare and persist
-identity/evidence atomically with the result before reporting custody. Rebuild
-from durable records before accepting observations after restart; an empty cache
-is not evidence that old results are new. A full index requires backpressure or
-a protected-store identity lookup, not silently forgetting records. The pure
-index itself does not authorize an ACK or provide durable storage.
+The program uses only the store's transactional identity/revision mechanism:
+same identity and clinical content is a retransmission; changed content with
+`SVC.reason_cd = EDT` is a correction candidate; changed content without that
+evidence is a parked conflict. `RES` is a resend candidate, not permission to
+change content. These reason codes are Table 49, p.105; Table 48's
+`SVC.status_cd` describes normal/override conditions. Neither reason nor receipt
+headers creates clinical content; source offsets locate retained evidence and
+are excluded from clinical comparison. Older stored digests are compared against
+retained typed evidence on a miss, bounded by `page_rows`, without rewriting it.
+
+The standalone, bounded `DuplicateIndex` remains a library API for other hosts;
+it is not durable storage and the program does not use it as a second mechanism.
+The program recovers Hello context from complete interpreted receipts, excluding
+transport-journal fragments, for both live receive and operator reprocessing.
+
+Program/reference-receiver regression:
+`poct01_b3_2_program_lost_ack_reconnect_restart_and_correction` in
+`crates/analyte/tests/vendor_receive.rs` proves a real delivery, lost-ACK resend,
+reconnect, restart, edited revision, changed-original conflict, and missing
+time/declared sequence/device evidence. Library duplicate tests alone do not
+prove those program behaviors (Appendix B section 3.2, pp.71?72; ADR 0003).
 
 Mapping preserves original numbers, codes, code systems/versions, units, flags
 and source times. Source paths retain one-based XML element positions, including
@@ -79,6 +118,11 @@ message retain metadata beyond the common model's summary.
 
 ## Basic Profile checklist evidence
 
+This is a source-to-test index, not a complete conformance claim. The audited
+completion gates and outstanding evidence are in
+[the protocol checklist](../../docs/protocols/poct1-a.md). Component tests prove
+only their own boundaries; program tests are identified explicitly.
+
 Section references are to Appendix B of POCT01-A2. Tests are in `tests/`.
 
 | Checklist row | Implementation and tests |
@@ -87,7 +131,7 @@ Section references are to Appendix B of POCT01-A2. Tests are in `tests/`.
 | Hello accept/reject and ordered startup, §4.1.2 | `dialog::poct01_b_4_1_2_startup_and_rejection_in_sequence`; `poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline` |
 | Capabilities and repeated topics, §§4.1.3,5.6–5.7 | `Body::Hello`, `Capabilities`; `dialog::poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination` |
 | Patient/nonpatient, zero/multiple observations and EOT, §§4.1.4–4.1.5 | `messages::poct01_b_6_10_patient_and_nonpatient_values_are_explicit`; dialog zero/multiple transfer tests; mapping tests |
-| Custody gate and independent observation identity, §3.2 / ADR 0003 | `dialog::poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`; all `duplicate` tests |
+| Custody gate and independent observation identity, §3.2 / ADR 0003 | `dialog::poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`; program `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction` |
 | Error ACK, Escape and termination, §§3.4,4.1.11–4.1.12 | `dialog::poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes`; Escape correlation, remote END and normal termination tests |
 | Application timeout without replay, §3.6 | `dialog::poct01_b_3_6_no_resend_on_application_timeout`; Hello policy latency test |
 | Required objects, order, cardinality, codes and correlation, §§5–6 | `structure.rs`; missing/duplicate/order/role tests in `messages`; correlation tests in `builders` and `dialog` |
@@ -129,9 +173,10 @@ raw bytes are kept beside decoded values, including their entity spelling.
 
 ## Local verification
 
-On Windows, the four required workspace checks pass with the pinned Rust 1.100
-compiler. Workspace tests also pass with the declared Rust 1.95 minimum. Linux
-and fuzz-target execution have not been run locally. No dependencies beyond the
+The local verification gate is formatting, strict workspace Clippy, all-feature
+workspace tests and cargo-deny with the pinned toolchain. CI separately runs
+Linux, the minimum supported Rust version and fuzz targets; local Windows checks
+do not prove those runs or interoperability. No dependencies beyond the
 approved quick-xml, thiserror, analyte-model, jiff and test-only proptest are used.
 
 
@@ -142,13 +187,15 @@ bytes are journaled with driver/config versions before the dialog sees them;
 complete receipts and interpretations are then stored through the protected store.
 Unresolved result identities remain unresolved, are parked with their reason,
 and create no app delivery. Inspect them with `analyte parked list`.
-The program never derives a run identity from sample, value, timestamp or receipt.
+The program uses only the configured composite device/time/analyte identity
+described above, never sample/value/receipt heuristics or a timestamp alone.
 
 VIDAS and Autolyser work-list sending is implemented; see
 [program orders](../analyte/ORDERS.md).
 POCT optional order/list extensions remain outside the supported profile.
 
 Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
-parking, operator visibility, zero reference-receiver deliveries and storage
-failure. They do not raise the documented evidence level. No current vendor
-crate path supplies a resolved result identity for a delivery test.
+parking, operator visibility, storage failure, rejected Hello responses and
+control-ID reuse. The POCT program/reference-receiver identity test proves real
+delivery, retransmission suppression and an edited revision. These tests do not
+raise the documented evidence level or close the unchecked conformance gates.

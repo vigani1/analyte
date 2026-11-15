@@ -55,6 +55,9 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Legacy content comparison exceeded the configured reconciliation row bound.
+    #[error("observation history comparison exceeds page_rows; operator reconciliation required")]
+    RevisionHistoryLimit,
     /// Requested receipt has never been stored.
     #[error("receipt does not exist")]
     UnknownReceipt,
