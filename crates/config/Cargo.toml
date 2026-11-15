@@ -9,6 +9,14 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+analyte-model = { workspace = true }
+analyte-framing = { workspace = true }
+analyte-astm = { workspace = true }
+analyte-hl7 = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 
