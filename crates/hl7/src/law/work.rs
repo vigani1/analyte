@@ -70,6 +70,7 @@ pub struct Awos<'a> {
     test: &'a [u8],
     action: WorkAction,
     instructions: Instructions<'a>,
+    transaction_time: Option<&'a [u8]>,
 }
 
 impl<'a> Awos<'a> {
@@ -116,6 +117,7 @@ impl<'a> Awos<'a> {
             test,
             action,
             instructions: Instructions::default(),
+            transaction_time: None,
         })
     }
 
@@ -123,6 +125,15 @@ impl<'a> Awos<'a> {
     #[must_use]
     pub fn with_instructions(mut self, instructions: Instructions<'a>) -> Self {
         self.instructions = instructions;
+        self
+    }
+
+    /// Supplies the actual initiating-event timestamp for ORC-9, without a timezone.
+    /// If omitted, the caller asserts that the supplied response time is also the
+    /// initiating-event time. Earlier order events must supply their own timestamp.
+    #[must_use]
+    pub fn with_transaction_time(mut self, timestamp: &'a [u8]) -> Self {
+        self.transaction_time = Some(timestamp);
         self
     }
 
@@ -244,7 +255,7 @@ fn header(
             safe(value, "MSH", field, 227)?;
         }
     }
-    safe(response.control_id.raw(), "MSH", 10, 50)?;
+    super::control_id(response.control_id.raw())?;
     safe(response.timestamp, "MSH", 7, 26)?;
     if !response
         .timestamp
@@ -309,11 +320,41 @@ pub fn work_order(
     capabilities: Capabilities,
     options: Options,
 ) -> Result<Message, Error> {
+    work_order_with_profile(
+        work,
+        patient,
+        address,
+        response,
+        capabilities,
+        options,
+        super::Profile::for_peer(capabilities),
+    )
+}
+
+/// Builds work with explicit content validation and host-supplied authority bindings.
+/// # Errors
+/// Rejects invalid fields, unavailable options or unresolved assigning authorities.
+pub fn work_order_with_profile(
+    work: &[Awos<'_>],
+    patient: Option<PatientInfo<'_>>,
+    address: Address<'_>,
+    response: Response<'_>,
+    capabilities: Capabilities,
+    options: Options,
+    mut profile: super::Profile<'_>,
+) -> Result<Message, Error> {
+    // A validation context may narrow, but cannot enlarge, the peer's capabilities.
+    profile.patient &= capabilities.patient;
+    profile.specimen &= capabilities.specimen;
+    profile.container &= capabilities.container;
+    profile.dilution &= capabilities.dilution;
+    profile.dilution_required &= capabilities.dilution;
+    profile.manager_repeat &= capabilities.manager_repeat;
+    profile.repeat_control &= capabilities.repeat_control;
+    profile.priority &= capabilities.priority;
+    profile.priority_required &= capabilities.priority;
     if work.is_empty() || work.len() > options.limits.segments {
         return Err(content("OBR", 0));
-    }
-    if !capabilities.specimen {
-        return Err(content("SPM", 2));
     }
     let mut ids = BTreeSet::new();
     for awos in work {
@@ -368,7 +409,7 @@ pub fn work_order(
         let mut specimen: [&[u8]; 27] = [b""; 27];
         for (position, value) in [
             (1, Some(sequence.as_bytes())),
-            (2, Some(awos.specimen)),
+            (2, capabilities.specimen.then_some(awos.specimen)),
             (4, Some(awos.specimen_type)),
             (
                 11,
@@ -405,9 +446,6 @@ pub fn work_order(
         let mut container: [&[u8]; 29] = [b""; 29];
         set_field(&mut container, 3, Some(awos.container), "SAC")?;
         if let Some(details) = awos.container_details {
-            if !capabilities.container {
-                return Err(content("SAC", 0));
-            }
             for (position, value) in [
                 (4, details.parent),
                 (9, details.carrier_type),
@@ -433,15 +471,15 @@ pub fn work_order(
         }
         for awos in group {
             let control = match awos.action {
-                WorkAction::New => b"NW",
-                WorkAction::Cancel => b"CA",
+                WorkAction::New => super::OrderControl::New,
+                WorkAction::Cancel => super::OrderControl::Cancel,
             };
             let details = awos.order_details.copied().unwrap_or_default();
             let mut order: [&[u8]; 21] = [b""; 21];
             for (position, value) in [
-                (1, Some(control.as_slice())),
+                (1, Some(control.as_bytes())),
                 (4, details.group),
-                (9, response.timestamp.get(..14)),
+                (9, awos.transaction_time.or(response.timestamp.get(..14))),
                 (21, details.facility),
             ] {
                 set_field(&mut order, position, value, "ORC")?;
@@ -529,9 +567,7 @@ pub fn work_order(
         }
     }
     let message = Message::parse(&wire.bytes, options)?;
-    for segment in message.segments() {
-        super::profile::validate_segment(segment)?;
-    }
+    profile.validate_message(&message, super::ControlDirection::Send)?;
     Ok(message)
 }
 
@@ -581,7 +617,7 @@ pub fn negative_work(
         &mut wire,
         b"ORC",
         &[
-            b"DC",
+            super::OrderControl::Discontinue.as_bytes(),
             b"",
             b"",
             b"",
@@ -593,9 +629,8 @@ pub fn negative_work(
         ],
     )?;
     let message = Message::parse(&wire.bytes, options)?;
-    for segment in message.segments() {
-        super::profile::validate_segment(segment)?;
-    }
+    super::Profile::for_peer(Capabilities::default())
+        .validate_message(&message, super::ControlDirection::Send)?;
     Ok(message)
 }
 
@@ -619,8 +654,8 @@ pub struct AwosDecision<'a> {
     pub id: Identity<'a>,
     /// Request-specific outcome.
     pub outcome: AwosOutcome,
-    /// Original analyzer order status.
-    pub status: &'a [u8],
+    /// Typed analyzer work status; original bytes remain in the message.
+    pub status: super::OrderStatus,
 }
 
 /// Validated ORL response with message acceptance separate from AWOS decisions.
@@ -636,11 +671,25 @@ impl<'a> WorkResponse<'a> {
     /// # Errors
     /// Rejects inconsistent/missing/duplicate/unknown AWOS or mismatched control/status pairs.
     pub fn new(message: &'a Message, sent: &'a Message) -> Result<Self, Error> {
+        Self::with_profile(message, sent, super::Profile::receive())
+    }
+
+    /// Validates a work response using negotiated options and trusted authority bindings.
+    /// # Errors
+    /// Returns located profile failures or an inconsistent work-response error.
+    pub fn with_profile(
+        message: &'a Message,
+        sent: &'a Message,
+        mut profile: super::Profile<'_>,
+    ) -> Result<Self, Error> {
+        profile.results_message = false;
+        profile.validate_message(message, super::ControlDirection::Receive)?;
         super::profile::header(message, b"LAB-28", false)?;
         let msh = super::msh(message)?;
         let d = message.delimiters();
         if !super::raw(msh.segment(), 9)
             .split(|b| *b == d.component)
+            .take(3)
             .eq([b"ORL".as_slice(), b"O34", b"ORL_O42"])
         {
             return Err(content("MSH", 9));
@@ -650,7 +699,7 @@ impl<'a> WorkResponse<'a> {
             .next()
             .filter(|s| s.id() == b"MSA")
             .ok_or(content("MSA", 0))?;
-        let msa = Msa::with_control_limit(msa_segment, 50)?;
+        let msa = Msa::from_law(msa_segment)?;
         if msa.control_id() != super::msh(sent)?.control_id() {
             return Err(content("MSA", 2));
         }
@@ -674,11 +723,15 @@ impl<'a> WorkResponse<'a> {
                     source_container = super::raw(segment, 3);
                 }
                 b"ORC" => {
-                    action = match super::raw(segment, 1) {
-                        b"NW" => Some(WorkAction::New),
-                        b"CA" => Some(WorkAction::Cancel),
-                        b"DC" => None,
-                        _ => return Err(content("ORC", 1)),
+                    action = match super::OrderControl::parse(super::raw(segment, 1))? {
+                        super::OrderControl::New => Some(WorkAction::New),
+                        super::OrderControl::Cancel => Some(WorkAction::Cancel),
+                        super::OrderControl::Discontinue => None,
+                        super::OrderControl::Accepted
+                        | super::OrderControl::UnableToAccept
+                        | super::OrderControl::Cancelled
+                        | super::OrderControl::UnableToCancel
+                        | super::OrderControl::StatusChange => return Err(content("ORC", 1)),
                     };
                 }
                 b"OBR" => {
@@ -702,9 +755,9 @@ impl<'a> WorkResponse<'a> {
         let mut response_container = b"".as_slice();
         let mut error_count = 0usize;
         let mut seen = BTreeSet::new();
-        super::profile::validate_segment(msa_segment)?;
+        profile.validate_segment(msa_segment, super::ControlDirection::Receive)?;
         for s in segments {
-            super::profile::validate_segment(s)?;
+            profile.validate_segment(s, super::ControlDirection::Receive)?;
             match s.id() {
                 b"ERR" => {
                     if has_specimen {
@@ -758,14 +811,8 @@ impl<'a> WorkResponse<'a> {
                     field: 3,
                 });
             }
-            let status = super::raw(s, 5);
-            let outcome = match (super::raw(s, 1), status) {
-                (b"OK", b"SC" | b"IP" | b"CM") => AwosOutcome::Accepted,
-                (b"UA", b"CA") => AwosOutcome::UnableToAccept,
-                (b"CR", b"CA") => AwosOutcome::CancelAccepted,
-                (b"UC", b"IP" | b"CM") => AwosOutcome::UnableToCancel,
-                _ => return Err(content("ORC", 1)),
-            };
+            let status = super::OrderStatus::parse(super::raw(s, 5))?;
+            let outcome = response_outcome(super::OrderControl::parse(super::raw(s, 1))?, status)?;
             match (requests.get(id).map(|request| &request.0), outcome) {
                 (Some(WorkAction::New), AwosOutcome::Accepted | AwosOutcome::UnableToAccept)
                 | (
@@ -823,5 +870,40 @@ impl<'a> WorkResponse<'a> {
     #[must_use]
     pub fn message(&self) -> &'a Message {
         self.message
+    }
+}
+
+fn response_outcome(
+    control: super::OrderControl,
+    status: super::OrderStatus,
+) -> Result<AwosOutcome, Error> {
+    use super::{OrderControl, OrderStatus};
+    match control {
+        OrderControl::Accepted => match status {
+            OrderStatus::Scheduled | OrderStatus::InProgress | OrderStatus::Complete => {
+                Ok(AwosOutcome::Accepted)
+            }
+            OrderStatus::Cancelled => Err(content("ORC", 5)),
+        },
+        OrderControl::UnableToAccept => match status {
+            OrderStatus::Cancelled => Ok(AwosOutcome::UnableToAccept),
+            OrderStatus::Scheduled | OrderStatus::InProgress | OrderStatus::Complete => {
+                Err(content("ORC", 5))
+            }
+        },
+        OrderControl::Cancelled => match status {
+            OrderStatus::Cancelled => Ok(AwosOutcome::CancelAccepted),
+            OrderStatus::Scheduled | OrderStatus::InProgress | OrderStatus::Complete => {
+                Err(content("ORC", 5))
+            }
+        },
+        OrderControl::UnableToCancel => match status {
+            OrderStatus::InProgress | OrderStatus::Complete => Ok(AwosOutcome::UnableToCancel),
+            OrderStatus::Scheduled | OrderStatus::Cancelled => Err(content("ORC", 5)),
+        },
+        OrderControl::New
+        | OrderControl::Cancel
+        | OrderControl::Discontinue
+        | OrderControl::StatusChange => Err(content("ORC", 1)),
     }
 }
