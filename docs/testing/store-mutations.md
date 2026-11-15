@@ -450,3 +450,9 @@ Fetched main and ran `git merge --signoff origin/main` before final verification
 | `cargo check --manifest-path fuzz/Cargo.toml --bins` | Exit 0; fuzz binaries compiled, not executed. |
 
 Final check exit codes and sibling logs preserve the output. The first Clippy run found two missing semicolons in new test match arms; both were fixed without suppressions, then all five checks were rerun. No Linux or minimum-Rust run was performed locally; those remain CI work.
+
+## Store round 3: backup through startup and worker custody
+
+Baseline: `56f087b3fa2723c0c45e25a593afe2ce9426e182` (origin/main). Branch `test/mutation-store-3`.
+This round is in progress. Production code remains unchanged; raw logs stay local under `target/store-round-3/`.
+Only test changes and Markdown triage will be committed.
