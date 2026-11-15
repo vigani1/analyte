@@ -1,0 +1,15 @@
+# Synthetic receive-only installation. Protect the data directory with OS permissions.
+schema_version = 1
+data_directory = "../data"
+
+[store]
+reserve_bytes = 1073741824
+database_bytes = 10737418240
+record_bytes = 2097152
+page_rows = 4096
+busy_timeout_ms = 1000
+
+[[machines]]
+id = "synthetic-hl7"
+definition = "../../config/examples/hl7.toml"
+site = "../../config/examples/site.toml"

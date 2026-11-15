@@ -109,7 +109,7 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        2
+        3
     );
     assert_eq!(
         store
@@ -129,9 +129,9 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
             .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    store.db.execute_batch("PRAGMA user_version=3")?;
+    store.db.execute_batch("PRAGMA user_version=4")?;
     drop(store);
-    assert!(matches!(open(&path), Err(Error::SchemaTooNew(3))));
+    assert!(matches!(open(&path), Err(Error::SchemaTooNew(4))));
     Ok(())
 }
 
@@ -834,5 +834,240 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
     // CHECK constraints reject both kinds carrying the other's provenance.
     assert!(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','order_event','receipt',1,'o','app','o',x'00',x'00',1,'pending',0)",[]).is_err());
     assert!(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','result',NULL,NULL,'o','app','o',x'00',x'00',1,'pending',0)",[]).is_err());
+    Ok(())
+}
+
+fn revised_receipt(
+    store: &mut Store,
+    sample: &str,
+    correction: bool,
+    run: &str,
+) -> Result<RevisionOutcome, Box<dyn std::error::Error>> {
+    let metadata = receipt(b"synthetic")?;
+    store.receive(&metadata, b"synthetic", b"config")?;
+    let mut result = production_result(metadata.id)?;
+    let mut parts = result.parts.as_slice().to_vec();
+    for part in &mut parts {
+        part.received_at = jiff::Timestamp::now();
+    }
+    result.parts =
+        analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
+    if let Some(sample_id) = &mut result.sample {
+        sample_id.id = SampleId::new(sample)?;
+    }
+    if let analyte_model::IdentityStatus::Resolved(identity) = &mut result.identity {
+        identity.observation.run = analyte_model::SourceText::new(run)?;
+    }
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result]);
+    let commit =
+        store.interpret_reconciled(metadata.id, evidence, &[correction], &[], |_, _| {
+            Ok(Vec::new())
+        })?;
+    Ok(*commit.outcomes.first().ok_or(Error::Corruption)?)
+}
+
+#[test]
+fn adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart() -> TestResult {
+    use analyte_model::Revision;
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("revisions.db");
+    let mut store = open(&path)?;
+    assert_eq!(
+        revised_receipt(&mut store, "001", false, "run1")?,
+        RevisionOutcome::New(Revision(0))
+    );
+    drop(store);
+    let mut store = open(&path)?;
+    assert_eq!(
+        revised_receipt(&mut store, "001", false, "run1")?,
+        RevisionOutcome::Retransmission(Revision(0))
+    );
+    assert_eq!(
+        revised_receipt(&mut store, "002", true, "run1")?,
+        RevisionOutcome::Correction(Revision(1))
+    );
+    assert_eq!(
+        revised_receipt(&mut store, "003", false, "run1")?,
+        RevisionOutcome::Conflict
+    );
+    assert_eq!(store.parked(0)?.len(), 1);
+    assert_eq!(
+        revised_receipt(&mut store, "001", false, "run1")?,
+        RevisionOutcome::Retransmission(Revision(0))
+    );
+    assert_eq!(
+        revised_receipt(&mut store, "001", false, "run2")?,
+        RevisionOutcome::New(Revision(0))
+    );
+    assert_eq!(
+        revised_receipt(&mut store, "004", true, "correction-without-original")?,
+        RevisionOutcome::New(Revision(0))
+    );
+    assert!(
+        store
+            .db
+            .execute("DELETE FROM observation_revisions", [])
+            .is_err()
+    );
+    assert!(
+        store
+            .db
+            .execute("UPDATE observation_revisions SET revision=10", [])
+            .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn adr0003_revision_builder_failure_rolls_back_interpretation_and_history() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("rollback.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+    assert!(matches!(
+        store.interpret_reconciled(metadata.id, evidence, &[false], &[], |_, _| Err(
+            Error::InvalidInput
+        )),
+        Err(Error::InvalidInput)
+    ));
+    assert!(store.interpretation(metadata.id, 1)?.is_none());
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        0
+    );
+    Ok(())
+}
+
+#[test]
+fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("v2.db");
+    let mut db = Connection::open(&path)?;
+    db.execute_batch(include_str!("schema.sql"))?;
+    Store::migrate_v2(&mut db)?;
+    let mut v2 = Store {
+        db,
+        path: path.clone(),
+        limits: limits(),
+        space: Box::new(Space(u64::MAX)),
+    };
+    let metadata = receipt(b"legacy")?;
+    v2.receive(&metadata, b"legacy", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+    v2.db.execute(
+        "INSERT INTO interpretations VALUES (?1,1,?2)",
+        params![key(&metadata.id)?, key(&evidence)?],
+    )?;
+    v2.frame(&Identifier::new("legacy-transfer")?, 1, b"legacy-frame")?;
+    let triggers: Vec<String> = v2
+        .db
+        .prepare("SELECT name FROM sqlite_master WHERE type='trigger'")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    drop(v2);
+    let mut store = open(&path)?;
+    assert_eq!(
+        revised_receipt(&mut store, "000123", false, "")?,
+        RevisionOutcome::Retransmission(analyte_model::Revision(0))
+    );
+    assert_eq!(store.raw(metadata.id)?, Some(b"legacy".to_vec()));
+    assert!(store.interpretation(metadata.id, 1)?.is_some());
+    assert_eq!(
+        store.frames(&Identifier::new("legacy-transfer")?, 0)?.len(),
+        1
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        3
+    );
+    for trigger in triggers {
+        assert_eq!(
+            store.db.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name=?1",
+                [trigger],
+                |r| r.get::<_, i64>(0)
+            )?,
+            1
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing() -> TestResult {
+    use analyte_model::*;
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("withdrawal.db"))?;
+    for (withdrawn, expected) in [
+        (false, RevisionOutcome::New(Revision(0))),
+        (true, RevisionOutcome::Correction(Revision(1))),
+        (true, RevisionOutcome::Retransmission(Revision(1))),
+    ] {
+        let metadata = receipt(b"raw")?;
+        store.receive(&metadata, b"raw", b"config")?;
+        let mut result = production_result(metadata.id)?;
+        if withdrawn {
+            let mut parts = result.parts.as_slice().to_vec();
+            for part in &mut parts {
+                part.status = ResultStatus::Withdrawn;
+                part.source_status = SourceText::new("D")?;
+            }
+            result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
+        }
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![result]);
+        let commit = store.interpret_reconciled(
+            metadata.id,
+            evidence,
+            &[false],
+            &[],
+            |evidence, outcomes| {
+                let Reading::Results(results) = &evidence.outcome else {
+                    return Err(Error::InvalidInput);
+                };
+                if matches!(outcomes.first(), Some(RevisionOutcome::Retransmission(_))) {
+                    return Ok(Vec::new());
+                }
+                let Some(IdentityStatus::Resolved(identity)) = results.first().map(|r| &r.identity)
+                else {
+                    return Err(Error::InvalidInput);
+                };
+                Ok(vec![Delivery {
+                    id: DeliveryId::try_from(uuid::Uuid::now_v7())
+                        .map_err(|_| Error::InvalidInput)?,
+                    destination: Identifier::new("app").map_err(|_| Error::InvalidInput)?,
+                    ordering_key: OrderingKey {
+                        machine: metadata.machine.clone(),
+                        observation: identity.observation.clone(),
+                    },
+                    payload: format!("revision:{}", identity.revision.0).into_bytes(),
+                    contract_version: 1,
+                }])
+            },
+        )?;
+        assert_eq!(commit.outcomes, vec![expected]);
+    }
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        2
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        2
+    );
     Ok(())
 }

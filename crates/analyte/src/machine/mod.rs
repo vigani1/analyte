@@ -1,0 +1,115 @@
+//! One owner per machine; transport sessions never replay queued writes.
+mod astm;
+mod folder;
+mod hl7;
+mod serial;
+use crate::{Error, config::Machine, invalid};
+use analyte_config::TransportKind;
+use analyte_store::Handle;
+use analyte_transport::{Backoff, Limits, connection};
+use std::{sync::Arc, time::Duration};
+use tokio::sync::watch;
+
+pub(crate) async fn run(
+    machine: Machine,
+    store: Arc<Handle>,
+    mut stop: watch::Receiver<bool>,
+    file_root: std::path::PathBuf,
+) -> Result<(), Error> {
+    let limits = Limits::new(
+        16,
+        Duration::from_millis(u64::from(
+            machine
+                .snapshot
+                .effective()
+                .machine()
+                .transport
+                .operation_timeout_ms,
+        )),
+    )?;
+    let endpoint = &machine.snapshot.effective().site().endpoint;
+    match machine.snapshot.effective().machine().transport.kind {
+        TransportKind::TcpServer => {
+            let listener = analyte_transport::tcp::bind(endpoint.parse()?).await?;
+            loop {
+                let accepted = tokio::select! {
+                    biased;
+                    _ = stop.changed() => return Ok(()),
+                    accepted = listener.accept() => accepted?,
+                };
+                let (conn, side) = connection(limits);
+                let cancel = conn.cancellation();
+                let processing = drive(&machine, &store, conn, stop.clone());
+                let transport = analyte_transport::tcp::pump(accepted.0, side);
+                // Drain ordered received/closed events even if the I/O owner finishes first.
+                let (result, transport) = tokio::join!(processing, transport);
+                cancel.cancel();
+                transport?;
+                if let Err(error) = result {
+                    tracing::error!(machine = machine.id.as_str(), error_kind = %error, "machine session stopped");
+                }
+                if *stop.borrow() {
+                    return Ok(());
+                }
+            }
+        }
+        TransportKind::TcpClient => loop {
+            let (conn, side) = connection(limits);
+            let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
+            let (result, transport) =
+                tokio::join!(drive(&machine, &store, conn, stop.clone()), transport);
+            result?;
+            transport?;
+            if *stop.borrow() {
+                return Ok(());
+            }
+            tokio::select! {
+                () = stopping(&mut stop) => return Ok(()),
+                () = tokio::time::sleep(Duration::from_millis(100)) => {}
+            }
+        },
+        TransportKind::Serial => serial::run(&machine, &store, limits, stop).await,
+        TransportKind::WatchedFolder => folder::session(&machine, &store, file_root, stop).await,
+    }
+}
+
+fn retry() -> Result<Backoff, Error> {
+    Ok(Backoff::new(
+        Duration::from_millis(100),
+        Duration::from_secs(5),
+        1,
+    )?)
+}
+
+async fn session(
+    machine: &Machine,
+    store: &Handle,
+    conn: &mut analyte_transport::Connection,
+    stop: watch::Receiver<bool>,
+) -> Result<(), Error> {
+    match machine.snapshot.effective().machine().dialog.kind {
+        analyte_config::DialogKind::AstmLink => astm::session(machine, store, conn, stop).await,
+        analyte_config::DialogKind::Hl7Receiver => hl7::session(machine, store, conn, stop).await,
+        analyte_config::DialogKind::FilePickup => Err(invalid("file pickup dialog is not wired")),
+    }
+}
+
+pub(crate) async fn stopping(stop: &mut watch::Receiver<bool>) {
+    if *stop.borrow() {
+        return;
+    }
+    let _ = stop.changed().await;
+}
+
+async fn drive(
+    machine: &Machine,
+    store: &Handle,
+    mut conn: analyte_transport::Connection,
+    stop: watch::Receiver<bool>,
+) -> Result<(), Error> {
+    let result = session(machine, store, &mut conn, stop).await;
+    conn.cancellation().cancel();
+    // Drop closes the event consumer so a transport ending after an error cannot
+    // wait behind unread events during shutdown.
+    result
+}

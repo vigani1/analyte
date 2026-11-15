@@ -97,7 +97,7 @@ fn receipt() -> Result<ReceiptMetadata, Box<dyn std::error::Error>> {
     })
 }
 
-fn make_result(receipt: ReceiptId) -> Result<ResultContent, Box<dyn std::error::Error>> {
+fn make_result(receipt: ReceiptId, run: &str) -> Result<ResultContent, Box<dyn std::error::Error>> {
     Ok(ResultContent {
         receipt,
         sample: Some(SampleIdentity {
@@ -110,7 +110,7 @@ fn make_result(receipt: ReceiptId) -> Result<ResultContent, Box<dyn std::error::
             observation: ObservationIdentity {
                 code: name("observation")?,
                 sub_id: SourceText::new("")?,
-                run: SourceText::new("")?,
+                run: SourceText::new(run)?,
                 order: name("order")?,
             },
             revision: Revision(0),
@@ -136,6 +136,20 @@ fn make_result(receipt: ReceiptId) -> Result<ResultContent, Box<dyn std::error::
     })
 }
 
+fn corrected_content(result: &mut ResultContent) -> Result<(), Box<dyn std::error::Error>> {
+    let mut parts = result.parts.as_slice().to_vec();
+    for part in &mut parts {
+        part.source_status = SourceText::new("C")?;
+        part.status = ResultStatus::Corrected;
+        part.values = EvidenceList::new(vec![ResultValue {
+            original: SourceText::new("<0.2")?,
+            parsed: ValueInterpretation::Text,
+        }])?;
+    }
+    result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
+    Ok(())
+}
+
 async fn enqueue(
     store: &Handle,
     metadata: ReceiptMetadata,
@@ -145,15 +159,22 @@ async fn enqueue(
     store
         .request(until()?, move |s| {
             s.receive(&metadata, b"raw", b"config")?;
-            s.interpret(
+            let is_correction = result
+                .parts
+                .as_slice()
+                .iter()
+                .any(|part| part.source_status.as_str() == "C");
+            s.interpret_reconciled(
                 metadata.id,
-                &analyte_store::Interpretation {
+                analyte_store::Interpretation {
                     driver: metadata.driver,
                     config_version: metadata.config_version,
                     config: b"config".to_vec(),
                     outcome: analyte_store::Reading::Results(vec![result]),
                 },
-                &[delivery],
+                &[is_correction],
+                &[],
+                |_, _| Ok(vec![delivery]),
             )?;
             Ok(())
         })
@@ -174,7 +195,7 @@ fn audit() -> Result<analyte_store::Audit, TextError> {
 #[test]
 fn adr0008_build_refuses_nonproduction_and_parked_evidence() -> TestResult {
     let receipt = receipt()?;
-    let mut result = make_result(receipt.id)?;
+    let mut result = make_result(receipt.id, "build-validation-run")?;
     for mode in [
         ProcessingMode::Training,
         ProcessingMode::Debug,
@@ -328,7 +349,7 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     let secrets = Secrets("key");
     let worker = Worker::new(&store, &destinations, &secrets);
     let metadata = receipt()?;
-    let original = make_result(metadata.id)?;
+    let original = make_result(metadata.id, "accepted-run")?;
     let delivery = build_delivery(
         &original,
         &metadata,
@@ -349,7 +370,7 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
 
     // Commit an original to the app before enqueueing different bytes with its ID.
     let metadata = receipt()?;
-    let original = make_result(metadata.id)?;
+    let original = make_result(metadata.id, "conflict-run")?;
     let mut conflicting = build_delivery(
         &original,
         &metadata,
@@ -369,10 +390,11 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     assert!(parked.iter().any(|p| p.evidence.contains("\"conflict\"")));
 
     let metadata = receipt()?;
-    let mut correction = make_result(metadata.id)?;
+    let mut correction = make_result(metadata.id, "conflict-run")?;
     if let IdentityStatus::Resolved(identity) = &mut correction.identity {
         identity.revision = Revision(1);
     }
+    corrected_content(&mut correction)?;
     let delivery = build_delivery(
         &correction,
         &metadata,
@@ -383,7 +405,7 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Idle);
     let mut metadata = receipt()?;
     metadata.machine = Identifier::new("other-machine")?;
-    let other = make_result(metadata.id)?;
+    let other = make_result(metadata.id, "conflict-run")?;
     let delivery = build_delivery(
         &other,
         &metadata,
@@ -533,7 +555,7 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
 
     let wrong = Secrets("wrong");
     let metadata = receipt()?;
-    let original = make_result(metadata.id)?;
+    let original = make_result(metadata.id, "conflict-run")?;
     // A new observation bypasses the intentionally parked observation above.
     let mut delivery = build_delivery(
         &original,
@@ -770,7 +792,7 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         let secrets = Secrets("key");
         let worker = Worker::new(&store, &destinations, &secrets);
         let metadata = receipt()?;
-        let result = make_result(metadata.id)?;
+        let result = make_result(metadata.id, "retry-run")?;
         let delivery = build_delivery(
             &result,
             &metadata,
@@ -789,10 +811,11 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         }
         if lose_response {
             let metadata = receipt()?;
-            let mut correction = make_result(metadata.id)?;
+            let mut correction = make_result(metadata.id, "retry-run")?;
             if let IdentityStatus::Resolved(identity) = &mut correction.identity {
                 identity.revision = Revision(1);
             }
+            corrected_content(&mut correction)?;
             let delivery = build_delivery(
                 &correction,
                 &metadata,
@@ -857,7 +880,7 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
         let destination = destinations.first().ok_or("destination missing")?;
         if !polling {
             let metadata = receipt()?;
-            let result = make_result(metadata.id)?;
+            let result = make_result(metadata.id, "cancel-run")?;
             let delivery = build_delivery(
                 &result,
                 &metadata,

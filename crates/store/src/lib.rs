@@ -2,6 +2,8 @@
 #![forbid(unsafe_code)]
 
 mod migration;
+mod revisions;
+pub use revisions::{InterpretationCommit, RevisionOutcome};
 mod query;
 pub use query::{Frame, ParkedItem, Receipt};
 mod records;
@@ -25,7 +27,7 @@ pub enum Error {
     #[error("storage capacity reserve reached")]
     Capacity,
     /// The database belongs to a newer implementation.
-    #[error("schema version {0} is newer than supported version 2")]
+    #[error("schema version {0} is newer than supported version 3")]
     SchemaTooNew(i64),
     /// SQLite or stored evidence failed an integrity check.
     #[error("stored evidence is corrupt")]
@@ -161,7 +163,7 @@ impl Store {
         let mut db = Connection::open(path)?;
         db.busy_timeout(limits.busy_timeout)?;
         let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version > 2 {
+        if version > 3 {
             return Err(Error::SchemaTooNew(version));
         }
         Self::integrity(&db)?;
@@ -175,6 +177,9 @@ impl Store {
         }
         if version <= 1 {
             Self::migrate_v2(&mut db)?;
+        }
+        if version <= 2 {
+            Self::migrate_v3(&mut db, limits.record_bytes)?;
         }
         // SQL constraints also protect evidence from accidental maintenance updates.
         for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
@@ -208,20 +213,29 @@ impl Store {
     }
 
     fn capacity(&self, bytes: usize) -> Result<(), Error> {
+        Self::capacity_on(&self.db, &self.path, &self.limits, &*self.space, bytes)
+    }
+
+    fn capacity_on(
+        db: &Connection,
+        path: &Path,
+        limits: &Limits,
+        space: &dyn FreeSpace,
+        bytes: usize,
+    ) -> Result<(), Error> {
         let input = u64::try_from(bytes).map_err(|_| Error::Capacity)?;
-        let needed = self
-            .limits
+        let needed = limits
             .reserve_bytes
             .checked_add(input)
             .ok_or(Error::Capacity)?;
-        let pages: u32 = self.db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
-        let size: u32 = self.db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
-        if self.space.available(&self.path)? <= needed
+        let pages: u32 = db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+        let size: u32 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+        if space.available(path)? <= needed
             || u64::from(pages)
                 .checked_mul(u64::from(size))
                 .and_then(|n| n.checked_add(input))
                 .ok_or(Error::Capacity)?
-                >= self.limits.database_bytes
+                >= limits.database_bytes
         {
             return Err(Error::Capacity);
         }
@@ -321,13 +335,25 @@ impl Store {
             "aborted"
         };
         let receipt = receipt.map(|id| key(&id)).transpose()?;
-        if self.db.execute(
+        let tx = self.db.transaction()?;
+        if tx.execute(
             "UPDATE transfers SET state=?2,receipt=?3 WHERE id=?1 AND state='open'",
             params![transfer.as_str(), state, receipt],
         )? != 1
         {
             return Err(Error::Conflict);
         }
+        if receipt.is_none() {
+            tx.execute(
+                "INSERT INTO parked(evidence) VALUES (?1)",
+                [key(&(
+                    "incomplete_transfer",
+                    transfer,
+                    "ASTM transfer ended before a complete receipt was retained",
+                ))?],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -358,85 +384,40 @@ impl Store {
         evidence: &Interpretation,
         deliveries: &[Delivery],
     ) -> Result<i64, Error> {
-        if deliveries.len() > self.limits.page_rows {
-            return Err(Error::InvalidInput);
-        }
-        match &evidence.outcome {
-            Reading::Results(results) => {
-                if results.iter().any(|r| r.receipt != receipt)
-                    || (!deliveries.is_empty()
-                        && (results.is_empty()
-                            || results.iter().any(|r| !r.may_deliver_to_production())))
-                {
-                    return Err(Error::InvalidInput);
-                }
-            }
-            Reading::Failed(_) => {
-                if !deliveries.is_empty() {
-                    return Err(Error::InvalidInput);
-                }
-            }
-        }
-        let encoded = self.encode(evidence)?;
-        self.bound(encoded.as_bytes())?;
         for delivery in deliveries {
-            self.bound(&delivery.payload)?;
-        }
-        if !deliveries.is_empty() {
-            let stored = self.receipt(receipt)?.ok_or(Error::Conflict)?;
-            for delivery in deliveries {
-                if delivery.ordering_key.machine != stored.metadata.machine {
-                    return Err(Error::InvalidInput);
-                }
-                if let Reading::Results(results) = &evidence.outcome {
-                    let matches_observation = results.iter().any(|result| match &result.identity {
-                        analyte_model::IdentityStatus::Resolved(identity) => {
-                            identity.observation == delivery.ordering_key.observation
-                        }
-                        analyte_model::IdentityStatus::Unresolved(_) => false,
-                    });
-                    if !matches_observation {
-                        return Err(Error::InvalidInput);
-                    }
-                }
+            if self.db.query_row(
+                "SELECT count(*) FROM outbox WHERE id=?1",
+                [key(&delivery.id)?],
+                |row| row.get::<_, i64>(0),
+            )? != 0
+            {
+                return Err(Error::Conflict);
             }
         }
-        let tx = self.db.transaction()?;
-        let receipt = key(&receipt)?;
-        let version: i64 = tx.query_row(
-            "SELECT coalesce(max(version),0)+1 FROM interpretations WHERE receipt=?1",
-            [&receipt],
-            |r| r.get(0),
-        )?;
-        tx.execute(
-            "INSERT INTO interpretations VALUES (?1,?2,?3)",
-            params![receipt, version, encoded],
-        )?;
-        for d in deliveries {
-            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'pending',0,unixepoch())", params![key(&d.id)?,receipt,version,d.destination.as_str(),key(&d.ordering_key)?,d.payload,digest(&d.payload).0.as_slice(),d.contract_version])?;
-        }
-        if let Reading::Failed(reason) = &evidence.outcome {
-            tx.execute(
-                "INSERT INTO parked(evidence) VALUES (?1)",
-                [key(&("parse_failure", &receipt, reason))?],
-            )?;
-        }
-        if let Reading::Results(results) = &evidence.outcome
-            && results
-                .iter()
-                .any(analyte_model::ResultContent::requires_parking)
-        {
-            tx.execute(
-                "INSERT INTO parked(evidence) VALUES (?1)",
-                [key(&(
-                    "unresolved_result",
-                    &receipt,
-                    "result requires operator reconciliation",
-                ))?],
-            )?;
-        }
-        tx.commit()?;
-        Ok(version)
+        let count = match &evidence.outcome {
+            Reading::Results(results) => results.len(),
+            Reading::Failed(_) => 0,
+        };
+        let commit = self.interpret_reconciled(receipt, evidence.clone(), &vec![false; count], &[], |assigned, outcomes| {
+            let mut selected = Vec::new();
+            for delivery in deliveries {
+                let eligible = match &assigned.outcome {
+                    Reading::Results(results) => results.iter().zip(outcomes).any(|(result,outcome)| matches!(outcome, RevisionOutcome::New(_) | RevisionOutcome::Correction(_)) && matches!(&result.identity, analyte_model::IdentityStatus::Resolved(identity) if identity.observation == delivery.ordering_key.observation)),
+                    Reading::Failed(_) => false,
+                };
+                if eligible {
+                    // Prebuilt bytes cannot be fixed after revision assignment. Callers
+                    // needing corrections must build through interpret_reconciled instead.
+                    if let (Reading::Results(before), Reading::Results(after)) = (&evidence.outcome, &assigned.outcome)
+                        && before.iter().zip(after).any(|(a,b)| a.identity != b.identity) { return Err(Error::InvalidInput); }
+                    selected.push(Delivery { id: delivery.id, destination: delivery.destination.clone(), ordering_key: OrderingKey { machine: delivery.ordering_key.machine.clone(), observation: delivery.ordering_key.observation.clone() }, payload: delivery.payload.clone(), contract_version: delivery.contract_version });
+                } else if !outcomes.iter().any(|outcome| matches!(outcome, RevisionOutcome::Retransmission(_))) {
+                    return Err(Error::InvalidInput);
+                }
+            }
+            Ok(selected)
+        })?;
+        Ok(commit.version)
     }
 
     /// Claims an eligible head item; unresolved earlier items block only their own key.
@@ -684,3 +665,59 @@ impl Store {
 
 #[cfg(test)]
 mod tests;
+
+impl Store {
+    /// Retains transfer provenance before journaling a frame; success permits its ACK.
+    /// Provenance commits first, so a later frame failure never loses configuration evidence.
+    /// # Errors
+    /// Rejects changed provenance, bounds, capacity or database failures.
+    pub fn journal_frame(
+        &mut self,
+        transfer: &Identifier,
+        number: u8,
+        raw: &[u8],
+        provenance: &FrameProvenance,
+    ) -> Result<i64, Error> {
+        let evidence = self.encode(provenance)?;
+        let retained: Option<String> = self
+            .db
+            .query_row(
+                "SELECT evidence FROM frame_provenance WHERE transfer=?1",
+                [transfer.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match retained {
+            Some(retained) if retained != evidence => return Err(Error::Conflict),
+            Some(_) => {}
+            None => {
+                self.capacity(evidence.len())?;
+                self.db.execute(
+                    "INSERT INTO frame_provenance VALUES (?1,?2)",
+                    params![transfer.as_str(), evidence],
+                )?;
+            }
+        }
+        self.frame(transfer, number, raw)
+    }
+
+    /// Reads protected configuration evidence retained for a journaled transfer.
+    /// # Errors
+    /// Reports database failures or corrupt provenance.
+    pub fn frame_provenance(
+        &self,
+        transfer: &Identifier,
+    ) -> Result<Option<FrameProvenance>, Error> {
+        let evidence: Option<String> = self
+            .db
+            .query_row(
+                "SELECT evidence FROM frame_provenance WHERE transfer=?1",
+                [transfer.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        evidence
+            .map(|e| serde_json::from_str(&e).map_err(Error::from))
+            .transpose()
+    }
+}

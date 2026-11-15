@@ -192,3 +192,48 @@ impl Store {
         })
     }
 }
+
+impl Store {
+    /// Lists receipt metadata in a bounded page ordered by stored UUID representation.
+    /// Pass the previous page's final receipt UUID serialized as JSON as `after`, or
+    /// an empty string initially. Payloads are read separately through `receipt`.
+    /// # Errors
+    /// Reports database errors or corrupt retained metadata.
+    pub fn receipts(&self, after: &str) -> Result<Vec<ReceiptMetadata>, Error> {
+        let mut statement = self
+            .db
+            .prepare("SELECT metadata FROM receipts WHERE id>?1 ORDER BY id LIMIT ?2")?;
+        let rows = statement.query_map(
+            params![
+                after,
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+            ],
+            |row| row.get::<_, String>(0),
+        )?;
+        rows.map(|row| serde_json::from_str(&row?).map_err(Error::from))
+            .collect()
+    }
+}
+
+impl Store {
+    /// Reads a bounded page of permanent operator actions, ordered by audit sequence.
+    /// # Errors
+    /// Reports database errors or corrupt audit evidence.
+    pub fn audits(&self, after: i64) -> Result<Vec<(i64, crate::Audit)>, Error> {
+        let mut statement = self.db.prepare(
+            "SELECT sequence,evidence FROM audit WHERE sequence>?1 ORDER BY sequence LIMIT ?2",
+        )?;
+        let rows = statement.query_map(
+            params![
+                after,
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+            ],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        rows.map(|row| {
+            let (sequence, evidence) = row?;
+            Ok((sequence, serde_json::from_str(&evidence)?))
+        })
+        .collect()
+    }
+}

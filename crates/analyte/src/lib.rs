@@ -1,0 +1,29 @@
+//! Foreground host orchestration and command-line operations.
+#![forbid(unsafe_code)]
+
+pub mod config;
+mod evidence;
+mod machine;
+pub mod output;
+pub mod service;
+mod space;
+
+/// The orchestration boundary retains concrete errors as their original causes.
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+
+pub(crate) fn invalid(message: &str) -> Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, message).into()
+}
+
+pub(crate) fn deadline() -> std::time::Instant {
+    std::time::Instant::now()
+        .checked_add(std::time::Duration::from_secs(5))
+        .unwrap_or(std::time::Instant::now())
+}
+
+/// Opens the store using the operating system volume probe.
+/// # Errors
+/// Reports directory, migration, integrity or worker errors.
+pub async fn open_system_store(program: &config::Program) -> Result<analyte_store::Handle, Error> {
+    service::open_store(program, Box::new(space::Volume)).await
+}
