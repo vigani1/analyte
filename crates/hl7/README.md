@@ -73,7 +73,7 @@ Covered by source-named synthetic tests and a query property test:
 
 Not yet complete:
 
-- Completion of groups 2-5: PID/PV1, SPM/SAC, ORC/OBR/TQ1/TCD and OBX/NTE/INV.
+- Completion of groups 3-5: SPM/SAC, ORC/OBR/TQ1/TCD and OBX/NTE/INV.
 - Every remaining Appendix C field/component and option predicate and its individual test.
   The shared validator is not a complete LAW conformance validator.
 - Complete typed validation of all value composites and enhanced-content
@@ -137,6 +137,36 @@ reverse supported address components and do not retransmit ignored content.
 Source-named tests in `tests/law_control.rs` provide positive and negative
 cases for each listed rule, plus receive/build integration cases. The evidence
 level remains documented; this completes group 1, not the entire LAW profile.
+
+## LAW patient and visit fields covered (group 2)
+
+- **PID:** 3, 5, 7, 8, 10 and 35. Fields 3/5 are required singletons,
+  with an explicit null permitted when not applicable. CX.1 retains the
+  patient ID (50 characters); CX.4 is an available HD with namespace and
+  universal identity limits. HD.3 is required when HD.2 is present and X
+  otherwise. A mixed local/universal authority must match a trusted
+  `AuthorityBinding`; unresolved associations return an error. XPN supports
+  surname (FN.1), given names, additional given names, suffix and mandatory
+  legal-name marker XPN.7. The 20#/10# name primitives are kept in full.
+  PID-7 accepts a date or a date/time to seconds without a timezone. PID-8
+  accepts the LAW sex subset. PID-10 CE and PID-35 CWE check their required
+  identifiers/namespaces, optional descriptions and component limits using
+  the coding systems profiled by C.9.6/C.9.7.
+- **PV1:** 2 and 3. Patient class is a required singleton from the C.10
+  subset. Location is an available singleton; only PL.2 (room) is supported
+  and is required when the field is valued. Its 16# text is kept in full.
+
+Other PID/PV1 fields (including PID-11/XAD), unlisted composite components
+and unlisted FN subcomponents are X: omitted on send, ignored but retained
+on receive. Unsupported whole patient/visit segments follow the same rule
+when the patient option is disabled. Required/available usage, cardinality,
+primitive/nested datatype shape, nulls and character lengths are checked by
+`Profile::validate_segment`. `Profile::for_peer` selects send options;
+`Profile::receive` supports enhanced incoming content without assuming peer
+capabilities. The profile-aware work/results/ORL APIs accept trusted
+host-supplied authority bindings; the existing APIs fail visibly when an
+association cannot be established. No patient-record reconciliation is done.
+The positive/negative source cases are in `tests/law_patient.rs`.
 
 ## Recording a Gazelle run
 

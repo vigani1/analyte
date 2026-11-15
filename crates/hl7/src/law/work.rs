@@ -309,6 +309,29 @@ pub fn work_order(
     capabilities: Capabilities,
     options: Options,
 ) -> Result<Message, Error> {
+    work_order_with_profile(
+        work,
+        patient,
+        address,
+        response,
+        capabilities,
+        options,
+        super::Profile::for_peer(capabilities),
+    )
+}
+
+/// Builds work with explicit content validation and host-supplied authority bindings.
+/// # Errors
+/// Rejects invalid fields, unavailable options or unresolved assigning authorities.
+pub fn work_order_with_profile(
+    work: &[Awos<'_>],
+    patient: Option<PatientInfo<'_>>,
+    address: Address<'_>,
+    response: Response<'_>,
+    capabilities: Capabilities,
+    options: Options,
+    profile: super::Profile<'_>,
+) -> Result<Message, Error> {
     if work.is_empty() || work.len() > options.limits.segments {
         return Err(content("OBR", 0));
     }
@@ -531,7 +554,7 @@ pub fn work_order(
     let message = Message::parse(&wire.bytes, options)?;
     super::validate_control(&message, super::ControlDirection::Send)?;
     for segment in message.segments() {
-        super::profile::validate_segment(segment)?;
+        profile.validate_segment(segment, super::ControlDirection::Send)?;
     }
     Ok(message)
 }
@@ -638,6 +661,17 @@ impl<'a> WorkResponse<'a> {
     /// # Errors
     /// Rejects inconsistent/missing/duplicate/unknown AWOS or mismatched control/status pairs.
     pub fn new(message: &'a Message, sent: &'a Message) -> Result<Self, Error> {
+        Self::with_profile(message, sent, super::Profile::receive())
+    }
+
+    /// Validates a work response using negotiated options and trusted authority bindings.
+    /// # Errors
+    /// Returns located profile failures or an inconsistent work-response error.
+    pub fn with_profile(
+        message: &'a Message,
+        sent: &'a Message,
+        profile: super::Profile<'_>,
+    ) -> Result<Self, Error> {
         super::profile::header(message, b"LAB-28", false)?;
         let msh = super::msh(message)?;
         let d = message.delimiters();
@@ -705,9 +739,9 @@ impl<'a> WorkResponse<'a> {
         let mut response_container = b"".as_slice();
         let mut error_count = 0usize;
         let mut seen = BTreeSet::new();
-        super::control::received_segment(msa_segment)?;
+        profile.validate_segment(msa_segment, super::ControlDirection::Receive)?;
         for s in segments {
-            super::control::received_segment(s)?;
+            profile.validate_segment(s, super::ControlDirection::Receive)?;
             match s.id() {
                 b"ERR" => {
                     if has_specimen {

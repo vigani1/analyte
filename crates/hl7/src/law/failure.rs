@@ -51,7 +51,9 @@ impl Failure {
             Self::QueryRejected { location } => return Some(*location),
         };
         match error {
-            Error::Component { segment, field, .. }
+            Error::Subcomponent { segment, field, .. }
+            | Error::Authority { segment, field, .. }
+            | Error::Component { segment, field, .. }
             | Error::Content { segment, field }
             | Error::Inconsistent { segment, field }
             | Error::Syntax(crate::Error::Control { segment, field }) => Some(ErrorLocation {
@@ -100,9 +102,11 @@ fn triggered(error: Error) -> Failure {
             segment: "MSH",
             field: 9 | 12 | 15 | 16 | 18 | 21,
         }) => Failure::ContentReject(error),
-        Error::Component { .. } | Error::Content { .. } | Error::Syntax(_) => {
-            Failure::MalformedTrigger(error)
-        }
+        Error::Subcomponent { .. }
+        | Error::Authority { .. }
+        | Error::Component { .. }
+        | Error::Content { .. }
+        | Error::Syntax(_) => Failure::MalformedTrigger(error),
     }
 }
 

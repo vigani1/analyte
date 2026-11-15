@@ -9,6 +9,29 @@ use thiserror::Error;
 /// A LAW validation failure, without payload in its diagnostic.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// A nested primitive violates its profiled usage, length or datatype.
+    #[error("LAW subcomponent rejected at {segment}-{field}.{component}.{subcomponent}")]
+    Subcomponent {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field position.
+        field: usize,
+        /// One-based component position.
+        component: usize,
+        /// One-based subcomponent position.
+        subcomponent: usize,
+    },
+    /// Local and universal authority names need an app-supplied binding; never guess.
+    #[error("unresolved LAW authority at {segment}-{field}.{component}")]
+    Authority {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field position.
+        field: usize,
+        /// One-based authority component position.
+        component: usize,
+    },
+
     /// A composite component violates its profiled usage, length or datatype.
     #[error("LAW component rejected at {segment}-{field}.{component}")]
     Component {
@@ -298,7 +321,7 @@ mod work;
 
 pub use work::{
     Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, WorkAction, WorkResponse,
-    negative_work, work_order,
+    negative_work, work_order, work_order_with_profile,
 };
 
 mod results;
@@ -312,9 +335,13 @@ mod control;
 
 pub use control::{ControlDirection, parse_message, validate_control};
 
+mod patient;
+
 mod profile;
 
-pub use profile::{FieldRule, Usage, validate_segment};
+pub use profile::{FieldRule, Profile, Usage, validate_segment};
+
+pub use patient::AuthorityBinding;
 
 fn msh(message: &Message) -> Result<Msh<'_>, Error> {
     let segment = message.segments().next().ok_or(content("MSH", 0))?;

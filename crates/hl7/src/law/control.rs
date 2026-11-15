@@ -63,14 +63,14 @@ pub fn validate_control(message: &Message, direction: ControlDirection) -> Resul
     Ok(())
 }
 
-fn part(value: &[u8], position: usize) -> &[u8] {
+pub(super) fn part(value: &[u8], position: usize) -> &[u8] {
     position
         .checked_sub(1)
         .and_then(|index| value.split(|b| *b == b'^').nth(index))
         .unwrap_or_default()
 }
 
-fn component_error(segment: &'static str, field: usize, component: usize) -> Error {
+pub(super) fn component_error(segment: &'static str, field: usize, component: usize) -> Error {
     Error::Component {
         segment,
         field,
@@ -80,7 +80,7 @@ fn component_error(segment: &'static str, field: usize, component: usize) -> Err
 
 // HL7 lengths count characters, not UTF-8 octets. Delimiter escapes represent
 // one character. Other escapes remain uninterpreted, as in the syntax layer.
-fn characters(value: &[u8]) -> usize {
+pub(super) fn characters(value: &[u8]) -> usize {
     let mut pieces = value.split(|b| *b == b'\\');
     let count = |piece: &[u8]| piece.iter().filter(|byte| (**byte & 0xc0) != 0x80).count();
     let mut length = count(pieces.next().unwrap_or_default());
@@ -98,7 +98,12 @@ fn characters(value: &[u8]) -> usize {
     length
 }
 
-fn primitive(value: &[u8], required: bool, maximum: usize, error: Error) -> Result<(), Error> {
+pub(super) fn primitive(
+    value: &[u8],
+    required: bool,
+    maximum: usize,
+    error: Error,
+) -> Result<(), Error> {
     let delimiters = crate::Delimiters {
         field: b'|',
         component: b'^',
@@ -121,7 +126,7 @@ fn primitive(value: &[u8], required: bool, maximum: usize, error: Error) -> Resu
     Ok(())
 }
 
-fn field(
+pub(super) fn field(
     segment: Segment<'_>,
     name: &'static str,
     number: usize,
@@ -135,7 +140,7 @@ fn field(
     Ok(())
 }
 
-fn scalar(
+pub(super) fn scalar(
     segment: Segment<'_>,
     name: &'static str,
     number: usize,
@@ -197,7 +202,7 @@ fn components(
     Ok(())
 }
 
-fn excluded_fields(
+pub(super) fn excluded_fields(
     segment: Segment<'_>,
     name: &'static str,
     allowed: &[usize],
@@ -239,7 +244,7 @@ pub(super) fn validate_segment(
 pub(super) fn received_segment(segment: Segment<'_>) -> Result<(), Error> {
     match segment.id() {
         b"MSH" | b"MSA" | b"ERR" => validate_segment(segment, ControlDirection::Receive),
-        _ => super::profile::validate_segment(segment),
+        _ => super::Profile::receive().validate_segment(segment, ControlDirection::Receive),
     }
 }
 

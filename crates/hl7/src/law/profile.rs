@@ -2,6 +2,58 @@
 use super::{Error, content, raw};
 use crate::{Message, Segment};
 
+/// Negotiated content options and externally supplied authority bindings.
+/// The profile validates content; it never resolves identities by guessing.
+#[derive(Debug, Clone, Copy)]
+pub struct Profile<'a> {
+    pub(super) patient: bool,
+    pub(super) authorities: &'a [super::AuthorityBinding<'a>],
+}
+
+impl<'a> Profile<'a> {
+    /// Supports receiving enhanced content without inferring what the peer can send.
+    /// Pooling outside the analyzer remains unselected unless explicitly enabled.
+    #[must_use]
+    pub fn receive() -> Self {
+        Self {
+            patient: true,
+            authorities: &[],
+        }
+    }
+
+    /// Selects outgoing content from the connected peer's declared capabilities.
+    #[must_use]
+    pub fn for_peer(capabilities: super::Capabilities) -> Self {
+        Self {
+            patient: capabilities.patient,
+            ..Self::receive()
+        }
+    }
+
+    /// Supplies trusted namespace/universal-ID associations from the host's configuration.
+    #[must_use]
+    pub fn with_authorities(mut self, authorities: &'a [super::AuthorityBinding<'a>]) -> Self {
+        self.authorities = authorities;
+        self
+    }
+
+    /// Checks a segment with explicit send/receive handling of unsupported content.
+    /// RE availability stays with the app; absent optional values are never invented.
+    /// # Errors
+    /// Returns the field/component/subcomponent that violates the selected profile.
+    pub fn validate_segment(
+        self,
+        segment: Segment<'_>,
+        direction: super::ControlDirection,
+    ) -> Result<(), Error> {
+        match segment.id() {
+            b"MSH" | b"MSA" | b"ERR" => super::control::validate_segment(segment, direction),
+            b"PID" | b"PV1" => super::patient::validate(segment, self, direction),
+            _ => validate_segment(segment),
+        }
+    }
+}
+
 /// LAW usage, including the two availability-dependent receiver obligations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Usage {
@@ -134,6 +186,13 @@ fn coded(
 /// # Errors
 /// Returns a segment/field location for missing fields, excess repetitions or invalid codes.
 pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
+    if matches!(segment.id(), b"PID" | b"PV1") {
+        return super::patient::validate(
+            segment,
+            Profile::receive(),
+            super::ControlDirection::Send,
+        );
+    }
     if matches!(segment.id(), b"MSH" | b"MSA" | b"ERR") {
         return super::control::validate_segment(segment, super::ControlDirection::Send);
     }
@@ -146,8 +205,6 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             &[1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 16, 18, 19, 21, 29],
         ),
         b"ORC" => ("ORC", &[1, 2, 4, 5, 8, 9, 21, 27]),
-        b"PID" => ("PID", &[3, 5, 7, 8, 10, 35]),
-        b"PV1" => ("PV1", &[2, 3]),
         b"SAC" => ("SAC", &[3, 4, 9, 10, 11, 13, 14, 15, 21, 22, 24, 29]),
         b"SPM" => ("SPM", &[1, 2, 3, 4, 7, 8, 9, 11, 13, 16, 17, 18, 27]),
         b"TCD" => ("TCD", &[1, 2, 3, 5, 6, 7, 8, 9, 10, 11]),
@@ -300,26 +357,6 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
         }
         b"ORC" => {
             check(segment, "ORC", 1, true, 2, 1)?;
-        }
-        b"PID" => {
-            check(segment, "PID", 3, true, 250, 1)?;
-            check(segment, "PID", 5, true, 250, 1)?;
-            if raw(segment, 5) != b"\"\""
-                && raw(segment, 5)
-                    .split(|b| *b == segment.delimiters.component)
-                    .nth(6)
-                    != Some(b"L".as_slice())
-            {
-                return Err(content("PID", 5));
-            }
-        }
-        b"PV1" => {
-            if !matches!(
-                raw(segment, 2),
-                b"E" | b"I" | b"O" | b"P" | b"R" | b"B" | b"C" | b"N" | b"U"
-            ) {
-                return Err(content("PV1", 2));
-            }
         }
         b"SAC" => {
             if raw(segment, 3).is_empty() && raw(segment, 4).is_empty() {

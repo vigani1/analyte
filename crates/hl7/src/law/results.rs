@@ -356,6 +356,13 @@ impl<'a> Results<'a> {
     /// Rejects missing context, unsupported types/statuses and inconsistent TCD identity.
     /// The input remains owned by the host even when no view can be returned.
     pub fn new(message: &'a Message) -> Result<Self, Error> {
+        Self::with_profile(message, super::Profile::receive())
+    }
+
+    /// Validates results with explicit negotiated options and trusted authority bindings.
+    /// # Errors
+    /// Rejects invalid content or unresolved mixed authority names without partial results.
+    pub fn with_profile(message: &'a Message, profile: super::Profile<'_>) -> Result<Self, Error> {
         super::profile::header(message, b"LAB-29", true)?;
         let msh = super::msh(message)?;
         let d = message.delimiters();
@@ -383,7 +390,7 @@ impl<'a> Results<'a> {
         let mut has_visit = false;
         let mut has_timing = false;
         for (ordinal, segment) in message.segments().enumerate().skip(1) {
-            super::control::received_segment(segment)?;
+            profile.validate_segment(segment, super::ControlDirection::Receive)?;
             match segment.id() {
                 b"PID" => {
                     if has_patient || specimen.is_some() {

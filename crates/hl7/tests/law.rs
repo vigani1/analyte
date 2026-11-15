@@ -884,7 +884,7 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
         taxonomy: None,
         visit: Some(Visit {
             class: b"I",
-            location: Some(b"Ward^Room^Bed"),
+            location: Some(b"^Room"),
         }),
     };
     let mut capabilities = work_capabilities();
