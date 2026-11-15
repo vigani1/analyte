@@ -632,3 +632,41 @@ fn hl7_ts_precision_indicator_cannot_hide_an_invalid_date() -> TestResult {
     assert_eq!(time.time.original.as_str(), "20260230123000^D");
     Ok(())
 }
+
+#[test]
+fn lis02_6_12_hl7_251_msh11_unknown_processing_still_refused() -> TestResult {
+    for mode in ["", "U"] {
+        let definition = config(ASTM_CONFIG)?;
+        let raw = format!(
+            "H|\\^&||||||||||{mode}|LIS2-A2|20261115120000\rP|1\rO|1|000AbC\rR|1|^^^SYN|1|mg/L||||F\rL|1|N\r"
+        );
+        let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
+        let message = messages.first().ok_or("missing message")?;
+        assert!(matches!(
+            map_astm(message, &definition, input()),
+            Err(analyte_mapping::Error::Structure {
+                reason: "unknown processing mode",
+                ..
+            })
+        ));
+        let definition = config(HL7_CONFIG)?;
+        let raw = format!(
+            "MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|{mode}|2.5.1\rOBR|1||sample\rOBX|1|NM|SYN^Synthetic^synthetic||1|mg/L|||||F\r"
+        );
+        let message = analyte_hl7::Message::parse(
+            raw.as_bytes(),
+            definition.effective().hl7_options().ok_or("options")?,
+        )?;
+        assert!(matches!(
+            map_hl7(&message, &definition, input()),
+            Err(analyte_mapping::Error::Hl7 {
+                source: analyte_hl7::Error::Control {
+                    segment: "MSH",
+                    field: 11
+                },
+                ..
+            })
+        ));
+    }
+    Ok(())
+}

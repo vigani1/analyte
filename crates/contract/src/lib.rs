@@ -13,6 +13,9 @@ pub const MAX_DOCUMENT_BYTES: usize = 1_048_576;
 /// Rejected document, without input values in its display text.
 #[derive(Debug, thiserror::Error)]
 pub enum DocumentError {
+    /// A host-only reservation is not an app lifecycle event.
+    #[error("internal Sending state cannot be represented by contract v1")]
+    InternalOrderState,
     /// Complete document exceeds the limit.
     #[error("document exceeds size limit")]
     TooLarge,
@@ -94,7 +97,7 @@ wire!(EventFields {
 });
 wire!(OrderFields {
     id: Text, version: std::num::NonZeroU64, state: evidence::OrderState, sample_id: Text,
-    tests: Vec<Text>, priority: Priority, target_analyzers: Option<Vec<Text>>,
+    tests: Vec<evidence::NamespacedId>, priority: Priority, target_analyzers: Option<Vec<Text>>,
     expires_at: Option<Text>, tombstone: bool
 });
 wire!(OrdersPageFields { contract_version: u8, orders: Vec<Order>, next_cursor: Text, complete: bool });

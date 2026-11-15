@@ -222,3 +222,14 @@ fn adr0008_invalid_signature_and_status_vectors() -> Result<(), Box<dyn std::err
     );
     Ok(())
 }
+
+#[test]
+fn adr0008_unknown_processing_stays_unknown_and_cannot_deliver()
+-> Result<(), Box<dyn std::error::Error>> {
+    let wire = evidence::ProcessingMode::from(&analyte_model::ProcessingMode::Unknown);
+    assert_eq!(serde_json::to_string(&wire)?, "\"unknown\"");
+    let decoded: evidence::ProcessingMode = serde_json::from_str("\"unknown\"")?;
+    assert!(!decoded.may_deliver_to_production());
+    assert!(evidence::ProcessingMode::Production.may_deliver_to_production());
+    Ok(())
+}

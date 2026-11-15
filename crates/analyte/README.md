@@ -65,7 +65,7 @@ stop, transports close and join (5 seconds), and the store drains and closes
 (5 seconds). Interrupted claims retry after restart with the same ID and bytes.
 Delivery/store failures stop the service visibly. Individual machine failures
 remain isolated. HTTP requests have a 3-second deadline, local delivery storage
-operations 2 seconds, idle claims back off 100 ms, retries range from 1?60 seconds,
+operations 2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
 and order polls run every 5 seconds with a 30-second freshness policy.
 As with the store's existing worker, an uninterruptible operating-system flush
 cannot safely be forcibly cancelled; owner destructors join rather than detach.
@@ -104,3 +104,34 @@ shutdown and audited interrupted-attempt recovery. When an interrupted attempt
 had already arrived, restart sends identical bytes and ID and receives duplicate;
 the receiver retains one record. These are documented tests, not real-machine
 or external-app qualification.
+
+
+## Documented vendor receive stacks
+
+Machine definitions in `crates/config/examples/poct.toml`, `vidas_literal.toml`
+and `autolyser.toml` are synthetic examples, not installed settings. Every vendor
+policy is explicit. POCT uses TCP; VIDAS Literal and Autolyser use TCP or serial.
+Field-position mappings are rejected for these syntaxes; `[codes]` uses the same
+exact test and unit translations as the record mapper.
+
+Vendor input is durably journaled before the dialog sees it. Complete receipts
+and interpretations keep driver/config versions. Unresolved identity is preserved
+and parked, never replaced with a generated run ID. `parked list` exposes its
+specific reason. No current vendor crate yields a resolved result identity, so
+vendor integration tests assert no reference-receiver delivery.
+
+Worklist downloads are not wired yet. The configured download permission never
+schedules an order. VIDAS/Autolyser send-ahead will build on phase 6's durable
+`reserve_send` and lifecycle/reconciliation APIs after `feat/program-orders`.
+
+## Test-only commit boundary hook
+
+The non-default `test-hooks` Cargo feature exposes one one-shot ASTM hook:
+`AstmCommitted`, after durable frame storage and before ACK generation. Tests
+install it only on an explicitly injected loopback listener. It can pause,
+resume normal processing, or stop that connection; it cannot modify wire bytes
+or bypass storage. Pauses stop on cancellation, dropped control or a five-second
+deadline. Without the feature, both the hook and its call site compile out.
+`test-hooks` is test-only and must never be enabled for release builds.
+Exercise its restart test with
+`cargo test -p analyte --all-features --test delivery recording`.

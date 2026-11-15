@@ -61,6 +61,12 @@ pub enum FramingKind {
     Mllp,
     /// Explicit `None` selection.
     None,
+    /// Documented Poct protocol layer.
+    Poct,
+    /// Documented VIDAS Literal protocol layer.
+    VidasLiteral,
+    /// Documented Autolyser protocol layer.
+    Autolyser,
 }
 
 /// Connection state machine.
@@ -73,6 +79,12 @@ pub enum DialogKind {
     Hl7Receiver,
     /// Explicit `FilePickup` selection.
     FilePickup,
+    /// Documented Poct protocol layer.
+    Poct,
+    /// Documented VIDAS Literal protocol layer.
+    VidasLiteral,
+    /// Documented Autolyser protocol layer.
+    Autolyser,
 }
 
 /// Record syntax.
@@ -83,6 +95,12 @@ pub enum SyntaxKind {
     AstmLis02,
     /// Explicit `Hl7V2` selection.
     Hl7V2,
+    /// Documented Poct protocol layer.
+    Poct,
+    /// Documented VIDAS Literal protocol layer.
+    VidasLiteral,
+    /// Documented Autolyser protocol layer.
+    Autolyser,
 }
 
 /// LIS01 checksum compatibility.
@@ -461,6 +479,9 @@ pub struct Evidence {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Machine {
+    /// Explicit outbound behavior; omission disables queries and work lists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orders: Option<crate::Orders>,
     /// Must be one.
     pub schema_version: u32,
     /// Definition identity.
@@ -474,7 +495,15 @@ pub struct Machine {
     /// Syntax settings.
     pub syntax: Syntax,
     /// Field and code selection.
-    pub mappings: Mappings,
+    pub mappings: Option<Mappings>,
+    /// Code tables for vendor syntaxes, without field selectors.
+    pub codes: Option<CodeTables>,
+    /// Required POCT reviewer policy.
+    pub poct: Option<Poct>,
+    /// Required installed VIDAS settings.
+    pub vidas: Option<Vidas>,
+    /// Required Autolyser polling policy.
+    pub autolyser: Option<Autolyser>,
     /// Named vendor departures.
     pub deviations: Vec<Deviation>,
     /// Declared evidence.
@@ -511,6 +540,8 @@ pub struct Site {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Overrides {
+    /// Explicit replacement of outbound behavior.
+    pub orders: Option<crate::Orders>,
     /// Must be one.
     pub schema_version: u32,
     /// Replacement transport settings.
@@ -529,4 +560,112 @@ pub struct Overrides {
     pub endpoint: Option<String>,
     /// Replacement destination.
     pub destination: Option<Destination>,
+}
+
+/// Shared exact test and unit translations for vendor protocols.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodeTables {
+    /// Source system and code to application code.
+    pub tests: Vec<TestMapping>,
+    /// Original unit to explicit UCUM spelling.
+    pub units: Vec<UnitMapping>,
+}
+
+/// POCT DML reviewer resource and time budgets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Poct {
+    /// Maximum pending custody requests.
+    pub pending_messages: usize,
+    /// Maximum XML nesting depth.
+    pub depth: usize,
+    /// Maximum XML elements.
+    pub elements: usize,
+    /// Maximum encoded attribute bytes.
+    pub attribute_bytes: usize,
+    /// Device response deadline.
+    pub response_ms: u32,
+    /// ACK budget when DCP omits it.
+    pub acknowledgment_ms: u32,
+}
+
+/// Explicit installed VIDAS Literal settings; no defaults.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Vidas {
+    /// ACK after ETX rather than checksum.
+    pub alternate: bool,
+    /// Maximum RS chunk bytes.
+    pub chunk: usize,
+    /// Uniform control suffix bytes.
+    pub suffix: Vec<u8>,
+    /// Include STX in checksum.
+    pub include_stx: bool,
+    /// Include suffix in checksum.
+    pub include_suffix: bool,
+    /// Emit uppercase hex.
+    pub uppercase: bool,
+    /// Accept either checksum case.
+    pub accept_either_case: bool,
+    /// Installed sample ID ceiling, twelve or seventeen.
+    pub sample_limit: u8,
+    /// Peer ACK deadline.
+    pub acknowledgment_ms: u32,
+    /// Interbyte deadline.
+    pub interbyte_ms: u32,
+    /// Entire conversation deadline.
+    pub session_ms: u32,
+    /// Durable storage deadline.
+    pub commit_ms: u32,
+    /// Recorded retry setting, never automatic order replay.
+    pub retries: u16,
+    /// Recorded retry backoff.
+    pub backoff_ms: u32,
+    /// Permit explicit worklist downloads.
+    pub download: bool,
+}
+
+/// Autolyser connection timing and installed report layout.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Autolyser {
+    /// Interval between operations.
+    pub poll_ms: u32,
+    /// Initialization ACK deadline.
+    pub acknowledgment_ms: u32,
+    /// Total response deadline.
+    pub response_ms: u32,
+    /// Maximum silence within response.
+    pub interbyte_ms: u32,
+    /// Durable storage deadline.
+    pub storage_ms: u32,
+    /// Controls-enabled report layout.
+    pub controls: bool,
+    /// Request L automatically after corruption at the poll interval.
+    pub recover_last_on_poll: bool,
+    /// Permit explicit worklist downloads.
+    pub download: bool,
+}
+
+impl Machine {
+    /// Returns the single configured test table, for either mapping family.
+    #[must_use]
+    pub fn tests(&self) -> &[TestMapping] {
+        match (&self.mappings, &self.codes) {
+            (Some(mapping), None) => &mapping.tests,
+            (None, Some(codes)) => &codes.tests,
+            (None, None) | (Some(_), Some(_)) => &[],
+        }
+    }
+
+    /// Returns the single configured unit table, for either mapping family.
+    #[must_use]
+    pub fn units(&self) -> &[UnitMapping] {
+        match (&self.mappings, &self.codes) {
+            (Some(mapping), None) => &mapping.units,
+            (None, Some(codes)) => &codes.units,
+            (None, None) | (Some(_), Some(_)) => &[],
+        }
+    }
 }

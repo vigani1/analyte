@@ -10,10 +10,13 @@ use std::{
 
 /// A machine's installation identity and validated effective settings.
 pub struct Machine {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) astm_committed: Option<std::sync::Arc<crate::test_hooks::AstmCommitted>>,
     /// Unique installation identity, independent of the shipped definition name.
     pub(crate) id: analyte_model::Identifier,
     /// Exact reproducible machine configuration.
     pub(crate) snapshot: Validated,
+    pub(crate) listener: Option<std::net::TcpListener>,
 }
 
 /// Validated program settings. Paths are resolved relative to the program file.
@@ -70,6 +73,60 @@ fn read(path: &Path) -> Result<String, Error> {
 }
 
 impl Program {
+    /// Installs a one-shot ASTM durable-frame/pre-ACK pause for a loopback test machine.
+    /// # Errors
+    /// Rejects unknown machines, non-ASTM stacks, or machines without an injected loopback listener.
+    #[cfg(feature = "test-hooks")]
+    pub fn pause_astm_committed_for_test(
+        &mut self,
+        id: &str,
+        hook: std::sync::Arc<crate::test_hooks::AstmCommitted>,
+    ) -> Result<(), Error> {
+        let machine = self
+            .machines
+            .iter_mut()
+            .find(|m| m.id.as_str() == id)
+            .ok_or_else(|| invalid("unknown test machine"))?;
+        if machine.listener.is_none()
+            || machine.snapshot.effective().machine().dialog.kind
+                != analyte_config::DialogKind::AstmLink
+        {
+            return Err(invalid(
+                "commit hook requires injected ASTM loopback listener",
+            ));
+        }
+        machine.astm_committed = Some(hook);
+        Ok(())
+    }
+
+    /// Supplies an already bound loopback listener for deterministic integration tests.
+    /// The caller can retain a clone to reserve the same address across restarts.
+    /// # Errors
+    /// Rejects unknown machines, non-loopback addresses and non-server configs.
+    pub fn set_loopback_listener_for_test(
+        &mut self,
+        id: &str,
+        listener: std::net::TcpListener,
+    ) -> Result<(), Error> {
+        let machine = self
+            .machines
+            .iter_mut()
+            .find(|m| m.id.as_str() == id)
+            .ok_or_else(|| invalid("unknown test machine"))?;
+        if !listener.local_addr()?.ip().is_loopback()
+            || machine.snapshot.effective().machine().transport.kind
+                != analyte_config::TransportKind::TcpServer
+            || listener.local_addr()?.to_string() != machine.snapshot.effective().site().endpoint
+        {
+            return Err(invalid(
+                "test listener does not match configured loopback server",
+            ));
+        }
+        listener.set_nonblocking(true)?;
+        machine.listener = Some(listener);
+        Ok(())
+    }
+
     /// Reads bounded files and validates every machine through `analyte-config`.
     /// # Errors
     /// Reports path, TOML, bounds, duplicate identity and machine validation failures.
@@ -136,8 +193,11 @@ impl Program {
                 ));
             }
             machines.push(Machine {
+                #[cfg(feature = "test-hooks")]
+                astm_committed: None,
                 id: entry.id,
                 snapshot,
+                listener: None,
             });
         }
         if file.signing_rotation.len() > 128

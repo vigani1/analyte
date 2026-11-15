@@ -14,3 +14,4 @@ replacement.
 | [0006](0006-apache-2-license.md)                | Apache License 2.0                                 |
 | [0007](0007-standards-first.md)                 | Standards first, machines after                    |
 | [0008](0008-app-contract.md)                    | Contract with lab apps (version 1)                 |
+| [0009](0009-recording-format.md)                | Recording format for fixtures and replay           |

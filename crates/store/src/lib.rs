@@ -1,7 +1,11 @@
 //! Durable evidence and transactional delivery state. No payloads are logged.
 #![forbid(unsafe_code)]
 
+mod machine_orders;
 mod migration;
+pub use machine_orders::*;
+#[cfg(test)]
+mod order_tests;
 mod revisions;
 pub use revisions::{InterpretationCommit, RevisionOutcome};
 mod query;
@@ -27,7 +31,7 @@ pub enum Error {
     #[error("storage capacity reserve reached")]
     Capacity,
     /// The database belongs to a newer implementation.
-    #[error("schema version {0} is newer than supported version 3")]
+    #[error("schema version {0} is newer than supported version 4")]
     SchemaTooNew(i64),
     /// SQLite or stored evidence failed an integrity check.
     #[error("stored evidence is corrupt")]
@@ -35,6 +39,9 @@ pub enum Error {
     /// An immutable identity or state transition conflicted.
     #[error("identity or state constraint conflict")]
     Conflict,
+    /// The model rejected a machine-order lifecycle transition.
+    #[error("machine-order lifecycle transition rejected: {0}")]
+    OrderTransition(#[from] analyte_model::TransitionError),
     /// SQLite reported a full disk.
     #[error("disk full")]
     DiskFull,
@@ -166,7 +173,7 @@ impl Store {
         let mut db = Connection::open(path)?;
         db.busy_timeout(limits.busy_timeout)?;
         let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version > 3 {
+        if version > 4 {
             return Err(Error::SchemaTooNew(version));
         }
         Self::integrity(&db)?;
@@ -183,6 +190,11 @@ impl Store {
         }
         if version <= 2 {
             Self::migrate_v3(&mut db, limits.record_bytes)?;
+        }
+        if version <= 3 {
+            let tx = db.transaction()?;
+            tx.execute_batch(include_str!("migration_v4.sql"))?;
+            tx.commit()?;
         }
         // SQL constraints also protect evidence from accidental maintenance updates.
         for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {

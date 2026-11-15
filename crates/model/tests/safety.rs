@@ -82,7 +82,8 @@ fn rule7_lists_reject_unbounded_deserialization() {
 #[test]
 fn rule8_lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result<(), TransitionError>
 {
-    let sent = OrderState::Requested.transition(OrderState::Sent)?;
+    let sending = OrderState::Requested.transition(OrderState::Sending)?;
+    let sent = sending.transition(OrderState::Sent)?;
     let accepted = sent.transition(OrderState::Accepted)?;
     assert_eq!(accepted.transition(OrderState::Done)?, OrderState::Done);
     let cancel = accepted.transition(OrderState::CancelRequested)?;
@@ -108,6 +109,7 @@ fn rule8_lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result
 fn plan6_only_production_delivers() {
     assert!(ProcessingMode::Production.may_deliver_to_production());
     for mode in [
+        ProcessingMode::Unknown,
         ProcessingMode::Debug,
         ProcessingMode::Training,
         ProcessingMode::QualityControl,
@@ -293,6 +295,7 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
         values: EvidenceList::new(values)?,
         units: None,
         dilution: Some(Dilution {
+            original: Some(SourceText::new("10")?),
             factor: Some(Decimal::new("10")?),
             applied: DilutionApplied::Unknown,
         }),

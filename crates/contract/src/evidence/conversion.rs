@@ -83,6 +83,7 @@ impl From<&analyte_model::UnitMapping> for UnitMapping {
 impl From<&analyte_model::Dilution> for Dilution {
     fn from(v: &analyte_model::Dilution) -> Self {
         Self {
+            original: v.original.as_ref().map(Into::into),
             factor: v.factor.as_ref().map(Into::into),
             applied: (&v.applied).into(),
         }
@@ -310,6 +311,7 @@ impl From<&analyte_model::TimePrecision> for TimePrecision {
 impl From<&analyte_model::ProcessingMode> for ProcessingMode {
     fn from(v: &analyte_model::ProcessingMode) -> Self {
         match v {
+            analyte_model::ProcessingMode::Unknown => Self::Unknown,
             analyte_model::ProcessingMode::Production => Self::Production,
             analyte_model::ProcessingMode::Training => Self::Training,
             analyte_model::ProcessingMode::Debug => Self::Debug,
@@ -318,9 +320,13 @@ impl From<&analyte_model::ProcessingMode> for ProcessingMode {
     }
 }
 
-impl From<&analyte_model::OrderState> for OrderState {
-    fn from(v: &analyte_model::OrderState) -> Self {
-        match v {
+impl TryFrom<&analyte_model::OrderState> for OrderState {
+    type Error = super::super::DocumentError;
+    fn try_from(v: &analyte_model::OrderState) -> Result<Self, Self::Error> {
+        Ok(match v {
+            analyte_model::OrderState::Sending => {
+                return Err(super::super::DocumentError::InternalOrderState);
+            }
             analyte_model::OrderState::Requested => Self::Requested,
             analyte_model::OrderState::Sent => Self::Sent,
             analyte_model::OrderState::Accepted => Self::Accepted,
@@ -329,7 +335,7 @@ impl From<&analyte_model::OrderState> for OrderState {
             analyte_model::OrderState::CancelRequested => Self::CancelRequested,
             analyte_model::OrderState::CancelConfirmed => Self::CancelConfirmed,
             analyte_model::OrderState::Uncertain => Self::Uncertain,
-        }
+        })
     }
 }
 

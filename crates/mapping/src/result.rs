@@ -1,9 +1,10 @@
 //! Source evidence accompanying each observation, without clinical decisions.
+use crate::FieldSyntax;
 use crate::source::Source;
 use crate::time;
 use crate::{Error, Input, Output, Problem, finding, identifier, list, present, text};
 use analyte_config::Classification;
-use analyte_config::{SyntaxKind, Validated};
+use analyte_config::Validated;
 use analyte_model::*;
 
 pub(crate) fn part(
@@ -15,7 +16,7 @@ pub(crate) fn part(
     values: EvidenceList<ResultValue>,
     output: &mut Output,
 ) -> Result<ResultPart, Error> {
-    let astm = source.syntax == SyntaxKind::AstmLis02;
+    let astm = source.syntax == FieldSyntax::AstmLis02;
     let status_text = source
         .raw(index, if astm { 9 } else { 11 })?
         .unwrap_or_default();
@@ -24,14 +25,7 @@ pub(crate) fn part(
     let units = present(source.raw(index, units_field)?)
         .map(|value| {
             let original = text(&value, source.position(index, units_field))?;
-            match config
-                .effective()
-                .machine()
-                .mappings
-                .units
-                .iter()
-                .find(|entry| entry.original.as_str() == value)
-            {
+            match crate::unit_translation(config.effective().machine().units(), &value) {
                 Some(entry) => Units::mapped(
                     original.clone(),
                     UnitMapping {
@@ -49,7 +43,7 @@ pub(crate) fn part(
         .transpose()?;
     let mut qc_class = QcClass::Unknown;
     let mut classified = false;
-    for rule in &config.effective().machine().mappings.qc {
+    for rule in &crate::field_mappings(config)?.qc {
         if source.selected(index, &rule.field)?.as_deref() == Some(rule.value.as_str()) {
             let selected = match rule.classification {
                 Classification::Patient => QcClass::Patient,
@@ -185,7 +179,7 @@ pub(crate) fn source_path(
     index: usize,
 ) -> Result<EvidenceList<SourceNode>, Error> {
     let mut path = Vec::new();
-    let astm = source.syntax == SyntaxKind::AstmLis02;
+    let astm = source.syntax == FieldSyntax::AstmLis02;
     for ancestor in source.ancestors(index)? {
         let position = source.position(ancestor, 0);
         let node = source.nodes.get(ancestor).ok_or(Error::Structure {

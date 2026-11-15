@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 /// Mode is explicit so training and debugging cannot silently become production.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProcessingMode {
+    /// The machine did not state a processing mode; never production-eligible.
+    Unknown,
     /// Eligible for production delivery.
     Production,
     /// Training evidence only.
@@ -26,7 +28,9 @@ impl ProcessingMode {
 pub enum OrderState {
     /// Requested by the app, not sent.
     Requested,
-    /// Sent, awaiting machine acceptance.
+    /// Durably reserved; bytes may be leaving, but transfer is not confirmed.
+    Sending,
+    /// Transfer confirmed, awaiting machine application acceptance.
     Sent,
     /// Machine explicitly accepted.
     Accepted,
@@ -60,7 +64,8 @@ impl OrderState {
     /// Returns both states when the change is illegal.
     pub fn transition(self, to: Self) -> Result<Self, TransitionError> {
         let valid = match self {
-            Self::Requested => matches!(to, Self::Sent | Self::CancelRequested | Self::Rejected),
+            Self::Requested => matches!(to, Self::Sending | Self::CancelRequested | Self::Rejected),
+            Self::Sending => matches!(to, Self::Sent | Self::Uncertain),
             Self::Sent => matches!(
                 to,
                 Self::Accepted | Self::Rejected | Self::CancelRequested | Self::Uncertain

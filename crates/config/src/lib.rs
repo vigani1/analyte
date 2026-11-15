@@ -1,8 +1,10 @@
 //! Bounded configuration loading and immutable activation snapshots (ADR 0002).
 #![forbid(unsafe_code)]
 
+mod orders;
 mod schema;
 mod validation;
+pub use orders::*;
 pub use schema::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -21,6 +23,26 @@ pub enum Error {
         path: String,
         /// Missing identity setting.
         setting: &'static str,
+    },
+    /// Protocol layers or transport cannot be combined.
+    #[error("{path}: incompatible protocol stack")]
+    IncompatibleStack {
+        /// Source layer.
+        path: String,
+    },
+    /// Field selectors cannot interpret vendor messages.
+    #[error("{path}: vendor syntax requires codes, without field-position mappings")]
+    VendorFieldMappings {
+        /// Source layer.
+        path: String,
+    },
+    /// A required installed policy is missing, invalid or belongs to another stack.
+    #[error("{path}: invalid or missing {protocol} settings")]
+    ProtocolSettings {
+        /// Source layer.
+        path: String,
+        /// Policy needing correction.
+        protocol: &'static str,
     },
     /// Input exceeds the file budget.
     #[error("{path}: file exceeds 1048576 bytes; split or reduce the configuration")]
@@ -168,7 +190,10 @@ impl Draft {
             self.machine.syntax = v;
         }
         if let Some(v) = o.mappings {
-            self.machine.mappings = v;
+            self.machine.mappings = Some(v);
+        }
+        if let Some(v) = o.orders {
+            self.machine.orders = Some(v);
         }
         if let Some(v) = o.deviations {
             self.machine.deviations = v;
