@@ -39,7 +39,7 @@ in AGENTS.md. No real analyzer or external lab app is used by tests.
 
 ## LAW implementation status and simulator evidence
 
-The `law` module currently provides a borrowed LAB-27 QBP query view only.
+The `law` module provides a borrowed LAB-27 QBP query view and RSP rendering.
 It checks the message triple, first transaction profile, NE/AL mode, segment
 order/cardinality, query scopes, required/forbidden parameters, bounded IDs,
 query tags and immediate response mode. Tests use synthetic data and proptest.
@@ -48,7 +48,7 @@ exact query descriptions, location coding, option negotiation and complete
 header validation still need coverage. Do not use this view as a complete
 profile acceptance decision.
 
-Not yet covered: RSP rendering and host cache decisions; restricted negative
+Not yet covered: restricted negative
 LAB-28; AWOS downloads, cancellations and ORL correlation/outcomes; LAB-29
 whole-message validation, typed results and scoped enhanced content; distinct
 LAW error classes and response rendering; full Appendix C predicates; capability
@@ -66,3 +66,14 @@ selected enhanced content, lost ACK, disconnect, restart and storage failure.
 Record changes to the validation profile between runs. Network exchanges belong
 to the host/dialog integration, not this pure module. No Gazelle run has been
 performed; evidence remains documented and partial.
+
+### Step 1: LAB-27 responses
+
+`query_response` renders correlated RSP/K11 with exact QPD echo and error
+locations, reversing addresses through the existing acknowledgment renderer.
+Positive responses require stored-and-interpreted responsibility. Work and a
+genuine empty cache both acknowledge query processing with OK; the explicit
+followup distinguishes a work download from the restricted negative LAB-28.
+Unavailable lookups use an error response and never request a negative download.
+Output is bounded before each append. Tests cover these decisions, correlation,
+header reversal, error locations, storage refusal and output limits.

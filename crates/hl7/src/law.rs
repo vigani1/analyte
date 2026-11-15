@@ -264,3 +264,7 @@ impl<'a> Query<'a> {
         self.message
     }
 }
+
+mod responses;
+
+pub use responses::{CacheAnswer, QueryFollowup, QueryResponse, query_response};
