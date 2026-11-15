@@ -51,8 +51,24 @@ async fn setup(
     settings: &str,
     paused: bool,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_with_freshness(orders, settings, paused, 30).await
+}
+async fn setup_with_freshness(
+    orders: Vec<analyte_contract::Order>,
+    settings: &str,
+    paused: bool,
+    freshness: u64,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", settings)?;
+    let site = temp.path().join("hl7-site.toml");
+    std::fs::write(
+        &site,
+        format!(
+            "{}\nfreshness_seconds = {freshness}\n",
+            std::fs::read_to_string(&site)?
+        ),
+    )?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),
         TcpListener::bind("127.0.0.1:0").await?,
@@ -570,6 +586,8 @@ async fn law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not
     for change in [
         "UPDATE feed SET polled=0",
         "UPDATE feed SET trusted=0,complete=0",
+        "DELETE FROM orders; DELETE FROM feed",
+        "INSERT INTO audit(evidence) VALUES ('{\"action\":\"store-restore\"}')",
     ] {
         let (_temp, path, reference, running, mut peer) = setup(
             vec![order("order-1", "000Ab12", None, 1)?],
@@ -584,7 +602,10 @@ async fn law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not
             assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"AE");
             quiet(&mut peer).await?;
         }
-        assert_eq!(count(&path, "orders")?, 1);
+        assert_eq!(
+            count(&path, "orders")?,
+            if change.starts_with("DELETE") { 0 } else { 1 }
+        );
         assert_eq!(count(&path, "machine_orders")?, 0);
         running.stop().await?;
     }
@@ -729,6 +750,32 @@ async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservat
         wait_state(&path, "done", 1).await?;
         running.stop().await?;
         reference.close().await?;
+    }
+    Ok(())
+}
+
+// ADR 0004 / rule 9 / LAW TF-2b 3.27.4: only configured fresh emptiness is a negative work answer.
+#[tokio::test]
+async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Error> {
+    for freshness in [10, 120] {
+        let (_temp, path, reference, running, mut peer) =
+            setup_with_freshness(Vec::new(), &definition(), false, freshness).await?;
+        reference.close().await?;
+        database(&path)?.execute(
+            "UPDATE feed SET polled=?1",
+            [jiff::Timestamp::now().as_second() - 50],
+        )?;
+        send(&mut peer, query(ALL, "configured-age").as_bytes()).await?;
+        let response = packet(&mut peer).await?;
+        if freshness == 10 {
+            assert_eq!(field(&response, b"QAK", 2)?, b"AE");
+        } else {
+            assert_eq!(field(&response, b"QAK", 2)?, b"OK");
+            let negative = packet(&mut peer).await?;
+            assert_eq!(field(&negative, b"ORC", 1)?, b"DC");
+            orl(&mut peer, &negative, &[], false).await?;
+        }
+        running.stop().await?;
     }
     Ok(())
 }

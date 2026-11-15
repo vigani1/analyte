@@ -15,7 +15,7 @@ pub(super) enum Input {
 /// Every transport chunk is durably journaled before a dialog sees any byte.
 /// Dropping this wait cannot cancel an already queued store request.
 pub(super) async fn input(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     stop: &mut watch::Receiver<bool>,
@@ -70,4 +70,20 @@ pub(super) async fn failed(
 
 pub(super) fn ms(value: u32) -> Duration {
     Duration::from_millis(u64::from(value))
+}
+
+/// Retains both the triggering failure and a failure to save its dialog effects.
+#[derive(Debug, thiserror::Error)]
+#[error("{original}; dialog effect failed: {effect}")]
+struct EffectFailure {
+    #[source]
+    original: Error,
+    effect: Error,
+}
+
+pub(super) fn effect_failure(original: Option<Error>, effect: Error) -> Error {
+    match original {
+        Some(original) => Box::new(EffectFailure { original, effect }),
+        None => effect,
+    }
 }

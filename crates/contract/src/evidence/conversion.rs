@@ -389,3 +389,18 @@ impl From<&analyte_model::ValueInterpretation> for ValueInterpretation {
         }
     }
 }
+
+impl From<OrderState> for analyte_model::OrderState {
+    fn from(state: OrderState) -> Self {
+        match state {
+            OrderState::Requested => Self::Requested,
+            OrderState::Sent => Self::Sent,
+            OrderState::Accepted => Self::Accepted,
+            OrderState::Done => Self::Done,
+            OrderState::Rejected => Self::Rejected,
+            OrderState::CancelRequested => Self::CancelRequested,
+            OrderState::CancelConfirmed => Self::CancelConfirmed,
+            OrderState::Uncertain => Self::Uncertain,
+        }
+    }
+}

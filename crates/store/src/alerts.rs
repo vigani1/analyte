@@ -200,7 +200,7 @@ impl Store {
         &self,
         identity: &AlertKey,
         now: i64,
-        destinations: &[Identifier],
+        destinations: &[(Identifier, u64)],
     ) -> Result<Option<u64>, Error> {
         if destinations.len() > 128 {
             return Err(Error::InvalidInput);
@@ -230,22 +230,12 @@ impl Store {
                     return Ok(None);
                 }
                 let mut oldest = 0;
-                for destination in destinations {
-                    let feed: Option<(i64, bool)> = self
-                        .db
-                        .query_row(
-                            "SELECT polled,complete AND trusted FROM feed WHERE destination=?1",
-                            [destination.as_str()],
-                            |r| Ok((r.get(0)?, r.get(1)?)),
-                        )
-                        .optional()?;
-                    let Some((polled, true)) = feed else {
+                for (destination, freshness) in destinations {
+                    let trust = self.order_trust(destination, now, *freshness)?;
+                    let crate::OrderTrust::Trusted { age } = trust else {
                         return Ok(None);
                     };
-                    let Some(age) = now.checked_sub(polled).filter(|age| *age >= 0) else {
-                        return Ok(None);
-                    };
-                    oldest = oldest.max(age);
+                    oldest = oldest.max(i64::try_from(age).map_err(|_| Error::Corruption)?);
                 }
                 Some(oldest)
             }
@@ -357,24 +347,28 @@ mod tests {
             store.alert_value(
                 &AlertKey::OldestUndelivered,
                 100,
-                &[Identifier::new("lab")?]
+                &[(Identifier::new("lab")?, 30)]
             )?,
             Some(0)
         );
         assert_eq!(
-            store.alert_value(&AlertKey::OrderCacheStale, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(
+                &AlertKey::OrderCacheStale,
+                100,
+                &[(Identifier::new("lab")?, 30)]
+            )?,
             None
         );
         let machine = AlertKey::MachineSilent(Identifier::new("busy")?);
         assert_eq!(
-            store.alert_value(&machine, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(&machine, 100, &[(Identifier::new("lab")?, 30)])?,
             None
         );
         store
             .db
             .execute("INSERT INTO machine_activity VALUES('busy',90)", [])?;
         assert_eq!(
-            store.alert_value(&machine, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(&machine, 100, &[(Identifier::new("lab")?, 30)])?,
             Some(10)
         );
         store.db.execute(
@@ -382,14 +376,22 @@ mod tests {
             [],
         )?;
         assert_eq!(
-            store.alert_value(&AlertKey::ParkedItems, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(
+                &AlertKey::ParkedItems,
+                100,
+                &[(Identifier::new("lab")?, 30)]
+            )?,
             Some(1)
         );
         store
             .db
             .execute("UPDATE parked SET resolution='resolved'", [])?;
         assert_eq!(
-            store.alert_value(&AlertKey::ParkedItems, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(
+                &AlertKey::ParkedItems,
+                100,
+                &[(Identifier::new("lab")?, 30)]
+            )?,
             Some(0)
         );
         store.db.execute(
@@ -397,20 +399,36 @@ mod tests {
             [],
         )?;
         assert_eq!(
-            store.alert_value(&AlertKey::OrderCacheStale, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(
+                &AlertKey::OrderCacheStale,
+                100,
+                &[(Identifier::new("lab")?, 30)]
+            )?,
             Some(10)
         );
         store.db.execute("UPDATE feed SET trusted=0", [])?;
         assert_eq!(
-            store.alert_value(&AlertKey::OrderCacheStale, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(
+                &AlertKey::OrderCacheStale,
+                100,
+                &[(Identifier::new("lab")?, 30)]
+            )?,
             None
         );
         assert_eq!(
-            store.alert_value(&AlertKey::RestorePaused, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(
+                &AlertKey::RestorePaused,
+                100,
+                &[(Identifier::new("lab")?, 30)]
+            )?,
             Some(0)
         );
         assert_eq!(
-            store.alert_value(&AlertKey::UncertainOrders, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(
+                &AlertKey::UncertainOrders,
+                100,
+                &[(Identifier::new("lab")?, 30)]
+            )?,
             Some(0)
         );
         Ok(())
@@ -468,7 +486,7 @@ mod tests {
         let mut store = open(&path)?;
         let machine = AlertKey::MachineSilent(Identifier::new("busy")?);
         assert_eq!(
-            store.alert_value(&machine, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(&machine, 100, &[(Identifier::new("lab")?, 30)])?,
             Some(10)
         );
         let transfer = Identifier::new("transfer")?;
@@ -482,7 +500,7 @@ mod tests {
         };
         store.journal_frame(&transfer, 1, b"synthetic", &provenance)?;
         assert_eq!(
-            store.alert_value(&machine, 100, &[Identifier::new("lab")?])?,
+            store.alert_value(&machine, 100, &[(Identifier::new("lab")?, 30)])?,
             None
         );
         Ok(())

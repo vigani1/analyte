@@ -1,5 +1,5 @@
 //! HL7 store-and-forward ACK decisions follow durable interpretation.
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -10,7 +10,7 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,

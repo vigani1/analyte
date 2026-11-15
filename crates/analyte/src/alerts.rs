@@ -96,7 +96,7 @@ pub(crate) fn age(state: &AlertState, now: i64) -> String {
 async fn evaluate(
     store: &Handle,
     policies: &[Alert],
-    destinations: &[Identifier],
+    destinations: &[(Identifier, u64)],
     now: i64,
 ) -> Result<(), Error> {
     for policy in policies {
@@ -125,7 +125,7 @@ async fn evaluate(
 pub(crate) async fn run(
     store: Arc<Handle>,
     policies: Vec<Alert>,
-    destinations: Vec<Identifier>,
+    destinations: Vec<(Identifier, u64)>,
     interval: Duration,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
@@ -225,7 +225,7 @@ mod tests {
         .map(policy)
         .into_iter()
         .collect::<Result<Vec<_>, _>>()?;
-        let destinations = [Identifier::new("lab")?];
+        let destinations = [(Identifier::new("lab")?, 30)];
         // Disk is clear at reserve+margin; ages raise exactly at their threshold.
         assert!(!raised(&policies[2], Some(1034)));
         space.store(1033, Ordering::SeqCst);

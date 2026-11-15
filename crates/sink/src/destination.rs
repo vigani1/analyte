@@ -189,16 +189,12 @@ impl Destination {
         now: i64,
     ) -> Result<analyte_store::Health, Error> {
         let id = self.id.clone();
-        let mut health = store
+        let freshness = self.limits.freshness.as_secs();
+        let health = store
             .request(crate::deadline(self.limits.store_timeout)?, move |s| {
-                s.health(&id, now)
+                s.health(&id, now, freshness)
             })
             .await?;
-        health.cache_trusted &= health
-            .last_successful_poll
-            .and_then(|time| now.checked_sub(time))
-            .and_then(|age| u64::try_from(age).ok())
-            .is_some_and(|age| age < self.limits.freshness.as_secs());
         Ok(health)
     }
 }

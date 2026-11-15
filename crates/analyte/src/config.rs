@@ -13,6 +13,7 @@ use std::{
 
 /// A machine's installation identity and validated effective settings.
 pub struct Machine {
+    pub(crate) destination_limits: analyte_sink::Limits,
     #[cfg(feature = "test-hooks")]
     pub(crate) law_committed: Option<std::sync::Arc<crate::test_hooks::Committed>>,
     #[cfg(feature = "test-hooks")]
@@ -283,6 +284,9 @@ impl Program {
                 law_committed: None,
                 #[cfg(feature = "test-hooks")]
                 astm_committed: None,
+                destination_limits: crate::delivery::limits(
+                    snapshot.effective().site().destination.freshness_seconds,
+                ),
                 id: entry.id,
                 snapshot,
                 listener: None,
@@ -305,7 +309,8 @@ impl Program {
                 other.name == destination.name
                     && (other.base_url != destination.base_url
                         || other.api_key_name != destination.api_key_name
-                        || other.signing_key_name != destination.signing_key_name)
+                        || other.signing_key_name != destination.signing_key_name
+                        || other.freshness_seconds != destination.freshness_seconds)
             }) {
                 return Err(invalid("inconsistent shared destination"));
             }
