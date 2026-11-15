@@ -398,8 +398,14 @@ impl<'a, 'm> Host<'a, 'm> {
             let event = tokio::select! {
                 biased;
                 () = super::stopping(&mut self.stop) => break,
-                () = async { match due { Some(until) => tokio::time::sleep_until(until.into()).await, None => std::future::pending().await } } => { self.orders.tick(self.store).await?; continue; },
-                () = async { match end { Some(until) => tokio::time::sleep_until(until.into()).await, None => std::future::pending().await } } => { self.drive(Event::Tick).await?; continue; },
+                () = wait_until(due) => {
+                    self.orders.tick(self.store).await?;
+                    continue;
+                },
+                () = wait_until(end) => {
+                    self.drive(Event::Tick).await?;
+                    continue;
+                },
                 _ = idle.tick() => {
                     if self.outbound.is_none() && opened && !self.dialog.receiving() {
                         let mut stop = self.stop.clone();
@@ -481,5 +487,12 @@ impl<'a, 'm> Host<'a, 'm> {
                 analyte_transport::Event::RecordingFailed(_) => {}
             }
         }
+    }
+}
+
+async fn wait_until(until: Option<Instant>) {
+    match until {
+        Some(until) => tokio::time::sleep_until(until.into()).await,
+        None => std::future::pending().await,
     }
 }
