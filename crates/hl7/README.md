@@ -1,4 +1,4 @@
-﻿# HL7 syntax crate
+# HL7 syntax crate
 
 Evidence: **documented**, using HL7 2.3.1 chapter 2 and HL7 2.5.1 chapter 2
 and the control datatypes in chapter 2A. Fixtures are original synthetic data.
