@@ -202,9 +202,7 @@ async fn process(
     if let Some(hook) = &machine.law_committed {
         hook.pause(&mut _stop).await?;
     }
-    let payload = raw
-        .get(1..raw.len().saturating_sub(2))
-        .ok_or("LAW block boundary")?;
+    let payload = mllp::payload(&raw).ok_or("LAW block boundary")?;
     let message = match law::parse_message(payload, options) {
         Ok(message) => message,
         Err(error) => {

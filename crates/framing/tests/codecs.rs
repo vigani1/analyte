@@ -107,6 +107,25 @@ fn mllp_r1_1_2_specific_defects_and_restart() -> Result<(), m::Error> {
     }
     Ok(())
 }
+#[test]
+fn mllp_r1_1_2_payload_preserves_content_and_requires_envelope() {
+    assert_eq!(
+        m::payload(b"\x0bMSH|synthetic\r\x1c\r"),
+        Some(b"MSH|synthetic\r".as_slice())
+    );
+    assert_eq!(m::payload(b"\x0b\x1c\r"), Some(b"".as_slice()));
+    for raw in [
+        b"".as_slice(),
+        b"\x0b",
+        b"\x0b\x1c",
+        b"text\x1c\r",
+        b"\x0btext\r",
+        b"\x0btext\x1c\rtrailing",
+    ] {
+        assert_eq!(m::payload(raw), None);
+    }
+}
+
 proptest! {
     #[test]
     fn lis01_6_3_roundtrip_all_chunk_boundaries(payload in prop::collection::vec(any::<u8>().prop_filter("LIS01 permitted text", |b| !matches!(b, 1..=6 | 10 | 16..=23)), 0..150)) {
@@ -127,6 +146,7 @@ proptest! {
     fn mllp_r1_1_2_roundtrip_chunk_boundaries(payload in prop::collection::vec(any::<u8>().prop_filter("MLLP repertoire", |b| *b > 31 || *b == 13), 0..100)) {
         let limit = m::Limit::new(100)?;
         let raw = m::encode(&payload, limit)?;
+        prop_assert_eq!(m::payload(&raw), Some(payload.as_slice()));
         let bytes = [raw.clone(), raw.clone()].concat();
         for split in 0..=bytes.len() {
             let (left,right) = bytes.split_at(split);

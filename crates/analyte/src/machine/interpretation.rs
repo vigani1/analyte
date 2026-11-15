@@ -298,13 +298,7 @@ fn unpack_mllp(raw: &[u8], frame_limit: usize) -> Result<std::borrow::Cow<'_, [u
     if !complete {
         return Err(invalid("receipt contains incomplete MLLP block"));
     }
-    Ok(raw
-        .get(
-            1..raw
-                .len()
-                .checked_sub(2)
-                .ok_or_else(|| invalid("MLLP length"))?,
-        )
+    Ok(analyte_framing::mllp::payload(raw)
         .ok_or_else(|| invalid("MLLP payload"))?
         .into())
 }

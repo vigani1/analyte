@@ -268,11 +268,8 @@ impl Connection {
                         evidence::park_bytes(store, machine, raw, &error.to_string()).await?;
                     }
                     mllp::Event::Block(raw) => {
-                        let payload = raw
-                            .len()
-                            .checked_sub(2)
-                            .and_then(|end| raw.get(1..end))
-                            .ok_or_else(|| invalid("HL7 block boundary"))?;
+                        let payload =
+                            mllp::payload(&raw).ok_or_else(|| invalid("HL7 block boundary"))?;
                         let parsed = Message::parse(payload, self.options);
                         if let Ok(message) = parsed
                             && let Ok(header) = Msh::new(&message)

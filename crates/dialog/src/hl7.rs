@@ -511,7 +511,8 @@ impl Dialog {
 
     fn receive(&mut self, raw: Vec<u8>, out: &mut Vec<Action>) {
         // Preserve first: even malformed syntax must pass through the host's protected journal.
-        let result = payload(&raw)
+        let result = mllp::payload(&raw)
+            .ok_or(Error::Framing(mllp::Error::Incomplete))
             .and_then(|bytes| Message::parse(bytes, self.config.options).map_err(Error::from));
         match result.and_then(|message| {
             Msh::new(&message)?;
@@ -553,8 +554,9 @@ impl Dialog {
     }
 
     fn ack(&mut self, raw: &[u8], out: &mut Vec<Action>) {
-        let parsed =
-            payload(raw).and_then(|p| Message::parse(p, self.config.options).map_err(Error::from));
+        let parsed = mllp::payload(raw)
+            .ok_or(Error::Framing(mllp::Error::Incomplete))
+            .and_then(|p| Message::parse(p, self.config.options).map_err(Error::from));
         let result = parsed.and_then(|message| {
             Msh::new(&message)?;
             let segment = message
@@ -628,13 +630,6 @@ impl Dialog {
             self.wire(event, out);
         }
     }
-}
-
-fn payload(raw: &[u8]) -> Result<&[u8], Error> {
-    raw.len()
-        .checked_sub(2)
-        .and_then(|end| raw.get(1..end))
-        .ok_or(Error::Framing(mllp::Error::Incomplete))
 }
 
 #[derive(Debug)]
