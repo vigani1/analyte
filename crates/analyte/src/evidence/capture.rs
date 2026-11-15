@@ -1,5 +1,5 @@
 //! Plan §10 / ADR 0009: optional protected wire evidence, never clinical custody.
-use crate::{config::Machine, service::create_data_directory};
+use crate::{installation::config::Machine, runtime::service::create_data_directory};
 use analyte_transport::{
     IoSide,
     recording::{self, Evidence, Header},
@@ -230,6 +230,7 @@ mod tests {
     impl Read for Echo {
         fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
             if self.0.is_empty() {
+                // Synthetic serial Read models a timed-out port; the transport owns cancellation.
                 thread::sleep(Duration::from_millis(1));
                 return Err(io::ErrorKind::TimedOut.into());
             }
@@ -257,18 +258,18 @@ mod tests {
         create_data_directory(&root.path().join("data"))?;
         std::fs::write(
             root.path().join("machine.toml"),
-            include_str!("../../config/examples/astm.toml"),
+            include_str!("../../../config/examples/astm.toml"),
         )?;
         std::fs::write(
             root.path().join("site.toml"),
-            include_str!("../../config/examples/site.toml"),
+            include_str!("../../../config/examples/site.toml"),
         )?;
         let program = root.path().join("program.toml");
         std::fs::write(
             &program,
             "schema_version=1\ndata_directory='data'\n[[machines]]\nid='serial'\ncapture=true\ndefinition='machine.toml'\nsite='site.toml'\n[store]\nreserve_bytes=1024\ndatabase_bytes=100000000\nrecord_bytes=2097152\npage_rows=100\nbusy_timeout_ms=1000\n",
         )?;
-        let program = crate::config::Program::load(&program)?;
+        let program = crate::installation::config::Program::load(&program)?;
         let capture = Capture::new(
             program.machines().first().ok_or("machine")?,
             &root.path().join("data"),

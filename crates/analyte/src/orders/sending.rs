@@ -1,5 +1,5 @@
 //! Host-owned send-ahead admission. Mapping never reserves or writes commands.
-use crate::{Error, config::Machine, deadline};
+use crate::{Error, deadline, installation::config::Machine};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};
 #[cfg(test)]

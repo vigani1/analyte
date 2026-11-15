@@ -1,5 +1,5 @@
 //! Typed durable poll custody; uncertainty blocks R without scanning operator evidence.
-use crate::{Error, config::Machine, deadline, invalid};
+use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, Handle, PollIntentId, PollIntentState, PollOutcome};
 
