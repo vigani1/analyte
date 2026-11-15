@@ -1,9 +1,9 @@
 # Store mutation triage
 
-**Stopped on a production bug; this round is incomplete.** Baseline:
+**Resumed; this round is incomplete.** Baseline:
 `bdb6b6f7af375d5679db462af0fe070f3297bc1f` (origin/main). No production code changed.
 
-## Blocking bug
+## Earlier restore bug
 
 Plan section 11 / clinical rule 7: `Store::restore` accepts `Limits { page_rows: 0,
 .. }`, although `Store::open` rejects the same limits. Restore calls `open_locked`
@@ -15,7 +15,7 @@ The reproducer confirms acceptance/publication; it does not claim observed patie
 `plan11_rule7_restore_refuses_zero_page_limit_before_publishing` fails on unchanged
 production code: expected `InvalidInput`, got `Ok(...before-restore)`.
 [Failure output](evidence/store/restore-zero-page-limit.log). This failing test is
-intentionally retained as requested, not ignored or loosened. The PR stays draft.
+intentionally retained as requested, not ignored or loosened. The PR stays draft. The owner reports this fixed on `fix/restore-limits` with a shared `Limits::validate()` and this regression unchanged. At resume, neither the branch nor PR was visible on origin and the fix was not on origin/main; merge and duplicate-test resolution are pending.
 
 ## Runs
 

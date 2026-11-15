@@ -1982,3 +1982,813 @@ fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResul
     assert!(!path.with_extension("before-restore").exists());
     Ok(())
 }
+
+#[test]
+fn mutation_adr0003_receipt_digests_validate_raw_and_config_independently_without_writes()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("receipt-digests.db"))?;
+    for (raw, config) in [
+        (b"other".as_slice(), b"config".as_slice()),
+        (b"raw", b"other"),
+    ] {
+        let metadata = receipt(b"raw")?;
+        assert!(matches!(
+            store.receive(&metadata, raw, config),
+            Err(Error::InvalidInput)
+        ));
+        assert!(store.receipt(metadata.id)?.is_none());
+    }
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    let stored = store.receipt(metadata.id)?.ok_or("missing receipt")?;
+    assert_eq!(stored.raw, b"raw");
+    assert_eq!(stored.config, b"config");
+    assert_eq!(stored.metadata.raw_digest, metadata.raw_digest);
+    assert_eq!(stored.metadata.config_digest, metadata.config_digest);
+    assert_eq!(stored.metadata.machine, metadata.machine);
+    assert_eq!(stored.metadata.driver, metadata.driver);
+    assert_eq!(stored.metadata.config_version, metadata.config_version);
+    assert_eq!(store.raw(metadata.id)?, Some(b"raw".to_vec()));
+    assert!(store.raw(receipt(b"missing")?.id)?.is_none());
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_record_interpretation_roundtrip_keeps_provenance_and_failure_reason()
+-> TestResult {
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Failed(Reason::new("unknown synthetic test")?);
+    let encoded = serde_json::to_value(&evidence)?;
+    assert_eq!(
+        encoded["config_digest"],
+        serde_json::to_value(digest(b"config"))?
+    );
+    let decoded: Interpretation = serde_json::from_value(encoded.clone())?;
+    assert_eq!(decoded.driver, evidence.driver);
+    assert_eq!(decoded.config_version, evidence.config_version);
+    assert_eq!(decoded.config, evidence.config);
+    let Reading::Failed(reason) = decoded.outcome else {
+        return Err("lost failure".into());
+    };
+    assert_eq!(reason.as_str(), "unknown synthetic test");
+    let mut invalid = encoded;
+    invalid["config_digest"] = serde_json::to_value(digest(b"wrong"))?;
+    assert!(serde_json::from_value::<Interpretation>(invalid).is_err());
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_transfer_provenance_conflicts_preserve_original_frames_and_configuration()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("transfer-provenance.db");
+    let mut store = open(&path)?;
+    let transfer = Identifier::new("synthetic-transfer")?;
+    let metadata = receipt(b"raw")?;
+    let provenance = FrameProvenance {
+        machine: metadata.machine,
+        driver: metadata.driver,
+        config: b"config".to_vec(),
+    };
+    let first = store.journal_frame(&transfer, FrameSequence::new(0, 0)?, b"first", &provenance)?;
+    assert!(
+        store.journal_frame(&transfer, FrameSequence::new(1, 1)?, b"second", &provenance)? > first
+    );
+    let changed = FrameProvenance {
+        machine: provenance.machine.clone(),
+        driver: provenance.driver.clone(),
+        config: b"changed".to_vec(),
+    };
+    assert!(matches!(
+        store.journal_frame(&transfer, FrameSequence::new(0, 0)?, b"refused", &changed),
+        Err(Error::Conflict)
+    ));
+    drop(store);
+    let store = open(&path)?;
+    let frames = store.frames(&transfer, 0)?;
+    assert_eq!(
+        frames.iter().map(|f| f.raw.as_slice()).collect::<Vec<_>>(),
+        vec![b"first".as_slice(), b"second".as_slice()]
+    );
+    let retained: String = store.db.query_row(
+        "SELECT evidence FROM frame_provenance WHERE transfer=?1",
+        [transfer.as_str()],
+        |r| r.get(0),
+    )?;
+    let retained: FrameProvenance = serde_json::from_str(&retained)?;
+    assert_eq!(retained.machine, provenance.machine);
+    assert_eq!(retained.driver, provenance.driver);
+    assert_eq!(retained.config, provenance.config);
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_reconciliation_rejects_each_provenance_mismatch_without_interpretation()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("provenance.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    for field in 0..3 {
+        let mut evidence = interpretation()?;
+        match field {
+            0 => evidence.config = b"different".to_vec(),
+            1 => evidence.driver.value = Identifier::new("different")?,
+            2 => evidence.config_version = Identifier::new("different")?,
+            _ => unreachable!("fixed field cases"),
+        }
+        assert!(matches!(
+            store.interpret_reconciled(metadata.id, evidence, &[], &[], |_, _| Ok(vec![])),
+            Err(Error::InvalidInput)
+        ));
+        assert!(store.interpretation(metadata.id, 1)?.is_none());
+        assert!(store.parked(0)?.is_empty());
+        assert_eq!(store.raw(metadata.id)?, Some(b"raw".to_vec()));
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_count_atomically()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("result-owner.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    for (owner, corrections) in [(metadata.id, vec![]), (receipt(b"other")?.id, vec![false])] {
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![production_result(owner)?]);
+        assert!(matches!(
+            store.interpret_reconciled(metadata.id, evidence, &corrections, &[], |_, _| Ok(vec![])),
+            Err(Error::InvalidInput)
+        ));
+        assert!(store.interpretation(metadata.id, 1)?.is_none());
+        assert_eq!(
+            store
+                .db
+                .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                    .get::<_, i64>(0))?,
+            0
+        );
+        assert!(store.claim(0)?.is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_original() -> TestResult
+{
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("lifecycle-reprocess.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    let mut failed = interpretation()?;
+    failed.outcome = Reading::Failed(Reason::new("unknown test")?);
+    store.interpret_reconciled(metadata.id, failed, &[], &[], |_, _| Ok(vec![]))?;
+    let parked = store.parked(0)?.first().ok_or("missing parked")?.id;
+    let mut action = Reprocess {
+        receipt: metadata.id,
+        parked: Some(parked),
+        audit: Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("wrong-action")?,
+            targets: vec![],
+            time: 42,
+            reason: Reason::new("mapping repaired")?,
+        },
+    };
+    let policy = StatusLifecycle {
+        transitions: &[],
+        withheld: &[],
+        single_run: &[],
+        run: |_| None,
+    };
+    let mut evidence = interpretation()?;
+    evidence.driver.value = Identifier::new("new-driver")?;
+    evidence.config_version = Identifier::new("new-version")?;
+    evidence.config = b"new config".to_vec();
+    evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+    assert!(matches!(
+        store.reprocess_with_lifecycle(
+            &action,
+            evidence.clone(),
+            (&[false], &[]),
+            policy,
+            |_, _| Ok(vec![])
+        ),
+        Err(Error::InvalidInput)
+    ));
+    assert!(store.interpretation(metadata.id, 2)?.is_none());
+    assert!(store.audits(0)?.is_empty());
+    action.audit.action = Identifier::new("receipt-reprocess")?;
+    let commit =
+        store.reprocess_with_lifecycle(&action, evidence, (&[false], &[]), policy, |_, _| {
+            Ok(vec![])
+        })?;
+    assert_eq!(commit.version, 2);
+    assert_eq!(
+        commit.outcomes,
+        vec![RevisionOutcome::New(analyte_model::Revision(0))]
+    );
+    let retained = store
+        .interpretation(metadata.id, 2)?
+        .ok_or("missing reprocessing")?;
+    assert_eq!(retained.config, b"new config");
+    assert_eq!(retained.driver.value.as_str(), "new-driver");
+    assert_eq!(retained.config_version.as_str(), "new-version");
+    assert_eq!(store.audits(0)?.len(), 1);
+    assert!(
+        store
+            .parked_item(parked)?
+            .ok_or("missing parked")?
+            .resolution
+            .is_some()
+    );
+    let original = store.receipt(metadata.id)?.ok_or("missing original")?;
+    assert_eq!(original.raw, b"raw");
+    assert_eq!(original.config, b"config");
+    assert_eq!(original.metadata.config_version, metadata.config_version);
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independently() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("reconcile-bounds.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    store.limits.page_rows = 1;
+    let result = production_result(metadata.id)?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result.clone(), result.clone()]);
+    assert!(matches!(
+        store.interpret_reconciled(metadata.id, evidence, &[false, false], &[], |_, _| Ok(
+            vec![]
+        )),
+        Err(Error::InvalidInput)
+    ));
+    assert!(store.interpretation(metadata.id, 1)?.is_none());
+    let finding = Parked {
+        kind: Identifier::new("unknown-test")?,
+        reason: Reason::new("unmapped synthetic evidence")?,
+        targets: vec![Identifier::new(&serde_json::from_str::<String>(&key(
+            &metadata.id,
+        )?)?)?],
+    };
+    assert!(matches!(
+        store.interpret_reconciled(
+            metadata.id,
+            interpretation()?,
+            &[],
+            &[finding.clone(), finding.clone()],
+            |_, _| Ok(vec![])
+        ),
+        Err(Error::InvalidInput)
+    ));
+    assert!(store.interpretation(metadata.id, 1)?.is_none());
+    assert!(store.parked(0)?.is_empty());
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result]);
+    let commit =
+        store.interpret_reconciled(metadata.id, evidence, &[false], &[finding], |_, _| {
+            Ok(vec![])
+        })?;
+    assert_eq!(
+        commit.outcomes,
+        vec![RevisionOutcome::New(analyte_model::Revision(0))]
+    );
+    assert_eq!(store.parked(0)?.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_batch_duplicates_reuse_the_matching_revision_and_keep_runs_distinct()
+-> TestResult {
+    use analyte_model::Revision;
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("batch-identity.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    let original = production_result(metadata.id)?;
+    let mut corrected = original.clone();
+    corrected.sample.as_mut().ok_or("missing sample")?.id = SampleId::new("changed")?;
+    let mut rerun = original.clone();
+    let analyte_model::IdentityStatus::Resolved(identity) = &mut rerun.identity else {
+        return Err("missing identity".into());
+    };
+    identity.observation.run = analyte_model::SourceText::new("new-run")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![
+        original.clone(),
+        original.clone(),
+        corrected,
+        original,
+        rerun,
+    ]);
+    let commit = store.interpret_reconciled(
+        metadata.id,
+        evidence,
+        &[false, false, true, false, false],
+        &[],
+        |_, _| Ok(vec![]),
+    )?;
+    assert_eq!(
+        commit.outcomes,
+        vec![
+            RevisionOutcome::New(Revision(0)),
+            RevisionOutcome::Retransmission(Revision(0)),
+            RevisionOutcome::Correction(Revision(1)),
+            RevisionOutcome::Retransmission(Revision(0)),
+            RevisionOutcome::New(Revision(0))
+        ]
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        3
+    );
+    assert!(store.parked(0)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0011_single_final_run_is_scoped_by_machine_order_and_test() -> TestResult {
+    use analyte_model::{IdentityStatus, Revision, SourceText};
+    let policy = StatusLifecycle {
+        transitions: &[],
+        withheld: &[],
+        single_run: &["F"],
+        run: |id| (!id.run.as_str().is_empty()).then(|| id.run.as_str().to_owned()),
+    };
+    for case in [
+        "same",
+        "other-run",
+        "other-machine",
+        "other-order",
+        "other-test",
+        "preliminary",
+        "missing-run",
+    ] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("single-final.db"))?;
+        for index in 0..2 {
+            let mut metadata = receipt(b"raw")?;
+            if index == 1 && case == "other-machine" {
+                metadata.machine = Identifier::new("other-machine")?;
+            }
+            store.receive(&metadata, b"raw", b"config")?;
+            let mut result = production_result(metadata.id)?;
+            let IdentityStatus::Resolved(id) = &mut result.identity else {
+                return Err("missing identity".into());
+            };
+            id.observation.run = SourceText::new(if index == 0 || case == "same" {
+                "run-a"
+            } else if case == "missing-run" {
+                ""
+            } else {
+                "run-b"
+            })?;
+            if index == 1 && case == "other-order" {
+                id.observation.order.value = Identifier::new("other-order")?;
+            }
+            if index == 1 && case == "other-test" {
+                id.observation.code.value = Identifier::new("other-test")?;
+            }
+            if index == 1 && case == "preliminary" {
+                let mut parts = result.parts.as_slice().to_vec();
+                let part = parts.first_mut().ok_or("missing part")?;
+                part.source_status = SourceText::new("P")?;
+                part.status = analyte_model::ResultStatus::Preliminary;
+                result.parts = analyte_model::NonEmptyEvidenceList::new(
+                    analyte_model::EvidenceList::new(parts)?,
+                )?;
+            }
+            let mut evidence = interpretation()?;
+            evidence.outcome = Reading::Results(vec![result]);
+            let commit = store.interpret_with_lifecycle(
+                metadata.id,
+                evidence,
+                (&[false], &[]),
+                policy,
+                |_, _| Ok(vec![]),
+            )?;
+            let expected = if index == 0 {
+                RevisionOutcome::New(Revision(0))
+            } else {
+                match case {
+                    "same" => RevisionOutcome::Retransmission(Revision(0)),
+                    "other-run" | "missing-run" => RevisionOutcome::Conflict,
+                    "other-machine" | "other-order" | "other-test" | "preliminary" => {
+                        RevisionOutcome::New(Revision(0))
+                    }
+                    _ => unreachable!("fixed case list"),
+                }
+            };
+            assert_eq!(
+                commit.outcomes,
+                vec![expected],
+                "case {case}, receipt {index}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_reprocessing_never_resolves_failure_empty_unresolved_or_flagged_evidence()
+-> TestResult {
+    for case in ["failed", "empty", "unresolved", "finding", "missing-sample"] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("failed-reprocessing.db"))?;
+        let metadata = receipt(b"raw")?;
+        store.receive(&metadata, b"raw", b"config")?;
+        let mut failed = interpretation()?;
+        failed.outcome = Reading::Failed(Reason::new("unknown test")?);
+        store.interpret_reconciled(metadata.id, failed.clone(), &[], &[], |_, _| Ok(vec![]))?;
+        let parked = store.parked(0)?.first().ok_or("missing parked")?.id;
+        let action = Reprocess {
+            receipt: metadata.id,
+            parked: Some(parked),
+            audit: Audit {
+                actor: Identifier::new("operator")?,
+                action: Identifier::new("receipt-reprocess")?,
+                targets: vec![],
+                time: 42,
+                reason: Reason::new("synthetic retry")?,
+            },
+        };
+        let mut evidence = interpretation()?;
+        let mut corrections = vec![];
+        let mut findings = vec![];
+        match case {
+            "failed" => evidence = failed,
+            "empty" => {}
+            "unresolved" => {
+                let mut result = production_result(metadata.id)?;
+                result.identity =
+                    analyte_model::IdentityStatus::Unresolved(Reason::new("missing run identity")?);
+                evidence.outcome = Reading::Results(vec![result]);
+                corrections.push(false);
+            }
+            "missing-sample" => {
+                let mut result = production_result(metadata.id)?;
+                result.sample = None;
+                evidence.outcome = Reading::Results(vec![result]);
+                corrections.push(false);
+            }
+            "finding" => {
+                evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+                corrections.push(false);
+                findings.push(Parked {
+                    kind: Identifier::new("unknown-test")?,
+                    reason: Reason::new("unmapped evidence")?,
+                    targets: vec![],
+                });
+            }
+            _ => unreachable!("fixed cases"),
+        }
+        store.reprocess_reconciled(&action, evidence, &corrections, &findings, |_, _| {
+            Ok(vec![])
+        })?;
+        assert!(
+            store
+                .parked_item(parked)?
+                .ok_or("missing original parked")?
+                .resolution
+                .is_none(),
+            "case {case}"
+        );
+        assert_eq!(
+            store.parked(0)?.len(),
+            2,
+            "case {case}: retain new operator evidence"
+        );
+        let audits = store.audits(0)?;
+        assert_eq!(audits.len(), 1);
+        assert!(
+            audits
+                .first()
+                .ok_or("missing audit")?
+                .1
+                .targets
+                .iter()
+                .any(|t| t.as_str() == "reprocess:parked")
+        );
+        assert_eq!(store.raw(metadata.id)?, Some(b"raw".to_vec()));
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("encoded-bounds.db"))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+    store.limits.record_bytes = key(&evidence)?.len();
+    store.interpret_reconciled(metadata.id, evidence, &[false], &[], |_, _| Ok(vec![]))?;
+    for delta in [0, 1] {
+        let action = Reprocess {
+            receipt: metadata.id,
+            parked: None,
+            audit: Audit {
+                actor: Identifier::new("operator")?,
+                action: Identifier::new("receipt-reprocess")?,
+                targets: vec![],
+                time: 42,
+                reason: Reason::new(&"r".repeat(1024))?,
+            },
+        };
+        let size = reprocess::audit_evidence(&action, 2, false)?.len();
+        store.limits.record_bytes = size.checked_sub(delta).ok_or("bound")?;
+        let result =
+            store.reprocess_reconciled(&action, interpretation()?, &[], &[], |_, _| Ok(vec![]));
+        if delta == 0 {
+            assert_eq!(result?.version, 2);
+        } else {
+            assert!(matches!(result, Err(Error::InvalidInput)));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> TestResult {
+    for (length, wrong_machine, succeeds) in [
+        (2048, false, true),
+        (2049, false, false),
+        (2050, false, false),
+        (16, true, false),
+    ] {
+        let temp = tempfile::tempdir()?;
+        let mut store = Store::open(
+            &temp.path().join("delivery-bounds.db"),
+            Limits {
+                record_bytes: 2048,
+                ..limits()
+            },
+            Box::new(Space(u64::MAX)),
+        )?;
+        let metadata = receipt(b"raw")?;
+        store.receive(&metadata, b"raw", b"config")?;
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+        let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
+        let result =
+            store.interpret_reconciled(metadata.id, evidence, &[false], &[], |evidence, _| {
+                let Reading::Results(results) = &evidence.outcome else {
+                    return Err(Error::InvalidInput);
+                };
+                let Some(analyte_model::IdentityStatus::Resolved(identity)) =
+                    results.first().map(|r| &r.identity)
+                else {
+                    return Err(Error::InvalidInput);
+                };
+                Ok(vec![Delivery {
+                    id,
+                    destination: Identifier::new("app").map_err(|_| Error::InvalidInput)?,
+                    ordering_key: OrderingKey {
+                        machine: if wrong_machine {
+                            Identifier::new("wrong-machine").map_err(|_| Error::InvalidInput)?
+                        } else {
+                            metadata.machine.clone()
+                        },
+                        observation: identity.observation.clone(),
+                    },
+                    payload: vec![b'x'; length],
+                    contract_version: 1,
+                }])
+            });
+        if succeeds {
+            assert_eq!(result?.version, 1);
+            let claim = store.claim(0)?.ok_or("missing delivery")?;
+            assert_eq!(claim.id, id);
+            assert_eq!(claim.payload, vec![b'x'; length]);
+        } else {
+            assert!(matches!(result, Err(Error::InvalidInput)));
+            assert!(store.interpretation(metadata.id, 1)?.is_none());
+            assert!(store.claim(0)?.is_none());
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                        .get::<_, i64>(0))?,
+                0
+            );
+        }
+        assert_eq!(store.raw(metadata.id)?, Some(b"raw".to_vec()));
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_migration_bounds_metadata_and_interpretation_independently_and_inclusively()
+-> TestResult {
+    for case in ["at", "metadata-over", "interpretation-over"] {
+        let mut db = Connection::open_in_memory()?;
+        db.execute_batch(include_str!("schema.sql"))?;
+        Store::migrate_v2(&mut db)?;
+        let metadata = receipt(b"legacy")?;
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+        let pad =
+            |mut encoded: String, size: usize| -> Result<String, Box<dyn std::error::Error>> {
+                let extra = size
+                    .checked_sub(encoded.len())
+                    .ok_or("fixture exceeds bound")?;
+                encoded.push_str(&" ".repeat(extra));
+                Ok(encoded)
+            };
+        let limit = 4096;
+        let metadata_text = pad(
+            key(&metadata)?,
+            if case == "metadata-over" { 4097 } else { limit },
+        )?;
+        let evidence_text = pad(
+            key(&evidence)?,
+            if case == "interpretation-over" {
+                4097
+            } else {
+                limit
+            },
+        )?;
+        db.execute(
+            "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
+            params![key(&metadata.id)?, metadata_text, b"legacy", b"config"],
+        )?;
+        db.execute(
+            "INSERT INTO interpretations VALUES (?1,1,?2)",
+            params![key(&metadata.id)?, evidence_text],
+        )?;
+        let result = Store::migrate_v3(&mut db, limit);
+        if case == "at" {
+            result?;
+            assert_eq!(
+                db.query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                    .get::<_, i64>(0))?,
+                1
+            );
+        } else {
+            assert!(matches!(result, Err(Error::InvalidInput)), "case {case}");
+            assert_eq!(
+                db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+                2
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT count(*) FROM sqlite_schema WHERE name='observation_revisions'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )?,
+                0
+            );
+        }
+        assert_eq!(
+            db.query_row("SELECT metadata FROM receipts", [], |r| r
+                .get::<_, String>(0))?,
+            metadata_text
+        );
+        assert_eq!(
+            db.query_row("SELECT evidence FROM interpretations", [], |r| r
+                .get::<_, String>(0))?,
+            evidence_text
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_migration_refuses_conflicting_legacy_revision_and_accepts_repetition()
+-> TestResult {
+    for conflicting in [false, true] {
+        let mut db = Connection::open_in_memory()?;
+        db.execute_batch(include_str!("schema.sql"))?;
+        Store::migrate_v2(&mut db)?;
+        let metadata = receipt(b"legacy")?;
+        db.execute(
+            "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
+            params![key(&metadata.id)?, key(&metadata)?, b"legacy", b"config"],
+        )?;
+        for version in 1..=2 {
+            let mut result = production_result(metadata.id)?;
+            if conflicting && version == 2 {
+                result.sample.as_mut().ok_or("missing sample")?.id = SampleId::new("different")?;
+            }
+            let mut evidence = interpretation()?;
+            evidence.outcome = Reading::Results(vec![result]);
+            db.execute(
+                "INSERT INTO interpretations VALUES (?1,?2,?3)",
+                params![key(&metadata.id)?, version, key(&evidence)?],
+            )?;
+        }
+        let result = Store::migrate_v3(&mut db, 65_536);
+        if conflicting {
+            assert!(matches!(result, Err(Error::Conflict)));
+            assert_eq!(
+                db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+                2
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT count(*) FROM sqlite_schema WHERE name='observation_revisions'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )?,
+                0
+            );
+        } else {
+            result?;
+            assert_eq!(
+                db.query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                    .get::<_, i64>(0))?,
+                1
+            );
+        }
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM interpretations", [], |r| r
+                .get::<_, i64>(0))?,
+            2
+        );
+        assert_eq!(
+            db.query_row("SELECT raw FROM receipts", [], |r| r.get::<_, Vec<u8>>(0))?,
+            b"legacy"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_adr0011_retained_interpretation_byte_bound_is_inclusive() -> TestResult {
+    use analyte_model::{IdentityStatus, Revision, SourceText};
+    for (exclusive, delta) in [(false, 0), (false, 1), (true, 0), (true, 1)] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("retained-bound.db"))?;
+        let first = receipt(b"raw")?;
+        store.receive(&first, b"raw", b"config")?;
+        let mut original = production_result(first.id)?;
+        original.sample.as_mut().ok_or("missing sample")?.id = SampleId::new(&"s".repeat(64))?;
+        let IdentityStatus::Resolved(id) = &mut original.identity else {
+            return Err("missing identity".into());
+        };
+        id.observation.run = SourceText::new("run-a")?;
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![original]);
+        store.interpret_reconciled(first.id, evidence, &[false], &[], |_, _| Ok(vec![]))?;
+        let encoded: String =
+            store
+                .db
+                .query_row("SELECT evidence FROM interpretations", [], |r| r.get(0))?;
+        let second = receipt(b"raw")?;
+        store.receive(&second, b"raw", b"config")?;
+        let mut result = production_result(second.id)?;
+        result.sample.as_mut().ok_or("missing sample")?.id = SampleId::new("s")?;
+        let IdentityStatus::Resolved(id) = &mut result.identity else {
+            return Err("missing identity".into());
+        };
+        id.observation.run = SourceText::new(if exclusive { "run-b" } else { "run-a" })?;
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![result]);
+        store.limits.record_bytes = encoded.len().checked_sub(delta).ok_or("limit")?;
+        let result = if exclusive {
+            store.interpret_with_lifecycle(
+                second.id,
+                evidence,
+                (&[false], &[]),
+                StatusLifecycle {
+                    transitions: &[],
+                    withheld: &[],
+                    single_run: &["F"],
+                    run: |id| Some(id.run.as_str().to_owned()),
+                },
+                |_, _| Ok(vec![]),
+            )
+        } else {
+            store.interpret_reconciled(second.id, evidence, &[true], &[], |_, _| Ok(vec![]))
+        };
+        if delta == 0 {
+            let expected = if exclusive {
+                RevisionOutcome::Conflict
+            } else {
+                RevisionOutcome::Correction(Revision(1))
+            };
+            assert_eq!(result?.outcomes, vec![expected]);
+        } else {
+            assert!(matches!(result, Err(Error::Corruption)));
+            assert!(store.interpretation(second.id, 1)?.is_none());
+        }
+        assert_eq!(
+            store.db.query_row(
+                "SELECT evidence FROM interpretations WHERE receipt=?1",
+                [key(&first.id)?],
+                |r| r.get::<_, String>(0)
+            )?,
+            encoded
+        );
+    }
+    Ok(())
+}
