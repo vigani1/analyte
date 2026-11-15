@@ -1,7 +1,8 @@
 # HL7 syntax crate
 
-Evidence: **documented**, using HL7 2.3.1 chapter 2 and HL7 2.5.1 chapter 2
-and the control datatypes in chapter 2A. Fixtures are original synthetic data.
+Evidence: **documented**, using HL7 2.3.1 chapters 2, 4 and 7; HL7 2.5.1
+chapters 2/2A, 4, 5, 7 and 13; and the LAW references identified below.
+Fixtures are original synthetic data.
 
 `Message::parse` checks bounded wire syntax, delimiters, version and connection
 encoding. It retains exact bytes; `serialize` returns those bytes. Hierarchy
@@ -389,3 +390,142 @@ inconsistent result rejection, selected enhanced content, lost ACK, disconnect,
 restart and storage failure. Record validation-profile changes between runs.
 Network exchanges belong to host/dialog integration. No Gazelle run has been
 performed and the evidence level has not been raised.
+
+## Legacy deferred query implementation status
+
+The `query` module is an initial, documented-only implementation, not complete
+coverage of checklist H. It accepts a single deferred display QRY/Q02 in either
+edition, preserves QRD/QRF filters, renders QCK status, renders bounded complete
+DSR display lines, and reads correlated application ACK/Q03 replies. QAK-1 is
+empty for original-style queries. Lookup failure produces AE, never NF.
+
+QRD/QRF validation covers field presence, edition-specific lengths and fields,
+repetitions, closed query tables and the referenced numeric, timestamp, coded,
+person, range and timing composites (231 sections 2.24.4–5; 251 sections
+5.10.5.3–4, with their datatype definitions). Named synthetic negative fixtures
+cover the rules, alongside boundary and preservation tests. Earlier synthetic
+subject fixtures now supply their required XCN source table. Local codes,
+namespaces, repeated filters, escaped text, date precision and offsets stay as
+received. Explicit null criteria are rejected rather than silently ignored.
+
+The supported transaction remains a single deferred display query; record and
+tabular formats, immediate queries and continuation require separate transaction
+support. Outstanding before integration: typed interpretation of local filters;
+continuation and scheduling contracts; additional display quantity units and
+escaped/non-ASCII display output. The host must interpret every filter, including
+local codes, timestamps under its agreed timezone and requested timing, before
+declaring its cache answer trusted. Structural validation cannot establish that
+the host can satisfy those criteria. Display rows have no built-in laboratory
+meaning. These pure functions do not store, schedule, transmit, retry or change
+order states. Passing these tests does not establish whole-HL7 conformance or
+raise the documented evidence level.
+
+## Legacy order implementation status
+
+The `order` module builds ORM/O01 and reads correlated ORR/O02 in both editions
+(231 sections 4.2.1–2 and 4.3.1; 251 sections 4.4.1–2 and 4.5.1). Evidence remains
+documented. It supports NW/CA requests and OK/UA/CR/UC responses. Unknown controls,
+notifications, request codes in replies and wrong request/reply pairs are located
+errors. Message acceptance and each order decision remain separate. A missing
+decision is `NotReported`, including for MSA AA; it never authorizes resending.
+
+Caller-supplied data includes namespaced placer/filler IDs, coded tests/batteries,
+specimen source, sample identity, priority, a non-repeating time window and explicit
+patient/nonpatient context. One ORM represents one patient context and multiple
+orders, each with its own identity and one test/battery. Cancellation has no
+invented test, specimen or patient details. Repeating schedules, parent/group
+relationships and other order controls are outside this API's current scope.
+
+ORM has no standard barcode field. The caller must explicitly select an agreed
+OBR-18 or OBR-19 placer-field mapping in machine configuration (231 sections
+7.3.1.18–19; 251 sections 7.4.1.18–19). Neither field is given an implicit sample
+meaning here. Literal sample bytes are escaped, retain leading zeros and case,
+and are never substituted for order identities. Namespace metadata, including
+universal IDs where supplied, is preserved. Duplicate local or universal order
+identities are rejected before returning an outgoing message.
+
+ORR parsing checks MSA-2 against the sent ORM and correlates each returned order,
+including ORC/OBR identity agreement, filler IDs and duplicate replies. Optional
+OBR, order notes and coded rejection reasons are retained with their order;
+original error/patient/header context remains in the complete borrowed message.
+Order status is retained as the peer's snapshot without changing the request's
+outcome or any host lifecycle. Unsupported response segment families are rejected,
+not flattened. This is a declared laboratory subset, not a complete ORR profile
+validator or support for other dietary/pharmacy/supply order details.
+
+Source-named synthetic tests cover both editions, positive and negative outcomes,
+missing decisions, malformed/cross-order identities, unknown controls, byte-exact
+sample identities, output bounds and replay purity. There is no storage, transport,
+automatic retry or lifecycle machinery in these APIs. No simulator/real-machine
+evidence is claimed. The host must retain uncertain delivery and prior acceptance.
+
+### Non-LAW OML/O21 and ORL/O22
+
+`order::oml` reuses the same caller-supplied `Order`, identity, sample, code,
+priority and timing types for HL7 2.5.1 sections 4.4.6–7. It renders one SPM per
+new order, standard SPM-2 sample identity and TQ1 timing before OBR. Legacy OBR
+sample/source/timing fields are not populated; `Specimen::field` applies only to
+ORM. Cancellation needs no invented specimen or container. Containers are not
+generated from sample IDs. Source codes requiring a CWE version must receive it
+through `Code::with_version`; CE destinations explicitly reject that metadata
+rather than discard it.
+
+`OrderResponse::new` selects ORR/O02 or ORL/O22 from the private family of the
+sent message; it cannot fall back to another transaction or to LAW O34. It reuses
+the same exhaustive controls, outcomes, message/order correlation, duplicate
+checks and `NotReported` behavior. O22 decisions follow its patient response
+group. Timing stays with its order, specimens stay with their order and returned
+SAC containers stay with their specimen. A returned specimen must match the sent
+placer specimen identity where one was provided; no namespace is inferred from
+MSH. Extra specimen context in cancellation replies stays peer-reported data.
+Original header context and additional raw fields remain available to the host.
+
+The implementation reuses the borrowed segment/control views used by LAW and its
+generic `FieldRule` engine, without applying the LAW profile's restrictions.
+Base SPM-2 retains its declared 80-byte limit independently of LAW profile
+direction, option and authority predicates.
+Sample spelling, case, leading zeros and literal delimiters survive escaping.
+Named synthetic positive/negative and property tests cover wire placement,
+identity conflicts, specimen/container ownership, bounds and unknown controls.
+Evidence remains documented; no simulator or real-machine run is claimed.
+
+This is the single-specimen, single-window subset expressible by the current
+order types. Multiple returned specimens per order, repeated timing/TQ2 and
+associated observation groups are rejected explicitly. Additional returned fields
+are preserved as raw views for host interpretation, not claimed as fully validated
+clinical content. The APIs do not store, resend or change lifecycle state.
+Checklist G is not fully complete; its audited scope and remaining work are in
+[the HL7 checklist](../../docs/protocols/hl7.md#g-orders-and-lifecycle).
+
+
+## Order/query checklist audit
+
+The G/H rows in [the protocol notes](../../docs/protocols/hl7.md) now identify
+passing tests for checked declarations and list the remainder for unchecked rows.
+Conditional checks cover only selected capabilities. The generic order API is
+new/cancel work, one specimen/test per order and one timing window; LAW's broader
+profile coverage is documented separately above and in its own checklist.
+
+Implemented evidence includes the two ORM/ORR editions, non-LAW O21/O22,
+message/order/specimen correlation, explicit controls/outcomes, retained literal
+sample IDs, legacy Q02/Q03 field validation and the separate LAW query contract.
+Unsupported families, subscriptions, enhanced query forms and continuation are
+rejected by the typed interfaces without constructing a successful empty answer.
+The new LAW field-rule error variants retain their original detailed causes in
+`order::Error::FieldRule`; no LAW validation implementation is copied into the
+non-LAW module. Duplicate/extra legacy query segments report their own known
+segment location rather than incorrectly calling every extra segment DSC.
+
+Still open: generic parent/group/change workflows, full optional order-content
+predicates and associated O21 observation/instruction groups, immediate Q01,
+general non-LAW query conformance statements and quantitative/tabular forms,
+continuation/fragmentation, and host tests for uncertain delivery, deadlines,
+cancellation/restart and durable recovery. Unselected TQ2, O35/O36 and query
+subscription/replay capabilities are not implied by the supported subset.
+Pure replay tests prove deterministic bytes and stable identities; they do not
+prove lost-ACK or restart behavior. Additional display units/escaping and local
+filter interpretation remain as described above.
+
+No simulator or real-analyzer evidence was added. Evidence remains
+**documented**; the checked rows are not a whole-HL7 or whole-system conformance
+claim.
