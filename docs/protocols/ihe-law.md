@@ -114,6 +114,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Failures preserve original input and carry located content errors.
 - [x] **R** Reject inconsistent LAB-29 as a whole, including TCD-1/OBX-3 mismatch; retain bytes without applying a subset (TF-2b p.57; B.7.6, p.82).
   Tests: `law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original`.
+  Host revision conflicts return AR (B.7.6, p.82), while mapping failures remain AE. Tests: `law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c`, `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`. Originating-work consistency checks remain open below.
   No partial Results view escapes a failed message.
 - [ ] **R** Keep manager-sourced patient data authoritative; correct downloaded patient information through cancel/new-AWOS, not repeated work (TF-2b B.7.9, pp.82–83).
   Tests: `law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions`.

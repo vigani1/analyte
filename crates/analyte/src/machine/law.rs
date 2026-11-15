@@ -217,15 +217,21 @@ async fn process(
     }
     let (code, responsibility, location) = match law::receive_results(&message) {
         Ok(_) => {
-            let accepted = evidence::interpret(store, machine, id).await?;
-            if accepted {
-                (AckCode::Aa, Responsibility::StoredAndInterpreted, None)
-            } else {
-                (
+            // TF-2b Rev 11 B.7.6 (p.82): inconsistent content rejects the whole batch.
+            match evidence::interpret_outcome(store, machine, id).await? {
+                evidence::InterpretationOutcome::Accepted => {
+                    (AckCode::Aa, Responsibility::StoredAndInterpreted, None)
+                }
+                evidence::InterpretationOutcome::Conflict => (
+                    AckCode::Ar,
+                    Responsibility::Stored,
+                    Some(AckError::unlocated(b"207", b"operator-review")),
+                ),
+                evidence::InterpretationOutcome::Failed => (
                     AckCode::Ae,
                     Responsibility::Stored,
                     Some(AckError::unlocated(b"207", b"operator-review")),
-                )
+                ),
             }
         }
         Err(failure) => {

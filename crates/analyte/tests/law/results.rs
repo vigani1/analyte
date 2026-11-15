@@ -114,7 +114,7 @@ async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c()
     assert!(
         hl7(&mut peer, conflict.as_bytes())
             .await?
-            .contains("MSA|AE|conflict")
+            .contains("MSA|AR|conflict")
     );
     assert_eq!(count(&path, "outbox")?, 1);
     let correction = result(
@@ -278,7 +278,7 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     let (_, new_body) = new.split_once('\r').ok_or("synthetic header absent")?;
     let mixed = format!("{conflict}{}", new_body.replacen("SPM|1|", "SPM|2|", 1));
     let ack = hl7(&mut peer, mixed.as_bytes()).await?;
-    assert!(ack.contains("MSA|AE|mixed"), "{ack}");
+    assert!(ack.contains("MSA|AR|mixed"), "{ack}");
     assert_eq!(
         count(&path, "outbox")?,
         2,
@@ -666,7 +666,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     assert!(
         hl7(&mut peer, conflicting.as_bytes())
             .await?
-            .contains("MSA|AE|reprocess-conflict")
+            .contains("MSA|AR|reprocess-conflict")
     );
     let conflict_id: String = database(&path)?.query_row(
         "SELECT id FROM receipts ORDER BY rowid DESC LIMIT 1",

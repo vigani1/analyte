@@ -76,11 +76,30 @@ pub(crate) async fn receive(
     Ok(received_at)
 }
 
+/// Durable semantic outcome; conflicts remain distinct from unreadable input.
+#[derive(Clone, Copy)]
+pub(crate) enum InterpretationOutcome {
+    Accepted,
+    Failed,
+    Conflict,
+}
+
 pub(crate) async fn interpret(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
 ) -> Result<bool, Error> {
+    Ok(matches!(
+        interpret_outcome(store, machine, id).await?,
+        InterpretationOutcome::Accepted
+    ))
+}
+
+pub(crate) async fn interpret_outcome(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+) -> Result<InterpretationOutcome, Error> {
     let receipt = store
         .request(deadline(), move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
@@ -101,7 +120,7 @@ pub(crate) async fn persist_mapping(
     id: ReceiptId,
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
-) -> Result<(bool, analyte_store::InterpretationCommit), Error> {
+) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
     let atomic = match machine.snapshot.effective().stack() {
         analyte_config::Stack::Law(_) => true,
         analyte_config::Stack::Astm(_)
@@ -237,19 +256,40 @@ pub(crate) async fn persist_mapping(
                         &findings,
                         |_, _| Ok(Vec::new()),
                     )?;
-                    Ok((rejected, false))
+                    Ok((rejected, InterpretationOutcome::Conflict))
                 }
-                result => result.map(|commit| (commit, accepted)),
+                result => result.map(|commit| {
+                    (
+                        commit,
+                        if accepted {
+                            InterpretationOutcome::Accepted
+                        } else {
+                            InterpretationOutcome::Failed
+                        },
+                    )
+                }),
             }
         })
         .await?;
     let (result, successful) = result;
-    let accepted = successful
+    let accepted = matches!(successful, InterpretationOutcome::Accepted)
         && !result
             .outcomes
             .iter()
             .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
-    Ok((accepted, result))
+    Ok((
+        if accepted {
+            InterpretationOutcome::Accepted
+        } else {
+            match successful {
+                InterpretationOutcome::Conflict => InterpretationOutcome::Conflict,
+                InterpretationOutcome::Accepted | InterpretationOutcome::Failed => {
+                    InterpretationOutcome::Failed
+                }
+            }
+        },
+        result,
+    ))
 }
 
 // One audit dispatch for normal and rejected-batch commits; recovery never bypasses it.
