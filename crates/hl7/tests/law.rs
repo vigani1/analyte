@@ -409,3 +409,168 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
     }
     Ok(())
 }
+
+fn results_message(awos: &str, extra: &str) -> Result<Message, analyte_hl7::Error> {
+    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL|||||LAB-29^IHE\rSPM||sample-01||SER^Serum^HL70487|||||||P\rSAC|||000tube\rOBR||{awos}||test^Test^99LAB\rORC|SC||||CM\r{extra}").as_bytes(), Options::default())
+}
+
+fn observation(code: &str, sub_id: &str, kind: &str, value: &str, status: &str) -> String {
+    let mut fields = vec![""; 29];
+    for (index, value) in [
+        (0, "1"),
+        (1, kind),
+        (2, code),
+        (3, sub_id),
+        (4, value),
+        (5, "mg/L^mg/L^UCUM"),
+        (6, "0-2"),
+        (7, "N"),
+        (10, status),
+        (15, "operator^Synthetic"),
+        (17, "instrument^99LAB~module^99LAB"),
+        (18, "202601011200"),
+        (28, "RSLT"),
+    ] {
+        if let Some(field) = fields.get_mut(index) {
+            *field = value;
+        }
+    }
+    format!("OBX|{}\r", fields.join("|"))
+}
+
+#[test]
+fn law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_notes()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{
+        Field,
+        law::{Parent, ResultStatus, Results, Value},
+    };
+    let mut body = observation("test^Test^99LAB", "1^run01", "SN", "<^0.1", "C");
+    body.push_str("TCD|test^Test^99LAB|^1^:^5\rNTE|1|Z|Synthetic observation note\r");
+    let message = results_message("awos-1", &body)?;
+    let results = Results::new(&message)?;
+    let result = results
+        .observations()
+        .first()
+        .ok_or("missing observation")?;
+    assert_eq!(
+        result.awos().map(analyte_hl7::law::Identity::raw),
+        Some(b"awos-1".as_slice())
+    );
+    assert_eq!(result.code(), b"test^Test^99LAB");
+    assert_eq!(result.sub_id(), b"1^run01");
+    assert_eq!(result.status(), ResultStatus::Corrected);
+    assert!(matches!(
+        result.values().first(),
+        Some(Value::StructuredNumber(b"<^0.1"))
+    ));
+    assert_eq!(
+        result.container().field(3).map(Field::raw),
+        Some(b"000tube".as_slice())
+    );
+    assert_eq!(
+        result.specimen().field(2).map(Field::raw),
+        Some(b"sample-01".as_slice())
+    );
+    assert_eq!(
+        result.units().map(Field::raw),
+        Some(b"mg/L^mg/L^UCUM".as_slice())
+    );
+    assert_eq!(result.range().map(Field::raw), Some(b"0-2".as_slice()));
+    assert_eq!(result.flags().map(Field::raw), Some(b"N".as_slice()));
+    assert_eq!(result.equipment().map(|f| f.repetitions().count()), Some(2));
+    assert!(
+        results
+            .attached()
+            .iter()
+            .any(|a| matches!(a.parent, Parent::Observation(_)) && a.segment.id() == b"NTE")
+    );
+    assert_eq!(results.message().raw(), message.raw());
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::law::Results;
+    let mut body = observation("test^Test^99LAB", "1", "NM", "1.20", "F");
+    body.push_str(&observation("other^Other^99LAB", "2", "NM", "2.30", "F"));
+    body.push_str("TCD|mismatch^Mismatch^99LAB\r");
+    let message = results_message("awos-1", &body)?;
+    let original = message.serialize();
+    assert!(matches!(
+        Results::new(&message),
+        Err(Error::Content {
+            segment: "TCD",
+            field: 1
+        })
+    ));
+    assert_eq!(message.raw(), original);
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_3_29_4_unsolicited_null_awos_and_external_reference_are_not_invented()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::law::{Results, Value};
+    let body = observation(
+        "plot^Plot^99LAB",
+        "1",
+        "RP",
+        "https://example.invalid/synthetic^app^image^png",
+        "F",
+    );
+    let message = results_message("\"\"", &body)?;
+    let parsed = Results::new(&message)?;
+    let result = parsed.observations().first().ok_or("missing observation")?;
+    assert!(result.awos().is_none());
+    assert!(matches!(result.values().first(), Some(Value::Reference(_))));
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{AckCode, Field, Responsibility, law::result_acknowledgment};
+    let message = results_message(
+        "awos-1",
+        &observation("test^Test^99LAB", "1", "NM", "1.20", "F"),
+    )?;
+    assert!(
+        result_acknowledgment(
+            &message,
+            response_metadata()?,
+            AckCode::Aa,
+            Responsibility::Stored,
+            None,
+            Options::default()
+        )
+        .is_err()
+    );
+    let ack = result_acknowledgment(
+        &message,
+        response_metadata()?,
+        AckCode::Aa,
+        Responsibility::StoredAndInterpreted,
+        None,
+        Options::default(),
+    )?
+    .ok_or("missing ACK")?;
+    let msh = ack.segments().next().ok_or("missing MSH")?;
+    assert_eq!(
+        msh.field(9).map(Field::raw),
+        Some(b"ACK^R22^ACK".as_slice())
+    );
+    assert_eq!(
+        msh.field(21).map(Field::raw),
+        Some(b"LAB-29^IHE".as_slice())
+    );
+    assert_eq!(
+        ack.segments()
+            .nth(1)
+            .and_then(|s| s.field(2))
+            .map(Field::raw),
+        Some(b"result-1".as_slice())
+    );
+    Ok(())
+}

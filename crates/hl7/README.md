@@ -90,3 +90,17 @@ with NULL specimen type, unknown role, query identification echoes and DC.
 correlation, duplicate/unknown/missing responses and control/status consistency.
 It does not mutate prior AWOS acceptance. Complete schema predicates remain
 part of the profile-validation step.
+
+### Step 3: LAB-29 results and acknowledgments
+
+`Results` returns observations only after the whole message is parsed. It keeps
+AWOS (including explicit unsolicited null), specimen/container context, coded
+OBX-3, run/sub-ID, status, typed value repetitions, original numeric spelling,
+units, ranges, flags and equipment hierarchy. Original segments retain extended
+fields such as instance IDs, timing, probability and external-reference
+classification; no external pointer is fetched or treated as retained data.
+Notes, inventory, timing and TCD keep explicit parents. A mismatched TCD-1
+rejects the complete message; the borrowed input remains untouched. ACK/R22
+rendering calls the existing acknowledgment function, checks successful whole
+interpretation before AA, and adds the LAB-29 profile. Full profile predicates
+and additional datatype component checks remain for step 4.

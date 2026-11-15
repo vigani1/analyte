@@ -275,3 +275,9 @@ pub use work::{
     Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, WorkAction, WorkResponse,
     negative_work, work_order,
 };
+
+mod results;
+
+pub use results::{
+    Attached, Observation, Parent, ResultStatus, Results, Value, result_acknowledgment,
+};
