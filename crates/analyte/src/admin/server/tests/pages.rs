@@ -77,7 +77,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             let parked_id = store.park(&Parked {kind: id(name)?, reason: Reason::new("<script>hostile reason</script>").map_err(|_| analyte_store::Error::InvalidInput)?, targets: vec![target]})?;
             store.order_page(&OrderPage {destination: id("app")?, cursor: id(name)?, complete: true, polled: 100, orders: vec![CachedOrder {id: id(name)?, sample: SampleId::new("<script>sample</script>").map_err(|_| analyte_store::Error::InvalidInput)?, document: serde_json::json!({"id": name,"version":1,"state":"requested","sample_id":"<script>sample</script>","tests":[{"namespace":"local","value":"<test>"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string(), tombstone: false, expiry: 200}]})?;
             let key = analyte_store::MachineOrderKey {destination: id("app")?, order: id(name)?, machine: id("machine")?};
-            let record = store.reserve_send(&key, std::num::NonZeroU64::MIN, 101, 30)?.map_err(|_| analyte_store::Error::Conflict)?;
+            let record = store.reserve_send(&analyte_store::OrderReservation { identity: &key, version: std::num::NonZeroU64::MIN, now: 101, freshness: 30 }, analyte_store::ReserveOptions::default())?.map_err(|_| analyte_store::Error::Conflict)?;
             store.transition_order(record.id, OrderState::Uncertain, analyte_model::SourceText::new("timeout").map_err(|_| analyte_store::Error::InvalidInput)?, 102, |order| Ok(analyte_store::OrderEventDelivery {id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidInput)?, destination: order.key.destination.clone(), order_id: order.key.order.clone(), payload: b"not a raw view".to_vec(), contract_version: 1}))?;
             if let Some((receipt, parked)) = first {
                 store.audit(&Audit {actor: id("operator")?, action: id("store-restore")?, targets: Vec::new(), time: 103, reason: Reason::new("synthetic restore").map_err(|_| analyte_store::Error::InvalidInput)?})?;
@@ -296,7 +296,22 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             let mut bytes = b"<frame>".to_vec();
             bytes.extend(vec![b'B'; 4100]);
             bytes.extend(b"FRAME-TAIL");
-            s.frame(&transfer, 1, &bytes)?;
+            s.journal_frame(
+                &transfer,
+                analyte_store::FrameSequence::new(1, 7)?,
+                &bytes,
+                &analyte_store::FrameProvenance {
+                    machine: Identifier::new("synthetic")
+                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    driver: NamespacedId {
+                        namespace: Identifier::new("synthetic")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        value: Identifier::new("1")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    },
+                    config: b"synthetic config".to_vec(),
+                },
+            )?;
             s.park(&Parked {
                 kind: Identifier::new("transfer")
                     .map_err(|_| analyte_store::Error::InvalidInput)?,

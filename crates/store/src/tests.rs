@@ -26,7 +26,7 @@ pub(super) fn open(path: &Path) -> Result<Store, Error> {
     Store::open(path, limits(), Box::new(Space(u64::MAX)))
 }
 
-fn receipt(raw: &[u8]) -> Result<ReceiptMetadata, Box<dyn std::error::Error>> {
+pub(super) fn receipt(raw: &[u8]) -> Result<ReceiptMetadata, Box<dyn std::error::Error>> {
     Ok(ReceiptMetadata {
         id: ReceiptId::try_from(uuid::Uuid::now_v7())?,
         raw_digest: digest(raw),
@@ -58,8 +58,8 @@ fn adr0003_frame_committed_before_ack_survives_restart() -> TestResult {
     let transfer = Identifier::new("transfer-1")?;
     {
         let mut store = open(&path)?;
-        let first = store.frame(&transfer, 1, b"frame-one")?;
-        assert!(store.frame(&transfer, 2, b"frame-two")? > first);
+        let first = store.frame(&transfer, FrameSequence::new(1, 7)?, b"frame-one")?;
+        assert!(store.frame(&transfer, FrameSequence::new(2, 7)?, b"frame-two")? > first);
     }
     let store = open(&path)?;
     assert_eq!(store.incomplete("")?, vec!["transfer-1"]);
@@ -93,7 +93,11 @@ fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
         Err(Error::Capacity)
     ));
     assert!(matches!(
-        store.frame(&Identifier::new("transfer")?, 0, b"frame"),
+        store.frame(
+            &Identifier::new("transfer")?,
+            FrameSequence::new(0, 7)?,
+            b"frame"
+        ),
         Err(Error::Capacity)
     ));
     assert_eq!(store.raw(metadata.id)?, None);
@@ -109,7 +113,7 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        6
+        SCHEMA_VERSION
     );
     assert_eq!(
         store
@@ -129,9 +133,9 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
             .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    store.db.execute_batch("PRAGMA user_version=7")?;
+    store.db.execute_batch("PRAGMA user_version=10")?;
     drop(store);
-    assert!(matches!(open(&path), Err(Error::SchemaTooNew(7))));
+    assert!(matches!(open(&path), Err(Error::SchemaTooNew(10))));
     Ok(())
 }
 
@@ -146,8 +150,30 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
         Err(Error::Conflict)
     ));
     let reading = interpretation()?;
-    assert_eq!(store.interpret(metadata.id, &reading, &[])?, 1);
-    assert_eq!(store.interpret(metadata.id, &reading, &[])?, 2);
+    assert_eq!(
+        store
+            .interpret_reconciled(
+                metadata.id,
+                reading.clone(),
+                &[],
+                &[],
+                |_, _| Ok(Vec::new())
+            )
+            .map(|commit| commit.version)?,
+        1
+    );
+    assert_eq!(
+        store
+            .interpret_reconciled(
+                metadata.id,
+                reading.clone(),
+                &[],
+                &[],
+                |_, _| Ok(Vec::new())
+            )
+            .map(|commit| commit.version)?,
+        2
+    );
     assert!(
         store
             .db
@@ -170,7 +196,9 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
     store.db.execute_batch("CREATE TRIGGER reject_interpretation AFTER INSERT ON interpretations BEGIN INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('x',NEW.receipt,NEW.version,'d','k',x'00',x'00',1,'invalid',0); END;")?;
     assert!(
         store
-            .interpret(metadata.id, &interpretation()?, &[])
+            .interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| Ok(
+                Vec::new()
+            ))
             .is_err()
     );
     assert_eq!(
@@ -205,7 +233,9 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"raw")?;
     store.receive(&metadata, b"raw", b"config")?;
-    store.interpret(metadata.id, &interpretation()?, &[])?;
+    store.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let first = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     let correction = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     let other = DeliveryId::try_from(uuid::Uuid::now_v7())?;
@@ -291,7 +321,15 @@ fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
     store.receive(&metadata, b"invalid", b"config")?;
     let mut reading = interpretation()?;
     reading.outcome = Reading::Failed(Reason::new("invalid syntax")?);
-    store.interpret(metadata.id, &reading, &[])?;
+    store
+        .interpret_reconciled(
+            metadata.id,
+            reading.clone(),
+            &[],
+            &[],
+            |_, _| Ok(Vec::new()),
+        )
+        .map(|commit| commit.version)?;
     let audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("resolve")?,
@@ -452,12 +490,37 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
     };
     let id = delivery.id;
     assert_eq!(
-        store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?,
+        store
+            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| Ok(
+                vec![Delivery {
+                    id: delivery.id,
+                    destination: delivery.destination.clone(),
+                    ordering_key: OrderingKey {
+                        machine: delivery.ordering_key.machine.clone(),
+                        observation: delivery.ordering_key.observation.clone()
+                    },
+                    payload: delivery.payload.clone(),
+                    contract_version: delivery.contract_version,
+                }]
+            ))
+            .map(|commit| commit.version)?,
         1
     );
     assert!(
         store
-            .interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))
+            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| Ok(
+                vec![Delivery {
+                    id: delivery.id,
+                    destination: delivery.destination.clone(),
+                    ordering_key: OrderingKey {
+                        machine: delivery.ordering_key.machine.clone(),
+                        observation: delivery.ordering_key.observation.clone()
+                    },
+                    payload: delivery.payload.clone(),
+                    contract_version: delivery.contract_version,
+                }]
+            ))
+            .map(|commit| commit.version)
             .is_err()
     );
     assert!(store.interpretation(metadata.id, 2)?.is_none());
@@ -550,12 +613,17 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
     let mut store = open(&temp.path().join("store.db"))?;
     let complete = Identifier::new("complete")?;
     let aborted = Identifier::new("aborted")?;
-    store.frame(&complete, 1, b"first")?;
-    store.frame(&aborted, 1, b"partial")?;
+    store.frame(&complete, FrameSequence::new(1, 7)?, b"first")?;
+    store.frame(&aborted, FrameSequence::new(1, 7)?, b"partial")?;
     let metadata = receipt(b"first")?;
     store.receive(&metadata, b"first", b"config")?;
-    store.finish_transfer(&complete, Some(metadata.id))?;
-    store.finish_transfer(&aborted, None)?;
+    store.finish_transfer(&complete, TransferOutcome::Complete(metadata.id))?;
+    store.finish_transfer(
+        &aborted,
+        TransferOutcome::Incomplete(Reason::new(
+            "ASTM transfer ended before a complete receipt was retained",
+        )?),
+    )?;
     assert_eq!(store.incomplete("")?, vec!["aborted"]);
     assert_eq!(
         store
@@ -569,7 +637,7 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
         Some(b"partial".as_slice())
     );
     assert!(matches!(
-        store.frame(&complete, 2, b"late"),
+        store.frame(&complete, FrameSequence::new(2, 7)?, b"late"),
         Err(Error::Conflict)
     ));
     assert_eq!(
@@ -645,12 +713,18 @@ fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult
     };
     let metadata = receipt(b"raw")?;
     v1.receive(&metadata, b"raw", b"config")?;
-    v1.interpret(metadata.id, &interpretation()?, &[])?;
+    v1.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     seed_delivery(&v1, metadata.id, id, "key")?;
     v1.db.execute("UPDATE outbox SET state='in_flight'", [])?;
     v1.attempted(id, &Attempt::RetryAt(10), 0)?;
-    v1.frame(&Identifier::new("transfer")?, 1, b"frame")?;
+    v1.frame(
+        &Identifier::new("transfer")?,
+        FrameSequence::new(1, 7)?,
+        b"frame",
+    )?;
     let audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("test")?,
@@ -968,7 +1042,11 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
         "INSERT INTO interpretations VALUES (?1,1,?2)",
         params![key(&metadata.id)?, key(&evidence)?],
     )?;
-    v2.frame(&Identifier::new("legacy-transfer")?, 1, b"legacy-frame")?;
+    v2.frame(
+        &Identifier::new("legacy-transfer")?,
+        FrameSequence::new(1, 7)?,
+        b"legacy-frame",
+    )?;
     let triggers: Vec<String> = v2
         .db
         .prepare("SELECT name FROM sqlite_master WHERE type='trigger'")?
@@ -990,7 +1068,7 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        6
+        SCHEMA_VERSION
     );
     for trigger in triggers {
         assert_eq!(
@@ -1082,7 +1160,9 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
     let mut store = open(&path)?;
     let metadata = receipt(b"raw")?;
     store.receive(&metadata, b"raw", b"config")?;
-    store.interpret(metadata.id, &interpretation()?, &[])?;
+    store.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+        Ok(Vec::new())
+    })?;
     let mut interrupted = None;
     for state in ["in_flight", "parked", "conflict", "paused", "done"] {
         let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
@@ -1224,7 +1304,20 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
         payload: b"immutable synthetic bytes".to_vec(),
         contract_version: 1,
     };
-    store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?;
+    store
+        .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
+            Ok(vec![Delivery {
+                id: delivery.id,
+                destination: delivery.destination.clone(),
+                ordering_key: OrderingKey {
+                    machine: delivery.ordering_key.machine.clone(),
+                    observation: delivery.ordering_key.observation.clone(),
+                },
+                payload: delivery.payload.clone(),
+                contract_version: delivery.contract_version,
+            }])
+        })
+        .map(|commit| commit.version)?;
     let mut audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("delivery-resend")?,
@@ -1322,7 +1415,20 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
         payload: b"old bytes".to_vec(),
         contract_version: 1,
     };
-    store.interpret(metadata.id, &evidence, std::slice::from_ref(&delivery))?;
+    store
+        .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
+            Ok(vec![Delivery {
+                id: delivery.id,
+                destination: delivery.destination.clone(),
+                ordering_key: OrderingKey {
+                    machine: delivery.ordering_key.machine.clone(),
+                    observation: delivery.ordering_key.observation.clone(),
+                },
+                payload: delivery.payload.clone(),
+                contract_version: delivery.contract_version,
+            }])
+        })
+        .map(|commit| commit.version)?;
     store.claim(0)?.ok_or("missing claim")?;
     store.attempted(delivery.id, &Attempt::Done, 0)?;
     store.db.execute(
@@ -1374,7 +1480,11 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
     store.receive(&metadata, b"original", b"config")?;
     let mut original = interpretation()?;
     original.outcome = Reading::Failed(Reason::new("test mapping missing")?);
-    store.interpret(metadata.id, &original, &[])?;
+    store
+        .interpret_reconciled(metadata.id, original.clone(), &[], &[], |_, _| {
+            Ok(Vec::new())
+        })
+        .map(|commit| commit.version)?;
     let before: String = store
         .db
         .query_row("SELECT evidence FROM interpretations", [], |r| r.get(0))?;

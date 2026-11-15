@@ -43,24 +43,18 @@ pub(crate) async fn reserve_candidates(
         let owner = owner.clone();
         let reserved = store
             .request(until, move |store| {
-                if let Some(owner) = owner {
-                    store.reserve_send_owned(
-                        &OrderReservation {
-                            identity: &candidate.identity,
-                            version: candidate.version,
-                            now: jiff::Timestamp::now().as_second(),
-                            freshness,
-                        },
-                        &owner,
-                    )
-                } else {
-                    store.reserve_send(
-                        &candidate.identity,
-                        candidate.version,
-                        jiff::Timestamp::now().as_second(),
+                store.reserve_send(
+                    &OrderReservation {
+                        identity: &candidate.identity,
+                        version: candidate.version,
+                        now: jiff::Timestamp::now().as_second(),
                         freshness,
-                    )
-                }
+                    },
+                    analyte_store::ReserveOptions {
+                        owner: owner.as_ref(),
+                        ..Default::default()
+                    },
+                )
             })
             .await?;
         match reserved {
@@ -144,10 +138,13 @@ pub(crate) async fn next(
         let reserved = store
             .request(deadline(), move |store| {
                 store.reserve_send(
-                    &identity,
-                    version,
-                    jiff::Timestamp::now().as_second(),
-                    freshness,
+                    &OrderReservation {
+                        identity: &identity,
+                        version,
+                        now: jiff::Timestamp::now().as_second(),
+                        freshness,
+                    },
+                    analyte_store::ReserveOptions::default(),
                 )
             })
             .await?;

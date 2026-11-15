@@ -272,7 +272,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
                     machine: id("machine")?,
                 };
                 let reserved = store
-                    .reserve_send(&key, std::num::NonZeroU64::MIN, 101, 30)?
+                    .reserve_send(&analyte_store::OrderReservation { identity: &key, version: std::num::NonZeroU64::MIN, now: 101, freshness: 30 }, analyte_store::ReserveOptions::default())?
                     .map_err(|_| analyte_store::Error::Conflict)?;
                 store.transition_order(
                     reserved.id,

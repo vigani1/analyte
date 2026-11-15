@@ -70,7 +70,7 @@ async fn forced_exit_child() -> Result<(), Error> {
     assert_eq!(
         database(&path)?.query_row("SELECT state FROM machine_orders", [], |r| r
             .get::<_, String>(0))?,
-        "\"Sending\""
+        "Sending"
     );
     // The parent confirms that the receiver committed while its HTTP response is withheld.
     // Track the shutdown interval separately from child setup and order polling.
@@ -171,7 +171,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
     assert_eq!(
         database(&path)?.query_row("SELECT state FROM machine_orders", [], |r| r
             .get::<_, String>(0))?,
-        "\"Sending\""
+        "Sending"
     );
     let mut loaded = Program::load(&path)?;
     loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
@@ -187,7 +187,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
         db.query_row("SELECT state,source_code FROM machine_orders", [], |r| {
             Ok((r.get(0)?, r.get(1)?))
         })?;
-    assert_eq!(state, "\"Uncertain\"");
+    assert_eq!(state, "Uncertain");
     assert_eq!(reason, "host-restart");
     assert_eq!(
         db.query_row("SELECT count(*) FROM observation_revisions", [], |r| r

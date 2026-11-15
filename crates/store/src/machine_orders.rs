@@ -1,4 +1,12 @@
 //! Durable machine command reservations; a reserved identity is never sent twice.
+pub(crate) mod ownership;
+use crate::sql_types::SqlOrderState;
+use ownership::OrderOwner;
+mod cancel;
+mod eligibility;
+mod items;
+mod listing;
+mod reserve;
 use crate::{Audit, CachedOrder, Error, OrderEventDelivery, Store, digest, key};
 use analyte_model::{Identifier, NamespacedId, OrderState, OrderTransition, SourceText};
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
@@ -33,6 +41,8 @@ pub struct MachineOrder {
     pub updated_at: i64,
     /// Exact evidence code; never a guessed machine status.
     pub source_code: SourceText,
+    #[serde(skip)]
+    owner: OrderOwner,
     /// Durable command items; legacy v4 coverage is explicitly unknown.
     #[serde(default)]
     pub items: Vec<MachineOrderItem>,
@@ -45,19 +55,14 @@ impl MachineOrder {
     #[must_use]
     pub fn cancel_requested_by(&self, owner: &Identifier) -> bool {
         self.state == OrderState::CancelRequested
-            && self.source_code.as_str().starts_with("app-cancel:")
-            && self.source_code.as_str().rsplit(':').next() == Some(owner.as_str())
+            && matches!(&self.owner, OrderOwner::Cancellation { connection, .. } if connection.as_ref() == Some(owner))
     }
     /// True only while this connection's retained reservation is still Sending.
     /// Completed outcomes and another connection's reservation are never owned here.
     #[must_use]
     pub fn reserved_by(&self, owner: &Identifier) -> bool {
         self.state == OrderState::Sending
-            && self
-                .source_code
-                .as_str()
-                .strip_prefix(RESERVATION_OWNER_PREFIX)
-                == Some(owner.as_str())
+            && matches!(&self.owner, OrderOwner::Reservation(connection) if connection == owner)
     }
 }
 
@@ -75,9 +80,9 @@ pub struct MachineOrderItem {
     /// State before a cancellation request; retained to handle explicit refusal.
     #[serde(default)]
     pub cancel_from: Option<OrderState>,
-    /// Store-assigned EI.1; callers supply the configured EI.2 separately.
+    /// Store-assigned local command identity; the namespace is retained separately.
     pub placer: String,
-    /// EI.2 retained with the item so config changes cannot change a cancellation identity.
+    /// Retained logical namespace; configuration changes cannot alter cancellation identity.
     #[serde(default)]
     pub placer_namespace: Option<Identifier>,
     /// Last evidenced lifecycle state.
@@ -115,17 +120,19 @@ pub enum ItemDecision {
     CancelRefused,
 }
 
-/// Reservation shape; protocol code cannot supply its own collision-prone identities.
+/// Caller-selected command coverage; the store owns collision-free local identities.
 #[derive(Debug, Clone, Copy)]
 pub enum OrderItems<'a> {
-    /// One item covers all tests in an ASTM/vendor record or query display.
+    /// One command covers the complete, current cached test list.
     Together,
-    /// One item per HL7 test, bounded by the encoded EI field length.
-    PerTest {
-        /// Required configured placer namespace.
-        namespace: &'a Identifier,
-        /// Edition's maximum encoded EI length.
-        identity_bytes: usize,
+    /// Explicit nonempty groups must cover the cached tests exactly once.
+    Groups {
+        /// Caller-selected grouping and order, rechecked against the current cache.
+        groups: &'a [Vec<NamespacedId>],
+        /// Logical namespace retained with each command, when supplied.
+        namespace: Option<&'a Identifier>,
+        /// Maximum bytes in the generated local identity, after caller-owned encoding overhead.
+        max_identity_bytes: usize,
     },
 }
 
@@ -192,458 +199,37 @@ struct CachedFields {
     tests: Vec<NamespacedId>,
 }
 
-type Preflight<'a> = &'a mut dyn FnMut(&MachineOrder) -> Result<(), Error>;
+/// Options for one atomic command reservation.
+/// Preflight runs after identity assignment and before commit; it must perform no I/O.
+pub struct ReserveOptions<'a> {
+    /// Connection retaining ownership when an interrupted request needs reconciliation.
+    pub owner: Option<&'a Identifier>,
+    /// Command grouping and identity limits selected by the caller.
+    pub items: OrderItems<'a>,
+    /// Optional pure check of exact assigned identities; failure rolls back all writes.
+    pub prepare: Option<ReservationPreflight<'a>>,
+}
+
+impl Default for ReserveOptions<'_> {
+    fn default() -> Self {
+        Self {
+            owner: None,
+            items: OrderItems::Together,
+            prepare: None,
+        }
+    }
+}
+
+/// Pure reservation preflight; failure prevents the transaction from committing.
+pub type ReservationPreflight<'a> = &'a mut dyn FnMut(&MachineOrder) -> Result<(), Error>;
 #[derive(Clone, Copy)]
 enum ChangeEvidence<'a> {
     Machine,
     Operator(&'a Audit),
-    AppCancel(NonZeroU64, u64),
+    AppCancel(NonZeroU64, u64, &'a Identifier),
 }
 
 impl Store {
-    /// Reads a trusted, bounded page of pending work targeting this analyzer (LAW TF-2b 3.27.4).
-    /// Shares the `SampleId` lookup's restore/trust/freshness rule. Pages scan at most the store
-    /// row limit; filtered-empty is not a final empty answer while `after` is present.
-    /// For one coherent multi-page answer, read all pages in one store-owner request.
-    /// This is not send permission: callers still reserve items against current cache state.
-    /// # Errors
-    /// Reports database or retained-document decoding failures; never converts them to empty.
-    pub fn pending_orders(
-        &self,
-        destination: &Identifier,
-        machine: &Identifier,
-        after: &str,
-        now: i64,
-        freshness: u64,
-    ) -> Result<crate::PendingOrders, Error> {
-        if !self.order_trust(destination, now, freshness)?.is_trusted() {
-            return Ok(crate::PendingOrders::NotTrusted);
-        }
-        let limit = self
-            .limits
-            .page_rows
-            .checked_add(1)
-            .ok_or(Error::InvalidInput)?;
-        let mut statement = self.db.prepare("SELECT evidence FROM orders o WHERE destination=?1 AND id>?3 AND tombstone=0 AND expiry>?4 AND generation=(SELECT generation FROM feed WHERE destination=?1) AND NOT EXISTS(SELECT 1 FROM machine_orders m WHERE m.destination=o.destination AND m.order_id=o.id AND m.machine=?2) ORDER BY id LIMIT ?5")?;
-        let mut encoded = statement
-            .query_map(
-                params![
-                    destination.as_str(),
-                    machine.as_str(),
-                    after,
-                    now,
-                    i64::try_from(limit).map_err(|_| Error::InvalidInput)?
-                ],
-                |row| row.get::<_, String>(0),
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
-        let more = encoded.len() > self.limits.page_rows;
-        if more {
-            encoded.pop();
-        }
-        let mut orders = Vec::new();
-        let mut cursor = None;
-        for encoded in encoded {
-            let cached: CachedOrder = serde_json::from_str(&encoded)?;
-            cursor = Some(cached.id.clone());
-            let fields: CachedFields = serde_json::from_str(&cached.document)?;
-            if fields
-                .state
-                .eligible_for(
-                    OrderState::Requested,
-                    fields.tombstone,
-                    fields
-                        .target_analyzers
-                        .as_ref()
-                        .map(|targets| targets.iter().map(Identifier::as_str)),
-                    machine.as_str(),
-                )
-                .is_ok()
-            {
-                orders.push(cached);
-            }
-        }
-        Ok(crate::PendingOrders::Page {
-            orders,
-            after: if more { cursor } else { None },
-        })
-    }
-    /// Returns a bounded page of unreserved cache candidates, never permission to send.
-    /// The host must map a candidate and call `reserve_send` immediately before I/O.
-    /// # Errors
-    /// Reports database or retained cache decoding failures.
-    pub fn order_candidates(
-        &self,
-        destination: &Identifier,
-        machine: &Identifier,
-        after: &str,
-        now: i64,
-        freshness: u64,
-    ) -> Result<Vec<CachedOrder>, Error> {
-        if !self.order_trust(destination, now, freshness)?.is_trusted() {
-            return Err(Error::Conflict);
-        }
-        let mut statement = self.db.prepare("SELECT evidence FROM orders o WHERE destination=?1 AND id>?3 AND generation=(SELECT generation FROM feed WHERE destination=?1) AND NOT EXISTS(SELECT 1 FROM machine_orders m WHERE m.destination=o.destination AND m.order_id=o.id AND m.machine=?2) ORDER BY id LIMIT ?4")?;
-        let rows = statement
-            .query_map(
-                params![
-                    destination.as_str(),
-                    machine.as_str(),
-                    after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
-                ],
-                |r| r.get::<_, String>(0),
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
-        rows.iter()
-            .map(|row| Ok(serde_json::from_str(row)?))
-            .collect()
-    }
-
-    /// Atomically rechecks the current cache and persists Sending and history without an app event.
-    /// Once committed, cancellation or a lost reply requires reconciliation,
-    /// never a second automatic reservation. Only a later real outcome builds
-    /// contract bytes; an internal reservation must not be reported as sent.
-    /// # Errors
-    /// Returns storage failures; expected eligibility refusals are values.
-    pub fn reserve_send(
-        &mut self,
-        identity: &MachineOrderKey,
-        version: NonZeroU64,
-        now: i64,
-        freshness: u64,
-    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        let code = SourceText::new("host-reserved").map_err(|_| Error::InvalidInput)?;
-        self.start_order(
-            &OrderReservation {
-                identity,
-                version,
-                now,
-                freshness,
-            },
-            OrderState::Sending,
-            code,
-            OrderItems::Together,
-            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            None,
-        )
-    }
-
-    /// Reserves query work with a retained connection owner for cancelled-wait recovery.
-    /// Only the matching owner may treat an interrupted request as its own reservation.
-    /// # Errors
-    /// Reports storage failures; expected eligibility refusals remain explicit values.
-    pub fn reserve_send_owned(
-        &mut self,
-        candidate: &OrderReservation<'_>,
-        owner: &Identifier,
-    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        let code = SourceText::new(&format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()))
-            .map_err(|_| Error::InvalidInput)?;
-        self.start_order(
-            candidate,
-            OrderState::Sending,
-            code,
-            OrderItems::Together,
-            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            None,
-        )
-    }
-
-    /// Reserves per-test HL7 items atomically with the parent, without an app event.
-    /// # Errors
-    /// Refuses oversized identities, missing/oversized test coverage and I/O failures.
-    pub fn reserve_send_items(
-        &mut self,
-        candidate: &OrderReservation<'_>,
-        items: OrderItems<'_>,
-    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        self.start_order(
-            candidate,
-            OrderState::Sending,
-            SourceText::new("host-reserved").map_err(|_| Error::InvalidInput)?,
-            items,
-            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            None,
-        )
-    }
-
-    /// Atomically preflights exact store-assigned item identities before committing Sending.
-    /// The pure builder must perform no I/O. Failure rolls back parent, items and history.
-    /// # Errors
-    /// Reports preflight, identity, storage and eligibility failures without issuing bytes.
-    pub fn reserve_send_items_with<T>(
-        &mut self,
-        candidate: &OrderReservation<'_>,
-        items: OrderItems<'_>,
-        owner: &Identifier,
-        prepare: impl FnOnce(&MachineOrder) -> Result<T, Error>,
-    ) -> Result<Result<(MachineOrder, T), SendRefusal>, Error> {
-        let code = SourceText::new(&format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()))
-            .map_err(|_| Error::InvalidInput)?;
-        let mut builder = Some(prepare);
-        let mut payload = None;
-        let mut preflight = |record: &MachineOrder| {
-            payload = Some(builder.take().ok_or(Error::InvalidInput)?(record)?);
-            Ok(())
-        };
-        let reserved = self.start_order(
-            candidate,
-            OrderState::Sending,
-            code,
-            items,
-            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            Some(&mut preflight),
-        )?;
-        match reserved {
-            Ok(order) => Ok(Ok((order, payload.ok_or(Error::InvalidInput)?))),
-            Err(refusal) => Ok(Err(refusal)),
-        }
-    }
-
-    /// Records a mapping rejection and app event without claiming anything was sent.
-    /// # Errors
-    /// Reports cache refusals, builder errors and storage failures.
-    pub fn reject_unsent(
-        &mut self,
-        candidate: &OrderReservation<'_>,
-        reason: SourceText,
-        build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
-    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        self.start_order(
-            candidate,
-            OrderState::Rejected,
-            reason,
-            OrderItems::Together,
-            Some(build),
-            None,
-        )
-    }
-
-    fn start_order(
-        &mut self,
-        candidate: &OrderReservation<'_>,
-        initial: OrderState,
-        code: SourceText,
-        items: OrderItems<'_>,
-        build: Option<impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-        prepare: Option<Preflight<'_>>,
-    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        let OrderReservation {
-            identity,
-            version,
-            now,
-            freshness,
-        } = *candidate;
-        self.capacity(self.limits.record_bytes)?;
-        let limit = self.limits.record_bytes;
-        let tx = self
-            .db
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let trust = Self::order_trust_on(&tx, &identity.destination, now, freshness)?;
-        if trust == crate::OrderTrust::RestorePaused {
-            return Ok(Err(SendRefusal::RestoreUnreconciled));
-        }
-        let existing = tx
-            .query_row(
-                "SELECT id FROM machine_orders WHERE destination=?1 AND order_id=?2 AND machine=?3",
-                params![
-                    identity.destination.as_str(),
-                    identity.order.as_str(),
-                    identity.machine.as_str()
-                ],
-                |r| r.get::<_, i64>(0),
-            )
-            .optional()?;
-        if existing.is_some() {
-            return Ok(Err(SendRefusal::AlreadyReserved));
-        }
-        if !trust.is_trusted() {
-            return Ok(Err(SendRefusal::Untrusted));
-        }
-        let cached = tx.query_row("SELECT evidence FROM orders WHERE destination=?1 AND id=?2 AND generation=(SELECT generation FROM feed WHERE destination=?1)",params![identity.destination.as_str(),identity.order.as_str()], |r| r.get::<_,String>(0)).optional()?;
-        let Some(cached) = cached else {
-            return Ok(Err(SendRefusal::Missing));
-        };
-        let cached: CachedOrder = serde_json::from_str(&cached)?;
-        let fields: CachedFields = serde_json::from_str(&cached.document)?;
-        if fields.version != version {
-            return Ok(Err(SendRefusal::VersionChanged));
-        }
-        if cached.tombstone {
-            return Ok(Err(SendRefusal::Withdrawn));
-        }
-        if cached.expiry <= now {
-            return Ok(Err(SendRefusal::Expired));
-        }
-        match fields.state.eligible_for(
-            OrderState::Requested,
-            fields.tombstone,
-            fields
-                .target_analyzers
-                .as_ref()
-                .map(|targets| targets.iter().map(Identifier::as_str)),
-            identity.machine.as_str(),
-        ) {
-            Ok(()) => {}
-            Err(analyte_model::OrderIneligible::Withdrawn) => {
-                return Ok(Err(SendRefusal::Withdrawn));
-            }
-            Err(analyte_model::OrderIneligible::Phase) => {
-                return Ok(Err(SendRefusal::NotRequested));
-            }
-            Err(analyte_model::OrderIneligible::Target) => {
-                return Ok(Err(SendRefusal::WrongMachine));
-            }
-        }
-        let state = OrderState::Requested.transition(OrderTransition::Advance(initial))?;
-        tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,?5,?6,?6,?7)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),key(&state)?,now,code.as_str()])?;
-        let mut record = MachineOrder {
-            id: tx.last_insert_rowid(),
-            key: identity.clone(),
-            version,
-            state,
-            created_at: now,
-            updated_at: now,
-            source_code: code,
-            items: Vec::new(),
-        };
-        record.items = create_items(&tx, &record, fields.tests, items, limit)?;
-        if let Some(prepare) = prepare {
-            prepare(&record)?;
-        }
-        let event = build.map(|build| build(&record)).transpose()?;
-        append(&tx, &record, event.as_ref(), limit)?;
-        tx.commit()?;
-        Ok(Ok(record))
-    }
-
-    /// Looks up a reservation by its immutable key after an interrupted store wait.
-    /// # Errors
-    /// Reports storage failures or invalid retained evidence; absence is explicit.
-    pub fn machine_order(&self, identity: &MachineOrderKey) -> Result<Option<MachineOrder>, Error> {
-        let id = self
-            .db
-            .query_row(
-                "SELECT id FROM machine_orders WHERE destination=?1 AND order_id=?2 AND machine=?3",
-                params![
-                    identity.destination.as_str(),
-                    identity.order.as_str(),
-                    identity.machine.as_str()
-                ],
-                |row| row.get::<_, i64>(0),
-            )
-            .optional()?;
-        id.map(|id| load(&self.db, id)).transpose()
-    }
-
-    /// Returns a bounded page without exposing cache payloads.
-    /// # Errors
-    /// Reports database failures or invalid persisted evidence.
-    pub fn machine_orders(&self, filter: &MachineOrderFilter) -> Result<Vec<MachineOrder>, Error> {
-        let mut statement = self.db.prepare("SELECT id FROM machine_orders WHERE id>?1 AND (?2 IS NULL OR machine=?2) AND (?3 IS NULL OR state=?3) ORDER BY id LIMIT ?4")?;
-        let state = filter.state.map(|s| key(&s)).transpose()?;
-        let ids = statement
-            .query_map(
-                params![
-                    filter.after,
-                    filter.machine.as_ref().map(Identifier::as_str),
-                    state,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
-                ],
-                |r| r.get::<_, i64>(0),
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
-        ids.into_iter().map(|id| load(&self.db, id)).collect()
-    }
-
-    /// Returns a bounded cancellation page; admission still rechecks the current feed.
-    /// # Errors
-    /// Reports retained evidence and database failures.
-    pub fn cancel_candidates(
-        &self,
-        destination: &Identifier,
-        machine: &Identifier,
-        now: i64,
-        freshness: u64,
-    ) -> Result<Vec<(MachineOrder, CachedOrder)>, Error> {
-        if !self.order_trust(destination, now, freshness)?.is_trusted() {
-            return Err(Error::Conflict);
-        }
-        let mut after = 0;
-        let mut candidates = Vec::new();
-        // Bound filtering work without letting an ineligible first page starve later cancels.
-        for _ in 0..128 {
-            let mut statement = self.db.prepare("SELECT m.id,o.evidence FROM machine_orders m JOIN orders o ON o.destination=m.destination AND o.id=m.order_id JOIN feed f ON f.destination=o.destination AND f.generation=o.generation WHERE m.destination=?1 AND m.machine=?2 AND m.id>?3 AND NOT EXISTS(SELECT 1 FROM machine_order_history h WHERE h.machine_order=m.id AND json_extract(h.evidence,'$.source_code') LIKE 'app-cancel:'||json_extract(json_extract(o.evidence,'$.document'),'$.version')||':%') ORDER BY m.id LIMIT ?4")?;
-            let rows = statement
-                .query_map(
-                    params![
-                        destination.as_str(),
-                        machine.as_str(),
-                        after,
-                        i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
-                    ],
-                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
-                )?
-                .collect::<Result<Vec<_>, _>>()?;
-            let exhausted = rows.len() < self.limits.page_rows;
-            for (id, evidence) in rows {
-                after = id;
-                let order = load(&self.db, id)?;
-                let cached: CachedOrder = serde_json::from_str(&evidence)?;
-                let fields: CachedFields = serde_json::from_str(&cached.document)?;
-                if matches!(order.state, OrderState::Sent | OrderState::Accepted)
-                    && cached.expiry > now
-                    && fields
-                        .state
-                        .eligible_for(
-                            OrderState::CancelRequested,
-                            fields.tombstone,
-                            fields
-                                .target_analyzers
-                                .as_ref()
-                                .map(|targets| targets.iter().map(Identifier::as_str)),
-                            machine.as_str(),
-                        )
-                        .is_ok()
-                {
-                    candidates.push((order, cached));
-                    if candidates.len() == self.limits.page_rows {
-                        return Ok(candidates);
-                    }
-                }
-            }
-            if exhausted {
-                return Ok(candidates);
-            }
-        }
-        Err(Error::InvalidInput)
-    }
-
-    /// Rechecks an app cancellation and records its version once, before cancel bytes.
-    /// # Errors
-    /// Refuses stale/paused feeds, repeated cancellation versions and illegal states.
-    pub fn request_order_cancel(
-        &mut self,
-        id: i64,
-        version: NonZeroU64,
-        now: i64,
-        owner: &Identifier,
-        freshness: u64,
-        build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
-    ) -> Result<MachineOrder, Error> {
-        let code = SourceText::new(&format!("app-cancel:{version}:{}", owner.as_str()))
-            .map_err(|_| Error::InvalidInput)?;
-        self.change_order(
-            id,
-            OrderState::CancelRequested,
-            code,
-            now,
-            ChangeEvidence::AppCancel(version, freshness),
-            build,
-        )
-    }
-
     /// Persists a legal transition, history and its exact app event together.
     /// # Errors
     /// Refuses missing orders, illegal moves, clock reversal, bounds and I/O failures.
@@ -656,122 +242,6 @@ impl Store {
         build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
     ) -> Result<MachineOrder, Error> {
         self.change_order(id, to, code, now, ChangeEvidence::Machine, build)
-    }
-
-    /// Commits completed exchange outcomes, conservative aggregation and one app event.
-    /// Missing decisions become Uncertain. Duplicate/unknown items and illegal moves
-    /// roll back the entire exchange, including its event. Cancellation cannot resend work.
-    /// # Errors
-    /// Refuses invalid identities, illegal item transitions, bounds and storage failures.
-    pub fn finish_order_items(
-        &mut self,
-        id: i64,
-        outcomes: &[ItemOutcome],
-        now: i64,
-        build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
-    ) -> Result<MachineOrder, Error> {
-        self.capacity(self.limits.record_bytes)?;
-        let limit = self.limits.record_bytes;
-        let tx = self
-            .db
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut order = load(&tx, id)?;
-        if !matches!(
-            order.state,
-            OrderState::Sending | OrderState::Sent | OrderState::CancelRequested
-        ) || now < order.updated_at
-            || outcomes.len() > order.items.len()
-            || order.items.is_empty()
-        {
-            return Err(Error::InvalidInput);
-        }
-        let mut seen = std::collections::HashSet::new();
-        for outcome in outcomes {
-            if !seen.insert(outcome.index)
-                || !order.items.iter().any(|item| item.index == outcome.index)
-            {
-                return Err(Error::InvalidInput);
-            }
-        }
-        let cancelling = order.state == OrderState::CancelRequested;
-        let mut refused = false;
-        for item in &mut order.items {
-            if let Some(outcome) = outcomes.iter().find(|outcome| outcome.index == item.index) {
-                let next = item_decision(item, outcome.decision)?;
-                refused |= matches!(outcome.decision, ItemDecision::CancelRefused);
-                item.state = next;
-                item.source_code = outcome.code.clone();
-            } else {
-                item.state = item_decision(item, ItemDecision::Uncertain)?;
-                item.source_code =
-                    SourceText::new("exchange-answer-missing").map_err(|_| Error::InvalidInput)?;
-            }
-            item.updated_at = now;
-            write_item(&tx, item, limit)?;
-        }
-        let states = order
-            .items
-            .iter()
-            .map(|item| item.state)
-            .collect::<Vec<_>>();
-        let mut state = aggregate(&states);
-        if cancelling
-            && refused
-            && !order
-                .items
-                .iter()
-                .any(|item| item.state == OrderState::Uncertain)
-        {
-            let previous = order
-                .items
-                .iter()
-                .map(|item| {
-                    let previous = item.cancel_from.ok_or(Error::Corruption)?;
-                    Ok(OrderState::CancelRequested
-                        .transition(OrderTransition::CancelRefused(previous))?)
-                })
-                .collect::<Result<Vec<_>, Error>>()?;
-            state = aggregate(&previous);
-        }
-        // Aggregation is a distinct rule: mixed item outcomes may produce Uncertain
-        // even when one item is terminal. It never manufactures a Sent event.
-        order.state = state;
-        order.updated_at = now;
-        let prefix = if refused {
-            "CancelRefused"
-        } else {
-            "item-outcomes"
-        };
-        let summary =
-            order
-                .items
-                .iter()
-                .map(|item| {
-                    format!(
-                        "{}={:?}:{}",
-                        item.index,
-                        item.state,
-                        item.source_code
-                            .as_str()
-                            .split(':')
-                            .next()
-                            .filter(|code| code.len() <= 64
-                                && code.bytes().all(|byte| byte.is_ascii_alphanumeric()
-                                    || matches!(byte, b'-' | b'_')))
-                            .unwrap_or("see-item-history")
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; ");
-        order.source_code =
-            SourceText::new(&format!("{prefix}: {summary}")).map_err(|_| Error::InvalidInput)?;
-        tx.execute(
-            "UPDATE machine_orders SET state=?1,updated_at=?2,source_code=?3 WHERE id=?4",
-            params![key(&order.state)?, now, order.source_code.as_str(), id],
-        )?;
-        append(&tx, &order, Some(&build(&order)?), limit)?;
-        tx.commit()?;
-        Ok(order)
     }
 
     /// Reconciles an uncertain order with an operator's audited evidence.
@@ -823,7 +293,13 @@ impl Store {
         let (audit, cancel_version) = match evidence {
             ChangeEvidence::Machine => (None, None),
             ChangeEvidence::Operator(audit) => (Some(audit), None),
-            ChangeEvidence::AppCancel(version, freshness) => (None, Some((version, freshness))),
+            ChangeEvidence::AppCancel(version, freshness, owner) => {
+                record.owner = OrderOwner::Cancellation {
+                    connection: Some(owner.clone()),
+                    version,
+                };
+                (None, Some((version, freshness)))
+            }
         };
         if let Some((version, freshness)) = cancel_version {
             if !Self::order_trust_on(&tx, &record.key.destination, now, freshness)?.is_trusted() {
@@ -848,7 +324,7 @@ impl Store {
             {
                 return Err(Error::Conflict);
             }
-            let prior:i64=tx.query_row("SELECT count(*) FROM machine_order_history WHERE machine_order=?1 AND json_extract(evidence,'$.source_code') LIKE ?2",params![id,format!("app-cancel:{version}:%")],|row|row.get(0))?;
+            let prior:i64=tx.query_row("SELECT count(*) FROM machine_order_history WHERE machine_order=?1 AND cancel_version=?2",params![id,version.to_string()],|row|row.get(0))?;
             if prior != 0 {
                 return Err(Error::Conflict);
             }
@@ -877,7 +353,12 @@ impl Store {
         record.source_code = code;
         tx.execute(
             "UPDATE machine_orders SET state=?1,updated_at=?2,source_code=?3 WHERE id=?4",
-            params![key(&record.state)?, now, record.source_code.as_str(), id],
+            params![
+                SqlOrderState(record.state),
+                now,
+                record.source_code.as_str(),
+                id
+            ],
         )?;
         append(&tx, &record, Some(&build(&record)?), limit)?;
         if let Some(audit) = audit {
@@ -893,8 +374,9 @@ impl Store {
 }
 
 fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, Error> {
-    let evidence: String = db.query_row("SELECT evidence FROM machine_order_history WHERE machine_order=?1 ORDER BY sequence DESC LIMIT 1", [id], |r| r.get(0))?;
+    let (evidence, owner): (String, OrderOwner) = db.query_row("SELECT evidence,owner_kind,owner_id,cancel_version FROM machine_order_history WHERE machine_order=?1 ORDER BY sequence DESC LIMIT 1", [id], |row| Ok((row.get(0)?, OrderOwner::read(row)?)))?;
     let mut record: MachineOrder = serde_json::from_str(&evidence)?;
+    record.owner = owner;
     record.items = load_items(db, id)?;
     Ok(record)
 }
@@ -909,9 +391,10 @@ fn append(
     if evidence.len() > limit {
         return Err(Error::InvalidInput);
     }
+    let (kind, owner, version) = record.owner.columns();
     tx.execute(
-        "INSERT INTO machine_order_history(machine_order,evidence) VALUES (?1,?2)",
-        params![record.id, evidence],
+        "INSERT INTO machine_order_history(machine_order,evidence,owner_kind,owner_id,cancel_version) VALUES (?1,?2,?3,?4,?5)",
+        params![record.id, evidence, kind, owner, version],
     )?;
     let Some(event) = event else {
         return Ok(());
@@ -923,7 +406,7 @@ fn append(
     {
         return Err(Error::InvalidInput);
     }
-    tx.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,'order_event',?2,?3,?2,?4,?5,?6,'pending',0,?7)",params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,digest(&event.payload).0.as_slice(),event.contract_version,record.updated_at])?;
+    tx.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?8,?2,?3,?2,?4,?5,?6,?9,0,?7)",params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,digest(&event.payload).0.as_slice(),event.contract_version,record.updated_at,crate::DeliveryKind::OrderEvent,crate::DeliveryState::Pending])?;
     Ok(())
 }
 
@@ -952,23 +435,38 @@ fn create_items(
     }
     let groups = match shape {
         OrderItems::Together => vec![tests],
-        OrderItems::PerTest { .. } => tests.into_iter().map(|test| vec![test]).collect(),
+        OrderItems::Groups { groups, .. } => {
+            if groups.is_empty()
+                || groups.len() > 100
+                || groups
+                    .iter()
+                    .any(|group| group.is_empty() || group.len() > 100)
+            {
+                return Err(Error::InvalidInput);
+            }
+            let mut remaining = tests;
+            for test in groups.iter().flatten() {
+                let position = remaining
+                    .iter()
+                    .position(|candidate| candidate == test)
+                    .ok_or(Error::InvalidInput)?;
+                remaining.remove(position);
+            }
+            if !remaining.is_empty() {
+                return Err(Error::InvalidInput);
+            }
+            groups.to_vec()
+        }
     };
     let mut items = Vec::new();
     for (offset, tests) in groups.into_iter().enumerate() {
         let index = u16::try_from(offset.checked_add(1).ok_or(Error::InvalidInput)?)
             .map_err(|_| Error::InvalidInput)?;
         let placer = format!("{}-{index}", order.id);
-        if let OrderItems::PerTest {
-            namespace,
-            identity_bytes,
+        if let OrderItems::Groups {
+            max_identity_bytes, ..
         } = shape
-            && (namespace.as_str().is_empty()
-                || placer
-                    .len()
-                    .checked_add(namespace.as_str().len())
-                    .and_then(|n| n.checked_add(1))
-                    .is_none_or(|n| n > identity_bytes))
+            && placer.len() > max_identity_bytes
         {
             return Err(Error::ItemIdentityTooLong);
         }
@@ -981,13 +479,13 @@ fn create_items(
             placer,
             placer_namespace: match shape {
                 OrderItems::Together => None,
-                OrderItems::PerTest { namespace, .. } => Some(namespace.clone()),
+                OrderItems::Groups { namespace, .. } => namespace.cloned(),
             },
             state: order.state,
             updated_at: order.updated_at,
             source_code: order.source_code.clone(),
         };
-        tx.execute("INSERT INTO machine_order_items(machine_order,item_index,tests,coverage_known,placer,placer_namespace,state) VALUES (?1,?2,?3,1,?4,?5,?6)", params![order.id,index,key(&item.tests)?,item.placer,item.placer_namespace.as_ref().map(Identifier::as_str),key(&item.state)?])?;
+        tx.execute("INSERT INTO machine_order_items(machine_order,item_index,tests,coverage_known,placer,placer_namespace,state) VALUES (?1,?2,?3,1,?4,?5,?6)", params![order.id,index,key(&item.tests)?,item.placer,item.placer_namespace.as_ref().map(Identifier::as_str),SqlOrderState(item.state)])?;
         write_item(tx, &item, limit)?;
         items.push(item);
     }
@@ -1001,7 +499,7 @@ fn write_item(tx: &Transaction<'_>, item: &MachineOrderItem, limit: usize) -> Re
     }
     tx.execute(
         "UPDATE machine_order_items SET state=?1 WHERE machine_order=?2 AND item_index=?3",
-        params![key(&item.state)?, item.machine_order, item.index],
+        params![SqlOrderState(item.state), item.machine_order, item.index],
     )?;
     tx.execute("INSERT INTO machine_order_item_history(machine_order,item_index,evidence) VALUES (?1,?2,?3)", params![item.machine_order,item.index,evidence])?;
     Ok(())

@@ -125,7 +125,12 @@ async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_sta
         .await?;
         // Clear the next poll's custody guard before shutting down.
         empty_poll(&mut peer).await?;
-        wait_count(&path, "SELECT count(*) FROM parked WHERE resolution IS NULL AND evidence LIKE '%autolyser_poll_custody%'", 0).await?;
+        wait_count(
+            &path,
+            "SELECT count(*) FROM poll_intents WHERE state IN ('pending','uncertain')",
+            0,
+        )
+        .await?;
         service.stop().await?;
         drop(peer);
         let service = Running::start(&path, &reference.url, "synthetic-api")?;
@@ -149,7 +154,24 @@ async fn autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_or
 -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?, false).await?;
     assert_eq!(byte(&mut peer).await?, 2);
+    assert_eq!(
+        database(&path)?.query_row(
+            "SELECT count(*) FROM poll_intents WHERE state IN ('pending','uncertain')",
+            [],
+            |row| row.get::<_, i64>(0)
+        )?,
+        1
+    );
     closed(&mut peer).await?;
+    wait_count(
+        &path,
+        "SELECT count(*) FROM poll_intents WHERE state='uncertain'",
+        1,
+    )
+    .await?;
+    let mut reconnect = connect(&path, "autolyser").await?;
+    closed(&mut reconnect).await?;
+    wait_count(&path, "SELECT count(*) FROM poll_intents", 1).await?;
     no_event(&path).await?;
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r

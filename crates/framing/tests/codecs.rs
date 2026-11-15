@@ -22,8 +22,10 @@ fn lis01_6_3_2_number_rollover() -> Result<(), a::Error> {
     let mut n = a::FrameNumber::FIRST;
     for expected in b"123456701" {
         assert_eq!(n.ascii(), *expected);
+        assert_eq!(n.value(), expected.wrapping_sub(b'0'));
         n = n.next();
     }
+    assert_eq!(a::FrameNumber::MAX.value(), 7);
     for byte in 0..=255 {
         assert_eq!(
             a::FrameNumber::new(byte).is_ok(),

@@ -1,5 +1,5 @@
 //! Operator resend preserves ADR 0008 delivery identity and immutable bytes.
-use crate::{Audit, Error, OrderingKey, Store, key};
+use crate::{Audit, DeliveryKind, Error, OrderingKey, Store, key};
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};
 
@@ -20,20 +20,6 @@ pub enum DeliveryState {
     Conflict,
 }
 
-impl DeliveryState {
-    fn parse(value: &str) -> Result<Self, Error> {
-        match value {
-            "pending" => Ok(Self::Pending),
-            "in_flight" => Ok(Self::InFlight),
-            "done" => Ok(Self::Done),
-            "parked" => Ok(Self::Parked),
-            "paused" => Ok(Self::Paused),
-            "conflict" => Ok(Self::Conflict),
-            _ => Err(Error::Corruption),
-        }
-    }
-}
-
 /// Bounded operator listing without clinical payloads.
 pub struct StoredDelivery {
     /// Pagination cursor, independent of UUID ordering.
@@ -51,7 +37,7 @@ impl Store {
     /// # Errors
     /// Reports database failures or corrupt stored metadata; unknown IDs return absence.
     pub fn delivery(&self, id: DeliveryId) -> Result<Option<StoredDelivery>, Error> {
-        let row: Option<(i64, String, String)> = self
+        let row: Option<(i64, String, DeliveryState)> = self
             .db
             .query_row(
                 "SELECT sequence,destination,state FROM outbox WHERE id=?1",
@@ -64,7 +50,7 @@ impl Store {
                 sequence,
                 id,
                 destination: Identifier::new(&destination).map_err(|_| Error::Corruption)?,
-                state: DeliveryState::parse(&state)?,
+                state,
             })
         })
         .transpose()
@@ -85,7 +71,7 @@ impl Store {
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
+                    row.get::<_, DeliveryState>(3)?,
                 ))
             },
         )?;
@@ -95,7 +81,7 @@ impl Store {
                 sequence,
                 id: serde_json::from_str(&id)?,
                 destination: Identifier::new(&destination).map_err(|_| Error::Corruption)?,
-                state: DeliveryState::parse(&state)?,
+                state,
             })
         })
         .collect()
@@ -126,7 +112,13 @@ impl Store {
             .db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let id_key = key(&id)?;
-        type ResendRow = (String, String, String, Option<String>, Option<i64>);
+        type ResendRow = (
+            DeliveryState,
+            DeliveryKind,
+            String,
+            Option<String>,
+            Option<i64>,
+        );
         let row: Option<ResendRow> = tx
             .query_row(
                 "SELECT state,kind,ordering_key,receipt,version FROM outbox WHERE id=?1",
@@ -135,14 +127,14 @@ impl Store {
             )
             .optional()?;
         let (state, kind, ordering, receipt, version) = row.ok_or(Error::UnknownDelivery)?;
-        match DeliveryState::parse(&state)? {
+        match state {
             DeliveryState::Done | DeliveryState::Parked | DeliveryState::Paused => {}
             DeliveryState::Pending | DeliveryState::InFlight | DeliveryState::Conflict => {
                 return Err(Error::ResendState);
             }
         }
-        match kind.as_str() {
-            "result" => {
+        match kind {
+            DeliveryKind::Result => {
                 let ordering: OrderingKey = serde_json::from_str(&ordering)?;
                 let identity = key(&(&ordering.machine, &ordering.observation))?;
                 let revision: Option<i64> = tx.query_row("SELECT max(revision) FROM observation_revisions WHERE identity_key=?1 AND receipt=?2 AND interpretation_version=?3", params![identity, receipt, version], |r| r.get(0))?;
@@ -152,12 +144,11 @@ impl Store {
                     return Err(Error::SupersededDelivery);
                 }
             }
-            "order_event" => {}
-            _ => return Err(Error::Corruption),
+            DeliveryKind::OrderEvent => {}
         }
         tx.execute(
-            "UPDATE outbox SET state='pending',next_attempt=0 WHERE id=?1",
-            [&id_key],
+            "UPDATE outbox SET state=?2,next_attempt=0 WHERE id=?1",
+            params![id_key, DeliveryState::Pending],
         )?;
         tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [encoded])?;
         tx.commit()?;
