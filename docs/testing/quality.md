@@ -8,6 +8,11 @@ runs the tests again. A caught mutation makes a test fail; a missed mutation
 needs investigation because it may expose a missing check or may behave exactly
 like the original code.
 
+Raw mutation and replay logs stay out of the repository. Each triage row names
+the test that catches the mutant, or the exact reason it is equivalent, and the
+commands below regenerate any run. Attach logs to the pull request when a
+reviewer needs them.
+
 ## Completed round results
 
 Framing, dialog, mapping, contract and sink are complete historical rounds.
