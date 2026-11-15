@@ -7,6 +7,11 @@ use crate::{Message, Segment};
 #[derive(Debug, Clone, Copy)]
 pub struct Profile<'a> {
     pub(super) patient: bool,
+    pub(super) specimen: bool,
+    pub(super) container: bool,
+    pub(super) pooling_outside: bool,
+    pub(super) negative_query: bool,
+    pub(super) results_message: bool,
     pub(super) authorities: &'a [super::AuthorityBinding<'a>],
 }
 
@@ -17,6 +22,11 @@ impl<'a> Profile<'a> {
     pub fn receive() -> Self {
         Self {
             patient: true,
+            specimen: true,
+            container: true,
+            pooling_outside: false,
+            negative_query: false,
+            results_message: true,
             authorities: &[],
         }
     }
@@ -26,6 +36,8 @@ impl<'a> Profile<'a> {
     pub fn for_peer(capabilities: super::Capabilities) -> Self {
         Self {
             patient: capabilities.patient,
+            specimen: capabilities.specimen,
+            container: capabilities.container,
             ..Self::receive()
         }
     }
@@ -35,6 +47,55 @@ impl<'a> Profile<'a> {
     pub fn with_authorities(mut self, authorities: &'a [super::AuthorityBinding<'a>]) -> Self {
         self.authorities = authorities;
         self
+    }
+
+    /// Selects validation of the outside-analyzer pooling fields and predicates.
+    /// This does not authorize pooling or add pooling to the work-order builder.
+    #[must_use]
+    pub fn with_pooling_outside(mut self, selected: bool) -> Self {
+        self.pooling_outside = selected;
+        self
+    }
+
+    /// Validates all implemented segment profiles and SPM sequence numbers.
+    /// Negative-query exceptions apply only to the restricted LAB-28 form.
+    /// # Errors
+    /// Returns a located failure; this is not a complete message-group validator.
+    pub fn validate_message(
+        mut self,
+        message: &Message,
+        direction: super::ControlDirection,
+    ) -> Result<(), Error> {
+        super::validate_control(message, direction)?;
+        let mut segments = message.segments();
+        let msh = segments.next().ok_or(content("MSH", 0))?;
+        self.results_message = super::control::part(raw(msh, 9), 1) == b"OUL";
+        self.negative_query = super::control::part(raw(msh, 9), 1) == b"OML"
+            && segments
+                .map(Segment::id)
+                .eq([b"SPM".as_slice(), b"SAC", b"ORC"])
+            && message
+                .segments()
+                .find(|s| s.id() == b"ORC")
+                .is_some_and(|s| raw(s, 1) == b"DC")
+            && message
+                .segments()
+                .find(|s| s.id() == b"SPM")
+                .is_some_and(|s| {
+                    super::control::part(raw(s, 11), 1) == b"U"
+                        && super::control::part(raw(s, 11), 3) == b"IHELAW"
+                });
+        let mut ordinal = 0usize;
+        for segment in message.segments() {
+            self.validate_segment(segment, direction)?;
+            if segment.id() == b"SPM" {
+                ordinal = ordinal.checked_add(1).ok_or(content("SPM", 1))?;
+                if super::specimen::set_id(raw(segment, 1)) != Some(ordinal) {
+                    return Err(content("SPM", 1));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Checks a segment with explicit send/receive handling of unsupported content.
@@ -49,6 +110,7 @@ impl<'a> Profile<'a> {
         match segment.id() {
             b"MSH" | b"MSA" | b"ERR" => super::control::validate_segment(segment, direction),
             b"PID" | b"PV1" => super::patient::validate(segment, self, direction),
+            b"SPM" | b"SAC" => super::specimen::validate(segment, self, direction),
             _ => validate_segment(segment),
         }
     }
@@ -186,6 +248,13 @@ fn coded(
 /// # Errors
 /// Returns a segment/field location for missing fields, excess repetitions or invalid codes.
 pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
+    if matches!(segment.id(), b"SPM" | b"SAC") {
+        return super::specimen::validate(
+            segment,
+            Profile::receive(),
+            super::ControlDirection::Send,
+        );
+    }
     if matches!(segment.id(), b"PID" | b"PV1") {
         return super::patient::validate(
             segment,
@@ -205,8 +274,6 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             &[1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 16, 18, 19, 21, 29],
         ),
         b"ORC" => ("ORC", &[1, 2, 4, 5, 8, 9, 21, 27]),
-        b"SAC" => ("SAC", &[3, 4, 9, 10, 11, 13, 14, 15, 21, 22, 24, 29]),
-        b"SPM" => ("SPM", &[1, 2, 3, 4, 7, 8, 9, 11, 13, 16, 17, 18, 27]),
         b"TCD" => ("TCD", &[1, 2, 3, 5, 6, 7, 8, 9, 10, 11]),
         b"TQ1" => ("TQ1", &[9]),
         b"QPD" | b"RCP" | b"QAK" => return Ok(()),
@@ -357,60 +424,6 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
         }
         b"ORC" => {
             check(segment, "ORC", 1, true, 2, 1)?;
-        }
-        b"SAC" => {
-            if raw(segment, 3).is_empty() && raw(segment, 4).is_empty() {
-                return Err(content("SAC", 3));
-            }
-            for field in [3, 4, 10, 13] {
-                check(segment, "SAC", field, false, 80, 1)?;
-            }
-        }
-        b"SPM" => {
-            positive_integer(raw(segment, 1), "SPM", 1)?;
-            for field in [4, 7, 8, 9, 16, 27] {
-                check(
-                    segment,
-                    "SPM",
-                    field,
-                    field == 4,
-                    250,
-                    if matches!(field, 9 | 16) { 1024 } else { 1 },
-                )?;
-                coded(segment, "SPM", field, false)?;
-            }
-            coded(segment, "SPM", 11, false)?;
-            for field in [17, 18] {
-                if !raw(segment, field).is_empty() && !timestamp(raw(segment, field), false) {
-                    return Err(content("SPM", field));
-                }
-            }
-            let role = raw(segment, 11)
-                .split(|b| *b == segment.delimiters.component)
-                .next();
-            if matches!(role, Some(b"Q" | b"U")) && raw(segment, 4) != b"\"\"" {
-                return Err(content("SPM", 4));
-            }
-            check(segment, "SPM", 1, true, 4, 1)?;
-            let specimen_id = raw(segment, 2);
-            if !specimen_id.is_empty() && specimen_id != b"\"\"" {
-                let first = specimen_id
-                    .split(|b| *b == segment.delimiters.component)
-                    .next()
-                    .unwrap_or_default();
-                let parts: Vec<_> = first
-                    .split(|b| *b == segment.delimiters.subcomponent)
-                    .collect();
-                if parts.first().is_none_or(|p| p.is_empty())
-                    || (parts.get(1).is_none_or(|p| p.is_empty())
-                        && (parts.get(2).is_none_or(|p| p.is_empty())
-                            || parts.get(3).is_none_or(|p| p.is_empty())))
-                {
-                    return Err(content("SPM", 2));
-                }
-            }
-            check(segment, "SPM", 4, true, 250, 1)?;
-            check(segment, "SPM", 11, true, 250, 1)?;
         }
         b"TCD" => {
             check(segment, "TCD", 1, true, 250, 1)?;

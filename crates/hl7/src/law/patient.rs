@@ -316,7 +316,7 @@ pub(super) fn validate(
     profile: Profile<'_>,
     direction: ControlDirection,
 ) -> Result<(), Error> {
-    if !profile.patient {
+    if !profile.patient || profile.pooling_outside {
         return excluded(
             segment.raw(),
             direction,

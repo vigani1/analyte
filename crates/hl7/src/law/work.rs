@@ -330,13 +330,14 @@ pub fn work_order_with_profile(
     response: Response<'_>,
     capabilities: Capabilities,
     options: Options,
-    profile: super::Profile<'_>,
+    mut profile: super::Profile<'_>,
 ) -> Result<Message, Error> {
+    // A validation context may narrow, but cannot enlarge, the peer's capabilities.
+    profile.patient &= capabilities.patient;
+    profile.specimen &= capabilities.specimen;
+    profile.container &= capabilities.container;
     if work.is_empty() || work.len() > options.limits.segments {
         return Err(content("OBR", 0));
-    }
-    if !capabilities.specimen {
-        return Err(content("SPM", 2));
     }
     let mut ids = BTreeSet::new();
     for awos in work {
@@ -391,7 +392,7 @@ pub fn work_order_with_profile(
         let mut specimen: [&[u8]; 27] = [b""; 27];
         for (position, value) in [
             (1, Some(sequence.as_bytes())),
-            (2, Some(awos.specimen)),
+            (2, capabilities.specimen.then_some(awos.specimen)),
             (4, Some(awos.specimen_type)),
             (
                 11,
@@ -428,9 +429,6 @@ pub fn work_order_with_profile(
         let mut container: [&[u8]; 29] = [b""; 29];
         set_field(&mut container, 3, Some(awos.container), "SAC")?;
         if let Some(details) = awos.container_details {
-            if !capabilities.container {
-                return Err(content("SAC", 0));
-            }
             for (position, value) in [
                 (4, details.parent),
                 (9, details.carrier_type),
@@ -552,10 +550,7 @@ pub fn work_order_with_profile(
         }
     }
     let message = Message::parse(&wire.bytes, options)?;
-    super::validate_control(&message, super::ControlDirection::Send)?;
-    for segment in message.segments() {
-        profile.validate_segment(segment, super::ControlDirection::Send)?;
-    }
+    profile.validate_message(&message, super::ControlDirection::Send)?;
     Ok(message)
 }
 
@@ -617,10 +612,8 @@ pub fn negative_work(
         ],
     )?;
     let message = Message::parse(&wire.bytes, options)?;
-    super::validate_control(&message, super::ControlDirection::Send)?;
-    for segment in message.segments() {
-        super::profile::validate_segment(segment)?;
-    }
+    super::Profile::for_peer(Capabilities::default())
+        .validate_message(&message, super::ControlDirection::Send)?;
     Ok(message)
 }
 
@@ -672,6 +665,7 @@ impl<'a> WorkResponse<'a> {
         sent: &'a Message,
         profile: super::Profile<'_>,
     ) -> Result<Self, Error> {
+        profile.validate_message(message, super::ControlDirection::Receive)?;
         super::profile::header(message, b"LAB-28", false)?;
         let msh = super::msh(message)?;
         let d = message.delimiters();

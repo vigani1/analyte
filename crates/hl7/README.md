@@ -28,7 +28,7 @@ accept/application replies. The caller supplies a new ID and timestamp. The API
 cannot verify durable storage itself. Generic ACK helpers do not implement
 functional query/order responses, acknowledgment timers or replay handling.
 
-Not implemented here: complete LAW, MLLP, general application message structures, clinical
+Not implemented here: complete LAW, MLLP, general application message structures, unprofiled clinical
 datatypes, clinical mapping, legacy deferred MCF, sequence or continuation dialogs,
 I/O, storage or fault recovery. These are not implied by structural parse success.
 
@@ -73,14 +73,15 @@ Covered by source-named synthetic tests and a query property test:
 
 Not yet complete:
 
-- Completion of groups 3-5: SPM/SAC, ORC/OBR/TQ1/TCD and OBX/NTE/INV.
+- Completion of groups 4-5: ORC/OBR/TQ1/TCD and OBX/NTE/INV.
 - Every remaining Appendix C field/component and option predicate and its individual test.
   The shared validator is not a complete LAW conformance validator.
 - Complete typed validation of all value composites and enhanced-content
   relationships and every message-group predicate. Specimen-level observations
   are retained separately from AWOS results.
 - Related observations and full capability/profile negotiation.
-  Related-observation and pooling manager options are not selected or implemented.
+  Related-observation and pooling message workflows are not implemented;
+  the outside-pooling field predicates can be validated explicitly.
 - Qualified simulator evidence and host integration cases (durability failures,
   restart, lost replies, cancellation races, timing and external-data retention).
 
@@ -167,6 +168,62 @@ capabilities. The profile-aware work/results/ORL APIs accept trusted
 host-supplied authority bindings; the existing APIs fail visibly when an
 association cannot be established. No patient-record reconciliation is done.
 The positive/negative source cases are in `tests/law_patient.rs`.
+
+## LAW specimen and container fields covered (group 3)
+
+- **SPM:** 1, 2, 3, 4, 7, 8, 9, 11, 13, 16, 17, 18 and 27. Set ID is
+  a positive four-character SI and is checked against message order. The
+  available specimen ID and repeatable parent IDs use EIP.1/EI: required
+  entity ID, namespace or universal-ID/type pair, primitive limits and the
+  80-character enclosing field limit. Other EIP components/subcomponents
+  are X. Type and role are mandatory CWEs with required identifier/system
+  and available description; type is explicit null for control/unknown
+  roles, and an analyzer may also report a null type when not applicable.
+  Manager patient/pooled work requires a valued type. Unknown role U belongs
+  only to the restricted negative query message, using IHELAW. The
+  LAW_SPECIMEN fields 7/8/9/16/27 check singleton CWEs with the C.12
+  standard/vendor namespaces and component limits. Fields 17/18 check
+  collection DR.1/TS.1 and receipt TS.1 at seconds precision, without zone
+  or precision components. The source-site modifier and risk are singletons
+  as specified by C.12-1. SPM-3 and SPM-13 resolve outside-pooling R/X
+  predicates, including required role L and positive integral grouped count.
+- **SAC:** 3, 4, 9, 10, 11, 13, 14, 15, 21, 22, 24 and 29. Container,
+  parent, carrier and tray identities use EI.1 with its non-truncatable
+  50-character limit. Container or parent must be supplied; a parent-only
+  manager send also needs a carrier/tray location. Analyzer container ID
+  may be explicit null when unavailable. Manager carrier/tray IDs require
+  their corresponding NA position; absent IDs make those position fields X.
+  NA validates its required integer first axis, optional numeric axes, each
+  16-character primitive and the 80-character total. Location is a repeatable
+  CE with required identifier/vendor system and available description;
+  manager sends require a carrier or tray. LAW_CONTAINER gates the available
+  carrier-type CE, numeric container/specimen volumes, volume-unit CE and
+  dilution SN. Units require description, and UCUM exactly when an identifier
+  is valued. Dilution supports only the profiled 1:n ratio with a positive
+  denominator; no multiplier is inferred or applied.
+
+Other SPM/SAC fields and unlisted components are X. The sender role matters:
+SPM-7/8/9/16/17/18/27 and SAC-9/21/22/24/29 are X in the analyzer column, so
+receive validation preserves and ignores them even when the manager option
+is supported. Analyzer carrier/tray/position/location fields are RE rather
+than the manager's stronger send predicates. SPM-3 is X in an outside-pooling
+LAB-29 (section 2.2.4.17); OML/ORL still require its parent list. Outside-pooling
+patient groups are X. The content validator can select that option explicitly
+with `Profile::with_pooling_outside`; it does not add pooling authorization or
+pooling support to the work builder. Full pooling message workflows remain
+unimplemented.
+
+`Profile::validate_message` resolves the restricted negative-query exceptions
+only for MSH/SPM/SAC/ORC with role U and order control DC, retaining each query
+scope's exact available identity/location echoes rather than fabricating an ID.
+Work, negative-work, results and ORL paths apply profile validation. Specimen
+and container option gating does not suppress required base identity/location
+information. All supported hard lengths count characters, with ignored X
+positions excluded on receive and encoded trailing positions counted on send.
+There are no additional # lengths in C.11/C.12. Positive/negative source tests
+are in `tests/law_specimen.rs`, including all six negative-query scopes and
+actual build/receive cases. These field validators do not establish full LAW
+message-group, lifecycle or simulator conformance.
 
 ## Recording a Gazelle run
 

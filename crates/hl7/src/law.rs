@@ -337,6 +337,8 @@ pub use control::{ControlDirection, parse_message, validate_control};
 
 mod patient;
 
+mod specimen;
+
 mod profile;
 
 pub use profile::{FieldRule, Profile, Usage, validate_segment};

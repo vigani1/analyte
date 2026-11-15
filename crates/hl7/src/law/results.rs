@@ -363,6 +363,7 @@ impl<'a> Results<'a> {
     /// # Errors
     /// Rejects invalid content or unresolved mixed authority names without partial results.
     pub fn with_profile(message: &'a Message, profile: super::Profile<'_>) -> Result<Self, Error> {
+        profile.validate_message(message, super::ControlDirection::Receive)?;
         super::profile::header(message, b"LAB-29", true)?;
         let msh = super::msh(message)?;
         let d = message.delimiters();
@@ -384,7 +385,6 @@ impl<'a> Results<'a> {
         let mut attached = Vec::new();
         let mut order_status = None;
         let mut order_count = 0usize;
-        let mut specimen_count = 0usize;
         let mut observation_count = 0usize;
         let mut has_patient = false;
         let mut has_visit = false;
@@ -412,10 +412,6 @@ impl<'a> Results<'a> {
                 b"SPM" => {
                     if specimen.is_some() && order.is_none() {
                         return Err(content("OBR", 0));
-                    }
-                    specimen_count = specimen_count.checked_add(1).ok_or(content("SPM", 1))?;
-                    if raw(segment, 1) != specimen_count.to_string().as_bytes() {
-                        return Err(content("SPM", 1));
                     }
                     check_complete(order_status, observation_count)?;
                     if order.is_some() && order_status.is_none() {
