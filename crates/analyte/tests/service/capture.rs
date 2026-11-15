@@ -144,7 +144,7 @@ async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_
         } else if fail {
             let program = Program::load(&path)?;
             let mut store = analyte::open_system_store(&program).await?;
-            let lines = analyte::status::snapshot(&program, &store).await?;
+            let lines = analyte::operator::status::snapshot(&program, &store).await?;
             store.shutdown(analyte_deadline()).await?;
             assert!(
                 lines

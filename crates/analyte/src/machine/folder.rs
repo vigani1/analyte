@@ -1,5 +1,5 @@
 //! File handoff stays claimed until receipt and interpretation are durable.
-use crate::{Error, config::Machine, deadline, evidence, invalid};
+use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_transport::folder::{Disposition, Item, Watch};
@@ -10,12 +10,12 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
     thread,
-    time::{Duration, Instant},
 };
 use tokio::sync::watch;
 
 struct Owner {
     stop: Arc<AtomicBool>,
+    finished: tokio::sync::oneshot::Receiver<()>,
     thread: Option<thread::JoinHandle<Result<(), Error>>>,
 }
 
@@ -38,10 +38,11 @@ impl Owner {
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
         let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        let (finished, completion) = tokio::sync::oneshot::channel();
         let thread = thread::Builder::new()
             .name("analyte-files".into())
             .spawn(move || {
-                Watch {
+                let result = Watch {
                     incoming,
                     root,
                     limit,
@@ -49,11 +50,14 @@ impl Owner {
                 .run(&cancelled, &sender, recorder, || {
                     uuid::Uuid::now_v7().to_string()
                 })
-                .map_err(Error::from)
+                .map_err(Error::from);
+                let _ = finished.send(());
+                result
             })?;
         Ok((
             Self {
                 stop,
+                finished: completion,
                 thread: Some(thread),
             },
             receiver,
@@ -62,12 +66,13 @@ impl Owner {
 
     async fn close(mut self) -> Result<(), Error> {
         self.stop.store(true, Ordering::Release);
-        let until = deadline();
-        while self.thread.as_ref().is_some_and(|t| !t.is_finished()) {
-            if Instant::now() >= until {
-                return Err(invalid("file owner shutdown timed out"));
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
+        // Completion also wakes on panic; the retained join below reports its cause.
+        // On timeout or cancellation Drop still owns and joins the worker.
+        if tokio::time::timeout_at(deadline().into(), &mut self.finished)
+            .await
+            .is_err()
+        {
+            return Err(invalid("file owner shutdown timed out"));
         }
         if let Some(thread) = self.thread.take() {
             thread
@@ -85,7 +90,7 @@ pub(super) async fn session(
     root: PathBuf,
     mut stop: watch::Receiver<bool>,
     mut closing: super::Closing,
-    capture: Option<&crate::capture::Capture>,
+    capture: Option<&evidence::capture::Capture>,
 ) -> Result<(), Error> {
     let context = evidence::Connection::new(machine)?;
     let machine = &context;
@@ -179,6 +184,7 @@ async fn receive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
     #[test]
@@ -193,6 +199,7 @@ mod tests {
             let output = super::super::worker::tests::capture(|| {
                 drop(Owner {
                     stop: Arc::new(AtomicBool::new(false)),
+                    finished: tokio::sync::oneshot::channel().1,
                     thread: Some(worker),
                 });
             });
@@ -299,7 +306,7 @@ mod tests {
                 snapshot,
                 listener: None,
                 capture: false,
-                destination_limits: crate::delivery::limits(30),
+                destination_limits: crate::runtime::delivery::limits(30),
                 #[cfg(feature = "test-hooks")]
                 law_committed: None,
                 #[cfg(feature = "test-hooks")]

@@ -23,9 +23,13 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
     )?;
     let program = Program::load(&config_path)?;
     let store = Arc::new(
-        crate::service::open_store_with_deadline(&program, Box::new(Space), fixture_deadline()?)
-            .await
-            .map_err(|error| format!("admin action fixture migration: {error}"))?,
+        crate::runtime::service::open_store_with_deadline(
+            &program,
+            Box::new(Space),
+            fixture_deadline()?,
+        )
+        .await
+        .map_err(|error| format!("admin action fixture migration: {error}"))?,
     );
     let machine = program.machines().first().ok_or("machine missing")?;
     let receipt = analyte_model::ReceiptId::new();

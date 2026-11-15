@@ -1,5 +1,5 @@
 //! Host-owned cache lookups, reservations and delivery outcomes; HL7 2.3.1 section 2.18 / 2.5.1 section 5.10.
-use crate::{Error, config::Machine, deadline, evidence, invalid};
+use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
 use analyte_framing::mllp;
 use analyte_hl7::{
     Message, Options,
@@ -309,10 +309,12 @@ impl Connection {
         if Instant::now() >= until {
             answer = CacheAnswer::Unavailable;
         }
-        let qck_metadata =
-            crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
-        let mut dsr_metadata =
-            crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
+        let qck_metadata = crate::machine::hl7_response::response_metadata(
+            crate::machine::hl7_response::Profile::Hl7,
+        );
+        let mut dsr_metadata = crate::machine::hl7_response::response_metadata(
+            crate::machine::hl7_response::Profile::Hl7,
+        );
         dsr_metadata.timestamp.clone_from(&qck_metadata.timestamp);
         let mut dsr = None;
         if answer == CacheAnswer::Found {
@@ -441,7 +443,7 @@ mod tests {
         .validate()?;
         let machine = Machine {
             capture: false,
-            destination_limits: crate::delivery::limits(30),
+            destination_limits: crate::runtime::delivery::limits(30),
             #[cfg(feature = "test-hooks")]
             law_committed: None,
             id: Identifier::new("synthetic")?,
