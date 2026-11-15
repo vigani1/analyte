@@ -38,6 +38,7 @@ jiff = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+analyte-sim = { workspace = true }
 analyte-receiver = { workspace = true }
 axum = { workspace = true }
 rusqlite = { workspace = true }

@@ -26,6 +26,7 @@ dependencies = [
  "analyte-model",
  "analyte-poct",
  "analyte-receiver",
+ "analyte-sim",
  "analyte-sink",
  "analyte-store",
  "analyte-transport",

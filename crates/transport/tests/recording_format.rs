@@ -10,6 +10,7 @@ fn header() -> Header {
         evidence: Evidence::Synthetic,
         de_identification: "Synthetic; no patient data".into(),
         source: "ADR 0009 synthetic property cases".into(),
+        exceptions: Vec::new(),
     }
 }
 proptest! {

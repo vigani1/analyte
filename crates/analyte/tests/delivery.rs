@@ -522,3 +522,105 @@ fn adr0008_host_rotation_loads_each_named_key_and_missing_rotation_key_is_specif
     );
     Ok(())
 }
+
+fn recording(
+    name: &str,
+) -> Result<
+    (
+        analyte_transport::recording::Header,
+        Vec<analyte_transport::recording::Event>,
+    ),
+    Error,
+> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../sim/recordings")
+        .join(format!("{name}.rec.jsonl"));
+    Ok(analyte_transport::recording::read(
+        std::fs::File::open(path)?,
+        analyte_transport::recording::Limits::default(),
+    )?)
+}
+
+#[tokio::test]
+async fn lis01_hl7_251_adr0003_recordings_deliver_once_and_store_before_ack() -> Result<(), Error> {
+    let directory = tempfile::tempdir()?;
+    let path = config(directory.path(), true)?;
+    let receiver_path = directory.path().join("reference.db");
+    let mut reference = Reference::start(
+        &receiver_path,
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    for name in ["astm", "hl7"] {
+        let (header, events) = recording(name)?;
+        assert_eq!(
+            header.evidence,
+            analyte_transport::recording::Evidence::Synthetic
+        );
+        let loaded = Program::load(&path)?;
+        let settings = loaded
+            .machines()
+            .iter()
+            .find(|m| m.id().as_str() == name)
+            .ok_or("machine absent")?
+            .snapshot()
+            .effective();
+        let deadline = Duration::from_millis(u64::from(settings.machine().dialog.send_timeout_ms));
+        let mut peer = connect(&path, name).await?;
+        if name == "astm" {
+            analyte_sim::replay(
+                &mut peer,
+                events.get(..4).ok_or("prefix missing")?,
+                &[],
+                deadline,
+            )
+            .await?;
+            // The frame ACK is already observable: a separate store connection must see the exact journal.
+            let raw: Vec<u8> = database(&path)?.query_row(
+                "SELECT raw FROM frames ORDER BY sequence LIMIT 1",
+                [],
+                |r| r.get(0),
+            )?;
+            assert_eq!(raw, events.get(2).ok_or("frame missing")?.bytes);
+            analyte_sim::replay(
+                &mut peer,
+                events.get(4..).ok_or("EOT missing")?,
+                &[],
+                deadline,
+            )
+            .await?;
+        } else {
+            analyte_sim::replay(&mut peer, &events, &header.exceptions, deadline).await?;
+            let wire = &events.first().ok_or("message absent")?.bytes;
+            let raw: Vec<u8> = database(&path)?.query_row(
+                "SELECT raw FROM receipts WHERE raw=?1",
+                [wire],
+                |r| r.get(0),
+            )?;
+            assert_eq!(&raw, wire);
+        }
+        let event = reference.event().await?;
+        assert_content(
+            &event,
+            name,
+            if name == "hl7" { "00012a" } else { "00012A" },
+            "12.30",
+            "final",
+            0,
+        )?;
+    }
+    wait_state(&path, "done", 2).await?;
+    assert_eq!(receiver_count(&receiver_path)?, 2);
+    // Restart must not create a second delivery from either durable receipt.
+    service.stop().await?;
+    let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+    let peer = connect(&path, "hl7").await?;
+    wait_state(&path, "done", 2).await?;
+    restarted.stop().await?;
+    drop(peer);
+    assert_eq!(receiver_count(&receiver_path)?, 2);
+    reference.close().await?;
+    Ok(())
+}

@@ -1,18 +1,9 @@
 //! Exact-byte synthetic peers using the transport-owned ADR 0009 codec.
 #![forbid(unsafe_code)]
+pub use analyte_transport::recording::Exception;
 use analyte_transport::recording::{Direction, Event, Link};
-use std::{ops::Range, time::Duration};
+use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-/// A named, fixed byte location allowed to differ in one host event.
-#[derive(Debug)]
-pub struct Exception {
-    /// Explanation, such as generated MSH-10 control ID.
-    pub name: String,
-    /// Zero-based event index.
-    pub event: usize,
-    /// Fixed byte range; never a pattern.
-    pub bytes: Range<usize>,
-}
 /// Replay failure. Byte diagnostics are protected test output, never ordinary logs.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

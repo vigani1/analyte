@@ -56,6 +56,9 @@ pub struct Header {
     pub de_identification: String,
     /// Source document or capture method in words.
     pub source: String,
+    /// Named fixed host byte locations allowed to vary during replay.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exceptions: Vec<Exception>,
 }
 impl Header {
     pub(super) fn live() -> Self {
@@ -67,6 +70,7 @@ impl Header {
             evidence: Evidence::Machine,
             de_identification: "NOT de-identified; protected store only".into(),
             source: "Host transport wire tap".into(),
+            exceptions: Vec::new(),
         }
     }
 }
@@ -239,4 +243,16 @@ pub fn write_event(output: &mut impl Write, event: &Event, limits: Limits) -> io
         },
         limits,
     )
+}
+
+/// A named fixed byte location allowed to differ in one recorded host event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Exception {
+    /// Reason, such as a generated MSH-10 control ID.
+    pub name: String,
+    /// Zero-based event index.
+    pub event: usize,
+    /// Fixed byte range, never a pattern.
+    pub bytes: std::ops::Range<usize>,
 }
