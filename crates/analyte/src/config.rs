@@ -18,6 +18,7 @@ pub struct Machine {
 
 /// Validated program settings. Paths are resolved relative to the program file.
 pub struct Program {
+    pub(crate) signing_rotation: std::collections::BTreeMap<String, Vec<analyte_model::Identifier>>,
     /// Protected directory containing the database and journals.
     pub(crate) data_directory: PathBuf,
     /// Explicit storage budgets.
@@ -29,6 +30,8 @@ pub struct Program {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
+    #[serde(default)]
+    signing_rotation: std::collections::BTreeMap<String, Vec<analyte_model::Identifier>>,
     schema_version: u32,
     data_directory: PathBuf,
     store: Limits,
@@ -136,7 +139,30 @@ impl Program {
                 snapshot,
             });
         }
+        if file.signing_rotation.len() > 128
+            || file.signing_rotation.values().any(|names| names.len() > 7)
+            || file.signing_rotation.keys().any(|name| {
+                !machines
+                    .iter()
+                    .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
+            })
+        {
+            return Err(invalid("invalid signing rotation references or count"));
+        }
+        for machine in &machines {
+            let destination = &machine.snapshot.effective().site().destination;
+            if machines.iter().any(|other| {
+                let other = &other.snapshot.effective().site().destination;
+                other.name == destination.name
+                    && (other.base_url != destination.base_url
+                        || other.api_key_name != destination.api_key_name
+                        || other.signing_key_name != destination.signing_key_name)
+            }) {
+                return Err(invalid("inconsistent shared destination"));
+            }
+        }
         Ok(Self {
+            signing_rotation: file.signing_rotation,
             data_directory: base.join(file.data_directory),
             store_limits: analyte_store::Limits {
                 reserve_bytes: file.store.reserve_bytes,

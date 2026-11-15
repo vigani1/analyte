@@ -70,3 +70,12 @@ Installing a faster native probe later does not change the storage boundary.
 Delivery, polling, service installers, the admin webpage, retention and real
 machine validation are outside this PR. Serial hardware and Linux runtime
 verification remain CI/lab work; localhost integration tests run on Windows here.
+
+Credentials are loaded by the host at startup from `ANALYTE_SECRET_<NAME>`:
+uppercase ASCII letters and digits are retained, all other characters become
+underscores. `demo-api` therefore reads `ANALYTE_SECRET_DEMO_API`. Missing,
+empty or invalid credentials fail startup naming only the credential. Config
+checking does not read the environment. Restart after changing credentials.
+For rotation, `[signing_rotation]` in the program file maps destination names
+to up to seven additional signing credential names; the primary key is retained.
+No credential values belong in TOML.

@@ -5,6 +5,7 @@ pub mod config;
 mod evidence;
 mod machine;
 pub mod output;
+pub mod secrets;
 pub mod service;
 mod space;
 
