@@ -86,12 +86,7 @@ pub(crate) async fn interpret(
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
-    let mapping = crate::machine::interpretation::map(
-        machine,
-        id,
-        receipt.metadata.received_at,
-        &receipt.raw,
-    );
+    let mapping = crate::machine::interpretation::map_retained(store, machine, &receipt).await;
     Ok(persist_mapping(store, machine, id, mapping, None).await?.0)
 }
 

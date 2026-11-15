@@ -609,6 +609,8 @@ pub struct CodeTables {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Poct {
+    /// Explicit trusted POCT source identity policy; absence keeps results unresolved.
+    pub identity: Option<PoctIdentity>,
     /// Maximum pending custody requests.
     pub pending_messages: usize,
     /// Maximum XML nesting depth.
@@ -739,4 +741,14 @@ pub enum ValueKind {
 
 fn default_order_freshness() -> u64 {
     30
+}
+
+/// Installed POCT identity evidence, never inferred from values or receipt IDs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PoctIdentity {
+    /// Require the device sequence in addition to device, observation time and analyte.
+    pub sequence_number: bool,
+    /// Explicit installed processing mode; no source mode is inferred from Hello.
+    pub processing: analyte_model::ProcessingMode,
 }

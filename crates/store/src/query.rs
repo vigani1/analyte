@@ -175,6 +175,25 @@ impl Store {
             .transpose()
     }
 
+    /// Reads the first interpreted receipt for a machine connection, with digest checks.
+    /// Connection context is evidence, never a substitute for a result identity.
+    /// # Errors
+    /// Reports corrupt metadata, digest mismatches or database failures.
+    pub fn first_interpreted_connection_receipt(
+        &self,
+        machine: &Identifier,
+        connection: &Identifier,
+    ) -> Result<Option<Receipt>, Error> {
+        let id: Option<String> = self.db.query_row(
+            "SELECT r.id FROM receipts r WHERE json_extract(r.metadata,'$.machine')=?1 AND json_extract(r.metadata,'$.connection')=?2 AND EXISTS (SELECT 1 FROM interpretations i WHERE i.receipt=r.id) ORDER BY r.rowid LIMIT 1",
+            params![machine.as_str(), connection.as_str()], |r| r.get(0),
+        ).optional()?;
+        match id {
+            Some(id) => self.receipt(serde_json::from_str(&id)?),
+            None => Ok(None),
+        }
+    }
+
     /// Reads complete receipt evidence without altering its interpretation.
     /// # Errors
     /// Reports corrupt metadata, digest mismatches or database failures.

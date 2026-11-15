@@ -82,21 +82,9 @@ pub(crate) fn observation(
         SubId::Field(field) => required(field, "sub_id")?,
         SubId::None(NoSubId::None) => String::new(),
     };
-    let mut run = String::new();
+    let mut run = Vec::new();
     for field in &settings.run {
-        let value = required(field, "run")?;
-        let component = format!("{}:{value}", value.len());
-        if run
-            .len()
-            .checked_add(component.len())
-            .is_none_or(|length| length > 16384)
-        {
-            return Err(Error::Limit {
-                position: source.position(index, usize::from(field.field)),
-                resource: "run identity",
-            });
-        }
-        run.push_str(&component);
+        run.push(required(field, "run")?);
     }
     if missing {
         return Ok(None);
@@ -105,7 +93,8 @@ pub(crate) fn observation(
     Ok(Some(ObservationIdentity {
         code,
         sub_id: text(&sub_id, position)?,
-        run: text(&run, position)?,
+        run: crate::identity_run(&run.iter().map(String::as_str).collect::<Vec<_>>())
+            .map_err(|source| Error::Text { position, source })?,
         order: NamespacedId {
             value: identifier(
                 &order_id,

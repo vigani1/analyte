@@ -25,11 +25,57 @@ pub async fn reprocess(
     if receipt.metadata.machine != *machine.id() {
         return Err(invalid("receipt belongs to a different machine"));
     }
-    let mapping = map(machine, id, receipt.metadata.received_at, &receipt.raw);
+    let mapping = map_retained(store, machine, &receipt).await;
     Ok(
         evidence::persist_mapping(store, machine, id, mapping, Some(action))
             .await?
             .1,
+    )
+}
+
+// Recover the source Hello from durable connection evidence for live receive and replay alike.
+pub(crate) async fn map_retained(
+    store: &Handle,
+    machine: &Machine,
+    receipt: &analyte_store::Receipt,
+) -> Result<analyte_mapping::Output, Error> {
+    if let Stack::Poct(settings) = machine.snapshot.effective().stack() {
+        let machine_id = receipt.metadata.machine.clone();
+        let connection = receipt.metadata.connection.clone();
+        let first = store
+            .request(deadline(), move |s| {
+                s.first_interpreted_connection_receipt(&machine_id, &connection)
+            })
+            .await?;
+        let hello = first
+            .as_ref()
+            .map(|first| analyte_poct::Message::parse(&first.raw, poct_limits(settings)))
+            .transpose()?;
+        let device = hello.as_ref().and_then(|hello| match hello.body() {
+            analyte_poct::Body::Hello { device_id, .. } => Some(device_id.as_str()),
+            analyte_poct::Body::Status { .. }
+            | analyte_poct::Body::PatientObservations(_)
+            | analyte_poct::Body::NonPatientObservations(_)
+            | analyte_poct::Body::EndTopic(_)
+            | analyte_poct::Body::Terminate(_)
+            | analyte_poct::Body::Acknowledgement { .. }
+            | analyte_poct::Body::Escape { .. }
+            | analyte_poct::Body::Request(_) => None,
+        });
+        let message = analyte_poct::Message::parse(&receipt.raw, poct_limits(settings))?;
+        return super::vendor_model::poct(
+            machine,
+            receipt.metadata.id,
+            &message,
+            receipt.metadata.received_at,
+            device,
+        );
+    }
+    map(
+        machine,
+        receipt.metadata.id,
+        receipt.metadata.received_at,
+        &receipt.raw,
     )
 }
 
@@ -50,7 +96,7 @@ pub(crate) fn map(
     match effective.stack() {
         Stack::Poct(settings) => {
             let message = analyte_poct::Message::parse(payload, poct_limits(settings))?;
-            super::vendor_model::poct(machine, id, &message, time)
+            super::vendor_model::poct(machine, id, &message, time, None)
         }
         Stack::VidasLiteral(settings) => {
             let mut decoder = analyte_vidas::framing::Decoder::new(vidas_config(machine)?);

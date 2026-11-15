@@ -210,17 +210,18 @@ async fn process(
             DialogAction::Store { ticket, message } => {
                 let id = ReceiptId::new();
                 let operation = async {
-                    let time =
-                        evidence::receive(store, machine, id, message.document().raw().to_vec())
-                            .await?;
+                    evidence::receive(store, machine, id, message.document().raw().to_vec())
+                        .await?;
                     match message.body() {
                         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
-                            match super::interpretation::map(
-                                machine,
-                                id,
-                                time,
-                                message.document().raw(),
-                            ) {
+                            let receipt = store
+                                .request(crate::deadline(), move |s| {
+                                    s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+                                })
+                                .await?;
+                            match super::interpretation::map_retained(store, machine, &receipt)
+                                .await
+                            {
                                 Ok(reading) => {
                                     evidence::vendor_reading(store, machine, id, reading).await?;
                                 }
@@ -232,21 +233,31 @@ async fn process(
                                         &format!("POCT interpretation: {error}"),
                                     )
                                     .await?;
-                                    return Ok::<_, Error>(CommitOutcome::ApplicationError(
+                                    return Ok(CommitOutcome::ApplicationError(
                                         analyte_poct::ApplicationError::UnsupportedValue,
                                     ));
                                 }
                             }
                         }
-                        Body::Hello { .. }
-                        | Body::Status { .. }
+                        Body::Hello { .. } => {
+                            // Mark the complete, parsed Hello as connection context. Transport
+                            // journal fragments are also receipts, but are not interpreted Hellos.
+                            evidence::vendor_reading(
+                                store,
+                                machine,
+                                id,
+                                analyte_mapping::Output::default(),
+                            )
+                            .await?;
+                        }
+                        Body::Status { .. }
                         | Body::EndTopic(_)
                         | Body::Terminate(_)
                         | Body::Acknowledgement { .. }
                         | Body::Escape { .. }
                         | Body::Request(_) => {}
                     }
-                    Ok(CommitOutcome::Stored)
+                    Ok::<_, Error>(CommitOutcome::Stored)
                 };
                 let outcome = match operation.await {
                     Ok(outcome) => outcome,
