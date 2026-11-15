@@ -1,4 +1,4 @@
-﻿# analyte-astm
+# analyte-astm
 
 Pure LIS02-A2 record syntax. Evidence level: **documented**; synthetic tests
 are based on CLSI LIS02-A2 sections 4–14. No real analyzer or official

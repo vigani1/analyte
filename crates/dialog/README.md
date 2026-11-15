@@ -1,4 +1,4 @@
-﻿# ASTM link dialog
+# ASTM link dialog
 
 Evidence: **documented**, from CLSI LIS01-A2 sections 6 and 8 and the
 Appendix A state diagram (visually inspected). No real analyzer or official
