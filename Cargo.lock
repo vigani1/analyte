@@ -22,6 +22,7 @@ version = "0.1.0"
 name = "analyte-contract"
 version = "0.1.0"
 dependencies = [
+ "analyte-model",
  "base64",
  "hmac",
  "jiff",
