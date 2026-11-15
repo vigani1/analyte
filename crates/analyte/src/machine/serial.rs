@@ -46,6 +46,7 @@ pub(super) async fn run(
     limits: Limits,
     stop: watch::Receiver<bool>,
     mut closing: super::Closing,
+    capture: Option<&crate::capture::Capture>,
 ) -> Result<(), Error> {
     let serial = machine
         .snapshot
@@ -81,6 +82,10 @@ pub(super) async fn run(
         Duration::from_millis(100),
     )?;
     let (mut conn, side) = analyte_transport::connection(limits);
+    let side = match capture {
+        Some(capture) => capture.attach(side),
+        None => side,
+    };
     let cancellation = conn.cancellation();
     let retry = super::retry()?;
     let thread = thread::Builder::new()

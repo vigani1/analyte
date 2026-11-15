@@ -111,8 +111,10 @@ pub(super) async fn session(
                 }
                 analyte_transport::Event::Closed(_) => break,
                 analyte_transport::Event::Opened { .. } => { opened = true; },
-                analyte_transport::Event::Failed(_)
-                | analyte_transport::Event::RecordingFailed(_) => {},
+                analyte_transport::Event::Failed(reason) => {
+                    tracing::warn!(machine = machine.id.as_str(), error_kind = ?reason, "LAW transport attempt failed");
+                },
+                analyte_transport::Event::RecordingFailed(_) => {},
             }
         }
         Ok(())

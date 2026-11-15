@@ -53,6 +53,7 @@ struct Record {
 /// Nonblocking recording tap with a bounded queue.
 pub struct Tap {
     failure: tokio::sync::watch::Receiver<Option<Failure>>,
+    report: tokio::sync::watch::Sender<Option<Failure>>,
     sender: SyncSender<Record>,
 }
 
@@ -95,6 +96,7 @@ pub fn recording_with_header(
         Tap {
             sender,
             failure: failure_rx,
+            report: failure_tx.clone(),
         },
         Worker {
             failure: failure_tx,
@@ -121,9 +123,11 @@ impl Tap {
             return Err(failure);
         }
         if bytes.len() > CHUNK_LIMIT {
+            self.report.send_replace(Some(Failure::Oversized));
             return Err(Failure::Oversized);
         }
-        self.sender
+        let result = self
+            .sender
             .try_send(Record {
                 kind,
                 at,
@@ -132,7 +136,11 @@ impl Tap {
             .map_err(|error| match error {
                 mpsc::TrySendError::Full(_) => Failure::QueueFull,
                 mpsc::TrySendError::Disconnected(_) => self.failure().unwrap_or(Failure::Closed),
-            })
+            });
+        if let Err(failure) = &result {
+            self.report.send_replace(Some(failure.clone()));
+        }
+        result
     }
 }
 
@@ -143,7 +151,15 @@ impl Worker {
     /// # Errors
     /// Returns path-specific open, write or synchronization errors.
     pub fn run(self) -> Result<(), Error> {
-        self.write().map_err(|source| {
+        self.run_guarded(|| Ok(()))
+    }
+
+    /// Checks host storage admission before opening and before each record.
+    /// The check runs only on the dedicated worker; failure disables recording alone.
+    /// # Errors
+    /// Reports admission, recording queue and file failures without affecting transport.
+    pub fn run_guarded(self, mut admission: impl FnMut() -> io::Result<()>) -> Result<(), Error> {
+        self.write(&mut admission).map_err(|source| {
             self.failure.send_replace(Some(Failure::Io {
                 path: self.path.clone(),
                 kind: source.kind(),
@@ -155,11 +171,16 @@ impl Worker {
         })
     }
 
-    fn write(&self) -> io::Result<()> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(Path::new(&self.path))?;
+    fn write(&self, admission: &mut impl FnMut() -> io::Result<()>) -> io::Result<()> {
+        admission()?;
+        let mut options = OpenOptions::new();
+        options.create_new(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(Path::new(&self.path))?;
         if file.metadata()?.len() != 0 {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
@@ -171,6 +192,9 @@ impl Worker {
         let mut origin = None;
         let mut count = 0usize;
         loop {
+            if let Some(failure) = self.failure.borrow().as_ref() {
+                return Err(io::Error::other(failure.to_string()));
+            }
             let record = match self
                 .receiver
                 .recv_timeout(std::time::Duration::from_secs(1))
@@ -181,6 +205,7 @@ impl Worker {
                     continue;
                 }
             };
+            admission()?;
             count = count
                 .checked_add(1)
                 .ok_or_else(|| io::Error::other("event count overflow"))?;
@@ -206,7 +231,20 @@ impl Worker {
                 bytes: record.bytes,
                 link,
             };
-            write_event(&mut file, &event, Limits::default()).map_err(io::Error::other)?;
+            let mut encoded = Vec::new();
+            write_event(&mut encoded, &event, Limits::default()).map_err(io::Error::other)?;
+            let length = u64::try_from(encoded.len()).map_err(io::Error::other)?;
+            let limit = u64::try_from(Limits::default().file_bytes).map_err(io::Error::other)?;
+            if file
+                .metadata()?
+                .len()
+                .checked_add(length)
+                .is_none_or(|size| size > limit)
+            {
+                return Err(io::Error::other("recording file byte limit"));
+            }
+            use std::io::Write as _;
+            file.write_all(&encoded)?;
             file.sync_data()?;
         }
         Ok(())

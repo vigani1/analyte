@@ -2,7 +2,7 @@
 
 Status, 2026-11-15: phases 1 to 6 and 8 are built at the documented level,
 including IHE LAW as Analyzer Manager in the program (one persistent link;
-independent links and a recorded simulator conversation remain). The program receives and parks
+independent links and successful recorded simulator qualification remain). The program receives and parks
 results from every stack, answers machine queries and sends work lists for
 ASTM, HL7, LAW, VIDAS and Autolyser through one durable order path that never
 resends. Recordings replay through the program. From phase 9: OS services,
@@ -11,7 +11,8 @@ reprocess and resend, alerts with named responders, and the guide to adding a
 machine exist. Phase 7 machine configs and the pilot wait on the lab. Nothing
 has met a real machine yet. Recorded Gazelle message validation passes all eight
 Analyzer Manager messages after fixing a SAC-3/SAC-10 defect; this does not
-replace the missing simulator conversation. See [reports](conformance/gazelle/README.md).
+replace simulator qualification. The first live LAB-28 [run](conformance/gazelle/law-run/README.md)
+retained an invalid ORL as Uncertain and stopped before cancellation. See [reports](conformance/gazelle/README.md).
 
 ## 1. Goal
 
@@ -229,7 +230,9 @@ them can be collected at any time and kept as test data.
 ## 10. Testing
 
 - **Recordings:** retain and replay synthetic or de-identified conversations in
-  the format owned by [ADR 0009](adr/0009-recording-format.md).
+  the format owned by [ADR 0009](adr/0009-recording-format.md). The program can
+  opt each machine into protected live capture (`capture = true`); capture failure
+  is separate from clinical custody and remains visible in status.
 - **Failure paths:** broken checksums, lost acknowledgments, split and merged
   reads, timeouts, disconnects, restart between storing and acknowledging,
   disk full, corrected and repeated results, late query replies; a crash

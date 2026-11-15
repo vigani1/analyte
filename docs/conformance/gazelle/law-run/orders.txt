@@ -1,0 +1,4 @@
+1 app=gazelle-local order=SYN-ORDER-0001 machine=gazelle-law version=1 state=Uncertain updated_at=1794746077
+  item=1 placer=1-1 namespace=Some("ANALYTE-TEST") coverage_known=true tests=[{"namespace":"synthetic","value":"TEST"}] state=Uncertain reason=LAW-invalid-ORL:inconsistent LAW work response: LAW component rejected at MSH-7.1
+2 app=gazelle-local order=SYN-ORDER-0002 machine=gazelle-law version=1 state=Uncertain updated_at=1794746077
+  item=1 placer=2-1 namespace=Some("ANALYTE-TEST") coverage_known=true tests=[{"namespace":"synthetic","value":"TEST"}] state=Uncertain reason=LAW-disconnect
