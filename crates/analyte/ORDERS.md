@@ -477,3 +477,12 @@ with retained partial bytes. Configuration/startup tests name the supported
 scope and the unsupported topology explicitly. All existing query, ORL, receive,
 send and operation deadlines come from config; idle scheduling does not replace
 them. The final matrix is in the protocol checklist. Evidence remains documented.
+
+
+Audited LAW result reprocessing uses the shared stored-byte interpretation entry
+point merged from main. It has no transport handle, never sends work or ACKs,
+and preserves the atomic LAW batch policy before revision/outbox commit. The
+mapping-repair regression in `tests/law/results.rs` verifies the original receipt
+and first interpretation are unchanged, the parked item resolves, and a repeated
+reprocess produces no delivery. Persistent-client deadline evidence is in
+`law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines`.

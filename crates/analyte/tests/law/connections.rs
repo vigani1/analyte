@@ -162,3 +162,37 @@ async fn law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work(
     reference.close().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines()
+-> Result<(), Error> {
+    let settings = definition()
+        .replace("send_ahead = false", "send_ahead = true")
+        .replace("response_ms = 1500", "response_ms = 150")
+        .replace("query_deadline_ms = 1500", "query_deadline_ms = 50");
+    let (_temp, path, reference, running, mut peer, _listener) = client(&settings).await?;
+    packet(&mut peer).await?;
+    // A missing ORL uses response_ms, not the much longer transport timeout.
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        vendor_support::state(&path, "Uncertain"),
+    )
+    .await??;
+    let request = analyte_framing::mllp::encode(
+        query(ALL, "late-client").as_bytes(),
+        analyte_framing::mllp::Limit::new(1048576)?,
+    )?;
+    let (first, rest) = request.split_at(12);
+    peer.write_all(first).await?;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    peer.write_all(rest).await?;
+    let rsp = packet(&mut peer).await?;
+    assert_eq!(field(&rsp, b"MSA", 1)?, b"AE");
+    assert_eq!(field(&rsp, b"QAK", 2)?, b"AE");
+    assert_eq!(count(&path, "machine_orders")?, 1);
+    assert_eq!(count(&path, "machine_order_items")?, 2);
+    quiet(&mut peer).await?;
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

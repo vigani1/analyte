@@ -522,7 +522,7 @@ validation error. This is a declared single-link subset, not full TF-2b B.6
 connection conformance. Results-only
 config still rejects queries without a work layout. No full actor conformance is
 claimed at this checkpoint.
-`tests/law/results.rs` contains nine synthetic program/reference-receiver cases,
+`tests/law/results.rs` contains ten synthetic program/reference-receiver cases,
 including a durable-commit pause, raw/interpretation storage failures, low disk,
 unsolicited results, complete OG run identities and partial-block expiry.
 `tests/receive.rs::law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io`
@@ -548,5 +548,13 @@ Independent directional links, per-transaction connection lifetime, complete
 originating-work result validation, additional enhanced workflows and a recorded
 Gazelle run remain open in [the LAW checklist](../../docs/protocols/ihe-law.md).
 Evidence stays documented; synthetic reference-receiver tests do not qualify a
-clinical analyzer. The shared stored-byte reprocessing entry point is not yet on
-main at this checkpoint; LAW integration with that entry point remains pending.
+clinical analyzer. LAB-29 now calls `evidence::interpret(store, machine, id)`;
+the shared `machine/interpretation.rs` reads and validates the stored MLLP bytes
+with the LAW parser/views and mapper. The existing atomic LAW batch/revision
+policy also applies to audited reprocessing. The regression
+`law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix`
+proves mapping repair, append-only interpretation/config provenance, parked
+resolution, a single reference-receiver delivery and idempotent reprocessing,
+without machine traffic. Its 50-character control ID requires the LAW entry point.
+`law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines` also
+covers explicit client-side query and ORL budgets.

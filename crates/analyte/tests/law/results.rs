@@ -539,3 +539,173 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
     reference.close().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix()
+-> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let missing = definition().replace("machine_code=\"SYN\"", "machine_code=\"MISSING\"");
+    let path = vendor_config(temp.path(), "law", &missing)?;
+    let receiver_path = temp.path().join("receiver.db");
+    let mut reference = Reference::start(
+        &receiver_path,
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "law").await?;
+    // LAW permits 50-character control IDs; the generic HL7 entry point does not.
+    // Reprocessing must retain LAW validation/mapping rather than fall back to HL7.
+    let control = "R".repeat(50);
+    let payload = result(&control, "awos-1^LAB", "", "12.30", "F");
+    assert!(
+        hl7(&mut peer, payload.as_bytes())
+            .await?
+            .contains(&format!("MSA|AE|{control}"))
+    );
+    assert_eq!(count(&path, "outbox")?, 0);
+    let id: String = database(&path)?.query_row("SELECT id FROM receipts", [], |r| r.get(0))?;
+    let id: analyte_model::ReceiptId = serde_json::from_str(&id)?;
+    running.stop().await?;
+    drop(peer);
+    std::fs::write(temp.path().join("hl7.toml"), definition())?;
+    let current = program(&path, &reference.url)?;
+    let mut store = analyte::open_system_store(&current).await?;
+    let until = || {
+        std::time::Instant::now()
+            .checked_add(Duration::from_secs(5))
+            .ok_or("deadline")
+    };
+    let (parked, original, version1) = store
+        .request(until()?, move |s| {
+            let parked = s
+                .parked(0)?
+                .first()
+                .ok_or(analyte_store::Error::Corruption)?
+                .id;
+            let original = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
+            let version1 = serde_json::to_string(
+                &s.interpretation(id, 1)?
+                    .ok_or(analyte_store::Error::Corruption)?,
+            )?;
+            Ok((parked, original, version1))
+        })
+        .await?;
+    let commit = analyte::recovery::reprocess(
+        &store,
+        &current,
+        analyte::recovery::ReprocessTarget::Parked(parked),
+        analyte_model::Identifier::new("synthetic-operator")?,
+        analyte_model::Reason::new("repair LAW test mapping")?,
+    )
+    .await?;
+    assert_eq!(commit.version, 2);
+    assert!(matches!(
+        commit.outcomes.as_slice(),
+        [analyte_store::RevisionOutcome::New(_)]
+    ));
+    let repeated = analyte::recovery::reprocess(
+        &store,
+        &current,
+        analyte::recovery::ReprocessTarget::Receipt(id),
+        analyte_model::Identifier::new("synthetic-operator")?,
+        analyte_model::Reason::new("verify retained result idempotency")?,
+    )
+    .await?;
+    assert_eq!(repeated.version, 3);
+    assert!(matches!(
+        repeated.outcomes.as_slice(),
+        [analyte_store::RevisionOutcome::Retransmission(_)]
+    ));
+    store
+        .request(until()?, move |s| {
+            let retained = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
+            assert_eq!(retained.raw, original.raw);
+            assert_eq!(retained.config, original.config);
+            assert_eq!(
+                serde_json::to_string(&retained.metadata)?,
+                serde_json::to_string(&original.metadata)?
+            );
+            assert_eq!(
+                serde_json::to_string(
+                    &s.interpretation(id, 1)?
+                        .ok_or(analyte_store::Error::Corruption)?
+                )?,
+                version1
+            );
+            assert!(
+                s.parked_item(parked)?
+                    .ok_or(analyte_store::Error::Corruption)?
+                    .resolution
+                    .is_some()
+            );
+            assert_eq!(s.deliveries(0)?.len(), 1);
+            assert_eq!(s.audits(0)?.len(), 2);
+            Ok(())
+        })
+        .await?;
+    store.shutdown(until()?).await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "law").await?;
+    check(&reference.event().await?, "awos-1", "LAB", 0, "12.30")?;
+    wait_state(&path, "done", 1).await?;
+    assert_eq!(count(&path, "receipts")?, 1);
+    assert_eq!(count(&path, "interpretations")?, 3);
+    assert_eq!(count(&path, "machine_orders")?, 0);
+    assert_eq!(receiver_count(&receiver_path)?, 1);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), peer.read_u8())
+            .await
+            .is_err(),
+        "operator reprocessing cannot issue machine traffic"
+    );
+    // Reprocessing a retained non-C conflict must roll back its attempted audit
+    // with the batch, then commit one failed version/audit and no revisions.
+    let conflicting = result("reprocess-conflict", "awos-1^LAB", "", "99.90", "F");
+    assert!(
+        hl7(&mut peer, conflicting.as_bytes())
+            .await?
+            .contains("MSA|AE|reprocess-conflict")
+    );
+    let conflict_id: String = database(&path)?.query_row(
+        "SELECT id FROM receipts ORDER BY rowid DESC LIMIT 1",
+        [],
+        |r| r.get(0),
+    )?;
+    let conflict_id: analyte_model::ReceiptId = serde_json::from_str(&conflict_id)?;
+    running.stop().await?;
+    drop(peer);
+    let mut store = analyte::open_system_store(&current).await?;
+    let rejected = analyte::recovery::reprocess(
+        &store,
+        &current,
+        analyte::recovery::ReprocessTarget::Receipt(conflict_id),
+        analyte_model::Identifier::new("synthetic-operator")?,
+        analyte_model::Reason::new("review retained non-C conflict")?,
+    )
+    .await?;
+    assert_eq!(rejected.version, 2);
+    assert!(rejected.outcomes.is_empty());
+    store
+        .request(until()?, move |s| {
+            assert!(matches!(
+                s.interpretation(conflict_id, 2)?
+                    .ok_or(analyte_store::Error::Corruption)?
+                    .outcome,
+                analyte_store::Reading::Failed(_)
+            ));
+            assert_eq!(
+                s.audits(0)?.len(),
+                3,
+                "exactly one additional audit despite conflict rollback"
+            );
+            assert_eq!(s.deliveries(0)?.len(), 1);
+            Ok(())
+        })
+        .await?;
+    assert_eq!(count(&path, "observation_revisions")?, 1);
+    store.shutdown(until()?).await?;
+    reference.close().await?;
+    Ok(())
+}

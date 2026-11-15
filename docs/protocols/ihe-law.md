@@ -176,7 +176,7 @@ These are optional Analyzer capabilities, but relevant manager enhanced-content 
 - [ ] **O** Declare any security/cross-profile groupings separately; LAW itself lists no required actor grouping (TF-1 §§5.3,5.5–5.6, pp.41,54).
   Planned test (not implemented): `law_tf1_5_3_security_grouping_declaration`. No LAW security/grouping declaration is claimed.
 - [ ] **R, project gate** Trace requirements/field predicates to tests and qualified simulator evidence; include lost ACK, restart, storage failure, cancellation race and selected-option cases.
-  Planned test (not implemented): `law_gazelle_rev11_manager_recorded_scenarios`. No qualified simulator run or LAW-specific restart/storage-failure/cancellation-race recording exists.
+  Planned test (not implemented): `law_gazelle_rev11_manager_recorded_scenarios`. No qualified simulator run or full cancellation-race recording exists. Local program tests now cover restart, storage failures and cancellation outcomes in the matrix below; those tests do not close this simulator/recording gate.
 
 ## Extra acceptance cases
 
@@ -186,12 +186,13 @@ Add explicit acceptance cases for: result counts differing from message/topic co
 
 - Qualified Gazelle run with retained reports/recordings: not performed. Evidence
   stays documented. Planned test: `law_gazelle_rev11_manager_recorded_scenarios`.
-- Complete capability/option/profile negotiation and default connection mode:
-  absent. Planned test: `law_negotiated_options_and_default_query_mode`.
-- LAW host original-work correlation, work outcomes, restart and cancellation
-  races remain absent. LAB-29 durable receiving, duplicate/correction delivery,
-  result deadlines and storage failure now have the step-2 evidence below.
-  Planned remaining test: `law_host_durable_lifecycle_recovery`.
+- Complete capability/option/profile negotiation is absent. Explicit peer options
+  and the single persistent-link scope have named tests below; automatic full-profile
+  negotiation remains. Planned test: `law_negotiated_options_and_default_query_mode`.
+- LAW originating-work result validation and full cancellation-race qualification
+  remain. Work outcomes, restart, cancellation, durable receiving, duplicate/C
+  delivery, deadlines and storage failures now have the named program matrix below.
+  Planned broader qualification: `law_host_durable_lifecycle_recovery`.
 - Related-observation sending/reference resolution, full pooling workflows and
   external-object retention/access/recovery: absent. Planned tests:
   `law_related_observation_work_roundtrip`, `law_pooling_workflow_roundtrip` and
@@ -338,7 +339,7 @@ Evidence remains **documented**. No Gazelle or real-machine qualification occurr
 - [ ] Independent per-transaction/directional links: separate listeners/initiators, cross-link query followup ownership, independent establishment and short-lived lifetime policy remain. The explicit unsupported config mode prevents a full B.6 claim.
 - [ ] Gazelle qualification: record tool build, profile revision, actor/options, scenarios and validation results. Local synthetic tests are not simulator evidence.
 - [ ] Full actor/workflow qualification: validate returned result content against durable originating work; remaining enhanced content/groups, pooling/relationships and complete workflows remain as listed above. Isolate/parent needs app-supplied identities in a future contract; rack/tray forms are still explicitly rejected.
-- [ ] Shared stored-byte reprocessing integration: `feat/reprocess-resend` and `machine/interpretation.rs` are not on main at this checkpoint. When merged, route LAB-29 through `evidence::interpret(store, machine, id)` and prove a parked LAW receipt reprocesses after a mapping fix.
+- [x] Shared stored-byte reprocessing (ADR 0003 rules 2-4; TF-2b 3.29.4). After merging `feat/reprocess-resend` from main, LAB-29 calls `evidence::interpret(store, machine, id)`; `machine/interpretation.rs` selects the LAW parser/views/mapper. Test: `law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix`. It repairs a mapping, preserves original raw/config and interpretation version 1, appends audited versions, resolves parking, delivers once and creates no second delivery or machine traffic on repeated reprocessing. Reprocessing a retained non-C conflict adds one failed version/audit and no revisions or deliveries. A 50-character LAW control ID prevents generic-HL7 fallback.
 
 ### Program end-to-end evidence index (step 7)
 
@@ -348,6 +349,7 @@ only the stated behavior; unchecked actor and simulator gates stay open.
 
 | Behavior | Named program test |
 | --- | --- |
+| Parked LAW result reprocessed after mapping repair, original retained, repeat produces no delivery | `law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix` |
 | LAB-29 store before ACK, split input, AA only after interpretation | `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack` |
 | LAB-29 storage failure and near-full disk never AA | `law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa`, `law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa` |
 | Delivered once, retransmission no delivery, explicit C new revision | `law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c` |
@@ -366,9 +368,17 @@ only the stated behavior; unchecked actor and simulator gates stay open.
 | Restore pause blocks send-ahead and cancellation | `law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation` |
 | Query work can be cancelled with send-ahead disabled | `law_tf2b_3_27_3_28_queried_work_uses_the_same_cancel_exchange_without_send_ahead` |
 | Both TCP roles, all transactions on one persistent link | `law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions` |
+| Client query and ORL deadlines use config | `law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines` |
 | Client reconnect/deadline retains partial data, no replay | `law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work` |
 
 LAB-29 cases are in `crates/analyte/tests/law/results.rs`, query cases in
 `queries.rs`, send/cancel cases in `work.rs`, and role cases in `connections.rs`.
 All compile under `crates/analyte/tests/delivery.rs`. Store trust/paging tests,
 config validation and pure profile tests remain listed in earlier rows.
+
+
+The final local matrix contains ten LAB-29 tests, thirteen query tests, seven
+send/cancel tests and three persistent-link tests. Conditional integration with
+main's audited reprocess/resend workflow is included; no separate LAW replay or
+machine-sending path was introduced. The LAW conflict guard remains atomic for
+both live and operator-driven interpretations, including a rejected-batch audit.

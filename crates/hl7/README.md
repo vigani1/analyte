@@ -579,3 +579,9 @@ and receive views do not select a connection role or implement host retries.
 Program evidence is listed by test in `docs/protocols/ihe-law.md`, including
 `law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`.
 No Gazelle run or full LAW actor conformance is claimed.
+
+The program's shared stored-byte interpretation path also selects LAW parsing
+and `map_law` for operator reprocessing; it cannot fall back to generic HL7.
+`law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix`
+uses a LAW-valid 50-character control ID and checks immutable evidence and one
+reference-receiver delivery after repair. This adds no protocol-crate API.
