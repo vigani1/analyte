@@ -1,6 +1,6 @@
 //! LAW program exchanges; all protocol views, builders and ACK rules stay in hl7.
 pub(super) mod independent;
-use crate::orders::law::{Connection, Reply, response_metadata};
+use crate::orders::law::{Connection, Reply};
 use crate::{Error, evidence, invalid};
 use analyte_framing::mllp;
 use analyte_hl7::{AckCode, AckError, Options, Responsibility, law};
@@ -169,14 +169,13 @@ async fn write(
     until: tokio::time::Instant,
 ) -> Result<(), Error> {
     let bytes = mllp::encode(message.raw(), limit)?;
-    tokio::time::timeout_at(until, async {
-        for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
-            conn.write(chunk.to_vec()).await?;
+    conn.write_all(&bytes, Some(until)).await.map_err(|error| {
+        if matches!(error, analyte_transport::Error::Deadline("write all")) {
+            invalid("LAW response send deadline expired")
+        } else {
+            error.into()
         }
-        Ok::<_, Error>(())
     })
-    .await
-    .map_err(|_| invalid("LAW response send deadline expired"))?
 }
 
 async fn process(
@@ -231,16 +230,17 @@ async fn process(
                 | analyte_hl7::Error::NotStored
                 | analyte_hl7::Error::AckMode => (AckCode::Ae, None),
             };
-            return response_metadata(|response| {
-                Ok(law::reject_trigger(
-                    payload,
-                    response,
-                    code,
-                    location.unwrap_or(AckError::unlocated(b"102", b"LAW-syntax")),
-                    options,
-                )?
-                .map(Reply::Response))
-            });
+            return crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law)
+                .build(|response| {
+                    Ok(law::reject_trigger(
+                        payload,
+                        response,
+                        code,
+                        location.unwrap_or(AckError::unlocated(b"102", b"LAW-syntax")),
+                        options,
+                    )?
+                    .map(Reply::Response))
+                });
         }
     };
     let kind: Vec<_> = law::message_type(&message).take(4).collect();
@@ -263,16 +263,18 @@ async fn process(
             "LAW transaction disabled: unsolicited work/response traffic is not enabled",
         )
         .await?;
-        return response_metadata(|response| {
-            Ok(law::reject_trigger(
-                payload,
-                response,
-                AckCode::Ar,
-                header_error(9, b"200", b"LAW-unsupported-trigger"),
-                options,
-            )?
-            .map(Reply::Response))
-        });
+        return crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(
+            |response| {
+                Ok(law::reject_trigger(
+                    payload,
+                    response,
+                    AckCode::Ar,
+                    header_error(9, b"200", b"LAW-unsupported-trigger"),
+                    options,
+                )?
+                .map(Reply::Response))
+            },
+        );
     }
     let error_location;
     let (code, responsibility, location) = match law::receive_results(&message) {
@@ -315,18 +317,19 @@ async fn process(
             evidence::failed_reading(store, machine, id, &failure.to_string()).await?;
             if law::validate_control(&message, law::ControlDirection::Receive).is_err() {
                 let detail = failure.acknowledgment_error(&message, b"102", b"LAW-control");
-                return response_metadata(|response| {
-                    Ok(law::reject_trigger(
-                        payload,
-                        response,
-                        failure
-                            .acknowledgment_code()
-                            .ok_or("trigger failure lacks ACK outcome")?,
-                        detail,
-                        options,
-                    )?
-                    .map(Reply::Response))
-                });
+                return crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law)
+                    .build(|response| {
+                        Ok(law::reject_trigger(
+                            payload,
+                            response,
+                            failure
+                                .acknowledgment_code()
+                                .ok_or("trigger failure lacks ACK outcome")?,
+                            detail,
+                            options,
+                        )?
+                        .map(Reply::Response))
+                    });
             }
             (
                 failure
@@ -337,7 +340,7 @@ async fn process(
             )
         }
     };
-    response_metadata(|response| {
+    crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(|response| {
         Ok(
             law::result_acknowledgment(
                 &message,

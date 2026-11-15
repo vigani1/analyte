@@ -110,20 +110,22 @@ impl Connection {
             Ok(query) => query,
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                return response_metadata(|response| {
-                    let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
-                    law::reject_trigger(
-                        message.raw(),
-                        response,
-                        error
-                            .acknowledgment_code()
-                            .ok_or("query failure has no ACK outcome")?,
-                        detail,
-                        options,
-                    )?
-                    .map(Reply::Response)
-                    .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
-                });
+                return crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law)
+                    .build(|response| {
+                        let detail =
+                            error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
+                        law::reject_trigger(
+                            message.raw(),
+                            response,
+                            error
+                                .acknowledgment_code()
+                                .ok_or("query failure has no ACK outcome")?,
+                            detail,
+                            options,
+                        )?
+                        .map(Reply::Response)
+                        .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
+                    });
             }
         };
         let stack = super::settings::law(machine)?;
@@ -303,14 +305,16 @@ impl Connection {
             return Err(invalid("LAW query deadline after reservation"));
         }
         let followup = if prepared.is_empty() {
-            response_metadata(|response| {
-                Ok(law::negative_work(
-                    query,
-                    address(&work),
-                    response,
-                    options,
-                )?)
-            })?
+            crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(
+                |response| {
+                    Ok(law::negative_work(
+                        query,
+                        address(&work),
+                        response,
+                        options,
+                    )?)
+                },
+            )?
         } else {
             let refs = prepared
                 .iter()
@@ -469,7 +473,7 @@ fn reply(
     answer: law::CacheAnswer<'_>,
     options: Options,
 ) -> Result<Reply, Error> {
-    response_metadata(|response| {
+    crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(|response| {
         Ok(Reply::Response(
             law::query_response(
                 query,
@@ -481,18 +485,5 @@ fn reply(
             .message()
             .clone(),
         ))
-    })
-}
-
-pub(crate) fn response_metadata<T>(
-    build: impl FnOnce(analyte_hl7::Response<'_>) -> Result<T, Error>,
-) -> Result<T, Error> {
-    let id = uuid::Uuid::now_v7().simple().to_string();
-    let timestamp = jiff::Timestamp::now()
-        .strftime("%Y%m%d%H%M%S%z")
-        .to_string();
-    build(analyte_hl7::Response {
-        control_id: law::control_id(id.as_bytes())?,
-        timestamp: timestamp.as_bytes(),
     })
 }

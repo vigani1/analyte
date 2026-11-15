@@ -137,26 +137,17 @@ pub(super) async fn session(
                             actions.extend(dialog.step(start.elapsed(), event)?);
                         }
                         Action::ResponseNeeded(token, _) => {
-                            let id = uuid::Uuid::now_v7().simple().to_string();
-                            let id = id.get(12..).ok_or_else(|| invalid("response ID bound"))?;
-                            let timestamp = jiff::Timestamp::now()
-                                .strftime("%Y%m%d%H%M%S%z")
-                                .to_string();
+                            let metadata = crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
                             actions.extend(dialog.step(
                                 start.elapsed(),
                                 Event::Respond(
                                     token,
-                                    analyte_hl7::Response {
-                                        control_id: analyte_hl7::ControlId::new(id.as_bytes())?,
-                                        timestamp: timestamp.as_bytes(),
-                                    },
+                                    metadata.response()?,
                                 ),
                             )?);
                         }
                         Action::Write(bytes) => {
-                            for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
-                                conn.write(chunk.to_vec()).await?;
-                            }
+                            conn.write_all(&bytes, None).await?;
                         }
                         Action::Deadline(next) => wake = next,
                         Action::Rejected(error, bytes) => {

@@ -7,6 +7,7 @@ mod capture;
 pub mod config;
 mod delivery;
 mod evidence;
+mod hl7_response;
 pub mod machine;
 pub mod orders;
 pub mod output;

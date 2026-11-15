@@ -1,5 +1,4 @@
 //! Bounded app-to-AWOS adaptation; protocol rendering stays in analyte-hl7.
-use super::response_metadata;
 use crate::{Error, invalid};
 use analyte_hl7::{Message, Options, law};
 use analyte_store::MachineOrder;
@@ -38,12 +37,11 @@ struct WireAwos {
 }
 
 fn plain(value: &str) -> Result<&str, Error> {
-    if value.is_empty()
-        || !value.is_ascii()
-        || value
-            .bytes()
-            .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
-    {
+    if !analyte_hl7::is_safe_field(
+        value.as_bytes(),
+        usize::MAX,
+        analyte_hl7::FieldSyntax::Plain,
+    ) {
         return Err(invalid(
             "LAW outbound value cannot be represented without changing its identity",
         ));
@@ -143,7 +141,7 @@ pub(super) fn render(
         specimen: first.specimen,
         ..law::Capabilities::default()
     };
-    response_metadata(|response| {
+    crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(|response| {
         Ok(law::work_order(
             &awos,
             None,

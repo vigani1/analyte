@@ -177,6 +177,15 @@ pub enum Edition {
     V251,
 }
 
+impl From<Edition> for analyte_hl7::Version {
+    fn from(edition: Edition) -> Self {
+        match edition {
+            Edition::V231 => Self::V231,
+            Edition::V251 => Self::V251,
+        }
+    }
+}
+
 /// How the machine obtained the sample identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

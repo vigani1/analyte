@@ -515,18 +515,18 @@ impl Connection {
         if Instant::now() >= until {
             answer = CacheAnswer::Unavailable;
         }
-        let qck_id = control_id();
-        let dsr_id = control_id();
-        let timestamp = jiff::Timestamp::now()
-            .strftime("%Y%m%d%H%M%S%z")
-            .to_string();
+        let qck_metadata =
+            crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
+        let mut dsr_metadata =
+            crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
+        dsr_metadata.timestamp.clone_from(&qck_metadata.timestamp);
         let mut dsr = None;
         if answer == CacheAnswer::Found {
             let refs = lines.iter().map(Vec::as_slice).collect::<Vec<_>>();
             match query::display(
                 request,
-                response(&dsr_id, &timestamp)?,
-                analyte_hl7::ControlId::new(qck_id.as_bytes())?,
+                dsr_metadata.response()?,
+                qck_metadata.response()?.control_id,
                 &refs,
                 self.options,
             ) {
@@ -554,12 +554,7 @@ impl Connection {
             }
             self.reserving.clear();
         }
-        let qck = query::acknowledgment(
-            request,
-            response(&qck_id, &timestamp)?,
-            answer,
-            self.options,
-        )?;
+        let qck = query::acknowledgment(request, qck_metadata.response()?, answer, self.options)?;
         if let Err(error) = write(
             conn,
             qck.raw(),
@@ -582,7 +577,7 @@ impl Connection {
                 return Ok(());
             }
             self.awaiting = Some((
-                dsr_id,
+                std::str::from_utf8(dsr_metadata.response()?.control_id.raw())?.to_owned(),
                 Instant::now()
                     .checked_add(Duration::from_millis(u64::from(layout.acknowledgment_ms)))
                     .ok_or_else(|| invalid("DSR ACK deadline overflow"))?,
@@ -639,20 +634,6 @@ fn sample(
     }
     Ok(Some(SampleId::new(&text)?))
 }
-fn control_id() -> String {
-    uuid::Uuid::now_v7()
-        .simple()
-        .to_string()
-        .chars()
-        .skip(12)
-        .collect()
-}
-fn response<'a>(id: &'a str, time: &'a str) -> Result<analyte_hl7::Response<'a>, Error> {
-    Ok(analyte_hl7::Response {
-        control_id: analyte_hl7::ControlId::new(id.as_bytes())?,
-        timestamp: time.as_bytes(),
-    })
-}
 async fn write(
     conn: &mut analyte_transport::Connection,
     payload: &[u8],
@@ -660,30 +641,14 @@ async fn write(
     until: Instant,
 ) -> Result<(), Error> {
     let wire = mllp::encode(payload, mllp::Limit::new(options.limits.message_bytes)?)?;
-    tokio::time::timeout_at(tokio::time::Instant::from_std(until), async {
-        for chunk in wire.chunks(analyte_transport::CHUNK_LIMIT) {
-            conn.write(chunk.to_vec()).await?;
-        }
-        Ok::<_, Error>(())
-    })
-    .await??;
+    conn.write_all(&wire, Some(tokio::time::Instant::from_std(until)))
+        .await?;
     Ok(())
 }
 
 fn edition_matches(machine: &Machine, version: analyte_hl7::Version) -> bool {
-    matches!(
-        (
-            super::settings::hl7(machine).map(|settings| settings.syntax.edition),
-            version
-        ),
-        (
-            Some(analyte_config::Edition::V231),
-            analyte_hl7::Version::V231
-        ) | (
-            Some(analyte_config::Edition::V251),
-            analyte_hl7::Version::V251
-        )
-    )
+    super::settings::hl7(machine)
+        .is_some_and(|settings| analyte_hl7::Version::from(settings.syntax.edition) == version)
 }
 
 #[cfg(test)]

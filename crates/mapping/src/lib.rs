@@ -421,11 +421,7 @@ fn map_hl7_checked(
             source,
         })?
         .version();
-    if !matches!(
-        (edition, version),
-        (analyte_config::Edition::V231, analyte_hl7::Version::V231)
-            | (analyte_config::Edition::V251, analyte_hl7::Version::V251)
-    ) {
+    if analyte_hl7::Version::from(edition) != version {
         return Err(Error::Structure {
             position: Position {
                 record: 1,

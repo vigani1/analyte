@@ -89,10 +89,8 @@ impl WorkFields {
         fn join(parts: &[&str], separator: &str, max: usize) -> Result<String, Error> {
             let mut length = 0usize;
             for (index, part) in parts.iter().enumerate() {
-                if !part.is_ascii()
-                    || part
-                        .bytes()
-                        .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
+                if !part.is_empty()
+                    && !crate::is_safe_field(part.as_bytes(), max, crate::FieldSyntax::Plain)
                 {
                     return Err(content("OBR", 4));
                 }
@@ -267,14 +265,7 @@ impl<'a> Awos<'a> {
 }
 
 fn safe(value: &[u8], segment: &'static str, field: usize, maximum: usize) -> Result<(), Error> {
-    if value.is_empty()
-        || value == b"\"\""
-        || value.len() > maximum
-        || std::str::from_utf8(value).is_err()
-        || value
-            .iter()
-            .any(|b| b.is_ascii_control() || matches!(b, b'|' | b'~'))
-    {
+    if !crate::is_safe_field(value, maximum, crate::FieldSyntax::Composite) {
         return Err(content(segment, field));
     }
     Ok(())

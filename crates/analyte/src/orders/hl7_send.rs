@@ -37,10 +37,7 @@ impl Command {
                 "HL7-patient-name-required-but-not-carried-by-contract",
             ));
         }
-        let version = match configured.syntax.edition {
-            analyte_config::Edition::V231 => Version::V231,
-            analyte_config::Edition::V251 => Version::V251,
-        };
+        let version = configured.syntax.edition.into();
         let group = app.fields().id.as_str().to_owned();
         let namespace = settings
             .send
@@ -71,15 +68,8 @@ impl Command {
             .as_ref()
             .ok_or("HL7 send config absent")?;
         let cfg = &cfg.settings;
-        let timestamp = jiff::Timestamp::now()
-            .strftime("%Y%m%d%H%M%S%z")
-            .to_string();
-        let id = uuid::Uuid::now_v7()
-            .simple()
-            .to_string()
-            .chars()
-            .skip(12)
-            .collect::<String>();
+        let metadata = crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
+        let response = metadata.response()?;
         let header = order::Header {
             application: cfg.application.as_str().as_bytes(),
             facility: cfg.facility.as_ref().map_or(b"", |v| v.as_str().as_bytes()),
@@ -88,8 +78,8 @@ impl Command {
                 .peer_facility
                 .as_ref()
                 .map_or(b"", |v| v.as_str().as_bytes()),
-            control_id: analyte_hl7::ControlId::new(id.as_bytes())?,
-            timestamp: order::Timestamp::new(timestamp.as_bytes())?,
+            control_id: response.control_id,
+            timestamp: order::Timestamp::new(response.timestamp)?,
             version: self.version,
             processing: match cfg.processing {
                 analyte_config::Hl7Processing::Production => order::Processing::Production,
