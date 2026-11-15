@@ -53,6 +53,9 @@ pub enum Error {
     /// SQLite failed; its original cause is preserved.
     #[error("SQLite operation failed: {0}")]
     Sqlite(rusqlite::Error),
+    /// The host's transactional delivery builder refused construction; the cause is retained.
+    #[error("delivery construction failed")]
+    DeliveryBuild(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// Typed evidence could not be encoded or decoded.
     #[error("evidence encoding failed: {0}")]
     Json(#[from] serde_json::Error),
@@ -545,7 +548,6 @@ impl Store {
         {
             return Ok(0);
         }
-        self.capacity(self.limits.record_bytes)?;
         let tx = self.db.transaction()?;
         let ids = {
             let mut query = tx.prepare(
@@ -558,6 +560,7 @@ impl Store {
                 )?
                 .collect::<Result<Vec<_>, _>>()?
         };
+        let mut required = 0usize;
         for id in &ids {
             let delivery: String = serde_json::from_str(id)?;
             let entry = Audit {
@@ -571,9 +574,16 @@ impl Store {
             if encoded.len() > self.limits.record_bytes {
                 return Err(Error::InvalidInput);
             }
+            let outcome = key(&Attempt::Interrupted)?;
+            required = required
+                .checked_add(encoded.len())
+                .and_then(|bytes| bytes.checked_add(outcome.len()))
+                .and_then(|bytes| bytes.checked_add(128))
+                .ok_or(Error::Capacity)?;
+            Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
             tx.execute(
                 "INSERT INTO attempts(delivery,outcome,time) VALUES (?1,?2,?3)",
-                params![id, key(&Attempt::Interrupted)?, now],
+                params![id, outcome, now],
             )?;
             tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [encoded])?;
             tx.execute(

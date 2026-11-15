@@ -166,37 +166,10 @@ pub(crate) async fn interpret(
                 &corrections,
                 &findings,
                 |assigned, outcomes| {
-                    let mut deliveries = Vec::new();
                     if !accepted {
-                        return Ok(deliveries);
+                        return Ok(Vec::new());
                     }
-                    if let Reading::Results(results) = &assigned.outcome {
-                        for (result, outcome) in results.iter().zip(outcomes) {
-                            let fresh = match outcome {
-                                RevisionOutcome::New(_) | RevisionOutcome::Correction(_) => true,
-                                RevisionOutcome::Retransmission(_)
-                                | RevisionOutcome::Conflict
-                                | RevisionOutcome::Unresolved => false,
-                            };
-                            if fresh
-                                && result.processing.may_deliver_to_production()
-                                && !result.requires_parking()
-                            {
-                                deliveries.push(
-                                    analyte_sink::build_delivery(
-                                        result,
-                                        &receipt,
-                                        destination.clone(),
-                                        jiff::Timestamp::now(),
-                                    )
-                                    .map_err(|error| {
-                                        analyte_store::Error::Io(std::io::Error::other(error))
-                                    })?,
-                                );
-                            }
-                        }
-                    }
-                    Ok(deliveries)
+                    build_deliveries(assigned, outcomes, &receipt, &destination)
                 },
             )
         })
@@ -206,6 +179,40 @@ pub(crate) async fn interpret(
             .outcomes
             .iter()
             .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved)))
+}
+
+// The store assigns revisions before this callback freezes bytes. Only new and
+// corrected production results can cross this boundary; replay never enqueues.
+fn build_deliveries(
+    assigned: &Interpretation,
+    outcomes: &[RevisionOutcome],
+    receipt: &ReceiptMetadata,
+    destination: &Identifier,
+) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error> {
+    let mut deliveries = Vec::new();
+    if let Reading::Results(results) = &assigned.outcome {
+        for (result, outcome) in results.iter().zip(outcomes) {
+            let fresh = match outcome {
+                RevisionOutcome::New(_) | RevisionOutcome::Correction(_) => true,
+                RevisionOutcome::Retransmission(_)
+                | RevisionOutcome::Conflict
+                | RevisionOutcome::Unresolved => false,
+            };
+            if fresh && result.processing.may_deliver_to_production() && !result.requires_parking()
+            {
+                deliveries.push(
+                    analyte_sink::build_delivery(
+                        result,
+                        receipt,
+                        destination.clone(),
+                        jiff::Timestamp::now(),
+                    )
+                    .map_err(|error| analyte_store::Error::DeliveryBuild(Box::new(error)))?,
+                );
+            }
+        }
+    }
+    Ok(deliveries)
 }
 
 pub(crate) async fn park_bytes(

@@ -95,3 +95,12 @@ and cache trust under the freshness policy. It also prints each machine's last
 receipt timestamp, or unknown when none exists. It reads bounded metadata pages
 with a five-second overall receipt-scan deadline, and prints no clinical payloads
 or credentials. This command works while the service runs and needs no secrets.
+
+Phase 1 tests in `tests/delivery.rs` run the reference receiver library on random
+loopback ports. Synthetic TCP ASTM and MLLP HL7 peers cover signed durable
+content, retransmission suppression, corrections, training/debug exclusion,
+conflicting content, outage/retry, authentication pause/status, bounded active
+shutdown and audited interrupted-attempt recovery. When an interrupted attempt
+had already arrived, restart sends identical bytes and ID and receives duplicate;
+the receiver retains one record. These are documented tests, not real-machine
+or external-app qualification.

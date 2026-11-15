@@ -19,9 +19,9 @@ pub(crate) struct Closing {
 impl Closing {
     pub(crate) async fn after_commits(&mut self) -> Result<(), Error> {
         self.ready.send_replace(true);
-        tokio::time::timeout(Duration::from_secs(20), stopping(&mut self.close))
+        tokio::time::timeout(Duration::from_secs(25), stopping(&mut self.close))
             .await
-            .map_err(|_| invalid("transport close stage exceeded 20 seconds"))?;
+            .map_err(|_| invalid("transport close stage exceeded 25 seconds"))?;
         Ok(())
     }
 }
