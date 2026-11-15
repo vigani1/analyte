@@ -46,6 +46,22 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
         .build()?;
     let body = include_bytes!("../../../docs/contract/vectors/delivery.json");
     let id = "019ab000-0000-7000-8000-000000000001";
+    // The contract owns evidence validation; invalid nested input must not reach storage.
+    let mut invalid: Value = serde_json::from_slice(body)?;
+    invalid["results"][0]["parts"] = json!([]);
+    assert_eq!(
+        post(
+            &client,
+            &url,
+            "results",
+            &serde_json::to_vec(&invalid)?,
+            id,
+            "key"
+        )
+        .await?
+        .status(),
+        422
+    );
     // Discard the first response: retry must observe the durable ID.
     assert_eq!(
         post(&client, &url, "results", body, id, "key")
@@ -176,7 +192,7 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
     let mut tombstone = order;
     tombstone["version"] = json!(2);
     tombstone["tombstone"] = json!(true);
-    tombstone["state"] = json!("cancelled");
+    tombstone["state"] = json!("cancel_confirmed");
     receiver
         .seed(vec![serde_json::from_value(tombstone)?])
         .await?;
@@ -282,6 +298,13 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
             .status(),
         410
     );
+    let (stored, digest): (Vec<u8>, Vec<u8>) = connection.query_row(
+        "SELECT body,digest FROM deliveries WHERE id=?1",
+        [id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(stored, body);
+    assert_eq!(digest, analyte_contract::content_digest(body));
     drop(connection);
     // Seed retries do not add feed entries; regressing versions are rejected.
     let old: Order = serde_json::from_value(base)?;

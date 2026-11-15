@@ -2,3 +2,4 @@
 #![forbid(unsafe_code)]
 
 pub mod astm;
+pub mod hl7;

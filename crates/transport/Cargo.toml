@@ -1,6 +1,6 @@
 [package]
 name = "analyte-transport"
-description = "Byte transports owned by the host: serial ports, TCP client and server, and watched folders."
+description = "Host-owned byte transports."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,8 +9,12 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "sync", "macros"] }
+serialport = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

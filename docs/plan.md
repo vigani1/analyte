@@ -101,11 +101,14 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-contract`  | The app contract: documents, signing, validation (ADR 0008)   |
 | `analyte-sink`      | Delivery to apps and order polling                           |
 | `analyte-sim`       | Fake machine and replay of recordings                        |
+| `analyte-poct`      | POCT01-A2 DML Observation Reviewer (XML)                     |
+| `analyte-vidas`     | VIDAS Literal framing and tagged messages                    |
+| `analyte-autolyser` | Autolyser host-polled framing and fixed-width records        |
 | `analyte-receiver`  | Reference receiver: a small app that implements the contract |
 | `analyte`           | The program: service, CLI, admin page                        |
 
-Vendor formats (VIDAS, Autolyser) and POCT1-A get their own crates when they
-are built.
+Vendor formats and POCT1-A have their own crates, so a new vendor format is a
+new crate rather than a change to a shared one.
 
 ## 6. Common model
 
