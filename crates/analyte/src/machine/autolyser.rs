@@ -15,7 +15,7 @@ struct ConnectionState {
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
     ready: bool,
     recovering: bool,
-    guard: Option<i64>,
+    guard: Option<analyte_store::PollIntentId>,
     active: Option<analyte_store::MachineOrder>,
     cursor: String,
     end_code: &'static str,
@@ -138,8 +138,16 @@ pub(super) async fn session(
         }
     }
     .await;
-    if let Some(order) = state.active.as_ref() {
-        crate::orders::sending::uncertain(store, order, state.end_code).await?;
+    let mut result = result;
+    if let Err(effect) =
+        super::autolyser_custody::uncertain(store, state.guard, machine, state.end_code).await
+    {
+        result = Err(vendor::effect_failure(result.err(), effect));
+    }
+    if let Some(order) = state.active.as_ref()
+        && let Err(effect) = crate::orders::sending::uncertain(store, order, state.end_code).await
+    {
+        result = Err(vendor::effect_failure(result.err(), effect));
     }
     result
 }
@@ -249,6 +257,11 @@ async fn process(
                 if let Err(error) = parked {
                     return Err(vendor::effect_failure(failure, error));
                 }
+                if let Err(error) =
+                    super::autolyser_custody::uncertain(store, *guard, machine, &reason).await
+                {
+                    return Err(vendor::effect_failure(failure, error));
+                }
             }
             Action::Empty => {
                 receipt.take();
@@ -285,6 +298,13 @@ async fn process(
             }
             Action::Uncertain => {
                 *ready = false;
+                super::autolyser_custody::uncertain(
+                    store,
+                    *guard,
+                    machine,
+                    "Autolyser poll response outcome uncertain",
+                )
+                .await?;
             }
             Action::Refused(error) => return Err(error.into()),
             Action::Close => close = true,

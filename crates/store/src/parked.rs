@@ -53,6 +53,13 @@ impl Store {
         let encoded = self.encode(resolution)?;
         self.bound(encoded.as_bytes())?;
         let tx = self.db.transaction()?;
+        let required = crate::polls::resolution_bytes(
+            &tx,
+            id,
+            encoded.len(),
+            resolution.reason.as_str().len(),
+        )?;
+        Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
         if tx.execute(
             "UPDATE parked SET resolution=?2 WHERE id=?1 AND resolution IS NULL",
             params![id, encoded],
@@ -60,6 +67,7 @@ impl Store {
         {
             return Err(Error::Conflict);
         }
+        crate::polls::resolve_on(&tx, id, resolution, &encoded)?;
         tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [encoded])?;
         tx.commit()?;
         Ok(())

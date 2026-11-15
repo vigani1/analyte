@@ -7,7 +7,7 @@ and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 8 is
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 9 is
 created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
 Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
@@ -277,3 +277,43 @@ ASTM-specific explanations and supplies the framing crate's sequence maximum.
 HL7 and LAW callers build one group per test and calculate the remaining identity
 budget using named constants from `analyte-hl7`. Existing wire limits and the
 logical namespace budgets are preserved; the store does not know their encodings.
+
+## Schema 9: typed cursor custody
+
+`begin_poll_intent(machine, reason)` atomically retains a Pending intent, an
+immutable history entry and linked operator-visible parked evidence before the
+host transmits a cursor-changing poll. An indexed machine/state query,
+`unconfirmed_poll_intent`, replaces parked-page scans. Admission rechecks this
+predicate in an immediate transaction: Pending and Uncertain both block a new poll.
+A lost store reply may leave Pending committed, so cancellation never proves the
+poll was not admitted or transmitted.
+
+`record_poll_outcome` accepts Confirmed or Uncertain with a targeted audit and
+reason, retaining previous reasons in append-only history. Confirmation reconciles
+the linked parked evidence in the same transaction when every intent linked to it
+is confirmed; confirming one machine never clears another machine's uncertainty. Confirmed is terminal; late
+cleanup or a repeated confirmation cannot downgrade it or replay that identity.
+The existing audited `parked resolve` path also reconciles linked intents
+atomically. Parked rows remain operator evidence; they no longer own poll state.
+Capacity, history or audit failures roll the entire operation back.
+
+The forward migration imports every legacy `autolyser_poll_custody` row without
+changing or deleting any parked row, original JSON or resolution. Unresolved rows
+become Uncertain; a legacy resolution becomes Confirmed. Reasons and exact old
+resolution evidence are retained without inventing times or attribution. Multiple
+guards for a machine continue to block it until all are reconciled; a shared guard
+continues to cover each distinct named machine. A guard without a machine refuses
+the upgrade with its table and row identity and leaves schema 8 intact.
+
+The Autolyser host records observed failures as Uncertain and treats an interrupted
+Pending intent as uncertain when reconnecting. It confirms only after the existing
+dialog establishes retained response custody. The operator can inspect and reconcile
+the linked parked item using the existing commands; no protocol parser or order
+lifecycle rule is added to the store.
+
+Tests cover admission before wire output, unknown-outcome reconnect blocking,
+Pending/Uncertain/Confirmed transitions, restart, independent machines, terminal
+confirmation, capacity refusal, transactional audit/history failures and operator
+resolution. Migration tests include both resolved and unresolved guards beyond the
+old 128-page limit, exact retention of every original table/row, duplicate targets,
+multiple guards and refusal when the machine identity is missing.

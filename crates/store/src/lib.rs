@@ -8,6 +8,8 @@ mod feed;
 mod open;
 mod outbox;
 mod parked;
+mod polls;
+pub use polls::{PollIntent, PollIntentId, PollIntentState, PollOutcome};
 mod receipts;
 mod sql_types;
 mod transfers;
@@ -22,7 +24,7 @@ mod restore;
 pub use resend::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
@@ -89,6 +91,12 @@ pub enum Error {
         #[source]
         cause: Box<Error>,
     },
+    /// A previous poll may already have moved this machine's cursor.
+    #[error("poll intent remains unresolved; reconcile before polling again")]
+    PollIntentUnresolved,
+    /// No retained poll has the requested identity.
+    #[error("poll intent does not exist")]
+    UnknownPollIntent,
     /// SQLite or stored evidence failed an integrity check.
     #[error("stored evidence is corrupt")]
     Corruption,

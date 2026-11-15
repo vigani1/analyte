@@ -73,6 +73,9 @@ impl Store {
             Self::integrity(&tx)?;
             tx.commit()?;
         }
+        if version <= 8 {
+            Self::migrate_v9(&mut db, limits.record_bytes)?;
+        }
         // SQL constraints also protect evidence from accidental maintenance updates.
         for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
             db.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER IF NOT EXISTS immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;

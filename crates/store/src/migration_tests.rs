@@ -57,7 +57,10 @@ fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_
     let before = snapshot(&db)?;
     drop(db);
     let mut store = open(&path)?;
-    assert_eq!(snapshot(&store.db)?, before);
+    let mut after = snapshot(&store.db)?;
+    assert_eq!(after.remove("poll_intents"), Some(Vec::new()));
+    assert_eq!(after.remove("poll_intent_history"), Some(Vec::new()));
+    assert_eq!(after, before);
     assert!(store.db.execute("UPDATE frames SET raw=x'00'", []).is_err());
     assert!(store.db.execute("DELETE FROM frames", []).is_err());
     assert!(matches!(
@@ -340,8 +343,12 @@ fn adr0003_v6_every_state_owner_and_parking_shape_migrates_without_losing_meanin
     let mut store = open(&path)?;
     let after = snapshot(&store.db)?;
     assert_eq!(
-        before.keys().collect::<Vec<_>>(),
-        after.keys().collect::<Vec<_>>()
+        after
+            .keys()
+            .filter(|name| !before.contains_key(*name))
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec!["poll_intent_history".to_owned(), "poll_intents".to_owned()]
     );
     for (table, rows) in before {
         let actual = after.get(&table).ok_or("missing retained table")?;
@@ -567,5 +574,194 @@ fn adr0003_v7_bad_owner_rolls_back_and_unknown_sql_values_are_never_defaulted() 
         db.query_row("SELECT 'unknown'", [], |row| row.get::<_, SqlOrderState>(0))
             .is_err()
     );
+    Ok(())
+}
+
+fn version8(path: &Path) -> Result<Connection, Error> {
+    let mut db = legacy(path)?;
+    Store::migrate_v7(&mut db, 65_536)?;
+    db.execute_batch(include_str!("migration_v8.sql"))?;
+    Ok(db)
+}
+
+#[test]
+fn adr0003_v8_custody_migration_keeps_every_parked_row_and_reconciles_typed_machine_intents()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("custody-v8.db");
+    let mut db = version8(&path)?;
+    let tx = db.transaction()?;
+    for _ in 0..130 {
+        tx.execute("INSERT INTO parked(evidence) VALUES (?1)",[r#"{"kind":"other","reason":"unrelated retained evidence","targets":[],"context":null}"#])?;
+    }
+    let fixtures = [
+        (vec!["autolyser"], "unconfirmed original R", None),
+        (
+            vec!["autolyser"],
+            "original resolved guard",
+            Some("exact legacy resolution evidence"),
+        ),
+        (
+            vec!["autolyser", "other", "autolyser"],
+            "second unresolved poll",
+            None,
+        ),
+        (
+            vec!["resolved-only"],
+            "confirmed legacy cursor",
+            Some("second exact resolution"),
+        ),
+    ];
+    let mut expected = Vec::new();
+    let mut guards = Vec::new();
+    for (targets, reason, resolution) in fixtures {
+        let evidence = serde_json::json!({"kind":"autolyser_poll_custody","reason":reason,"targets":targets,"context":null}).to_string();
+        let original = format!("  {evidence}  ");
+        tx.execute(
+            "INSERT INTO parked(evidence,resolution,original_evidence) VALUES (?1,?2,?3)",
+            params![evidence, resolution, original],
+        )?;
+        let parked = tx.last_insert_rowid();
+        guards.push(parked);
+        let state = if resolution.is_some() {
+            PollIntentState::Confirmed
+        } else {
+            PollIntentState::Uncertain
+        };
+        let mut seen = std::collections::HashSet::new();
+        for target in targets {
+            if seen.insert(target) {
+                expected.push((
+                    target.to_owned(),
+                    parked,
+                    state,
+                    reason.to_owned(),
+                    resolution.map(str::to_owned),
+                ));
+            }
+        }
+    }
+    tx.execute("UPDATE sqlite_sequence SET seq=900 WHERE name='parked'", [])?;
+    tx.commit()?;
+    let before = snapshot(&db)?;
+    drop(db);
+    let mut limits = tests::limits();
+    limits.page_rows = 1; // The first custody row lies beyond the old 128-page scan cap.
+    let mut store = Store::open(&path, limits, Box::new(tests::Space(u64::MAX)))?;
+    let mut after = snapshot(&store.db)?;
+    assert_eq!(
+        after
+            .remove("poll_intents")
+            .ok_or("missing typed intents")?
+            .len(),
+        5
+    );
+    assert_eq!(
+        after
+            .remove("poll_intent_history")
+            .ok_or("missing typed history")?
+            .len(),
+        5
+    );
+    assert_eq!(after, before);
+    let actual = store.db.prepare("SELECT p.machine,p.parked,p.state,p.reason,h.audit FROM poll_intents p JOIN poll_intent_history h ON h.intent=p.id ORDER BY p.id")?
+        .query_map([],|row|Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,PollIntentState>(2)?,row.get::<_,String>(3)?,row.get::<_,Option<String>>(4)?)))?
+        .collect::<Result<Vec<_>,_>>()?;
+    assert_eq!(actual, expected);
+    let machine = Identifier::new("autolyser")?;
+    let intent = store
+        .unconfirmed_poll_intent(&machine)?
+        .ok_or("missing migrated blocking guard")?;
+    assert_eq!(Some(&intent.parked), guards.first());
+    assert_eq!(intent.state, PollIntentState::Uncertain);
+    let reason = analyte_model::Reason::new("explicit operator cursor reconciliation")?;
+    assert!(matches!(
+        store.begin_poll_intent(&machine, &reason),
+        Err(Error::PollIntentUnresolved)
+    ));
+    assert!(
+        store
+            .unconfirmed_poll_intent(&Identifier::new("resolved-only")?)?
+            .is_none()
+    );
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("parked-resolve")?,
+        targets: vec![Identifier::new(&intent.parked.to_string())?],
+        time: 100,
+        reason: reason.clone(),
+    };
+    store.resolve(intent.parked, &audit)?;
+    assert!(store.unconfirmed_poll_intent(&machine)?.is_some());
+    let other = Identifier::new("other")?;
+    let shared = store
+        .unconfirmed_poll_intent(&other)?
+        .ok_or("missing shared machine intent")?;
+    let individual = Audit {
+        actor: Identifier::new("host")?,
+        action: Identifier::new("poll-confirmation")?,
+        targets: vec![Identifier::new(&format!("poll:{}", shared.id))?],
+        time: 101,
+        reason: reason.clone(),
+    };
+    store.record_poll_outcome(shared.id, PollOutcome::Confirmed, &individual)?;
+    assert!(store.unconfirmed_poll_intent(&other)?.is_none());
+    assert!(store.unconfirmed_poll_intent(&machine)?.is_some());
+    assert!(
+        store
+            .parked_item(shared.parked)?
+            .ok_or("lost shared evidence")?
+            .resolution
+            .is_none()
+    );
+    store.resolve(*guards.get(2).ok_or("missing shared guard")?, &audit)?;
+    assert!(store.unconfirmed_poll_intent(&machine)?.is_none());
+    assert!(
+        store
+            .unconfirmed_poll_intent(&Identifier::new("other")?)?
+            .is_none()
+    );
+    store.begin_poll_intent(&machine, &reason)?;
+    assert_eq!(
+        store
+            .unconfirmed_poll_intent(&machine)?
+            .ok_or("missing new poll")?
+            .parked,
+        901
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM parked WHERE id<901", [], |row| row
+                .get::<_, i64>(0))?,
+        134
+    );
+    assert!(store.db.execute("DELETE FROM poll_intents", []).is_err());
+    Ok(())
+}
+
+#[test]
+fn adr0003_v9_missing_custody_machine_refuses_migration_without_guessing_or_dropping_rows()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("unknown-custody.db");
+    let db = version8(&path)?;
+    db.execute("INSERT INTO parked(evidence) VALUES (?1)",[r#"{"kind":"autolyser_poll_custody","reason":"machine identity missing","targets":[],"context":null}"#])?;
+    let before = snapshot(&db)?;
+    drop(db);
+    assert!(matches!(
+        open(&path),
+        Err(Error::MigrationEvidence {
+            table: "parked",
+            row: 1,
+            ..
+        })
+    ));
+    let db = Connection::open(&path)?;
+    assert_eq!(
+        db.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
+        8
+    );
+    assert_eq!(snapshot(&db)?, before);
     Ok(())
 }

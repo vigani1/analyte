@@ -64,6 +64,54 @@ PRAGMA user_version=7;")?;
     }
 }
 
+impl Store {
+    pub(super) fn migrate_v9(db: &mut Connection, limit: usize) -> Result<(), Error> {
+        let tx = db.transaction()?;
+        tx.execute_batch(include_str!("migration_v9.sql"))?;
+        migrate_rows(&tx, "parked", "id", limit, |id, encoded| {
+            let evidence: crate::parked::ParkingEvidence = serde_json::from_str(encoded)?;
+            let details = evidence.details;
+            // Compatibility belongs only to migration; normal admission never reads categories.
+            if details.kind.as_str() != "autolyser_poll_custody" {
+                return Ok(());
+            }
+            if details.targets.is_empty() {
+                return Err(Error::Corruption);
+            }
+            let (resolved, resolution): (bool, Option<String>) = tx.query_row(
+                "SELECT resolution IS NOT NULL,CASE WHEN length(CAST(resolution AS BLOB))<=?2 THEN resolution END FROM parked WHERE id=?1",
+                rusqlite::params![id,i64::try_from(limit).map_err(|_| Error::InvalidInput)?],
+                |row| Ok((row.get(0)?,row.get(1)?)),
+            )?;
+            if resolved && resolution.is_none() {
+                return Err(Error::InvalidInput);
+            }
+            let state = if resolution.is_some() {
+                crate::PollIntentState::Confirmed
+            } else {
+                crate::PollIntentState::Uncertain
+            };
+            let mut machines = std::collections::HashSet::new();
+            for machine in details.targets {
+                if !machines.insert(machine.clone()) {
+                    continue;
+                }
+                tx.execute(
+                    "INSERT INTO poll_intents(machine,parked,state,reason) VALUES (?1,?2,?3,?4)",
+                    rusqlite::params![machine.as_str(), id, state, details.reason.as_str()],
+                )?;
+                let intent = tx.last_insert_rowid();
+                tx.execute("INSERT INTO poll_intent_history(intent,state,reason,audit) VALUES (?1,?2,?3,?4)",rusqlite::params![intent,state,details.reason.as_str(),resolution])?;
+            }
+            Ok(())
+        })?;
+        tx.execute_batch("PRAGMA user_version=9")?;
+        Self::integrity(&tx)?;
+        tx.commit()?;
+        Ok(())
+    }
+}
+
 // At most one bounded record is decoded at a time. A bad row aborts the whole migration.
 fn migrate_rows(
     db: &Connection,

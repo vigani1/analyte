@@ -1,5 +1,5 @@
 //! SQL codecs for typed lifecycle values; unknown stored values fail decoding.
-use crate::{DeliveryKind, DeliveryState};
+use crate::{DeliveryKind, DeliveryState, PollIntentState};
 use analyte_model::OrderState;
 use rusqlite::{
     ToSql,
@@ -62,4 +62,10 @@ text_sql!(OwnerKind,
     Self::None => "none" => Self::None,
     Self::Reservation => "reservation" => Self::Reservation,
     Self::Cancellation => "cancellation" => Self::Cancellation,
+);
+
+text_sql!(PollIntentState,
+    Self::Pending => "pending" => Self::Pending,
+    Self::Confirmed => "confirmed" => Self::Confirmed,
+    Self::Uncertain => "uncertain" => Self::Uncertain,
 );
