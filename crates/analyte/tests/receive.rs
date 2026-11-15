@@ -246,10 +246,16 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
             6
         );
         let store = stored(&program)?;
-        let transfers = store.incomplete("")?;
-        let transfer = analyte_model::Identifier::new(
-            transfers.first().ok_or("no frame journal before ACK")?,
+        let journal = rusqlite::Connection::open_with_flags(
+            program.data_directory().join("analyte.db"),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
         )?;
+        let transfer: String = journal.query_row(
+            "SELECT id FROM transfers WHERE state!='complete' ORDER BY id LIMIT 1",
+            [],
+            |row| row.get(0),
+        )?;
+        let transfer = analyte_model::Identifier::new(&transfer)?;
         assert!(!store.frames(&transfer, 0)?.is_empty());
     }
     peer.write_all(b"\x04").await?;
@@ -589,11 +595,16 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
         );
     }
     let store = stored(&program)?;
-    let transfers = store.incomplete("")?;
-    let transfer = analyte_model::Identifier::new(transfers.first().ok_or("transfer missing")?)?;
-    let provenance = store
-        .frame_provenance(&transfer)?
-        .ok_or("frame provenance missing before ACK")?;
+    // Inspect the durable journal written by the real receive path before its ACK.
+    let journal = rusqlite::Connection::open_with_flags(
+        program.data_directory().join("analyte.db"),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    let evidence: String = journal.query_row(
+        "SELECT evidence FROM frame_provenance WHERE transfer=(SELECT id FROM transfers WHERE state!='complete' ORDER BY id LIMIT 1)",
+        [], |row| row.get(0),
+    )?;
+    let provenance: analyte_store::FrameProvenance = serde_json::from_str(&evidence)?;
     assert_eq!(
         provenance.config,
         program

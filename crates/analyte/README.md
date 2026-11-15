@@ -169,6 +169,13 @@ and configure the patient namespace and outbound codes. Successful transfer
 means Sent, never Accepted. Interrupted orders become Uncertain and are never
 automatically replayed. Autolyser host-initiated insertions use the same durable path after a completed
 host poll, with an explicit specimen-medium table, clone flag and cup position.
+Before a cursor-changing poll, the host durably reserves a typed poll intent.
+Pending or uncertain custody blocks another poll, including across reconnects.
+Observed failures retain their reason; confirmation requires the existing dialog's
+response-custody evidence. The protected parked list still shows the linked guard.
+Use the audited `parked resolve` command only after checking the machine's cursor
+and retained responses: it reconciles the typed intent and keeps the parked row.
+An upgrade imports old custody guards without deleting their evidence.
 
 ## Test-only boundary hooks
 

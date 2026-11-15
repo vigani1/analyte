@@ -89,7 +89,7 @@ impl<'a> Awos<'a> {
         action: WorkAction,
     ) -> Result<Self, Error> {
         for (value, segment, field, maximum) in [
-            (id, "OBR", 2, 50),
+            (id, "OBR", 2, super::AWOS_ID_MAX_BYTES),
             (specimen, "SPM", 2, 427),
             (container, "SAC", 3, 80),
             (test, "OBR", 4, 250),

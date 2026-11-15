@@ -43,7 +43,7 @@ impl<'a> OrderId<'a> {
         namespace: &'a [u8],
         universal: Option<(&'a [u8], &'a [u8])>,
     ) -> Result<Self, Error> {
-        scalar(id, "EI", 1, 22, true)?;
+        scalar(id, "EI", 1, super::EI_MAX_BYTES, true)?;
         scalar(namespace, "EI", 2, 20, universal.is_none())?;
         let mut length = id
             .len()

@@ -27,11 +27,13 @@ pub struct FrameNumber(u8);
 impl FrameNumber {
     /// First frame of a transfer, per LIS01-A2 §6.3.2.
     pub const FIRST: Self = Self(b'1');
+    /// Highest frame number before rollover (LIS01-A2 section 6.3.2).
+    pub const MAX: Self = Self(b'7');
     /// Parses an ASCII digit 0 through 7.
     /// # Errors
     /// Returns `BadFrameNumber` for any other byte.
     pub fn new(byte: u8) -> Result<Self, Error> {
-        if (b'0'..=b'7').contains(&byte) {
+        if (b'0'..=Self::MAX.0).contains(&byte) {
             Ok(Self(byte))
         } else {
             Err(Error::BadFrameNumber(byte))
@@ -44,10 +46,17 @@ impl FrameNumber {
         self.0
     }
 
+    /// Returns the validated numeric sequence without its ASCII encoding.
+    #[must_use]
+    pub const fn value(self) -> u8 {
+        // Constructors and rollover retain ASCII digits, so this explicit offset cannot wrap.
+        self.0.wrapping_sub(b'0')
+    }
+
     /// Advances a new frame, rolling seven over to zero.
     #[must_use]
     pub fn next(self) -> Self {
-        Self(if self.0 == b'7' {
+        Self(if self.0 == Self::MAX.0 {
             b'0'
         } else {
             self.0.wrapping_add(1)

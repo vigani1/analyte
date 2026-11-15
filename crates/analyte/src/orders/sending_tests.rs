@@ -56,10 +56,26 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
         .request(deadline(), move |store| {
             store.order_page(&page)?;
             let completed = store
-                .reserve_send(&completed, std::num::NonZeroU64::MIN, 101, 30)?
+                .reserve_send(
+                    &OrderReservation {
+                        identity: &completed,
+                        version: std::num::NonZeroU64::MIN,
+                        now: 101,
+                        freshness: 30,
+                    },
+                    analyte_store::ReserveOptions::default(),
+                )?
                 .map_err(|_| analyte_store::Error::Conflict)?;
             let interrupted = store
-                .reserve_send(&interrupted, std::num::NonZeroU64::MIN, 101, 30)?
+                .reserve_send(
+                    &OrderReservation {
+                        identity: &interrupted,
+                        version: std::num::NonZeroU64::MIN,
+                        now: 101,
+                        freshness: 30,
+                    },
+                    analyte_store::ReserveOptions::default(),
+                )?
                 .map_err(|_| analyte_store::Error::Conflict)?;
             assert!(
                 store.claim(101)?.is_none(),
@@ -95,7 +111,15 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
             assert_eq!(interrupted.source_code.as_str(), "host-restart");
             for key in [completed_key, interrupted_key] {
                 assert!(matches!(
-                    store.reserve_send(&key, std::num::NonZeroU64::MIN, 102, 30)?,
+                    store.reserve_send(
+                        &OrderReservation {
+                            identity: &key,
+                            version: std::num::NonZeroU64::MIN,
+                            now: 102,
+                            freshness: 30
+                        },
+                        analyte_store::ReserveOptions::default()
+                    )?,
                     Err(analyte_store::SendRefusal::AlreadyReserved)
                 ));
             }
