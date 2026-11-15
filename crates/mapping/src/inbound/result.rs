@@ -41,93 +41,10 @@ pub(crate) fn part(
             }
         })
         .transpose()?;
-    let mut qc_class = QcClass::Unknown;
-    let mut classified = false;
-    for rule in &crate::field_mappings(config)?.qc {
-        if source.selected(index, &rule.field)?.as_deref() == Some(rule.value.as_str()) {
-            let selected = match rule.classification {
-                Classification::Patient => QcClass::Patient,
-                Classification::Control => QcClass::Control,
-                Classification::Calibration => QcClass::Calibration,
-                Classification::Unknown => QcClass::Unknown,
-            };
-            if classified && selected != qc_class {
-                finding(output, position, Problem::ConflictingClassification)?;
-                qc_class = QcClass::Unknown;
-                break;
-            }
-            qc_class = selected;
-            classified = true;
-        }
-    }
+    let qc_class = classify(source, index, config, output)?;
     let ancestors = source.ancestors(index)?;
     let path = source_path(source, index)?;
-    let mut times = Vec::new();
-    for ancestor in &ancestors {
-        let Some(node) = source.nodes.get(*ancestor) else {
-            continue;
-        };
-        let fields: &[usize] = match node.name.as_str() {
-            "H" => &[14],
-            "O" => &[7, 8, 9, 15, 23],
-            "R" => &[10, 12, 13],
-            "MSH" => &[7],
-            "OBR" => &[7, 8, 14, 22],
-            "OBX" => &[12, 14, 19],
-            "SPM" => &[17, 18, 19],
-            _ => &[],
-        };
-        for field in fields {
-            if let Some(raw) = present(source.component(*ancestor, *field, 1, 1)?) {
-                let mut time = time::parse(&raw, source.position(*ancestor, *field))?;
-                if let Some(original) = source.raw(*ancestor, *field)? {
-                    time.original = text(&original, source.position(*ancestor, *field))?;
-                }
-                if !astm && let Some(degree) = present(source.component(*ancestor, *field, 1, 2)?) {
-                    let declared = match degree.as_str() {
-                        "Y" => TimePrecision::Year,
-                        "L" => TimePrecision::Month,
-                        "D" => TimePrecision::Day,
-                        "H" => TimePrecision::Hour,
-                        "M" => TimePrecision::Minute,
-                        "S" => TimePrecision::Second,
-                        _ => TimePrecision::Unknown,
-                    };
-                    // A deprecated TS precision indicator cannot make invalid or
-                    // incomplete timestamp digits into a valid source time.
-                    let rank = |precision| match precision {
-                        TimePrecision::Unknown => 0,
-                        TimePrecision::Year => 1,
-                        TimePrecision::Month => 2,
-                        TimePrecision::Day => 3,
-                        TimePrecision::Hour => 4,
-                        TimePrecision::Minute => 5,
-                        TimePrecision::Second => 6,
-                        TimePrecision::FractionalSecond => 7,
-                    };
-                    time.precision = if rank(declared) <= rank(time.precision) {
-                        declared
-                    } else {
-                        TimePrecision::Unknown
-                    };
-                    if time.precision != TimePrecision::Second {
-                        time.parsed = None;
-                    }
-                }
-                if time.precision == TimePrecision::Unknown {
-                    finding(
-                        output,
-                        source.position(*ancestor, *field),
-                        Problem::InvalidTime,
-                    )?;
-                }
-                times.push(NamedSourceTime {
-                    role: identifier(&format!("{}.{field}", node.name), position)?,
-                    time,
-                });
-            }
-        }
-    }
+    let times = source_times(source, &ancestors, position, output)?;
     let mut comments = Vec::new();
     for ancestor in &ancestors {
         let Some(node) = source.nodes.get(*ancestor) else {
@@ -231,4 +148,109 @@ fn status(code: &str, astm: bool) -> ResultStatus {
         "U" if !astm => ResultStatus::Final,
         _ => ResultStatus::Unknown,
     }
+}
+
+fn classify(
+    source: &Source<'_>,
+    index: usize,
+    config: &Validated,
+    output: &mut Output,
+) -> Result<QcClass, Error> {
+    let position = source.position(index, 0);
+    let mut qc_class = QcClass::Unknown;
+    let mut classified = false;
+    for rule in &crate::field_mappings(config)?.qc {
+        if source.selected(index, &rule.field)?.as_deref() == Some(rule.value.as_str()) {
+            let selected = match rule.classification {
+                Classification::Patient => QcClass::Patient,
+                Classification::Control => QcClass::Control,
+                Classification::Calibration => QcClass::Calibration,
+                Classification::Unknown => QcClass::Unknown,
+            };
+            if classified && selected != qc_class {
+                finding(output, position, Problem::ConflictingClassification)?;
+                qc_class = QcClass::Unknown;
+                break;
+            }
+            qc_class = selected;
+            classified = true;
+        }
+    }
+    Ok(qc_class)
+}
+
+fn source_times(
+    source: &Source<'_>,
+    ancestors: &[usize],
+    position: crate::Position,
+    output: &mut Output,
+) -> Result<Vec<NamedSourceTime>, Error> {
+    let astm = source.syntax == FieldSyntax::AstmLis02;
+    let mut times = Vec::new();
+    for ancestor in ancestors {
+        let Some(node) = source.nodes.get(*ancestor) else {
+            continue;
+        };
+        let fields: &[usize] = match node.name.as_str() {
+            "H" => &[14],
+            "O" => &[7, 8, 9, 15, 23],
+            "R" => &[10, 12, 13],
+            "MSH" => &[7],
+            "OBR" => &[7, 8, 14, 22],
+            "OBX" => &[12, 14, 19],
+            "SPM" => &[17, 18, 19],
+            _ => &[],
+        };
+        for field in fields {
+            if let Some(raw) = present(source.component(*ancestor, *field, 1, 1)?) {
+                let mut time = time::parse(&raw, source.position(*ancestor, *field))?;
+                if let Some(original) = source.raw(*ancestor, *field)? {
+                    time.original = text(&original, source.position(*ancestor, *field))?;
+                }
+                if !astm && let Some(degree) = present(source.component(*ancestor, *field, 1, 2)?) {
+                    let declared = match degree.as_str() {
+                        "Y" => TimePrecision::Year,
+                        "L" => TimePrecision::Month,
+                        "D" => TimePrecision::Day,
+                        "H" => TimePrecision::Hour,
+                        "M" => TimePrecision::Minute,
+                        "S" => TimePrecision::Second,
+                        _ => TimePrecision::Unknown,
+                    };
+                    // A deprecated TS precision indicator cannot make invalid or
+                    // incomplete timestamp digits into a valid source time.
+                    let rank = |precision| match precision {
+                        TimePrecision::Unknown => 0,
+                        TimePrecision::Year => 1,
+                        TimePrecision::Month => 2,
+                        TimePrecision::Day => 3,
+                        TimePrecision::Hour => 4,
+                        TimePrecision::Minute => 5,
+                        TimePrecision::Second => 6,
+                        TimePrecision::FractionalSecond => 7,
+                    };
+                    time.precision = if rank(declared) <= rank(time.precision) {
+                        declared
+                    } else {
+                        TimePrecision::Unknown
+                    };
+                    if time.precision != TimePrecision::Second {
+                        time.parsed = None;
+                    }
+                }
+                if time.precision == TimePrecision::Unknown {
+                    finding(
+                        output,
+                        source.position(*ancestor, *field),
+                        Problem::InvalidTime,
+                    )?;
+                }
+                times.push(NamedSourceTime {
+                    role: identifier(&format!("{}.{field}", node.name), position)?,
+                    time,
+                });
+            }
+        }
+    }
+    Ok(times)
 }

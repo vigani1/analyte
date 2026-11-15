@@ -226,7 +226,7 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::
     };
     let installed = &settings.policy();
     Ok(Config::new(
-        if installed.alternate {
+        if installed.ack_point == analyte_config::AckPoint::Etx {
             Mode::Alternate
         } else {
             Mode::Literal
@@ -235,10 +235,10 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::
         settings.frame_limit(),
         &installed.suffix,
         Checksum {
-            include_stx: installed.include_stx,
-            include_suffix: installed.include_suffix,
-            uppercase: installed.uppercase,
-            accept_either_case: installed.accept_either_case,
+            include_stx: installed.include_stx.into(),
+            include_suffix: installed.include_suffix.into(),
+            uppercase: installed.hex_case.into(),
+            accept_either_case: installed.checksum_acceptance.into(),
         },
     )?)
 }

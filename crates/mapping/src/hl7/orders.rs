@@ -92,109 +92,13 @@ impl Command {
             .as_ref()
             .ok_or(Error::Context("HL7 send config absent"))?;
         let cfg = &cfg.settings();
-        let header = order::Header {
-            application: cfg.application.as_str().as_bytes(),
-            facility: cfg.facility.as_ref().map_or(b"", |v| v.as_str().as_bytes()),
-            peer_application: cfg.peer_application.as_str().as_bytes(),
-            peer_facility: cfg
-                .peer_facility
-                .as_ref()
-                .map_or(b"", |v| v.as_str().as_bytes()),
-            control_id: response.control_id,
-            timestamp: order::Timestamp::new(response.timestamp)?,
-            version: self.version,
-            processing: match cfg.processing {
-                analyte_config::Hl7Processing::Production => order::Processing::Production,
-                analyte_config::Hl7Processing::Training => order::Processing::Training,
-                analyte_config::Hl7Processing::Debugging => order::Processing::Debugging,
-            },
-        };
+        let header = self.map_header(cfg, response)?;
         if cancel {
-            let mut orders = Vec::new();
-            for item in items {
-                let namespace = item
-                    .namespace
-                    .ok_or(Error::Context("HL7-item-has-no-placer-namespace"))?;
-                orders.push(order::Order::Cancel {
-                    placer: order::OrderId::new(
-                        item.placer.as_bytes(),
-                        namespace.as_str().as_bytes(),
-                    )?,
-                    filler: None,
-                });
-            }
-            let sent = match self.version {
-                Version::V231 => {
-                    order::orm(&orders, order::Subject::Unspecified, header, self.options)?
-                }
-                Version::V251 => {
-                    order::oml(&orders, order::Subject::Unspecified, header, self.options)?
-                }
-            };
-            return Ok(order::context(
-                &sent,
-                self.group.as_bytes(),
-                None,
-                self.options,
-            )?);
+            return self.map_cancel(items, header);
         }
         let sample = order::SampleId::new(self.app.sample.as_str().as_bytes())?;
-        let source = match (&cfg.specimen_system, &self.app.specimen_type) {
-            (Some(system), Some(specimen)) => {
-                let mapped = crate::orders::codes::map_specimen(
-                    self.settings.tables().specimen_types().as_deref(),
-                    specimen,
-                )
-                .map_err(|source| Error::lookup("HL7-unmapped-specimen-type", source))?;
-                let code = order::Code::new(
-                    mapped.machine.as_str().as_bytes(),
-                    b"",
-                    system.as_str().as_bytes(),
-                )?;
-                Some(
-                    if let Some(version) = &cfg.specimen_version
-                        && self.version == Version::V251
-                    {
-                        code.with_version(version.as_str().as_bytes())?
-                    } else {
-                        code
-                    },
-                )
-            }
-            (Some(_), None) => return Err(Error::Context("HL7-missing-specimen-type")),
-            (None, _) => None,
-        };
-        let priority = crate::orders::codes::map_priority(
-            self.settings.tables().priorities(),
-            self.app.priority,
-        )
-        .map_err(|source| Error::lookup("HL7-unmapped-priority", source))?;
-        let priority = match &priority.machine {
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
-                order::Priority::Routine
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::S) => {
-                order::Priority::Stat
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::A) => {
-                order::Priority::Asap
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::P) => {
-                order::Priority::Preop
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::C) => {
-                order::Priority::Callback
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => {
-                order::Priority::TimingCritical
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::Prn) => {
-                order::Priority::AsNeeded
-            }
-            analyte_config::MachinePriority::Custom(_) => {
-                return Err(Error::Context("HL7-unsupported-priority"));
-            }
-        };
+        let source = self.map_specimen(cfg)?;
+        let priority = self.map_priority()?;
         let mut orders = Vec::new();
         for item in items {
             let namespace = item
@@ -209,10 +113,10 @@ impl Command {
                 });
                 continue;
             }
-            let [test] = item.tests else {
+            let [requested] = item.tests else {
                 return Err(Error::Context("HL7-send-item-must-cover-one-test"));
             };
-            let mapped = crate::orders::codes::map_test(self.settings.tables().tests(), test)
+            let mapped = crate::orders::codes::map_test(self.settings.tables().tests(), requested)
                 .map_err(|source| Error::lookup("HL7-unmapped-test", source))?;
             let [code, text, system] = mapped.machine_components.as_slice() else {
                 return Err(Error::Context("HL7-test-components"));
@@ -277,5 +181,125 @@ impl Command {
             position,
             self.options,
         )?)
+    }
+    fn map_header<'a>(
+        &self,
+        cfg: &'a analyte_config::Hl7Send,
+        response: analyte_hl7::Response<'a>,
+    ) -> Result<order::Header<'a>, Error> {
+        Ok(order::Header {
+            application: cfg.application.as_str().as_bytes(),
+            facility: cfg.facility.as_ref().map_or(b"", |v| v.as_str().as_bytes()),
+            peer_application: cfg.peer_application.as_str().as_bytes(),
+            peer_facility: cfg
+                .peer_facility
+                .as_ref()
+                .map_or(b"", |v| v.as_str().as_bytes()),
+            control_id: response.control_id,
+            timestamp: order::Timestamp::new(response.timestamp)?,
+            version: self.version,
+            processing: match cfg.processing {
+                analyte_config::Hl7Processing::Production => order::Processing::Production,
+                analyte_config::Hl7Processing::Training => order::Processing::Training,
+                analyte_config::Hl7Processing::Debugging => order::Processing::Debugging,
+            },
+        })
+    }
+
+    fn map_cancel(
+        &self,
+        items: &[crate::orders::OutboundItem<'_>],
+        header: order::Header<'_>,
+    ) -> Result<OrderMessage, Error> {
+        let mut orders = Vec::new();
+        for item in items {
+            let namespace = item
+                .namespace
+                .ok_or(Error::Context("HL7-item-has-no-placer-namespace"))?;
+            orders.push(order::Order::Cancel {
+                placer: order::OrderId::new(item.placer.as_bytes(), namespace.as_str().as_bytes())?,
+                filler: None,
+            });
+        }
+        let sent = match self.version {
+            Version::V231 => {
+                order::orm(&orders, order::Subject::Unspecified, header, self.options)?
+            }
+            Version::V251 => {
+                order::oml(&orders, order::Subject::Unspecified, header, self.options)?
+            }
+        };
+        Ok(order::context(
+            &sent,
+            self.group.as_bytes(),
+            None,
+            self.options,
+        )?)
+    }
+
+    fn map_specimen<'a>(
+        &'a self,
+        cfg: &'a analyte_config::Hl7Send,
+    ) -> Result<Option<order::Code<'a>>, Error> {
+        Ok(match (&cfg.specimen_system, &self.app.specimen_type) {
+            (Some(system), Some(specimen)) => {
+                let mapped = crate::orders::codes::map_specimen(
+                    self.settings.tables().specimen_types().as_deref(),
+                    specimen,
+                )
+                .map_err(|source| Error::lookup("HL7-unmapped-specimen-type", source))?;
+                let code = order::Code::new(
+                    mapped.machine.as_str().as_bytes(),
+                    b"",
+                    system.as_str().as_bytes(),
+                )?;
+                Some(
+                    if let Some(version) = &cfg.specimen_version
+                        && self.version == Version::V251
+                    {
+                        code.with_version(version.as_str().as_bytes())?
+                    } else {
+                        code
+                    },
+                )
+            }
+            (Some(_), None) => return Err(Error::Context("HL7-missing-specimen-type")),
+            (None, _) => None,
+        })
+    }
+
+    fn map_priority(&self) -> Result<order::Priority, Error> {
+        let priority = crate::orders::codes::map_priority(
+            self.settings.tables().priorities(),
+            self.app.priority,
+        )
+        .map_err(|source| Error::lookup("HL7-unmapped-priority", source))?;
+        let priority = match &priority.machine {
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
+                order::Priority::Routine
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::S) => {
+                order::Priority::Stat
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::A) => {
+                order::Priority::Asap
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::P) => {
+                order::Priority::Preop
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::C) => {
+                order::Priority::Callback
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => {
+                order::Priority::TimingCritical
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::Prn) => {
+                order::Priority::AsNeeded
+            }
+            analyte_config::MachinePriority::Custom(_) => {
+                return Err(Error::Context("HL7-unsupported-priority"));
+            }
+        };
+        Ok(priority)
     }
 }
