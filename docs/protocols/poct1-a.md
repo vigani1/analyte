@@ -34,6 +34,8 @@ support documented implementation, not hardware or simulator qualification.
 - [x] **R** Apply normative DTD structures to supported messages (Appendix B §12, pp.171–202); secure local schema handling is an additional project requirement. Test: `poct01_b_12_auxiliary_metadata_and_encapsulation_are_local_only`.
 - [x] **R** Tolerate allowed asynchronous observations, preserve message/ACK order and apply flow control when unable to accept more data (Appendix B §9, pp.138–139). Test: `poct01_b_9_bounded_backpressure_returns_unconsumed_input`.
 
+- [x] **R** Bound every host reply by the smaller of the configured limit and device receive capacity; reject an unfit message without truncation (Appendix B section 5.7, p.96). Host test: `poct01_b5_7_host_never_sends_beyond_device_capacity`.
+
 ### Optional extensions and conditional behavior
 
 - [ ] **O/C** Device events: request/receive/acknowledge events and retain operator/event context and EOT (Appendix B §§4.1.6,5.8,6.3, pp.79–80,96,112). Remaining: extension not implemented or advertised.

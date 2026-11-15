@@ -701,3 +701,23 @@ async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Resul
     );
     run.close().await
 }
+
+// CLSI POCT01-A2 Appendix B section 5.7, p.96: the advertised capacity bounds host replies.
+#[tokio::test]
+async fn poct01_b5_7_host_never_sends_beyond_device_capacity() -> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let hello = poct_peer::hello("hello").replace(
+        "<DSC.max_message_sz NULL=\"PINF\"/>",
+        "<DSC.max_message_sz V=\"1\"/>",
+    );
+    run.peer.write_all(hello.as_bytes()).await?;
+    let mut response = [0u8; 1];
+    let received =
+        tokio::time::timeout(Duration::from_secs(5), run.peer.read(&mut response)).await??;
+    assert_eq!(
+        received, 0,
+        "an unfit reply must fail without sending or truncating it"
+    );
+    run.stored(hello.as_bytes(), "analyte-poct")?;
+    run.close().await
+}
