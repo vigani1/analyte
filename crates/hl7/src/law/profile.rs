@@ -6,6 +6,8 @@ use crate::{Message, Segment};
 /// The profile validates content; it never resolves identities by guessing.
 #[derive(Debug, Clone, Copy)]
 pub struct Profile<'a> {
+    pub(super) mass_spectrometry: bool,
+    pub(super) contributing_substances: bool,
     pub(super) dilution: bool,
     pub(super) dilution_required: bool,
     pub(super) manager_repeat: bool,
@@ -32,6 +34,8 @@ impl<'a> Profile<'a> {
     #[must_use]
     pub fn receive() -> Self {
         Self {
+            mass_spectrometry: true,
+            contributing_substances: true,
             dilution: true,
             dilution_required: false,
             manager_repeat: false,
@@ -100,6 +104,20 @@ impl<'a> Profile<'a> {
     pub fn with_dilution(mut self, selected: bool) -> Self {
         self.dilution = selected;
         self.dilution_required = selected;
+        self
+    }
+
+    /// Selects received mass-spectrometry probability; manager output always excludes it.
+    #[must_use]
+    pub fn with_mass_spectrometry(mut self, selected: bool) -> Self {
+        self.mass_spectrometry = selected;
+        self
+    }
+
+    /// Selects contributing inventory support; unsupported input remains available as raw bytes.
+    #[must_use]
+    pub fn with_contributing_substances(mut self, selected: bool) -> Self {
+        self.contributing_substances = selected;
         self
     }
 
@@ -187,8 +205,17 @@ impl<'a> Profile<'a> {
                 });
         super::order::validate_links(message, self, direction)?;
         let mut ordinal = 0usize;
+        let mut note_sequence = 0usize;
         for segment in message.segments() {
             self.validate_segment(segment, direction)?;
+            if segment.id() == b"NTE" {
+                note_sequence = note_sequence.checked_add(1).ok_or(content("NTE", 1))?;
+                if raw(segment, 1) != note_sequence.to_string().as_bytes() {
+                    return Err(content("NTE", 1));
+                }
+            } else {
+                note_sequence = 0;
+            }
             if segment.id() == b"SPM" {
                 ordinal = ordinal.checked_add(1).ok_or(content("SPM", 1))?;
                 if super::specimen::set_id(raw(segment, 1)) != Some(ordinal) {
@@ -214,6 +241,7 @@ impl<'a> Profile<'a> {
             b"SPM" | b"SAC" => super::specimen::validate(segment, self, direction),
             b"ORC" | b"OBR" | b"TQ1" => super::order::validate(segment, self, direction),
             b"TCD" => super::tcd::validate(segment, self, direction),
+            b"OBX" | b"NTE" | b"INV" => super::observation::validate(segment, self, direction),
             _ => validate_segment(segment),
         }
     }
@@ -298,52 +326,6 @@ impl FieldRule {
     }
 }
 
-fn check(
-    segment: Segment<'_>,
-    id: &'static str,
-    field: usize,
-    required: bool,
-    length: usize,
-    maximum: usize,
-) -> Result<(), Error> {
-    FieldRule {
-        segment: id,
-        field,
-        usage: if required {
-            Usage::Mandatory
-        } else {
-            Usage::RequiredFromAnalyzer
-        },
-        minimum: 1,
-        maximum,
-        length,
-    }
-    .check(segment)
-}
-
-fn coded(
-    segment: Segment<'_>,
-    id: &'static str,
-    field: usize,
-    description: bool,
-) -> Result<(), Error> {
-    let value = raw(segment, field);
-    if value.is_empty() || value == b"\"\"" {
-        return Ok(());
-    }
-    let delimiter = segment.delimiters.component;
-    for repetition in value.split(|b| *b == segment.delimiters.repetition) {
-        let parts: Vec<_> = repetition.split(|b| *b == delimiter).collect();
-        for (index, maximum) in [(0, 20), (1, 199), (2, 12)] {
-            let component = parts.get(index).copied().unwrap_or_default();
-            if component.len() > maximum || ((index != 1 || description) && component.is_empty()) {
-                return Err(content(id, field));
-            }
-        }
-    }
-    Ok(())
-}
-
 /// Checks shared LAW segment constraints without interpreting clinical content.
 /// This entry point checks Appendix C fields independently of message grouping.
 /// Control segments use the strict send policy; use `validate_control` for
@@ -375,166 +357,13 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
     if matches!(segment.id(), b"MSH" | b"MSA" | b"ERR") {
         return super::control::validate_segment(segment, super::ControlDirection::Send);
     }
-    let (name, allowed): (&str, &[usize]) = match segment.id() {
-        b"NTE" => ("NTE", &[1, 2, 3, 4]),
-        b"INV" => ("INV", &[1, 2, 3, 4, 12, 16]),
-        b"OBX" => (
-            "OBX",
-            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 16, 18, 19, 21, 29],
-        ),
-        b"QPD" | b"RCP" | b"QAK" => return Ok(()),
-        _ => return Err(content("LAW", 0)),
-    };
-    for (offset, field) in segment.fields().enumerate() {
-        // MSH iteration includes MSH-1, so one-based positions apply to every segment.
-        let number = offset.checked_add(1).ok_or(content(name, 0))?;
-        if !allowed.contains(&number) && !field.raw().is_empty() {
-            return Err(content(name, number));
-        }
-    }
     match segment.id() {
-        b"NTE" => {
-            positive_integer(raw(segment, 1), "NTE", 1)?;
-            for (field, length) in [(1, 4), (2, 1), (3, 65536)] {
-                check(
-                    segment,
-                    "NTE",
-                    field,
-                    true,
-                    length,
-                    if field == 3 { 1024 } else { 1 },
-                )?;
-            }
-            if !matches!(raw(segment, 2), b"A" | b"Z") {
-                return Err(content("NTE", 2));
-            }
-            coded(segment, "NTE", 4, false)?;
+        b"OBX" | b"NTE" | b"INV" => {
+            super::observation::validate(segment, Profile::receive(), super::ControlDirection::Send)
         }
-        b"INV" => {
-            for field in [1, 2, 3] {
-                check(segment, "INV", field, true, 250, 1)?;
-                coded(segment, "INV", field, false)?;
-            }
-        }
-        b"OBX" => {
-            positive_integer(raw(segment, 1), "OBX", 1)?;
-            for (field, length, maximum) in [
-                (1, 4, 1),
-                (3, 250, 1),
-                (4, 20, 1),
-                (5, 99999, 1024),
-                (8, 250, 1024),
-                (11, 1, 1),
-                (16, 250, 1024),
-                (18, 427, 1024),
-                (19, 14, 1),
-                (29, 4, 1),
-            ] {
-                check(segment, "OBX", field, true, length, maximum)?;
-            }
-            coded(segment, "OBX", 3, true)?;
-            coded(segment, "OBX", 8, false)?;
-            if !timestamp(raw(segment, 19), false) {
-                return Err(content("OBX", 19));
-            }
-            if raw(segment, 2) == b"CE" {
-                coded(segment, "OBX", 5, true)?;
-            }
-            let supplemental = raw(segment, 3)
-                .split(|b| *b == segment.delimiters.component)
-                .nth(3);
-            if segment
-                .field(5)
-                .is_some_and(|field| field.repetitions().count() > 1)
-                && !matches!(supplemental, Some(b"S_RAW" | b"S_OTHER"))
-            {
-                return Err(content("OBX", 5));
-            }
-            if !matches!(raw(segment, 11), b"X" | b"P" | b"R" | b"F" | b"C") {
-                return Err(content("OBX", 11));
-            }
-            if !matches!(raw(segment, 29), b"AOE" | b"ASC" | b"RSLT" | b"SCI") {
-                return Err(content("OBX", 29));
-            }
-            let null = raw(segment, 5) == b"\"\"";
-            check(segment, "OBX", 2, !null, 2, 1)?;
-            if null && !raw(segment, 2).is_empty() {
-                return Err(content("OBX", 2));
-            }
-            if !null
-                && !matches!(
-                    raw(segment, 2),
-                    b"CE" | b"ED" | b"EI" | b"NM" | b"NA" | b"RP" | b"SN" | b"ST" | b"TX"
-                )
-            {
-                return Err(content("OBX", 2));
-            }
-            let numeric = matches!(raw(segment, 2), b"NM" | b"SN");
-            check(segment, "OBX", 6, numeric, 250, 1)?;
-            if !numeric && !raw(segment, 6).is_empty() {
-                return Err(content("OBX", 6));
-            }
-            let units = raw(segment, 6);
-            if numeric && units != b"\"\"" {
-                let parts: Vec<_> = units
-                    .split(|b| *b == segment.delimiters.component)
-                    .collect();
-                if parts.get(1).is_none_or(|p| p.is_empty()) {
-                    return Err(content("OBX", 6));
-                }
-                let identifier = parts.first().copied().unwrap_or_default();
-                let system = parts.get(2).copied().unwrap_or_default();
-                if (!identifier.is_empty() && system != b"UCUM")
-                    || (identifier.is_empty() && !system.is_empty())
-                {
-                    return Err(content("OBX", 6));
-                }
-            }
-            let sub_id: Vec<_> = raw(segment, 4)
-                .split(|b| *b == segment.delimiters.component)
-                .collect();
-            if sub_id.first().is_none_or(|id| id.is_empty()) || sub_id.len() > 3 {
-                return Err(content("OBX", 4));
-            }
-            for id in sub_id.iter().skip(1) {
-                if !id.is_empty()
-                    && (!id.iter().all(u8::is_ascii_digit) || id.iter().all(|b| *b == b'0'))
-                {
-                    return Err(content("OBX", 4));
-                }
-            }
-            for field in [16, 18] {
-                for repetition in segment
-                    .field(field)
-                    .ok_or(content("OBX", field))?
-                    .repetitions()
-                {
-                    let mut parts = repetition.components();
-                    if parts.next().is_none_or(|p| p.raw().is_empty()) {
-                        return Err(content("OBX", field));
-                    }
-                    if field == 18 && parts.next().is_none_or(|p| p.raw().is_empty()) {
-                        return Err(content("OBX", field));
-                    }
-                }
-            }
-            let equipment = segment.field(18).ok_or(content("OBX", 18))?;
-            if equipment.repetitions().count() < 2 {
-                return Err(content("OBX", 18));
-            }
-        }
-        b"QPD" | b"RCP" | b"QAK" => {}
-        _ => return Err(content("LAW", 0)),
+        b"QPD" | b"RCP" | b"QAK" => Ok(()),
+        _ => Err(content("LAW", 0)),
     }
-    Ok(())
-}
-
-fn positive_integer(value: &[u8], segment: &'static str, field: usize) -> Result<(), Error> {
-    if value.is_empty() || !value.iter().all(u8::is_ascii_digit) || value.iter().all(|b| *b == b'0')
-    {
-        return Err(content(segment, field));
-    }
-    Ok(())
 }
 
 pub(super) fn header(message: &Message, transaction: &[u8], triggered: bool) -> Result<(), Error> {

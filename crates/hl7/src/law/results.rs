@@ -5,47 +5,43 @@ use crate::{AckCode, AckError, Field, Message, Options, Response, Responsibility
 /// Source observation state; revisions remain a host responsibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResultStatus {
-    /// Final observation.
+    /// Final observation; never inferred from a value or earlier message.
     Final,
     /// Preliminary observation.
     Preliminary,
-    /// Corrected observation.
+    /// Explicit C status: correction of a previously final observation.
     Corrected,
-    /// Result removed.
-    Deleted,
-    /// Previously transmitted result was wrong.
-    Wrong,
-    /// Status change to final without retransmitting the value.
-    Finalize,
-    /// Partial result.
-    Partial,
-    /// Not verified.
+    /// Result entered but not verified.
     Unverified,
-    /// Could not obtain a result.
+    /// This run could not obtain a result.
     Unobtainable,
-    /// Results pending.
-    Pending,
-    /// No result available yet.
-    NoResult,
-    /// Order detail rather than a result.
-    OrderDetail,
 }
 
-fn status(value: &[u8]) -> Result<ResultStatus, Error> {
-    match value {
-        b"F" => Ok(ResultStatus::Final),
-        b"P" => Ok(ResultStatus::Preliminary),
-        b"C" => Ok(ResultStatus::Corrected),
-        b"D" => Ok(ResultStatus::Deleted),
-        b"W" => Ok(ResultStatus::Wrong),
-        b"U" => Ok(ResultStatus::Finalize),
-        b"S" => Ok(ResultStatus::Partial),
-        b"R" => Ok(ResultStatus::Unverified),
-        b"X" => Ok(ResultStatus::Unobtainable),
-        b"I" => Ok(ResultStatus::Pending),
-        b"N" => Ok(ResultStatus::NoResult),
-        b"O" => Ok(ResultStatus::OrderDetail),
-        _ => Err(content("OBX", 11)),
+impl ResultStatus {
+    /// Parses exactly the C.7-18 LAW subset, retaining correction only for C.
+    /// # Errors
+    /// Returns OBX-11 for any other status spelling.
+    pub fn parse(value: &[u8]) -> Result<Self, Error> {
+        match value {
+            b"F" => Ok(Self::Final),
+            b"P" => Ok(Self::Preliminary),
+            b"C" => Ok(Self::Corrected),
+            b"R" => Ok(Self::Unverified),
+            b"X" => Ok(Self::Unobtainable),
+            _ => Err(content("OBX", 11)),
+        }
+    }
+
+    /// Returns the exact declared status code without a lifecycle inference.
+    #[must_use]
+    pub fn as_bytes(self) -> &'static [u8] {
+        match self {
+            Self::Final => b"F",
+            Self::Preliminary => b"P",
+            Self::Corrected => b"C",
+            Self::Unverified => b"R",
+            Self::Unobtainable => b"X",
+        }
     }
 }
 
@@ -61,9 +57,9 @@ pub enum Value<'a> {
     Number(&'a [u8]),
     /// Structured numeric SN, including comparator/ratio.
     StructuredNumber(&'a [u8]),
-    /// ST, TX or FT text; escapes remain available for lossless decoding.
+    /// ST or TX text; escapes remain available for lossless decoding.
     Text(&'a [u8]),
-    /// Coded CE or CWE value.
+    /// Coded CE value.
     Coded(&'a [u8]),
     /// Embedded data, retained without interpretation.
     Encapsulated(&'a [u8]),
@@ -75,114 +71,48 @@ pub enum Value<'a> {
     Time(&'a [u8]),
 }
 
-fn decimal(value: &[u8]) -> bool {
-    let unsigned = value
-        .strip_prefix(b"+")
-        .or_else(|| value.strip_prefix(b"-"))
-        .unwrap_or(value);
-    let mut point = false;
-    let mut digit = false;
-    for byte in unsigned {
-        if byte.is_ascii_digit() {
-            digit = true;
-        } else if *byte == b'.' && !point {
-            point = true;
-        } else {
-            return false;
+impl<'a> Value<'a> {
+    /// Returns the original encoded spelling, without numeric or unit conversion.
+    #[must_use]
+    pub fn raw(self) -> &'a [u8] {
+        match self {
+            Self::Null => b"\"\"",
+            Self::Identity(value)
+            | Self::Number(value)
+            | Self::StructuredNumber(value)
+            | Self::Text(value)
+            | Self::Coded(value)
+            | Self::Encapsulated(value)
+            | Self::Reference(value)
+            | Self::Array(value)
+            | Self::Time(value) => value,
         }
     }
-    digit
 }
 
+// Field validation happens once at the message boundary; these views only classify it.
 fn values(segment: Segment<'_>) -> Result<Vec<Value<'_>>, Error> {
     let field = segment.field(5).ok_or(content("OBX", 5))?;
     if field.is_null() {
         return Ok(vec![Value::Null]);
     }
-    let kind = raw(segment, 2);
-    let mut values = Vec::new();
-    for repetition in field.repetitions() {
-        let value = repetition.raw();
-        if value.is_empty() {
-            return Err(content("OBX", 5));
-        }
-        values.push(match kind {
-            b"NM" => {
-                if value.len() > 16 || !decimal(value) {
-                    return Err(content("OBX", 5));
-                }
-                Value::Number(value)
-            }
-            b"SN" => {
-                let parts: Vec<_> = value
-                    .split(|b| *b == segment.delimiters.component)
-                    .collect();
-                if parts.len() > 4
-                    || !matches!(
-                        parts.first().copied(),
-                        Some(b"" | b"<" | b">" | b"<=" | b">=" | b"=" | b"<>")
-                    )
-                    || parts.get(1).is_none_or(|v| !decimal(v))
-                {
-                    return Err(content("OBX", 5));
-                }
-                let separator = parts.get(2).copied().unwrap_or_default();
-                if !matches!(separator, b"" | b":" | b"/" | b"-" | b"+")
-                    || (!separator.is_empty() && parts.get(3).is_none_or(|v| !decimal(v)))
-                {
-                    return Err(content("OBX", 5));
-                }
-                Value::StructuredNumber(value)
-            }
-            b"ST" | b"TX" | b"FT" => {
-                let maximum = if kind == b"ST" { 200 } else { 65536 };
-                if value.len() > maximum {
-                    return Err(content("OBX", 5));
-                }
-                Value::Text(value)
-            }
-            b"CE" | b"CWE" => Value::Coded(value),
-            b"EI" => Value::Identity(value),
-            b"ED" => {
-                let parts: Vec<_> = value
-                    .split(|b| *b == segment.delimiters.component)
-                    .collect();
-                if parts.len() != 5
-                    || parts.get(1).is_none_or(|p| p.is_empty() || p.len() > 9)
-                    || parts
-                        .get(3)
-                        .is_none_or(|p| !matches!(*p, b"A" | b"Hex" | b"Base64"))
-                    || parts.get(4).is_none_or(|p| p.is_empty())
-                {
-                    return Err(content("OBX", 5));
-                }
-                Value::Encapsulated(value)
-            }
-            b"RP" => {
-                let parts: Vec<_> = value
-                    .split(|b| *b == segment.delimiters.component)
-                    .collect();
-                if parts.len() > 4 || parts.first().is_none_or(|p| p.is_empty() || p.len() > 999) {
-                    return Err(content("OBX", 5));
-                }
-                Value::Reference(value)
-            }
-            b"NA" => {
-                for (index, axis) in value
-                    .split(|b| *b == segment.delimiters.component)
-                    .enumerate()
-                {
-                    if (index == 0 || !axis.is_empty()) && (axis.len() > 16 || !decimal(axis)) {
-                        return Err(content("OBX", 5));
-                    }
-                }
-                Value::Array(value)
-            }
-            b"DT" | b"TM" | b"TS" => Value::Time(value),
-            _ => return Err(content("OBX", 2)),
-        });
-    }
-    Ok(values)
+    field
+        .repetitions()
+        .map(|repetition| {
+            let value = repetition.raw();
+            Ok(match raw(segment, 2) {
+                b"NM" => Value::Number(value),
+                b"SN" => Value::StructuredNumber(value),
+                b"ST" | b"TX" => Value::Text(value),
+                b"CE" => Value::Coded(value),
+                b"EI" => Value::Identity(value),
+                b"ED" => Value::Encapsulated(value),
+                b"RP" => Value::Reference(value),
+                b"NA" => Value::Array(value),
+                _ => return Err(content("OBX", 2)),
+            })
+        })
+        .collect()
 }
 
 /// Parent of a retained supplemental segment, identified by source ordinal.
@@ -397,7 +327,6 @@ impl<'a> Results<'a> {
         let mut has_visit = false;
         let mut has_timing = false;
         for (ordinal, segment) in message.segments().enumerate().skip(1) {
-            profile.validate_segment(segment, super::ControlDirection::Receive)?;
             match segment.id() {
                 b"PID" => {
                     if has_patient || specimen.is_some() {
@@ -514,7 +443,7 @@ impl<'a> Results<'a> {
                         order: order.ok_or(content("OBR", 0))?,
                         specimen: specimen.ok_or(content("SPM", 0))?,
                         container: container.ok_or(content("SAC", 0))?,
-                        status: status(raw(segment, 11))?,
+                        status: ResultStatus::parse(raw(segment, 11))?,
                         detail: None,
                         values: values(segment)?,
                     };
@@ -582,11 +511,17 @@ impl<'a> Results<'a> {
                         Some(Parent::Container(_)) => {
                             if has_container_inventory
                                 || specimen.is_none_or(|s| {
-                                    raw(s, 11).split(|b| *b == d.component).next()
-                                        != Some(b"Q".as_slice())
+                                    super::control::part(raw(s, 11), 1) != b"Q"
+                                        || super::control::part(raw(s, 11), 3) != b"HL70369"
                                 })
                             {
                                 return Err(content("INV", 0));
+                            }
+                            if profile.contributing_substances
+                                && (super::control::part(raw(segment, 3), 1) != b"CO"
+                                    || super::control::part(raw(segment, 3), 3) != b"HL70384")
+                            {
+                                return Err(content("INV", 3));
                             }
                             has_container_inventory = true;
                         }
@@ -627,13 +562,21 @@ impl<'a> Results<'a> {
         let mut code_counts = std::collections::BTreeMap::new();
         for observation in &observations {
             let count = code_counts
-                .entry((observation.order_ordinal, observation.code()))
+                .entry((
+                    observation.order_ordinal,
+                    super::control::part(observation.code(), 1),
+                    super::control::part(observation.code(), 3),
+                ))
                 .or_insert(0usize);
             *count = count.checked_add(1).ok_or(content("OBX", 4))?;
         }
         for observation in &observations {
             let repeated_code = code_counts
-                .get(&(observation.order_ordinal, observation.code()))
+                .get(&(
+                    observation.order_ordinal,
+                    super::control::part(observation.code(), 1),
+                    super::control::part(observation.code(), 3),
+                ))
                 .is_some_and(|count| *count > 1);
             if repeated_code {
                 let parts: Vec<_> = observation.sub_id().split(|b| *b == d.component).collect();

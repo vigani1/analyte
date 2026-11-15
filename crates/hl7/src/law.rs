@@ -398,3 +398,5 @@ pub use failure::{
 mod content;
 
 pub use content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkNotes};
+
+mod observation;

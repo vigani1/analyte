@@ -73,12 +73,10 @@ Covered by source-named synthetic tests and a query property test:
 
 Not yet complete:
 
-- Completion of group 5: OBX/NTE/INV; this round adds no group-5 field rules.
-- Every remaining Appendix C field/component and option predicate and its individual test.
-  The shared validator is not a complete LAW conformance validator.
-- Complete typed validation of all value composites and enhanced-content
-  relationships and every message-group predicate. Specimen-level observations
-  are retained separately from AWOS results.
+- Full LAW conformance beyond the implemented Appendix C field profiles:
+  cross-message enhanced-content relationships, lifecycle transitions and every
+  message-group predicate. Specimen-level observations remain separate from
+  AWOS results; related-observation sending and reference resolution are absent.
 - Related observations and full capability/profile negotiation.
   Related-observation and pooling message workflows are not implemented;
   the outside-pooling field predicates can be validated explicitly.
@@ -299,6 +297,85 @@ negative source cases and build/receive integrations are in
 ORC-4 was corrected: C.8.4 supports only EIP.1/EI.1 there. Evidence remains
 **documented**; complete message structure, lifecycle and simulator
 conformance are still outside the field coverage claimed here.
+
+## LAW observation, comment and inventory fields covered (group 5)
+
+All five segment groups now have field validators. This is documented field
+coverage, not a qualified LAW implementation or a simulator result. The exact
+supported group-5 positions from Appendix C.2/C.5/C.7 are:
+
+- **OBX:** 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 16, 18, 19, 21 and 29.
+  Set ID is positive SI with order-local sequence checks. Value type is
+  mandatory for a valued observation and X for explicit null. Observation
+  CWE has required primary identifier/description/system, optional first and
+  second alternate identifiers, and text/system required when each alternate
+  is supplied; other components are X. Standard/vendor namespaces and the
+  IHELAW supplemental-code subset are checked. Analyzer OG run ID is mandatory;
+  manager OG is available. Positive group/sequence components have five-character
+  limits and become required for repeated primary observation identities within
+  an order. Descriptions do not change that primary identity.
+- **OBX-5:** mandatory value or explicit null, never a deletion instruction.
+  CE, ED, EI, NM, NA, RP, SN, ST and TX have their C.7 component shapes and
+  character limits checked. ED includes namespace-only source HD, datatype,
+  subtype and ASCII/Hex/Base64 encoding checks; RP includes bounded pointer,
+  nested HD and optional vendor type/subtype. No pointer is retrieved.
+  SN follows C.7-11's required comparator column (its empty-comparator examples
+  conflict with that column); numeric components are at most 15 characters.
+  Only IHELAW S_RAW/S_OTHER supplemental values can repeat. The 99999-character
+  enclosing value ceiling and parser's configured byte/repetition bounds apply.
+  `Value::raw` preserves every original encoded byte. NM accepts the profiled
+  decimal grammar; `<0.1`, `1,234`, text and error tokens remain exact ST/TX
+  data when declared as text. Invalid NM is rejected while the original message
+  remains available, rather than guessed or normalized.
+- **Remaining OBX fields:** units (6) are mandatory for NM/SN and otherwise X;
+  explicit null represents unitless numeric data. Unit description is required,
+  identifier is available and UCUM is required exactly when the identifier is
+  valued. Original units are retained without conversion. Available range (7)
+  is a bounded ST. Interpretation (8) is a repeatable CWE or explicit null.
+  C.7-1's five-character length cannot hold C.7-17's required CWE namespace;
+  the explicit CWE component profile governs. Analyzer-only probability (9)
+  is available under LAW_MASS_SPEC and checked in [0,1] using exact decimal
+  spelling, without floating-point conversion. Result status (11) is the
+  exhaustive X/P/R/F/C `ResultStatus`; only declared C means Corrected.
+  Changed values do not infer correction. Manager-only collection time (14)
+  and required analysis time (19) use seconds TS.1 without timezone/precision.
+  Required observer (16) repeats XCN.1, permitting explicit null observer ID.
+  Required equipment (18) has at least model/manufacturer and serial/manufacturer
+  repeats; only the first may carry UID and ISO type. Further vendor repeats
+  have optional entity/namespace and excluded UID components. Available instance
+  ID (21) supports EI.1 only. Observation type (29) checks AOE/ASC/RSLT/SCI.
+- **NTE:** 1, 2, 3 and 4. Set ID is positive four-character SI, starting at one
+  in each consecutive comment block. Source is A for manager output and Z for
+  analyzer input. Comment is one required FT; its 120# length permits retaining
+  longer comments within the message bound. Available comment-type CE requires
+  identifier/vendor namespace and permits description. C.5-3's extended 99zzz...
+  namespace is accepted up to 12 characters. Notes remain human-readable data.
+- **INV:** 1, 2, 3, 4, 12 and 16, analyzer-only. Required substance identifier,
+  status and type use CE with required identifier/system and optional description.
+  Available container CE uses a vendor namespace; expiry uses seconds TS.1;
+  lot number is available ST. Section 2.2.3's key conformance limits govern:
+  INV-1's identifier and INV-16's lot number are each at most 50 characters,
+  overriding C.2's datatype lengths. Standard status/type codes and vendor codes
+  remain distinguished by namespace. A control-container INV requires CO in
+  HL70384; contributing inventory attaches to its result. Explicitly disabled
+  contributing-substance content remains retained as raw data.
+
+All other fields and unlisted components are X: omitted on manager send,
+ignored and preserved on receive. Nulls, repetitions, hard component lengths,
+send composite ceilings and option predicates are validated with located errors.
+Received results and work-note builders use the same boundary rules. The general
+profile API also validates manager-authored OBX segments; there is still no
+related-observation work builder. The 28 source-named positive/negative tests in
+`tests/law_observation.rs` cover field rules, value/unit custody, explicit
+corrections, composite boundaries, inventory ownership and actual note building.
+No earlier test fixture or expectation was changed in this round.
+
+The [LAW checklist](../../docs/protocols/ihe-law.md) distinguishes implemented
+field evidence from partial or planned workflow tests. Still absent are a
+qualified Gazelle run, complete option/profile negotiation, related-observation
+sending/reference resolution, full pooling workflows, external-pointer retention
+integration, and LAW-specific host/dialog durability/recovery/lifecycle evidence.
+Evidence remains **documented**.
 
 ## Recording a Gazelle run
 
