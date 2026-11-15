@@ -9,6 +9,51 @@ use thiserror::Error;
 /// A LAW validation failure, without payload in its diagnostic.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// The app has not supplied a matching test/type/factor definition.
+    #[error("unresolved dilution definition at {segment}-{field}.{component}")]
+    DilutionDefinition {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field position.
+        field: usize,
+        /// One-based component position.
+        component: usize,
+    },
+
+    /// A nested primitive violates its profiled usage, length or datatype.
+    #[error("LAW subcomponent rejected at {segment}-{field}.{component}.{subcomponent}")]
+    Subcomponent {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field position.
+        field: usize,
+        /// One-based component position.
+        component: usize,
+        /// One-based subcomponent position.
+        subcomponent: usize,
+    },
+    /// Local and universal authority names need an app-supplied binding; never guess.
+    #[error("unresolved LAW authority at {segment}-{field}.{component}")]
+    Authority {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field position.
+        field: usize,
+        /// One-based authority component position.
+        component: usize,
+    },
+
+    /// A composite component violates its profiled usage, length or datatype.
+    #[error("LAW component rejected at {segment}-{field}.{component}")]
+    Component {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field position.
+        field: usize,
+        /// One-based component position.
+        component: usize,
+    },
+
     /// Individually valid fields contradict each other; reject the whole content.
     #[error("inconsistent LAW content at {segment}-{field}")]
     Inconsistent {
@@ -124,7 +169,10 @@ impl<'a> Query<'a> {
         }
         let header = msh.segment();
         let d = message.delimiters();
-        let components: Vec<_> = raw(header, 9).split(|b| *b == d.component).collect();
+        let components: Vec<_> = raw(header, 9)
+            .split(|b| *b == d.component)
+            .take(3)
+            .collect();
         if components != [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
             return Err(content("MSH", 9));
         }
@@ -139,6 +187,7 @@ impl<'a> Query<'a> {
             .unwrap_or_default();
         if !profile
             .split(|b| *b == d.component)
+            .take(2)
             .eq([b"LAB-27".as_slice(), b"IHE"])
         {
             return Err(content("MSH", 21));
@@ -283,7 +332,7 @@ mod work;
 
 pub use work::{
     Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, WorkAction, WorkResponse,
-    negative_work, work_order,
+    negative_work, work_order, work_order_with_profile,
 };
 
 mod results;
@@ -293,19 +342,50 @@ pub use results::{
     result_acknowledgment,
 };
 
+mod control;
+
+pub use control::{ControlDirection, parse_message, validate_control};
+
+mod patient;
+
+mod specimen;
+
+mod order;
+
+mod tcd;
+
+pub use order::{OrderControl, OrderStatus};
+
+pub use tcd::{Dilution, DilutionBinding, DilutionMeaning, ResultAdjustment, TestDetail};
+
 mod profile;
 
-pub use profile::{FieldRule, Usage, validate_segment};
+pub use profile::{FieldRule, Profile, Usage, validate_segment};
 
-fn msh(message: &Message) -> Result<Msh<'_>, crate::Error> {
-    Msh::with_control_limit(message, 50)
+pub use patient::AuthorityBinding;
+
+fn msh(message: &Message) -> Result<Msh<'_>, Error> {
+    let segment = message.segments().next().ok_or(content("MSH", 0))?;
+    control::validate_segment(segment, ControlDirection::Receive)?;
+    let kind = raw(segment, 9)
+        .split(|b| *b == b'^')
+        .next()
+        .unwrap_or_default();
+    Ok(Msh::from_law(
+        segment,
+        matches!(kind, b"QBP" | b"OML" | b"OUL"),
+    ))
 }
 
-/// Validates the LAW-extended message ID length (TF-2b C.4, at most 50 bytes).
+/// Validates a LAW ST message identity (TF-2b C.4, at most 50 characters).
 /// # Errors
-/// Rejects empty, null, oversized or non-graphic IDs; rendering checks delimiters.
+/// Rejects empty, null, oversized or control-containing IDs and unescaped delimiters.
 pub fn control_id(raw: &[u8]) -> Result<crate::ControlId<'_>, crate::Error> {
-    crate::ControlId::with_limit(raw, 50)
+    control::identity(raw).map_err(|_| crate::Error::Control {
+        segment: "MSH",
+        field: 10,
+    })?;
+    Ok(crate::ControlId::from_profile(raw))
 }
 
 mod failure;
@@ -318,3 +398,5 @@ pub use failure::{
 mod content;
 
 pub use content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkNotes};
+
+mod observation;
