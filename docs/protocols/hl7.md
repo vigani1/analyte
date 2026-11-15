@@ -12,9 +12,10 @@ then becomes the test list, one or more tests per row.
 
 - **Not all of HL7.** Analyte supports the encoding and control rules of both
   editions completely, plus a declared list of laboratory transactions. The
-  first list: ORU^R01 with ACK (both editions); ORM^O01 and ORR^O02 (2.3.1);
+  first list: ORU^R01 with ACK (both editions); ORM^O01 and ORR^O02 (both editions);
+  non-LAW OML^O21 and ORL^O22 (2.5.1);
   OML^O33 and ORL^O34, OUL^R22 and ACK^R22, QBP^Q11 and RSP^K11 (2.5.1, also
-  used by IHE LAW); the legacy QRY^Q02, QCK^Q02 and DSR^Q03 exchange (2.3.1).
+  used by IHE LAW); the legacy QRY^Q02, QCK^Q02 and DSR^Q03 exchange (both editions).
   Everything else is rejected with a specific, safe answer, never silently
   dropped.
 - **Who is the receiving application.** Each connection declares that
@@ -137,10 +138,10 @@ qualification or proof of host durability/recovery.
   **Evidence:** [order.rs](../../crates/hl7/tests/order.rs): `hl7_231_4_3_1_1_and_251_4_5_1_1_exhaustive_request_reply_pairs`, `hl7_231_4_3_1_5_and_251_4_5_1_5_snapshot_does_not_change_request_outcome`, `hl7_231_4_3_1_5_and_251_4_5_1_5_invalid_status`. Supported controls are NW/CA and OK/UA/CR/UC; status is retained as a peer snapshot. Change/discontinue controls are explicitly unsupported, not aliases for acceptance.
 - [ ] B — Preserve placer/filler namespaces, parent/group relationships and identity on changes/retries. Same ORC clauses; OBR definitions in each ch.7.
 
-  **Remaining:** parent/placer-group and change relationships in the generic ORM/O21 API, plus durable host retry/recovery identity tests. Existing namespace and replay evidence: [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_4_3_1_2_3_and_251_4_5_1_2_3_universal_namespaces_preserved` and `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. LAW-specific parents/groups have separate [law_order.rs](../../crates/hl7/tests/law_order.rs) coverage; that does not establish generic support in both editions.
+  **Remaining:** parent/placer-group and change relationships in the generic ORM/O21 API, while host recovery is covered in [hl7_send.rs](../../crates/analyte/tests/orders/hl7_send.rs), `adr0003_hl7_restart_during_sending_recovers_items_without_resend`. Existing namespace and replay evidence: [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_4_3_1_2_3_and_251_4_5_1_2_3_universal_namespaces_preserved` and `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. LAW-specific parents/groups have separate [law_order.rs](../../crates/hl7/tests/law_order.rs) coverage; that does not establish generic support in both editions.
 - [ ] B — Validate requested timing/priority/specimen and required order detail; retain unsupported order content with a specific rejection. 231 ch.4 §4.3 pp.290–338; 251 ch.4 §§4.5.1–4.5.5 pp.27–80.
 
-  **Remaining:** complete optional order-detail/component predicates and host parking/operator integration; cross-field timing interpretation stays with the host. The current coded specimen, explicit priority/non-repeating window and rejection subset is covered by [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_2_8_and_251_2a_caller_data_rejects_injection_and_oversize`, and [laboratory_order.rs](../../crates/hl7/tests/laboratory_order.rs), `hl7_251_4_4_6_builder_is_bounded_and_replay_is_pure`.
+  **Remaining:** complete optional order-detail/component predicates ; host rejection and operator behavior exist in [program orders](../../crates/analyte/ORDERS.md); cross-field timing interpretation stays with the host. The current coded specimen, explicit priority/non-repeating window and rejection subset is covered by [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_2_8_and_251_2a_caller_data_rejects_injection_and_oversize`, and [laboratory_order.rs](../../crates/hl7/tests/laboratory_order.rs), `hl7_251_4_4_6_builder_is_bounded_and_replay_is_pure`.
 - [x] 251 — Implement OML^O21/ORL^O22, multiple-orders-per-specimen O33/O34, and single-container O35/O36 separately where declared. Ch.4 §§4.4.6–11 pp.14–25.
 
   **Evidence:** [laboratory_order.rs](../../crates/hl7/tests/laboratory_order.rs): `hl7_251_4_4_6_builds_order_owned_timing_specimen_and_cancel`, `hl7_251_4_4_7_correlates_typed_decisions_and_specimen_container_groups`, `hl7_251_4_4_6_7_rejects_wrong_version_and_transaction_family`. [law.rs](../../crates/hl7/tests/law.rs): `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`, `law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions`. Declared families: non-LAW O21/O22 and LAW O33/O34. O35/O36 and unprofiled O33/O34 are not selected; they are not routed through another family.
@@ -155,7 +156,7 @@ qualification or proof of host durability/recovery.
   **Evidence:** [order.rs](../../crates/hl7/tests/order.rs): `hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors`. Status-query replies, dietary/pharmacy/supply and other order families have no builder in this API; a typed order parser rejects an unexpected event/structure at MSH-9 and unsupported controls at ORC-1. This declaration does not claim a host-wide dispatch/rejection dialog.
 - [ ] B — Test accept/reject/cancel/unable-to-cancel/change and uncertain delivery with stable identities, never issuing new machine orders as a side effect of replay. Same order rules plus project order-lifecycle policy.
 
-  **Remaining:** supported change workflows and host integration for lost replies, disconnects, persisted uncertain delivery, cancellation races and restart. Pure acceptance/cancellation and stable replay evidence: [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_4_3_1_and_251_4_5_1_reports_each_matching_outcome`, `hl7_231_4_2_2_and_251_4_4_2_message_ack_is_not_order_acceptance`, `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. These tests neither send orders nor prove durable host recovery.
+  **Remaining:** change workflows and broader cancellation-race qualification. Program send/recovery tests exist in [hl7_send.rs](../../crates/analyte/tests/orders/hl7_send.rs): `hl7_251_no_reply_disconnect_and_restart_never_resend` and `hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once`. Pure acceptance/cancellation and stable replay evidence: [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_4_3_1_and_251_4_5_1_reports_each_matching_outcome`, `hl7_231_4_2_2_and_251_4_4_2_message_ack_is_not_order_acceptance`, `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. These tests neither send orders nor prove durable host recovery.
 
 ### H. Queries, responses and continuation
 
@@ -166,7 +167,7 @@ durable responsibility and recovery; unchecked integration rows remain open.
 
 - [ ] 231 — Implement declared immediate QRY/DSR Q01 and deferred QRY/QCK Q02 followed by DSR/ACK Q03. Ch.2 §§2.17–2.18 pp.120–121.
 
-  **Remaining:** immediate Q01 and the host-owned deferred-query scheduling/dialog lifecycle. The declared pure Q02/Q03 subset has [query.rs](../../crates/hl7/tests/query.rs) evidence: `hl7_231_2_18_qck_answers_deferred_query`, `hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr`. Q01 is not silently treated as Q02.
+  **Remaining:** immediate Q01. Deferred Q02/Q03 runtime evidence is in [hl7.rs](../../crates/analyte/tests/orders/hl7.rs), `hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once`. The declared pure Q02/Q03 subset has [query.rs](../../crates/hl7/tests/query.rs) evidence: `hl7_231_2_18_qck_answers_deferred_query`, `hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr`. Q01 is not silently treated as Q02.
 - [x] 251 — Treat those older query exchanges as backward-compatible legacy capabilities, not the modern query-by-parameter model. Ch.5 §5.10 pp.113–137.
 
   **Evidence:** [query.rs](../../crates/hl7/tests/query.rs): `hl7_231_2_18_qck_answers_deferred_query` (both editions), `hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events`. Legacy QRD/QRF transactions remain separate from LAW QBP/QPD queries.
@@ -205,7 +206,7 @@ durable responsibility and recovery; unchecked integration rows remain open.
   **Evidence:** [query.rs](../../crates/hl7/tests/query.rs): `hl7_231_2_19_2_20_undeclared_enhanced_query_forms_are_rejected`, `hl7_231_2_24_8_2_20_3_and_251_5_6_3_continuation_and_erq_are_located`. EQQ, VQQ, SPQ and event replay are explicitly unsupported. ERQ is an event-replay segment, not another QBP transaction; ERP/R09 and ERQ content are not accepted by the legacy handler.
 - [ ] B — Test successful empty/multiple/partial responses, unavailable lookup, late response, cancellation and restart without unintended order retransmission. Query clauses above plus project deadlines/order rules.
 
-  **Remaining:** host tests for logical multi-part/partial replies, late responses, cancellation, restart and uncertain delivery without unintended retransmission. Current pure wire evidence is [query.rs](../../crates/hl7/tests/query.rs), `hl7_231_2_18_qck_answers_deferred_query`, `hl7_231_2_18_dsr_requires_data_and_distinct_response_ids`, `hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf`; it does not exercise a connection state machine or durable recovery.
+  **Remaining:** logical multi-part/partial replies and broader cancellation qualification. Host tests in [hl7.rs](../../crates/analyte/tests/orders/hl7.rs) cover `hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain` and `hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time`; [hl7_send.rs](../../crates/analyte/tests/orders/hl7_send.rs) covers restart without resend. Current pure wire evidence is [query.rs](../../crates/hl7/tests/query.rs), `hl7_231_2_18_qck_answers_deferred_query`, `hl7_231_2_18_dsr_requires_data_and_distinct_response_ids`, `hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf`; it does not exercise a connection state machine or durable recovery.
 
 ### I. Special control protocols
 
