@@ -139,3 +139,26 @@ fn hl7_231_2_18_dsr_requires_data_and_distinct_response_ids() -> Result<(), anal
     );
     Ok(())
 }
+
+#[test]
+fn hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf() -> Result<(), analyte_hl7::Error> {
+    for version in ["2.3.1", "2.5.1"] {
+        let message = request(version)?;
+        let reply = query::acknowledgment(
+            query::Request::new(&message)?,
+            Response {
+                control_id: ControlId::new(b"unavailable")?,
+                timestamp: b"202611150902",
+            },
+            query::CacheAnswer::Unavailable,
+            Options::default(),
+        )?;
+        let segments: Vec<_> = reply.segments().collect();
+        let msa = segments.iter().find(|s| s.id() == b"MSA").map(|s| s.raw());
+        let qak = segments.iter().find(|s| s.id() == b"QAK").map(|s| s.raw());
+        assert_eq!(msa, Some(b"MSA|AE|q1".as_slice()));
+        assert_eq!(qak, Some(b"QAK||AE".as_slice()));
+        assert!(!reply.raw().windows(2).any(|v| v == b"NF"));
+    }
+    Ok(())
+}

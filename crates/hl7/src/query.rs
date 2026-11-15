@@ -188,7 +188,7 @@ pub enum CacheAnswer {
     Unavailable,
 }
 
-/// Builds QCK/Q02 with a fresh response ID and explicit cache status.
+/// Builds QCK/Q02 after the host durably stores the QRY, with explicit cache status.
 ///
 /// # Errors
 /// Rejects unsafe identity/time fields, enhanced acknowledgment negotiation and limits.
@@ -209,11 +209,7 @@ pub fn acknowledgment(
             b"NF".as_slice(),
             crate::Responsibility::StoredAndInterpreted,
         ),
-        CacheAnswer::Unavailable => (
-            AckCode::Ae,
-            b"AE".as_slice(),
-            crate::Responsibility::NotStored,
-        ),
+        CacheAnswer::Unavailable => (AckCode::Ae, b"AE".as_slice(), crate::Responsibility::Stored),
     };
     let msh = Msh::new(request.message)?;
     if msh.mode() != crate::AckMode::Original {
