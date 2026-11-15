@@ -9,6 +9,10 @@ version = "0.1.0"
 [[package]]
 name = "analyte-astm"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+ "thiserror",
+]
 
 [[package]]
 name = "analyte-config"
