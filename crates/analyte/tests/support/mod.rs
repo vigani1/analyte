@@ -23,7 +23,26 @@ impl FreeSpace for Space {
     }
 }
 
-pub(super) fn config(root: &Path, astm: bool) -> Result<PathBuf, Error> {
+pub(super) struct Fixture {
+    path: PathBuf,
+    listeners: Vec<(String, std::net::TcpListener)>,
+}
+
+impl AsRef<Path> for Fixture {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl std::ops::Deref for Fixture {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+pub(super) fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
+    let mut listeners = Vec::new();
     let mut machines = String::new();
     for (name, is_astm) in [("hl7", false), ("astm", true)] {
         if is_astm && !astm {
@@ -31,6 +50,7 @@ pub(super) fn config(root: &Path, astm: bool) -> Result<PathBuf, Error> {
         }
         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
         let address = listener.local_addr()?;
+        listeners.push((name.to_owned(), listener));
         let definition = if is_astm {
             include_str!("../../../config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
         } else {
@@ -53,11 +73,14 @@ pub(super) fn config(root: &Path, astm: bool) -> Result<PathBuf, Error> {
             "schema_version = 1\ndata_directory = 'data'\n{machines}[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 20\n"
         ),
     )?;
-    Ok(path)
+    Ok(Fixture { path, listeners })
 }
 
-pub(super) fn program(path: &Path, url: &str) -> Result<Program, Error> {
+pub(super) fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
     let mut program = Program::load(path)?;
+    for (id, listener) in &path.listeners {
+        program.set_loopback_listener_for_test(id, listener.try_clone()?)?;
+    }
     program.set_loopback_destination_for_test("demo", url.into())?;
     Ok(program)
 }
@@ -78,7 +101,7 @@ pub(super) struct Running {
 }
 
 impl Running {
-    pub(super) fn start(path: &Path, url: &str, api: &str) -> Result<Self, Error> {
+    pub(super) fn start(path: &Fixture, url: &str, api: &str) -> Result<Self, Error> {
         let program = program(path, url)?;
         let secrets = secrets(&program, api)?;
         let (stop, stopped) = oneshot::channel();

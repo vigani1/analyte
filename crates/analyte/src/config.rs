@@ -14,6 +14,7 @@ pub struct Machine {
     pub(crate) id: analyte_model::Identifier,
     /// Exact reproducible machine configuration.
     pub(crate) snapshot: Validated,
+    pub(crate) listener: Option<std::net::TcpListener>,
 }
 
 /// Validated program settings. Paths are resolved relative to the program file.
@@ -70,6 +71,34 @@ fn read(path: &Path) -> Result<String, Error> {
 }
 
 impl Program {
+    /// Supplies an already bound loopback listener for deterministic integration tests.
+    /// The caller can retain a clone to reserve the same address across restarts.
+    /// # Errors
+    /// Rejects unknown machines, non-loopback addresses and non-server configs.
+    pub fn set_loopback_listener_for_test(
+        &mut self,
+        id: &str,
+        listener: std::net::TcpListener,
+    ) -> Result<(), Error> {
+        let machine = self
+            .machines
+            .iter_mut()
+            .find(|m| m.id.as_str() == id)
+            .ok_or_else(|| invalid("unknown test machine"))?;
+        if !listener.local_addr()?.ip().is_loopback()
+            || machine.snapshot.effective().machine().transport.kind
+                != analyte_config::TransportKind::TcpServer
+            || listener.local_addr()?.to_string() != machine.snapshot.effective().site().endpoint
+        {
+            return Err(invalid(
+                "test listener does not match configured loopback server",
+            ));
+        }
+        listener.set_nonblocking(true)?;
+        machine.listener = Some(listener);
+        Ok(())
+    }
+
     /// Reads bounded files and validates every machine through `analyte-config`.
     /// # Errors
     /// Reports path, TOML, bounds, duplicate identity and machine validation failures.
@@ -138,6 +167,7 @@ impl Program {
             machines.push(Machine {
                 id: entry.id,
                 snapshot,
+                listener: None,
             });
         }
         if file.signing_rotation.len() > 128

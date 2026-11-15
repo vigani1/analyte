@@ -1,0 +1,57 @@
+# Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
+schema_version = 1
+name = "generic-synthetic"
+deviations = []
+[transport]
+kind = "tcp_server"
+operation_timeout_ms = 10000
+
+[framing]
+kind = "vidas_literal"
+limit = 1920
+
+[dialog]
+kind = "vidas_literal"
+receive_timeout_ms = 30000
+send_timeout_ms = 15000
+[syntax]
+kind = "vidas_literal"
+encoding = "ascii"
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 128
+repetitions = 128
+components = 128
+[vidas]
+alternate = false
+chunk = 80
+suffix = []
+include_stx = false
+include_suffix = false
+uppercase = true
+accept_either_case = false
+sample_limit = 12
+acknowledgment_ms = 5000
+interbyte_ms = 5000
+session_ms = 30000
+commit_ms = 5000
+retries = 0
+backoff_ms = 1000
+download = false
+
+[codes]
+tests = [{machine_code="SYN", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
+units = [{original="mg/L", ucum="mg/L"}]
+[evidence]
+level = "documented"
+[[evidence.capabilities]]
+model = "synthetic"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "tcp_server"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []

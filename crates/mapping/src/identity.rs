@@ -11,7 +11,7 @@ pub(crate) fn sample(
     config: &Validated,
     output: &mut Output,
 ) -> Result<Option<SampleIdentity>, Error> {
-    let selection = &config.effective().machine().mappings.sample;
+    let selection = &crate::field_mappings(config)?.sample;
     let position = source.selection_position(index, &selection.field)?;
     let Some(value) = present(source.selected(index, &selection.field)?) else {
         finding(output, position, Problem::MissingSample)?;
@@ -37,7 +37,7 @@ pub(crate) fn observation(
     code: NamespacedId,
     output: &mut Output,
 ) -> Result<Option<ObservationIdentity>, Error> {
-    let settings = &config.effective().machine().mappings.identity;
+    let settings = &crate::field_mappings(config)?.identity;
     let mut missing = false;
     let mut required = |field: &analyte_config::Field, setting| -> Result<String, Error> {
         match present(source.selected(index, field)?) {

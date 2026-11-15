@@ -1,0 +1,48 @@
+# Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
+schema_version = 1
+name = "generic-synthetic"
+deviations = []
+[transport]
+kind = "tcp_server"
+operation_timeout_ms = 10000
+
+[framing]
+kind = "poct"
+limit = 1048576
+
+[dialog]
+kind = "poct"
+receive_timeout_ms = 30000
+send_timeout_ms = 15000
+[syntax]
+kind = "poct"
+encoding = "utf8"
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 128
+repetitions = 128
+components = 128
+[poct]
+pending_messages = 4
+depth = 32
+elements = 4096
+attribute_bytes = 65536
+response_ms = 30000
+acknowledgment_ms = 5000
+
+[codes]
+tests = [{machine_code="synthetic-analyte", machine_system="synthetic-system", app_code="DEMO", app_system="demo"}]
+units = [{original="mg/L", ucum="mg/L"}]
+[evidence]
+level = "documented"
+[[evidence.capabilities]]
+model = "synthetic"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "tcp_server"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []

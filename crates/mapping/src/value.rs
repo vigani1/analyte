@@ -10,7 +10,7 @@ pub(crate) fn values(
     output: &mut Output,
 ) -> Result<EvidenceList<ResultValue>, Error> {
     let position = source.position(index, field);
-    let astm = source.syntax == analyte_config::SyntaxKind::AstmLis02;
+    let astm = source.syntax == crate::FieldSyntax::AstmLis02;
     let data_type = if astm {
         String::new()
     } else {

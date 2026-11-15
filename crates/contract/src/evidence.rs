@@ -296,6 +296,8 @@ pub enum DilutionApplied {
 /// Dilution evidence; no multiplication is performed by the model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dilution {
+    /// Dilution text exactly as supplied, before any optional interpretation.
+    pub original: Option<SourceText>,
     /// Factor as explicitly reported, if supplied.
     pub factor: Option<Decimal>,
     /// Application evidence, independent of factor availability.
@@ -759,6 +761,8 @@ pub struct ObservationIdentity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessingMode {
+    /// The machine did not state a processing mode; never production-eligible.
+    Unknown,
     /// Eligible for production delivery.
     Production,
     /// Training evidence only.

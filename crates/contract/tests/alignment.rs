@@ -289,3 +289,22 @@ fn adr0008_modes_statuses_and_provenance_variants_survive() -> Result<(), Box<dy
     }
     Ok(())
 }
+
+#[test]
+fn adr0008_rule6_dilution_original_survives_without_a_guessed_factor()
+-> Result<(), Box<dyn std::error::Error>> {
+    let model = analyte_model::Dilution {
+        original: Some(analyte_model::SourceText::new("1:10")?),
+        factor: None,
+        applied: analyte_model::DilutionApplied::Unknown,
+    };
+    let wire = analyte_contract::evidence::Dilution::from(&model);
+    assert_eq!(
+        serde_json::to_value(&wire)?,
+        json!({ "original": "1:10", "factor": null, "applied": "unknown" })
+    );
+    let decoded: analyte_contract::evidence::Dilution =
+        serde_json::from_value(serde_json::to_value(&wire)?)?;
+    assert_eq!(decoded, wire);
+    Ok(())
+}
