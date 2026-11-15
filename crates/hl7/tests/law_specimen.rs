@@ -39,7 +39,7 @@ fn check(
     direction: ControlDirection,
 ) -> TestResult {
     let message = message(id, changes)?;
-    let original = message.serialize();
+    let original = message.encode();
     profile.validate_segment(message.segments().nth(1).ok_or("fixture")?, direction)?;
     assert_eq!(message.raw(), original);
     Ok(())
@@ -1112,7 +1112,7 @@ fn law_tf2b_c11_c12_results_receive_preserves_x_and_rejects_bad_supported_identi
         ("SPM|1|", "SPM|2|"),
     ] {
         let invalid = law::parse_message(wire.replace(needle, value).as_bytes(), options())?;
-        let bytes = invalid.serialize();
+        let bytes = invalid.encode();
         assert!(law::Results::new(&invalid).is_err());
         assert_eq!(invalid.raw(), bytes);
     }

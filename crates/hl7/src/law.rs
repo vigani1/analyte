@@ -476,3 +476,14 @@ pub use rejection::reject_trigger;
 
 mod status;
 pub use status::{SINGLE_RUN_STATUSES, STATUS_TRANSITIONS, WITHHELD_STATUSES, observation_run};
+
+impl From<crate::encoder::Limit> for Error {
+    fn from(_: crate::encoder::Limit) -> Self {
+        crate::Error::Limit {
+            kind: "LAW output",
+            segment: 0,
+            field: 0,
+        }
+        .into()
+    }
+}

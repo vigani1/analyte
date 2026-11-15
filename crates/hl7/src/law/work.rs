@@ -272,11 +272,7 @@ fn safe(value: &[u8], segment: &'static str, field: usize, maximum: usize) -> Re
 }
 
 fn segment(wire: &mut Wire, id: &[u8], fields: &[&[u8]]) -> Result<(), Error> {
-    wire.append(id)?;
-    for field in fields {
-        wire.field(field)?;
-    }
-    wire.append(b"\r")
+    wire.segment(id, fields).map_err(Into::into)
 }
 
 fn set_field<'a>(

@@ -105,33 +105,6 @@ impl Sample {
     }
 }
 
-/// Sum modulo 256, excluding framing and the checksum digits (Rev18 p.179).
-#[must_use]
-pub fn checksum(payload: &[u8]) -> u8 {
-    payload.iter().fold(0u8, |sum, b| sum.wrapping_add(*b))
-}
-
-fn finish(mut payload: Vec<u8>) -> Vec<u8> {
-    payload.extend_from_slice(format!("{:03}", checksum(&payload)).as_bytes());
-    payload.push(4);
-    payload
-}
-
-fn verified(raw: &[u8]) -> Result<&[u8], Error> {
-    if raw.len() > 11038 || raw.last() != Some(&4) {
-        return Err(Error::Length);
-    }
-    let end = raw.len().checked_sub(4).ok_or(Error::Length)?;
-    let payload = raw.get(..end).ok_or(Error::Length)?;
-    let digits = raw
-        .get(end..raw.len().saturating_sub(1))
-        .ok_or(Error::Length)?;
-    if number(digits)? != usize::from(checksum(payload)) {
-        return Err(Error::Checksum);
-    }
-    Ok(payload)
-}
-
 fn number(bytes: &[u8]) -> Result<usize, Error> {
     bytes.iter().try_fold(0usize, |n, b| {
         if !b.is_ascii_digit() {
@@ -243,14 +216,14 @@ impl Worklist {
         for test in &self.tests {
             out.extend_from_slice(test.bytes());
         }
-        finish(out)
+        analyte_framing::autolyser::finish(out)
     }
 
     /// Parses after checking length and checksum, retaining every fixed-width field.
     /// # Errors
     /// Reports checksum, count, length or field defects.
     pub fn parse(raw: &[u8]) -> Result<Self, Error> {
-        let mut c = Cursor(verified(raw)?);
+        let mut c = Cursor(analyte_framing::autolyser::verified(raw).map_err(Error::from)?);
         let patient = PatientCode::new(c.take(15)?)?;
         let list = List::parse(c.byte()?)?;
         let sample = Sample::parse(c.byte()?)?;
@@ -316,7 +289,7 @@ impl Report {
     /// # Errors
     /// Rejects length, checksum, count and field defects; callers must store raw first.
     pub fn parse(raw: &[u8], controls: bool) -> Result<Self, Error> {
-        let mut c = Cursor(verified(raw)?);
+        let mut c = Cursor(analyte_framing::autolyser::verified(raw).map_err(Error::from)?);
         let patient = PatientCode::new(c.take(15)?)?;
         let list = List::parse(c.byte()?)?;
         let sample = Sample::parse(c.byte()?)?;
@@ -397,6 +370,17 @@ impl Report {
             out.extend_from_slice(v.code.bytes());
             out.extend_from_slice(v.text.bytes());
         }
-        Self::parse(&finish(out), control.is_some())
+        Self::parse(&analyte_framing::autolyser::finish(out), control.is_some())
+    }
+}
+
+impl From<analyte_framing::autolyser::Error> for Error {
+    fn from(error: analyte_framing::autolyser::Error) -> Self {
+        match error {
+            analyte_framing::autolyser::Error::Length => Self::Length,
+            analyte_framing::autolyser::Error::Field(field) => Self::Field(field),
+            analyte_framing::autolyser::Error::Checksum => Self::Checksum,
+            analyte_framing::autolyser::Error::Count => Self::Count,
+        }
     }
 }

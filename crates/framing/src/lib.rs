@@ -6,3 +6,11 @@
 
 pub mod astm;
 pub mod mllp;
+
+/// Autolyser checksum envelopes.
+pub mod autolyser;
+/// VIDAS Literal packet framing.
+pub mod vidas;
+
+/// Incremental POCT XML root boundaries.
+pub mod poct;

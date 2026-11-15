@@ -1,5 +1,5 @@
 //! Per-connection reviewer dialog: events in, ordered host actions out, no I/O.
-use crate::{
+use analyte_poct::{
     AckKind, ApplicationError, Body, Capabilities, ControlId, EscapeReason, Message, Nullable,
     Outbound, TerminationReason,
 };
@@ -24,7 +24,7 @@ pub struct DialogConfig {
 
 /// Invalid configuration or an event that cannot be applied safely.
 #[derive(Debug, thiserror::Error)]
-pub enum DialogError {
+pub enum Error {
     /// Limits and timeout budgets must be positive.
     #[error("invalid dialog configuration")]
     Config,
@@ -42,7 +42,7 @@ pub enum DialogError {
     State,
     /// Session ID is invalid.
     #[error(transparent)]
-    Identity(#[from] crate::MessageError),
+    Identity(#[from] analyte_poct::MessageError),
 }
 
 /// A store-operation identity scoped by the host's session identity.
@@ -215,14 +215,14 @@ impl Dialog {
     /// Creates a reviewer waiting for Hello. Capacity must be reserved by the host.
     /// # Errors
     /// Rejects zero limits/deadlines and a session too long for derived send IDs.
-    pub fn new(config: DialogConfig, session: ControlId) -> Result<Self, DialogError> {
+    pub fn new(config: DialogConfig, session: ControlId) -> Result<Self, Error> {
         if config.pending_messages == 0
             || config.message_bytes == 0
             || config.response_timeout.is_zero()
             || config.unannounced_ack_timeout.is_zero()
             || session.as_str().len() > 200
         {
-            return Err(DialogError::Config);
+            return Err(Error::Config);
         }
         Ok(Self {
             response_deadline: config.response_timeout,
@@ -246,19 +246,14 @@ impl Dialog {
     /// # Errors
     /// Rejects reversed/unrepresentable time, unknown completion tickets and host
     /// commands in the wrong phase. Refused received data is returned as Deferred.
-    pub fn step(
-        &mut self,
-        now: Duration,
-        event: DialogEvent,
-    ) -> Result<Vec<DialogAction>, DialogError> {
+    pub fn step(&mut self, now: Duration, event: DialogEvent) -> Result<Vec<DialogAction>, Error> {
         if now < self.now {
-            return Err(DialogError::TimeReversed);
+            return Err(Error::TimeReversed);
         }
         let response_deadline = now
             .checked_add(self.config.response_timeout)
-            .ok_or(DialogError::Exhausted)?;
-        now.checked_add(self.ack_timeout)
-            .ok_or(DialogError::Exhausted)?;
+            .ok_or(Error::Exhausted)?;
+        now.checked_add(self.ack_timeout).ok_or(Error::Exhausted)?;
         self.now = now;
         let mut actions = Vec::new();
         if !matches!(self.phase, Phase::Closed)
@@ -300,9 +295,9 @@ impl Dialog {
                     .pending
                     .iter_mut()
                     .find(|p| p.ticket == ticket)
-                    .ok_or(DialogError::Commit)?;
+                    .ok_or(Error::Commit)?;
                 if pending.outcome.is_some() {
-                    return Err(DialogError::Commit);
+                    return Err(Error::Commit);
                 }
                 pending.outcome = Some(outcome);
                 if !matches!(self.phase, Phase::Ending(_)) {
@@ -311,13 +306,13 @@ impl Dialog {
             }
             DialogEvent::RequestObservations => {
                 if !matches!(self.phase, Phase::Ready) {
-                    return Err(DialogError::State);
+                    return Err(Error::State);
                 }
                 self.request(&mut actions)?;
             }
             DialogEvent::Finish => {
                 if !matches!(self.phase, Phase::Ready) {
-                    return Err(DialogError::State);
+                    return Err(Error::State);
                 }
                 self.terminate(TerminationReason::Normal, &mut actions)?;
             }
@@ -337,7 +332,7 @@ impl Dialog {
         &mut self,
         message: Box<Message>,
         actions: &mut Vec<DialogAction>,
-    ) -> Result<(), DialogError> {
+    ) -> Result<(), Error> {
         if message.document().raw().len() > self.config.message_bytes
             || self.pending.len() >= self.config.pending_messages
         {
@@ -395,7 +390,7 @@ impl Dialog {
                 self.response_deadline = self
                     .now
                     .checked_add(self.ack_timeout)
-                    .ok_or(DialogError::Exhausted)?;
+                    .ok_or(Error::Exhausted)?;
                 self.phase = Phase::Inspect(message);
             }
             Body::Status { .. } => {
@@ -460,12 +455,12 @@ impl Dialog {
         &mut self,
         accepted: bool,
         actions: &mut Vec<DialogAction>,
-    ) -> Result<(), DialogError> {
+    ) -> Result<(), Error> {
         if !matches!(self.phase, Phase::Inspect(_)) {
-            return Err(DialogError::State);
+            return Err(Error::State);
         }
         let Phase::Inspect(message) = std::mem::replace(&mut self.phase, Phase::HelloCommit) else {
-            return Err(DialogError::State);
+            return Err(Error::State);
         };
         let mut supported = true;
         if let Body::Hello {
@@ -497,16 +492,16 @@ impl Dialog {
                             supported = false;
                         }
                     }
-                    Nullable::Null(crate::Null::PositiveInfinity) => {}
+                    Nullable::Null(analyte_poct::Null::PositiveInfinity) => {}
                     Nullable::Null(
-                        crate::Null::NoInformation
-                        | crate::Null::NotApplicable
-                        | crate::Null::Unknown
-                        | crate::Null::NotAsked
-                        | crate::Null::AskedUnknown
-                        | crate::Null::NotAvailable
-                        | crate::Null::Other
-                        | crate::Null::NegativeInfinity,
+                        analyte_poct::Null::NoInformation
+                        | analyte_poct::Null::NotApplicable
+                        | analyte_poct::Null::Unknown
+                        | analyte_poct::Null::NotAsked
+                        | analyte_poct::Null::AskedUnknown
+                        | analyte_poct::Null::NotAvailable
+                        | analyte_poct::Null::Other
+                        | analyte_poct::Null::NegativeInfinity,
                     ) => supported = false,
                 }
             }
@@ -544,7 +539,7 @@ impl Dialog {
         message: Box<Message>,
         purpose: Purpose,
         actions: &mut Vec<DialogAction>,
-    ) -> Result<(), DialogError> {
+    ) -> Result<(), Error> {
         let sequence = self.next()?;
         let ticket = CommitId {
             session: self.session.clone(),
@@ -557,7 +552,7 @@ impl Dialog {
         };
         let deadline = received
             .checked_add(self.ack_timeout)
-            .ok_or(DialogError::Exhausted)?;
+            .ok_or(Error::Exhausted)?;
         self.pending.push_back(Pending {
             ticket: ticket.clone(),
             reference: message.header().control_id.clone(),
@@ -569,10 +564,10 @@ impl Dialog {
         Ok(())
     }
 
-    fn drain(&mut self, actions: &mut Vec<DialogAction>) -> Result<(), DialogError> {
+    fn drain(&mut self, actions: &mut Vec<DialogAction>) -> Result<(), Error> {
         while self.pending.front().is_some_and(|p| p.outcome.is_some()) {
-            let pending = self.pending.pop_front().ok_or(DialogError::Commit)?;
-            match pending.outcome.ok_or(DialogError::Commit)? {
+            let pending = self.pending.pop_front().ok_or(Error::Commit)?;
+            match pending.outcome.ok_or(Error::Commit)? {
                 CommitOutcome::Stored => {
                     self.send(Outbound::Accept(pending.reference), actions)?;
                     match pending.purpose {
@@ -633,13 +628,13 @@ impl Dialog {
         }
     }
 
-    fn request(&mut self, actions: &mut Vec<DialogAction>) -> Result<(), DialogError> {
+    fn request(&mut self, actions: &mut Vec<DialogAction>) -> Result<(), Error> {
         let control_id = self.send(Outbound::RequestObservations, actions)?;
         self.phase = Phase::Observations(control_id);
         self.response_deadline = self
             .now
             .checked_add(self.config.response_timeout)
-            .ok_or(DialogError::Exhausted)?;
+            .ok_or(Error::Exhausted)?;
         Ok(())
     }
 
@@ -649,7 +644,7 @@ impl Dialog {
         reason: &'static str,
         detail: EscapeReason,
         actions: &mut Vec<DialogAction>,
-    ) -> Result<(), DialogError> {
+    ) -> Result<(), Error> {
         let reference = message.header().control_id.clone();
         let already_ending = matches!(self.phase, Phase::Ending(_));
         actions.push(DialogAction::Park { message, reason });
@@ -673,7 +668,7 @@ impl Dialog {
         &mut self,
         reference: ControlId,
         actions: &mut Vec<DialogAction>,
-    ) -> Result<(), DialogError> {
+    ) -> Result<(), Error> {
         self.send(
             Outbound::Escape {
                 reference,
@@ -688,13 +683,13 @@ impl Dialog {
         &mut self,
         reason: TerminationReason,
         actions: &mut Vec<DialogAction>,
-    ) -> Result<(), DialogError> {
+    ) -> Result<(), Error> {
         let id = self.send(Outbound::Terminate(reason), actions)?;
         self.phase = Phase::Ending(id);
         self.response_deadline = self
             .now
             .checked_add(self.config.response_timeout)
-            .ok_or(DialogError::Exhausted)?;
+            .ok_or(Error::Exhausted)?;
         Ok(())
     }
 
@@ -702,13 +697,13 @@ impl Dialog {
         &mut self,
         body: Outbound,
         actions: &mut Vec<DialogAction>,
-    ) -> Result<ControlId, DialogError> {
+    ) -> Result<ControlId, Error> {
         let sequence = self.next()?;
         let id = ControlId::new(&format!("{}-{sequence}", self.session.as_str()))?;
         self.response_deadline = self
             .now
             .checked_add(self.config.response_timeout)
-            .ok_or(DialogError::Exhausted)?;
+            .ok_or(Error::Exhausted)?;
         self.last_sent = Some(id.clone());
         actions.push(DialogAction::Send {
             control_id: id.clone(),
@@ -717,8 +712,8 @@ impl Dialog {
         Ok(id)
     }
 
-    fn next(&mut self) -> Result<u64, DialogError> {
-        self.counter = self.counter.checked_add(1).ok_or(DialogError::Exhausted)?;
+    fn next(&mut self) -> Result<u64, Error> {
+        self.counter = self.counter.checked_add(1).ok_or(Error::Exhausted)?;
         Ok(self.counter)
     }
 

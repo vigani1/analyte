@@ -38,7 +38,7 @@ fn check(
     direction: ControlDirection,
 ) -> TestResult {
     let message = message(id, changes)?;
-    let original = message.serialize();
+    let original = message.encode();
     let segment = message.segments().nth(1).ok_or("fixture")?;
     profile.validate_segment(segment, direction)?;
     assert_eq!(message.raw(), original);

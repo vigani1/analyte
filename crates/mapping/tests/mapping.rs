@@ -32,7 +32,7 @@ fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
             value.decoded_text.as_ref().map(SourceText::as_str),
             Some("caf\u{e9}|end")
         );
-        assert_eq!(message.serialize(), raw);
+        assert_eq!(message.encode(), raw);
     }
     Ok(())
 }
@@ -80,7 +80,7 @@ fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() 
     assert!(
         matches!(&coded.parsed, ValueInterpretation::Coded(code) if code.code.value.as_str() == r"A|B^C~D&E\F" && code.text.as_str() == r"A|B^C~D&E\F")
     );
-    assert_eq!(message.serialize(), raw.as_bytes());
+    assert_eq!(message.encode(), raw.as_bytes());
     Ok(())
 }
 
@@ -111,7 +111,7 @@ fn hl7_251_2_7_4_decoding_uses_message_delimiters_and_is_not_recursive() -> Test
         values.first().map(|v| v.original.as_str()),
         Some("!F!!S!!R!!T!!E!")
     );
-    assert_eq!(message.serialize(), raw);
+    assert_eq!(message.encode(), raw);
     Ok(())
 }
 
