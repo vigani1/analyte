@@ -21,16 +21,31 @@ pub struct Response<'a> {
 /// Structured error rendering inputs; values are bounded and delimiter-safe.
 #[derive(Debug, Clone, Copy)]
 pub struct AckError<'a> {
-    /// Segment with the error, e.g. MSH.
+    /// Segment with the error, e.g. MSH; empty only for [`Self::unlocated`].
     pub segment: &'a [u8],
-    /// Segment occurrence, starting at one.
+    /// Segment occurrence, starting at one; zero only for an unlocated LAW error.
     pub occurrence: u16,
-    /// Field position, starting at one.
+    /// Field position, starting at one; zero only for an unlocated LAW error.
     pub field: u16,
     /// HL7 table 0357 code.
     pub code: &'a [u8],
     /// Optional local application error identifier.
     pub application_code: &'a [u8],
+}
+
+impl<'a> AckError<'a> {
+    /// Creates an error without an invented location (LAW TF-2b C.1, optional ERR-2).
+    /// Only LAW builders accept this form; generic HL7 builders still require a location.
+    #[must_use]
+    pub fn unlocated(code: &'a [u8], application_code: &'a [u8]) -> Self {
+        Self {
+            segment: b"",
+            occurrence: 0,
+            field: 0,
+            code,
+            application_code,
+        }
+    }
 }
 /// Builds a generic ACK only when requested; caller must choose the outcome explicitly.
 /// Functional order/query responses belong to the later transaction layer.
@@ -191,9 +206,11 @@ pub(crate) fn acknowledgment_with_msh(
         safe(error.segment, 0, 3)?;
         safe(error.code, 0, 3)?;
         safe(error.application_code, 0, 64)?;
-        if error.segment.len() != 3
-            || error.occurrence == 0
-            || error.field == 0
+        let unlocated = matches!(profile, AckProfile::Law)
+            && error.segment.is_empty()
+            && error.occurrence == 0
+            && error.field == 0;
+        if (!unlocated && (error.segment.len() != 3 || error.occurrence == 0 || error.field == 0))
             || error.code.is_empty()
         {
             return Err(Error::Control {
@@ -201,11 +218,14 @@ pub(crate) fn acknowledgment_with_msh(
                 field: 1,
             });
         }
-        let mut location = error.segment.to_vec();
-        location.push(component);
-        location.extend_from_slice(error.occurrence.to_string().as_bytes());
-        location.push(component);
-        location.extend_from_slice(error.field.to_string().as_bytes());
+        let mut location = Vec::new();
+        if !unlocated {
+            location.extend_from_slice(error.segment);
+            location.push(component);
+            location.extend_from_slice(error.occurrence.to_string().as_bytes());
+            location.push(component);
+            location.extend_from_slice(error.field.to_string().as_bytes());
+        }
         raw.extend_from_slice(b"ERR");
         raw.push(field);
         match msh.version() {

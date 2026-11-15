@@ -631,6 +631,62 @@ fn law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability()
 }
 
 #[test]
+fn law_tf2b_c1_unknown_error_location_is_omitted_never_invented()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{AckCode, AckError, Responsibility, law::result_acknowledgment};
+    let message = results_message(
+        "awos-1",
+        &observation("test^Test^99LAB", "1", "NM", "1.20", "F"),
+    )?;
+    let unknown = AckError::unlocated(b"207", b"operator-review");
+    let ack = result_acknowledgment(
+        &message,
+        response_metadata()?,
+        AckCode::Ae,
+        Responsibility::Stored,
+        Some(unknown),
+        utf8_options(),
+    )?
+    .ok_or("ACK missing")?;
+    let err = ack
+        .segments()
+        .find(|s| s.id() == b"ERR")
+        .ok_or("ERR missing")?;
+    assert!(err.field(2).is_none_or(|f| f.raw().is_empty()));
+    assert_eq!(
+        err.field(3).map(analyte_hl7::Field::raw),
+        Some(b"207^^HL70357".as_slice())
+    );
+    assert!(
+        analyte_hl7::acknowledgment(
+            &message,
+            response_metadata()?,
+            AckCode::Ae,
+            Responsibility::Stored,
+            Some(unknown),
+            utf8_options()
+        )
+        .is_err()
+    );
+    let inconsistent = AckError {
+        occurrence: 1,
+        ..unknown
+    };
+    assert!(
+        result_acknowledgment(
+            &message,
+            response_metadata()?,
+            AckCode::Ae,
+            Responsibility::Stored,
+            Some(inconsistent),
+            utf8_options()
+        )
+        .is_err()
+    );
+    Ok(())
+}
+
+#[test]
 fn law_tf2b_2_2_usage_cardinality_length_and_null_rules() -> Result<(), Box<dyn std::error::Error>>
 {
     use analyte_hl7::law::{FieldRule, Usage};

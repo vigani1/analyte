@@ -75,6 +75,7 @@ fn law_tf2b_2_2_config_rejects_impossible_stack_combinations() {
         LAW.replace("law_manager", "hl7_receiver"),
         LAW.split("[law]").next().expect("prefix").to_owned(),
         LAW.replace("v251", "v231"),
+        LAW.replace("encoding = \"utf8\"", "encoding = \"ascii\""),
         LAW.replace("terminator = \"cr\"", "terminator = \"lf\""),
         LAW.replace("escapes = \"reject\"", "escapes = \"preserve\""),
         LAW.replace("kind = \"mllp\"", "kind = \"none\""),
@@ -124,6 +125,36 @@ fn law_tf2b_3_29_4_config_allows_corrections_only_by_explicit_c() {
         );
         assert!(
             matches!(load(&bad), Err(Error::Invalid { key, .. }) if key == "mappings.identity.correction_status_codes")
+        );
+    }
+}
+
+#[test]
+fn law_tf2b_3_29_4_b3_config_cannot_replace_awos_or_truncate_og_identity() {
+    for bad in [
+        LAW.replace(
+            "record=\"OBR\",field=2,component=1",
+            "record=\"OBR\",field=3,component=1",
+        ),
+        LAW.replace(
+            "record=\"OBR\",field=2,component=2",
+            "record=\"OBR\",field=3,component=2",
+        ),
+        LAW.replace(
+            "record=\"OBX\",field=4,component=1",
+            "record=\"OBX\",field=4,component=2",
+        ),
+        LAW.replace(
+            "sub_id = {group=\"observation\",record=\"OBX\",field=4,component=1,repetition=1}",
+            "sub_id = \"none\"",
+        ),
+        LAW.replace(
+            "run = []",
+            "run = [{group=\"observation\",record=\"OBX\",field=4,component=2,repetition=1}]",
+        ),
+    ] {
+        assert!(
+            matches!(load(&bad), Err(Error::Invalid { key, .. }) if key == "mappings.identity")
         );
     }
 }

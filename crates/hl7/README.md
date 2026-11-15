@@ -538,11 +538,20 @@ injection and field limits. `Subject::Unspecified` makes no nonpatient claim;
 An absent ORM specimen source stays empty; OML still rejects missing SPM-4.
 These APIs remain pure and do not reserve, transmit, cancel or infer acceptance.
 
-The program integration's step-1 configuration now declares `law_manager` and
+The program integration declares `law_manager` and
 explicit peer capabilities in `analyte-config::LawPeer`. Its `capabilities()`
 method feeds this crate's existing capability intersection; the LAW views and
-builders remain the source of protocol rules. The host is not yet enabled.
+builders remain the source of protocol rules. LAB-29 host receiving is enabled;
+query/work execution remains disabled.
 Planned host query scope is exact specimen/container ID and analyzer-specific
 all-pending. Isolate/parent and rack/tray-position queries must receive an error;
 isolate/parent needs app-supplied identities in a future contract version.
 This checkpoint adds no simulator evidence.
+
+The LAB-29 runtime uses `receive_results` and `result_acknowledgment` with
+host-owned durable responsibility. `AckError::unlocated` permits LAW's optional
+ERR-2 to stay absent when the host cannot prove the failing occurrence; the
+generic HL7 builder still requires a location. The small API addition is tested
+by `law_tf2b_c1_unknown_error_location_is_omitted_never_invented`. Protocol
+failures retain their full causes in the protected interpretation. See the
+program's `tests/law/results.rs` for durable receiving/delivery evidence.

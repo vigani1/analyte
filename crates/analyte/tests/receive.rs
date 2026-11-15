@@ -38,18 +38,40 @@ fn config(temp: &Path, astm: bool) -> Result<std::path::PathBuf, Error> {
 }
 
 #[test]
-fn law_tf2b_3_27_3_29_unwired_manager_cannot_fall_back_to_generic_hl7() -> Result<(), Error> {
+fn law_tf2b_3_29_manager_selects_dedicated_receiver_without_startup_io() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     std::fs::write(
         temp.path().join("machine.toml"),
         include_str!("../../config/examples/law.toml"),
     )?;
+    let loaded = Program::load(&path)?;
+    assert_eq!(
+        loaded
+            .machines()
+            .first()
+            .ok_or("LAW machine absent")?
+            .snapshot()
+            .effective()
+            .machine()
+            .dialog
+            .kind,
+        analyte_config::DialogKind::LawManager
+    );
+    assert!(!temp.path().join("data").exists());
+    std::fs::write(
+        temp.path().join("machine.toml"),
+        include_str!("../../config/examples/law.toml")
+            .replace("kind = \"tcp_server\"", "kind = \"tcp_client\""),
+    )?;
     let error = Program::load(&path)
         .err()
-        .ok_or("unwired LAW stack was enabled")?;
-    assert_eq!(error.to_string(), "LAW host transactions are not wired yet");
-    assert!(!temp.path().join("data").exists());
+        .ok_or("LAW result-only client link was enabled")?;
+    assert!(
+        error
+            .to_string()
+            .contains("analyzer-initiated TCP server link")
+    );
     Ok(())
 }
 

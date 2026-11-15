@@ -35,6 +35,7 @@ pub(crate) fn message(
     source: &Source<'_>,
     config: &Validated,
     input: Input,
+    law: Option<&analyte_hl7::law::Results<'_>>,
 ) -> Result<Output, Error> {
     let machine = config.effective().machine();
     if source.nodes.len() > machine.syntax.records {
@@ -44,6 +45,15 @@ pub(crate) fn message(
         });
     }
     let mut output = Output::default();
+    // Join borrowed views of the same original, not clinical identities. Index
+    // once so large batches cannot cause quadratic scans.
+    let law = law.map(|results| {
+        results
+            .observations()
+            .iter()
+            .map(|observation| (observation.segment().raw().as_ptr(), observation))
+            .collect::<std::collections::BTreeMap<_, _>>()
+    });
     let mode = processing(source, &mut output)?;
     for (index, node) in source.nodes.iter().enumerate() {
         if node.name == "C" || node.name == "NTE" {
@@ -178,7 +188,14 @@ pub(crate) fn message(
             },
         );
 
-        let observation = identity::observation(source, index, config, source_code, &mut output)?;
+        let observation = identity::observation(
+            source,
+            index,
+            config,
+            source_code,
+            &mut output,
+            law.as_ref(),
+        )?;
         let status_field = if astm { 9 } else { 11 };
         let status_text = source.raw(index, status_field)?.unwrap_or_default();
         let correction = crate::field_mappings(config)?

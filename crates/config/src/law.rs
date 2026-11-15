@@ -1,5 +1,5 @@
 //! Explicit LAW profile selection; TF-1 section 5.2 and TF-2b sections 2.2/3.27.
-use crate::{DialogKind, Edition, Error, Escapes, Machine, Terminator, invalid};
+use crate::{DialogKind, Edition, Encoding, Error, Escapes, Machine, Terminator, invalid};
 use serde::{Deserialize, Serialize};
 
 /// Supported host lookup scopes. Other LAW scopes must receive an error response.
@@ -74,13 +74,14 @@ pub(crate) fn validate(machine: &Machine, path: &str) -> Result<(), Error> {
         return Ok(());
     };
     if machine.syntax.edition != Some(Edition::V251)
+        || machine.syntax.encoding != Encoding::Utf8
         || machine.syntax.terminator != Some(Terminator::Cr)
         || machine.syntax.escapes != Some(Escapes::Reject)
     {
         return Err(invalid(
             path,
             "syntax",
-            "LAW requires HL7 2.5.1, CR segments and strict escapes",
+            "LAW requires HL7 2.5.1, UTF-8, CR segments and strict escapes",
         ));
     }
     if law.query_forms.is_empty()
@@ -112,6 +113,35 @@ pub(crate) fn validate(machine: &Machine, path: &str) -> Result<(), Error> {
             path,
             "mappings.identity.correction_status_codes",
             "LAW corrections require exactly the explicit status C",
+        ));
+    }
+    if machine.mappings.as_ref().is_some_and(|mapping| {
+        let selects = |field: &crate::Field, group, record, number, component| {
+            field.group == group
+                && field.record.as_str() == record
+                && field.field == number
+                && field.component == component
+                && field.repetition == 1
+        };
+        !selects(&mapping.identity.order_id, crate::Group::Order, "OBR", 2, 1)
+            || match &mapping.identity.order_namespace {
+                crate::OrderNamespace::Fixed { .. } => false,
+                crate::OrderNamespace::Field { field } => {
+                    !selects(field, crate::Group::Order, "OBR", 2, 2)
+                }
+            }
+            || match &mapping.identity.sub_id {
+                crate::SubId::Field(field) => {
+                    !selects(field, crate::Group::Observation, "OBX", 4, 1)
+                }
+                crate::SubId::None(_) => true,
+            }
+            || !mapping.identity.run.is_empty()
+    }) {
+        return Err(invalid(
+            path,
+            "mappings.identity",
+            "LAW uses OBR-2 AWOS and complete OBX-4 OG; use OBR-2.2 or an explicit fixed AWOS namespace and no extra run selectors",
         ));
     }
     if machine

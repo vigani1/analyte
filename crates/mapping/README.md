@@ -71,3 +71,26 @@ retains the entire original identifier. Valid dilution text stays in
 evidence. Per-test `ValueKindMismatch` findings park values without replacing their
 original text or changing protocol interpretation. Omitted settings preserve the
 existing ASTM and HL7 paths. These features remain documented evidence only.
+
+## LAW result mapping
+
+`map_law` takes the existing validated `law::Results` view, a LAW config and
+host receipt metadata. It uses the shared field mapper, test/unit tables and
+replacement grouping. The LAW adapter makes SAC container context visible to
+its own AWOS/observations; base OUL ownership is unchanged. It uses the original
+borrowed observation views to identify AWOS and the complete OG without parsing
+the protocol again. A transient address index only joins views of that same
+original message; it never becomes a clinical identity.
+
+AWOS EI is authoritative where present. With null AWOS, an explicit OBR-3
+analyzer order and assigning authority can identify unsolicited work. Missing
+identity remains unresolved with a finding. Source EI universal authority/type
+and the complete OG are kept; no source run or assigning namespace is generated.
+The config may supply a fixed namespace only for an unqualified AWOS. Generic
+`map_hl7` refuses LAW config: it cannot bypass the validated LAW view boundary.
+
+Unsupported mapping segments/value types, unresolved supplemental relationships,
+and status-only messages without mappable observations are retained/parked; they
+cannot obtain a positive interpretation promise. Full LAW receipt bytes always
+stay in the protected store. Synthetic program/reference-receiver evidence is
+in `crates/analyte/tests/law/results.rs`; no hardware/Gazelle claim is made.

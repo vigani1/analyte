@@ -5,19 +5,22 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::{Notify, watch};
-/// One-shot pause after an ASTM frame is durable, before its ACK is generated.
+/// One-shot pause after machine bytes are durable, before interpretation or ACK.
 /// It cannot inspect/modify bytes or bypass storage. Dropping control stops the connection.
-pub struct AstmCommitted {
+pub struct Committed {
     armed: AtomicBool,
     reached: Notify,
     decision: watch::Receiver<Option<bool>>,
 }
 /// Owns the decision for one bounded pause; drop means stop, never acknowledge.
 pub struct Control {
-    hook: Arc<AstmCommitted>,
+    hook: Arc<Committed>,
     decision: watch::Sender<Option<bool>>,
 }
-impl AstmCommitted {
+/// Compatibility name for the ASTM durable-frame boundary.
+pub type AstmCommitted = Committed;
+
+impl Committed {
     /// Creates an armed hook and its control without starting a task.
     #[must_use]
     pub fn new() -> (Arc<Self>, Control) {

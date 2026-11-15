@@ -17,7 +17,7 @@ send_timeout_ms = 15000
 acknowledgment = "store_and_forward"
 [syntax]
 kind = "hl7_v2"
-encoding = "ascii"
+encoding = "utf8"
 edition = "v251"
 terminator = "cr"
 escapes = "reject"
@@ -28,8 +28,8 @@ fields = 128
 repetitions = 128
 components = 128
 [mappings]
-tests = [{machine_code="SYN", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
-units = [{original="mg/L", ucum="mg/L"}]
+tests = [{machine_code="SYN", machine_system="99LAB", app_code="DEMO", app_system="demo"}]
+units = [{original="mg/L^mg/L^UCUM", ucum="mg/L"}]
 qc = []
 [mappings.sample]
 source = "barcode"

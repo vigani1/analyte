@@ -86,16 +86,18 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
 
 - [ ] **R** Receive OUL and return ACK with required structures/fields; correlate known AWOS to originating work (TF-2b §3.29.4, pp.53–58).
   Tests: `law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability`.
-  Pure OUL/ACK field and responsibility checks exist. Correlation to a durable originating-work store remains host work.
+  Host LAB-29 receive/ACK is now covered by the step-2 matrix below (including durable raw/interpretation boundaries and error ACKs). Correlation to durable originating work remains blocked on LAB-28 integration; this combined row stays unchecked.
+- [x] **R, host boundary** Store the exact LAB-29 MLLP block before interpretation/ACK; AA only after durable interpretation, with no partial batch delivery on a conflict (TF-2b §3.29.4; B.7; ADR 0003).
+  Tests in `crates/analyte/tests/law/results.rs`: `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack`, `law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa`, `law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa`, `law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_delivery`, `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`.
 - [x] **R** Support unsolicited/unassigned work cases; do not reject all results merely because no downloaded AWOS exists (TF-1 §5.4.2; TF-2b §3.29.4, C.8, pp.53–58,113–118).
   Tests: `law_tf2b_3_29_4_unsolicited_null_awos_and_external_reference_are_not_invented`.
   No downloaded AWOS is invented or required for unsolicited observations.
 - [x] **R** Preserve specimen/container/device identities (TF-2b B.1–B.2, pp.60–63; Appendix A, p.59; HL7 §§2.A.25–2.A.26, pp.2-164–2-165).
   Tests: `law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_notes`, `law_tf2b_c7_obx_18_first_second_later_equipment_ei_rules`.
   Original identities are retained alongside validated fields.
-- [ ] **R** Use AWOS plus OBX-3/4 for observation/run identity, retain preliminary/final/correction and retransmission semantics (TF-2b §3.29.4.1.3, pp.57–58; B.3, pp.63–77; base HL7 §7.4.2).
+- [x] **R** Use AWOS plus OBX-3/4 for observation/run identity, retain preliminary/final/correction and retransmission semantics (TF-2b §3.29.4.1.3, pp.57–58; B.3, pp.63–77; base HL7 §7.4.2).
   Tests: `law_tf2b_c7_same_primary_identity_requires_og_group_sequence`, `law_tf2b_c7_obx_11_closed_status_and_explicit_correction_only`.
-  Identity and declared status are covered; persistent retransmission/revision reconciliation remains a host obligation.
+  Host evidence: `crates/analyte/tests/law/results.rs::law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c` and `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`. AWOS takes precedence over analyzer order; the complete OG distinguishes runs. Retransmission creates no delivery, changed non-C content conflicts, and explicit C creates a revision. Pure status validation retains the closed LAW status set. Unsolicited explicit analyzer order/authority and unresolved identity are covered by `law_tf2b_3_29_4_unsolicited_uses_explicit_analyzer_order_not_invented_awos`. Restart qualification remains a separate gate.
 - [ ] **R** Preserve supplemental/primary relationships, typed values, units, statuses and scoped notes; do not treat NTE prose as executable rules (TF-2b B.3; C.5/C.7, pp.95–113).
   Tests: `law_tf2b_c7_obx_5_st_tx_and_rule5_original_values_units`, `law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_notes`.
   Typed/raw values and note scope are covered. Full cross-message supplemental/primary relationship reconciliation remains.
@@ -185,9 +187,10 @@ Add explicit acceptance cases for: result counts differing from message/topic co
   stays documented. Planned test: `law_gazelle_rev11_manager_recorded_scenarios`.
 - Complete capability/option/profile negotiation and default connection mode:
   absent. Planned test: `law_negotiated_options_and_default_query_mode`.
-- LAW host/dialog integration for durable original-work correlation, duplicate
-  acceptance, retries, restart, deadline, storage failure and cancellation races:
-  absent. Planned test: `law_host_durable_lifecycle_recovery`.
+- LAW host original-work correlation, work outcomes, restart and cancellation
+  races remain absent. LAB-29 durable receiving, duplicate/correction delivery,
+  result deadlines and storage failure now have the step-2 evidence below.
+  Planned remaining test: `law_host_durable_lifecycle_recovery`.
 - Related-observation sending/reference resolution, full pooling workflows and
   external-object retention/access/recovery: absent. Planned tests:
   `law_related_observation_work_roundtrip`, `law_pooling_workflow_roundtrip` and
@@ -196,7 +199,7 @@ Add explicit acceptance cases for: result counts differing from message/topic co
 These are planned names, not executable tests. Existing generic transport/store
 checks do not close these LAW acceptance gaps. No row claims real-analyzer proof.
 
-## Program integration checkpoint: step 1
+## Program integration checkpoint: step 1 (superseded by step 2 below)
 
 The configuration layer now selects `law_manager` with MLLP, HL7 2.5.1,
 CR segments, strict escapes and store-and-forward responsibility. All peer
@@ -215,10 +218,42 @@ are not supported by this integration; they must receive an unsupported-query
 error, never no-work. Isolate/parent requires app-supplied identities in a future
 contract version. The pure query parser's broader coverage is unchanged.
 
-No host checklist row closes at this configuration checkpoint: LAB-27/28/29
-routing, trusted all-pending lookup, reservations, connection direction,
-restart/cancellation/results tests and Gazelle qualification remain.
-The program refuses activation until those transactions are wired, tested by
-`crates/analyte/tests/receive.rs`:
-`law_tf2b_3_27_3_29_unwired_manager_cannot_fall_back_to_generic_hl7`.
-Evidence stays documented.
+At step 1 no host checklist row closed: activation was refused pending host
+transactions. Step 2 replaces that startup guard with the dedicated LAB-29
+receiver and keeps query/work execution disabled, as documented below.
+
+## Program integration checkpoint: step 2 — LAB-29 only
+
+Evidence remains **documented**, using synthetic program/reference-receiver
+traffic and temporary protected stores. No Gazelle or real-machine qualification.
+The existing pure LAW views/ACK builders and shared revision/outbox path are
+reused. UTF-8 is enforced by config (C.4); the dedicated result runtime accepts
+only analyzer-initiated TCP server links. Query/work connections and work
+lifecycle are not enabled in this step.
+
+Tests in `crates/analyte/tests/law/results.rs` (compiled under `tests/delivery.rs`):
+
+| Behavior/source | Test |
+| --- | --- |
+| Raw durable before interpretation/ACK, split input; §3.29.4, ADR 0003 | `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack` |
+| Raw/interpretation storage failures cannot send AA; §3.29.4, ADR 0003 | `law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa` |
+| Nearly full disk refuses visibly, no AA; §3.29.4, ADR 0003 | `law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa` |
+| Delivery, retransmission, explicit C revision; §3.29.4, B.3 | `law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c` |
+| Full OG/run identity, long control ID, rejected batches register neither revisions nor delivery; accepted later retries still deliver; §3.29.4, B.3/B.7 | `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs` |
+| Unsolicited explicit analyzer identity; ambiguous identity parked; §3.29.4 | `law_tf2b_3_29_4_unsolicited_uses_explicit_analyzer_order_not_invented_awos` |
+| Unknown test/bad status AE, inconsistent TCD AR; bytes retained, no delivery; §3.29.4, B.7 | `law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_delivery` |
+| Partial block deadline retains original without AA; §3.29.4, MLLP R1 | `law_tf2b_3_29_4_mllp_partial_block_deadline_parks_original_without_aa` |
+| Disabled queries get error RSP, no work followup; work traffic retained/closed; §§3.27–3.28 | `law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_acceptance` |
+
+`crates/config/tests/law.rs::law_tf2b_3_29_4_b3_config_cannot_replace_awos_or_truncate_og_identity`
+pins LAW identity selections. `crates/hl7/tests/law.rs::law_tf2b_c1_unknown_error_location_is_omitted_never_invented`
+tests the small `AckError::unlocated` API: LAW omits optional ERR-2 when a failing
+occurrence cannot be proven, rather than inventing one. Full causes remain in
+protected interpretation evidence. Generic HL7 still requires a location.
+
+Uninterpretable/mapping-unsupported or ambiguous content is parked with AE/AR.
+Syntax without a trustworthy response header, unsupported work/response traffic,
+and storage failure close without positive acceptance. LAB-27 cache lookup,
+the all-pending store API, LAB-28, original-work correlation, directional work
+links, cancellation/restart, full supplemental relationships and Gazelle remain.
+No step-3 implementation is included.

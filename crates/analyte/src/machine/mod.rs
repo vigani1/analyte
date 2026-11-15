@@ -4,6 +4,7 @@ mod autolyser;
 mod autolyser_custody;
 mod folder;
 mod hl7;
+mod law;
 mod poct;
 mod serial;
 mod vendor;
@@ -120,9 +121,7 @@ async fn session(
     match machine.snapshot.effective().machine().dialog.kind {
         analyte_config::DialogKind::AstmLink => astm::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::Hl7Receiver => hl7::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::LawManager => {
-            Err(invalid("LAW host transactions are not wired yet"))
-        }
+        analyte_config::DialogKind::LawManager => law::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::Poct => poct::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::VidasLiteral => {
             vidas::session(machine, store, conn, stop).await

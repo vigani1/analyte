@@ -397,3 +397,18 @@ Synthetic end-to-end cases cover both editions, accepted/rejected/mixed items,
 no reply, disconnect, cancel accepted/refused through the reference app feed,
 restart while Sending, no resend, actual placer-ID overflow, overlong ORC-4,
 and paused restore admission. They do not qualify a physical analyzer.
+
+## LAW result-only checkpoint (step 2)
+
+The dedicated LAW runtime currently receives LAB-29 only. Results do not reserve
+or send orders. Valid LAB-27 requests are retained and answered with an error
+RSP (no no-work answer and no LAB-28 followup). Incoming work/response traffic
+is retained and the connection closes; it never starts an ACK loop. The runtime
+only accepts an analyzer-initiated TCP server role at this checkpoint.
+
+LAB-27 cache lookup/all-pending, shared per-AWOS reservation, LAB-28 issuance,
+ORL item outcomes, cancellation and durable originating-work correlation remain
+for later numbered steps. No new store read API or order workflow is included
+in step 2. Guard evidence is
+`tests/law/results.rs::law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_acceptance`.
+Evidence stays documented.

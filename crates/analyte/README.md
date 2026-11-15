@@ -247,12 +247,31 @@ restarted by recovery actions. Inspect the log after a forced stop, preserve the
 store and follow the existing recovery/reconciliation procedures. Never replay
 an uncertain machine order merely because a service was restarted.
 
-## LAW implementation checkpoint
+## LAW results runtime (step 2)
 
-Step 1 adds a distinct `law_manager` stack declaration and bounded LAW policy
-in `analyte-config` (see its synthetic `examples/law.toml`). The program rejects
-activation with `LAW host transactions are not wired yet`; it cannot run this
-profile through the generic HL7 receiver. The regression
-`law_tf2b_3_27_3_29_unwired_manager_cannot_fall_back_to_generic_hl7` proves the
-startup refusal. Durable LAB-27/28/29 host integration, directional links and
-the program/reference-receiver matrix remain. Evidence is documented.
+`law_manager` now runs a dedicated LAB-29 receiver on an analyzer-initiated TCP
+server link. Its complete MLLP block and configuration provenance are durable
+before profile validation, mapping or ACK. Existing LAW views/ACK builders and
+the shared revision/outbox transaction own interpretation and delivery. AA
+requires successful durable interpretation; failed content is parked with AE
+or AR. A storage failure closes without AA. Malformed syntax without a trustworthy
+response header is retained and the connection closes. Partial blocks are
+bounded by the configured first-byte receive deadline and parked on expiry.
+
+AWOS is the order identity when present. An unsolicited result can use an
+explicit analyzer order/authority; missing evidence is unresolved, never invented.
+The entire OG is retained; changed non-C content conflicts, a C correction gets
+a new revision, and retransmissions create no delivery. A conflicting batch
+cannot register revisions or deliver its otherwise-new subset; a later accepted
+retry can still deliver those results. The shared transaction rolls back the
+batch before its failed interpretation is parked. Units and values keep source spelling.
+
+LAB-27 cache answers and LAB-28 execution remain disabled: valid queries get an
+error RSP without followup; work/response traffic is retained and the connection
+closes. No orders are reserved or sent. Other connection roles remain disabled.
+`tests/law/results.rs` contains nine synthetic program/reference-receiver cases,
+including a durable-commit pause, raw/interpretation storage failures, low disk,
+unsolicited results, complete OG run identities and partial-block expiry.
+`tests/receive.rs::law_tf2b_3_29_manager_selects_dedicated_receiver_without_startup_io`
+checks startup selection/role restriction. Evidence remains documented; work
+correlation, cancellation/restart workflows and Gazelle qualification remain.
