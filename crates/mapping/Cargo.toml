@@ -1,0 +1,16 @@
+[package]
+name = "analyte-mapping"
+description = "Mapping from parsed ASTM and HL7 messages to the common model, driven by machine config."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true
