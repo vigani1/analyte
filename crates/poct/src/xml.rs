@@ -261,7 +261,7 @@ fn append_text(elements: &mut [Element], stack: &[usize], text: &str) -> Result<
     Ok(())
 }
 
-fn xml_character(c: char) -> bool {
+pub(crate) fn xml_character(c: char) -> bool {
     matches!(c, '\t' | '\n' | '\r' | '\u{20}'..='\u{d7ff}' | '\u{e000}'..='\u{fffd}' | '\u{10000}'..='\u{10ffff}')
 }
 

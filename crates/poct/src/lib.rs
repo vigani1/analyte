@@ -7,3 +7,12 @@
 mod xml;
 
 pub use xml::{Document, Element, Error, Limits};
+
+mod data;
+mod message;
+mod structure;
+pub use data::{Code, DataError, Null, Nullable, Quantity, Timestamp, Value};
+pub use message::{
+    AckKind, Body, Capabilities, ControlId, Header, Message, MessageError, Observation, Profile,
+    Role, Service,
+};
