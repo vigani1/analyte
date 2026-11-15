@@ -191,6 +191,21 @@ pub struct Limits {
     pub busy_timeout: Duration,
 }
 
+impl Limits {
+    /// The one admission rule for limits, shared by open and restore so neither
+    /// can publish a store with bounds the other refuses.
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        if self.record_bytes == 0
+            || self.page_rows == 0
+            || self.busy_timeout.is_zero()
+            || self.busy_timeout > Duration::from_secs(30)
+        {
+            return Err(Error::InvalidInput);
+        }
+        Ok(())
+    }
+}
+
 /// One connection, owned by a dedicated worker when used from async code.
 pub struct Store {
     _lock: std::fs::File,

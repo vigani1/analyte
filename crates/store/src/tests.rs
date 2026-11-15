@@ -1861,3 +1861,56 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
     );
     Ok(())
 }
+
+#[test]
+fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("current.db");
+    let source = temp.path().join("backup.db");
+    drop(open(&source)?);
+    let mut store = open(&path)?;
+    let metadata = receipt(b"current evidence")?;
+    store.receive(&metadata, b"current evidence", b"config")?;
+    drop(store);
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 0,
+        reason: Reason::new("synthetic recovery")?,
+    };
+    let invalid = Limits {
+        page_rows: 0,
+        ..limits()
+    };
+    // The same public limits are refused by normal open. Restore must not bypass admission.
+    assert!(matches!(
+        Store::open(
+            &temp.path().join("invalid.db"),
+            Limits {
+                page_rows: 0,
+                ..limits()
+            },
+            Box::new(Space(u64::MAX))
+        ),
+        Err(Error::InvalidInput)
+    ));
+    let result = Store::restore(
+        &path,
+        &source,
+        invalid,
+        Box::new(Space(u64::MAX)),
+        &audit,
+        Instant::now() + HANG_GUARD,
+    );
+    assert!(
+        matches!(result, Err(Error::InvalidInput)),
+        "restore accepted invalid zero page limit: {result:?}"
+    );
+    assert_eq!(
+        open(&path)?.raw(metadata.id)?,
+        Some(b"current evidence".to_vec())
+    );
+    assert!(!path.with_extension("before-restore").exists());
+    Ok(())
+}

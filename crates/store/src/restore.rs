@@ -43,6 +43,7 @@ impl Store {
         if audit.action.as_str() != "store-restore" {
             return Err(Error::InvalidInput);
         }
+        limits.validate()?;
         let lock = Self::lock(path, true)?;
         let stage = path.with_extension("restore-pending");
         let kept = path.with_extension("before-restore");
