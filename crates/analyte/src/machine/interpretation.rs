@@ -63,13 +63,13 @@ pub(crate) async fn map_retained(
             | analyte_poct::Body::Request(_) => None,
         });
         let message = analyte_poct::Message::parse(&receipt.raw, poct_limits(settings))?;
-        return super::vendor_model::poct(
-            machine,
+        return Ok(analyte_mapping::map_poct(
+            &machine.snapshot,
             receipt.metadata.id,
             &message,
             receipt.metadata.received_at,
             device,
-        );
+        )?);
     }
     map(
         machine,
@@ -96,7 +96,13 @@ pub(crate) fn map(
     match effective.stack() {
         Stack::Poct(settings) => {
             let message = analyte_poct::Message::parse(payload, poct_limits(settings))?;
-            super::vendor_model::poct(machine, id, &message, time, None)
+            Ok(analyte_mapping::map_poct(
+                &machine.snapshot,
+                id,
+                &message,
+                time,
+                None,
+            )?)
         }
         Stack::VidasLiteral(settings) => {
             let mut decoder = analyte_vidas::framing::Decoder::new(vidas_config(machine)?);
@@ -119,12 +125,22 @@ pub(crate) fn map(
                     }
                 },
             )?;
-            super::vendor_model::vidas(machine, id, &message, time)
+            Ok(analyte_mapping::map_vidas(
+                &machine.snapshot,
+                id,
+                &message,
+                time,
+            )?)
         }
         Stack::Autolyser(settings) => {
             let report =
                 analyte_autolyser::records::Report::parse(payload, settings.policy.controls)?;
-            super::vendor_model::autolyser(machine, id, &report, time)
+            Ok(analyte_mapping::map_autolyser(
+                &machine.snapshot,
+                id,
+                &report,
+                time,
+            )?)
         }
         Stack::Astm(settings) => map_astm(machine, payload, input, &settings.syntax),
         Stack::FileAstm(settings) => map_astm(machine, payload, input, &settings.syntax),

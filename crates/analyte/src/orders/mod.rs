@@ -8,7 +8,7 @@ pub(crate) mod sending;
 mod settings;
 use crate::{Error, config::Machine};
 use analyte_contract::{EventFields, OrderEvent, Source, Text};
-use analyte_model::{Identifier, NamespacedId, SampleId};
+use analyte_model::{Identifier, SampleId};
 use analyte_store::{MachineOrder, OrderEventDelivery};
 pub use operator::{Command, Outcome, run};
 
@@ -60,38 +60,7 @@ pub(crate) fn eligible(order: &analyte_contract::Order, machine: &Machine) -> bo
         .is_ok()
 }
 
-/// Adapts validated app fields without inventing a code system or position.
-pub(crate) fn app_order(
-    order: &analyte_contract::Order,
-) -> Result<analyte_mapping::AppOrder, Error> {
-    let fields = order.fields();
-    let tests = fields
-        .tests
-        .iter()
-        .map(|test| {
-            Ok(NamespacedId {
-                namespace: Identifier::new(test.namespace.as_str())?,
-                value: Identifier::new(test.value.as_str())?,
-            })
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
-    Ok(analyte_mapping::AppOrder {
-        sample: SampleId::new(fields.sample_id.as_str())?,
-        tests,
-        patient: fields
-            .patient
-            .as_ref()
-            .map(|p| namespaced(&p.id))
-            .transpose()?,
-        specimen_type: fields.specimen_type.as_ref().map(namespaced).transpose()?,
-        priority: match fields.priority {
-            analyte_contract::Priority::Routine => analyte_mapping::AppOrderPriority::Routine,
-            analyte_contract::Priority::Urgent => analyte_mapping::AppOrderPriority::Urgent,
-            analyte_contract::Priority::Stat => analyte_mapping::AppOrderPriority::Stat,
-        },
-        position: fields.position.as_ref().map(position).transpose()?,
-    })
-}
+use analyte_mapping::app_order;
 
 /// Builds an immutable contract event from a committed lifecycle snapshot.
 /// # Errors
@@ -127,32 +96,4 @@ fn build_event(record: &MachineOrder, reason: Option<&str>) -> Result<OrderEvent
 /// Returns the app namespace used for cache lookups and lifecycle events.
 pub(crate) fn destination(machine: &Machine) -> Identifier {
     machine.snapshot.effective().site().destination.name.clone()
-}
-
-fn namespaced(id: &analyte_contract::evidence::NamespacedId) -> Result<NamespacedId, Error> {
-    Ok(NamespacedId {
-        namespace: Identifier::new(id.namespace.as_str())?,
-        value: Identifier::new(id.value.as_str())?,
-    })
-}
-
-fn position(
-    position: &analyte_contract::evidence::SamplePosition,
-) -> Result<analyte_model::SamplePosition, Error> {
-    use analyte_contract::evidence::CarrierKind as Wire;
-    use analyte_model::CarrierKind;
-    Ok(analyte_model::SamplePosition {
-        kind: match &position.kind {
-            Wire::Rack => CarrierKind::Rack,
-            Wire::Disk => CarrierKind::Disk,
-            Wire::Tray => CarrierKind::Tray,
-            Wire::Other(id) => CarrierKind::Other(Identifier::new(id.as_str())?),
-        },
-        carrier: position
-            .carrier
-            .as_ref()
-            .map(|id| Identifier::new(id.as_str()))
-            .transpose()?,
-        slot: Identifier::new(position.slot.as_str())?,
-    })
 }

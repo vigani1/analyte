@@ -94,3 +94,21 @@ and status-only messages without mappable observations are retained/parked; they
 cannot obtain a positive interpretation promise. Full LAW receipt bytes always
 stay in the protected store. Synthetic program/reference-receiver evidence is
 in `crates/analyte/tests/law/results.rs`; no hardware/Gazelle claim is made.
+
+## Mapping ownership
+
+All analyzer-to-model and model-to-analyzer translations live in this crate:
+ASTM, HL7, LAW, POCT, VIDAS and Autolyser. POCT observation conversion is in
+`poct`; conservative vendor/config adaptation is in `vendor`. Protocol crates
+retain syntax views, wire builders and transaction rules, not model mapping.
+
+Every outgoing test, specimen and priority table lookup uses `orders/lookup`.
+Matches retain exact namespaces, code spelling, component positions and configured
+priority text. Missing translations remain specific errors; there is no default
+or reverse lookup through incoming result tables. HL7/LAW command mappers receive
+borrowed reservation identities and host-generated response metadata, never a
+store handle or a clock. Reservations and lifecycle effects remain host-owned.
+
+The POCT and VIDAS mapping assertions moved here with their expectations intact.
+`tests/outbound_lookup.rs` names ADR 0004 and proves exact matching and refusal of
+absent translations independently of protocol rendering.

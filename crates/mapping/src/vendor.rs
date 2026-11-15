@@ -1,7 +1,40 @@
 //! Conservative vendor adapters retain unresolved identities and exact values.
-use crate::{Error, config::Machine};
-use analyte_mapping::{MappedResult, Output, Position};
+use crate::{MappedResult, Output, Position};
+use analyte_config::Validated;
 use analyte_model::*;
+
+/// Specific vendor-to-model boundary failures; original receipts must remain protected.
+#[derive(Debug, thiserror::Error)]
+pub enum VendorMappingError {
+    /// Common-model text refused the source.
+    #[error(transparent)]
+    Text(#[from] TextError),
+    /// Bounded evidence list refused the source.
+    #[error(transparent)]
+    List(#[from] ListError),
+    /// Original unit mapping validation failure.
+    #[error(transparent)]
+    Unit(#[from] UnitMappingError),
+    /// A result cannot contain an empty part list.
+    #[error(transparent)]
+    Empty(#[from] EmptyEvidence),
+    /// Source bytes are not valid UTF-8.
+    #[error(transparent)]
+    Encoding(#[from] std::str::Utf8Error),
+    /// VIDAS result syntax or model text refused the source.
+    #[error(transparent)]
+    Vidas(#[from] analyte_vidas::syntax::Error),
+    /// POCT observation mapping refused the source.
+    #[error(transparent)]
+    Poct(#[from] crate::poct::MappingError),
+    /// Shared identity or mapping rule refused the source.
+    #[error(transparent)]
+    Mapping(#[from] crate::Error),
+    /// A specifically named required context is unavailable.
+    #[error("{0}")]
+    Context(&'static str),
+}
+use VendorMappingError as Error;
 
 fn part(
     test: NamespacedId,
@@ -25,11 +58,11 @@ fn part(
     })
 }
 
-fn translate_units(machine: &Machine, part: &mut ResultPart) -> Result<(), Error> {
-    let (_, units) = machine.snapshot.effective().stack().code_tables();
+fn translate_units(machine: &Validated, part: &mut ResultPart) -> Result<(), Error> {
+    let (_, units) = machine.effective().stack().code_tables();
     if let Some(unit) = &part.units {
         let original = unit.original_text().clone();
-        if let Some(entry) = analyte_mapping::unit_translation(units, original.as_str()) {
+        if let Some(entry) = crate::unit_translation(units, original.as_str()) {
             part.units = Some(Units::mapped(
                 original.clone(),
                 UnitMapping {
@@ -57,16 +90,13 @@ fn result(
     })
 }
 
-fn translated_test(machine: &Machine, code: &str, system: Option<&str>) -> Option<NamespacedId> {
-    analyte_mapping::test_translation(
-        machine.snapshot.effective().stack().code_tables().0,
-        &[code],
-        system,
+fn translated_test(machine: &Validated, code: &str, system: Option<&str>) -> Option<NamespacedId> {
+    crate::test_translation(machine.effective().stack().code_tables().0, &[code], system).map(
+        |entry| NamespacedId {
+            namespace: entry.app_system.clone(),
+            value: entry.app_code.clone(),
+        },
     )
-    .map(|entry| NamespacedId {
-        namespace: entry.app_system.clone(),
-        value: entry.app_code.clone(),
-    })
 }
 
 fn push_result(output: &mut Output, content: ResultContent) -> Result<(), Error> {
@@ -77,13 +107,16 @@ fn push_result(output: &mut Output, content: ResultContent) -> Result<(), Error>
     Ok(())
 }
 
-pub(super) fn vidas(
-    machine: &Machine,
+/// Maps VIDAS values conservatively, preserving unresolved identity and exact text.
+/// # Errors
+/// Preserves syntax, model and mapping failures.
+pub fn map_vidas(
+    machine: &Validated,
     receipt: ReceiptId,
     message: &analyte_vidas::syntax::Message,
     time: jiff::Timestamp,
 ) -> Result<Output, Error> {
-    let evidence = message.result()?;
+    let evidence = vidas_evidence(message)?;
     let mut output = Output::default();
     let Some(test) = translated_test(machine, evidence.assay.as_str(), None) else {
         output.unmapped_test(
@@ -125,8 +158,11 @@ pub(super) fn vidas(
     Ok(output)
 }
 
-pub(super) fn autolyser(
-    machine: &Machine,
+/// Maps Autolyser results without inferring a specimen or immutable run.
+/// # Errors
+/// Preserves source encoding, model and mapping failures.
+pub fn map_autolyser(
+    machine: &Validated,
     receipt: ReceiptId,
     report: &analyte_autolyser::records::Report,
     time: jiff::Timestamp,
@@ -167,21 +203,24 @@ pub(super) fn autolyser(
         )?;
     }
     if report.values.is_empty() {
-        return Err(crate::invalid("Autolyser report contains no results"));
+        return Err(Error::Context("Autolyser report contains no results"));
     }
     Ok(output)
 }
 
-pub(super) fn poct(
-    machine: &Machine,
+/// Applies explicit POCT code tables and identity policy to faithfully mapped observations.
+/// # Errors
+/// Preserves syntax, model, identity and mapping failures.
+pub fn map_poct(
+    machine: &Validated,
     receipt: ReceiptId,
     message: &analyte_poct::Message,
     time: jiff::Timestamp,
     device: Option<&str>,
 ) -> Result<Output, Error> {
-    let observations = analyte_poct::map_observations(message, time)?;
+    let observations = crate::poct::map_observations(message, time)?;
     if observations.is_empty() {
-        return Err(crate::invalid(
+        return Err(Error::Context(
             "POCT observations transfer contains no observations",
         ));
     }
@@ -191,7 +230,7 @@ pub(super) fn poct(
         let mut identity = observation.identity;
         let mut processing = ProcessingMode::Unknown;
         let mut correction = false;
-        if let analyte_config::Stack::Poct(settings) = machine.snapshot.effective().stack()
+        if let analyte_config::Stack::Poct(settings) = machine.effective().stack()
             && let Some(policy) = &settings.policy.identity
         {
             processing = policy.processing;
@@ -233,7 +272,7 @@ pub(super) fn poct(
                             .system
                             .as_deref()
                             .or(observation.source_code.system_name.as_deref())
-                            .ok_or_else(|| crate::invalid("POCT analyte namespace missing"))?,
+                            .ok_or(Error::Context("POCT analyte namespace missing"))?,
                     )?,
                     value: Identifier::new(&observation.source_code.value)?,
                 };
@@ -241,7 +280,7 @@ pub(super) fn poct(
                     observation: ObservationIdentity {
                         code,
                         sub_id: SourceText::new("")?,
-                        run: analyte_mapping::identity_run(&run)?,
+                        run: crate::identity_run(&run)?,
                         order: NamespacedId {
                             namespace: Identifier::new("poct-device")?,
                             value: Identifier::new(device)?,
@@ -280,4 +319,61 @@ pub(super) fn poct(
         });
     }
     Ok(output)
+}
+
+/// Extracts VIDAS common-model evidence without parsing or changing written values.
+/// # Errors
+/// Rejects non-result messages or common-model text violations.
+pub fn vidas_evidence(
+    message: &analyte_vidas::syntax::Message,
+) -> Result<VidasResultEvidence, analyte_vidas::syntax::Error> {
+    if message.kind() != analyte_vidas::syntax::Kind::Result {
+        return Err(analyte_vidas::syntax::Error::NotResult);
+    }
+    Ok(VidasResultEvidence {
+        sample: message.sample().clone(),
+        assay: SourceText::new(
+            message
+                .get("rt")
+                .ok_or_else(|| analyte_vidas::syntax::Error::Field("rt".into()))?,
+        )?,
+        value: ResultValue {
+            decoded_text: None,
+            original: SourceText::new(
+                message
+                    .get("qn")
+                    .ok_or_else(|| analyte_vidas::syntax::Error::Field("qn".into()))?,
+            )?,
+            parsed: ValueInterpretation::Text,
+        },
+        call: SourceText::new(
+            message
+                .get("ql")
+                .ok_or_else(|| analyte_vidas::syntax::Error::Field("ql".into()))?,
+        )?,
+        unit: message.get("y3").map(SourceText::new).transpose()?,
+        flag: message.get("nc").map(SourceText::new).transpose()?,
+        dilution: message.get("qd").map(SourceText::new).transpose()?,
+    })
+}
+
+/// Uninterpreted result evidence, not a deliverable identified observation.
+/// No physical position exists in the documented schema. The host must resolve
+/// result/revision identity and patient versus QC classification before delivery.
+#[derive(Debug, Clone)]
+pub struct VidasResultEvidence {
+    /// Exact source sample identifier.
+    pub sample: SampleId,
+    /// Unmapped assay code; no assay name guessing.
+    pub assay: SourceText,
+    /// Original measured text, including comparator, error token or embedded unit.
+    pub value: ResultValue,
+    /// Original qualitative call in the installed language.
+    pub call: SourceText,
+    /// Separately transmitted unit, if any; no inferred conversion.
+    pub unit: Option<SourceText>,
+    /// Calibration/control/lot flag; never a clinical judgement.
+    pub flag: Option<SourceText>,
+    /// Original ratio or factor; application status is unknown.
+    pub dilution: Option<SourceText>,
 }

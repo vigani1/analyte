@@ -1,6 +1,14 @@
 //! Outbound mapping never searches or reverses the incoming result table.
+mod app;
 mod display;
+mod hl7;
+mod law;
+pub use app::app_order;
+pub use hl7::Hl7Command;
+pub use law::{LawCommand, law_address, map_law_work};
+mod lookup;
 pub use display::map_display;
+pub use lookup::{outbound_priority, outbound_specimen, outbound_test};
 
 use analyte_config::Validated;
 use analyte_model::{NamespacedId, SampleId, SamplePosition};
@@ -156,21 +164,13 @@ fn astm(
     }
     let mut tests = Vec::new();
     for requested in &order.tests {
-        let mapped = settings
-            .tests
-            .iter()
-            .find(|t| t.app == *requested)
-            .ok_or_else(|| OrderMappingError::UnmappedTest(requested.clone()))?;
+        let mapped = outbound_test(&settings.tests, requested)?;
         for part in &mapped.machine_components {
             wire_text(part)?;
         }
         tests.push(mapped.machine_components.join("^"));
     }
-    let priority = settings
-        .priorities
-        .iter()
-        .find(|p| p.app.as_str() == order.priority.code())
-        .ok_or(OrderMappingError::UnmappedPriority)?;
+    let priority = outbound_priority(&settings.priorities, order.priority)?;
     let mut fields: [String; 16] = std::array::from_fn(|_| String::new());
     fields[0] = "O".into();
     fields[1] = "1".into();
@@ -314,13 +314,7 @@ fn vidas(
     {
         return Err(OrderMappingError::Representation);
     }
-    if !settings
-        .priorities
-        .iter()
-        .any(|p| p.app.as_str() == order.priority.code())
-    {
-        return Err(OrderMappingError::UnmappedPriority);
-    }
+    outbound_priority(&settings.priorities, order.priority)?;
     let limit = match installed.sample_limit {
         analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
         analyte_config::VidasSampleLimit::Seventeen => {
@@ -330,11 +324,7 @@ fn vidas(
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
     for test in &order.tests {
-        let mapped = settings
-            .tests
-            .iter()
-            .find(|t| t.app == *test)
-            .ok_or_else(|| OrderMappingError::UnmappedTest(test.clone()))?;
+        let mapped = outbound_test(&settings.tests, test)?;
         let [code] = mapped.machine_components.as_slice() else {
             return Err(OrderMappingError::Representation);
         };
@@ -388,11 +378,7 @@ fn autolyser(
         "U" => Sample::Urine,
         _ => return Err(OrderMappingError::UnmappedSpecimenType),
     };
-    let priority = settings
-        .priorities
-        .iter()
-        .find(|p| p.app.as_str() == order.priority.code())
-        .ok_or(OrderMappingError::UnmappedPriority)?;
+    let priority = outbound_priority(&settings.priorities, order.priority)?;
     let list = match &priority.machine {
         analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => List::Routine,
         analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => List::Stat,
@@ -429,11 +415,7 @@ fn autolyser(
     }
     let mut tests = Vec::new();
     for test in &order.tests {
-        let mapped = settings
-            .tests
-            .iter()
-            .find(|t| t.app == *test)
-            .ok_or_else(|| OrderMappingError::UnmappedTest(test.clone()))?;
+        let mapped = outbound_test(&settings.tests, test)?;
         let [code] = mapped.machine_components.as_slice() else {
             return Err(OrderMappingError::Representation);
         };
@@ -454,10 +436,51 @@ fn specimen_type<'a>(
         .specimen_type
         .as_ref()
         .ok_or(OrderMappingError::MissingSpecimenType)?;
-    settings
-        .specimen_types
-        .as_ref()
-        .and_then(|types| types.iter().find(|t| t.app == *requested))
-        .map(|mapping| mapping.machine.as_str())
-        .ok_or(OrderMappingError::UnmappedSpecimenType)
+    Ok(
+        outbound_specimen(settings.specimen_types.as_deref(), requested)?
+            .machine
+            .as_str(),
+    )
+}
+/// Borrowed reservation identities and requested app codes; storage remains host-owned.
+pub struct OutboundItem<'a> {
+    /// Stable placer identity assigned once by the store.
+    pub placer: &'a str,
+    /// Explicit retained assigning namespace, if the protocol carries it.
+    pub namespace: Option<&'a analyte_model::Identifier>,
+    /// Tests covered by this immutable reservation item.
+    pub tests: &'a [NamespacedId],
+}
+/// Mapping errors for initiating HL7/LAW work, retaining protocol-specific diagnostics.
+#[derive(Debug, thiserror::Error)]
+pub enum WireMappingError {
+    /// A specific input or capability refusal.
+    #[error("{0}")]
+    Context(&'static str),
+    /// A specific unmapped-code refusal with the shared lookup cause.
+    #[error("{context}")]
+    Lookup {
+        /// Stable protocol-specific diagnostic.
+        context: &'static str,
+        /// Specific shared mapping failure.
+        #[source]
+        source: OrderMappingError,
+    },
+    /// App evidence violates a common-model text bound.
+    #[error(transparent)]
+    Text(#[from] analyte_model::TextError),
+    /// HL7 syntax rejected mapped content.
+    #[error(transparent)]
+    Hl7(#[from] analyte_hl7::Error),
+    /// HL7 order builder rejected mapped content.
+    #[error(transparent)]
+    Order(#[from] analyte_hl7::order::Error),
+    /// LAW profile rejected mapped content.
+    #[error(transparent)]
+    Law(#[from] analyte_hl7::law::Error),
+}
+impl WireMappingError {
+    fn lookup(context: &'static str, source: OrderMappingError) -> Self {
+        Self::Lookup { context, source }
+    }
 }

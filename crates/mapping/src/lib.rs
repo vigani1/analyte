@@ -3,6 +3,12 @@
 #![forbid(unsafe_code)]
 
 mod identity;
+/// Faithful POCT syntax-to-model conversion.
+pub mod poct;
+mod vendor;
+pub use vendor::{
+    VendorMappingError, VidasResultEvidence, map_autolyser, map_poct, map_vidas, vidas_evidence,
+};
 mod map;
 mod orders;
 mod result;

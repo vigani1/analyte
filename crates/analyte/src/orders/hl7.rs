@@ -58,7 +58,6 @@ impl Connection {
         .await?
         {
             let wait = super::settings::hl7(machine)
-                .map(|settings| settings.orders)
                 .and_then(|orders| orders.send.as_ref())
                 .ok_or("send settings")?
                 .settings
@@ -197,9 +196,8 @@ impl Connection {
                 return Ok(None);
             }
         };
-        let settings = super::settings::hl7(machine)
-            .map(|settings| settings.orders)
-            .ok_or_else(|| invalid("HL7 orders missing"))?;
+        let settings =
+            super::settings::hl7(machine).ok_or_else(|| invalid("HL7 orders missing"))?;
         let query = settings
             .query
             .as_ref()
@@ -252,13 +250,16 @@ impl Connection {
                         if !super::eligible(&order, machine) {
                             continue;
                         }
-                        let mapped = super::app_order(&order).and_then(|app| {
-                            Ok(analyte_mapping::map_display(
-                                &app,
-                                fields.id.as_str(),
-                                &machine.snapshot,
-                            )?)
-                        });
+                        let mapped =
+                            super::app_order(&order)
+                                .map_err(Error::from)
+                                .and_then(|app| {
+                                    Ok(analyte_mapping::map_display(
+                                        &app,
+                                        fields.id.as_str(),
+                                        &machine.snapshot,
+                                    )?)
+                                });
                         match mapped {
                             Ok(mapped) => {
                                 if lines

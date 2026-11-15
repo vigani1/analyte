@@ -1,6 +1,6 @@
 //! Capability admission follows the validated stack, never independent section presence.
 use crate::{Error, config::Machine, invalid};
-use analyte_config::{AstmOrders, Hl7Orders, Hl7Syntax, LawStack, Stack};
+use analyte_config::{AstmOrders, Hl7Orders, LawStack, Stack};
 
 pub(super) fn astm(machine: &Machine) -> Option<&AstmOrders> {
     match machine.snapshot.effective().stack() {
@@ -15,21 +15,10 @@ pub(super) fn astm(machine: &Machine) -> Option<&AstmOrders> {
     }
 }
 
-pub(super) struct Hl7<'a> {
-    pub(super) syntax: &'a Hl7Syntax,
-    pub(super) orders: &'a Hl7Orders,
-}
-
-pub(super) fn hl7(machine: &Machine) -> Option<Hl7<'_>> {
+pub(super) fn hl7(machine: &Machine) -> Option<&Hl7Orders> {
     match machine.snapshot.effective().stack() {
-        Stack::Hl7(s) => s.orders.as_ref().map(|orders| Hl7 {
-            syntax: &s.syntax,
-            orders,
-        }),
-        Stack::FileHl7(s) => s.orders.as_ref().map(|orders| Hl7 {
-            syntax: &s.syntax,
-            orders,
-        }),
+        Stack::Hl7(s) => s.orders.as_ref(),
+        Stack::FileHl7(s) => s.orders.as_ref(),
         Stack::Astm(_)
         | Stack::Law(_)
         | Stack::Poct(_)

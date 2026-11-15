@@ -1,5 +1,5 @@
 //! Tagged fields, from research/vidas.md ?4 (BCI A ?4).
-use analyte_model::{ResultValue, SampleId, SourceText, ValueInterpretation};
+use analyte_model::SampleId;
 use thiserror::Error;
 
 /// Required installed sample ID limit; never truncate an identifier.
@@ -232,49 +232,4 @@ impl Message {
             .find(|f| f.tag == tag)
             .map(|f| f.value.as_str())
     }
-
-    /// Maps result text conservatively. Identity remains unresolved (ADR 0003).
-    /// # Errors
-    /// Rejects requests or model text violations. No number or unit is guessed.
-    pub fn result(&self) -> Result<ResultEvidence, Error> {
-        if self.kind != Kind::Result {
-            return Err(Error::NotResult);
-        }
-        Ok(ResultEvidence {
-            sample: self.sample.clone(),
-            assay: SourceText::new(self.get("rt").ok_or_else(|| Error::Field("rt".into()))?)?,
-            value: ResultValue {
-                decoded_text: None,
-                original: SourceText::new(
-                    self.get("qn").ok_or_else(|| Error::Field("qn".into()))?,
-                )?,
-                parsed: ValueInterpretation::Text,
-            },
-            call: SourceText::new(self.get("ql").ok_or_else(|| Error::Field("ql".into()))?)?,
-            unit: self.get("y3").map(SourceText::new).transpose()?,
-            flag: self.get("nc").map(SourceText::new).transpose()?,
-            dilution: self.get("qd").map(SourceText::new).transpose()?,
-        })
-    }
-}
-
-/// Uninterpreted result evidence, not a deliverable identified observation.
-/// No physical position exists in the documented schema. The host must resolve
-/// result/revision identity and patient versus QC classification before delivery.
-#[derive(Debug, Clone)]
-pub struct ResultEvidence {
-    /// Exact source sample identifier.
-    pub sample: SampleId,
-    /// Unmapped assay code; no assay name guessing.
-    pub assay: SourceText,
-    /// Original measured text, including comparator, error token or embedded unit.
-    pub value: ResultValue,
-    /// Original qualitative call in the installed language.
-    pub call: SourceText,
-    /// Separately transmitted unit, if any; no inferred conversion.
-    pub unit: Option<SourceText>,
-    /// Calibration/control/lot flag; never a clinical judgement.
-    pub flag: Option<SourceText>,
-    /// Original ratio or factor; application status is unknown.
-    pub dilution: Option<SourceText>,
 }

@@ -1,8 +1,6 @@
 //! Faithful POCT-to-common-model mapping, without clinical decisions or guessed IDs.
-use crate::{
-    Body, Code, Message, Nullable, Observation, Role, Service, Timestamp, Value, structure,
-};
 use analyte_model as model;
+use analyte_poct::{Body, Code, Message, Nullable, Observation, Role, Service, Timestamp, Value};
 
 /// A mapping failure requires retaining the receipt for operator handling.
 #[derive(Debug, thiserror::Error)]
@@ -12,7 +10,7 @@ pub enum MappingError {
     NotObservations,
     /// Source structure cannot be associated with its service.
     #[error(transparent)]
-    Structure(#[from] crate::MessageError),
+    Structure(#[from] analyte_poct::MessageError),
     /// Common-model text limits were exceeded; original bytes remain protected.
     #[error(transparent)]
     Text(#[from] model::TextError),
@@ -118,12 +116,12 @@ fn map_one(
     let parent = document
         .elements()
         .get(observation.source_index)
-        .and_then(crate::Element::parent)
-        .ok_or(crate::MessageError::Structure)?;
+        .and_then(analyte_poct::Element::parent)
+        .ok_or(analyte_poct::MessageError::Structure)?;
     let patient_id = optional_literal(document, parent, "PT.patient_id")
         .map(|s| model::SourceText::new(&s))
         .transpose()?;
-    let sample = if let Ok(specimen) = structure::child(document, service.source_index, "SPC") {
+    let sample = if let Ok(specimen) = analyte_poct::child(document, service.source_index, "SPC") {
         optional_literal(document, specimen, "SPC.specimen_id")
             .map(|id| {
                 model::SampleId::new(&id).map(|id| model::SampleIdentity {
@@ -171,7 +169,7 @@ fn map_one(
                     document
                         .elements()
                         .first()
-                        .ok_or(crate::MessageError::Structure)?
+                        .ok_or(analyte_poct::MessageError::Structure)?
                         .name(),
                 )?,
                 sequence: None,
@@ -193,7 +191,7 @@ fn map_one(
                     document
                         .elements()
                         .get(parent)
-                        .ok_or(crate::MessageError::Structure)?
+                        .ok_or(analyte_poct::MessageError::Structure)?
                         .name(),
                 )?,
                 sequence: None,
@@ -224,22 +222,23 @@ fn map_one(
 }
 
 fn optional_literal(
-    document: &crate::Document,
+    document: &analyte_poct::Document,
     parent: usize,
     name: &'static str,
 ) -> Option<String> {
-    structure::literal(document, parent, name).ok()
+    analyte_poct::literal(document, parent, name).ok()
 }
 
 fn comments(
-    document: &crate::Document,
+    document: &analyte_poct::Document,
     service: usize,
     observation: usize,
 ) -> Result<Vec<model::SourceText>, MappingError> {
     let mut comments = Vec::new();
     for parent in [service, observation] {
-        for (note, _) in structure::children(document, parent).filter(|(_, e)| e.name() == "NTE") {
-            comments.push(model::SourceText::new(&structure::literal(
+        for (note, _) in analyte_poct::children(document, parent).filter(|(_, e)| e.name() == "NTE")
+        {
+            comments.push(model::SourceText::new(&analyte_poct::literal(
                 document, note, "NTE.text",
             )?)?);
         }
@@ -303,7 +302,7 @@ fn map_value(
         | Value::Integer(Nullable::Value(_))
         | Value::Real(Nullable::Value(_))
         | Value::Interval(Nullable::Value(_))
-        | Value::Encapsulated(_) => return Err(crate::MessageError::ObservationValue.into()),
+        | Value::Encapsulated(_) => return Err(analyte_poct::MessageError::ObservationValue.into()),
     };
     Ok(model::ResultValue {
         decoded_text: None,
@@ -327,9 +326,9 @@ fn map_time(time: &Timestamp) -> Result<model::SourceTime, MappingError> {
                 ..original
                     .len()
                     .checked_sub(6)
-                    .ok_or(crate::MessageError::Structure)?,
+                    .ok_or(analyte_poct::MessageError::Structure)?,
             )
-            .ok_or(crate::MessageError::Structure)?
+            .ok_or(analyte_poct::MessageError::Structure)?
     } else {
         original
     };
@@ -360,5 +359,5 @@ fn map_time(time: &Timestamp) -> Result<model::SourceTime, MappingError> {
 fn source_occurrence(index: usize) -> Result<usize, MappingError> {
     index
         .checked_add(1)
-        .ok_or_else(|| crate::MessageError::Structure.into())
+        .ok_or_else(|| analyte_poct::MessageError::Structure.into())
 }

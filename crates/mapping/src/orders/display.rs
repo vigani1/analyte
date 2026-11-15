@@ -1,4 +1,4 @@
-use super::{AppOrder, OrderMappingError};
+use super::{AppOrder, OrderMappingError, outbound_priority, outbound_specimen, outbound_test};
 use analyte_config::{DsrLine, Validated};
 
 /// Maps explicitly configured DSP text, preserving values and leaving absent context empty.
@@ -30,11 +30,7 @@ pub fn map_display(
     let settings = &orders.tables;
     let mut lines = Vec::new();
     for test in &order.tests {
-        let mapped = settings
-            .tests
-            .iter()
-            .find(|t| t.app == *test)
-            .ok_or_else(|| OrderMappingError::UnmappedTest(test.clone()))?;
+        let mapped = outbound_test(&settings.tests, test)?;
         let Some(code) = mapped.machine_components.first() else {
             return Err(OrderMappingError::Representation);
         };
@@ -43,11 +39,7 @@ pub fn map_display(
                 DsrLine::SampleId => order.sample.as_str(),
                 DsrLine::OrderId => order_id,
                 DsrLine::TestCode => code,
-                DsrLine::Priority => settings
-                    .priorities
-                    .iter()
-                    .find(|p| p.app.as_str() == order.priority.code())
-                    .ok_or(OrderMappingError::UnmappedPriority)?
+                DsrLine::Priority => outbound_priority(&settings.priorities, order.priority)?
                     .machine
                     .as_str(),
                 DsrLine::Position => order.position.as_ref().map_or("", |p| p.slot.as_str()),
@@ -62,11 +54,7 @@ pub fn map_display(
                 },
                 DsrLine::SpecimenType => match &order.specimen_type {
                     None => "",
-                    Some(source) => settings
-                        .specimen_types
-                        .as_ref()
-                        .and_then(|types| types.iter().find(|t| t.app == *source))
-                        .ok_or(OrderMappingError::UnmappedSpecimenType)?
+                    Some(source) => outbound_specimen(settings.specimen_types.as_deref(), source)?
                         .machine
                         .as_str(),
                 },

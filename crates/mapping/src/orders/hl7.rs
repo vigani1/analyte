@@ -1,0 +1,275 @@
+//! HL7 ch.4 outgoing work mapping from explicit tables.
+use super::WireMappingError as Error;
+use analyte_hl7::{
+    Options, Version,
+    order::{self, OrderMessage},
+};
+
+/// Pure initiating HL7 command mapper; no storage, clocks or transport.
+pub struct Hl7Command {
+    settings: analyte_config::Hl7Orders,
+    version: Version,
+    options: Options,
+    app: super::AppOrder,
+    group: String,
+}
+impl Hl7Command {
+    /// Captures validated outgoing mappings and the app's exact group identity.
+    /// # Errors
+    /// Preserves disabled capability, patient requirements and group-length refusals.
+    pub fn new(
+        config: &analyte_config::Validated,
+        app: &analyte_contract::Order,
+        options: Options,
+    ) -> Result<Self, Error> {
+        let (syntax, settings) = match config.effective().stack() {
+            analyte_config::Stack::Hl7(stack) => (&stack.syntax, stack.orders.as_ref()),
+            analyte_config::Stack::FileHl7(stack) => (&stack.syntax, stack.orders.as_ref()),
+            analyte_config::Stack::Astm(_)
+            | analyte_config::Stack::FileAstm(_)
+            | analyte_config::Stack::Law(_)
+            | analyte_config::Stack::Poct(_)
+            | analyte_config::Stack::VidasLiteral(_)
+            | analyte_config::Stack::Autolyser(_) => {
+                return Err(Error::Context("HL7 orders absent"));
+            }
+        };
+        let settings = settings.ok_or(Error::Context("HL7 orders absent"))?.clone();
+        if settings
+            .send
+            .as_ref()
+            .is_some_and(|send| send.settings.require_patient_identification)
+        {
+            return Err(Error::Context(
+                "HL7-patient-name-required-but-not-carried-by-contract",
+            ));
+        }
+        let version = syntax.edition.into();
+        let group = app.fields().id.as_str().to_owned();
+        let namespace = settings
+            .send
+            .as_ref()
+            .ok_or(Error::Context("HL7 send config absent"))?
+            .placer_namespace
+            .as_str();
+        if group
+            .len()
+            .checked_add(namespace.len())
+            .and_then(|n| n.checked_add(1))
+            .is_none_or(|n| n > order::EI_MAX_BYTES)
+        {
+            return Err(Error::Context("HL7-app-order-id-too-long-for-ORC-4"));
+        }
+        Ok(Self {
+            settings,
+            version,
+            options,
+            app: super::app_order(app)?,
+            group,
+        })
+    }
+    /// Requested app tests for atomic per-item reservation; no wire lookup occurs here.
+    #[must_use]
+    pub fn tests(&self) -> &[analyte_model::NamespacedId] {
+        &self.app.tests
+    }
+    /// Maps one already-reserved command with host-supplied response metadata.
+    /// # Errors
+    /// Preserves exact-code, identity, repertoire and protocol-bound refusals.
+    pub fn build(
+        &self,
+        items: &[super::OutboundItem<'_>],
+        cancel: bool,
+        response: analyte_hl7::Response<'_>,
+    ) -> Result<OrderMessage, Error> {
+        let cfg = self
+            .settings
+            .send
+            .as_ref()
+            .ok_or(Error::Context("HL7 send config absent"))?;
+        let cfg = &cfg.settings;
+        let header = order::Header {
+            application: cfg.application.as_str().as_bytes(),
+            facility: cfg.facility.as_ref().map_or(b"", |v| v.as_str().as_bytes()),
+            peer_application: cfg.peer_application.as_str().as_bytes(),
+            peer_facility: cfg
+                .peer_facility
+                .as_ref()
+                .map_or(b"", |v| v.as_str().as_bytes()),
+            control_id: response.control_id,
+            timestamp: order::Timestamp::new(response.timestamp)?,
+            version: self.version,
+            processing: match cfg.processing {
+                analyte_config::Hl7Processing::Production => order::Processing::Production,
+                analyte_config::Hl7Processing::Training => order::Processing::Training,
+                analyte_config::Hl7Processing::Debugging => order::Processing::Debugging,
+            },
+        };
+        if cancel {
+            let mut orders = Vec::new();
+            for item in items {
+                let namespace = item
+                    .namespace
+                    .ok_or(Error::Context("HL7-item-has-no-placer-namespace"))?;
+                orders.push(order::Order::Cancel {
+                    placer: order::OrderId::new(
+                        item.placer.as_bytes(),
+                        namespace.as_str().as_bytes(),
+                    )?,
+                    filler: None,
+                });
+            }
+            let sent = match self.version {
+                Version::V231 => {
+                    order::orm(&orders, order::Subject::Unspecified, header, self.options)?
+                }
+                Version::V251 => {
+                    order::oml(&orders, order::Subject::Unspecified, header, self.options)?
+                }
+            };
+            return Ok(order::context(
+                &sent,
+                self.group.as_bytes(),
+                None,
+                self.options,
+            )?);
+        }
+        let sample = order::SampleId::new(self.app.sample.as_str().as_bytes())?;
+        let source = match (&cfg.specimen_system, &self.app.specimen_type) {
+            (Some(system), Some(specimen)) => {
+                let mapped = super::outbound_specimen(
+                    self.settings.tables.specimen_types.as_deref(),
+                    specimen,
+                )
+                .map_err(|source| Error::lookup("HL7-unmapped-specimen-type", source))?;
+                let code = order::Code::new(
+                    mapped.machine.as_str().as_bytes(),
+                    b"",
+                    system.as_str().as_bytes(),
+                )?;
+                Some(
+                    if let Some(version) = &cfg.specimen_version
+                        && self.version == Version::V251
+                    {
+                        code.with_version(version.as_str().as_bytes())?
+                    } else {
+                        code
+                    },
+                )
+            }
+            (Some(_), None) => return Err(Error::Context("HL7-missing-specimen-type")),
+            (None, _) => None,
+        };
+        let priority =
+            super::outbound_priority(&self.settings.tables.priorities, self.app.priority)
+                .map_err(|source| Error::lookup("HL7-unmapped-priority", source))?;
+        let priority = match &priority.machine {
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
+                order::Priority::Routine
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::S) => {
+                order::Priority::Stat
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::A) => {
+                order::Priority::Asap
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::P) => {
+                order::Priority::Preop
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::C) => {
+                order::Priority::Callback
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => {
+                order::Priority::TimingCritical
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::Prn) => {
+                order::Priority::AsNeeded
+            }
+            analyte_config::MachinePriority::Custom(_) => {
+                return Err(Error::Context("HL7-unsupported-priority"));
+            }
+        };
+        let mut orders = Vec::new();
+        for item in items {
+            let namespace = item
+                .namespace
+                .ok_or(Error::Context("HL7-item-has-no-placer-namespace"))?;
+            let placer =
+                order::OrderId::new(item.placer.as_bytes(), namespace.as_str().as_bytes())?;
+            if cancel {
+                orders.push(order::Order::Cancel {
+                    placer,
+                    filler: None,
+                });
+                continue;
+            }
+            let [test] = item.tests else {
+                return Err(Error::Context("HL7-send-item-must-cover-one-test"));
+            };
+            let mapped = super::outbound_test(&self.settings.tables.tests, test)
+                .map_err(|source| Error::lookup("HL7-unmapped-test", source))?;
+            let [code, text, system] = mapped.machine_components.as_slice() else {
+                return Err(Error::Context("HL7-test-components"));
+            };
+            orders.push(order::Order::New {
+                placer,
+                filler: None,
+                test: order::Code::new(code.as_bytes(), text.as_bytes(), system.as_bytes())?,
+                specimen: order::Specimen {
+                    sample,
+                    field: if cfg.sample_field == 18 {
+                        order::SampleField::Placer1
+                    } else {
+                        order::SampleField::Placer2
+                    },
+                    source,
+                },
+                priority,
+                timing: order::Timing {
+                    start: None,
+                    end: None,
+                },
+            });
+        }
+        let subject = if cancel {
+            order::Subject::Unspecified
+        } else {
+            match (&self.settings.patient_namespace, &self.app.patient) {
+                (Some(namespace), Some(patient)) if *namespace == patient.namespace => {
+                    order::Subject::Identifier {
+                        identifier: patient.value.as_str().as_bytes(),
+                        namespace: patient.namespace.as_str().as_bytes(),
+                    }
+                }
+                (Some(_), Some(_)) => return Err(Error::Context("HL7-patient-namespace-mismatch")),
+                _ => order::Subject::Unspecified,
+            }
+        };
+        let sent = match self.version {
+            Version::V231 => order::orm(&orders, subject, header, self.options)?,
+            Version::V251 => order::oml(&orders, subject, header, self.options)?,
+        };
+        let position = if cancel {
+            None
+        } else {
+            cfg.position_field
+                .zip(self.app.position.as_ref())
+                .map(|(field, position)| {
+                    (
+                        if field == 18 {
+                            order::SampleField::Placer1
+                        } else {
+                            order::SampleField::Placer2
+                        },
+                        position.slot.as_str().as_bytes(),
+                    )
+                })
+        };
+        Ok(order::context(
+            &sent,
+            self.group.as_bytes(),
+            position,
+            self.options,
+        )?)
+    }
+}

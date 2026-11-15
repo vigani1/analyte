@@ -1,7 +1,9 @@
 //! Appendix B sections 5.15, 5.21 and 8 faithful common-model mapping tests.
+#[path = "../../poct/tests/common/mod.rs"]
 mod common;
+use analyte_mapping::poct::map_observations;
 use analyte_model::{Comparator, IdentityStatus, QcClass, ResultStatus, ValueInterpretation};
-use analyte_poct::{Message, Nullable, Role, Value, map_observations};
+use analyte_poct::{Message, Nullable, Role, Value};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]

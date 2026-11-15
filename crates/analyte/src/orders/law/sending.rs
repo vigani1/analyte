@@ -56,7 +56,7 @@ impl Connection {
         for (record, cached) in cancels {
             let app: analyte_contract::Order =
                 analyte_contract::decode(cached.document.as_bytes())?;
-            let command = Command::new(machine, &app)?;
+            let command = super::work::command(machine, &app)?;
             let sent = render(&[(&command, &record)], law::WorkAction::Cancel, options)?;
             let id = record.id;
             let version = app.fields().version;
@@ -185,7 +185,7 @@ impl Connection {
             if Instant::now() >= until {
                 return Err(invalid("LAW query deadline before reservation"));
             }
-            let command = Command::new(machine, &app)?;
+            let command = super::work::command(machine, &app)?;
             let key = MachineOrderKey {
                 destination: super::super::destination(machine),
                 order: cached.id,
@@ -194,10 +194,9 @@ impl Connection {
             let version = app.fields().version;
             let identity = key.clone();
             let owner = self.owner.clone();
-            let namespace = command.settings.placer_namespace.clone();
+            let namespace = command.placer_namespace().clone();
             let groups = command
-                .app
-                .tests
+                .tests()
                 .iter()
                 .cloned()
                 .map(|test| vec![test])
