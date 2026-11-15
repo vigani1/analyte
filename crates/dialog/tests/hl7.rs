@@ -225,7 +225,7 @@ fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
             Event::Send(raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?),
         )?;
         let wrong = format!(
-            "\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01|reply|P|2.5.1\rMSA|{code}|other\r\x1c\r"
+            "\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01^ACK|reply|P|2.5.1\rMSA|{code}|other\r\x1c\r"
         );
         assert!(
             feed(&mut d, wrong.as_bytes())?
