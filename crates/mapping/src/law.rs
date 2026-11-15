@@ -1,5 +1,6 @@
 //! LAW result and outgoing AWOS mapping; protocol validation stays in analyte-hl7.
-use crate::{Error, Input, Output, is_law, map, source};
+use crate::inbound::{grouping, source};
+use crate::{Error, Input, Output, is_law};
 use analyte_config::Validated;
 mod orders;
 pub use orders::{Command, address, map_order};
@@ -18,5 +19,5 @@ pub fn map(
     crate::hl7::validate_message(results.message(), config)?;
     let mut source = source::law(results)?;
     source.attach_comments()?;
-    map::message(&source, config, input, Some(results))
+    grouping::message(&source, config, input, Some(results))
 }

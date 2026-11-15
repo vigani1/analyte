@@ -1,5 +1,6 @@
 //! HL7 laboratory result and outgoing order mapping; no clocks, storage or transport.
-use crate::{Error, Input, Output, Position, hl7_edition, is_law, map, source};
+use crate::inbound::{grouping, source};
+use crate::{Error, Input, Output, Position, hl7_edition, is_law};
 use analyte_config::Validated;
 mod display;
 mod orders;
@@ -70,5 +71,5 @@ fn map_checked(
         });
     }
     source.attach_comments()?;
-    map::message(&source, config, input, None)
+    grouping::message(&source, config, input, None)
 }

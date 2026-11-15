@@ -141,7 +141,7 @@ impl Command {
         let sample = order::SampleId::new(self.app.sample.as_str().as_bytes())?;
         let source = match (&cfg.specimen_system, &self.app.specimen_type) {
             (Some(system), Some(specimen)) => {
-                let mapped = crate::outbound_codes::map_specimen(
+                let mapped = crate::orders::codes::map_specimen(
                     self.settings.tables().specimen_types().as_deref(),
                     specimen,
                 )
@@ -164,7 +164,7 @@ impl Command {
             (Some(_), None) => return Err(Error::Context("HL7-missing-specimen-type")),
             (None, _) => None,
         };
-        let priority = crate::outbound_codes::map_priority(
+        let priority = crate::orders::codes::map_priority(
             self.settings.tables().priorities(),
             self.app.priority,
         )
@@ -212,7 +212,7 @@ impl Command {
             let [test] = item.tests else {
                 return Err(Error::Context("HL7-send-item-must-cover-one-test"));
             };
-            let mapped = crate::outbound_codes::map_test(self.settings.tables().tests(), test)
+            let mapped = crate::orders::codes::map_test(self.settings.tables().tests(), test)
                 .map_err(|source| Error::lookup("HL7-unmapped-test", source))?;
             let [code, text, system] = mapped.machine_components.as_slice() else {
                 return Err(Error::Context("HL7-test-components"));

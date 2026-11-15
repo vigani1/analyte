@@ -1,3 +1,4 @@
+//! ASTM record grammar belongs in the syntax layer, without transport or mapping.
 use thiserror::Error;
 
 /// Limits applied before allocating structures from input.

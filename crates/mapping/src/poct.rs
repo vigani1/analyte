@@ -1,6 +1,6 @@
 //! POCT original observation evidence and configured result mapping; no I/O.
 mod observations;
-use crate::result_evidence::{Error, map_result, map_test, map_units};
+use crate::inbound::evidence::{Error, map_result, map_test, map_units};
 use crate::{MappedResult, Output, Position};
 use analyte_config::Validated;
 use analyte_model::*;

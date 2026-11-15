@@ -5,7 +5,7 @@ use crate::CHUNK_LIMIT;
 pub use format::*;
 use std::{
     fs::OpenOptions,
-    io::{self},
+    io::{self, Write as _},
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, SyncSender},
     time::Instant,
@@ -71,17 +71,13 @@ pub struct Worker {
 /// # Errors
 /// Rejects queue capacities outside 1..=1024.
 pub fn recording(path: PathBuf, capacity: usize) -> Result<(Tap, Worker), Error> {
-    recording_with_header(path, capacity, Header::live())
+    with_header(path, capacity, Header::live())
 }
 
 /// Creates a protected tap with the configured protocol stack and known machine metadata.
 /// # Errors
 /// Rejects invalid capacity or non-machine provenance for live captures.
-pub fn recording_with_header(
-    path: PathBuf,
-    capacity: usize,
-    header: Header,
-) -> Result<(Tap, Worker), Error> {
+pub fn with_header(path: PathBuf, capacity: usize, header: Header) -> Result<(Tap, Worker), Error> {
     if header.evidence != Evidence::Machine
         || !header.de_identification.contains("NOT de-identified")
     {
@@ -243,7 +239,6 @@ impl Worker {
             {
                 return Err(io::Error::other("recording file byte limit"));
             }
-            use std::io::Write as _;
             file.write_all(&encoded)?;
             file.sync_data()?;
         }

@@ -1,4 +1,4 @@
-//! Bounded, lossless HL7 v2 syntax. Evidence level: documented.
+//! Syntax layer: owns bounded HL7 messages and LAW profile grammar, without I/O or model mapping.
 #![forbid(unsafe_code)]
 
 mod ack;

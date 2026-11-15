@@ -1,3 +1,4 @@
+//! Lab-app order conversion belongs at the outbound mapping boundary.
 use analyte_model::{Identifier, NamespacedId, SampleId};
 /// Adapts validated app fields without inventing a code system or position.
 /// # Errors

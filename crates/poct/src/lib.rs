@@ -1,4 +1,4 @@
-//! POCT01-A2 Basic Profile Observation Reviewer. Evidence level: documented.
+//! Syntax layer: owns POCT Basic Profile messages, without framing, I/O or custody decisions.
 //!
 //! Pure message syntax, reviewer builders, duplicate comparison.
 //! The host owns transport, clocks, protected storage and trusted identity resolution.
@@ -20,8 +20,8 @@ pub use message::{
     Role, Service, hello_error_reference,
 };
 
-mod build;
-pub use build::{ApplicationError, EscapeReason, Outbound, TerminationReason, build};
+mod encode;
+pub use encode::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
 
 mod duplicate;
 pub use duplicate::{
