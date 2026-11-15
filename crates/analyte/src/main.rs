@@ -30,6 +30,9 @@ enum Command {
     Run {
         file: PathBuf,
     },
+    Status {
+        file: PathBuf,
+    },
     Parked {
         #[command(subcommand)]
         command: Parked,
@@ -83,6 +86,7 @@ async fn main() -> Result<(), Error> {
             Ok(())
         }
         Command::Run { file } => service::run(Program::load(&file)?).await,
+        Command::Status { file } => analyte::status::print(&Program::load(&file)?).await,
         Command::Parked { command } => operator(&cli.config, cli.actor, command).await,
         Command::Backup { target } => {
             let program = Program::load(&cli.config)?;

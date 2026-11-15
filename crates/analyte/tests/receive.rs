@@ -594,3 +594,50 @@ async fn serve(
     })?;
     service::serve_loopback_test(program, space, stop, secrets).await
 }
+
+#[tokio::test]
+async fn plan11_status_reports_health_and_last_receipt_without_payloads_or_secrets()
+-> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let program = Program::load(&path)?;
+    let mut store = service::open_store(&program, Box::new(Space(u64::MAX))).await?;
+    let lines = analyte::status::snapshot(&program, &store).await?;
+    assert_eq!(lines.len(), 2);
+    let destination = lines.first().ok_or("missing health")?;
+    for field in [
+        "pending_count=0",
+        "pending_bytes=0",
+        "oldest_pending_age_seconds=None",
+        "paused=false",
+        "last_poll=None",
+        "cache_trusted=false",
+    ] {
+        assert!(destination.contains(field));
+    }
+    assert_eq!(
+        lines.last().ok_or("missing machine")?,
+        "machine=synthetic last_receipt=unknown"
+    );
+    store
+        .shutdown(
+            std::time::Instant::now()
+                .checked_add(Duration::from_secs(5))
+                .ok_or("deadline")?,
+        )
+        .await?;
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+        .arg("status")
+        .arg(&path)
+        .output()?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout)?;
+    assert!(text.contains("destination=demo"));
+    assert!(!text.contains("demo-api"));
+    assert!(!text.contains("demo-signing"));
+    Ok(())
+}

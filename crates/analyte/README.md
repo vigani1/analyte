@@ -88,3 +88,10 @@ checking does not read the environment. Restart after changing credentials.
 For rotation, `[signing_rotation]` in the program file maps destination names
 to up to seven additional signing credential names; the primary key is retained.
 No credential values belong in TOML.
+
+`analyte status <file>` prints each destination's pending count and bytes,
+oldest pending age in seconds, pause state, last successful poll (Unix seconds)
+and cache trust under the freshness policy. It also prints each machine's last
+receipt timestamp, or unknown when none exists. It reads bounded metadata pages
+with a five-second overall receipt-scan deadline, and prints no clinical payloads
+or credentials. This command works while the service runs and needs no secrets.
