@@ -60,7 +60,7 @@ fn build_event(record: &MachineOrder, reason: Option<&str>) -> Result<OrderEvent
         },
         order_id: text(record.key.order.as_str())?,
         order_version: record.version,
-        state: (&record.state).into(),
+        state: (&record.state).try_into()?,
         occurred_at: text(&time)?,
         source_status: (&record.source_code).into(),
         reason: reason.map(text).transpose()?,

@@ -4,7 +4,7 @@ CREATE TABLE machine_orders (
  order_id TEXT NOT NULL,
  machine TEXT NOT NULL,
  version TEXT NOT NULL,
- state TEXT NOT NULL CHECK(state IN ('"Sent"','"Accepted"','"Done"','"Rejected"','"CancelRequested"','"CancelConfirmed"','"Uncertain"')),
+ state TEXT NOT NULL CHECK(state IN ('"Sending"','"Sent"','"Accepted"','"Done"','"Rejected"','"CancelRequested"','"CancelConfirmed"','"Uncertain"')),
  created_at INTEGER NOT NULL,
  updated_at INTEGER NOT NULL,
  source_code TEXT NOT NULL,

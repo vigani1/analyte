@@ -13,6 +13,9 @@ pub const MAX_DOCUMENT_BYTES: usize = 1_048_576;
 /// Rejected document, without input values in its display text.
 #[derive(Debug, thiserror::Error)]
 pub enum DocumentError {
+    /// A host-only reservation is not an app lifecycle event.
+    #[error("internal Sending state cannot be represented by contract v1")]
+    InternalOrderState,
     /// Complete document exceeds the limit.
     #[error("document exceeds size limit")]
     TooLarge,

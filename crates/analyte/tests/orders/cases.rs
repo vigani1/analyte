@@ -103,10 +103,59 @@ async fn lis02_section11_fresh_cache_orders_empty_and_untrusted_are_distinct_on_
             .any(|w| w == b"O|1|000Ab12||^^^SEND|R")
     );
     assert!(reply.ends_with(b"L|1|N\r"));
+    machine_state(&path, "Sent", 1).await?;
+    wait_state(&path, "done", 1).await?;
     assert!(query(&mut peer, "absent").await?.ends_with(b"L|1|I\r"));
     database(&path)?.execute("UPDATE feed SET trusted=0", [])?;
     assert!(query(&mut peer, "absent").await?.ends_with(b"L|1|Q\r"));
+    assert_eq!(
+        database(&path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
     drop(peer);
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn rule8_query_response_reserves_without_event_then_disconnect_emits_one_uncertain()
+-> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    configure_orders(temp.path(), false)?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(include_bytes!(
+            "../../../../docs/contract/vectors/order.json"
+        ))?])
+        .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "astm").await?;
+    wait_cache(&path).await?;
+    astm(
+        &mut peer,
+        b"H|\\^&|||SYN|||||||P|1\rQ|1|^000Ab12||ALL||||||||O\rL|1|N\r",
+    )
+    .await?;
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), peer.read_u8()).await??,
+        5
+    );
+    machine_state(&path, "Sending", 1).await?;
+    assert_eq!(
+        database(&path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        0
+    );
+    drop(peer);
+    machine_state(&path, "Uncertain", 1).await?;
+    wait_state(&path, "done", 1).await?;
     service.stop().await?;
     reference.close().await?;
     Ok(())
@@ -161,8 +210,8 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
         5
     );
     machine_state(&path, "Uncertain", 1).await?;
-    wait_state(&path, "done", 2).await?;
-    assert_eq!(receiver_count(&receiver_path)?, 2);
+    wait_state(&path, "done", 1).await?;
+    assert_eq!(receiver_count(&receiver_path)?, 1);
     drop(peer);
     service.stop().await?;
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
@@ -211,8 +260,8 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
             .is_some_and(|s| s.contains("verified synthetic work list"))
     );
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
-    wait_state(&path, "done", 3).await?;
-    assert_eq!(receiver_count(&receiver_path)?, 3);
+    wait_state(&path, "done", 2).await?;
+    assert_eq!(receiver_count(&receiver_path)?, 2);
     service.stop().await?;
     reference.close().await?;
     Ok(())
@@ -287,7 +336,12 @@ async fn lis01_transfer_ack_is_sent_not_application_acceptance_and_disconnect_is
     drop(peer);
     service.stop().await?;
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
-    machine_state(&path, "Uncertain", 1).await?;
+    machine_state(&path, "Sent", 1).await?;
+    wait_state(&path, "done", 1).await?;
+    assert_eq!(
+        database(&path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
     service.stop().await?;
     reference.close().await?;
     Ok(())
@@ -420,7 +474,7 @@ async fn adr0004_disconnect_before_astm_ack_preserves_uncertain_outcome_and_even
     );
     drop(peer);
     machine_state(&path, "Uncertain", 1).await?;
-    wait_state(&path, "done", 2).await?;
+    wait_state(&path, "done", 1).await?;
     service.stop().await?;
     reference.close().await?;
     Ok(())

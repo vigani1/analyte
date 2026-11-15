@@ -44,17 +44,17 @@ partial order answer; the rejected order also gets a protected lifecycle event.
 The host maps an order, then atomically reserves the current version in the
 store immediately before starting its ASTM sender. The transaction rechecks
 cache trust, version, withdrawal, expiry, requested state and analyzer targets.
-It writes the `Sent` state, append-only history and an app event together.
+It writes the internal `Sending` state and append-only history, with no app event.
 Mapping rejections write `Rejected`, history and an event without claiming a
 send occurred. App events use the existing immutable delivery outbox.
 
 A reservation prevents another automatic send for that app order and machine,
 including after a version change or restart. A link timeout, interrupted transfer
 or disconnect before transfer confirmation becomes `Uncertain`. On restart,
-remaining `Sent` entries become `Uncertain` with a new app event.
+only remaining `Sending` entries become `Uncertain` with an app event; confirmed `Sent` entries remain `Sent`.
 
 LIS01 frame acknowledgments establish transfer completion, not application
-acceptance of a work order. Successful transfers remain `Sent`; they do not
+acceptance of a work order. Successful transfers advance from `Sending` to `Sent` with one app event; they do not
 invent an `Accepted` event. The lifecycle transition API supports explicit
 machine acceptance/rejection evidence and operator reconciliation.
 
@@ -77,3 +77,19 @@ transaction. Neither command sends or retries machine work.
 HL7 QRY/QCK/DSR query handling and ORM/OML send-ahead are a separate round.
 Live-machine validation, vendor-specific acceptance evidence and wider ASTM
 query selectors are not claimed by these synthetic tests.
+
+## Allowed lifecycle transitions
+
+| From | Allowed next states |
+| --- | --- |
+| Requested | Sending, CancelRequested, Rejected |
+| Sending (internal only) | Sent, Uncertain |
+| Sent | Accepted, Rejected, CancelRequested, Uncertain |
+| Accepted | Done, Rejected, CancelRequested, Uncertain |
+| CancelRequested | CancelConfirmed, Done, Rejected, Uncertain |
+| Uncertain | Accepted, Done, Rejected, CancelRequested, CancelConfirmed |
+| Done, Rejected, CancelConfirmed | None |
+
+All other transitions, including every attempt to return to Sending, are refused.
+Contract conversion explicitly rejects Sending; only real transfer outcomes become
+app events. The same reservation and completion rules apply to query answers.

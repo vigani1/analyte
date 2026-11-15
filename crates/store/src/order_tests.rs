@@ -51,11 +51,17 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
     let mut store = open(&path)?;
     store.order_page(&page(1, "requested", false, 200)?)?;
     let reserved = store
-        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30, event)?
+        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30)?
         .map_err(std::io::Error::other)?;
-    assert_eq!(reserved.state, OrderState::Sent);
+    assert_eq!(reserved.state, OrderState::Sending);
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        0
+    );
     assert!(matches!(
-        store.reserve_send(&identity()?, NonZeroU64::MIN, 101, 30, event)?,
+        store.reserve_send(&identity()?, NonZeroU64::MIN, 101, 30)?,
         Err(SendRefusal::AlreadyReserved)
     ));
     let uncertain = store.transition_order(
@@ -82,7 +88,7 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
     store.order_page(&page(2, "requested", false, 200)?)?;
     let version = NonZeroU64::new(2).ok_or("version")?;
     assert!(matches!(
-        store.reserve_send(&identity()?, version, 103, 30, event)?,
+        store.reserve_send(&identity()?, version, 103, 30)?,
         Err(SendRefusal::AlreadyReserved)
     ));
     let audit = Audit {
@@ -114,7 +120,7 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
         store
             .db
             .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
-        3
+        2
     );
     assert_eq!(store.audits(0)?.len(), 1);
     assert!(
@@ -152,15 +158,22 @@ fn adr0004_cancel_expiry_version_trust_and_builder_failure_never_reserve() -> Te
     ] {
         store.order_page(&page(version, state, tombstone, expiry)?)?;
         assert!(
-            matches!(store.reserve_send(&identity()?,NonZeroU64::MIN,now,30,event)?,Err(reason) if reason == expected)
+            matches!(store.reserve_send(&identity()?,NonZeroU64::MIN,now,30)?,Err(reason) if reason == expected)
         );
     }
     store.order_page(&page(1, "requested", false, 200)?)?;
     assert!(
         store
-            .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30, |_| Err(
-                Error::InvalidInput
-            ))
+            .reject_unsent(
+                &OrderReservation {
+                    identity: &identity()?,
+                    version: NonZeroU64::MIN,
+                    now: 101,
+                    freshness: 30
+                },
+                SourceText::new("mapping rejected")?,
+                |_| Err(Error::InvalidInput)
+            )
             .is_err()
     );
     assert!(
@@ -223,24 +236,24 @@ fn plan11_schema3_to4_preserves_rows_and_triggers() -> TestResult {
 }
 
 #[test]
-fn adr0004_sent_reservations_survive_restart_and_plan11_listing_is_filtered_and_bounded()
+fn adr0004_sending_reservations_survive_restart_and_plan11_listing_is_filtered_and_bounded()
 -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("orders.db");
     let mut store = open(&path)?;
     store.order_page(&page(1, "requested", false, 200)?)?;
     let first = store
-        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30, event)?
+        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30)?
         .map_err(std::io::Error::other)?;
     let mut second_key = identity()?;
     second_key.machine = Identifier::new("second-machine")?;
     let second = store
-        .reserve_send(&second_key, NonZeroU64::MIN, 101, 30, event)?
+        .reserve_send(&second_key, NonZeroU64::MIN, 101, 30)?
         .map_err(std::io::Error::other)?;
     drop(store);
     let mut store = open(&path)?;
     assert!(matches!(
-        store.reserve_send(&identity()?, NonZeroU64::MIN, 102, 30, event)?,
+        store.reserve_send(&identity()?, NonZeroU64::MIN, 102, 30)?,
         Err(SendRefusal::AlreadyReserved)
     ));
     store.limits.page_rows = 1;

@@ -44,10 +44,10 @@ pub(super) async fn session(
     let mut payload = Vec::new();
     let mut partial = Vec::new();
     let mut pending: Option<Pending<'_>> = None;
-    let mut response: Option<Vec<Vec<u8>>> = None;
+    let mut response: Option<crate::orders::astm::Reply> = None;
     let mut response_deadline = None;
     let mut query_started = None;
-    let mut active_order = None;
+    let mut active_orders = Vec::new();
     let mut order_cursor = String::new();
     let mut next_order_poll = Instant::now();
     let result = async {
@@ -85,11 +85,15 @@ pub(super) async fn session(
                 crate::orders::sending::next(store,machine,&mut order_cursor).await?
             } else { None };
             let events = if let Some(reserved) = outgoing {
-                active_order = Some(reserved.order);
+                active_orders.push(reserved.order);
                 vec![Event::Send(reserved.records)]
             } else if bytes.is_empty() && response.is_some() && wake.is_none() {
                 if response_deadline.is_some_and(|until| Instant::now() >= until) { response = crate::orders::astm::failure(machine); }
-                match response.take() { Some(records) => vec![Event::Send(records)], None => vec![Event::Tick] }
+                match response.take() {
+                    Some(reply) => match crate::orders::sending::reserve_query(store,machine,reply,response_deadline.unwrap_or_else(Instant::now),&mut active_orders).await? {
+                        Some(records) => vec![Event::Send(records)], None => vec![Event::Tick]
+                    }, None => vec![Event::Tick]
+                }
             } else if bytes.is_empty() { vec![Event::Tick] } else { bytes.into_iter().map(Event::Byte).collect() };
             for event in events {
                 if let Event::Byte(byte) = &event {
@@ -172,7 +176,7 @@ pub(super) async fn session(
                         }
                         Action::CommitFailed(_) | Action::LimitReached => return Err(invalid("ASTM storage or resource limit refused transfer")),
                         Action::Sent(end) => {
-                            if let Some(order) = active_order.take() {
+                            for order in active_orders.drain(..) {
                                 crate::orders::sending::finished(store,&order,end).await?;
                             }
                         },
@@ -182,7 +186,7 @@ pub(super) async fn session(
         }
         Ok(())
     }.await;
-    if let Some(order) = active_order.take() {
+    for order in active_orders.drain(..) {
         crate::orders::sending::uncertain(
             store,
             &order,

@@ -82,7 +82,8 @@ fn rule7_lists_reject_unbounded_deserialization() {
 #[test]
 fn rule8_lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result<(), TransitionError>
 {
-    let sent = OrderState::Requested.transition(OrderState::Sent)?;
+    let sending = OrderState::Requested.transition(OrderState::Sending)?;
+    let sent = sending.transition(OrderState::Sent)?;
     let accepted = sent.transition(OrderState::Accepted)?;
     assert_eq!(accepted.transition(OrderState::Done)?, OrderState::Done);
     let cancel = accepted.transition(OrderState::CancelRequested)?;

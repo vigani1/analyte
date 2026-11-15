@@ -9,9 +9,23 @@ use std::{future::Future, pin::Pin, time::Instant};
 #[path = "query_tests.rs"]
 mod tests;
 
-type LookupFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<Option<Vec<Vec<u8>>>, Error>> + Send + 'a>>;
+type LookupFuture<'a> = Pin<Box<dyn Future<Output = Result<Option<Reply>, Error>> + Send + 'a>>;
 
+/// Order identity and version mapped for a pending query response.
+pub(crate) struct Candidate {
+    /// Stable app order and machine identity to recheck immediately before sending.
+    pub(crate) identity: analyte_store::MachineOrderKey,
+    /// Version used by the mapper.
+    pub(crate) version: std::num::NonZeroU64,
+}
+
+/// A reply is not a send: candidates are reserved only when the link is ready.
+pub(crate) struct Reply {
+    /// Complete mapped records, or an explicit error/no-information response.
+    pub(crate) records: Vec<Vec<u8>>,
+    /// Orders requiring durable Sending reservations before any bytes leave.
+    pub(crate) candidates: Vec<Candidate>,
+}
 /// Owned by one connection; dropping cancels lookup without issuing machine work.
 pub(crate) struct Pending<'a> {
     future: LookupFuture<'a>,
@@ -135,10 +149,7 @@ impl<'a> Pending<'a> {
     }
 
     /// Polls the same lookup; late answers produce only error or silence.
-    pub(crate) async fn finish(
-        &mut self,
-        machine: &Machine,
-    ) -> Result<Option<Vec<Vec<u8>>>, Error> {
+    pub(crate) async fn finish(&mut self, machine: &Machine) -> Result<Option<Reply>, Error> {
         match tokio::time::timeout_at(tokio::time::Instant::from_std(self.until), &mut self.future)
             .await
         {
@@ -154,8 +165,9 @@ async fn answer(
     machine: &Machine,
     samples: Vec<SampleId>,
     until: Instant,
-) -> Result<Option<Vec<Vec<u8>>>, Error> {
+) -> Result<Option<Reply>, Error> {
     let mut records = Vec::new();
+    let mut candidates = Vec::new();
     let mut bytes = 0usize;
     let limits = &machine.snapshot.effective().machine().syntax;
     for sample in samples {
@@ -232,6 +244,14 @@ async fn answer(
                             return Ok(failure(machine));
                         }
                     };
+                    candidates.push(Candidate {
+                        identity: analyte_store::MachineOrderKey {
+                            destination: super::destination(machine),
+                            order: cached.id,
+                            machine: machine.id.clone(),
+                        },
+                        version: fields.version,
+                    });
                     records.push(mapped.record().to_vec());
                     if records
                         .len()
@@ -249,10 +269,13 @@ async fn answer(
         return Ok(failure(machine));
     }
     let code = if records.is_empty() { b'I' } else { b'N' };
-    Ok(Some(envelope(records, code)))
+    Ok(Some(Reply {
+        records: envelope(records, code),
+        candidates,
+    }))
 }
 /// Applies the explicit failure policy without manufacturing an empty answer.
-pub(crate) fn failure(machine: &Machine) -> Option<Vec<Vec<u8>>> {
+pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
     match machine
         .snapshot
         .effective()
@@ -263,7 +286,10 @@ pub(crate) fn failure(machine: &Machine) -> Option<Vec<Vec<u8>>> {
         .as_ref()?
         .when_untrusted
     {
-        WhenUntrusted::Error => Some(envelope(Vec::new(), b'Q')),
+        WhenUntrusted::Error => Some(Reply {
+            records: envelope(Vec::new(), b'Q'),
+            candidates: Vec::new(),
+        }),
         WhenUntrusted::NoAnswer => None,
     }
 }

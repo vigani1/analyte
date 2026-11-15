@@ -59,6 +59,7 @@ async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never
             assert!(
                 response
                     .ok_or("error response absent")?
+                    .records
                     .last()
                     .is_some_and(|r| r == b"L|1|Q\r")
             );

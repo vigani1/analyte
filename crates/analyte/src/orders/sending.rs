@@ -2,6 +2,49 @@
 use crate::{Error, config::Machine, deadline};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};
+#[cfg(test)]
+#[path = "sending_tests.rs"]
+mod tests;
+
+/// Reserves query orders immediately before link transmission, with no app event.
+/// The connection owns every reservation even if this future fails or is cancelled.
+pub(crate) async fn reserve_query(
+    store: &Handle,
+    machine: &Machine,
+    reply: super::astm::Reply,
+    until: std::time::Instant,
+    active: &mut Vec<MachineOrder>,
+) -> Result<Option<Vec<Vec<u8>>>, Error> {
+    for candidate in reply.candidates {
+        let reserved = store
+            .request(until, move |store| {
+                store.reserve_send(
+                    &candidate.identity,
+                    candidate.version,
+                    jiff::Timestamp::now().as_second(),
+                    super::FRESHNESS_SECONDS,
+                )
+            })
+            .await?;
+        match reserved {
+            Ok(order) => active.push(order),
+            Err(refusal) => {
+                tracing::info!(reason=%refusal,"query order reservation refused");
+                for order in active.drain(..) {
+                    uncertain(store, &order, "query-reservation-refused").await?;
+                }
+                return Ok(super::astm::failure(machine).map(|reply| reply.records));
+            }
+        }
+    }
+    if std::time::Instant::now() >= until && !active.is_empty() {
+        for order in active.drain(..) {
+            uncertain(store, &order, "query-deadline-before-send").await?;
+        }
+        return Ok(super::astm::failure(machine).map(|reply| reply.records));
+    }
+    Ok(Some(reply.records))
+}
 
 /// A durable reservation paired with its already mapped, bounded wire records.
 pub(crate) struct Reserved {
@@ -91,7 +134,6 @@ pub(crate) async fn next(
                     version,
                     jiff::Timestamp::now().as_second(),
                     super::FRESHNESS_SECONDS,
-                    super::event,
                 )
             })
             .await?;
@@ -127,7 +169,7 @@ pub(crate) async fn uncertain(
     Ok(())
 }
 
-/// Records a specific failed transfer as uncertain; normal transfer remains Sent.
+/// Records a specific failed transfer as uncertain; normal transfer becomes Sent.
 pub(crate) async fn finished(
     store: &Handle,
     order: &MachineOrder,
@@ -136,16 +178,34 @@ pub(crate) async fn finished(
     // LIS01 confirms transfer, not the analyzer application's acceptance.
     // Only explicit application evidence may advance Sent to Accepted.
     let code = match end {
-        analyte_dialog::astm::End::Normal => return Ok(()),
+        analyte_dialog::astm::End::Normal => "ASTM-transfer-confirmed",
         analyte_dialog::astm::End::Abort => "ASTM-transfer-aborted",
         analyte_dialog::astm::End::Timeout => "ASTM-transfer-timeout",
         analyte_dialog::astm::End::Interrupt => "ASTM-transfer-interrupted",
         analyte_dialog::astm::End::Incomplete => "ASTM-transfer-incomplete",
     };
-    uncertain(store, order, code).await
+    let id = order.id;
+    let state = if end == analyte_dialog::astm::End::Normal {
+        OrderState::Sent
+    } else {
+        OrderState::Uncertain
+    };
+    let code = SourceText::new(code)?;
+    store
+        .request(deadline(), move |store| {
+            store.transition_order(
+                id,
+                state,
+                code,
+                jiff::Timestamp::now().as_second(),
+                super::event,
+            )
+        })
+        .await?;
+    Ok(())
 }
 
-/// Marks interrupted Sent reservations uncertain without issuing another command.
+/// Marks interrupted Sending reservations uncertain without issuing another command.
 pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     let until = deadline();
     let mut after = 0;
@@ -155,7 +215,7 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                 store.machine_orders(&analyte_store::MachineOrderFilter {
                     after,
                     machine: None,
-                    state: Some(OrderState::Sent),
+                    state: Some(OrderState::Sending),
                 })
             })
             .await?;

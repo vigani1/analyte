@@ -122,19 +122,18 @@ impl Store {
             .collect()
     }
 
-    /// Atomically rechecks the current cache and persists Sent, history and outbox.
+    /// Atomically rechecks the current cache and persists Sending and history without an app event.
     /// Once committed, cancellation or a lost reply requires reconciliation,
-    /// never a second automatic reservation. The host builds contract bytes
-    /// from the exact snapshot passed to its builder inside this transaction.
+    /// never a second automatic reservation. Only a later real outcome builds
+    /// contract bytes; an internal reservation must not be reported as sent.
     /// # Errors
-    /// Returns storage/builder failures; expected eligibility refusals are values.
+    /// Returns storage failures; expected eligibility refusals are values.
     pub fn reserve_send(
         &mut self,
         identity: &MachineOrderKey,
         version: NonZeroU64,
         now: i64,
         freshness: u64,
-        build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
     ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
         let code = SourceText::new("host-reserved").map_err(|_| Error::InvalidInput)?;
         self.start_order(
@@ -144,9 +143,9 @@ impl Store {
                 now,
                 freshness,
             },
-            OrderState::Sent,
+            OrderState::Sending,
             code,
-            build,
+            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
         )
     }
 
@@ -159,7 +158,7 @@ impl Store {
         reason: SourceText,
         build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
     ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        self.start_order(candidate, OrderState::Rejected, reason, build)
+        self.start_order(candidate, OrderState::Rejected, reason, Some(build))
     }
 
     fn start_order(
@@ -167,7 +166,7 @@ impl Store {
         candidate: &OrderReservation<'_>,
         initial: OrderState,
         code: SourceText,
-        build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
+        build: Option<impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
     ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
         let OrderReservation {
             identity,
@@ -244,7 +243,8 @@ impl Store {
             updated_at: now,
             source_code: code,
         };
-        append(&tx, &record, &build(&record)?, limit)?;
+        let event = build.map(|build| build(&record)).transpose()?;
+        append(&tx, &record, event.as_ref(), limit)?;
         tx.commit()?;
         Ok(Ok(record))
     }
@@ -332,7 +332,7 @@ impl Store {
             "UPDATE machine_orders SET state=?1,updated_at=?2,source_code=?3 WHERE id=?4",
             params![key(&record.state)?, now, record.source_code.as_str(), id],
         )?;
-        append(&tx, &record, &build(&record)?, limit)?;
+        append(&tx, &record, Some(&build(&record)?), limit)?;
         if let Some(audit) = audit {
             let evidence = key(audit)?;
             if evidence.len() > limit {
@@ -353,22 +353,27 @@ fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, Error> {
 fn append(
     tx: &Transaction<'_>,
     record: &MachineOrder,
-    event: &OrderEventDelivery,
+    event: Option<&OrderEventDelivery>,
     limit: usize,
 ) -> Result<(), Error> {
     let evidence = key(record)?;
-    if evidence.len() > limit
-        || event.payload.len() > limit
-        || event.destination != record.key.destination
-        || event.order_id != record.key.order
-        || event.contract_version != 1
-    {
+    if evidence.len() > limit {
         return Err(Error::InvalidInput);
     }
     tx.execute(
         "INSERT INTO machine_order_history(machine_order,evidence) VALUES (?1,?2)",
         params![record.id, evidence],
     )?;
+    let Some(event) = event else {
+        return Ok(());
+    };
+    if event.payload.len() > limit
+        || event.destination != record.key.destination
+        || event.order_id != record.key.order
+        || event.contract_version != 1
+    {
+        return Err(Error::InvalidInput);
+    }
     tx.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,'order_event',?2,?3,?2,?4,?5,?6,'pending',0,?7)",params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,digest(&event.payload).0.as_slice(),event.contract_version,record.updated_at])?;
     Ok(())
 }
