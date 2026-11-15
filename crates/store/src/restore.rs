@@ -53,7 +53,7 @@ impl Store {
             Connection::open_with_flags(source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         Self::integrity(&source_db)?;
         let version: i64 = source_db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version > 4 {
+        if version > crate::SCHEMA_VERSION {
             return Err(Error::SchemaTooNew(version));
         }
         if version < 1 {
@@ -74,7 +74,10 @@ impl Store {
                 match backup.step(64)? {
                     rusqlite::backup::StepResult::Done => break,
                     rusqlite::backup::StepResult::More => {}
-                    _ => return Err(Error::Timeout), // New or blocked states never publish a partial copy.
+                    rusqlite::backup::StepResult::Busy | rusqlite::backup::StepResult::Locked => {
+                        return Err(Error::Timeout);
+                    }
+                    _ => return Err(Error::Corruption), // Future SQLite states fail closed.
                 }
             }
         }
@@ -85,7 +88,7 @@ impl Store {
             .db
             .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")?;
         drop(restored);
-        File::open(&stage)?.sync_all()?;
+        OpenOptions::new().write(true).open(&stage)?.sync_all()?;
         if path.exists() {
             let current = Connection::open(path)?;
             current

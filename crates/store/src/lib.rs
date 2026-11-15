@@ -4,6 +4,7 @@
 mod machine_orders;
 mod migration;
 mod restore;
+const SCHEMA_VERSION: i64 = 4;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
@@ -191,7 +192,7 @@ impl Store {
         let mut db = Connection::open(path)?;
         db.busy_timeout(limits.busy_timeout)?;
         let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version > 4 {
+        if version > SCHEMA_VERSION {
             return Err(Error::SchemaTooNew(version));
         }
         Self::integrity(&db)?;
@@ -681,6 +682,9 @@ impl Store {
         now: i64,
         freshness: u64,
     ) -> Result<Lookup, Error> {
+        if self.restore_unreconciled()? {
+            return Ok(Lookup::NotTrusted);
+        }
         let poll: Option<i64> = self
             .db
             .query_row(

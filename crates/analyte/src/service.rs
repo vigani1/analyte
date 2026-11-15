@@ -256,7 +256,9 @@ pub async fn restore(
             },
             Box::new(Volume),
             &audit,
-            Instant::now() + Duration::from_secs(30),
+            Instant::now()
+                .checked_add(Duration::from_secs(30))
+                .unwrap_or(Instant::now()),
         )
     })
     .await??)
