@@ -148,6 +148,7 @@ fn map_one(
         )?])?,
         units,
         dilution: Some(model::Dilution {
+            original: None,
             factor: None,
             applied: model::DilutionApplied::Unknown,
         }),

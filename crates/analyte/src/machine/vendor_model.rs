@@ -100,8 +100,9 @@ pub(super) fn vidas(
     source.units = evidence.unit.map(Units::original);
     source.flags = EvidenceList::new(evidence.flag.into_iter().collect())?;
     source.comments = EvidenceList::new(vec![evidence.call])?;
-    if evidence.dilution.is_some() {
+    if let Some(original) = evidence.dilution {
         source.dilution = Some(Dilution {
+            original: Some(original),
             factor: None,
             applied: DilutionApplied::Unknown,
         });

@@ -294,6 +294,7 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
         values: EvidenceList::new(values)?,
         units: None,
         dilution: Some(Dilution {
+            original: Some(SourceText::new("10")?),
             factor: Some(Decimal::new("10")?),
             applied: DilutionApplied::Unknown,
         }),

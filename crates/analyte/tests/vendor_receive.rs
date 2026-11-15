@@ -233,6 +233,35 @@ impl Running {
         Ok(())
     }
 
+    fn dilution_original(&self, expected: Option<&str>) -> Result<(), Error> {
+        let db = self.database()?;
+        let mut statement = db.prepare("SELECT evidence FROM interpretations")?;
+        let mut found = false;
+        for row in statement.query_map([], |row| row.get::<_, String>(0))? {
+            let interpretation: analyte_store::Interpretation = serde_json::from_str(&row?)?;
+            if let analyte_store::Reading::Results(results) = interpretation.outcome {
+                for result in results {
+                    for part in result.parts.as_slice() {
+                        found = true;
+                        assert_eq!(
+                            part.dilution
+                                .as_ref()
+                                .and_then(|d| d.original.as_ref())
+                                .map(analyte_model::SourceText::as_str),
+                            expected
+                        );
+                        if let Some(dilution) = &part.dilution {
+                            assert!(dilution.factor.is_none());
+                            assert_eq!(dilution.applied, analyte_model::DilutionApplied::Unknown);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(found);
+        Ok(())
+    }
+
     fn no_results(&self) -> Result<(), Error> {
         let db = self.database()?;
         let mut statement = db.prepare("SELECT evidence FROM interpretations")?;
@@ -368,14 +397,15 @@ async fn vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_del
     let mut run = Running::start(include_str!("../../config/examples/vidas_literal.toml")).await?;
     run.peer.write_all(&[5]).await?;
     assert_eq!(byte(&mut run.peer).await?, 6);
-    let packet =
-        vidas_config()?.encode(b"mtrsl|pi|si|ci00012a|rtSYN|tt|td|qlpositive|qn<0.1|y3mg/L|")?;
+    let packet = vidas_config()?
+        .encode(b"mtrsl|pi|si|ci00012a|rtSYN|tt|td|qlpositive|qn<0.1|y3mg/L|qd1:10|")?;
     run.peer.write_all(&packet).await?;
     assert_eq!(byte(&mut run.peer).await?, 6);
     run.stored(&packet, "analyte-vidas")?;
     run.parked("VIDAS Literal lacks trusted result/run identity")
         .await?;
     run.result_value("<0.1")?;
+    run.dilution_original(Some("1:10"))?;
     // Literal's final controls may share one read, after custody of the packet.
     run.peer.write_all(&[3, 4]).await?;
     run.close().await
@@ -408,6 +438,7 @@ async fn poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery() -
     run.stored(observation.as_bytes(), "analyte-poct")?;
     run.parked("POCT service sequence may wrap").await?;
     run.result_value("12.30")?;
+    run.dilution_original(None)?;
     run.close().await
 }
 
@@ -454,6 +485,7 @@ async fn autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l(
         .await?;
     run.stored(&good, "analyte-autolyser")?;
     run.result_value("<0.1   ")?;
+    run.dilution_original(None)?;
     poll(&mut run.peer, b'R').await?;
     run.peer.write_all(&[21]).await?;
     run.close().await

@@ -296,6 +296,8 @@ pub enum DilutionApplied {
 /// Dilution evidence; no multiplication is performed by the model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dilution {
+    /// Dilution text exactly as supplied, before any optional interpretation.
+    pub original: Option<SourceText>,
     /// Factor as explicitly reported, if supplied.
     pub factor: Option<Decimal>,
     /// Application evidence, independent of factor availability.
