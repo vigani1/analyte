@@ -21,7 +21,10 @@ The core ones:
   and an acknowledged but incomplete transfer is kept for recovery; accepting
   ENQ only means "ready", and needs free capacity. In HL7 the agreed original
   or enhanced acknowledgment mode decides what an ACK promises; raw storage,
-  semantic acceptance and the app's acceptance are separate events.
+  semantic acceptance and the app's acceptance are separate events. Each HL7
+  connection declares that Analyte takes on store-and-forward responsibility;
+  it answers AA only for messages it stored and could interpret, and answers
+  stored but uninterpretable input with AE or AR.
 - **Never drop data.** Failed parses, unknown tests and undeliverable results
   are parked with a reason and shown to an operator, never deleted.
 - **Keep the original.** Raw bytes are stored with the driver and config
