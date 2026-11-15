@@ -1,31 +1,4 @@
-# ASTM: LIS01-A2 and LIS02-A2
-
-Evidence level: documented. Phase 2.
-
-Current conformance checklist, written in our own words. Checked rows name
-executable synthetic tests; unchecked rows state remaining work. These tests
-support documented implementation, not hardware or simulator qualification.
-
-## Supported scope
-
-- **Edition:** LIS01-A2 (2008) and LIS02-A2 (2004, printed as LIS2-A2).
-  Both are archived by CLSI but still the current editions.
-- **Frames:** strict mode follows LIS01-A2: up to 64,000 characters per
-  frame including 7 bytes of overhead (63,993 of text). Smaller vendor
-  limits (for example 247) are machine config.
-- **Units of data:** a link session (ENQ to EOT) carries one or more H…L
-  messages; a message is made of records; a long record is split across
-  frames. Strict mode never packs two records in one frame; tolerating that
-  is a vendor compatibility option.
-- **TCP:** strict LIS01 over TCP keeps the full handshake, checksums and
-  timers, with the computer as server by default. Unframed LIS02 records are supported only through `watched_folder`;
-  direct unframed LIS02 over TCP is rejected by config. Reversed client/server
-  roles may be selected explicitly. TCP packet boundaries never frame ASTM.
-- **Queries:** either side may query; Analyte supports the search criteria
-  it lists here and declares the rest unsupported.
-- **Content:** the record hierarchy, sequence numbers, all result status
-  codes and the processing ID (production, training, debug, QC) are kept;
-  training and debug messages never reach production delivery.
+# ASTM conformance
 
 ## Checklist
 
@@ -71,7 +44,7 @@ M = mandatory behavior; C = mandatory semantics when a field/feature is used (no
 - [ ] M — §6.6 p.10 / §8.6 p.17: exclude SOH/STX/ETX/EOT/ENQ/ACK/DLE/NAK/SYN/ETB/LF/DC1–DC4 from payload; distinguish record CR from trailer. Test: `lis01_6_3_3_6_5_1_6_6_reject_checksum_sequence_and_controls`. Remaining: the cited test exercises LF only, not the complete restricted character set.
 - [ ] M — Appendix A p.19: reconcile every state/arrow/timer visually before signoff; visually inspected, with transition coverage. Test: `lis01_6_2_7_1_6_5_2_2_contention_both_roles`. Remaining: the cited contention test does not cover every diagram transition.
 
-Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its overhead-inclusive ceiling. §6.3.3.1/§8.3.3.1 do not explicitly name ETB/ETX in the addition sentence; inspected implementations/vendor notes include the terminator. The visually inspected Appendix A and the transition tests in [dialog evidence](../../crates/dialog/README.md#checklist-evidence) document the implemented interpretation. The instruction to ignore bytes after the block character in §6.5.1.1/§8.5.1.1 cannot mean ignoring required checksum validation. LIS2 §5.4's decimal number for backslash is a source typo: actual character is 0x5C, not decimal 96.
+Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its overhead-inclusive ceiling. §6.3.3.1/§8.3.3.1 do not explicitly name ETB/ETX in the addition sentence; inspected implementations/vendor notes include the terminator. The visually inspected Appendix A and the transition tests in [dialog evidence](../../../crates/dialog/README.md#checklist-evidence) document the implemented interpretation. The instruction to ignore bytes after the block character in §6.5.1.1/§8.5.1.1 cannot mean ignoring required checksum validation. LIS2 §5.4's decimal number for backslash is a source typo: actual character is 0x5C, not decimal 96.
 
 ### LIS2 logical structure and syntax
 
@@ -129,23 +102,23 @@ Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its
 
 ### LIS2 queries and completion
 
-- [ ] M — §11 p.25: either side queries; one outstanding request; L completion or cancellation before next. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../crates/analyte/tests/orders/cases.rs).
-- [ ] C — §§11.1–.4 pp.25–26: Q sequence, positional patient/specimen/vendor ID components, repeated IDs, range end and direction-sensitive ALL. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../crates/analyte/tests/orders/cases.rs).
-- [ ] O — §11.3 p.26: full historical search/retention not mandated; declare practical retrieval subset. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../crates/analyte/tests/orders/cases.rs).
-- [ ] C — §11.5 p.26: repeated test IDs/ALL within other selection constraints. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../crates/analyte/tests/orders/cases.rs).
-- [ ] C — §§11.6–.8 p.26: S collection/R result basis, default R; beginning/repeated dates, open past and latest bound. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../crates/analyte/tests/orders/cases.rs).
-- [ ] C — §§11.9–.12 pp.26–27: requesting physician/phone/user fields. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../crates/analyte/tests/orders/cases.rs).
-- [ ] C — §11.13 p.27: result-state filters, pending/partial/new-only, MIC/previously sent; A cancel, O orders/demographics, D demographics only. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../crates/analyte/tests/orders/cases.rs).
+- [ ] M — §11 p.25: either side queries; one outstanding request; L completion or cancellation before next. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../../crates/analyte/tests/orders/cases.rs).
+- [ ] C — §§11.1–.4 pp.25–26: Q sequence, positional patient/specimen/vendor ID components, repeated IDs, range end and direction-sensitive ALL. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../../crates/analyte/tests/orders/cases.rs).
+- [ ] O — §11.3 p.26: full historical search/retention not mandated; declare practical retrieval subset. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../../crates/analyte/tests/orders/cases.rs).
+- [ ] C — §11.5 p.26: repeated test IDs/ALL within other selection constraints. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../../crates/analyte/tests/orders/cases.rs).
+- [ ] C — §§11.6–.8 p.26: S collection/R result basis, default R; beginning/repeated dates, open past and latest bound. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../../crates/analyte/tests/orders/cases.rs).
+- [ ] C — §§11.9–.12 pp.26–27: requesting physician/phone/user fields. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../../crates/analyte/tests/orders/cases.rs).
+- [ ] C — §11.13 p.27: result-state filters, pending/partial/new-only, MIC/previously sent; A cancel, O orders/demographics, D demographics only. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../../crates/analyte/tests/orders/cases.rs).
 - [ ] M — §§12.1–.2 p.27: L last, sequence normally 1, next H a new message. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] C — §12.3 pp.27–28: normal/sender-abort/receiver-abort/system-error/query-error/no-information/finished distinct; I/Q terminate request. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 
 ### Additional safety tests owned by Analyte, not attributed to ASTM
 
-- [x] Frame commit before data ACK, capacity reservation before ENQ ACK, disk-full/commit failure refusal. Tests: `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack`, `lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted`, `adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded` in [host tests](../../crates/analyte/tests/receive.rs).
+- [x] Frame commit before data ACK, capacity reservation before ENQ ACK, disk-full/commit failure refusal. Tests: `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack`, `lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted`, `adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded` in [host tests](../../../crates/analyte/tests/receive.rs).
 - [ ] Crash after write/before ACK, repeated previous frame, same-number conflicting payload, incomplete ETB record and repeated hierarchy ancestors. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] Split/merge every byte boundary; high-bit checksum before character decode; rollover and separate frame/record/message/session boundaries. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] Fixed bounds for trickles, frames, records and sessions, while retaining raw evidence. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
-- [ ] Application deadline versus link timer, late reply/cancel/cache uncertainty and no unintended worklist resend. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../crates/analyte/tests/orders/cases.rs).
+- [ ] Application deadline versus link timer, late reply/cancel/cache uncertainty and no unintended worklist resend. Remaining: full search/filter qualification beyond exact-sample order queries; see [program order tests](../../../crates/analyte/tests/orders/cases.rs).
 - [ ] No payload/credential logs, even trace. Remaining: a dedicated trace-level log-scrubbing assertion for every error path.
 
 ## Record coverage summary
@@ -153,7 +126,7 @@ Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its
 The parser retains positional fields without requiring every optional field.
 Counts include type/sequence/delimiter positions. They describe retained field
 positions, not complete semantic validation. All rows use
-[syntax.rs](../../crates/astm/tests/syntax.rs),
+[syntax.rs](../../../crates/astm/tests/syntax.rs),
 `lis02_sections_6_through_14_read_only_field_positions`.
 
 | Record role | Positions handled | Coverage |

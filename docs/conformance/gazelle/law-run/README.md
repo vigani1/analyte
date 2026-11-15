@@ -112,7 +112,7 @@ service shutdown itself succeeded, within the 30-second bound.
 
 ## Evidence scope
 
-This adds narrow live evidence to these `docs/protocols/ihe-law.md` rows, without
+This adds narrow live evidence to these `docs/protocols/law/README.md` rows, without
 changing their checkboxes or raising any evidence level:
 
 - Directional MLLP / persistent connection: the declared TCP client link carried
