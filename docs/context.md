@@ -124,13 +124,11 @@ answers "no orders" when unsure, and every result keeps the three identities.
 
 ## Next steps
 
-1. Finish IHE LAW in the program, then a recorded IHE Gazelle run (simulated).
-2. Finish the read-only admin page; operator actions follow as audited
-   commands on the page.
-3. Phase 7: get the lab's settings and one de-identified recording per
-   machine (see "Still needed from outside"), then write the four standard
-   machine configs at the documented level.
-4. Alerts with named responders, monitoring, and the pilot targets (outage
-   length, disk reserve, retention, backup and restore) before a pilot.
-5. Lab pilot: install as a service, rehearse a restore, raise each machine
-   to proven with its recordings.
+1. From the lab: the settings and recordings listed under "Still needed from
+   outside"; then write the four standard machine configs at the documented
+   level (see [adding a machine](adding-a-machine.md)).
+2. A recorded IHE Gazelle run for LAW (simulated level).
+3. Before a pilot: choose the alert channel, and write down the supported
+   outage length, disk reserve, retention, and backup and restore targets.
+4. Lab pilot: install as a service, rehearse a restore, raise each machine to
+   proven with its recordings; then cut the first release.
