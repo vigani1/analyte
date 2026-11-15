@@ -447,9 +447,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 Input::Failed(reason) => {
                     tracing::warn!(machine=self.machine.id.as_str(),error_kind=?reason,"LAW transport attempt failed");
                 }
-                Input::RecordingFailed(failure) => {
-                    let _failure = failure;
-                }
+                Input::RecordingFailed(_failure) => {}
                 Input::Tick => {}
             }
         }
@@ -489,9 +487,7 @@ impl<'a, 'm> Host<'a, 'm> {
                         "LAW independent transport failed: {reason:?}"
                     )));
                 }
-                Input::RecordingFailed(failure) => {
-                    let _failure = failure;
-                }
+                Input::RecordingFailed(_failure) => {}
                 Input::Tick => {}
             }
         }

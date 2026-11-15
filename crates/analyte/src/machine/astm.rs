@@ -77,7 +77,7 @@ pub(super) async fn session(
                     Vec::new()
                 }
                 Some(Input::Bytes { bytes }) => bytes,
-                Some(Input::Closed(reason)) => { let _reason = reason; break; },
+                Some(Input::Closed(_)) => break,
                 Some(Input::Failed(_) | Input::RecordingFailed(_)) | Some(Input::Tick) | None => Vec::new(),
             };
             let outgoing = if bytes.is_empty() && wake.is_none() && response.is_none() && pending.is_none() && Instant::now() >= next_order_poll {

@@ -68,7 +68,7 @@ pub(super) async fn session(
                     Vec::new()
                 }
                 Some(Input::Bytes { bytes }) => bytes,
-                Some(Input::Closed(reason)) => { let _reason = reason; break; },
+                Some(Input::Closed(_)) => break,
                 Some(
                     Input::Failed(_)
                     | Input::RecordingFailed(_),
