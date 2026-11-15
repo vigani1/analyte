@@ -58,3 +58,18 @@ and `examples/autolyser.toml`. They require explicit installed policies and use
 Incompatible stacks and vendor field mappings have distinct typed errors.
 All three examples remain synthetic and documented. Worklist download is not
 wired into the program yet; the download permission does not schedule sends.
+
+
+For outbound VIDAS or Autolyser work lists, `[orders]` requires an explicit
+`patient_namespace = "assigning-system"`. It names the only assigning system
+allowed in the vendor's unqualified patient field. Autolyser also requires
+`clone = true` or `clone = false`; omission never means false. These settings
+are not needed by receive-only machines without `[orders]`. Namespace mismatch
+and missing patient data will be rejected at the outbound mapping boundary;
+configuration alone does not send an order.
+
+Vendor order tables omit `[orders.astm]`, which remains required for ASTM.
+Vendor tables cannot enable ASTM queries or carry ASTM destinations. Send-ahead
+also requires the vendor's explicit `download = true` permission. A clone
+setting on another stack, or a patient namespace on the current ASTM layout
+(which has no patient field), is rejected with the setting's qualified key.

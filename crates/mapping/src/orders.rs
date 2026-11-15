@@ -75,6 +75,7 @@ pub enum OrderMappingError {
 pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, OrderMappingError> {
     let machine = config.effective().machine();
     let settings = machine.orders.as_ref().ok_or(OrderMappingError::Disabled)?;
+    let astm = settings.astm.as_ref().ok_or(OrderMappingError::Disabled)?;
     let limits = &machine.syntax;
     if order.tests.is_empty() || order.tests.len() > limits.repetitions {
         return Err(OrderMappingError::Representation);
@@ -101,11 +102,11 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
     fields[1] = "1".into();
     set(
         &mut fields,
-        &settings.astm.specimen,
+        &astm.specimen,
         order.sample.as_str(),
         limits.components,
     )?;
-    if let Some(position) = &settings.astm.position {
+    if let Some(position) = &astm.position {
         let value = order
             .position
             .as_ref()
@@ -115,7 +116,7 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
         }
         set(&mut fields, position, value.as_str(), limits.components)?;
     }
-    let prefix = "^".repeat(usize::from(settings.astm.test.component).saturating_sub(1));
+    let prefix = "^".repeat(usize::from(astm.test.component).saturating_sub(1));
     if settings.tests.iter().any(|t| {
         t.machine_components
             .len()
@@ -131,14 +132,14 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
         .join("\\");
     set(
         &mut fields,
-        &settings.astm.priority,
+        &astm.priority,
         priority.machine.as_str(),
         limits.components,
     )?;
     set(
         &mut fields,
-        &settings.astm.action,
-        settings.astm.action_code.as_str(),
+        &astm.action,
+        astm.action_code.as_str(),
         limits.components,
     )?;
     let mut record = fields.join("|").into_bytes();
