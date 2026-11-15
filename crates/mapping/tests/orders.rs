@@ -69,3 +69,69 @@ fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output(
     ));
     Ok(())
 }
+
+fn context_section() -> String {
+    include_str!("../../config/examples/orders.toml").replace("[orders.query]", "specimen_types=[{app={namespace='demo-specimens',value='SERUM'},machine='SER'}]\n[orders.query]")
+}
+fn context_order() -> Result<AppOrder, analyte_model::TextError> {
+    let mut value = order()?;
+    value.position = Some(analyte_model::SamplePosition {
+        kind: analyte_model::CarrierKind::Tray,
+        carrier: Some(Identifier::new("A")?),
+        slot: Identifier::new("03")?,
+    });
+    value.specimen_type = Some(NamespacedId {
+        namespace: Identifier::new("demo-specimens")?,
+        value: Identifier::new("SERUM")?,
+    });
+    Ok(value)
+}
+const POSITION: &str = "position={group='order',record='O',field=4,component=2,repetition=1}\n";
+const SPECIMEN_TYPE: &str =
+    "specimen_type={group='order',record='O',field=16,component=1,repetition=1}\n";
+
+#[test]
+fn lis02_section8_4_4_and_8_4_16_1_configured_destinations_get_only_explicit_context() -> TestResult
+{
+    for (destinations, expected) in [
+        (
+            format!("{POSITION}{SPECIMEN_TYPE}"),
+            b"O|1|001a|^03|^^^SEND|R||||||N||||SER\r".as_slice(),
+        ),
+        (
+            POSITION.into(),
+            b"O|1|001a|^03|^^^SEND|R||||||N\r".as_slice(),
+        ),
+        (
+            SPECIMEN_TYPE.into(),
+            b"O|1|001a||^^^SEND|R||||||N||||SER\r".as_slice(),
+        ),
+        (String::new(), b"O|1|001a||^^^SEND|R||||||N\r".as_slice()),
+    ] {
+        let settings = config(&format!("{}\n{destinations}", context_section()))?;
+        assert_eq!(map_order(&context_order()?, &settings)?.record()?, expected);
+    }
+    Ok(())
+}
+#[test]
+fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> TestResult {
+    let settings = config(&format!("{}\n{SPECIMEN_TYPE}", context_section()))?;
+    let mut value = context_order()?;
+    value.specimen_type.as_mut().ok_or("specimen")?.namespace =
+        Identifier::new("different-system")?;
+    assert!(matches!(
+        map_order(&value, &settings),
+        Err(OrderMappingError::UnmappedSpecimenType)
+    ));
+    // With no configured destination the same unknown value is not transmitted.
+    assert_eq!(
+        map_order(&value, &config(&context_section())?)?.record()?,
+        b"O|1|001a||^^^SEND|R||||||N\r"
+    );
+    value.specimen_type = None;
+    assert!(matches!(
+        map_order(&value, &settings),
+        Err(OrderMappingError::MissingSpecimenType)
+    ));
+    Ok(())
+}

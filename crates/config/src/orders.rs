@@ -40,7 +40,7 @@ pub struct OutboundTest {
 pub struct OutboundSpecimen {
     /// Exact app code system and value.
     pub app: NamespacedId,
-    /// Exact protocol code; Autolyser supports S and U.
+    /// Exact protocol code; ASTM uses explicit text, Autolyser supports S and U.
     pub machine: Identifier,
 }
 
@@ -62,6 +62,8 @@ pub struct AstmOrderFields {
     pub specimen: Field,
     /// Instrument specimen ID or position; presence requires supplied app data.
     pub position: Option<Field>,
+    /// LIS02 section 8.4.16.1 specimen type: O field 16, component 1.
+    pub specimen_type: Option<Field>,
     /// First component of each repeated universal test ID.
     pub test: Field,
     /// Priority destination.
@@ -224,18 +226,25 @@ impl Orders {
         }
         if let Some(types) = &self.specimen_types {
             let mut seen = HashSet::new();
-            if machine.syntax.kind != SyntaxKind::Autolyser
-                || types.is_empty()
+            if types.is_empty()
                 || types.len() > 4096
                 || types.iter().any(|t| {
                     !seen.insert((&t.app.namespace, &t.app.value))
-                        || !matches!(t.machine.as_str(), "S" | "U")
+                        || match machine.syntax.kind {
+                            SyntaxKind::Autolyser => !matches!(t.machine.as_str(), "S" | "U"),
+                            SyntaxKind::AstmLis02 => t
+                                .machine
+                                .as_str()
+                                .bytes()
+                                .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b)),
+                            SyntaxKind::VidasLiteral | SyntaxKind::Hl7V2 | SyntaxKind::Poct => true,
+                        }
                 })
             {
                 return Err(invalid(
                     path,
                     "orders.specimen_types",
-                    "use unique explicit Autolyser specimen mappings to S or U",
+                    "use unique explicit specimen mappings valid for the selected protocol",
                 ));
             }
         }
@@ -293,6 +302,17 @@ impl Orders {
         {
             return Err(fail());
         }
+        if astm
+            .specimen_type
+            .as_ref()
+            .is_some_and(|f| !order_field(f, 16, machine) || f.component != 1)
+        {
+            return Err(invalid(
+                path,
+                "orders.astm.specimen_type",
+                "LIS02 specimen type uses O field 16, component 1 only",
+            ));
+        }
         Ok(())
     }
 }
@@ -301,6 +321,7 @@ fn order_field(field: &Field, number: u16, machine: &Machine) -> bool {
     matches!(field.group, Group::Order)
         && field.record.as_str() == "O"
         && field.field == number
+        && usize::from(field.field) <= machine.syntax.fields
         && field.component > 0
         && usize::from(field.component) <= machine.syntax.components
         && field.repetition == 1

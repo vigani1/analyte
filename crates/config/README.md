@@ -87,3 +87,10 @@ medium codes and empty supplied tables are rejected. Autolyser analysis codes
 must occupy exactly four printable bytes; list mappings use only `T` or `R`.
 Missing patient, specimen medium or cup position in an app order produces a
 specific rejection before reservation or transmission. Cup zero is never inferred.
+
+ASTM can also use `specimen_types` with explicit printable machine codes. Its
+optional `[orders.astm] specimen_type` selector is limited to O field 16,
+component 1 (LIS02 section 8.4.16.1). The optional position selector stays in
+O field 4 and sends the exact slot. No selector means that context stays off the
+wire. A configured selector requires its context; unknown specimen codes cause
+specific order rejection. See `../analyte/ORDERS.md` for selectors and examples.

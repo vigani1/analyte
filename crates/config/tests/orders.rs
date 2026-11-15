@@ -247,3 +247,33 @@ fn autolyser_rev18_ch23_outbound_medium_list_and_analysis_tables_are_explicit() 
     );
     Ok(())
 }
+
+#[test]
+fn lis02_section8_4_16_1_specimen_destination_and_code_table_preserve_field_ownership() -> TestResult
+{
+    let section=include_str!("../examples/orders.toml").replace("[orders.query]", "specimen_types=[{app={namespace='specimens',value='SERUM'},machine='SER'}]\n[orders.query]");
+    let destination = "specimen_type={group='order',record='O',field=16,component=1,repetition=1}";
+    config(&format!("{section}\n{destination}"))?;
+    for invalid in [
+        destination.replace("field=16", "field=20"),
+        destination.replace("component=1", "component=2"),
+        destination.replace("record='O'", "record='R'"),
+        destination.replace("group='order'", "group='observation'"),
+        destination.replace("repetition=1", "repetition=2"),
+    ] {
+        invalid_key(
+            config(&format!("{section}\n{invalid}")),
+            "orders.astm.specimen_type",
+        );
+    }
+    invalid_key(
+        config(&section.replace("machine='SER'", "machine='S^R'")),
+        "orders.specimen_types",
+    );
+    let duplicated = section.replace(
+        "machine='SER'}]",
+        "machine='SER'},{app={namespace='specimens',value='SERUM'},machine='OTHER'}]",
+    );
+    invalid_key(config(&duplicated), "orders.specimen_types");
+    Ok(())
+}

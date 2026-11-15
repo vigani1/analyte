@@ -143,7 +143,7 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
         .iter()
         .find(|p| p.app.as_str() == order.priority.code())
         .ok_or(OrderMappingError::UnmappedPriority)?;
-    let mut fields: [String; 12] = std::array::from_fn(|_| String::new());
+    let mut fields: [String; 16] = std::array::from_fn(|_| String::new());
     fields[0] = "O".into();
     fields[1] = "1".into();
     set(
@@ -166,6 +166,10 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
             value.slot.as_str(),
             limits.components,
         )?;
+    }
+    if let Some(destination) = &astm.specimen_type {
+        let code = specimen_type(order, settings)?;
+        set(&mut fields, destination, code, limits.components)?;
     }
     let prefix = "^".repeat(usize::from(astm.test.component).saturating_sub(1));
     if settings.tests.iter().any(|t| {
@@ -193,7 +197,12 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
         astm.action_code.as_str(),
         limits.components,
     )?;
-    let mut record = fields.join("|").into_bytes();
+    let last_field = if astm.specimen_type.is_some() { 16 } else { 12 };
+    let mut record = fields
+        .get(..last_field)
+        .ok_or(OrderMappingError::Representation)?
+        .join("|")
+        .into_bytes();
     if record.len() > limits.record_bytes
         || record.len().checked_add(1).is_none_or(|n| n > limits.bytes)
     {
@@ -343,16 +352,7 @@ fn autolyser(
         .ok_or(OrderMappingError::Overlong("patient-id"))?
         .copy_from_slice(patient.as_bytes());
     let patient = PatientCode::new(&padded)?;
-    let specimen = order
-        .specimen_type
-        .as_ref()
-        .ok_or(OrderMappingError::MissingSpecimenType)?;
-    let mapped = settings
-        .specimen_types
-        .as_ref()
-        .and_then(|types| types.iter().find(|t| t.app == *specimen))
-        .ok_or(OrderMappingError::UnmappedSpecimenType)?;
-    let sample = match mapped.machine.as_str() {
+    let sample = match specimen_type(order, settings)? {
         "S" => Sample::Serum,
         "U" => Sample::Urine,
         _ => return Err(OrderMappingError::UnmappedSpecimenType),
@@ -405,4 +405,20 @@ fn autolyser(
         return Err(OrderMappingError::Representation);
     }
     Ok(MachineOrder::Autolyser(worklist))
+}
+
+fn specimen_type<'a>(
+    order: &AppOrder,
+    settings: &'a analyte_config::Orders,
+) -> Result<&'a str, OrderMappingError> {
+    let requested = order
+        .specimen_type
+        .as_ref()
+        .ok_or(OrderMappingError::MissingSpecimenType)?;
+    settings
+        .specimen_types
+        .as_ref()
+        .and_then(|types| types.iter().find(|t| t.app == *requested))
+        .map(|mapping| mapping.machine.as_str())
+        .ok_or(OrderMappingError::UnmappedSpecimenType)
 }

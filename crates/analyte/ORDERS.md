@@ -16,7 +16,8 @@ Each outbound test maps an exact app `{namespace, value}` pair to explicit
 ASTM universal-test components. Priorities also require explicit translations.
 Specimen IDs retain their spelling. A required position missing from the app
 order causes rejection; neither the sample ID nor a made-up slot substitutes
-for it. Contract v1 can carry position; ASTM forwarding is a separate step.
+for it. Contract v1 position and specimen type are forwarded only to explicit
+outbound destinations.
 
 The first outbound repertoire uses standard ASTM delimiters and ASCII without
 reserved delimiter characters in data. Unrepresentable input is rejected,
@@ -166,7 +167,7 @@ specimen/run identity, as before.
 An order must supply its cup slot, numeric 1-99; `00` is not silently used to
 ask the machine to autoassign. The shared position type retains kind, carrier
 and exact slot in protected order evidence; only the addressed slot is encoded
-by this protocol. ASTM position/specimen forwarding remains a separate step.
+by this protocol. ASTM uses the same position type, with independent explicit destinations.
 
 Every mapping is complete before `reserve_send` commits Sending, with no app
 event. The host sends STX, waits for ACK and then sends the fixed-width work
@@ -184,3 +185,46 @@ unmapped codes/medium, missing/invalid cup slot, wrong/missing patient context,
 over-long patient ID and cancellation before insertion. VIDAS also has an
 explicit mid-send Park test asserting Uncertain and one app event before any
 restart. Both suites use the program, temporary storage and reference receiver.
+
+
+## ASTM optional order context (LIS02 section 8)
+
+Send-ahead and query replies use the same outbound mapper. `[orders.astm]`
+may name `position` in O field 4 (instrument specimen ID, section 8.4.4), with
+an explicit component, and `specimen_type` in O field 16 component 1 (specimen
+descriptor/type, section 8.4.16.1). The position slot keeps its exact spelling,
+including leading zeros. Kind and carrier remain protected order evidence;
+this selector sends only the slot, never substitutes a sample ID or another
+position component.
+
+The optional `[orders] specimen_types` table translates exact app namespace/value
+pairs to machine text. The specimen destination cannot point to specimen source
+(component 2), a user field or another record. Invalid/ambiguous tables and wire
+delimiter injection are rejected at configuration validation.
+
+No destination means no wire value: unmapped app specimen context does not
+trigger a guessed code or an extra destination. A configured destination requires
+its app context; missing position/specimen type is rejected specifically. With
+a specimen destination, an unknown namespace/value produces
+`unmapped-specimen-type` before reservation. A query mapping failure returns
+only the configured query-error reply, never a partial order or no-orders answer;
+the rejected order gets its app event through the shared lifecycle outbox.
+
+For example, append these selectors inside an existing `[orders.astm]` table:
+
+```toml
+position = {group="order",record="O",field=4,component=2,repetition=1}
+specimen_type = {group="order",record="O",field=16,component=1,repetition=1}
+```
+
+Add translations inside `[orders]`, separately from those selectors:
+
+```toml
+specimen_types = [{app={namespace="synthetic",value="SERUM"},machine="SER"}]
+```
+
+LIS02 section 8 tests in the mapper and `tests/orders/cases.rs` assert exact
+O-record and complete H/P/O/L payload bytes for both send-ahead and query
+answers, including configured context, absent destinations, unmapped and missing
+specimen context. Existing minimal O records stay byte-for-byte unchanged when
+these destinations are absent. Evidence remains documented, not machine-proven.

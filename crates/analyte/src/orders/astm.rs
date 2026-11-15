@@ -211,7 +211,7 @@ async fn answer(
                     }) {
                         continue;
                     }
-                    let mapped = match super::app_order(&order, machine).and_then(|order| {
+                    let mapped = match super::app_order(&order).and_then(|order| {
                         Ok(analyte_mapping::map_order(&order, &machine.snapshot)?)
                     }) {
                         Ok(mapped) => mapped,

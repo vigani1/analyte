@@ -14,7 +14,6 @@ pub(crate) const FRESHNESS_SECONDS: u64 = 30;
 /// Adapts validated app fields without inventing a code system or position.
 pub(crate) fn app_order(
     order: &analyte_contract::Order,
-    machine: &Machine,
 ) -> Result<analyte_mapping::AppOrder, Error> {
     let fields = order.fields();
     let tests = fields
@@ -41,15 +40,7 @@ pub(crate) fn app_order(
             analyte_contract::Priority::Urgent => analyte_mapping::AppOrderPriority::Urgent,
             analyte_contract::Priority::Stat => analyte_mapping::AppOrderPriority::Stat,
         },
-        // Position forwarding is a separate ASTM change. VIDAS has no position
-        // destination; it never substitutes a position for sample identity.
-        position: if machine.snapshot.effective().machine().syntax.kind
-            == analyte_config::SyntaxKind::Autolyser
-        {
-            fields.position.as_ref().map(position).transpose()?
-        } else {
-            None
-        },
+        position: fields.position.as_ref().map(position).transpose()?,
     })
 }
 
