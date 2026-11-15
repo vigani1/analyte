@@ -75,7 +75,7 @@ transaction. Neither command sends or retries machine work.
 
 ## Deferred
 
-HL7 QRY/QCK/DSR query handling and ORM/OML send-ahead are a separate round.
+Additional machine-specific order profiles and live qualification are deferred.
 Live-machine validation, vendor-specific acceptance evidence and wider ASTM
 query selectors are not claimed by these synthetic tests.
 
@@ -95,6 +95,26 @@ All other transitions, including every attempt to return to Sending, are refused
 Contract conversion explicitly rejects Sending; only real transfer outcomes become
 app events. The same reservation and completion rules apply to query answers.
 
+
+## Durable command items
+
+Every new machine-order reservation retains items atomically in schema v5.
+ASTM and vendor records cover all tests in one item; HL7 send-ahead will reserve
+one item per test. Store-owned placer identities are `<machine-order-id>-<index>`;
+the HL7 configuration must supply their namespace. App order IDs belong in
+ORC-4, independently of these identities. Neither identity may be truncated.
+
+Application evidence is recorded per item. All Accepted, all Rejected, all Sent
+or all CancelConfirmed produce that aggregate state; mixed or missing answers
+produce Uncertain with per-item reasons. Cancellation covers all items. Explicit
+refusal restores the preceding order state with a CancelRefused event/history;
+missing evidence remains Uncertain. Orders list shows item identities, test
+coverage and reasons. Reconciliation stays per order, audited, and never resends.
+
+Migrated v4 orders explicitly mark original test coverage unavailable, because
+v4 did not retain it. Their existing reservations continue to prevent replay.
+The store API, legacy HL7 queries, and ORM/OML send-ahead and cancellation are
+implemented at documented evidence level.
 
 ## VIDAS Literal work lists
 
@@ -261,6 +281,50 @@ Evidence remains **documented**; the table is synthetic regression coverage,
 not qualification against hardware or an official simulator.
 
 
+## HL7 legacy display queries
+
+Evidence remains **documented** (HL7 2.3.1 section 2.18 and 2.5.1 section 5.10).
+The synthetic [HL7 orders example](../config/examples/hl7_orders.toml) explicitly
+selects which QRD field carries the sample, its exact trailing components, and
+all supported nonempty selectors. Config validation checks a synthetic query
+against the selected edition. No QRF filter, continuation, range, wildcard or
+undeclared selector is ignored; unsupported queries are retained for review.
+The query interface uses original acknowledgment mode. Send-ahead is a separate,
+explicit capability.
+
+A complete QRY MLLP block, with driver/config provenance, is durable before any
+QCK. Query time starts with the first block byte, including split reads, raw
+storage and lookup. Trusted empty yields QAK NF; unavailable, stale, late or
+untrusted answers yield AE. HL7 requires `when_untrusted = "error"`. Lookup uses
+the same cache freshness and requested/target rules as ASTM and vendor orders.
+
+`orders.hl7.lines` gives the exact DSP-3 layout for each requested test. The
+ordered lines repeat per test and per app order, without an implicit header or
+vendor positions. Supported sources are sample_id, order_id, test_code,
+priority, position (the supplied slot), specimen_type, patient_id and explicit
+literal text (including blank padding). Test/priority/specimen translations
+are explicit; patient_id also needs a matching patient_namespace. Absent optional
+context produces an empty line, never a substitute. Plain ASCII DSP values are
+bounded to 300 bytes and cannot inject HL7 delimiters. Unmapped or unrepresentable
+orders are rejected with an app event; no partial display is transmitted.
+
+The shared reservation path rechecks every candidate before QCK/DSR issuance.
+Each app order has one durable item covering all its tests, still Sending with
+no app event. QCK and DSR have distinct control IDs; the DSR is rendered before
+reservation so a quantity/size failure cannot transmit partial work. ACK^Q03 AA
+for the actual DSR ID becomes Sent (one app event), never Accepted. AE, AR,
+invalid/wrong-edition ACK, lost ACK and disconnect become Uncertain with distinct
+codes. Incoming ACK bytes are durable before the lifecycle changes. The
+acknowledgment_ms timer starts at DSR issuance. Neither query replay nor restart
+can reserve the same order again. In-flight reservation keys survive a cancelled
+host wait so connection cleanup can find any reservation that committed.
+
+Program tests in `tests/orders/hl7.rs` use the temporary store and reference
+receiver for both editions, exact DSP text, store-before-reply, no event while
+Sending, trusted empty/untrusted/stale answers, unknown filters, missed query
+deadlines, AA/AE/AR/lost/wrong ACKs, disconnect and ordinary result delivery with
+queries enabled. Synthetic peers do not raise the evidence level.
+
 ## Restore and reconciliation (plan ?11, ADR 0003 rules 2, 4, 8)
 
 1. Stop the service. Keep the backup and data directory protected as clinical data.
@@ -288,3 +352,48 @@ not qualification against hardware or an official simulator.
 The marker is the latest restore/resume action in the append-only audit trail;
 no schema migration or driver-specific exception is needed. Evidence remains
 **documented**, based on synthetic tests, without real-machine qualification.
+
+
+## HL7 send-ahead and cancellation
+
+The synthetic [send-ahead example](../config/examples/hl7_send.toml) opts into
+`send_ahead`, requires `placer_namespace`, and declares MSH applications,
+processing mode, specimen placement and the application response deadline.
+Edition 2.3.1 selects ORM/O01 and ORR/O02; 2.5.1 selects non-LAW OML/O21 and
+ORL/O22. Outbound tests have three explicit CE components (code, text, system).
+An absent patient mapping emits no PID; an identifier-only mapping transmits
+only that identifier and namespace, never a guessed name. ORM allows an absent
+specimen type; OML requires mapped SPM-4 and its coding-system version when the
+coding system requires one. Optional ORM slot placement is explicitly OBR-18
+or OBR-19, distinct from the configured sample field. OML position output is
+not implemented and cannot be configured. Other optional, unmapped data is empty.
+
+The shared store reservation transaction creates one item per test and assigns
+EI.1 `<machine-order-id>-<index>` with the configured EI.2. ORC-4 carries the app
+order ID. A pure preflight renders the complete message with these actual IDs
+before Sending commits. Oversized group/placer identities and unrepresentable
+fields produce specific Rejected evidence without a committed Sending state,
+truncation or wire output. All reservation variants call the shared restore
+pause helper inside the same transaction; restored stores cannot issue work
+until audited reconciliation resumes them.
+
+Incoming ORR/ORL blocks are stored before interpreting their correlated item
+outcomes. Explicit OK/UA evidence and missing/unknown responses pass through
+`finish_order_items`; MSA AA alone never establishes order acceptance. All OK
+becomes Accepted, all UA becomes Rejected, and mixed or uncertain outcomes
+become Uncertain. Reasons remain per item and in protected event/history.
+Timeout, disconnect and restart never repeat an original command.
+
+App cancellation uses a fresh, trusted feed version and a transaction that
+rechecks the request before CancelRequested and its event commit. Cancel CA
+uses the retained item identities without rebuilding sample/test/patient data.
+CR for all items produces CancelConfirmed; UC restores the preceding order
+state with a CancelRefused event and per-item reasons. Missing evidence produces
+Uncertain. Each app cancellation version is admitted once, including after UC
+or restart; a stable cancelled feed entry cannot trigger a polling retry.
+An uncertain order still needs audited operator reconciliation.
+
+Synthetic end-to-end cases cover both editions, accepted/rejected/mixed items,
+no reply, disconnect, cancel accepted/refused through the reference app feed,
+restart while Sending, no resend, actual placer-ID overflow, overlong ORC-4,
+and paused restore admission. They do not qualify a physical analyzer.

@@ -56,7 +56,8 @@ transaction as their interpretation. Retransmissions, conflicts, parked results,
 training and debug do not enqueue. One supervised worker serves all destinations,
 and one poller per destination maintains the order cache. Startup automatically
 recovers interrupted app attempts with an audit per delivery under ADR 0008.
-No machine orders are issued; queries never receive invented empty orders.
+Machine orders require explicit `[orders]` capabilities; queries never receive
+invented empty orders.
 
 Ctrl-C, termination on Unix and Ctrl-Break on Windows stop admission. Owners
 finish submitted commits (15 seconds), then the delivery worker stops claiming
@@ -153,6 +154,13 @@ and ID with one result at the receiver, and recovers Sending to Uncertain.
 `tests/service_unit.rs` checks the unit's structure, sandbox settings and stop
 margin without requiring systemd or installing anything.
 
+
+HL7 legacy QRY^Q02 queries can opt into the shared order cache and reservation
+path with the explicit [DSP layout](../config/examples/hl7_orders.toml).
+QCK/DSR replies follow durable raw storage. Trusted empty is NF; untrusted,
+stale or late lookup is AE. DSR application receipt is Sent, never Accepted;
+negative, missing or disconnected ACKs are Uncertain. HL7 ORM/OML send-ahead
+and cancellation require the separate explicit `[orders.hl7_send]` capability. See [ORDERS.md](ORDERS.md).
 
 ## Restore and reconciliation (plan ?11, ADR 0003 rules 2, 4, 8)
 

@@ -232,7 +232,26 @@ fn build(
         options.limits.message_bytes,
     )?;
     match subject {
-        Subject::NonPatient => {}
+        Subject::NonPatient | Subject::Unspecified => {}
+        Subject::Identifier {
+            identifier,
+            namespace,
+        } => {
+            scalar(identifier, "PID", 3, 15, true)?;
+            scalar(namespace, "PID", 3, 20, true)?;
+            let mut cx = identifier.to_vec();
+            cx.extend_from_slice(b"^^^");
+            cx.extend_from_slice(namespace);
+            if header.version == Version::V231 && cx.len() > 20 {
+                return Err(invalid("PID", 3));
+            }
+            segment(
+                &mut output,
+                b"PID",
+                &[b"1", b"", &cx],
+                options.limits.message_bytes,
+            )?;
+        }
         Subject::Patient(patient) => {
             scalar(patient.identifier, "PID", 3, 15, true)?;
             scalar(patient.namespace, "PID", 3, 20, true)?;
@@ -340,11 +359,22 @@ fn build(
                 };
                 let (source, sample) = match family {
                     Family::Orm => (
-                        code(specimen.source, b'&', 300, "OBR", 15, CodeForm::Ce)?,
+                        specimen
+                            .source
+                            .map(|source| code(source, b'&', 300, "OBR", 15, CodeForm::Ce))
+                            .transpose()?
+                            .unwrap_or_default(),
                         escape(specimen.sample.raw(), "OBR", sample_field, 60)?,
                     ),
                     Family::Oml => (
-                        code(specimen.source, b'^', 250, "SPM", 4, CodeForm::Cwe)?,
+                        code(
+                            specimen.source.ok_or_else(|| invalid("SPM", 4))?,
+                            b'^',
+                            250,
+                            "SPM",
+                            4,
+                            CodeForm::Cwe,
+                        )?,
                         escape(
                             specimen.sample.raw(),
                             "SPM",
@@ -436,4 +466,54 @@ fn build(
     )?;
     crate::Msh::new(&message)?;
     Ok(OrderMessage { message, family })
+}
+
+/// Adds explicitly supplied placer group and optional position to a built order.
+/// Placer-owned OBR-18/19 destinations cannot overwrite existing sample content.
+/// # Errors
+/// Refuses EI length/injection, conflicting positions and configured output limits.
+pub fn context(
+    sent: &OrderMessage,
+    group: &[u8],
+    position: Option<(SampleField, &[u8])>,
+    options: Options,
+) -> Result<OrderMessage, Error> {
+    scalar(group, "ORC", 4, 22, true)?;
+    let mut output = Vec::new();
+    for row in sent.message.segments() {
+        if row.id() == b"ORC" || row.id() == b"OBR" {
+            let count = row
+                .fields()
+                .count()
+                .max(if row.id() == b"ORC" { 4 } else { 19 });
+            let mut fields = (1..=count)
+                .map(|n| super::raw(row, n).to_vec())
+                .collect::<Vec<_>>();
+            if row.id() == b"ORC" {
+                *fields.get_mut(3).ok_or(Error::Limit)? = group.to_vec();
+            }
+            if row.id() == b"OBR"
+                && let Some((field, value)) = position
+            {
+                let n = match field {
+                    SampleField::Placer1 => 17,
+                    SampleField::Placer2 => 18,
+                };
+                let target = fields.get_mut(n).ok_or(Error::Limit)?;
+                if !target.is_empty() {
+                    return Err(invalid("OBR", n.saturating_add(1)));
+                }
+                *target = escape(value, "OBR", n.saturating_add(1), 60)?;
+            }
+            let refs = fields.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            segment(&mut output, row.id(), &refs, options.limits.message_bytes)?;
+        } else {
+            append(&mut output, row.raw(), options.limits.message_bytes)?;
+            append(&mut output, b"\r", options.limits.message_bytes)?;
+        }
+    }
+    Ok(OrderMessage {
+        message: Message::parse(&output, options)?,
+        family: sent.family,
+    })
 }

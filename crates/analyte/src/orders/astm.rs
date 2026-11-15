@@ -11,13 +11,7 @@ mod tests;
 
 type LookupFuture<'a> = Pin<Box<dyn Future<Output = Result<Option<Reply>, Error>> + Send + 'a>>;
 
-/// Order identity and version mapped for a pending query response.
-pub(crate) struct Candidate {
-    /// Stable app order and machine identity to recheck immediately before sending.
-    pub(crate) identity: analyte_store::MachineOrderKey,
-    /// Version used by the mapper.
-    pub(crate) version: std::num::NonZeroU64,
-}
+use super::Candidate;
 
 /// A reply is not a send: candidates are reserved only when the link is ready.
 pub(crate) struct Reply {
@@ -171,22 +165,7 @@ async fn answer(
     let mut bytes = 0usize;
     let limits = &machine.snapshot.effective().machine().syntax;
     for sample in samples {
-        let destination = super::destination(machine);
-        let answer = match store
-            .request(until, move |s| {
-                s.orders(
-                    &destination,
-                    &sample,
-                    jiff::Timestamp::now().as_second(),
-                    super::FRESHNESS_SECONDS,
-                )
-            })
-            .await
-        {
-            Ok(answer) => answer,
-            Err(analyte_store::Error::Timeout) => return Ok(failure(machine)),
-            Err(error) => return Err(error.into()),
-        };
+        let answer = super::lookup(store, machine, sample, until).await?;
         match answer {
             Lookup::NotTrusted => return Ok(failure(machine)),
             Lookup::NoOrders => {}
@@ -199,16 +178,7 @@ async fn answer(
                     let order: analyte_contract::Order =
                         analyte_contract::decode(cached.document.as_bytes())?;
                     let fields = order.fields();
-                    if fields.state != analyte_contract::evidence::OrderState::Requested
-                        || fields.tombstone
-                    {
-                        continue;
-                    }
-                    if fields.target_analyzers.as_ref().is_some_and(|targets| {
-                        !targets
-                            .iter()
-                            .any(|target| target.as_str() == machine.id.as_str())
-                    }) {
+                    if !super::eligible(&order, machine) {
                         continue;
                     }
                     let mapped = match super::app_order(&order).and_then(|order| {

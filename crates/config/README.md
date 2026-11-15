@@ -95,6 +95,14 @@ O field 4 and sends the exact slot. No selector means that context stays off the
 wire. A configured selector requires its context; unknown specimen codes cause
 specific order rejection. See `../analyte/ORDERS.md` for selectors and examples.
 
+
+HL7 legacy order queries opt in through `[orders.query]` and `[orders.hl7]`;
+see [the synthetic layout](examples/hl7_orders.toml). The specimen selector,
+exact trailing components, other supported QRD filters, DSP line sources and
+application-ACK deadline are all explicit and validated. Unsupported filters
+never become empty work. HL7 requires the error policy for untrusted lookups;
+this interface does not enable ORM/OML send-ahead or cancellations.
+
 Optional `[mappings.component_parts]` decomposes one component of ASTM R.3
 (LIS02 5.6.1). For example:
 
@@ -123,3 +131,11 @@ ASTM/HL7 behavior. Numeric requires a parsed number; coded accepts nonempty
 qualitative text or a coded value, not a plain number. Mismatches retain the
 original value and park with `ValueKindMismatch`. No clinical decisions or
 numeric conversions are performed.
+
+
+HL7 unsolicited orders additionally require `[orders.hl7_send]`, `send_ahead`
+and `placer_namespace`; see [the teaching interface](examples/hl7_send.toml).
+The configured edition selects ORM/O01 or OML/O21. Header applications,
+processing, specimen placement and response deadline are explicit. Test
+components are code/text/system. Position output is available only in ORM's
+other placer-owned OBR field; an OML position mapping is refused.

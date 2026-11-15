@@ -15,15 +15,42 @@ pub(crate) async fn reserve_query(
     until: std::time::Instant,
     active: &mut Vec<MachineOrder>,
 ) -> Result<Option<Vec<Vec<u8>>>, Error> {
-    for candidate in reply.candidates {
+    if !reserve_candidates(store, reply.candidates, until, active, None).await? {
+        return Ok(super::astm::failure(machine).map(|reply| reply.records));
+    }
+    Ok(Some(reply.records))
+}
+
+/// Shared query admission. Each reservation is owned by the connection before I/O.
+pub(crate) async fn reserve_candidates(
+    store: &Handle,
+    candidates: Vec<super::Candidate>,
+    until: std::time::Instant,
+    active: &mut Vec<MachineOrder>,
+    owner: Option<analyte_model::Identifier>,
+) -> Result<bool, Error> {
+    for candidate in candidates {
+        let owner = owner.clone();
         let reserved = store
             .request(until, move |store| {
-                store.reserve_send(
-                    &candidate.identity,
-                    candidate.version,
-                    jiff::Timestamp::now().as_second(),
-                    super::FRESHNESS_SECONDS,
-                )
+                if let Some(owner) = owner {
+                    store.reserve_send_owned(
+                        &OrderReservation {
+                            identity: &candidate.identity,
+                            version: candidate.version,
+                            now: jiff::Timestamp::now().as_second(),
+                            freshness: super::FRESHNESS_SECONDS,
+                        },
+                        &owner,
+                    )
+                } else {
+                    store.reserve_send(
+                        &candidate.identity,
+                        candidate.version,
+                        jiff::Timestamp::now().as_second(),
+                        super::FRESHNESS_SECONDS,
+                    )
+                }
             })
             .await?;
         match reserved {
@@ -33,7 +60,7 @@ pub(crate) async fn reserve_query(
                 for order in active.drain(..) {
                     uncertain(store, &order, "query-reservation-refused").await?;
                 }
-                return Ok(super::astm::failure(machine).map(|reply| reply.records));
+                return Ok(false);
             }
         }
     }
@@ -41,9 +68,9 @@ pub(crate) async fn reserve_query(
         for order in active.drain(..) {
             uncertain(store, &order, "query-deadline-before-send").await?;
         }
-        return Ok(super::astm::failure(machine).map(|reply| reply.records));
+        return Ok(false);
     }
-    Ok(Some(reply.records))
+    Ok(true)
 }
 
 /// A durable reservation paired with its already mapped, bounded wire records.
@@ -70,29 +97,12 @@ pub(crate) async fn next(
     {
         return Ok(None);
     }
-    let destination = super::destination(machine);
-    let machine_id = machine.id.clone();
-    let cursor = after.clone();
-    let candidates = store
-        .request(deadline(), move |store| {
-            store.order_candidates(&destination, &machine_id, &cursor)
-        })
-        .await?;
-    if candidates.is_empty() {
-        after.clear();
-        return Ok(None);
-    }
+    let candidates = candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
         let order: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
         let fields = order.fields();
-        if fields.tombstone
-            || fields.state != analyte_contract::evidence::OrderState::Requested
-            || fields
-                .target_analyzers
-                .as_ref()
-                .is_some_and(|targets| !targets.iter().any(|t| t.as_str() == machine.id.as_str()))
-        {
+        if !super::eligible(&order, machine) {
             continue;
         }
         let identity = MachineOrderKey {
@@ -145,6 +155,27 @@ pub(crate) async fn next(
         }
     }
     Ok(None)
+}
+
+/// Shared bounded candidate cursor for unsolicited protocols.
+pub(crate) async fn candidate_page(
+    store: &Handle,
+    machine: &Machine,
+    after: &mut String,
+) -> Result<Vec<analyte_store::CachedOrder>, Error> {
+    let destination = super::destination(machine);
+    let machine_id = machine.id.clone();
+    let cursor = after.clone();
+    let candidates = store
+        .request(deadline(), move |store| {
+            store.order_candidates(&destination, &machine_id, &cursor)
+        })
+        .await?;
+    if candidates.is_empty() {
+        after.clear();
+        return Ok(Vec::new());
+    }
+    Ok(candidates)
 }
 
 /// A link failure never proves that the machine did not receive its command.
