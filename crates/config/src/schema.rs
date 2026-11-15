@@ -317,6 +317,24 @@ pub struct Field {
     pub repetition: u16,
 }
 
+/// Explicit decomposition of one ASTM test-ID component; positions are one-based.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComponentParts {
+    /// Component selected from R.3.
+    pub component: u16,
+    /// Single non-protocol separator.
+    pub separator: char,
+    /// Exact number of parts, including empty parts.
+    pub count: u16,
+    /// Part used for test lookup.
+    pub code: u16,
+    /// Optional part retained as dilution evidence.
+    pub dilution: Option<u16>,
+    /// Source evidence for whether the dilution was applied.
+    pub applied: Option<DilutionSource>,
+}
+
 /// Sample identity copied without normalization.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -331,6 +349,9 @@ pub struct SampleSelection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TestMapping {
+    /// Expected interpretation; omission preserves permissive mapping.
+    #[serde(default)]
+    pub value_kind: ValueKind,
     /// Code as received.
     pub machine_code: Identifier,
     /// Source assigning system.
@@ -417,6 +438,8 @@ pub struct IdentityEvidence {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Mappings {
+    /// Optional ASTM test-code component decomposition.
+    pub component_parts: Option<ComponentParts>,
     /// Sample selection.
     pub sample: SampleSelection,
     /// Test code table.
@@ -668,4 +691,29 @@ impl Machine {
             (None, None) | (Some(_), Some(_)) => &[],
         }
     }
+}
+
+/// Exact source codes for dilution application; all other values stay unknown.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DilutionSource {
+    /// Group-relative source field.
+    pub field: Field,
+    /// Exact already-applied code.
+    pub yes: Identifier,
+    /// Exact not-applied code.
+    pub no: Identifier,
+}
+
+/// Expected source value interpretation, without clinical interpretation.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValueKind {
+    /// Require an exact numeric interpretation.
+    Numeric,
+    /// Require qualitative text or a coded interpretation.
+    Coded,
+    /// Preserve existing protocol interpretation.
+    #[default]
+    Either,
 }

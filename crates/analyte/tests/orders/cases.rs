@@ -628,3 +628,92 @@ async fn lis02_section8_o_record_missing_required_specimen_rejects_without_guess
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn plan11_rule8_restore_blocks_astm_send_ahead_and_query_orders_on_wire() -> Result<(), Error>
+{
+    for send in [true, false] {
+        let temp = tempfile::tempdir()?;
+        let path = config(temp.path(), true)?;
+        configure_orders(temp.path(), send)?;
+        let reference = Reference::start(
+            &temp.path().join("receiver.db"),
+            TcpListener::bind("127.0.0.1:0").await?,
+            false,
+        )
+        .await?;
+        reference
+            .receiver
+            .seed(vec![analyte_contract::decode(include_bytes!(
+                "../../../../docs/contract/vectors/order.json"
+            ))?])
+            .await?;
+        // Initialize and stop before restoring, so no machine has received work.
+        let service = Running::start(&path, &reference.url, "synthetic-api")?;
+        let ready = connect(&path, "hl7").await?;
+        wait_cache(&path).await?;
+        drop(ready);
+        let refused = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .arg("--config")
+            .arg(&*path)
+            .args([
+                "restore",
+                "--from",
+                "unused.db",
+                "--reason",
+                "synthetic refusal",
+            ])
+            .output()?;
+        assert!(!refused.status.success());
+        assert!(String::from_utf8_lossy(&refused.stderr).contains("InUse"));
+        service.stop().await?;
+        let backup = temp.path().join("backup.db");
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .arg("--config")
+            .arg(&*path)
+            .arg("backup")
+            .arg(&backup)
+            .output()?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .arg("--config")
+            .arg(&*path)
+            .arg("restore")
+            .arg("--from")
+            .arg(&backup)
+            .args(["--reason", "synthetic restore"])
+            .output()?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let service = Running::start(&path, &reference.url, "synthetic-api")?;
+        let mut peer = connect(&path, "astm").await?;
+        wait_cache(&path).await?;
+        if send {
+            assert!(
+                tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
+                    .await
+                    .is_err()
+            );
+        } else {
+            let reply = query(&mut peer, "000Ab12").await?;
+            assert!(reply.ends_with(b"L|1|Q\r"));
+            assert!(!reply.windows(2).any(|w| w == b"O|"));
+        }
+        assert_eq!(
+            database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
+                .get::<_, i64>(0))?,
+            0
+        );
+        drop(peer);
+        service.stop().await?;
+        reference.close().await?;
+    }
+    Ok(())
+}

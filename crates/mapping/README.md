@@ -51,8 +51,8 @@ ORC, OBR, SPM, SAC, OBX, NTE, PV1/PV2 and OUL TCD/SID; other segments require
 review rather than guessed ownership. Original optional source fields stay in
 the host's raw receipt. Encapsulated data interpretation, clinical decisions,
 delivery, reconciliation, conflict detection and revision allocation belong
-outside this crate. Dilution and carrier position remain absent because the
-current config declares no selectors for them. No default is invented.
+outside this crate. Carrier position remains absent because config declares no
+selector for it. No default is invented.
 
 Bounds: config message/record ceilings apply before source adaptation. Model
 text and evidence limits apply to every constructed field/list. At most 256
@@ -60,3 +60,14 @@ parts belong to one replacement unit. A separate 64 MiB accounting budget
 charges each observation/note 64 KiB plus sixteen times its ancestor/attached
 note bytes before copying, bounding repeated context expansion. Budget exhaustion
 returns a positioned error and no partial success; retain and park the receipt.
+
+ASTM component decomposition and per-test value expectations are optional;
+see [configuration](../config/README.md). Decomposition uses parsed R.3 component
+boundaries, requires an exact part count and checks the actual message delimiters
+as well as config validation. A located `ComponentParts` finding parks malformed
+observations, retaining their values in `unmapped`; the protected raw receipt
+retains the entire original identifier. Valid dilution text stays in
+`Dilution.original`, with an exact-decimal factor only and independent application
+evidence. Per-test `ValueKindMismatch` findings park values without replacing their
+original text or changing protocol interpretation. Omitted settings preserve the
+existing ASTM and HL7 paths. These features remain documented evidence only.

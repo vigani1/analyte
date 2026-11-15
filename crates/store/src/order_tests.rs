@@ -714,3 +714,149 @@ fn adr0003_cancelled_query_wait_can_only_claim_its_retained_reservation_owner() 
     );
     Ok(())
 }
+
+#[test]
+fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("store.db");
+    let backup = temp.path().join("backup.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    store.backup(&backup, Instant::now() + Duration::from_secs(5))?;
+    let order = store
+        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30)?
+        .map_err(std::io::Error::other)?;
+    assert_eq!(order.state, OrderState::Sending);
+    let mut audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 102,
+        reason: analyte_model::Reason::new("verified recovery")?,
+    };
+    assert!(matches!(
+        Store::restore(
+            &path,
+            &backup,
+            tests::limits(),
+            Box::new(tests::Space(u64::MAX)),
+            &audit,
+            Instant::now() + Duration::from_secs(5)
+        ),
+        Err(Error::InUse)
+    ));
+    drop(store);
+    let kept = Store::restore(
+        &path,
+        &backup,
+        tests::limits(),
+        Box::new(tests::Space(u64::MAX)),
+        &audit,
+        Instant::now() + Duration::from_secs(5),
+    )?;
+    assert!(kept.exists());
+    let old = open(&kept)?;
+    assert_eq!(
+        old.machine_orders(&MachineOrderFilter {
+            after: 0,
+            machine: None,
+            state: None
+        })?
+        .len(),
+        1
+    );
+    let mut store = open(&path)?;
+    assert!(store.restore_unreconciled()?);
+    assert!(matches!(
+        store.reserve_send(&identity()?, NonZeroU64::MIN, 103, 30)?,
+        Err(SendRefusal::RestoreUnreconciled)
+    ));
+    assert!(matches!(
+        store.orders(&Identifier::new("app")?, &SampleId::new("001a")?, 103, 30)?,
+        Lookup::NotTrusted
+    ));
+    audit.action = Identifier::new("orders-resume-after-restore")?;
+    store.resume_after_restore(&audit)?;
+    assert!(!store.restore_unreconciled()?);
+    assert_eq!(
+        store
+            .audits(0)?
+            .last()
+            .ok_or("missing audit")?
+            .1
+            .action
+            .as_str(),
+        "orders-resume-after-restore"
+    );
+    assert!(
+        store
+            .reserve_send(&identity()?, NonZeroU64::MIN, 103, 30)?
+            .is_ok()
+    );
+    Ok(())
+}
+
+#[test]
+fn plan11_restore_pause_blocks_hl7_items_and_owned_dsr_in_shared_transaction() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("paused.db"))?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let mut audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: Vec::new(),
+        time: 101,
+        reason: analyte_model::Reason::new("synthetic restore")?,
+    };
+    store.audit(&audit)?;
+    let identity = identity()?;
+    let candidate = OrderReservation {
+        identity: &identity,
+        version: NonZeroU64::MIN,
+        now: 102,
+        freshness: 30,
+    };
+    assert!(matches!(
+        store.reserve_send_items(
+            &candidate,
+            OrderItems::PerTest {
+                namespace: &Identifier::new("lab")?,
+                identity_bytes: 22
+            }
+        )?,
+        Err(SendRefusal::RestoreUnreconciled)
+    ));
+    assert!(matches!(
+        store.reserve_send_owned(&candidate, &Identifier::new("connection")?)?,
+        Err(SendRefusal::RestoreUnreconciled)
+    ));
+    for table in [
+        "machine_orders",
+        "machine_order_items",
+        "machine_order_history",
+        "machine_order_item_history",
+        "outbox",
+    ] {
+        assert_eq!(
+            store
+                .db
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| row
+                    .get::<_, i64>(0))?,
+            0
+        );
+    }
+    audit.action = Identifier::new("orders-resume-after-restore")?;
+    store.resume_after_restore(&audit)?;
+    assert!(
+        store
+            .reserve_send_items(
+                &candidate,
+                OrderItems::PerTest {
+                    namespace: &Identifier::new("lab")?,
+                    identity_bytes: 22
+                }
+            )?
+            .is_ok()
+    );
+    Ok(())
+}

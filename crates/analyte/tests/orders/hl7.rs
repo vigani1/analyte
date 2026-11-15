@@ -298,3 +298,26 @@ async fn hl7_251_section5_10_quantity_limit_refuses_partial_dsr_before_reservati
     reference.close().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result<(), Error> {
+    let (_temp, path, reference, service, mut peer) = setup("v251", 3000).await?;
+    database(&path)?.execute("INSERT INTO audit(evidence) VALUES (?1)",[serde_json::json!({"actor":"operator","action":"store-restore","targets":[],"time":jiff::Timestamp::now().as_second(),"reason":"synthetic restore"}).to_string()])?;
+    send(&mut peer, &query("000Ab12", "2.5.1")).await?;
+    assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
+    for table in [
+        "machine_orders",
+        "machine_order_items",
+        "machine_order_item_history",
+        "outbox",
+    ] {
+        assert_eq!(
+            database(&path)?.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                .get::<_, i64>(0))?,
+            0
+        );
+    }
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

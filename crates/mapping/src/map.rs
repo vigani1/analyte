@@ -76,12 +76,62 @@ pub(crate) fn message(
         let value_field = if astm { 4 } else { 5 };
         let values = value::values(source, index, value_field, &mut output)?;
         let sample = identity::sample(source, index, config, &mut output)?;
-        let standard_code = present(source.component(index, 3, 1, 1)?);
-        let manufacturer_code = if astm {
+        let mut standard_code = present(source.component(index, 3, 1, 1)?);
+        let mut manufacturer_code = if astm {
             present(source.component(index, 3, 1, 4)?)
         } else {
             None
         };
+        let mut dilution = None;
+        if let Some(parts) = &crate::field_mappings(config)?.component_parts {
+            let original = source
+                .component(index, 3, 1, usize::from(parts.component))?
+                .unwrap_or_default();
+            // The message may declare non-default delimiters: never split one as data.
+            let header = source.nodes.first().and_then(|n| match n.record {
+                crate::source::Record::Astm(r) => Some(r.raw()),
+                crate::source::Record::Hl7(_) => None,
+            });
+            let collision = header
+                .and_then(|h| h.get(1..5))
+                .is_some_and(|h| h.contains(&(parts.separator as u8)))
+                && parts.separator.is_ascii();
+            let split: Vec<_> = original.split(parts.separator).collect();
+            if collision || split.len() != usize::from(parts.count) {
+                finding(
+                    &mut output,
+                    source.position(index, 3),
+                    Problem::ComponentParts,
+                )?;
+                output.unmapped_test(source.position(index, 3), values)?;
+                continue;
+            }
+            standard_code = split
+                .get(usize::from(parts.code.saturating_sub(1)))
+                .map(|s| (*s).to_owned())
+                .filter(|s| !s.is_empty());
+            manufacturer_code = None;
+            if let Some(part) = parts
+                .dilution
+                .and_then(|i| split.get(usize::from(i.saturating_sub(1))))
+            {
+                let mut applied = DilutionApplied::Unknown;
+                if let Some(setting) = &parts.applied {
+                    let reported = source.selected(index, &setting.field)?;
+                    if reported.as_deref() == Some(setting.yes.as_str()) {
+                        applied = DilutionApplied::Yes;
+                    }
+                    if reported.as_deref() == Some(setting.no.as_str()) {
+                        applied = DilutionApplied::No;
+                    }
+                }
+                dilution = Some(Dilution {
+                    original: Some(text(part, source.position(index, 3))?),
+                    factor: Decimal::new(part).ok(),
+                    applied,
+                });
+            }
+        }
         let system = if astm {
             None
         } else {
@@ -112,6 +162,14 @@ pub(crate) fn message(
         if translation.is_none() {
             finding(&mut output, source.position(index, 3), Problem::UnknownTest)?;
         }
+        if let Some(entry) = translation {
+            value::check_kind(
+                &values,
+                entry.value_kind,
+                source.position(index, value_field),
+                &mut output,
+            )?;
+        }
         let test = translation.map_or_else(
             || source_code.clone(),
             |t| NamespacedId {
@@ -128,7 +186,8 @@ pub(crate) fn message(
             .correction_status_codes
             .iter()
             .any(|code| code.as_str() == status_text);
-        let part = result::part(source, index, config, input, test, values, &mut output)?;
+        let mut part = result::part(source, index, config, input, test, values, &mut output)?;
+        part.dilution = dilution;
         let order = source
             .ancestors(index)?
             .into_iter()
@@ -190,7 +249,9 @@ pub(crate) fn message(
                                     "missing identity {setting} at record {} field {}",
                                     f.position.record, f.position.field
                                 )),
-                                Problem::MissingSample
+                                Problem::ValueKindMismatch { .. }
+                                | Problem::ComponentParts
+                                | Problem::MissingSample
                                 | Problem::UnknownTest
                                 | Problem::UnsupportedValue
                                 | Problem::UnknownProcessing

@@ -4,7 +4,7 @@ use proptest::prelude::*;
 
 pub(super) type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-struct Space(u64);
+pub(super) struct Space(pub(super) u64);
 
 impl FreeSpace for Space {
     fn available(&self, _: &Path) -> std::io::Result<u64> {
@@ -12,7 +12,7 @@ impl FreeSpace for Space {
     }
 }
 
-fn limits() -> Limits {
+pub(super) fn limits() -> Limits {
     Limits {
         reserve_bytes: 1024,
         database_bytes: 100_000_000,
@@ -636,6 +636,7 @@ fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult
         db.execute_batch(&format!("CREATE TRIGGER immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
     }
     let mut v1 = Store {
+        _lock: Store::lock(&path, false)?,
         db,
         path: path.clone(),
         limits: limits(),
@@ -952,6 +953,7 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
     db.execute_batch(include_str!("schema.sql"))?;
     Store::migrate_v2(&mut db)?;
     let mut v2 = Store {
+        _lock: Store::lock(&path, false)?,
         db,
         path: path.clone(),
         limits: limits(),
@@ -1135,5 +1137,65 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
     assert_eq!(claim.id, id);
     assert_eq!(claim.payload, [0, 17, 34]);
     assert_eq!(claim.earlier_attempts, 1);
+    Ok(())
+}
+
+#[test]
+fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("store.db");
+    let source = temp.path().join("backup.db");
+    let mut store = open(&path)?;
+    let metadata = receipt(b"retained")?;
+    store.receive(&metadata, b"retained", b"config")?;
+    drop(store);
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 0,
+        reason: Reason::new("recovery")?,
+    };
+    std::fs::write(&source, b"not SQLite")?;
+    assert!(matches!(
+        Store::restore(
+            &path,
+            &source,
+            limits(),
+            Box::new(Space(u64::MAX)),
+            &audit,
+            Instant::now() + Duration::from_secs(5)
+        ),
+        Err(Error::Corruption)
+    ));
+    std::fs::remove_file(&source)?;
+    Connection::open(&source)?.execute_batch("PRAGMA user_version=999")?;
+    assert!(matches!(
+        Store::restore(
+            &path,
+            &source,
+            limits(),
+            Box::new(Space(u64::MAX)),
+            &audit,
+            Instant::now() + Duration::from_secs(5)
+        ),
+        Err(Error::SchemaTooNew(999))
+    ));
+    assert_eq!(open(&path)?.raw(metadata.id)?, Some(b"retained".to_vec()));
+    assert!(!path.with_extension("before-restore").exists());
+    Ok(())
+}
+
+#[test]
+fn plan11_interrupted_restore_staging_refuses_startup_without_deleting_evidence() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("store.db");
+    std::fs::write(path.with_extension("restore-pending"), b"interrupted stage")?;
+    assert!(matches!(open(&path), Err(Error::Conflict)));
+    assert!(!path.exists());
+    assert_eq!(
+        std::fs::read(path.with_extension("restore-pending"))?,
+        b"interrupted stage"
+    );
     Ok(())
 }
