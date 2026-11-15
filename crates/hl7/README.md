@@ -28,7 +28,7 @@ accept/application replies. The caller supplies a new ID and timestamp. The API
 cannot verify durable storage itself. Generic ACK helpers do not implement
 functional query/order responses, acknowledgment timers or replay handling.
 
-Not implemented here: LAW, MLLP, application message structures, general clinical
+Not implemented here: complete LAW, MLLP, general application message structures, clinical
 datatypes, clinical mapping, legacy deferred MCF, sequence or continuation dialogs,
 I/O, storage or fault recovery. These are not implied by structural parse success.
 
@@ -36,3 +36,33 @@ Run `cargo test -p analyte-hl7` for source-named cases covering encoding, hierar
 escapes, limits, charset failures, control validation, edition-specific errors,
 ACK conditions and property tests. Repository-wide verification uses the checks
 in AGENTS.md. No real analyzer or external lab app is used by tests.
+
+## LAW implementation status and simulator evidence
+
+The `law` module currently provides a borrowed LAB-27 QBP query view only.
+It checks the message triple, first transaction profile, NE/AL mode, segment
+order/cardinality, query scopes, required/forbidden parameters, bounded IDs,
+query tags and immediate response mode. Tests use synthetic data and proptest.
+This is partial implementation, not LAW conformance: field/component usages,
+exact query descriptions, location coding, option negotiation and complete
+header validation still need coverage. Do not use this view as a complete
+profile acceptance decision.
+
+Not yet covered: RSP rendering and host cache decisions; restricted negative
+LAB-28; AWOS downloads, cancellations and ORL correlation/outcomes; LAB-29
+whole-message validation, typed results and scoped enhanced content; distinct
+LAW error classes and response rendering; full Appendix C predicates; capability
+negotiation; lifecycle and storage integration scenarios. None of the grouped
+LAW checklist rows is claimed complete by the query tests alone.
+
+For a future Gazelle run, retain a de-identified recording with exact message
+bytes, direction, relative timing and outcomes. Record the tool build, validation
+profile identifier and revision, PaLM TF revision, Analyzer Manager actor,
+selected options and peer configuration. List each scenario and its validation
+report: all query forms, genuine empty work versus unavailable lookup, multi-AWOS
+acceptance/rejection, duplicate AWOS after uncertain acceptance, cancellation
+races, unsolicited results, corrections/reruns, inconsistent result rejection,
+selected enhanced content, lost ACK, disconnect, restart and storage failure.
+Record changes to the validation profile between runs. Network exchanges belong
+to the host/dialog integration, not this pure module. No Gazelle run has been
+performed; evidence remains documented and partial.
