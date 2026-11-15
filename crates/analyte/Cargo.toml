@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 serialport = { workspace = true }
+fs4 = { workspace = true }
 analyte-model = { workspace = true }
 analyte-store = { workspace = true }
 analyte-transport = { workspace = true }

@@ -44,8 +44,10 @@ impl FreeSpace for Space {
     }
 }
 
+/// Storage deadline for test requests. CI machines with `synchronous=FULL`
+/// can be slow; the behavior under test never depends on this budget.
 fn until() -> Result<Instant, Error> {
-    deadline(Duration::from_secs(5))
+    deadline(Duration::from_secs(30))
 }
 
 fn limits() -> Limits {
