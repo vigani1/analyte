@@ -37,9 +37,8 @@ fn raised(policy: &Alert, value: Option<u64>) -> bool {
     }
 }
 
-fn log_transition(state: &AlertState) {
-    // Rule 10: responder text, evidence, sample IDs and payloads never reach this event.
-    let (kind, machine) = match &state.key {
+pub(crate) fn signal(key: &AlertKey) -> (&'static str, Option<&str>) {
+    match key {
         AlertKey::OldestUndelivered => ("oldest_undelivered", None),
         AlertKey::MachineSilent(machine) => ("machine_silent", Some(machine.as_str())),
         AlertKey::DiskReserve => ("disk_reserve", None),
@@ -47,7 +46,12 @@ fn log_transition(state: &AlertState) {
         AlertKey::UncertainOrders => ("uncertain_orders", None),
         AlertKey::ParkedItems => ("parked_items", None),
         AlertKey::RestorePaused => ("restore_paused", None),
-    };
+    }
+}
+
+fn log_transition(state: &AlertState) {
+    // Rule 10: responder text, evidence, sample IDs and payloads never reach this event.
+    let (kind, machine) = signal(&state.key);
     tracing::info!(
         alert_kind = kind,
         machine,
@@ -55,6 +59,36 @@ fn log_transition(state: &AlertState) {
         value = state.value,
         "alert transition"
     );
+}
+
+/// Shares the same bounded read-only snapshot between CLI and admin.
+/// Retained active policies remain visible even after configuration removal.
+pub(crate) async fn active(store: &Handle) -> Result<Vec<AlertState>, Error> {
+    let until = deadline();
+    let mut cursor = String::new();
+    let mut alerts = Vec::new();
+    loop {
+        let page = store
+            .request(until, move |store| store.active_alerts(&cursor))
+            .await?;
+        let Some(last) = page.last() else {
+            return Ok(alerts);
+        };
+        cursor = serde_json::to_string(&last.key)?;
+        if alerts.len().saturating_add(page.len()) > 4096 {
+            return Err(crate::invalid("active alert snapshot exceeds 4096 rows"));
+        }
+        alerts.extend(page);
+    }
+}
+
+/// A clock that precedes the raise is unknown, not a guessed zero age.
+pub(crate) fn age(state: &AlertState, now: i64) -> String {
+    state
+        .raised_at
+        .and_then(|time| now.checked_sub(time))
+        .filter(|age| *age >= 0)
+        .map_or_else(|| "unknown".into(), |age| age.to_string())
 }
 
 /// Reads have independent deadlines. Cancellation may leave an already-submitted
@@ -403,6 +437,24 @@ mod tests {
         let mut store = Arc::try_unwrap(store).map_err(|_| "read retained store")?;
         store.shutdown(deadline()).await?;
         Ok(())
+    }
+
+    // Plan section 11: display ages use the raise, not evaluation time; rollback stays unknown.
+    #[test]
+    fn plan11_display_age_uses_raise_and_handles_clock_rollback() {
+        let mut state = AlertState {
+            key: AlertKey::RestorePaused,
+            responder: "officer".into(),
+            active: true,
+            raised_at: Some(100),
+            cleared_at: None,
+            value: Some(1),
+            evaluated_at: 120,
+        };
+        assert_eq!(age(&state, 130), "30");
+        assert_eq!(age(&state, 99), "unknown");
+        state.raised_at = None;
+        assert_eq!(age(&state, 130), "unknown");
     }
 
     // Plan section 11: unknown cache or machine history must not silently clear an alert.

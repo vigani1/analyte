@@ -190,6 +190,93 @@ The marker is the latest restore/resume action in the append-only audit trail;
 no schema migration or driver-specific exception is needed. Evidence remains
 **documented**, based on synthetic tests, without real-machine qualification.
 
+## Alerts
+
+Alerts are opt-in program settings, evaluated by the running service. A fresh
+configuration without `[[alerts]]` raises none. Active alerts appear in
+`analyte status <file>` and on the authenticated, read-only admin overview,
+with the named responder and seconds since the latest raise. These views read
+durable state; they do not evaluate or acknowledge alerts. Unknown measurements
+and clock rollback remain unknown rather than being shown as zero.
+
+Each responder names the local role or person who will investigate and arrange
+cover when absent. Agree that responsibility with the lab before enabling a
+policy; naming someone does not contact them. Keep patient information out of
+responder text and machine IDs. There is no external notification channel yet:
+email, chat and notification HTTP targets are not implemented. Channels will be
+chosen at the pilot.
+
+Start with the following policies, then agree ages and disk margin against the
+lab's expected traffic, outage budget and order-cache freshness. Put the global
+interval before any TOML table; append the alert tables at the end of the
+program file.
+
+```toml
+alert_interval_seconds = 30
+
+[[alerts]]
+kind = "oldest_undelivered"
+threshold = 300
+responder = "Lab duty officer"
+
+[[alerts]]
+kind = "disk_reserve"
+threshold = 1073741824
+responder = "Lab IT on-call"
+
+[[alerts]]
+kind = "order_cache_stale"
+threshold = 60
+responder = "Lab app support"
+
+[[alerts]]
+kind = "uncertain_orders"
+threshold = 0
+responder = "Analyzer operator"
+
+[[alerts]]
+kind = "parked_items"
+threshold = 0
+responder = "Lab duty officer"
+
+[[alerts]]
+kind = "restore_paused"
+responder = "Restore lead"
+```
+
+Age thresholds are seconds and raise at or above the threshold. Count thresholds
+raise strictly above the threshold: zero catches any uncertain order or unresolved
+parked item. The disk threshold is a margin in bytes above `store.reserve_bytes`;
+an alert raises when free space is below reserve plus margin. `restore_paused`
+has no threshold and rejects one in config. Other kinds require a threshold.
+Responders must be nonempty, single-line and at most 256 UTF-8 bytes. At most
+128 policies are accepted; the interval is 1 through 3600 seconds (default 30).
+Run `analyte check-config <file>` after editing.
+
+Only enable machine silence for a machine the lab expects to be busy. Replace
+the example ID with its installed `[[machines]].id`:
+
+```toml
+[[alerts]]
+kind = "machine_silent"
+machine = "busy-machine-id"
+threshold = 600
+responder = "Analyzer operator"
+```
+
+Silence uses the most recent durable received message or ASTM frame, rather than
+connection state or control bytes. Missing machine activity or a missing,
+incomplete or untrusted configured order cache raises with an unknown value.
+The cache policy checks every configured destination.
+
+Raise/clear history is retained, and restart preserves active state without
+another raise. Measurements are counts, ages or free bytes; transition logs
+contain the signal, optional machine ID, active state and numeric value, never
+responder text or clinical payloads. Removing a policy stops its evaluation but
+does not hide its retained active state; re-enable it to evaluate and clear the
+condition. Resolution of a parked item or reconciliation of an uncertain order
+remains an explicit, separately audited operator action.
+
 ## Admin page
 
 The optional `[admin]` configuration accepts `port` and defaults `address` to

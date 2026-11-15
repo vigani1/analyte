@@ -52,6 +52,32 @@ pub struct AlertTransition {
 }
 
 impl Store {
+    /// Reads one bounded page of active alerts, including retained policies no longer configured.
+    /// Pass the final key serialized as JSON as the cursor, or an empty string initially.
+    /// # Errors
+    /// Reports corrupt identities/state, oversized cursors or SQLite failures.
+    pub fn active_alerts(&self, after: &str) -> Result<Vec<AlertState>, Error> {
+        self.bound(after.as_bytes())?;
+        let mut stmt = self.db.prepare(
+            "SELECT key FROM alert_state WHERE active=1 AND key>?1 ORDER BY key LIMIT ?2",
+        )?;
+        let keys = stmt
+            .query_map(
+                params![
+                    after,
+                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                ],
+                |row| row.get::<_, String>(0),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        keys.into_iter()
+            .map(|encoded| {
+                let identity = serde_json::from_str(&encoded)?;
+                self.alert_state(&identity)?.ok_or(Error::Corruption)
+            })
+            .collect()
+    }
+
     /// Reads one policy's current durable state without payloads.
     /// # Errors
     /// Reports SQLite, corrupt measurement or identity encoding failures.

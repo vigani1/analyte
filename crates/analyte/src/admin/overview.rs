@@ -51,6 +51,29 @@ async fn render(state: &Context) -> Result<String, Error> {
     html.push_str("</dl>");
     html.push_str(super::pages::NAV);
     html.push_str("<dl>");
+    let now = jiff::Timestamp::now().as_second();
+    let alerts = crate::alerts::active(&state.store).await?;
+    row(&mut html, "Active alerts", &alerts.len().to_string());
+    for alert in alerts {
+        let (kind, machine) = crate::alerts::signal(&alert.key);
+        row(&mut html, "Alert", kind);
+        if let Some(machine) = machine {
+            row(&mut html, "Alert machine", machine);
+        }
+        row(&mut html, "Responder", &alert.responder);
+        row(
+            &mut html,
+            "Raised age (seconds)",
+            &crate::alerts::age(&alert, now),
+        );
+        row(
+            &mut html,
+            "Last alert value",
+            &alert
+                .value
+                .map_or_else(|| "unknown".into(), |value| value.to_string()),
+        );
+    }
     row(
         &mut html,
         "Order sending paused after restore",
@@ -89,7 +112,6 @@ async fn render(state: &Context) -> Result<String, Error> {
             .ok_or_else(|| crate::invalid("uncertain order count overflow"))?;
     }
     row(&mut html, "Uncertain orders", &uncertain.to_string());
-    let now = jiff::Timestamp::now().as_second();
     let mut oldest = None;
     let mut pending = false;
     let mut unknown_age = false;
