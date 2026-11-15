@@ -94,3 +94,32 @@ component 1 (LIS02 section 8.4.16.1). The optional position selector stays in
 O field 4 and sends the exact slot. No selector means that context stays off the
 wire. A configured selector requires its context; unknown specimen codes cause
 specific order rejection. See `../analyte/ORDERS.md` for selectors and examples.
+
+Optional `[mappings.component_parts]` decomposes one component of ASTM R.3
+(LIS02 5.6.1). For example:
+
+```toml
+[mappings.component_parts]
+component = 4
+separator = "/"
+count = 2
+code = 1
+dilution = 2
+```
+
+Positions are one-based, bounded to 1024. The separator is one character and
+cannot be a protocol delimiter or control character. The exact part count is
+required; empty parts count. Missing/extra parts park the receipt with a located
+finding. This selection replaces the normal universal/manufacturer code lookup.
+Omission preserves that lookup. The dilution part is optional and is retained
+exactly, including empty text; only an exact decimal supplies a factor. Ratios
+are never interpreted. Application state remains Unknown unless optional
+`applied = { field = <selector>, yes = "Y", no = "N" }` matches a source field
+exactly. Other codes stay Unknown. Yes/no must differ; applied requires dilution.
+
+Each `mappings.tests` entry optionally declares `value_kind = "numeric"`,
+`"coded"` or `"either"`. Omission defaults to `either`, preserving current
+ASTM/HL7 behavior. Numeric requires a parsed number; coded accepts nonempty
+qualitative text or a coded value, not a plain number. Mismatches retain the
+original value and park with `ValueKindMismatch`. No clinical decisions or
+numeric conversions are performed.

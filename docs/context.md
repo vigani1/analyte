@@ -94,8 +94,12 @@ What this means:
 A first attempt at the four configs stopped rather than guess. Besides the
 settings above, config cannot yet express:
 
-- cobas e 411: a test code with a dilution part inside one ASTM component
-  (split on `/`), and per-test choice of a numeric or a qualitative result;
+Config now supports component parts (including test code and dilution inside one
+ASTM component) and per-test numeric/qualitative value expectations, covering
+those cobas e 411 mapping prerequisites. No machine config is qualified yet.
+
+Remaining config gaps:
+
 - iFlash 1200: the legacy HL7 query dialog (being built in phase 3), its own
   result-status handling and QC sent as parallel OBR-only groups.
 
