@@ -133,11 +133,14 @@ dependencies = [
  "analyte-astm",
  "analyte-autolyser",
  "analyte-config",
+ "analyte-contract",
  "analyte-hl7",
  "analyte-model",
+ "analyte-poct",
  "analyte-vidas",
  "jiff",
  "proptest",
+ "quick-xml",
  "thiserror",
 ]
 

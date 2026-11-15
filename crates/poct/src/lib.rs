@@ -1,6 +1,6 @@
 //! POCT01-A2 Basic Profile Observation Reviewer. Evidence level: documented.
 //!
-//! Pure message syntax, reviewer builders, dialog, duplicate comparison and mapping.
+//! Pure message syntax, reviewer builders, dialog, duplicate comparison.
 //! The host owns transport, clocks, protected storage and trusted identity resolution.
 //! No acceptance ACK is emitted until the host reports durable custody.
 //! See the crate README for the host contract and checklist-to-test mapping.
@@ -33,7 +33,6 @@ pub use duplicate::{
     RecordedObservation, observation_evidence,
 };
 
-mod mapping;
-pub use mapping::{MappedObservation, MappingError, map_observations};
+pub use structure::{child, children, literal};
 
 pub use data::{EncapsulatedData, Encoding};

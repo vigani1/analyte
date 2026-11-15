@@ -1,13 +1,15 @@
 //! Appendix B sections 5.15, 5.21 and 8 faithful common-model mapping tests.
-mod common;
+#[path = "poct/messages.rs"]
+mod messages;
+use analyte_mapping::poct::map_observations;
 use analyte_model::{Comparator, IdentityStatus, QcClass, ResultStatus, ValueInterpretation};
-use analyte_poct::{Message, Nullable, Role, Value, map_observations};
+use analyte_poct::{Message, Nullable, Role, Value};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
 fn poct01_b_5_15_mapping_keeps_written_values_codes_units_and_comparators() -> TestResult {
-    let raw = common::observation("o", true, "<OBS.value V=\"001.2300\" U=\"OriginalUnit\"/>");
-    let message = Message::parse(raw.as_bytes(), common::limits())?;
+    let raw = messages::observation("o", true, "<OBS.value V=\"001.2300\" U=\"OriginalUnit\"/>");
+    let message = Message::parse(raw.as_bytes(), messages::limits())?;
     let received = "2026-03-12T09:50:00Z".parse()?;
     let mapped = map_observations(&message, received)?;
     let item = mapped.first().ok_or("missing mapped result")?;
@@ -66,8 +68,8 @@ fn poct01_b_5_15_mapping_keeps_written_values_codes_units_and_comparators() -> T
 
 #[test]
 fn poct01_b_6_10_nonpatient_qc_and_null_are_never_patient_or_zero() -> TestResult {
-    let raw = common::observation("o", false, "<OBS.value NULL=\"UNK\"/>");
-    let message = Message::parse(raw.as_bytes(), common::limits())?;
+    let raw = messages::observation("o", false, "<OBS.value NULL=\"UNK\"/>");
+    let message = Message::parse(raw.as_bytes(), messages::limits())?;
     let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
     let item = mapped.first().ok_or("missing mapped result")?;
     assert_eq!(item.role, Role::LiquidControl);
@@ -91,8 +93,8 @@ fn poct01_b_6_10_nonpatient_qc_and_null_are_never_patient_or_zero() -> TestResul
 
 #[test]
 fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
-    let raw = common::observation("o",true,"<OBS.qualitative_value V=\"positive\" SN=\"source-system\" SV=\"v2\" DN=\"Source label\"/>").replace("</SVC>","<SPC><SPC.specimen_id V=\"000AbC\" SN=\"tube-system\"/><SPC.specimen_dttm V=\"2026-03-12T09:30:00+01:00\"/></SPC></SVC>");
-    let message = Message::parse(raw.as_bytes(), common::limits())?;
+    let raw = messages::observation("o",true,"<OBS.qualitative_value V=\"positive\" SN=\"source-system\" SV=\"v2\" DN=\"Source label\"/>").replace("</SVC>","<SPC><SPC.specimen_id V=\"000AbC\" SN=\"tube-system\"/><SPC.specimen_dttm V=\"2026-03-12T09:30:00+01:00\"/></SPC></SVC>");
+    let message = Message::parse(raw.as_bytes(), messages::limits())?;
     let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
     let item = mapped.first().ok_or("missing mapped result")?;
     assert_eq!(
@@ -105,10 +107,10 @@ fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
     assert!(
         matches!(&item.part.values.as_slice().first().ok_or("missing value")?.parsed,ValueInterpretation::Coded(c) if c.code.namespace.as_str() == "source-system" && c.code.value.as_str() == "positive")
     );
-    for raw in [common::hello("h"), common::status("s", "0")] {
+    for raw in [messages::hello("h"), messages::status("s", "0")] {
         assert!(
             map_observations(
-                &Message::parse(raw.as_bytes(), common::limits())?,
+                &Message::parse(raw.as_bytes(), messages::limits())?,
                 "2026-03-12T09:50:00Z".parse()?
             )
             .is_err()
@@ -119,13 +121,13 @@ fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
 
 #[test]
 fn poct01_b_6_10_source_paths_keep_distinct_real_element_positions() -> TestResult {
-    let raw = common::observation("o", true, "<OBS.value V=\"1.00\" U=\"unit\"/>");
+    let raw = messages::observation("o", true, "<OBS.value V=\"1.00\" U=\"unit\"/>");
     let (_, service) = raw.split_once("<SVC>").ok_or("missing synthetic service")?;
     let service = service
         .strip_suffix("</OBS.R01>")
         .ok_or("missing synthetic root close")?;
     let repeated = raw.replace("</OBS.R01>", &format!("<SVC>{service}</OBS.R01>"));
-    let message = Message::parse(repeated.as_bytes(), common::limits())?;
+    let message = Message::parse(repeated.as_bytes(), messages::limits())?;
     let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
     assert_eq!(mapped.len(), 2);
     let mut observed_positions = Vec::new();

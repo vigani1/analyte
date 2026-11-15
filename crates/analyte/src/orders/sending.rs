@@ -110,6 +110,7 @@ pub(crate) async fn next(
         };
         let version = fields.version;
         let mapped = super::app_order(&order)
+            .map_err(Error::from)
             .and_then(|order| Ok(analyte_mapping::map_order(&order, &machine.snapshot)?));
         let mapped = match mapped {
             Ok(mapped) => mapped,

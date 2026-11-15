@@ -126,14 +126,13 @@ pub(super) async fn session(
                             if bytes.as_slice() == [analyte_framing::astm::ACK] { partial.clear(); }
                             conn.write(bytes).await?;
                         }
-                        Action::Commit(id, bytes) => {
+                        Action::Commit(id, number, bytes) => {
                             let transfer_id = Identifier::new(&format!("{:032x}-{}", id.epoch().0, id.transfer()))?;
                             transfer = Some(transfer_id.clone());
-                            let number = bytes.get(1).and_then(|b| b.checked_sub(b'0')).ok_or_else(|| invalid("ASTM frame number missing"))?;
                             if raw.len().checked_add(bytes.len()).is_none_or(|n| n > settings.syntax.limits.bytes) { return Err(invalid("ASTM transfer wire-byte bound exceeded")); }
                             raw.extend_from_slice(&bytes);
                             let provenance = analyte_store::FrameProvenance { machine: machine.id.clone(), driver: evidence::driver(machine)?, config: machine.snapshot.canonical().as_bytes().to_vec() };
-                            let sequence = analyte_store::FrameSequence::new(number, analyte_framing::astm::FrameNumber::MAX.value())?;
+                            let sequence = analyte_store::FrameSequence::new(number.value(), analyte_framing::astm::FrameNumber::MAX.value())?;
                             let committed = store.request(deadline(), move |s| s.journal_frame(&transfer_id, sequence, &bytes, &provenance)).await;
                             if let Err(error) = &committed { tracing::error!(machine = machine.id.as_str(), error_kind = %error, "ASTM frame commit refused"); }
                             #[cfg(feature = "test-hooks")]

@@ -1,8 +1,35 @@
-//! Pure, bounded mapping of documented LIS02 and HL7 laboratory results.
+//! Mapping layer: bounded analyzer terms to common results and explicit outgoing orders.
+//! Protocol crates own grammar and dialogs; this crate owns translations and performs no I/O.
 //! The caller retains the receipt and parks any output with findings.
 #![forbid(unsafe_code)]
 
+/// ASTM terms to common results and explicit outgoing orders.
+pub mod astm;
+/// Autolyser terms to common evidence and explicit outgoing orders.
+pub mod autolyser;
+/// HL7 terms to common results and explicit outgoing orders.
+pub mod hl7;
 mod identity;
+/// LAW terms to common results and explicit outgoing work.
+pub mod law;
+mod outbound_codes;
+/// POCT terms to common observations and configured results.
+pub mod poct;
+mod result_evidence;
+/// VIDAS terms to common evidence and explicit outgoing orders.
+pub mod vidas;
+pub use astm::map as map_astm;
+pub use autolyser::map as map_autolyser;
+pub use hl7::map as map_hl7;
+pub use law::map as map_law;
+pub use outbound_codes::{
+    map_priority as outbound_priority, map_specimen as outbound_specimen, map_test as outbound_test,
+};
+pub use poct::map as map_poct;
+pub use result_evidence::ResultMappingError;
+pub use vidas::{
+    ResultEvidence as VidasResultEvidence, map as map_vidas, map_evidence as vidas_evidence,
+};
 mod map;
 mod orders;
 mod result;
@@ -298,144 +325,6 @@ impl Output {
             || !self.unmapped.is_empty()
             || self.results.iter().any(|r| r.content.requires_parking())
     }
-}
-
-/// Maps one parsed LIS02 message, retaining hierarchy and original value text.
-/// # Errors
-/// Rejects a mismatched config, invalid ownership, encoding or model resource bounds.
-pub fn map_astm(
-    message: &analyte_astm::Message,
-    config: &Validated,
-    input: Input,
-) -> Result<Output, Error> {
-    let syntax = astm_syntax(config)?;
-    let settings = config.effective().stack().limits();
-    if message.records().len() > settings.records {
-        return Err(Error::Limit {
-            position: Position {
-                record: 0,
-                field: 0,
-            },
-            resource: "records",
-        });
-    }
-    let mut bytes = 0_usize;
-    for (index, record) in message.records().iter().enumerate() {
-        bytes = bytes
-            .checked_add(record.raw().len())
-            .and_then(|b| b.checked_add(1))
-            .ok_or(Error::Limit {
-                position: Position {
-                    record: index.saturating_add(1),
-                    field: 0,
-                },
-                resource: "message bytes",
-            })?;
-        if bytes > settings.bytes || record.raw().len() > settings.record_bytes {
-            return Err(Error::Limit {
-                position: Position {
-                    record: index.saturating_add(1),
-                    field: 0,
-                },
-                resource: "message or record bytes",
-            });
-        }
-    }
-    let mut source = source::astm(message);
-    source.charset = match syntax.encoding {
-        analyte_config::Encoding::Ascii => analyte_hl7::Charset::Ascii,
-        analyte_config::Encoding::Latin1 => analyte_hl7::Charset::Latin1,
-        analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
-    };
-    source.attach_comments()?;
-    map::message(&source, config, input, None)
-}
-
-/// Maps ORU R01 or OUL R22 (2.5.1 only), with group-relative selectors.
-/// # Errors
-/// Rejects unsupported/misplaced segments rather than guessing group ownership.
-pub fn map_hl7(
-    message: &analyte_hl7::Message,
-    config: &Validated,
-    input: Input,
-) -> Result<Output, Error> {
-    if is_law(config) {
-        return Err(Error::Syntax);
-    }
-    check_hl7(message, config)?;
-    map_hl7_checked(message, config, input)
-}
-
-/// Maps atomically validated LAB-29 through the shared field mapper and translations.
-/// AWOS identity takes precedence; unsolicited work needs an explicit analyzer identity.
-/// # Errors
-/// Rejects mismatched configuration, unsupported mapping content or resource bounds.
-pub fn map_law(
-    results: &analyte_hl7::law::Results<'_>,
-    config: &Validated,
-    input: Input,
-) -> Result<Output, Error> {
-    if !is_law(config) {
-        return Err(Error::Syntax);
-    }
-    check_hl7(results.message(), config)?;
-    let mut source = source::law(results)?;
-    source.attach_comments()?;
-    map::message(&source, config, input, Some(results))
-}
-
-fn check_hl7(message: &analyte_hl7::Message, config: &Validated) -> Result<(), Error> {
-    if config
-        .effective()
-        .hl7_options()
-        .is_none_or(|o| o.charset != message.charset())
-    {
-        return Err(Error::Syntax);
-    }
-    let settings = config.effective().stack().limits();
-    if message.raw().len() > settings.bytes || message.segments().count() > settings.records {
-        return Err(Error::Limit {
-            position: Position {
-                record: 0,
-                field: 0,
-            },
-            resource: "message bytes or segments",
-        });
-    }
-    Ok(())
-}
-
-fn map_hl7_checked(
-    message: &analyte_hl7::Message,
-    config: &Validated,
-    input: Input,
-) -> Result<Output, Error> {
-    let edition = hl7_edition(config)?;
-    let mut source = source::hl7(message)?;
-    let version = analyte_hl7::Msh::new(message)
-        .map_err(|source| Error::Hl7 {
-            position: Position {
-                record: 1,
-                field: 12,
-            },
-            source,
-        })?
-        .version();
-    if !matches!(
-        (edition, version),
-        (analyte_config::Edition::V231, analyte_hl7::Version::V231)
-            | (analyte_config::Edition::V251, analyte_hl7::Version::V251)
-    ) {
-        return Err(Error::Structure {
-            position: Position {
-                record: 1,
-                field: 12,
-            },
-            reason: "message edition disagrees with validated configuration",
-        });
-    }
-    source.attach_comments()?;
-    map::message(&source, config, input, None)
 }
 
 fn text(value: &str, position: Position) -> Result<SourceText, Error> {

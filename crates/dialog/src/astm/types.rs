@@ -133,7 +133,7 @@ pub enum Action {
     /// Write bytes in order before supplying another event.
     Write(Vec<u8>),
     /// Store exact bytes and identity durably before replying `Committed`.
-    Commit(CommitId, Vec<u8>),
+    Commit(CommitId, astm::FrameNumber, Vec<u8>),
     /// One complete ETX-terminated record, assembled only from committed frames.
     Record(Vec<u8>),
     /// Receive or send transfer ended; incomplete assembly is discarded.

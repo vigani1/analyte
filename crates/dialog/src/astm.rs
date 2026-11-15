@@ -302,7 +302,7 @@ impl Dialog {
                         frame: self.request,
                     };
                     self.request = self.request.checked_add(1).ok_or(Error::Exhausted)?;
-                    out.push(Action::Commit(id, frame.raw().to_vec()));
+                    out.push(Action::Commit(id, frame.number(), frame.raw().to_vec()));
                     self.state = State::Commit { receive, frame, id };
                     self.set_timer(self.config.timers.commit);
                 }

@@ -182,9 +182,9 @@ async fn answer(
                     if !super::eligible(&order, machine) {
                         continue;
                     }
-                    let mapped = match super::app_order(&order).and_then(|order| {
-                        Ok(analyte_mapping::map_order(&order, &machine.snapshot)?)
-                    }) {
+                    let mapped = match super::app_order(&order).map_err(Error::from).and_then(
+                        |order| Ok(analyte_mapping::map_order(&order, &machine.snapshot)?),
+                    ) {
                         Ok(mapped) => mapped,
                         Err(error) => {
                             let reason =

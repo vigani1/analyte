@@ -524,3 +524,197 @@ fn hl7_251_2_9_3_sender_application_wait_is_bounded_and_never_resends() -> TestR
     }
     Ok(())
 }
+fn display_ack(id: &str, code: &str, version: &str) -> Vec<u8> {
+    format!("\x0bMSH|^~\\&|A|B|C|D|20261115||ACK^Q03^ACK|ack1|P|{version}\rMSA|{code}|{id}\r\x1c\r")
+        .into_bytes()
+}
+
+#[test]
+fn hl7_231_2_18_251_5_10_dsr_decisions_follow_durable_ack_commit() -> TestResult {
+    for (id, code, version, expected, accepted) in [
+        ("dsr1", "AA", "2.5.1", "HL7-DSR-ACK-AA", true),
+        ("dsr1", "AE", "2.5.1", "HL7-DSR-ACK-AE", false),
+        ("dsr1", "AR", "2.5.1", "HL7-DSR-ACK-AR", false),
+        ("other", "AA", "2.5.1", "HL7-DSR-ACK-invalid", false),
+        ("dsr1", "CA", "2.5.1", "HL7-DSR-ACK-invalid", false),
+        ("dsr1", "AA", "2.3.1", "HL7-DSR-ACK-invalid-edition", false),
+    ] {
+        let mut d = dialog()?;
+        d.enable_orders(analyte_hl7::Version::V251)?;
+        d.await_display(
+            Duration::ZERO,
+            ControlId::new(b"dsr1")?,
+            Duration::from_secs(2),
+        )?;
+        let actions = feed(&mut d, &display_ack(id, code, version))?;
+        assert!(
+            !actions
+                .iter()
+                .any(|a| matches!(a, Action::DisplayOutcome { .. } | Action::Write(_)))
+        );
+        let token = receipt(&actions)?;
+        let actions = d.step(Duration::from_secs(1), Event::Committed(token))?;
+        assert!(actions.iter().any(|a| matches!(a, Action::DisplayOutcome { receipt: Some(r), accepted: actual, code, .. } if *r == token && *actual == accepted && *code == expected)));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
+    }
+    Ok(())
+}
+
+#[test]
+fn hl7_231_2_18_adr0003_late_dsr_commit_retains_receipt_without_confirming_work() -> TestResult {
+    let mut d = dialog()?;
+    d.enable_orders(analyte_hl7::Version::V251)?;
+    d.await_display(
+        Duration::ZERO,
+        ControlId::new(b"dsr1")?,
+        Duration::from_secs(2),
+    )?;
+    let token = receipt(&feed(&mut d, &display_ack("dsr1", "AA", "2.5.1"))?)?;
+    let actions = d.step(Duration::from_secs(2), Event::Committed(token))?;
+    assert_eq!(
+        actions
+            .iter()
+            .filter(|a| matches!(
+                a,
+                Action::DisplayOutcome {
+                    accepted: false,
+                    code: "HL7-DSR-ACK-timeout",
+                    ..
+                }
+            ))
+            .count(),
+        1
+    );
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a, Action::ReceiptRetained(id) if *id == token))
+    );
+    assert!(!actions.iter().any(|a| matches!(
+        a,
+        Action::Write(_) | Action::DisplayOutcome { accepted: true, .. }
+    )));
+    assert!(!d.orders_busy());
+    assert!(
+        !d.step(Duration::from_secs(3), Event::Tick)?
+            .iter()
+            .any(|a| matches!(a, Action::DisplayOutcome { .. }))
+    );
+    Ok(())
+}
+
+#[test]
+fn mllp_r1_1_2_queries_share_decoder_and_keep_queued_first_byte_time() -> TestResult {
+    let mut d = dialog()?;
+    d.enable_orders(analyte_hl7::Version::V251)?;
+    let query = String::from_utf8(message(""))?
+        .replace("ORU^R01^ORU_R01", "QRY^Q02^QRY_Q02")
+        .into_bytes();
+    let first = receipt(&feed(&mut d, &query)?)?;
+    for byte in &query {
+        let actions = d.step(Duration::from_secs(1), Event::Byte(*byte))?;
+        assert!(
+            !actions
+                .iter()
+                .any(|a| matches!(a, Action::Commit(..) | Action::Query { .. }))
+        );
+    }
+    let actions = d.step(Duration::from_secs(2), Event::Committed(first))?;
+    assert!(actions.iter().any(
+        |a| matches!(a, Action::Query { receipt, started: Duration::ZERO, .. } if *receipt == first)
+    ));
+    let second = receipt(&actions)?;
+    assert_ne!(first, second);
+    let actions = d.step(Duration::from_secs(2), Event::Committed(second))?;
+    assert!(actions.iter().any(|a| matches!(a, Action::Query { receipt, started, .. } if *receipt == second && *started == Duration::from_secs(1))));
+    Ok(())
+}
+#[test]
+fn hl7_231_2_18_qck_precedes_dsr_and_failed_or_expired_qck_never_issues_work() -> TestResult {
+    for (fail, now, expected) in [
+        (true, 1, "HL7-QCK-write-failed"),
+        (false, 2, "HL7-query-deadline-before-DSR"),
+    ] {
+        let mut d = dialog()?;
+        d.enable_orders(analyte_hl7::Version::V251)?;
+        let payload = analyte_framing::mllp::payload(&message(""))
+            .ok_or("synthetic envelope")?
+            .to_vec();
+        let qck = analyte_hl7::Message::parse(&payload, Options::default())?;
+        let dsr = qck.clone();
+        let reply = DisplayReply {
+            acknowledgment: qck,
+            display: Some(dsr),
+            query_deadline: Duration::from_secs(2),
+            failure_deadline: Duration::from_secs(5),
+            acknowledgment_wait: Duration::from_secs(3),
+        };
+        let actions = d.step(Duration::ZERO, Event::QueryReply(&reply))?;
+        assert!(actions.iter().any(|a| matches!(
+            a,
+            Action::QueryWrite {
+                part: ReplyPart::Qck,
+                ..
+            }
+        )));
+        assert!(!actions.iter().any(|a| matches!(
+            a,
+            Action::QueryWrite {
+                part: ReplyPart::Dsr,
+                ..
+            }
+        )));
+        let event = if fail {
+            Event::QueryWriteFailed(ReplyPart::Qck)
+        } else {
+            Event::QueryWritten(ReplyPart::Qck)
+        };
+        let actions = d.step(Duration::from_secs(now), event)?;
+        assert!(actions.iter().any(|a| matches!(a, Action::DisplayOutcome { code, accepted: false, .. } if *code == expected)));
+        assert!(
+            !actions
+                .iter()
+                .any(|a| matches!(a, Action::QueryWrite { .. }))
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn hl7_231_2_18_dsr_issuance_starts_ack_budget_without_retry() -> TestResult {
+    let mut d = dialog()?;
+    d.enable_orders(analyte_hl7::Version::V251)?;
+    let payload = analyte_framing::mllp::payload(&message(""))
+        .ok_or("synthetic envelope")?
+        .to_vec();
+    let qck = analyte_hl7::Message::parse(&payload, Options::default())?;
+    let reply = DisplayReply {
+        acknowledgment: qck.clone(),
+        display: Some(qck),
+        query_deadline: Duration::from_secs(2),
+        failure_deadline: Duration::from_secs(5),
+        acknowledgment_wait: Duration::from_secs(3),
+    };
+    d.step(Duration::ZERO, Event::QueryReply(&reply))?;
+    let actions = d.step(Duration::from_secs(1), Event::QueryWritten(ReplyPart::Qck))?;
+    assert!(actions.iter().any(|a| matches!(a, Action::QueryWrite { part: ReplyPart::Dsr, until, .. } if *until == Duration::from_secs(2))));
+    assert_eq!(d.next_deadline(), Some(Duration::from_secs(4)));
+    let actions = d.step(
+        Duration::from_secs(1),
+        Event::QueryWriteFailed(ReplyPart::Dsr),
+    )?;
+    assert!(actions.iter().any(|a| matches!(
+        a,
+        Action::DisplayOutcome {
+            code: "HL7-DSR-write-failed",
+            accepted: false,
+            ..
+        }
+    )));
+    assert!(
+        !d.step(Duration::from_secs(5), Event::Tick)?
+            .iter()
+            .any(|a| matches!(a, Action::QueryWrite { .. }))
+    );
+    Ok(())
+}

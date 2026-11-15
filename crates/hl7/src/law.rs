@@ -154,6 +154,24 @@ impl<'a> Identity<'a> {
     pub fn raw(self) -> &'a [u8] {
         self.0
     }
+
+    /// Returns the identifier component, preserving its original bytes.
+    #[must_use]
+    pub fn value(self) -> &'a [u8] {
+        self.0
+            .split(|byte| *byte == b'^')
+            .next()
+            .unwrap_or_default()
+    }
+
+    /// Checks the local assigning namespace and absence of other nonempty components.
+    #[must_use]
+    pub fn is_local_to(self, namespace: &[u8]) -> bool {
+        let mut parts = self.0.split(|byte| *byte == b'^');
+        let _ = parts.next();
+        let authority = parts.next().unwrap_or_default();
+        (authority.is_empty() || authority == namespace) && parts.all(<[u8]>::is_empty)
+    }
 }
 
 /// Query scope, with informational position distinct from lookup position.
@@ -383,8 +401,8 @@ pub use responses::{CacheAnswer, QueryFollowup, QueryResponse, query_response};
 mod work;
 
 pub use work::{
-    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, WorkAction, WorkResponse,
-    negative_work, work_order, work_order_with_profile,
+    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, WorkAction, WorkCode,
+    WorkFields, WorkResponse, negative_work, work_order, work_order_with_profile,
 };
 
 mod results;
@@ -396,7 +414,7 @@ pub use results::{
 
 mod control;
 
-pub use control::{ControlDirection, parse_message, validate_control};
+pub use control::{ControlDirection, message_type, parse_message, validate_control};
 
 mod patient;
 

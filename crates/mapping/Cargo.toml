@@ -10,6 +10,8 @@ publish.workspace = true
 
 [dependencies]
 analyte-model.workspace = true
+analyte-poct.workspace = true
+analyte-contract.workspace = true
 analyte-config.workspace = true
 analyte-astm.workspace = true
 analyte-hl7.workspace = true
@@ -19,6 +21,7 @@ thiserror.workspace = true
 jiff.workspace = true
 
 [dev-dependencies]
+quick-xml.workspace = true
 proptest.workspace = true
 
 [lints]

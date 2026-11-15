@@ -41,10 +41,8 @@ const fn several(name: &'static str) -> Rule {
     }
 }
 
-pub(crate) fn children(
-    document: &Document,
-    parent: usize,
-) -> impl Iterator<Item = (usize, &Element)> {
+/// Iterates direct children in source order, retaining their document indices.
+pub fn children(document: &Document, parent: usize) -> impl Iterator<Item = (usize, &Element)> {
     document
         .elements()
         .iter()
@@ -52,7 +50,10 @@ pub(crate) fn children(
         .filter(move |(_, e)| e.parent() == Some(parent))
 }
 
-pub(crate) fn child(
+/// Finds the first named direct child without changing its source position.
+/// # Errors
+/// Reports a missing child.
+pub fn child(
     document: &Document,
     parent: usize,
     name: &'static str,
@@ -63,7 +64,10 @@ pub(crate) fn child(
         .ok_or(MessageError::Missing(name))
 }
 
-pub(crate) fn literal(
+/// Reads a named child's exact V attribute without interpreting its content.
+/// # Errors
+/// Reports a missing child, value or invalid source association.
+pub fn literal(
     document: &Document,
     parent: usize,
     name: &'static str,

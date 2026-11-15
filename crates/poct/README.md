@@ -2,8 +2,8 @@
 
 Evidence level: **documented**. The crate provides Basic Profile components
 as a pure library: bounded XML syntax and typed messages, reviewer builders,
-conversation state machine, observation duplicate comparison and common-model
-mapping. Tests use independently written synthetic messages. There is no real
+conversation state machine and observation duplicate comparison. Common-model
+conversion lives in `analyte-mapping`. Tests use independently written synthetic messages. There is no real
 machine recording or official simulator evidence, so this is not a simulated or
 proven driver.
 
@@ -199,3 +199,8 @@ parking, operator visibility, storage failure, rejected Hello responses and
 control-ID reuse. The POCT program/reference-receiver identity test proves real
 delivery, retransmission suppression and an edited revision. These tests do not
 raise the documented evidence level or close the unchecked conformance gates.
+
+Common-model observation conversion and configured code/identity mapping now live
+in `analyte-mapping` (`poct::map_observations` and `map_poct`). The mapping tests
+are in `crates/mapping/tests/poct.rs`, with their original assertions unchanged.
+This crate retains POCT syntax, dialogs and source-evidence duplicate comparison.
