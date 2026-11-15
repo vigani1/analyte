@@ -246,3 +246,13 @@ stop, including a forced Windows stop reported as Stopped, is not automatically
 restarted by recovery actions. Inspect the log after a forced stop, preserve the
 store and follow the existing recovery/reconciliation procedures. Never replay
 an uncertain machine order merely because a service was restarted.
+
+## LAW implementation checkpoint
+
+Step 1 adds a distinct `law_manager` stack declaration and bounded LAW policy
+in `analyte-config` (see its synthetic `examples/law.toml`). The program rejects
+activation with `LAW host transactions are not wired yet`; it cannot run this
+profile through the generic HL7 receiver. The regression
+`law_tf2b_3_27_3_29_unwired_manager_cannot_fall_back_to_generic_hl7` proves the
+startup refusal. Durable LAB-27/28/29 host integration, directional links and
+the program/reference-receiver matrix remain. Evidence is documented.

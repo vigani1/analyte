@@ -90,6 +90,7 @@ fn field(field: &Field, syntax: SyntaxKind, path: &str, key: &str) -> Result<(),
 }
 
 pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
+    crate::law::validate(m, path)?;
     if let Some(orders) = &m.orders {
         orders.validate(m, path)?;
     }
@@ -140,7 +141,7 @@ pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
                 && f.kind == FramingKind::AstmLis01
                 && s.kind == SyntaxKind::AstmLis02
         }
-        DialogKind::Hl7Receiver => {
+        DialogKind::Hl7Receiver | DialogKind::LawManager => {
             matches!(t.kind, TransportKind::TcpClient | TransportKind::TcpServer)
                 && f.kind == FramingKind::Mllp
                 && s.kind == SyntaxKind::Hl7V2
@@ -170,7 +171,8 @@ pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
         return Err(Error::IncompatibleStack { path: path.into() });
     }
     if (d.kind == DialogKind::AstmLink) != d.contention_priority.is_some()
-        || (d.kind == DialogKind::Hl7Receiver) != d.acknowledgment.is_some()
+        || matches!(d.kind, DialogKind::Hl7Receiver | DialogKind::LawManager)
+            != d.acknowledgment.is_some()
     {
         return Err(invalid(
             path,

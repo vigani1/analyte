@@ -37,6 +37,22 @@ fn config(temp: &Path, astm: bool) -> Result<std::path::PathBuf, Error> {
     Ok(path)
 }
 
+#[test]
+fn law_tf2b_3_27_3_29_unwired_manager_cannot_fall_back_to_generic_hl7() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    std::fs::write(
+        temp.path().join("machine.toml"),
+        include_str!("../../config/examples/law.toml"),
+    )?;
+    let error = Program::load(&path)
+        .err()
+        .ok_or("unwired LAW stack was enabled")?;
+    assert_eq!(error.to_string(), "LAW host transactions are not wired yet");
+    assert!(!temp.path().join("data").exists());
+    Ok(())
+}
+
 async fn connect(program: &Program) -> Result<TcpStream, Error> {
     let endpoint = &program
         .machines()

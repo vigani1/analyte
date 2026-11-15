@@ -1,0 +1,72 @@
+# Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
+schema_version = 1
+name = "generic-synthetic"
+deviations = []
+[transport]
+kind = "tcp_server"
+operation_timeout_ms = 10000
+
+[framing]
+kind = "mllp"
+limit = 1048576
+
+[dialog]
+kind = "law_manager"
+receive_timeout_ms = 30000
+send_timeout_ms = 15000
+acknowledgment = "store_and_forward"
+[syntax]
+kind = "hl7_v2"
+encoding = "ascii"
+edition = "v251"
+terminator = "cr"
+escapes = "reject"
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 128
+repetitions = 128
+components = 128
+[mappings]
+tests = [{machine_code="SYN", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
+units = [{original="mg/L", ucum="mg/L"}]
+qc = []
+[mappings.sample]
+source = "barcode"
+[mappings.sample.field]
+group = "order"
+record = "SAC"
+field = 3
+component = 1
+repetition = 1
+[mappings.identity]
+order_id = {group="order",record="OBR",field=2,component=1,repetition=1}
+order_namespace = {field={group="order",record="OBR",field=2,component=2,repetition=1}}
+sub_id = {group="observation",record="OBX",field=4,component=1,repetition=1}
+run = []
+correction_status_codes = ["C"]
+[evidence]
+level = "documented"
+[[evidence.capabilities]]
+model = "synthetic"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "tcp_server"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []
+
+[law]
+query_forms = ["container", "all_pending"]
+query_deadline_ms = 1500
+response_ms = 1500
+[law.peer]
+patient = false
+container = false
+specimen = false
+dilution = false
+manager_repeat = false
+repeat_control = false
+priority = false

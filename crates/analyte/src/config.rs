@@ -188,6 +188,10 @@ impl Program {
                 ("overrides", &replacement),
             )?
             .validate()?;
+            if snapshot.effective().machine().dialog.kind == analyte_config::DialogKind::LawManager
+            {
+                return Err(invalid("LAW host transactions are not wired yet"));
+            }
             if matches!(
                 snapshot.effective().machine().framing.checksum_hex,
                 Some(analyte_config::ChecksumHex::AcceptLowercase)

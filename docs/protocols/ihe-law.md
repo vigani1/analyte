@@ -41,13 +41,13 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Pure transaction APIs only; LAW host routing, durable AWOS correlation and connection integration remain.
 - [ ] **R** Answer supported peer query forms, support broadcast and assume query mode unless configured otherwise (TF-1 §5.1.1.2, p.34).
   Tests: `law_tf2b_3_27_4_query_forms_and_conditional_fields`.
-  Query forms and broadcast rendering are tested. Default query-mode configuration/negotiation remains untested.
+  Pure query forms and broadcast rendering are tested. Host config declares container/all-pending only (`crates/config/tests/law.rs::law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms`). Host transactions/default query mode remain unwired; isolate/parent needs app-supplied identities in a future contract version, and rack/tray-position lookup remains unsupported.
 - [x] **R** Apply LAW M/R/RE/RE.AN/C/X usages, cardinality, length, data-type and empty/null rules (TF-2b §§2.2.1–2.2.3, pp.9–14; Appendix A, p.59).
   Tests: `law_tf2b_2_2_usage_cardinality_length_and_null_rules`, `law_tf2b_c2_c5_c7_x_fields_components_and_composite_send_ceilings`.
   Field-profile tests also span law_control.rs, law_patient.rs, law_specimen.rs and law_order.rs; cross-message negotiation is separate.
 - [ ] **R** Support enhanced content and implementation profiles; transaction ID first in MSH-21, correct option identifiers and conditional usages (TF-2b §2.2.4, pp.14–24; C.4, pp.90–95).
   Tests: `law_tf2b_c4_msh_21_m_ei_required_components_lengths_first_transaction`, `law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_results`.
-  Explicit content/profile selection is tested; automatic option/profile negotiation is absent.
+  Explicit content/profile selection is tested. Host peer declarations are tested by `crates/config/tests/law.rs::law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options`; host builders are not yet wired. Automatic option/profile negotiation is absent.
 - [x] **S** Send enhanced data only to supporting peers (TF-1 §5.1.1.2, p.34).
   Tests: `law_tf2b_c11_c12_explicit_profile_cannot_enlarge_peer_send_capabilities`, `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`.
   Outgoing supported builders intersect explicit content selection with peer capabilities.
@@ -195,3 +195,30 @@ Add explicit acceptance cases for: result counts differing from message/topic co
 
 These are planned names, not executable tests. Existing generic transport/store
 checks do not close these LAW acceptance gaps. No row claims real-analyzer proof.
+
+## Program integration checkpoint: step 1
+
+The configuration layer now selects `law_manager` with MLLP, HL7 2.5.1,
+CR segments, strict escapes and store-and-forward responsibility. All peer
+capability flags are explicit and feed the existing builders' intersection.
+Tests in `crates/config/tests/law.rs`:
+
+- `law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options`
+- `law_tf2b_2_2_config_rejects_impossible_stack_combinations`
+- `law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms`
+- `law_tf2b_3_29_4_config_allows_corrections_only_by_explicit_c`
+- `law_tf2b_3_27_3_28_config_rejects_non_law_order_layouts`
+
+The supported host query forms are declared as container ID (SampleId lookup)
+and all-pending for this analyzer. Isolate/parent and rack/tray-position lookup
+are not supported by this integration; they must receive an unsupported-query
+error, never no-work. Isolate/parent requires app-supplied identities in a future
+contract version. The pure query parser's broader coverage is unchanged.
+
+No host checklist row closes at this configuration checkpoint: LAB-27/28/29
+routing, trusted all-pending lookup, reservations, connection direction,
+restart/cancellation/results tests and Gazelle qualification remain.
+The program refuses activation until those transactions are wired, tested by
+`crates/analyte/tests/receive.rs`:
+`law_tf2b_3_27_3_29_unwired_manager_cannot_fall_back_to_generic_hl7`.
+Evidence stays documented.

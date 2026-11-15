@@ -77,6 +77,8 @@ pub enum DialogKind {
     AstmLink,
     /// Explicit `Hl7Receiver` selection.
     Hl7Receiver,
+    /// IHE LAW Analyzer Manager, using the LAW application acknowledgment rules.
+    LawManager,
     /// Explicit `FilePickup` selection.
     FilePickup,
     /// Documented Poct protocol layer.
@@ -502,6 +504,9 @@ pub struct Evidence {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Machine {
+    /// Required only for the LAW Analyzer Manager stack.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub law: Option<crate::Law>,
     /// Explicit outbound behavior; omission disables queries and work lists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub orders: Option<crate::Orders>,
@@ -563,6 +568,8 @@ pub struct Site {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Overrides {
+    /// Explicit replacement of LAW peer declarations and query policy.
+    pub law: Option<crate::Law>,
     /// Explicit replacement of outbound behavior.
     pub orders: Option<crate::Orders>,
     /// Must be one.

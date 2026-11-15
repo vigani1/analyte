@@ -139,3 +139,26 @@ The configured edition selects ORM/O01 or OML/O21. Header applications,
 processing, specimen placement and response deadline are explicit. Test
 components are code/text/system. Position output is available only in ORM's
 other placer-owned OBR field; an OML position mapping is refused.
+
+## LAW configuration (implementation step 1)
+
+`examples/law.toml` selects `dialog.kind = "law_manager"`, MLLP and HL7
+2.5.1. LAW requires CR segments, strict escapes and store-and-forward
+responsibility. `[law.peer]` explicitly declares every enhanced-content flag;
+`LawPeer::capabilities` supplies the existing pure LAW builders. No option is
+implicitly enabled. Local overrides may replace the whole `[law]` policy.
+
+`law.query_forms` declares `container`, `all_pending`, or both, once each.
+Container queries use the existing SampleId lookup; all-pending is scoped to
+this analyzer. Isolate/parent and rack/tray-position queries are outside the
+host scope and must receive an unsupported-query error, never no-work.
+Isolate/parent needs app-supplied identities in a future contract version.
+Query and response deadlines must be 1 through 60000 milliseconds. LAW permits
+only explicit C correction status and cannot select legacy display queries or
+non-LAW order layouts.
+
+The new declarations have documented evidence in `tests/law.rs`. They are a
+configuration foundation: the program currently refuses LAW activation until
+its durable LAB-27/28/29 transactions are connected. This example cannot yet
+run an Analyzer Manager. Connection direction and work mapping follow in the
+remaining implementation steps.

@@ -1,9 +1,11 @@
 //! Bounded configuration loading and immutable activation snapshots (ADR 0002).
 #![forbid(unsafe_code)]
 
+mod law;
 mod orders;
 mod schema;
 mod validation;
+pub use law::*;
 pub use orders::*;
 pub use schema::*;
 use serde::{Deserialize, Serialize};
@@ -195,6 +197,9 @@ impl Draft {
             self.paths.get(1).map_or("site", String::as_str),
         )?;
         let o = self.overrides;
+        if let Some(v) = o.law {
+            self.machine.law = Some(v);
+        }
         if let Some(v) = o.transport {
             self.machine.transport = v;
         }

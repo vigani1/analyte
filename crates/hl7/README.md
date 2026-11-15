@@ -537,3 +537,12 @@ injection and field limits. `Subject::Unspecified` makes no nonpatient claim;
 `Subject::Identifier` renders only supplied PID identity without demographics.
 An absent ORM specimen source stays empty; OML still rejects missing SPM-4.
 These APIs remain pure and do not reserve, transmit, cancel or infer acceptance.
+
+The program integration's step-1 configuration now declares `law_manager` and
+explicit peer capabilities in `analyte-config::LawPeer`. Its `capabilities()`
+method feeds this crate's existing capability intersection; the LAW views and
+builders remain the source of protocol rules. The host is not yet enabled.
+Planned host query scope is exact specimen/container ID and analyzer-specific
+all-pending. Isolate/parent and rack/tray-position queries must receive an error;
+isolate/parent needs app-supplied identities in a future contract version.
+This checkpoint adds no simulator evidence.
