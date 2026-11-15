@@ -10,8 +10,8 @@ like the original code.
 
 ## Completed round results
 
-The framing round is complete; this round stops after dialog. Mutations in the
-other four requested crates remain unmeasured; their coverage is available below.
+Framing and dialog are complete historical rounds; this round stops after mapping.
+Contract, sink and store remain unmeasured; their coverage is available below.
 Percentages sum covered/count across each crate's `src/` files, excluding
 integration test files. Regions are smaller than lines, so a covered line can
 still contain an untested decision. These are baseline measurements, before the
@@ -21,7 +21,7 @@ new tests; they are not a prediction of the final coverage.
 | --- | ---: | ---: | --- | --- |
 | analyte-framing | 97.79 | 97.86 | 66 / 5 / 8 / 0 | 70 / 1 / 8 / 0 |
 | analyte-dialog | 92.46 | 87.99 | 90 / 34 / 10 / 0 | 124 / 0 / 10 / 0 |
-| analyte-mapping | 84.97 | 81.47 | Not run | Not run |
+| analyte-mapping | 84.97 | 81.47 | 221 / 185 / 49 / 0 | 399 / 7 / 49 / 0 (combined replays) |
 | analyte-contract | 86.92 | 83.28 | Not run | Not run |
 | analyte-sink | 92.86 | 83.53 | Not run | Not run |
 | analyte-store | 91.64 | 77.57 | Not run | Not run |
@@ -153,6 +153,67 @@ was not rerun for this round. Local formatting, workspace Clippy, workspace
 tests (all features) and cargo deny passed after the new tests; deny retains
 the existing duplicate-dependency warnings.
 
+### Mapping round after the standards/store merge
+
+Merged `origin/main` (`4acc00a18ed3538ebf37be649fa1dbb6b29935f4`) with sign-off
+in merge commit `997834a151af75e7c0fed51e2a754d43f15351d5`. The mapping baseline
+was run on that merged production code, before adding mapping tests. The full
+455-mutant baseline took about 19 minutes: 221 caught, 185 missed, 49 unable to
+compile, no timeouts. The complete rerun took about 13 minutes and measured
+391 caught / 15 missed / 49 unviable / 0 timeout. Three focused replays after
+strengthening assertions covered the same five `set`, 56 Autolyser/HL7-group,
+and nine value-mapping mutations: respectively 4 caught / 1 equivalent,
+54 caught / 2 equivalent, and 9 caught / 0 missed. They caught all eight
+remaining behavior-changing survivors. The combined row above counts each
+of the original 455 mutations once, using the latest replay for that exact
+mutation: 399 caught, seven equivalent survivors, 49 unviable, no timeouts.
+It is not presented as a second complete run with the final test revision.
+
+All 185 baseline misses are individually accounted for in the
+[mapping triage appendix](mapping-mutations.md): 178 real gaps became caught,
+seven remain equivalent. The equivalence proofs rely on validated bounds,
+repertoire checks, unique source-node indices and parser header validation;
+they do not dismiss difficult-to-test clinical behavior. No production bug
+was exposed and no production code changed. Thirty-eight deterministic tests
+were added, with no weakened/skipped existing tests or dependency changes.
+
+Coverage percentages remain the earlier workspace
+snapshot, not a new measurement of this substantially changed main branch.
+
+New tests check observable mapping outcomes: exact raw values, sample and AWOS
+identities, complete observation-group IDs, source statuses/paths/times,
+unknown-test parking, classification conflicts, independent resource ceilings,
+outbound context/namespace refusal and exact-limit acceptance. Host limits are
+cited as clinical rules/ADRs rather than invented standard limits. The LAW
+test explicitly refuses routing a validated LAW message through generic HL7
+mapping and checks that dedicated mapping produces its result.
+
+Official text read for mapping expectations: LIS02-A2 §§5.6.2, 6.12, 6.14,
+8.4.7, 8.4.26, 9.9–9.13; HL7 v2.5.1 ch.2 §§2.7, 2.15.9.11 and ch.2A
+§§2.A.22, 2.A.70, 2.A.77; ch.7 ORU/OUL structures, §§7.4.1.7,
+7.4.1.25, 7.4.2.2, 7.4.3.17–19; ch.4 §4.5.1.5; IHE PaLM TF-2b
+rev.11 §3.29.4.1.2, B.3 and C.7; Autolyser operator manual rev.18
+chapter 23 (patient download and script field definitions, including p.186).
+These remain local protected sources; fixtures are synthetic.
+
+Source findings to retain for follow-up:
+
+- The Autolyser manual permits cup `00` for automatic positioning; Analyte
+  currently refuses it in outbound mapping. No test was added claiming that
+  the manual forbids `00`, and this round does not enable automatic assignment.
+- HL7 SN supports additional forms, including the not-equal comparator and
+  suffix-only categorical notation. Current mapping retains and parks forms
+  it cannot interpret; the new unsupported-comparator test checks that they
+  cannot silently become equality. It does not label all unsupported forms
+  invalid under the standard.
+- Numeric offset evidence and a legally defined timezone are separate things.
+  The mapper preserves numeric components but does not establish that an offset
+  identifies a real timezone for the source location/date. The arithmetic
+  boundary test makes no timezone-validity or conversion claim.
+- No VIDAS manual exists among the supplied text files. Its new mapping tests
+  assert host download policy, identity preservation and configured bounds,
+  with no new vendor-conformance claim or evidence-level change.
+
 ### Uncovered safety regions to follow up
 
 These are zero-count region starts in the baseline LLVM export, rather than
@@ -216,14 +277,27 @@ New-Item -ItemType Directory -Force target/mutation-before/dialog | Out-Null
 cargo mutants -p analyte-dialog --all-features --timeout 60 --build-timeout 180 -o target/mutation-before/dialog
 New-Item -ItemType Directory -Force target/mutation-after/dialog | Out-Null
 cargo mutants -p analyte-dialog --all-features --timeout 60 --build-timeout 180 -o target/mutation-after/dialog
+New-Item -ItemType Directory -Force target/mutation-before/mapping | Out-Null
+cargo mutants -p analyte-mapping --all-features --timeout 60 --build-timeout 180 -o target/mutation-before/mapping
+New-Item -ItemType Directory -Force target/mutation-after/mapping | Out-Null
+cargo mutants -p analyte-mapping --all-features --timeout 60 --build-timeout 180 -j 4 -o target/mutation-after/mapping
+New-Item -ItemType Directory -Force target/mutation-recheck/mapping | Out-Null
+cargo mutants -p analyte-mapping --all-features --timeout 60 --build-timeout 180 -F 'in set$' -o target/mutation-recheck/mapping
+New-Item -ItemType Directory -Force target/mutation-final-recheck/mapping | Out-Null
+cargo mutants -p analyte-mapping --all-features --timeout 60 --build-timeout 180 -j 4 -F 'in autolyser$|in hl7_segments$' -o target/mutation-final-recheck/mapping
+New-Item -ItemType Directory -Force target/mutation-value-recheck/mapping | Out-Null
+cargo mutants -p analyte-mapping --all-features --timeout 60 --build-timeout 180 -F 'in values$' -o target/mutation-value-recheck/mapping
 ```
 
 The mutation tool uses a scratch copy, not `--in-place`. Each mutant has a
 60-second test deadline and a 180-second build deadline; a timeout is recorded
 separately, never described as a caught mutation. Results are under
 `target/mutation-before/framing/mutants.out/` (ignored build output).
+Mapping runs use the analogous directories shown above. An initial quoted
+empty-match-arm filter selected no mutations in PowerShell; it is not counted.
+The subsequent `in values$` replay selected all nine value-mapping mutations.
 
-Continue in this order: analyte-mapping, analyte-contract,
+Continue in this order: analyte-contract,
 analyte-sink, analyte-store. For each, repeat the directory creation and mutation
 command above, substituting the crate name and output directory. After adding
 tests, use a separate `target/mutation-after/<crate>` output directory and retain
@@ -249,8 +323,8 @@ duplicate dependency warnings but all four policy checks passed. The coverage
 command also completed successfully. No checks on Linux or the minimum Rust
 version were run locally; those remain CI checks.
 
-This is a completed framing round followed by the dialog round, not a completed
-six-crate mutation audit. Next run mapping, contract, sink and store, one crate
+This is framing and dialog followed by the mapping round, not a completed
+six-crate mutation audit. Next run contract, sink and store, one crate
 per round, and triage every miss.
 Their existing tests and the safety regions above have not yet been challenged
 by mutations. No files owned by the fuzz/timing builder were edited.
