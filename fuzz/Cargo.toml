@@ -1,0 +1,93 @@
+[package]
+name = "analyte-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+analyte-framing = { path = "../crates/framing" }
+analyte-astm = { path = "../crates/astm" }
+analyte-hl7 = { path = "../crates/hl7" }
+analyte-poct = { path = "../crates/poct" }
+analyte-vidas = { path = "../crates/vidas" }
+analyte-autolyser = { path = "../crates/autolyser" }
+analyte-transport = { path = "../crates/transport" }
+analyte-contract = { path = "../crates/contract" }
+
+[[bin]]
+name = "lis01"
+path = "fuzz_targets/lis01.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mllp"
+path = "fuzz_targets/mllp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lis02"
+path = "fuzz_targets/lis02.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hl7"
+path = "fuzz_targets/hl7.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "law"
+path = "fuzz_targets/law.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "poct"
+path = "fuzz_targets/poct.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vidas"
+path = "fuzz_targets/vidas.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "autolyser"
+path = "fuzz_targets/autolyser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "recording"
+path = "fuzz_targets/recording.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "contract"
+path = "fuzz_targets/contract.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,15 @@
+{
+  "contract_version": 1,
+  "delivery_id": "019ab000-0000-7000-8000-000000000002",
+  "created_at": "2026-11-15T12:00:00Z",
+  "source": {
+    "analyzer": "synthetic-1",
+    "connection": "bench-1"
+  },
+  "order_id": "order-1",
+  "order_version": 1,
+  "state": "uncertain",
+  "occurred_at": "2026-11-15T11:59:59Z",
+  "source_status": "timeout",
+  "reason": "No answer"
+}

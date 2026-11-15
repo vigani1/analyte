@@ -1,0 +1,16 @@
+{
+  "id": "order-1",
+  "version": 1,
+  "state": "requested",
+  "sample_id": "000Ab12",
+  "tests": [
+    {
+      "namespace": "synthetic",
+      "value": "TEST"
+    }
+  ],
+  "priority": "routine",
+  "target_analyzers": null,
+  "expires_at": null,
+  "tombstone": false
+}
