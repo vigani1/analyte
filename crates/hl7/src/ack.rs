@@ -136,16 +136,7 @@ pub(crate) fn acknowledgment_with_msh(
     let component = delimiters.bytes().get(1).copied().ok_or(Error::Encoding)?;
     let segment = msh.segment();
     let get = |number| segment.field(number).map_or(&[][..], |f| f.raw());
-    let mut message_type = b"ACK".to_vec();
-    let trigger = msh.message_type().nth(1).unwrap_or_default();
-    if !trigger.is_empty() {
-        message_type.push(component);
-        message_type.extend_from_slice(trigger);
-    }
-    if msh.version() == Version::V251 {
-        message_type.push(component);
-        message_type.extend_from_slice(b"ACK");
-    }
+    let message_type = encode_message_type(msh, component);
     let mut raw = b"MSH".to_vec();
     for value in [
         get(2),
@@ -287,4 +278,18 @@ fn encode_error(
     }
     raw.push(b'\r');
     Ok(())
+}
+
+fn encode_message_type(msh: Msh<'_>, component: u8) -> Vec<u8> {
+    let mut message_type = b"ACK".to_vec();
+    let trigger = msh.message_type().nth(1).unwrap_or_default();
+    if !trigger.is_empty() {
+        message_type.push(component);
+        message_type.extend_from_slice(trigger);
+    }
+    if msh.version() == Version::V251 {
+        message_type.push(component);
+        message_type.extend_from_slice(b"ACK");
+    }
+    message_type
 }
