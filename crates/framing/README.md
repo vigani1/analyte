@@ -1,4 +1,4 @@
-﻿# Framing (documented evidence)
+# Framing (documented evidence)
 
 This crate implements LIS01-A2 §§6.3, 6.5.1, 6.6 and their TCP counterparts
 §§8.3, 8.5.1, 8.6, and MLLP Release 1 §§1.2–1.3. It has no I/O.
