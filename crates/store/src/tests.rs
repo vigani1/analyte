@@ -3112,3 +3112,182 @@ fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> T
     assert_eq!(store.audits(0)?.len(), 1);
     Ok(())
 }
+
+#[test]
+fn mutation_plan11_backup_and_restore_keep_every_page_and_the_displaced_store() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("source.db");
+    let backup = temp.path().join("backup.db");
+    let target = temp.path().join("current.db");
+    let transfer = Identifier::new("large-transfer")?;
+    let mut store = open(&source)?;
+    let raw = vec![b'x'; 60_000];
+    for number in 0..8 {
+        store.frame(&transfer, FrameSequence::new(number, 7)?, &raw)?;
+    }
+    let pages: i64 = store.db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+    assert!(pages > 64);
+    store.backup(&backup, Instant::now() + HANG_GUARD)?;
+    drop(store);
+    let mut current = open(&target)?;
+    let metadata = receipt(b"displaced original")?;
+    current.receive(&metadata, b"displaced original", b"config")?;
+    drop(current);
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 42,
+        reason: Reason::new("synthetic recovery")?,
+    };
+    let kept = Store::restore(
+        &target,
+        &backup,
+        limits(),
+        Box::new(Space(u64::MAX)),
+        &audit,
+        Instant::now() + HANG_GUARD,
+    )?;
+    assert_eq!(
+        open(&kept)?.raw(metadata.id)?,
+        Some(b"displaced original".to_vec())
+    );
+    let restored = open(&target)?;
+    let frames = restored.frames(&transfer, 0)?;
+    assert_eq!(frames.len(), 8);
+    for (number, frame) in frames.iter().enumerate() {
+        assert_eq!(usize::from(frame.number), number);
+        assert_eq!(frame.raw, raw);
+    }
+    assert!(restored.restore_unreconciled()?);
+    assert_eq!(restored.audits(0)?.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_backup_refuses_a_locked_source_without_reporting_corruption() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let store = open(&temp.path().join("source.db"))?;
+    store.db.execute_batch("BEGIN IMMEDIATE")?;
+    let result = store.backup(
+        &temp.path().join("locked-copy.db"),
+        Instant::now() + HANG_GUARD,
+    );
+    store.db.execute_batch("ROLLBACK")?;
+    assert!(matches!(result, Err(Error::Timeout)));
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_restore_refuses_each_existing_recovery_file_before_staging() -> TestResult {
+    for extension in ["before-restore", "restore-pending"] {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("current.db");
+        let source = temp.path().join("source.db");
+        drop(open(&source)?);
+        drop(open(&path)?);
+        let sentinel = path.with_extension(extension);
+        std::fs::write(&sentinel, b"retained recovery evidence")?;
+        let audit = Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("store-restore")?,
+            targets: vec![],
+            time: 42,
+            reason: Reason::new("synthetic recovery")?,
+        };
+        assert!(matches!(
+            Store::restore(
+                &path,
+                &source,
+                limits(),
+                Box::new(Space(u64::MAX)),
+                &audit,
+                Instant::now() + HANG_GUARD
+            ),
+            Err(Error::Conflict)
+        ));
+        assert_eq!(std::fs::read(&sentinel)?, b"retained recovery evidence");
+        if extension == "before-restore" {
+            assert!(!path.with_extension("restore-pending").exists());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_restore_accepts_schema_one_and_refuses_nonpositive_schema() -> TestResult {
+    for version in [-1, 0, 1] {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("current.db");
+        let source = temp.path().join("source.db");
+        drop(open(&path)?);
+        let db = Connection::open(&source)?;
+        db.execute_batch(include_str!("schema.sql"))?;
+        db.pragma_update(None, "user_version", version)?;
+        drop(db);
+        let audit = Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("store-restore")?,
+            targets: vec![],
+            time: 42,
+            reason: Reason::new("synthetic recovery")?,
+        };
+        let result = Store::restore(
+            &path,
+            &source,
+            limits(),
+            Box::new(Space(u64::MAX)),
+            &audit,
+            Instant::now() + HANG_GUARD,
+        );
+        if version == 1 {
+            result?;
+            assert!(open(&path)?.restore_unreconciled()?);
+        } else {
+            assert!(matches!(result, Err(Error::Corruption)));
+            assert!(!path.with_extension("restore-pending").exists());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("current.db");
+    let source = temp.path().join("backup.db");
+    drop(open(&source)?);
+    let mut current = open(&path)?;
+    let metadata = receipt(b"current custody")?;
+    current.receive(&metadata, b"current custody", b"config")?;
+    drop(current);
+    // No available bytes can admit even one byte above the configured disk reserve.
+    let probe = Store::open(&temp.path().join("probe.db"), limits(), Box::new(Space(0)))?;
+    assert!(matches!(probe.admission(1), Err(Error::Capacity)));
+    drop(probe);
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 42,
+        reason: Reason::new("synthetic recovery")?,
+    };
+    let result = Store::restore(
+        &path,
+        &source,
+        limits(),
+        Box::new(Space(0)),
+        &audit,
+        Instant::now() + HANG_GUARD,
+    );
+    assert!(
+        matches!(result, Err(Error::Capacity)),
+        "restore published despite exhausted disk reserve: {result:?}"
+    );
+    assert_eq!(
+        open(&path)?.raw(metadata.id)?,
+        Some(b"current custody".to_vec())
+    );
+    assert!(!path.with_extension("before-restore").exists());
+    Ok(())
+}
