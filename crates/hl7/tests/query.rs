@@ -162,3 +162,71 @@ fn hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf() -> Result<(), anal
     }
     Ok(())
 }
+
+#[test]
+fn hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events()
+-> Result<(), analyte_hl7::Error> {
+    let source = request("2.5.1")?;
+    let text = std::str::from_utf8(source.raw()).map_err(|_| analyte_hl7::Error::Encoding)?;
+    for kind in [
+        "QRY^Q01",
+        "QBP^Q11^QBP_Q11",
+        "QSB^Q16^QSB_Q16",
+        "QVR^Q17^QVR_Q17",
+        "QCN^J01^QCN_J01",
+        "QSX^J02^QCN_J01",
+    ] {
+        let bytes = text.replace("QRY^Q02", kind);
+        let message = Message::parse(bytes.as_bytes(), Options::default())?;
+        assert!(matches!(
+            query::Request::new(&message),
+            Err(analyte_hl7::Error::Control {
+                segment: "MSH",
+                field: 9
+            })
+        ));
+        assert_eq!(message.raw(), bytes.as_bytes());
+    }
+    Ok(())
+}
+
+#[test]
+fn hl7_231_2_19_2_20_undeclared_enhanced_query_forms_are_rejected() -> Result<(), analyte_hl7::Error>
+{
+    let source = request("2.3.1")?;
+    let text = std::str::from_utf8(source.raw()).map_err(|_| analyte_hl7::Error::Encoding)?;
+    for kind in ["EQQ^Q04", "VQQ^Q07", "SPQ^Q08", "ERP^R09"] {
+        let bytes = text.replace("QRY^Q02", kind);
+        let message = Message::parse(bytes.as_bytes(), Options::default())?;
+        assert!(matches!(
+            query::Request::new(&message),
+            Err(analyte_hl7::Error::Control {
+                segment: "MSH",
+                field: 9
+            })
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn hl7_231_2_24_8_2_20_3_and_251_5_6_3_continuation_and_erq_are_located()
+-> Result<(), analyte_hl7::Error> {
+    for edition in ["2.3.1", "2.5.1"] {
+        let source = request(edition)?;
+        for (segment, extra) in [
+            ("DSC", b"DSC|pointer\r".as_slice()),
+            ("ERQ", b"ERQ|tag|event\r"),
+            ("QRD", b"QRD|extra\r"),
+            ("QRF", b"QRF|extra\r"),
+        ] {
+            let bytes = [source.raw(), extra].concat();
+            let message = Message::parse(&bytes, Options::default())?;
+            assert!(
+                matches!(query::Request::new(&message),Err(analyte_hl7::Error::Control {segment:s,field:0}) if s==segment)
+            );
+            assert_eq!(message.raw(), bytes);
+        }
+    }
+    Ok(())
+}

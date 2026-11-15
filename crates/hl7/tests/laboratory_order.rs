@@ -576,7 +576,7 @@ fn hl7_251_4_4_6_7_specimens_stay_with_their_own_orders() -> Result<(), Error> {
 }
 
 #[test]
-fn hl7_251_7_4_3_2_base_specimen_id_bound_does_not_inherit_law_extension() -> Result<(), Error> {
+fn hl7_251_7_4_3_2_base_specimen_id_bound_precedes_correlation() -> Result<(), Error> {
     let sent = sent()?;
     let mut body = b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|".to_vec();
     body.extend_from_slice(&[b'a'; 81]);

@@ -121,32 +121,91 @@ then becomes the test list, one or more tests per row.
 
 ### G. Orders and lifecycle
 
-- [ ] B — Implement declared ORM^O01/ORR^O02 grammars and repeat groups, not merely names. 231 ch.4 §§4.2.1–2 pp.288–289; 251 ch.4 §§4.4.1–2 pp.6–9.
-- [ ] B — Model each supported ORC request, response and status explicitly; distinguish requested cancel/change from acknowledgment that it happened. 231 ch.4 §4.3.1 pp.290–307; 251 ch.4 §4.5.1 pp.27–50.
+Audit scope: ORM/O01–ORR/O02 in both editions; non-LAW O21/O22 in 2.5.1;
+O33/O34 only under the LAW profile. Generic work supports new/cancel requests,
+one specimen/test per order and a non-repeating timing window. A checked
+conditional row covers only its declared subset, including explicit rejection
+of excluded capabilities. Partial rows stay unchecked with the remaining work
+named. All evidence below is documented-level synthetic testing, not machine
+qualification or proof of host durability/recovery.
+
+- [x] B — Implement declared ORM^O01/ORR^O02 grammars and repeat groups, not merely names. 231 ch.4 §§4.2.1–2 pp.288–289; 251 ch.4 §§4.4.1–2 pp.6–9.
+
+  **Evidence:** [order.rs](../../crates/hl7/tests/order.rs): `hl7_231_4_2_1_and_251_4_4_1_build_new_and_cancel_groups`, `hl7_231_4_3_1_b_and_251_4_5_1_b_obr_identity_fallback_and_response_order`, `hl7_231_4_2_2_and_251_4_4_2_multiple_details_are_not_flattened`. Declared scope: laboratory OBR detail, one patient context and one test/battery per order; other detail families are rejected.
+- [x] B — Model each supported ORC request, response and status explicitly; distinguish requested cancel/change from acknowledgment that it happened. 231 ch.4 §4.3.1 pp.290–307; 251 ch.4 §4.5.1 pp.27–50.
+
+  **Evidence:** [order.rs](../../crates/hl7/tests/order.rs): `hl7_231_4_3_1_1_and_251_4_5_1_1_exhaustive_request_reply_pairs`, `hl7_231_4_3_1_5_and_251_4_5_1_5_snapshot_does_not_change_request_outcome`, `hl7_231_4_3_1_5_and_251_4_5_1_5_invalid_status`. Supported controls are NW/CA and OK/UA/CR/UC; status is retained as a peer snapshot. Change/discontinue controls are explicitly unsupported, not aliases for acceptance.
 - [ ] B — Preserve placer/filler namespaces, parent/group relationships and identity on changes/retries. Same ORC clauses; OBR definitions in each ch.7.
+
+  **Remaining:** parent/placer-group and change relationships in the generic ORM/O21 API, plus durable host retry/recovery identity tests. Existing namespace and replay evidence: [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_4_3_1_2_3_and_251_4_5_1_2_3_universal_namespaces_preserved` and `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. LAW-specific parents/groups have separate [law_order.rs](../../crates/hl7/tests/law_order.rs) coverage; that does not establish generic support in both editions.
 - [ ] B — Validate requested timing/priority/specimen and required order detail; retain unsupported order content with a specific rejection. 231 ch.4 §4.3 pp.290–338; 251 ch.4 §§4.5.1–4.5.5 pp.27–80.
-- [ ] 251 — Implement OML^O21/ORL^O22, multiple-orders-per-specimen O33/O34, and single-container O35/O36 separately where declared. Ch.4 §§4.4.6–11 pp.14–25.
+
+  **Remaining:** complete optional order-detail/component predicates and host parking/operator integration; cross-field timing interpretation stays with the host. The current coded specimen, explicit priority/non-repeating window and rejection subset is covered by [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_2_8_and_251_2a_caller_data_rejects_injection_and_oversize`, and [laboratory_order.rs](../../crates/hl7/tests/laboratory_order.rs), `hl7_251_4_4_6_builder_is_bounded_and_replay_is_pure`.
+- [x] 251 — Implement OML^O21/ORL^O22, multiple-orders-per-specimen O33/O34, and single-container O35/O36 separately where declared. Ch.4 §§4.4.6–11 pp.14–25.
+
+  **Evidence:** [laboratory_order.rs](../../crates/hl7/tests/laboratory_order.rs): `hl7_251_4_4_6_builds_order_owned_timing_specimen_and_cancel`, `hl7_251_4_4_7_correlates_typed_decisions_and_specimen_container_groups`, `hl7_251_4_4_6_7_rejects_wrong_version_and_transaction_family`. [law.rs](../../crates/hl7/tests/law.rs): `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`, `law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions`. Declared families: non-LAW O21/O22 and LAW O33/O34. O35/O36 and unprofiled O33/O34 are not selected; they are not routed through another family.
 - [ ] 251 — Handle order groups with SPM/SAC, associated OBX and specimen/container-specific instructions without moving fields between groups. Same OML/ORL definitions; ch.7 §7.4.3; ch.13 §13.4.3.
-- [ ] 251 — Handle TQ1/TQ2 timing/relationships where declared rather than assuming only the legacy TQ field. Ch.4 §§4.5.4–5 pp.71–80.
-- [ ] B — Declare order-status-query and unsupported order-family behavior; all-HL7 claims otherwise include more than laboratory ordering. 231 ch.4 order chapter; 251 ch.4 §4.4.3 p.9 and §§4.4.4–5 pp.10–14.
+
+  **Remaining:** associated OBX groups and specimen/container-specific instructions in the generic O21/O22 API; it currently supports one specimen per new order and preserves returned SAC groups. Evidence for that subset: [laboratory_order.rs](../../crates/hl7/tests/laboratory_order.rs), `hl7_251_4_4_6_7_specimens_stay_with_their_own_orders`, `hl7_251_4_4_7_orl_sac_requires_spm`. LAW enhanced-content evidence is separate: [law.rs](../../crates/hl7/tests/law.rs), `law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content`.
+- [x] 251 — Handle TQ1/TQ2 timing/relationships where declared rather than assuming only the legacy TQ field. Ch.4 §§4.5.4–5 pp.71–80.
+
+  **Evidence:** [laboratory_order.rs](../../crates/hl7/tests/laboratory_order.rs): `hl7_251_4_4_6_builds_order_owned_timing_specimen_and_cancel`, `hl7_251_4_5_4_orl_repeated_window_scope`, `hl7_251_4_5_5_orl_unsupported_timing_relationship`. [law_order.rs](../../crates/hl7/tests/law_order.rs): `law_tf2b_c14_tq1_9_r_priority_cwe_subset_and_option`. Declared scope is one TQ1 window/priority in O21 and profiled LAW priority; repeated windows and TQ2 are excluded and rejected, not silently read as legacy TQ.
+- [x] B — Declare order-status-query and unsupported order-family behavior; all-HL7 claims otherwise include more than laboratory ordering. 231 ch.4 order chapter; 251 ch.4 §4.4.3 p.9 and §§4.4.4–5 pp.10–14.
+
+  **Evidence:** [order.rs](../../crates/hl7/tests/order.rs): `hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors`. Status-query replies, dietary/pharmacy/supply and other order families have no builder in this API; a typed order parser rejects an unexpected event/structure at MSH-9 and unsupported controls at ORC-1. This declaration does not claim a host-wide dispatch/rejection dialog.
 - [ ] B — Test accept/reject/cancel/unable-to-cancel/change and uncertain delivery with stable identities, never issuing new machine orders as a side effect of replay. Same order rules plus project order-lifecycle policy.
+
+  **Remaining:** supported change workflows and host integration for lost replies, disconnects, persisted uncertain delivery, cancellation races and restart. Pure acceptance/cancellation and stable replay evidence: [order.rs](../../crates/hl7/tests/order.rs), `hl7_231_4_3_1_and_251_4_5_1_reports_each_matching_outcome`, `hl7_231_4_2_2_and_251_4_4_2_message_ack_is_not_order_acceptance`, `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. These tests neither send orders nor prove durable host recovery.
 
 ### H. Queries, responses and continuation
 
+Declared query transactions are legacy Q02/Q03 in both editions and LAW
+QBP/Q11–RSP/K11. Wire builders/views do not establish a connection lifecycle or
+make an order cache trustworthy. The host owns filter interpretation, deadlines,
+durable responsibility and recovery; unchecked integration rows remain open.
+
 - [ ] 231 — Implement declared immediate QRY/DSR Q01 and deferred QRY/QCK Q02 followed by DSR/ACK Q03. Ch.2 §§2.17–2.18 pp.120–121.
-- [ ] 251 — Treat those older query exchanges as backward-compatible legacy capabilities, not the modern query-by-parameter model. Ch.5 §5.10 pp.113–137.
-- [ ] B — Validate QRD format/priority/query ID/quantity/filter and QRF fields according to the edition; DSP positions have no generic laboratory meaning. 231 ch.2 §§2.24.4–5/.9 pp.148–153, 156–157; 251 ch.5 §5.10.5 pp.123–137.
-- [ ] B — Keep query tag/QRD ID distinct from per-message MSH-10/MSA-2 correlation, especially across continuation. 231 ch.2 §§2.24.4.4, 2.24.22 p.149, 168–169; 251 ch.5 §§5.5.2–4 pp.44–47.
-- [ ] B — Preserve no-data versus application error/rejection; never answer NF on an unknown lookup. 231 ch.2 §2.24.22.2 p.169; 251 ch.5 §§5.5.2, 5.6.5 pp.44–45, 60–61; project rule 9.
+
+  **Remaining:** immediate Q01 and the host-owned deferred-query scheduling/dialog lifecycle. The declared pure Q02/Q03 subset has [query.rs](../../crates/hl7/tests/query.rs) evidence: `hl7_231_2_18_qck_answers_deferred_query`, `hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr`. Q01 is not silently treated as Q02.
+- [x] 251 — Treat those older query exchanges as backward-compatible legacy capabilities, not the modern query-by-parameter model. Ch.5 §5.10 pp.113–137.
+
+  **Evidence:** [query.rs](../../crates/hl7/tests/query.rs): `hl7_231_2_18_qck_answers_deferred_query` (both editions), `hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events`. Legacy QRD/QRF transactions remain separate from LAW QBP/QPD queries.
+- [x] B — Validate QRD format/priority/query ID/quantity/filter and QRF fields according to the edition; DSP positions have no generic laboratory meaning. 231 ch.2 §§2.24.4–5/.9 pp.148–153, 156–157; 251 ch.5 §5.10.5 pp.123–137.
+
+  **Evidence:** [query_validation.rs](../../crates/hl7/tests/query_validation.rs): `hl7_231_2_24_4_5_and_251_5_10_5_3_4_field_usage_lengths_and_repetitions`, `hl7_231_2_24_4_5_and_251_5_10_5_3_4_preserve_local_filters`, plus its per-field named negative fixtures and boundary/property cases. [query.rs](../../crates/hl7/tests/query.rs): `hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr` demonstrates caller-supplied display text without a laboratory row interpretation. Valid field syntax does not establish that the host can honor every filter/unit.
+- [x] B — Keep query tag/QRD ID distinct from per-message MSH-10/MSA-2 correlation, especially across continuation. 231 ch.2 §§2.24.4.4, 2.24.22 p.149, 168–169; 251 ch.5 §§5.5.2–4 pp.44–47.
+
+  **Evidence:** [query.rs](../../crates/hl7/tests/query.rs): `hl7_231_2_24_4_query_id_is_preserved`, `hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr`, `hl7_231_2_18_dsr_requires_data_and_distinct_response_ids`. This checks the declared non-continuation exchange; continuation identity/lifetime support remains open below.
+- [x] B — Preserve no-data versus application error/rejection; never answer NF on an unknown lookup. 231 ch.2 §2.24.22.2 p.169; 251 ch.5 §§5.5.2, 5.6.5 pp.44–45, 60–61; project rule 9.
+
+  **Evidence:** [query.rs](../../crates/hl7/tests/query.rs): `hl7_231_2_18_qck_answers_deferred_query`, `hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf` (both editions). [law.rs](../../crates/hl7/tests/law.rs): `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`. Unavailable lookup is an error, not a trusted empty result; malformed/unsupported requests cannot be constructed into a positive typed response.
 - [ ] 251 — Define query parameters and exact response using a query conformance statement; QBP alone does not specify the lab's lookup contract. Ch.5 §§5.3, 5.4.1 pp.14–37.
-- [ ] 251 — Implement selected QBP/RSP, QBP/RTB and QBP/RDY pairs with their own structures and event/structure IDs. Ch.5 §§5.4.1–3 pp.37–40.
+
+  **Remaining:** any non-LAW QBP contract requires its own selected query conformance statement before implementation. The only current query-by-parameter contract is IHE LAB-27, documented in [ihe-law.md](ihe-law.md) and tested by [law.rs](../../crates/hl7/tests/law.rs), `law_tf2b_3_27_4_query_forms_and_conditional_fields`; this is not a general lab-app lookup contract.
+- [x] 251 — Implement selected QBP/RSP, QBP/RTB and QBP/RDY pairs with their own structures and event/structure IDs. Ch.5 §§5.4.1–3 pp.37–40.
+
+  **Evidence:** [law.rs](../../crates/hl7/tests/law.rs): `law_tf2b_3_27_4_query_forms_and_conditional_fields`, `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`. Only LAW QBP/Q11–RSP/K11 is selected; RTB and RDY transactions are not declared or implemented. [query.rs](../../crates/hl7/tests/query.rs), `hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events`, prevents legacy fallback.
 - [ ] 251 — Validate QPD query name/tag/parameters, RCP priority/quantity/mode, QAK status/counts and echoed correlation. Ch.5 §§5.5.2–6 pp.44–50.
+
+  **Remaining:** generic QPD/RCP/QAK profiles, quantitative response/count handling and contracts beyond the LAW subset. Existing selected LAW scope/tag/mode and response-echo evidence: [law.rs](../../crates/hl7/tests/law.rs), `law_tf2b_3_27_4_forbidden_missing_null_and_repeated_parameters_retain_bytes`, `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`. Those cases do not establish arbitrary query/profile conformance.
 - [ ] 251 — Handle RDF/RDT row schemas and QRI instance/match information if those response forms are supported. Ch.5 §§5.5.5, .7–8 pp.47–52.
+
+  **Remaining:** RDF/RDT/QRI schemas and validation if a tabular or match-list response is selected. These response forms are currently unselected and unimplemented; no typed API claims to consume them.
 - [ ] B — Implement declared DSC continuation, cancellation and logical response boundaries without confusing them with TCP reads. 231 ch.2 §§2.15.4–5, 2.24.8 pp.118–119, 156; 251 ch.5 §§5.6.2–3 pp.55–59; ch.2 §2.15.4 pp.65–66.
+
+  **Remaining:** DSC pointer lifetime, continuation/cancellation state and logical batch completion in the host dialog. The current query view rejects continuation and retains the original message: [query.rs](../../crates/hl7/tests/query.rs), `hl7_231_2_24_8_2_20_3_and_251_5_6_3_continuation_and_erq_are_located`.
 - [ ] 251 — Distinguish fragmentation from interactive continuation and preserve pointer lifetime/correlation. Ch.2 §§2.10.2, 2.15.4 pp.30–34, 65–66; ch.5 §5.6.3 pp.55–59.
-- [ ] 251 — Declare subscription/replay and query/subscription cancellation support; implement QSB/QVR/QCN/QSX only with their lifecycle. Ch.5 §§5.4.4–7, 5.7 pp.40–42, 61–66.
-- [ ] 231 — Declare EQQ/VQQ/SPQ/ERQ and enhanced query response support separately; these are not QBP/RSP. Ch.2 §§2.19–2.22 pp.121–123.
+
+  **Remaining:** message fragmentation/reassembly and interactive continuation with persisted correlation and pointer expiry. Receiving a complete bounded Message or rejecting DSC is not evidence of this lifecycle.
+- [x] 251 — Declare subscription/replay and query/subscription cancellation support; implement QSB/QVR/QCN/QSX only with their lifecycle. Ch.5 §§5.4.4–7, 5.7 pp.40–42, 61–66.
+
+  **Evidence:** [query.rs](../../crates/hl7/tests/query.rs): `hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events` tests QSB/Q16, QVR/Q17, QCN/J01 and QSX/J02. These capabilities and subscription/replay lifecycles are explicitly unselected; no typed query handler treats them as legacy lookup or starts work.
+- [x] 231 — Declare EQQ/VQQ/SPQ/ERQ and enhanced query response support separately; these are not QBP/RSP. Ch.2 §§2.19–2.22 pp.121–123.
+
+  **Evidence:** [query.rs](../../crates/hl7/tests/query.rs): `hl7_231_2_19_2_20_undeclared_enhanced_query_forms_are_rejected`, `hl7_231_2_24_8_2_20_3_and_251_5_6_3_continuation_and_erq_are_located`. EQQ, VQQ, SPQ and event replay are explicitly unsupported. ERQ is an event-replay segment, not another QBP transaction; ERP/R09 and ERQ content are not accepted by the legacy handler.
 - [ ] B — Test successful empty/multiple/partial responses, unavailable lookup, late response, cancellation and restart without unintended order retransmission. Query clauses above plus project deadlines/order rules.
+
+  **Remaining:** host tests for logical multi-part/partial replies, late responses, cancellation, restart and uncertain delivery without unintended retransmission. Current pure wire evidence is [query.rs](../../crates/hl7/tests/query.rs), `hl7_231_2_18_qck_answers_deferred_query`, `hl7_231_2_18_dsr_requires_data_and_distinct_response_ids`, `hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf`; it does not exercise a connection state machine or durable recovery.
 
 ### I. Special control protocols
 

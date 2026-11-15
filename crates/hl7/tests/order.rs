@@ -926,3 +926,49 @@ fn hl7_231_7_3_1_3_and_251_7_4_1_3_duplicate_new_filler_assignments_rejected() -
     }
     Ok(())
 }
+
+#[test]
+fn hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors() -> Result<(), Error>
+{
+    for version in [Version::V231, Version::V251] {
+        let sent = sent(version)?;
+        let message = reply(version, b"AA", b"ORC|OK|001^LAB\r")?;
+        let text = String::from_utf8(message.raw().to_vec()).map_err(|_| Error::Limit)?;
+        let families: &[&str] = match version {
+            Version::V231 => &["OSR^Q06^OSR_Q06"],
+            Version::V251 => &[
+                "OSR^Q06^OSR_Q06",
+                "ORG^O20^ORG_O20",
+                "ORL^O36^ORL_O36",
+                "ORI^O24^ORI_O24",
+            ],
+        };
+        for family in families {
+            let wrong = Message::parse(
+                text.replace("ORR^O02^ORR_O02", family).as_bytes(),
+                Options::default(),
+            )?;
+            assert!(matches!(
+                OrderResponse::new(&wrong, &sent),
+                Err(Error::Content { field: 9, .. })
+            ));
+            assert_eq!(
+                wrong.raw(),
+                text.replace("ORR^O02^ORR_O02", family).as_bytes()
+            );
+        }
+    }
+    for code in [
+        b"SS".as_slice(),
+        b"SR",
+        b"XO",
+        b"XR",
+        b"UX",
+        b"DC",
+        b"DR",
+        b"UD",
+    ] {
+        assert!(matches!(Control::parse(code), Err(Error::Control)));
+    }
+    Ok(())
+}

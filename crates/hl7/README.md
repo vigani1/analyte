@@ -1,7 +1,8 @@
 # HL7 syntax crate
 
-Evidence: **documented**, using HL7 2.3.1 chapter 2 and HL7 2.5.1 chapter 2
-and the control datatypes in chapter 2A. Fixtures are original synthetic data.
+Evidence: **documented**, using HL7 2.3.1 chapters 2, 4 and 7; HL7 2.5.1
+chapters 2/2A, 4, 5, 7 and 13; and the LAW references identified below.
+Fixtures are original synthetic data.
 
 `Message::parse` checks bounded wire syntax, delimiters, version and connection
 encoding. It retains exact bytes; `serialize` returns those bytes. Hierarchy
@@ -481,7 +482,8 @@ Original header context and additional raw fields remain available to the host.
 
 The implementation reuses the borrowed segment/control views used by LAW and its
 generic `FieldRule` engine, without applying the LAW profile's restrictions.
-For example, base SPM-2 retains its 80-byte limit rather than LAW's extension.
+Base SPM-2 retains its declared 80-byte limit independently of LAW profile
+direction, option and authority predicates.
 Sample spelling, case, leading zeros and literal delimiters survive escaping.
 Named synthetic positive/negative and property tests cover wire placement,
 identity conflicts, specimen/container ownership, bounds and unknown controls.
@@ -492,5 +494,38 @@ order types. Multiple returned specimens per order, repeated timing/TQ2 and
 associated observation groups are rejected explicitly. Additional returned fields
 are preserved as raw views for host interpretation, not claimed as fully validated
 clinical content. The APIs do not store, resend or change lifecycle state.
-Checklist G is not yet claimed complete; its audit is separate work.
+Checklist G is not fully complete; its audited scope and remaining work are in
+[the HL7 checklist](../../docs/protocols/hl7.md#g-orders-and-lifecycle).
 
+
+## Order/query checklist audit
+
+The G/H rows in [the protocol notes](../../docs/protocols/hl7.md) now identify
+passing tests for checked declarations and list the remainder for unchecked rows.
+Conditional checks cover only selected capabilities. The generic order API is
+new/cancel work, one specimen/test per order and one timing window; LAW's broader
+profile coverage is documented separately above and in its own checklist.
+
+Implemented evidence includes the two ORM/ORR editions, non-LAW O21/O22,
+message/order/specimen correlation, explicit controls/outcomes, retained literal
+sample IDs, legacy Q02/Q03 field validation and the separate LAW query contract.
+Unsupported families, subscriptions, enhanced query forms and continuation are
+rejected by the typed interfaces without constructing a successful empty answer.
+The new LAW field-rule error variants retain their original detailed causes in
+`order::Error::FieldRule`; no LAW validation implementation is copied into the
+non-LAW module. Duplicate/extra legacy query segments report their own known
+segment location rather than incorrectly calling every extra segment DSC.
+
+Still open: generic parent/group/change workflows, full optional order-content
+predicates and associated O21 observation/instruction groups, immediate Q01,
+general non-LAW query conformance statements and quantitative/tabular forms,
+continuation/fragmentation, and host tests for uncertain delivery, deadlines,
+cancellation/restart and durable recovery. Unselected TQ2, O35/O36 and query
+subscription/replay capabilities are not implied by the supported subset.
+Pure replay tests prove deterministic bytes and stable identities; they do not
+prove lost-ACK or restart behavior. Additional display units/escaping and local
+filter interpretation remain as described above.
+
+No simulator or real-analyzer evidence was added. Evidence remains
+**documented**; the checked rows are not a whole-HL7 or whole-system conformance
+claim.

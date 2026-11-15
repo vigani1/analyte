@@ -53,9 +53,16 @@ impl<'a> Request<'a> {
         } else {
             None
         };
-        if segments.next().is_some() {
+        if let Some(extra) = segments.next() {
             // Continuation needs a host-owned lifecycle; never process a partial lookup.
-            return Err(invalid("DSC", 0));
+            let name = match extra.id() {
+                b"DSC" => "DSC",
+                b"ERQ" => "ERQ",
+                b"QRD" => "QRD",
+                b"QRF" => "QRF",
+                _ => "QRY",
+            };
+            return Err(invalid(name, 0));
         }
         validation::definition(definition, msh.version())?;
         if let Some(filter) = filter {

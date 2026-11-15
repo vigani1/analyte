@@ -22,6 +22,9 @@ pub enum Error {
     /// Underlying bounded HL7 syntax or control validation failed.
     #[error(transparent)]
     Syntax(#[from] crate::Error),
+    /// A shared field-rule error retains its component/authority cause unchanged.
+    #[error(transparent)]
+    FieldRule(crate::law::Error),
     /// Missing, malformed or unsupported content at its owning boundary.
     #[error("invalid order content at {segment}-{field}")]
     Content {

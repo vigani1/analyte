@@ -2,7 +2,7 @@
 use super::{Error, invalid};
 use crate::law::{FieldRule, Usage};
 
-// Base 2.5.1 SPM-2 is 80 bytes; LAW's extended bound does not apply here.
+// Base SPM-2 is 80 bytes; its rule is independent of LAW's profile predicates.
 pub(super) const SPECIMEN_ID_BYTES: usize = 80;
 use crate::{Component, Field, Message, Segment, Version};
 
@@ -60,6 +60,10 @@ fn rule(
         crate::law::Error::Syntax(error) => Error::Syntax(error),
         crate::law::Error::Content { segment, field } => invalid(segment, field),
         crate::law::Error::Inconsistent { segment, field } => Error::Correlation { segment, field },
+        error @ (crate::law::Error::DilutionDefinition { .. }
+        | crate::law::Error::Subcomponent { .. }
+        | crate::law::Error::Authority { .. }
+        | crate::law::Error::Component { .. }) => Error::FieldRule(error),
     })
 }
 
