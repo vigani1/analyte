@@ -265,6 +265,10 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             *document
                 .get_mut("version")
                 .ok_or(analyte_store::Error::InvalidInput)? = serde_json::json!(2);
+            *document
+                .get_mut("tests")
+                .ok_or(analyte_store::Error::InvalidInput)? =
+                serde_json::json!([{"namespace":"local","value":"<newtest>"}]);
             cached.document = serde_json::to_string(&document)?;
             s.order_page(&OrderPage {
                 destination,
@@ -278,6 +282,8 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     let mismatch = request(&host, "/orders", &auth, None).await?;
     assert!(mismatch.contains("Different version; these are not the historical machine items."));
     assert!(mismatch.contains("Uncertain"));
+    assert!(mismatch.contains("Machine test: local: &lt;test&gt;"));
+    assert!(mismatch.contains("&lt;newtest&gt;"));
     let frame_park = store
         .request(crate::deadline(), |s| {
             let transfer =

@@ -231,7 +231,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
                         id: id(order)?,
                         sample: analyte_model::SampleId::new("<script>sample</script>")
                             .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        document: "{\"version\":1,\"state\":\"requested\",\"tombstone\":false}"
+                        document: "{\"version\":1,\"state\":\"requested\",\"tombstone\":false,\"tests\":[{\"namespace\":\"local\",\"value\":\"test\"}]}"
                             .into(),
                         tombstone: false,
                         expiry: 200,

@@ -500,6 +500,16 @@ pub(super) async fn orders(
             let mut last = None;
             for order in s.machine_orders(&MachineOrderFilter {after, machine: None, state: None})?.into_iter().take(PAGE) {
                 html.push_str(&format!("<section><h2>Machine order {}</h2><p>App: {}. Order: {}. Machine: {}. Reserved version: {}. State: {}. Updated (Unix seconds): {}.</p>", order.id, escape(order.key.destination.as_str()), escape(order.key.order.as_str()), escape(order.key.machine.as_str()), escape(&order.version.to_string()), escape(&format!("{:?}", order.state)), escape(&order.updated_at.to_string())));
+                html.push_str("<h3>Durable machine items</h3><ul>");
+                for item in &order.items {
+                    html.push_str(&format!("<li>Item {}. State: {}. Placer: {}. Namespace: {}. Source: {}.<ul>", escape(&item.index.to_string()), escape(&format!("{:?}", item.state)), escape(&item.placer), escape(item.placer_namespace.as_ref().map_or("not recorded", Identifier::as_str)), escape(item.source_code.as_str())));
+                    if item.coverage_known {
+                        for test in &item.tests { html.push_str(&format!("<li>Machine test: {}: {}</li>", escape(test.namespace.as_str()), escape(test.value.as_str()))); }
+                    } else { html.push_str("<li>Historical item coverage unknown (legacy evidence).</li>"); }
+                    html.push_str("</ul></li>");
+                }
+                if order.items.is_empty() { html.push_str("<li>Historical items unavailable; none are inferred.</li>"); }
+                html.push_str("</ul>");
                 if let Some(cached) = s.cached_order(&order.key.destination, &order.key.order)? {
                     html.push_str(&format!("<p>Retained cache sample: {}. Tombstone: {}. Expiry (Unix seconds): {}.</p>", escape(cached.sample.as_str()), escape(&cached.tombstone.to_string()), escape(&cached.expiry.to_string())));
                     match analyte_contract::decode::<analyte_contract::Order>(cached.document.as_bytes()) {

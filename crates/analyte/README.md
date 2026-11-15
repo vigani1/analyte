@@ -268,10 +268,11 @@ failure prevents disclosure. Raw pages retain POST forms for further pages;
 no credentials or raw bytes are placed in URLs or ordinary logs.
 
 Machine orders show the recorded lifecycle state, including Uncertain, and the
-global restore pause. Items and sample IDs come from retained cache evidence,
-whose version is shown separately from the machine reservation. A different
-cache version is explicitly labelled as current cache items rather than the
-historical machine items; missing or invalid documents never cause guessed items.
+global restore pause. Durable machine items show their individual states, placer
+identities and exact retained test coverage. Legacy coverage is explicitly unknown.
+The separate retained-cache panel shows sample IDs, items and its version. A
+different cache version is explicitly labelled as current cache items rather than
+the historical machine items; missing or invalid documents never cause guessed items.
 
 Actions such as resolving, reconciling and retrying remain CLI-only.
 
