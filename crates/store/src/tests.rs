@@ -55,7 +55,7 @@ fn interpretation() -> Result<Interpretation, Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn adr0003_frame_committed_before_ack_survives_restart() -> TestResult {
+fn adr0003_committed_frames_survive_restart() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let transfer = Identifier::new("transfer-1")?;
@@ -353,7 +353,7 @@ fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
 }
 
 #[test]
-fn plan11_online_backup_restores_exact_receipts() -> TestResult {
+fn plan11_online_backup_copy_reopens_with_exact_receipt_bytes() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"protected\0bytes")?;
@@ -1859,5 +1859,126 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
                 .get::<_, i64>(0))?,
         1
     );
+    Ok(())
+}
+
+#[test]
+fn adr0003_rule7_sqlite_lock_failures_remain_specific_timeouts() -> TestResult {
+    // SQLite result codes 5 and 6 are BUSY and LOCKED. No wall-clock wait is needed.
+    for code in [5, 6] {
+        let error = rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), None);
+        assert!(matches!(Error::from(error), Error::Timeout));
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0003_rule7_startup_budget_is_inclusive_and_cancellation_is_sticky() -> TestResult {
+    use crate::startup::{Startup, StartupStep};
+    use std::sync::Arc;
+    let base = Instant::now();
+    let mut startup = Startup::new(base);
+    startup.clock = Some(Arc::new(move || base));
+    assert!(startup.expired());
+    assert!(matches!(
+        startup.check(),
+        Err(Error::StartupTimeout {
+            step: StartupStep::Opening
+        })
+    ));
+
+    let mut startup = Startup::new(base.checked_add(HANG_GUARD).ok_or("deadline")?);
+    startup.clock = Some(Arc::new(move || base));
+    assert!(!startup.expired());
+    startup.cancel();
+    assert!(startup.expired());
+    assert!(
+        startup
+            .run::<()>(StartupStep::Finalizing, || panic!(
+                "cancelled startup must not run work"
+            ))
+            .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn adr0003_storage_failures_distinguish_full_corrupt_conflict_and_unknown() -> TestResult {
+    // SQLite primary result codes; synthetic failures exercise the host recovery boundary.
+    for (code, expected) in [
+        (13, "full"),
+        (11, "corrupt"),
+        (26, "corrupt"),
+        (19, "conflict"),
+    ] {
+        let error = Error::from(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(code),
+            None,
+        ));
+        match expected {
+            "full" => assert!(matches!(error, Error::DiskFull)),
+            "corrupt" => assert!(matches!(error, Error::Corruption)),
+            "conflict" => assert!(matches!(error, Error::Conflict)),
+            _ => unreachable!("fixed test cases"),
+        }
+    }
+    let original = rusqlite::Error::InvalidQuery;
+    assert!(matches!(
+        Error::from(original),
+        Error::Sqlite(rusqlite::Error::InvalidQuery)
+    ));
+    Ok(())
+}
+
+#[test]
+fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("current.db");
+    let source = temp.path().join("backup.db");
+    drop(open(&source)?);
+    let mut store = open(&path)?;
+    let metadata = receipt(b"current evidence")?;
+    store.receive(&metadata, b"current evidence", b"config")?;
+    drop(store);
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 0,
+        reason: Reason::new("synthetic recovery")?,
+    };
+    let invalid = Limits {
+        page_rows: 0,
+        ..limits()
+    };
+    // The same public limits are refused by normal open. Restore must not bypass admission.
+    assert!(matches!(
+        Store::open(
+            &temp.path().join("invalid.db"),
+            Limits {
+                page_rows: 0,
+                ..limits()
+            },
+            Box::new(Space(u64::MAX))
+        ),
+        Err(Error::InvalidInput)
+    ));
+    let result = Store::restore(
+        &path,
+        &source,
+        invalid,
+        Box::new(Space(u64::MAX)),
+        &audit,
+        Instant::now() + HANG_GUARD,
+    );
+    assert!(
+        matches!(result, Err(Error::InvalidInput)),
+        "restore accepted invalid zero page limit: {result:?}"
+    );
+    assert_eq!(
+        open(&path)?.raw(metadata.id)?,
+        Some(b"current evidence".to_vec())
+    );
+    assert!(!path.with_extension("before-restore").exists());
     Ok(())
 }
