@@ -32,6 +32,7 @@ analyte-vidas = { path = "crates/vidas", version = "0.1.0" }
 analyte-autolyser = { path = "crates/autolyser", version = "0.1.0" }
 
 # Runtime, errors, logging
+windows-services = { version = "0.100.0", default-features = false }
 tokio = { version = "1.54", default-features = false }
 thiserror = "2.0"
 tracing = "0.1.44"
