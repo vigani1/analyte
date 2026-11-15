@@ -1,6 +1,7 @@
 //! Durable evidence and transactional delivery state. No payloads are logged.
 #![forbid(unsafe_code)]
 
+mod migration;
 mod query;
 pub use query::{Frame, ParkedItem, Receipt};
 mod records;
@@ -24,7 +25,7 @@ pub enum Error {
     #[error("storage capacity reserve reached")]
     Capacity,
     /// The database belongs to a newer implementation.
-    #[error("schema version {0} is newer than supported version 1")]
+    #[error("schema version {0} is newer than supported version 2")]
     SchemaTooNew(i64),
     /// SQLite or stored evidence failed an integrity check.
     #[error("stored evidence is corrupt")]
@@ -160,7 +161,7 @@ impl Store {
         let mut db = Connection::open(path)?;
         db.busy_timeout(limits.busy_timeout)?;
         let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version > 1 {
+        if version > 2 {
             return Err(Error::SchemaTooNew(version));
         }
         Self::integrity(&db)?;
@@ -171,6 +172,9 @@ impl Store {
             let tx = db.transaction()?;
             tx.execute_batch(include_str!("schema.sql"))?;
             tx.commit()?;
+        }
+        if version <= 1 {
+            Self::migrate_v2(&mut db)?;
         }
         // SQL constraints also protect evidence from accidental maintenance updates.
         for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
@@ -397,7 +401,7 @@ impl Store {
             params![receipt, version, encoded],
         )?;
         for d in deliveries {
-            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'pending',0)", params![key(&d.id)?,receipt,version,d.destination.as_str(),key(&d.ordering_key)?,d.payload,digest(&d.payload).0.as_slice(),d.contract_version])?;
+            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'pending',0,unixepoch())", params![key(&d.id)?,receipt,version,d.destination.as_str(),key(&d.ordering_key)?,d.payload,digest(&d.payload).0.as_slice(),d.contract_version])?;
         }
         if let Reading::Failed(reason) = &evidence.outcome {
             tx.execute(
@@ -428,18 +432,28 @@ impl Store {
     /// Reports database failures. In-flight items remain uncertain after restart.
     pub fn claim(&mut self, now: i64) -> Result<Option<Claim>, Error> {
         let tx = self.db.transaction()?;
-        let found = tx.query_row("SELECT id,payload,destination,contract FROM outbox o WHERE state='pending' AND next_attempt<=?1 AND NOT EXISTS(SELECT 1 FROM outbox older WHERE older.destination=o.destination AND older.ordering_key=o.ordering_key AND older.sequence<o.sequence AND older.state!='done') AND NOT EXISTS(SELECT 1 FROM outbox paused WHERE paused.destination=o.destination AND paused.state='paused') ORDER BY sequence LIMIT 1", [now], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Vec<u8>>(1)?,r.get::<_,String>(2)?,r.get::<_,u32>(3)?))).optional()?;
-        let result = if let Some((id, payload, destination, contract_version)) = found {
-            tx.execute("UPDATE outbox SET state='in_flight' WHERE id=?1", [&id])?;
-            Some(Claim {
-                id: serde_json::from_str(&id)?,
-                payload,
-                destination: Identifier::new(&destination).map_err(|_| Error::Corruption)?,
-                contract_version,
-            })
-        } else {
-            None
-        };
+        let found = tx.query_row("SELECT id,payload,destination,contract,kind,(SELECT count(*) FROM attempts a WHERE a.delivery=o.id) FROM outbox o WHERE state='pending' AND next_attempt<=?1 AND NOT EXISTS(SELECT 1 FROM outbox older WHERE older.destination=o.destination AND older.kind=o.kind AND older.ordering_key=o.ordering_key AND older.sequence<o.sequence AND older.state!='done') AND NOT EXISTS(SELECT 1 FROM outbox paused WHERE paused.destination=o.destination AND paused.state='paused') ORDER BY sequence LIMIT 1", [now], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Vec<u8>>(1)?,r.get::<_,String>(2)?,r.get::<_,u32>(3)?,r.get::<_,String>(4)?,r.get::<_,i64>(5)?))).optional()?;
+        let result =
+            if let Some((id, payload, destination, contract_version, kind, earlier_attempts)) =
+                found
+            {
+                tx.execute("UPDATE outbox SET state='in_flight' WHERE id=?1", [&id])?;
+                Some(Claim {
+                    id: serde_json::from_str(&id)?,
+                    payload,
+                    destination: Identifier::new(&destination).map_err(|_| Error::Corruption)?,
+                    contract_version,
+                    kind: match kind.as_str() {
+                        "result" => DeliveryKind::Result,
+                        "order_event" => DeliveryKind::OrderEvent,
+                        _ => return Err(Error::Corruption),
+                    },
+                    earlier_attempts: u64::try_from(earlier_attempts)
+                        .map_err(|_| Error::Corruption)?,
+                })
+            } else {
+                None
+            };
         tx.commit()?;
         Ok(result)
     }
