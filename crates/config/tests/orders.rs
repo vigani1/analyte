@@ -384,10 +384,6 @@ fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -
             "orders.hl7_send",
         ),
         (
-            section.replace(r#"processing = "T""#, r#"processing = "unknown""#),
-            "orders.hl7_send",
-        ),
-        (
             section.replace("sample_field = 18", "sample_field = 17"),
             "orders.hl7_send.position_field",
         ),
@@ -405,6 +401,74 @@ fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -
     ] {
         invalid_key(vendor_config(definition, &invalid), key);
     }
+    let invalid_processing = section.replace(r#"processing = "T""#, r#"processing = "unknown""#);
+    assert!(matches!(
+        vendor_config(definition, &invalid_processing),
+        Err(analyte_config::Error::Schema { .. })
+    ));
     assert!(config(section).is_err());
+    Ok(())
+}
+
+#[test]
+fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -> TestResult {
+    use analyte_config::{Hl7Processing, MachinePriority, PriorityCode};
+    let definition = include_str!("../examples/hl7.toml");
+    let section = include_str!("../examples/hl7_send.toml");
+    for (wire, expected) in [
+        ("P", Hl7Processing::Production),
+        ("T", Hl7Processing::Training),
+        ("D", Hl7Processing::Debugging),
+    ] {
+        let section = section.replace(r#"processing = "T""#, &format!("processing = \"{wire}\""));
+        let valid = vendor_config(definition, &section)?;
+        assert_eq!(
+            valid
+                .effective()
+                .machine()
+                .orders
+                .as_ref()
+                .expect("orders")
+                .hl7_send
+                .as_ref()
+                .expect("HL7 send")
+                .processing,
+            expected
+        );
+        assert!(
+            valid
+                .canonical()
+                .contains(&format!("processing = \"{wire}\""))
+        );
+    }
+    for (wire, expected) in [
+        ("R", PriorityCode::R),
+        ("S", PriorityCode::S),
+        ("A", PriorityCode::A),
+        ("P", PriorityCode::P),
+        ("C", PriorityCode::C),
+        ("T", PriorityCode::T),
+        ("PRN", PriorityCode::Prn),
+    ] {
+        let section = section.replace(r#"machine="R""#, &format!("machine=\"{wire}\""));
+        let valid = vendor_config(definition, &section)?;
+        assert!(
+            matches!(valid.effective().machine().orders.as_ref().expect("orders").priorities.first().expect("priority").machine, MachinePriority::Code(code) if code == expected)
+        );
+    }
+    invalid_key(
+        vendor_config(
+            definition,
+            &section.replace(r#"machine="R""#, r#"machine="custom""#),
+        ),
+        "orders.priorities",
+    );
+    // Configurable ASTM priority text must not be restricted to HL7 table 0485.
+    let astm =
+        include_str!("../examples/orders.toml").replace(r#"machine="R""#, r#"machine="custom""#);
+    let valid = config(&astm)?;
+    assert!(
+        matches!(&valid.effective().machine().orders.as_ref().expect("orders").priorities.first().expect("priority").machine, MachinePriority::Custom(value) if value.as_str() == "custom")
+    );
     Ok(())
 }

@@ -366,10 +366,19 @@ fn autolyser(
         .iter()
         .find(|p| p.app.as_str() == order.priority.code())
         .ok_or(OrderMappingError::UnmappedPriority)?;
-    let list = match priority.machine.as_str() {
-        "T" => List::Routine,
-        "R" => List::Stat,
-        _ => return Err(OrderMappingError::UnmappedPriority),
+    let list = match &priority.machine {
+        analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => List::Routine,
+        analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => List::Stat,
+        analyte_config::MachinePriority::Code(
+            analyte_config::PriorityCode::S
+            | analyte_config::PriorityCode::A
+            | analyte_config::PriorityCode::P
+            | analyte_config::PriorityCode::C
+            | analyte_config::PriorityCode::Prn,
+        )
+        | analyte_config::MachinePriority::Custom(_) => {
+            return Err(OrderMappingError::UnmappedPriority);
+        }
     };
     let position = order
         .position

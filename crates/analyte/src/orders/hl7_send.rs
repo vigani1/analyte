@@ -76,11 +76,10 @@ impl Command {
             control_id: analyte_hl7::ControlId::new(id.as_bytes())?,
             timestamp: order::Timestamp::new(timestamp.as_bytes())?,
             version: self.version,
-            processing: match cfg.processing.as_str() {
-                "P" => order::Processing::Production,
-                "T" => order::Processing::Training,
-                "D" => order::Processing::Debugging,
-                _ => return Err(invalid("HL7 processing configuration")),
+            processing: match cfg.processing {
+                analyte_config::Hl7Processing::Production => order::Processing::Production,
+                analyte_config::Hl7Processing::Training => order::Processing::Training,
+                analyte_config::Hl7Processing::Debugging => order::Processing::Debugging,
             },
         };
         if cancel {
@@ -153,15 +152,31 @@ impl Command {
                     }
             })
             .ok_or("HL7-unmapped-priority")?;
-        let priority = match priority.machine.as_str() {
-            "R" => order::Priority::Routine,
-            "S" => order::Priority::Stat,
-            "A" => order::Priority::Asap,
-            "P" => order::Priority::Preop,
-            "C" => order::Priority::Callback,
-            "T" => order::Priority::TimingCritical,
-            "PRN" => order::Priority::AsNeeded,
-            _ => return Err(invalid("HL7-unsupported-priority")),
+        let priority = match &priority.machine {
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
+                order::Priority::Routine
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::S) => {
+                order::Priority::Stat
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::A) => {
+                order::Priority::Asap
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::P) => {
+                order::Priority::Preop
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::C) => {
+                order::Priority::Callback
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => {
+                order::Priority::TimingCritical
+            }
+            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::Prn) => {
+                order::Priority::AsNeeded
+            }
+            analyte_config::MachinePriority::Custom(_) => {
+                return Err(invalid("HL7-unsupported-priority"));
+            }
         };
         let mut orders = Vec::new();
         for item in &record.items {
