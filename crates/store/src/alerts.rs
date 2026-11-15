@@ -1,0 +1,446 @@
+//! Nonclinical alert state and retained transition history (plan section 11).
+use crate::{Error, Store, key};
+use analyte_model::Identifier;
+use rusqlite::{OptionalExtension, params};
+use serde::{Deserialize, Serialize};
+
+/// Stable signal identity; thresholds and responders may change without losing history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AlertKey {
+    /// Oldest unfinished delivery.
+    OldestUndelivered,
+    /// Last durable message or ASTM frame from this machine.
+    MachineSilent(Identifier),
+    /// Free bytes relative to the configured reserve.
+    DiskReserve,
+    /// Oldest or untrusted destination order cache.
+    OrderCacheStale,
+    /// Uncertain machine command count.
+    UncertainOrders,
+    /// Unresolved parked count.
+    ParkedItems,
+    /// Restore reconciliation pause.
+    RestorePaused,
+}
+
+/// Latest durable evaluation; timestamps are Unix seconds.
+#[derive(Debug, Clone)]
+pub struct AlertState {
+    /// Stable signal identity.
+    pub key: AlertKey,
+    /// Role or person responsible; never included in ordinary logs.
+    pub responder: String,
+    /// Whether the condition remains raised.
+    pub active: bool,
+    /// Most recent raise, retained after clear.
+    pub raised_at: Option<i64>,
+    /// Most recent clear, retained after a subsequent raise.
+    pub cleared_at: Option<i64>,
+    /// Nonclinical numeric measurement; absent means unknown.
+    pub value: Option<u64>,
+    /// Time of the last successful evaluation.
+    pub evaluated_at: i64,
+}
+
+/// One retained raise or clear, with its responder and measurement.
+#[derive(Debug)]
+pub struct AlertTransition {
+    /// Monotonic history cursor.
+    pub sequence: i64,
+    /// Snapshot at transition time.
+    pub state: AlertState,
+}
+
+impl Store {
+    /// Reads one policy's current durable state without payloads.
+    /// # Errors
+    /// Reports SQLite, corrupt measurement or identity encoding failures.
+    pub fn alert_state(&self, identity: &AlertKey) -> Result<Option<AlertState>, Error> {
+        let row = self.db.query_row(
+            "SELECT responder,active,raised_at,cleared_at,value,evaluated_at FROM alert_state WHERE key=?1",
+            [key(identity)?],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?, r.get::<_, Option<i64>>(2)?,
+                r.get::<_, Option<i64>>(3)?, r.get::<_, Option<String>>(4)?, r.get::<_, i64>(5)?))
+        ).optional()?;
+        row.map(
+            |(responder, active, raised_at, cleared_at, value, evaluated_at)| {
+                Ok(AlertState {
+                    key: identity.clone(),
+                    responder,
+                    active,
+                    raised_at,
+                    cleared_at,
+                    value: value
+                        .map(|value| value.parse::<u64>())
+                        .transpose()
+                        .map_err(|_| Error::Corruption)?,
+                    evaluated_at,
+                })
+            },
+        )
+        .transpose()
+    }
+
+    /// Records a successful evaluation atomically with a transition only if active changes.
+    /// A cancelled caller may have committed; retrying the same condition never repeats a transition.
+    /// An initial clear creates state but no clear history. History is append-only and retained.
+    /// # Errors
+    /// Refuses invalid responders or database failures, including a full disk.
+    pub fn evaluate_alert(
+        &mut self,
+        identity: &AlertKey,
+        responder: &str,
+        active: bool,
+        value: Option<u64>,
+        now: i64,
+    ) -> Result<Option<AlertState>, Error> {
+        if responder.trim().is_empty()
+            || responder.len() > 256
+            || responder.chars().any(char::is_control)
+        {
+            return Err(Error::InvalidInput);
+        }
+        let value = value.map(|value| value.to_string());
+        // Like audit records, bounded safety history may use the admission reserve.
+        // Otherwise reaching that reserve would prevent its own disk alert.
+        // A real disk-full failure is returned; no successful transition is invented.
+        let encoded = key(identity)?;
+        let tx = self.db.transaction()?;
+        let previous: Option<bool> = tx
+            .query_row(
+                "SELECT active FROM alert_state WHERE key=?1",
+                [&encoded],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let changed = previous.unwrap_or(false) != active;
+        tx.execute("INSERT INTO alert_state(key,responder,active,raised_at,cleared_at,value,evaluated_at) VALUES(?1,?2,?3,CASE WHEN ?3 THEN ?5 END,NULL,?4,?5)
+            ON CONFLICT(key) DO UPDATE SET responder=excluded.responder,active=excluded.active,value=excluded.value,evaluated_at=excluded.evaluated_at,
+            raised_at=CASE WHEN ?6 AND ?3 THEN ?5 ELSE alert_state.raised_at END,
+            cleared_at=CASE WHEN ?6 AND NOT ?3 THEN ?5 ELSE alert_state.cleared_at END",
+            params![encoded, responder, active, value, now, changed])?;
+        if changed {
+            tx.execute(
+                "INSERT INTO alert_history(key,active,time,responder,value) VALUES(?1,?2,?3,?4,?5)",
+                params![encoded, active, now, responder, value],
+            )?;
+        }
+        tx.commit()?;
+        if changed {
+            self.alert_state(identity)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Reads one bounded page of retained transitions, ordered by sequence.
+    /// # Errors
+    /// Reports database failures or corrupt history.
+    pub fn alert_history(&self, after: i64) -> Result<Vec<AlertTransition>, Error> {
+        let mut stmt = self.db.prepare("SELECT sequence,key,responder,active,time,value FROM alert_history WHERE sequence>?1 ORDER BY sequence LIMIT ?2")?;
+        let mut rows = stmt.query(params![
+            after,
+            i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+        ])?;
+        let mut result = Vec::new();
+        while let Some(row) = rows.next()? {
+            let active: bool = row.get(3)?;
+            let time: i64 = row.get(4)?;
+            let value: Option<String> = row.get(5)?;
+            result.push(AlertTransition {
+                sequence: row.get(0)?,
+                state: AlertState {
+                    key: serde_json::from_str(&row.get::<_, String>(1)?)?,
+                    responder: row.get(2)?,
+                    active,
+                    raised_at: active.then_some(time),
+                    cleared_at: (!active).then_some(time),
+                    value: value
+                        .map(|value| value.parse::<u64>())
+                        .transpose()
+                        .map_err(|_| Error::Corruption)?,
+                    evaluated_at: time,
+                },
+            });
+        }
+        Ok(result)
+    }
+
+    /// Reads a scalar signal only. Missing machine/cache history remains unknown.
+    /// Indexed pending/parked/uncertain queries do not inspect clinical evidence.
+    /// # Errors
+    /// Reports capacity probe, SQLite or corrupt numeric data.
+    pub fn alert_value(
+        &self,
+        identity: &AlertKey,
+        now: i64,
+        destinations: &[Identifier],
+    ) -> Result<Option<u64>, Error> {
+        if destinations.len() > 128 {
+            return Err(Error::InvalidInput);
+        }
+        let scalar: Option<i64> = match identity {
+            AlertKey::OldestUndelivered => self
+                .db
+                .query_row(
+                    "SELECT min(enqueued_at) FROM outbox WHERE state!='done'",
+                    [],
+                    |r| r.get::<_, Option<i64>>(0),
+                )?
+                .map(|time| now.checked_sub(time).filter(|age| *age >= 0))
+                .unwrap_or(Some(0)),
+            AlertKey::MachineSilent(machine) => self
+                .db
+                .query_row(
+                    "SELECT time FROM machine_activity WHERE machine=?1",
+                    [machine.as_str()],
+                    |r| r.get::<_, i64>(0),
+                )
+                .optional()?
+                .and_then(|time| now.checked_sub(time).filter(|age| *age >= 0)),
+            AlertKey::DiskReserve => return Ok(Some(self.space.available(&self.path)?)),
+            AlertKey::OrderCacheStale => {
+                if destinations.is_empty() {
+                    return Ok(None);
+                }
+                let mut oldest = 0;
+                for destination in destinations {
+                    let feed: Option<(i64, bool)> = self
+                        .db
+                        .query_row(
+                            "SELECT polled,complete AND trusted FROM feed WHERE destination=?1",
+                            [destination.as_str()],
+                            |r| Ok((r.get(0)?, r.get(1)?)),
+                        )
+                        .optional()?;
+                    let Some((polled, true)) = feed else {
+                        return Ok(None);
+                    };
+                    let Some(age) = now.checked_sub(polled).filter(|age| *age >= 0) else {
+                        return Ok(None);
+                    };
+                    oldest = oldest.max(age);
+                }
+                Some(oldest)
+            }
+            AlertKey::UncertainOrders => Some(self.db.query_row(
+                "SELECT count(*) FROM machine_orders WHERE state='\"Uncertain\"'",
+                [],
+                |r| r.get(0),
+            )?),
+            AlertKey::ParkedItems => Some(self.db.query_row(
+                "SELECT count(*) FROM parked WHERE resolution IS NULL",
+                [],
+                |r| r.get(0),
+            )?),
+            AlertKey::RestorePaused => Some(i64::from(self.restore_unreconciled()?)),
+        };
+        scalar
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|_| Error::Corruption)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::{TestResult, open};
+
+    // Plan section 11: a retry/restart cannot repeat a raise or clear.
+    #[test]
+    fn plan11_alert_restart_and_retained_transitions() -> TestResult {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("alerts.db");
+        let mut store = open(&path)?;
+        let keys = [
+            AlertKey::OldestUndelivered,
+            AlertKey::MachineSilent(Identifier::new("busy")?),
+            AlertKey::DiskReserve,
+            AlertKey::OrderCacheStale,
+            AlertKey::UncertainOrders,
+            AlertKey::ParkedItems,
+            AlertKey::RestorePaused,
+        ];
+        for key in &keys {
+            assert!(
+                store
+                    .evaluate_alert(key, "duty officer", false, Some(0), 10)?
+                    .is_none()
+            );
+            assert!(
+                store
+                    .evaluate_alert(key, "duty officer", true, Some(u64::MAX), 20)?
+                    .is_some()
+            );
+        }
+        drop(store);
+        let mut store = open(&path)?;
+        for key in &keys {
+            let state = store.alert_state(key)?.ok_or("missing state")?;
+            assert!(state.active);
+            assert_eq!(state.raised_at, Some(20));
+            assert_eq!(state.value, Some(u64::MAX));
+            assert!(
+                store
+                    .evaluate_alert(key, "replacement officer", true, None, 21)?
+                    .is_none()
+            );
+            assert!(
+                store
+                    .evaluate_alert(key, "replacement officer", false, Some(0), 30)?
+                    .is_some()
+            );
+            assert!(
+                store
+                    .evaluate_alert(key, "replacement officer", false, Some(0), 31)?
+                    .is_none()
+            );
+            let state = store.alert_state(key)?.ok_or("missing clear")?;
+            assert!(!state.active);
+            assert_eq!(state.raised_at, Some(20));
+            assert_eq!(state.cleared_at, Some(30));
+            assert_eq!(state.responder, "replacement officer");
+        }
+        let history = store.alert_history(0)?;
+        assert_eq!(history.len(), 14);
+        assert_eq!(history.iter().filter(|h| h.state.active).count(), 7);
+        for table in ["alert_state", "alert_history"] {
+            assert!(
+                store
+                    .db
+                    .execute(&format!("DELETE FROM {table}"), [])
+                    .is_err()
+            );
+        }
+        assert!(
+            store
+                .db
+                .execute("UPDATE alert_history SET time=0", [])
+                .is_err()
+        );
+        Ok(())
+    }
+
+    // Plan section 11 and rule 10: numeric health never returns parked payload/sample text.
+    #[test]
+    fn plan11_alert_health_counts_ages_and_unknowns() -> TestResult {
+        let temp = tempfile::tempdir()?;
+        let store = open(&temp.path().join("metrics.db"))?;
+        assert_eq!(
+            store.alert_value(
+                &AlertKey::OldestUndelivered,
+                100,
+                &[Identifier::new("lab")?]
+            )?,
+            Some(0)
+        );
+        assert_eq!(
+            store.alert_value(&AlertKey::OrderCacheStale, 100, &[Identifier::new("lab")?])?,
+            None
+        );
+        let machine = AlertKey::MachineSilent(Identifier::new("busy")?);
+        assert_eq!(
+            store.alert_value(&machine, 100, &[Identifier::new("lab")?])?,
+            None
+        );
+        store
+            .db
+            .execute("INSERT INTO machine_activity VALUES('busy',90)", [])?;
+        assert_eq!(
+            store.alert_value(&machine, 100, &[Identifier::new("lab")?])?,
+            Some(10)
+        );
+        store.db.execute(
+            "INSERT INTO parked(evidence) VALUES('synthetic-sample-00012')",
+            [],
+        )?;
+        assert_eq!(
+            store.alert_value(&AlertKey::ParkedItems, 100, &[Identifier::new("lab")?])?,
+            Some(1)
+        );
+        store
+            .db
+            .execute("UPDATE parked SET resolution='resolved'", [])?;
+        assert_eq!(
+            store.alert_value(&AlertKey::ParkedItems, 100, &[Identifier::new("lab")?])?,
+            Some(0)
+        );
+        store.db.execute(
+            "INSERT INTO feed(destination,cursor,complete,trusted,polled) VALUES('lab','c',1,1,90)",
+            [],
+        )?;
+        assert_eq!(
+            store.alert_value(&AlertKey::OrderCacheStale, 100, &[Identifier::new("lab")?])?,
+            Some(10)
+        );
+        store.db.execute("UPDATE feed SET trusted=0", [])?;
+        assert_eq!(
+            store.alert_value(&AlertKey::OrderCacheStale, 100, &[Identifier::new("lab")?])?,
+            None
+        );
+        assert_eq!(
+            store.alert_value(&AlertKey::RestorePaused, 100, &[Identifier::new("lab")?])?,
+            Some(0)
+        );
+        assert_eq!(
+            store.alert_value(&AlertKey::UncertainOrders, 100, &[Identifier::new("lab")?])?,
+            Some(0)
+        );
+        Ok(())
+    }
+
+    // Plan section 11: the disk alert can record its transition inside the admission reserve.
+    #[test]
+    fn plan11_disk_alert_does_not_require_free_admission_capacity() -> TestResult {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("disk.db"))?;
+        store.space = Box::new(crate::tests::Space(1));
+        assert!(matches!(store.capacity(1), Err(Error::Capacity)));
+        assert!(
+            store
+                .evaluate_alert(&AlertKey::DiskReserve, "duty officer", true, Some(1), 10)?
+                .is_some()
+        );
+        Ok(())
+    }
+
+    // Plan section 11: upgrading a version-five store backfills message activity.
+    #[test]
+    fn plan11_schema5_activity_backfill_and_live_frames() -> TestResult {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("old.db");
+        let store = open(&path)?;
+        store.db.execute_batch("DROP TRIGGER receipt_activity; DROP TRIGGER frame_activity;
+            DROP TABLE machine_activity; DROP TABLE alert_history; DROP TABLE alert_state;
+            DROP INDEX alert_oldest_pending; DROP INDEX alert_open_parked; DROP INDEX alert_uncertain_orders;
+            PRAGMA user_version=5;")?;
+        let metadata = serde_json::json!({"machine":"busy","received_at":"1970-01-01T00:01:30Z"});
+        store.db.execute(
+            "INSERT INTO receipts VALUES('synthetic',?1,x'00',x'00')",
+            [metadata.to_string()],
+        )?;
+        drop(store);
+        let mut store = open(&path)?;
+        let machine = AlertKey::MachineSilent(Identifier::new("busy")?);
+        assert_eq!(
+            store.alert_value(&machine, 100, &[Identifier::new("lab")?])?,
+            Some(10)
+        );
+        let transfer = Identifier::new("transfer")?;
+        let provenance = crate::FrameProvenance {
+            machine: Identifier::new("busy")?,
+            driver: analyte_model::NamespacedId {
+                namespace: Identifier::new("test")?,
+                value: Identifier::new("v1")?,
+            },
+            config: vec![],
+        };
+        store.journal_frame(&transfer, 1, b"synthetic", &provenance)?;
+        assert_eq!(
+            store.alert_value(&machine, 100, &[Identifier::new("lab")?])?,
+            None
+        );
+        Ok(())
+    }
+}

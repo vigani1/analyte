@@ -109,7 +109,7 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        5
+        6
     );
     assert_eq!(
         store
@@ -129,9 +129,9 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
             .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    store.db.execute_batch("PRAGMA user_version=6")?;
+    store.db.execute_batch("PRAGMA user_version=7")?;
     drop(store);
-    assert!(matches!(open(&path), Err(Error::SchemaTooNew(6))));
+    assert!(matches!(open(&path), Err(Error::SchemaTooNew(7))));
     Ok(())
 }
 
@@ -989,7 +989,7 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        5
+        6
     );
     for trigger in triggers {
         assert_eq!(
