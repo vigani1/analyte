@@ -29,7 +29,7 @@ impl Drop for Owner {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+            super::worker::report_join("folder", &thread.join());
         }
     }
 }
@@ -138,6 +138,8 @@ pub(super) async fn session(
     mut stop: watch::Receiver<bool>,
     mut closing: super::Closing,
 ) -> Result<(), Error> {
+    let context = evidence::Connection::new(machine)?;
+    let machine = &context;
     let (owner, mut files) = Owner::start(
         PathBuf::from(&machine.snapshot.effective().site().endpoint),
         root,
@@ -165,4 +167,35 @@ pub(super) async fn session(
     }
     owner.close().await?;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
+    #[test]
+    fn safety_rule_10_drop_reports_worker_error_and_panic_without_payloads() {
+        for panic in [false, true] {
+            let worker = thread::spawn(move || {
+                if panic {
+                    std::panic::panic_any("protected-panic-token");
+                }
+                Err(invalid("protected-error-token"))
+            });
+            let output = super::super::worker::tests::capture(|| {
+                drop(Owner {
+                    stop: Arc::new(AtomicBool::new(false)),
+                    thread: Some(worker),
+                });
+            });
+            assert!(output.contains("worker=\"folder\""), "{output}");
+            assert!(output.contains(if panic {
+                "worker_panic"
+            } else {
+                "worker_error"
+            }));
+            assert!(!output.contains("protected-"));
+        }
+    }
 }

@@ -169,7 +169,8 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
         store
             .health(
                 &analyte_model::Identifier::new("demo")?,
-                jiff::Timestamp::now().as_second()
+                jiff::Timestamp::now().as_second(),
+                30
             )?
             .pending_count,
         1
@@ -189,7 +190,8 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
         stored(&program)?
             .health(
                 &analyte_model::Identifier::new("demo")?,
-                jiff::Timestamp::now().as_second()
+                jiff::Timestamp::now().as_second(),
+                30
             )?
             .pending_count,
         1
@@ -777,5 +779,61 @@ async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_a
             .iter()
             .all(|(_, a)| a.actor.as_str() == "operator")
     );
+    Ok(())
+}
+
+// ADR 0003 / AGENTS.md safety rule 3: provenance belongs to the connection that read bytes.
+#[tokio::test]
+async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let program = Program::load(&path)?;
+    let (shutdown, stop) = oneshot::channel();
+    let service = tokio::spawn(serve(
+        Program::load(&path)?,
+        Box::new(Space(u64::MAX)),
+        async {
+            stop.await?;
+            Ok(())
+        },
+    ));
+    let mut peer = connect(&program).await?;
+    for control in ["message1", "message2"] {
+        let raw = String::from_utf8(ORU.to_vec())?.replace("message1", control);
+        peer.write_all(&analyte_framing::mllp::encode(
+            raw.as_bytes(),
+            analyte_framing::mllp::Limit::new(1048576)?,
+        )?)
+        .await?;
+        read_ack(&mut peer).await?;
+    }
+    drop(peer);
+    let mut peer = connect(&program).await?;
+    let raw = String::from_utf8(ORU.to_vec())?.replace("message1", "message3");
+    peer.write_all(&analyte_framing::mllp::encode(
+        raw.as_bytes(),
+        analyte_framing::mllp::Limit::new(1048576)?,
+    )?)
+    .await?;
+    read_ack(&mut peer).await?;
+    let store = stored(&program)?;
+    let receipts = store.receipts("")?;
+    assert_eq!(receipts.len(), 3);
+    let metadata = receipts
+        .iter()
+        .map(|r| {
+            store
+                .receipt(r.id)?
+                .ok_or("receipt absent")
+                .map(|r| r.metadata)
+                .map_err(Error::from)
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    assert_eq!(metadata[0].connection, metadata[1].connection);
+    assert_ne!(metadata[0].connection, metadata[2].connection);
+    assert_ne!(metadata[0].connection, metadata[0].machine);
+    drop(store);
+    shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
+    tokio::time::timeout(Duration::from_secs(3), service).await???;
     Ok(())
 }

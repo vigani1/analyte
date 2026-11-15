@@ -2,6 +2,13 @@
 use crate::{Error, invalid, schema::*};
 
 pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> Result<(), Error> {
+    if site.destination.freshness_seconds == 0 {
+        return Err(invalid(
+            path,
+            "site.destination.freshness_seconds",
+            "must be at least one second",
+        ));
+    }
     let endpoint = &site.endpoint;
     if endpoint.is_empty() || endpoint.len() > 1024 || endpoint.chars().any(char::is_control) {
         return Err(invalid(

@@ -17,9 +17,6 @@ pub(crate) struct Candidate {
     pub(crate) version: std::num::NonZeroU64,
 }
 
-/// Cache policy shared with the destination poller (ADR 0004).
-pub(crate) const FRESHNESS_SECONDS: u64 = 30;
-
 /// One cache policy for every query dialog: timeout is unavailable, never empty.
 pub(crate) async fn lookup(
     store: &analyte_store::Handle,
@@ -27,6 +24,7 @@ pub(crate) async fn lookup(
     sample: SampleId,
     until: std::time::Instant,
 ) -> Result<analyte_store::Lookup, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
     let destination = destination(machine);
     match store
         .request(until, move |store| {
@@ -34,7 +32,7 @@ pub(crate) async fn lookup(
                 &destination,
                 &sample,
                 jiff::Timestamp::now().as_second(),
-                FRESHNESS_SECONDS,
+                freshness,
             )
         })
         .await
@@ -48,13 +46,17 @@ pub(crate) async fn lookup(
 /// Only current requested work addressed to this machine enters any outbound mapper.
 pub(crate) fn eligible(order: &analyte_contract::Order, machine: &Machine) -> bool {
     let fields = order.fields();
-    !fields.tombstone
-        && fields.state == analyte_contract::evidence::OrderState::Requested
-        && fields.target_analyzers.as_ref().is_none_or(|targets| {
-            targets
-                .iter()
-                .any(|target| target.as_str() == machine.id.as_str())
-        })
+    analyte_model::OrderState::from(fields.state)
+        .eligible_for(
+            analyte_model::OrderState::Requested,
+            fields.tombstone,
+            fields
+                .target_analyzers
+                .as_ref()
+                .map(|targets| targets.iter().map(Text::as_str)),
+            machine.id.as_str(),
+        )
+        .is_ok()
 }
 
 /// Adapts validated app fields without inventing a code system or position.

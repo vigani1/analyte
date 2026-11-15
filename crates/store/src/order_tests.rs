@@ -56,7 +56,7 @@ fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_re
         ("b", "requested", Some("other"), 200, false),
         ("c", "requested", Some("machine"), 200, false),
         ("d", "requested", None, 200, false),
-        ("e", "cancelled", None, 200, false),
+        ("e", "cancel_confirmed", None, 200, false),
         ("f", "requested", None, 101, false),
         ("g", "requested", None, 200, true),
         ("h", "requested", None, 200, false),
@@ -789,7 +789,7 @@ fn adr0004_cancel_refusal_restores_sent_and_missing_cancel_is_uncertain() -> Tes
         assert!(result.source_code.as_str().contains("CancelRefused"));
         assert!(
             store
-                .order_candidates(&identity()?.destination, &identity()?.machine, "")?
+                .order_candidates(&identity()?.destination, &identity()?.machine, "", 101, 30)?
                 .is_empty()
         );
     }
@@ -1069,5 +1069,213 @@ fn adr0003_0008_item_reasons_are_lossless_when_aggregate_summary_is_bounded() ->
     assert_eq!(rejected.state, OrderState::Rejected);
     assert!(rejected.source_code.as_str().len() < 200);
     assert!(rejected.items.iter().all(|item| item.source_code == reason));
+    Ok(())
+}
+
+// ADR 0003 rule 8: an aggregate Uncertain state never authorizes rewriting a terminal item.
+#[test]
+fn adr0003_rule8_operator_reconciliation_checks_items_and_rolls_back() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("reconcile-items.db"))?;
+    let record = reserve_two(&mut store)?;
+    let outcomes = [ItemDecision::Uncertain, ItemDecision::Rejected]
+        .into_iter()
+        .zip([1, 2])
+        .map(|(decision, index)| {
+            Ok(ItemOutcome {
+                index,
+                decision,
+                code: SourceText::new("peer-evidence")?,
+            })
+        })
+        .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
+    let uncertain = store.finish_order_items(record.id, &outcomes, 102, event)?;
+    assert_eq!(uncertain.state, OrderState::Uncertain);
+    let history: i64 =
+        store
+            .db
+            .query_row("SELECT count(*) FROM machine_order_item_history", [], |r| {
+                r.get(0)
+            })?;
+    let audit_count: i64 = store
+        .db
+        .query_row("SELECT count(*) FROM audit", [], |r| r.get(0))?;
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("orders-reconcile")?,
+        targets: vec![Identifier::new(&record.id.to_string())?],
+        time: 103,
+        reason: analyte_model::Reason::new("synthetic operator evidence")?,
+    };
+    assert!(matches!(
+        store.reconcile_order(record.id, OrderState::Accepted, &audit, event),
+        Err(Error::OrderTransition(analyte_model::TransitionError {
+            from: OrderState::Rejected,
+            to: OrderState::Accepted
+        }))
+    ));
+    let retained = store.machine_order(&record.key)?.ok_or("missing order")?;
+    assert_eq!(
+        serde_json::to_value(&retained)?,
+        serde_json::to_value(&uncertain)?
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM machine_order_item_history", [], |r| r
+                .get::<_, i64>(0))?,
+        history
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM audit", [], |r| r.get::<_, i64>(0))?,
+        audit_count
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
+    Ok(())
+}
+
+// ADR 0003 rule 8 / ORDERS.md: refusal restores retained item state, not a past aggregate snapshot.
+#[test]
+fn adr0003_rule8_cancel_refusal_uses_cancel_from_not_history_json() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("cancel-from.db"))?;
+    let record = reserve_two(&mut store)?;
+    let outcomes = [1, 2].map(|index| ItemOutcome {
+        index,
+        decision: ItemDecision::Sent,
+        code: SourceText::new("AA").expect("constant"),
+    });
+    store.finish_order_items(record.id, &outcomes, 102, event)?;
+    let cancelled = store.transition_order(
+        record.id,
+        OrderState::CancelRequested,
+        SourceText::new("CA")?,
+        103,
+        event,
+    )?;
+    assert!(
+        cancelled
+            .items
+            .iter()
+            .all(|item| item.cancel_from == Some(OrderState::Sent))
+    );
+    // Deliberately conflicting historical aggregate: the current per-item evidence must win.
+    let mut past = cancelled.clone();
+    past.state = OrderState::Accepted;
+    for snapshot in [&past, &cancelled] {
+        store.db.execute(
+            "INSERT INTO machine_order_history(machine_order,evidence) VALUES (?1,?2)",
+            rusqlite::params![record.id, serde_json::to_string(snapshot)?],
+        )?;
+    }
+    let outcomes = [1, 2].map(|index| ItemOutcome {
+        index,
+        decision: ItemDecision::CancelRefused,
+        code: SourceText::new("UC").expect("constant"),
+    });
+    let restored = store.finish_order_items(record.id, &outcomes, 104, event)?;
+    assert_eq!(restored.state, OrderState::Sent);
+    assert!(
+        restored
+            .items
+            .iter()
+            .all(|item| item.state == OrderState::Sent)
+    );
+    Ok(())
+}
+
+// ADR 0004 / safety rule 9: all order readers, reservations and alerts share one trust decision.
+#[test]
+fn rule9_typed_trust_matrix_and_configured_age_boundary() -> TestResult {
+    for case in [
+        "unknown",
+        "incomplete",
+        "paused",
+        "stale",
+        "trusted",
+        "future",
+    ] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("trust.db"))?;
+        let key = identity()?;
+        if case != "unknown" {
+            let mut snapshot = page(1, "requested", false, 1000)?;
+            snapshot.complete = case != "incomplete";
+            snapshot.polled = if case == "future" {
+                131
+            } else if case == "paused" {
+                120
+            } else {
+                100
+            };
+            store.order_page(&snapshot)?;
+        }
+        if case == "paused" {
+            store.audit(&Audit {
+                actor: Identifier::new("operator")?,
+                action: Identifier::new("store-restore")?,
+                targets: vec![],
+                time: 101,
+                reason: analyte_model::Reason::new("synthetic restore")?,
+            })?;
+        }
+        let freshness = if case == "trusted" { 31 } else { 30 };
+        let expected = match case {
+            "unknown" | "future" => OrderTrust::Unknown,
+            "incomplete" => OrderTrust::Incomplete,
+            "paused" => OrderTrust::RestorePaused,
+            "stale" => OrderTrust::Stale { age: 30 },
+            "trusted" => OrderTrust::Trusted { age: 30 },
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            store.order_trust(&key.destination, 130, freshness)?,
+            expected
+        );
+        let lookup = store.orders(&key.destination, &SampleId::new("001a")?, 130, freshness)?;
+        let pending = store.pending_orders(&key.destination, &key.machine, "", 130, freshness)?;
+        assert_eq!(!matches!(lookup, Lookup::NotTrusted), expected.is_trusted());
+        assert_eq!(
+            !matches!(pending, PendingOrders::NotTrusted),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store
+                .order_candidates(&key.destination, &key.machine, "", 130, freshness)
+                .is_ok(),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store
+                .cancel_candidates(&key.destination, &key.machine, 130, freshness)
+                .is_ok(),
+            expected.is_trusted()
+        );
+        assert_eq!(
+            store.alert_value(
+                &AlertKey::OrderCacheStale,
+                130,
+                &[(key.destination.clone(), freshness)]
+            )?,
+            if expected.is_trusted() {
+                Some(30)
+            } else {
+                None
+            }
+        );
+        assert_eq!(
+            store
+                .reserve_send(&key, NonZeroU64::MIN, 130, freshness)?
+                .is_ok(),
+            expected.is_trusted()
+        );
+    }
     Ok(())
 }

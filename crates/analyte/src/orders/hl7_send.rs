@@ -261,6 +261,7 @@ pub(super) async fn next(
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
     let settings = machine
         .snapshot
         .effective()
@@ -275,7 +276,18 @@ pub(super) async fn next(
     let target = machine.id.clone();
     let cancels = store
         .request(deadline(), move |store| {
-            store.cancel_candidates(&dest, &target)
+            if !store
+                .order_trust(&dest, jiff::Timestamp::now().as_second(), freshness)?
+                .is_trusted()
+            {
+                return Ok(Vec::new());
+            }
+            store.cancel_candidates(
+                &dest,
+                &target,
+                jiff::Timestamp::now().as_second(),
+                freshness,
+            )
         })
         .await?;
     for (record, cached) in cancels {
@@ -293,7 +305,7 @@ pub(super) async fn next(
                     version,
                     jiff::Timestamp::now().as_second(),
                     &owner,
-                    super::FRESHNESS_SECONDS,
+                    freshness,
                     super::event,
                 )
             })
@@ -323,7 +335,7 @@ pub(super) async fn next(
         let command = match Command::new(machine, &app, options) {
             Ok(command) => command,
             Err(error) => {
-                reject(store, key, version, &error.to_string()).await?;
+                reject(store, key, version, &error.to_string(), freshness).await?;
                 continue;
             }
         };
@@ -341,7 +353,7 @@ pub(super) async fn next(
                         identity: &identity,
                         version,
                         now: jiff::Timestamp::now().as_second(),
-                        freshness: super::FRESHNESS_SECONDS,
+                        freshness,
                     },
                     OrderItems::PerTest {
                         namespace: &namespace,
@@ -364,11 +376,25 @@ pub(super) async fn next(
             }
             Err(analyte_store::Error::ItemIdentityTooLong) => {
                 reserving.clear();
-                reject(store, key, version, "HL7-placer-identity-too-long").await?;
+                reject(
+                    store,
+                    key,
+                    version,
+                    "HL7-placer-identity-too-long",
+                    freshness,
+                )
+                .await?;
             }
             Err(analyte_store::Error::DeliveryBuild(error)) => {
                 reserving.clear();
-                reject(store, key, version, &format!("HL7-order-preflight:{error}")).await?;
+                reject(
+                    store,
+                    key,
+                    version,
+                    &format!("HL7-order-preflight:{error}"),
+                    freshness,
+                )
+                .await?;
             }
             Err(error) => return Err(error.into()),
         }
@@ -380,6 +406,7 @@ async fn reject(
     key: MachineOrderKey,
     version: std::num::NonZeroU64,
     reason: &str,
+    freshness: u64,
 ) -> Result<(), Error> {
     let reason = SourceText::new(reason)?;
     let result = store
@@ -389,7 +416,7 @@ async fn reject(
                     identity: &key,
                     version,
                     now: jiff::Timestamp::now().as_second(),
-                    freshness: super::FRESHNESS_SECONDS,
+                    freshness,
                 },
                 reason,
                 super::event,

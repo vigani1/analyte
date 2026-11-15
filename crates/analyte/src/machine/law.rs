@@ -1,6 +1,6 @@
 //! LAW program exchanges; all protocol views, builders and ACK rules stay in hl7.
 use crate::orders::law::{Connection, Reply, response_metadata};
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_framing::mllp;
 use analyte_hl7::{AckCode, AckError, Options, Responsibility, law};
 use analyte_model::ReceiptId;
@@ -11,7 +11,7 @@ use tokio::sync::watch;
 /// Cancellation may leave a durable receipt/interpretation, never permission to resend work.
 /// The first-byte deadline includes raw commit, interpretation and response issuance.
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
@@ -153,7 +153,7 @@ async fn write(
 
 async fn process(
     store: &Handle,
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     event: mllp::Event,
     options: Options,
     mut _stop: watch::Receiver<bool>,

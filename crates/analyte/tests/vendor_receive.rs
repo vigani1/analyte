@@ -205,7 +205,13 @@ impl Running {
         let metadata: analyte_model::ReceiptMetadata = serde_json::from_str(&metadata)?;
         assert_eq!(metadata.driver.namespace.as_str(), driver);
         assert_eq!(metadata.driver.value.as_str(), env!("CARGO_PKG_VERSION"));
-        assert_eq!(metadata.config_version.as_str(), "1");
+        assert_eq!(
+            metadata.config_version.as_str(),
+            analyte_contract::content_digest(&config)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
         assert_eq!(
             metadata.config_digest.0,
             analyte_contract::content_digest(&config)
@@ -619,5 +625,79 @@ async fn poct01_b6_rule2_unknown_test_is_unmapped_and_operator_visible() -> Resu
     run.parked("UnknownTest").await?;
     run.stored(raw.as_bytes(), "analyte-poct")?;
     run.no_results()?;
+    run.close().await
+}
+
+// AGENTS.md safety rule 2; VIDAS BCI-A chapter 3: interrupted transfers require reconciliation.
+#[tokio::test]
+async fn adr0003_rule2_vidas_disconnect_executes_park_action() -> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/vidas_literal.toml")).await?;
+    run.peer.write_all(&[5]).await?;
+    assert_eq!(byte(&mut run.peer).await?, 6);
+    run.peer.shutdown().await?;
+    run.parked(
+        "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation",
+    )
+    .await?;
+    run.close().await
+}
+
+// AGENTS.md safety rule 2; POCT01-A2 dialog abnormal closure is a retained operator outcome.
+#[tokio::test]
+async fn adr0003_rule2_poct_disconnect_executes_close_action() -> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    run.peer
+        .write_all(poct_peer::hello("hello").as_bytes())
+        .await?;
+    xml(&mut run.peer).await?;
+    run.peer.shutdown().await?;
+    run.parked("POCT dialog closure: normal=false; unresolved custody tickets: []")
+        .await?;
+    run.close().await
+}
+
+// AGENTS.md safety rules 1/2; Autolyser Rev18 storage failure must park, never acknowledge.
+#[tokio::test]
+async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/autolyser.toml")).await?;
+    poll(&mut run.peer, b'R').await?;
+    let raw = report()?;
+    let encoded = raw.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    // Refuse the assembled report only; transport fragments and the parking write remain writable.
+    run.database()?.execute_batch(&format!(
+        "CREATE TRIGGER refuse_report BEFORE INSERT ON receipts WHEN NEW.raw=X'{encoded}' BEGIN SELECT RAISE(ABORT, 'synthetic report storage failure'); END;"
+    ))?;
+    let middle = raw.len() / 2;
+    let first = raw.get(..middle).ok_or("report split")?;
+    let baseline: i64 = run.database()?.query_row(
+        "SELECT coalesce(sum(length(raw)),0) FROM receipts",
+        [],
+        |r| r.get(0),
+    )?;
+    run.peer.write_all(first).await?;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let bytes: i64 = run.database()?.query_row(
+                "SELECT coalesce(sum(length(raw)),0) FROM receipts",
+                [],
+                |r| r.get(0),
+            )?;
+            if bytes >= baseline + i64::try_from(first.len())? {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        Ok::<_, Error>(())
+    })
+    .await??;
+    run.peer
+        .write_all(raw.get(middle..).ok_or("report split")?)
+        .await?;
+    run.parked("Autolyser: durable storage unavailable").await?;
+    let mut reply = [0u8; 8];
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(3), run.peer.read(&mut reply)).await??,
+        0
+    );
     run.close().await
 }

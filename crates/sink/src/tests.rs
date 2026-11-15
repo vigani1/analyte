@@ -866,7 +866,8 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
             store
                 .request(until()?, |s| s.health(
                     &Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?,
-                    jiff::Timestamp::now().as_second()
+                    jiff::Timestamp::now().as_second(),
+                    30
                 ))
                 .await?
                 .pending_count,
@@ -943,6 +944,7 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
             s.health(
                 &Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?,
                 jiff::Timestamp::now().as_second(),
+                30,
             )
         })
         .await?;

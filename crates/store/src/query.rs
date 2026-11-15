@@ -311,7 +311,12 @@ impl Store {
     /// Reads one consistent destination snapshot without exposing clinical bytes.
     /// # Errors
     /// Returns database or aggregate overflow failures.
-    pub fn health(&self, destination: &Identifier, now: i64) -> Result<crate::Health, Error> {
+    pub fn health(
+        &self,
+        destination: &Identifier,
+        now: i64,
+        freshness: u64,
+    ) -> Result<crate::Health, Error> {
         let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state='paused'),0) FROM outbox WHERE destination=?1 AND state!='done'",[destination.as_str()], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
         let feed: Option<(i64, bool, bool)> = self
             .db
@@ -330,7 +335,7 @@ impl Store {
             paused,
             last_successful_poll: feed.map(|f| f.0),
             snapshot_complete: feed.is_some_and(|f| f.1),
-            cache_trusted: feed.is_some_and(|f| f.1 && f.2),
+            cache_trusted: self.order_trust(destination, now, freshness)?.is_trusted(),
         })
     }
 }

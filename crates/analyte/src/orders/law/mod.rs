@@ -203,6 +203,7 @@ impl Connection {
         until: Instant,
         options: Options,
     ) -> Result<Reply, Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         let cfg = machine.snapshot.effective().machine();
         let work = Arc::new(
             cfg.law
@@ -242,7 +243,7 @@ impl Connection {
                 let now = jiff::Timestamp::now().as_second();
                 let mut found = Vec::new();
                 if let Some(sample) = sample {
-                    match store.orders(&destination, &sample, now, super::FRESHNESS_SECONDS)? {
+                    match store.orders(&destination, &sample, now, freshness)? {
                         Lookup::Orders(orders) => {
                             for order in orders {
                                 let key = MachineOrderKey {
@@ -264,13 +265,7 @@ impl Connection {
                         if Instant::now() >= until {
                             return Err(analyte_store::Error::Timeout);
                         }
-                        match store.pending_orders(
-                            &destination,
-                            &target,
-                            &after,
-                            now,
-                            super::FRESHNESS_SECONDS,
-                        )? {
+                        match store.pending_orders(&destination, &target, &after, now, freshness)? {
                             PendingOrders::NotTrusted => {
                                 return Err(analyte_store::Error::Conflict);
                             }

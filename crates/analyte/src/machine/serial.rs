@@ -16,7 +16,7 @@ impl Drop for Owner {
     fn drop(&mut self) {
         self.cancellation.cancel();
         if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+            super::worker::report_join("serial", &thread.join());
         }
     }
 }
@@ -102,4 +102,35 @@ pub(super) async fn run(
     drop(conn);
     owner.close().await?;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
+    #[test]
+    fn safety_rule_10_drop_reports_worker_error_and_panic_without_payloads() {
+        for panic in [false, true] {
+            let worker = thread::spawn(move || {
+                if panic {
+                    std::panic::panic_any("protected-panic-token");
+                }
+                Err(analyte_transport::Error::Deadline("protected-error-token"))
+            });
+            let output = super::super::worker::tests::capture(|| {
+                drop(Owner {
+                    cancellation: Cancellation::default(),
+                    thread: Some(worker),
+                });
+            });
+            assert!(output.contains("worker=\"serial\""), "{output}");
+            assert!(output.contains(if panic {
+                "worker_panic"
+            } else {
+                "worker_error"
+            }));
+            assert!(!output.contains("protected-"));
+        }
+    }
 }

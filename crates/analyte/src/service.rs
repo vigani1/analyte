@@ -210,7 +210,12 @@ async fn serve_with(
         let destinations = program
             .machines()
             .iter()
-            .map(|machine| machine.snapshot.effective().site().destination.name.clone())
+            .map(|machine| {
+                (
+                    machine.snapshot.effective().site().destination.name.clone(),
+                    machine.destination_limits.freshness.as_secs(),
+                )
+            })
             .collect();
         let stop = stopping.clone();
         let component = watchdog.component("alert-evaluator".into());

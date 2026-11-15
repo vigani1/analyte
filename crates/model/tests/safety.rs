@@ -1,4 +1,5 @@
 //! Synthetic cases from plan §6, ADR 0002/0003 and AGENTS clinical rules 3–8.
+use analyte_model::OrderTransition;
 use analyte_model::*;
 use proptest::prelude::*;
 use serde::{
@@ -82,26 +83,42 @@ fn rule7_lists_reject_unbounded_deserialization() {
 #[test]
 fn rule8_lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result<(), TransitionError>
 {
-    let sending = OrderState::Requested.transition(OrderState::Sending)?;
-    let sent = sending.transition(OrderState::Sent)?;
-    let accepted = sent.transition(OrderState::Accepted)?;
-    assert_eq!(accepted.transition(OrderState::Done)?, OrderState::Done);
-    let cancel = accepted.transition(OrderState::CancelRequested)?;
+    let sending =
+        OrderState::Requested.transition(OrderTransition::Advance(OrderState::Sending))?;
+    let sent = sending.transition(OrderTransition::Advance(OrderState::Sent))?;
+    let accepted = sent.transition(OrderTransition::Advance(OrderState::Accepted))?;
     assert_eq!(
-        cancel.transition(OrderState::CancelConfirmed)?,
+        accepted.transition(OrderTransition::Advance(OrderState::Done))?,
+        OrderState::Done
+    );
+    let cancel = accepted.transition(OrderTransition::Advance(OrderState::CancelRequested))?;
+    assert_eq!(
+        cancel.transition(OrderTransition::Advance(OrderState::CancelConfirmed))?,
         OrderState::CancelConfirmed
     );
-    let uncertain = sent.transition(OrderState::Uncertain)?;
+    let uncertain = sent.transition(OrderTransition::Advance(OrderState::Uncertain))?;
     assert_eq!(
-        uncertain.transition(OrderState::Sent),
+        uncertain.transition(OrderTransition::Advance(OrderState::Sent)),
         Err(TransitionError {
             from: uncertain,
             to: OrderState::Sent
         })
     );
-    assert!(uncertain.transition(OrderState::Requested).is_err());
-    assert!(OrderState::Done.transition(OrderState::Sent).is_err());
-    assert!(OrderState::Requested.transition(OrderState::Done).is_err());
+    assert!(
+        uncertain
+            .transition(OrderTransition::Advance(OrderState::Requested))
+            .is_err()
+    );
+    assert!(
+        OrderState::Done
+            .transition(OrderTransition::Advance(OrderState::Sent))
+            .is_err()
+    );
+    assert!(
+        OrderState::Requested
+            .transition(OrderTransition::Advance(OrderState::Done))
+            .is_err()
+    );
     Ok(())
 }
 
