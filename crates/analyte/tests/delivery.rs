@@ -333,8 +333,9 @@ async fn plan13_adr0008_astm_and_hl7_deliver_once_retransmission_and_correction(
 async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), false)?;
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let address = listener.local_addr()?;
+    // A real outage refuses connections; an unserved listener would instead
+    // queue half-finished attempts that the receiver later answers first.
+    let address = TcpListener::bind("127.0.0.1:0").await?.local_addr()?;
     let service = Running::start(&path, &format!("http://{address}"), "synthetic-api")?;
     let mut peer = connect(&path, "hl7").await?;
     assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
@@ -343,6 +344,7 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
             Ok((r.get(0)?, r.get(1)?))
         })?;
     wait_state(&path, "pending", 1).await?;
+    let listener = TcpListener::bind(address).await?;
     let mut reference =
         Reference::start(&directory.path().join("reference.db"), listener, false).await?;
     let event = reference.event().await?;
