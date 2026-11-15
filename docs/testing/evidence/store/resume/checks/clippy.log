@@ -1,9 +1,7 @@
-cargo.exe :     Checking analyte-store v0.1.0
-(C:\Users\super\.t3\worktrees\analyte\t3-3eebd17c-275a01987eda2e57\crates\store)
-At line:2 char:125
+cargo.exe :     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.31s
+At line:2 char:190
 + ... STEXITCODE; & "$HOME/.cargo/bin/cargo.exe" clippy --all-targets --all ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (    Checking an...7\crates\store):String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (    Finished `d...get(s) in 0.31s:String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
-
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.87s
+ 

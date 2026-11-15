@@ -295,9 +295,11 @@ After `git merge --signoff origin/main`, the final five commands all exited 0 on
 | Check | Output |
 | --- | --- |
 | `cargo fmt --check` | Exit 0; no diagnostics. |
-| `cargo clippy --all-targets --all-features -- -D warnings` | Exit 0; dev profile finished in 0.87s. |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Exit 0; dev profile finished successfully. |
 | `cargo test --workspace` | Exit 0; store: 103 passed, 1 manual benchmark ignored. All other workspace test targets and doc tests completed successfully. |
 | `cargo deny check` | Exit 0; advisories ok, bans ok, licenses ok, sources ok. Existing duplicate-dependency warnings remain. |
-| `cargo check --manifest-path fuzz/Cargo.toml --bins` | Exit 0; dev profile finished in 0.61s. Fuzz targets compiled, not executed. |
+| `cargo check --manifest-path fuzz/Cargo.toml --bins` | Exit 0; dev profile finished successfully. Fuzz targets compiled, not executed. |
 
 [Retained check outputs and exit codes](evidence/store/resume/checks/exits.json) and sibling logs preserve the evidence. No Linux or minimum-Rust run was performed locally; those remain CI work. No production code, dependency or plan claim changed in this PR.
+
+The final fetch also merged main's ADR 0012 documentation update (#90) with sign-off. All five checks were rerun after that merge and again exited 0; the retained continuation check logs are those final runs.

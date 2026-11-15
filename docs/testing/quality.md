@@ -400,8 +400,8 @@ command also completed successfully. No checks on Linux or the minimum Rust
 version were run locally; those remain CI checks.
 
 This is framing/dialog, mapping, then contract/sink, not a completed six-crate
-mutation audit. Store remains incomplete; its existing tests and safety regions above
-have not yet been challenged by mutations. No files owned by the fuzz/timing builder were edited.
+mutation audit. Store remains incomplete; the completed custody/delivery/parked
+subset and remaining modules are recorded in the store report. No files owned by the fuzz/timing builder were edited.
 
 ### Program coverage remains a priority
 

@@ -1,16 +1,16 @@
 cargo.exe : warning[duplicate]: found 2 duplicate entries for crate 'bitflags'
-At line:2 char:397
+At line:2 char:462
 + ... STEXITCODE; & "$HOME/.cargo/bin/cargo.exe" deny check *> target/store ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : NotSpecified: (warning[duplica...rate 'bitflags':String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
-
+ 
    ┌─ C:\Users\super\.t3\worktrees\analyte\t3-3eebd17c-275a01987eda2e57/Cargo.lock:32:1
-   │
+   │  
 32 │ ╭ bitflags 1.3.2 registry+https://github.com/rust-lang/crates.io-index
 33 │ │ bitflags 2.13.2 registry+https://github.com/rust-lang/crates.io-index
    │ ╰─────────────────────────────────────────────────────────────────────┘ lock entries
-   │
+   │  
    ├ bitflags v1.3.2
      └── nix v0.26.4
          └── serialport v4.10.1
@@ -109,11 +109,11 @@ At line:2 char:397
 
 warning[duplicate]: found 2 duplicate entries for crate 'syn'
     ┌─ C:\Users\super\.t3\worktrees\analyte\t3-3eebd17c-275a01987eda2e57/Cargo.lock:184:1
-    │
+    │  
 184 │ ╭ syn 2.0.119 registry+https://github.com/rust-lang/crates.io-index
 185 │ │ syn 3.0.10 registry+https://github.com/rust-lang/crates.io-index
     │ ╰────────────────────────────────────────────────────────────────┘ lock entries
-    │
+    │  
     ├ syn v2.0.119
       ├── jni-macros v0.22.4
       │   └── jni v0.22.4
@@ -333,11 +333,11 @@ warning[duplicate]: found 2 duplicate entries for crate 'syn'
 
 warning[duplicate]: found 2 duplicate entries for crate 'windows-link'
     ┌─ C:\Users\super\.t3\worktrees\analyte\t3-3eebd17c-275a01987eda2e57/Cargo.lock:232:1
-    │
+    │  
 232 │ ╭ windows-link 0.2.1 registry+https://github.com/rust-lang/crates.io-index
 233 │ │ windows-link 0.100.0 registry+https://github.com/rust-lang/crates.io-index
     │ ╰──────────────────────────────────────────────────────────────────────────┘ lock entries
-    │
+    │  
     ├ windows-link v0.2.1
       ├── jiff v0.2.45
       │   ├── analyte v0.1.0
@@ -489,11 +489,11 @@ warning[duplicate]: found 2 duplicate entries for crate 'windows-link'
 
 warning[duplicate]: found 2 duplicate entries for crate 'windows-sys'
     ┌─ C:\Users\super\.t3\worktrees\analyte\t3-3eebd17c-275a01987eda2e57/Cargo.lock:235:1
-    │
+    │  
 235 │ ╭ windows-sys 0.52.0 registry+https://github.com/rust-lang/crates.io-index
 236 │ │ windows-sys 0.61.2 registry+https://github.com/rust-lang/crates.io-index
     │ ╰────────────────────────────────────────────────────────────────────────┘ lock entries
-    │
+    │  
     ├ windows-sys v0.52.0
       └── serialport v4.10.1
           ├── analyte v0.1.0
