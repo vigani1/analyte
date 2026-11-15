@@ -1,7 +1,8 @@
-﻿//! LAW query views. Evidence: documented, PaLM TF-2b Rev 11 Ã‚Â§3.27.4.
+//! LAW query views. Evidence: documented, PaLM TF-2b Rev 11 Ãƒâ€šÃ‚Â§3.27.4.
 //!
 //! These views borrow the original message. A validation error never consumes it.
-//! Work downloads and results are not yet implemented by this module.
+//! Query responses, work downloads and results have separate pure APIs. Full
+//! field/option conformance is still incomplete; see the crate README.
 use crate::{Field, Message, Msh, Segment, Version};
 use thiserror::Error;
 
@@ -297,3 +298,10 @@ fn msh(message: &Message) -> Result<Msh<'_>, crate::Error> {
 pub fn control_id(raw: &[u8]) -> Result<crate::ControlId<'_>, crate::Error> {
     crate::ControlId::with_limit(raw, 50)
 }
+
+mod failure;
+
+pub use failure::{
+    ErrorLocation, Failure, receive_acknowledgment, receive_query, receive_results,
+    receive_work_response,
+};

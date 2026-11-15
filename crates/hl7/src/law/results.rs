@@ -108,18 +108,54 @@ fn values(segment: Segment<'_>) -> Result<Vec<Value<'_>>, Error> {
         }
         values.push(match kind {
             b"NM" => {
-                if !decimal(value) {
+                if value.len() > 16 || !decimal(value) {
                     return Err(content("OBX", 5));
                 }
                 Value::Number(value)
             }
-            b"SN" => Value::StructuredNumber(value),
-            b"ST" | b"TX" | b"FT" => Value::Text(value),
+            b"SN" => {
+                let parts: Vec<_> = value
+                    .split(|b| *b == segment.delimiters.component)
+                    .collect();
+                if parts.len() > 4
+                    || !matches!(
+                        parts.first().copied(),
+                        Some(b"" | b"<" | b">" | b"<=" | b">=" | b"=" | b"<>")
+                    )
+                    || parts.get(1).is_none_or(|v| !decimal(v))
+                {
+                    return Err(content("OBX", 5));
+                }
+                let separator = parts.get(2).copied().unwrap_or_default();
+                if !matches!(separator, b"" | b":" | b"/" | b"-" | b"+")
+                    || (!separator.is_empty() && parts.get(3).is_none_or(|v| !decimal(v)))
+                {
+                    return Err(content("OBX", 5));
+                }
+                Value::StructuredNumber(value)
+            }
+            b"ST" | b"TX" | b"FT" => {
+                let maximum = if kind == b"ST" { 200 } else { 65536 };
+                if value.len() > maximum {
+                    return Err(content("OBX", 5));
+                }
+                Value::Text(value)
+            }
             b"CE" | b"CWE" => Value::Coded(value),
             b"EI" => Value::Identity(value),
             b"ED" => Value::Encapsulated(value),
             b"RP" => Value::Reference(value),
-            b"NA" => Value::Array(value),
+            b"NA" => {
+                for (index, axis) in value
+                    .split(|b| *b == segment.delimiters.component)
+                    .enumerate()
+                {
+                    if (index == 0 || !axis.is_empty()) && (axis.len() > 16 || !decimal(axis)) {
+                        return Err(content("OBX", 5));
+                    }
+                }
+                Value::Array(value)
+            }
             b"DT" | b"TM" | b"TS" => Value::Time(value),
             _ => return Err(content("OBX", 2)),
         });
@@ -154,6 +190,7 @@ pub struct Attached<'a> {
 /// Observation with AWOS/specimen/container context, without invented identities.
 #[derive(Debug)]
 pub struct Observation<'a> {
+    order_ordinal: usize,
     segment: Segment<'a>,
     order: Segment<'a>,
     specimen: Segment<'a>,
@@ -275,6 +312,7 @@ impl<'a> Results<'a> {
         let mut attached = Vec::new();
         let mut order_status = None;
         let mut order_count = 0usize;
+        let mut specimen_count = 0usize;
         let mut observation_count = 0usize;
         let mut has_patient = false;
         let mut has_visit = false;
@@ -301,6 +339,13 @@ impl<'a> Results<'a> {
                     });
                 }
                 b"SPM" => {
+                    if specimen.is_some() && order.is_none() {
+                        return Err(content("OBR", 0));
+                    }
+                    specimen_count = specimen_count.checked_add(1).ok_or(content("SPM", 1))?;
+                    if raw(segment, 1) != specimen_count.to_string().as_bytes() {
+                        return Err(content("SPM", 1));
+                    }
                     check_complete(order_status, observation_count)?;
                     if order.is_some() && order_status.is_none() {
                         return Err(content("ORC", 0));
@@ -375,7 +420,12 @@ impl<'a> Results<'a> {
                             return Err(content("OBX", field));
                         }
                     }
+                    let sequence = observation_count.checked_add(1).ok_or(content("OBX", 1))?;
+                    if raw(segment, 1) != sequence.to_string().as_bytes() {
+                        return Err(content("OBX", 1));
+                    }
                     let observation = Observation {
+                        order_ordinal: order_count,
                         segment,
                         order: order.ok_or(content("OBR", 0))?,
                         specimen: specimen.ok_or(content("SPM", 0))?,
@@ -418,8 +468,28 @@ impl<'a> Results<'a> {
         if order.is_some() && order_status.is_none() {
             return Err(content("ORC", 0));
         }
-        if order_count == 0 {
+        if order_count == 0 || order.is_none() {
             return Err(content("OBR", 0));
+        }
+        let mut code_counts = std::collections::BTreeMap::new();
+        for observation in &observations {
+            let count = code_counts
+                .entry((observation.order_ordinal, observation.code()))
+                .or_insert(0usize);
+            *count = count.checked_add(1).ok_or(content("OBX", 4))?;
+        }
+        for observation in &observations {
+            let repeated_code = code_counts
+                .get(&(observation.order_ordinal, observation.code()))
+                .is_some_and(|count| *count > 1);
+            if repeated_code {
+                let parts: Vec<_> = observation.sub_id().split(|b| *b == d.component).collect();
+                if parts.get(1).is_none_or(|v| v.is_empty())
+                    || parts.get(2).is_none_or(|v| v.is_empty())
+                {
+                    return Err(content("OBX", 4));
+                }
+            }
         }
         Ok(Self {
             message,
@@ -465,6 +535,9 @@ pub fn result_acknowledgment(
     error: Option<AckError<'_>>,
     options: Options,
 ) -> Result<Option<Message>, Error> {
+    if !super::profile::timestamp(response.timestamp, true) {
+        return Err(content("MSH", 7));
+    }
     if code == AckCode::Aa {
         Results::new(message)?;
     }
@@ -497,10 +570,7 @@ pub fn result_acknowledgment(
         })?;
     }
     wire.append(b"\r")?;
-    for segment in ack.segments().skip(1) {
-        wire.append(segment.raw())?;
-        wire.append(b"\r")?;
-    }
+    super::responses::append_ack_segments(&mut wire, &ack)?;
     Ok(Some(Message::parse(
         &wire.bytes,
         Options {

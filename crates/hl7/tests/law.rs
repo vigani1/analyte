@@ -6,7 +6,7 @@ use analyte_hl7::{
 use proptest::prelude::*;
 
 fn query(body: &str) -> Result<Message, analyte_hl7::Error> {
-    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101||QBP^Q11^QBP_Q11|q1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\r{body}\rRCP|I||R^Real Time^HL70394\r").as_bytes(), utf8_options())
+    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101120000+0000||QBP^Q11^QBP_Q11|q1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\r{body}\rRCP|I||R^Real Time^HL70394\r").as_bytes(), utf8_options())
 }
 
 #[test]
@@ -91,7 +91,7 @@ proptest! {
 fn response_metadata() -> Result<analyte_hl7::Response<'static>, analyte_hl7::Error> {
     Ok(analyte_hl7::Response {
         control_id: analyte_hl7::ControlId::new(b"rsp-1")?,
-        timestamp: b"202601011200",
+        timestamp: b"20260101120000+0000",
     })
 }
 
@@ -242,7 +242,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
     };
     let a = Awos::new(
         b"awos-1",
-        b"sample-01",
+        b"sample-01&99LAB",
         b"SER^Serum^HL70487",
         b"P",
         b"000tube",
@@ -251,7 +251,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
     )?;
     let b = Awos::new(
         b"awos-2",
-        b"sample-01",
+        b"sample-01&99LAB",
         b"SER^Serum^HL70487",
         b"P",
         b"000tube",
@@ -262,7 +262,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
         &[a, b],
         address(),
         response_metadata()?,
-        Capabilities::default(),
+        work_capabilities(),
         utf8_options(),
     )?;
     let ids: Vec<_> = message
@@ -278,7 +278,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
             &[a, a],
             address(),
             response_metadata()?,
-            Capabilities::default(),
+            work_capabilities(),
             utf8_options()
         )
         .is_err()
@@ -295,7 +295,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
             &[instructed],
             address(),
             response_metadata()?,
-            Capabilities::default(),
+            work_capabilities(),
             utf8_options()
         )
         .is_err()
@@ -304,7 +304,7 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
         dilution: true,
         repeat_control: true,
         priority: true,
-        ..Capabilities::default()
+        ..work_capabilities()
     };
     let message = work_order(
         &[instructed],
@@ -356,7 +356,7 @@ fn law_tf2b_3_28_4_negative_lab28_for_genuine_no_work() -> Result<(), Box<dyn st
         assert_eq!(orc.field(1).map(Field::raw), Some(b"DC".as_slice()));
         assert_eq!(
             orc.field(9).map(Field::raw),
-            Some(b"202601011200".as_slice())
+            Some(b"20260101120000".as_slice())
         );
     }
     Ok(())
@@ -367,11 +367,11 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
 -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         AckCode,
-        law::{Awos, AwosOutcome, Capabilities, WorkAction, WorkResponse, work_order},
+        law::{Awos, AwosOutcome, WorkAction, WorkResponse, work_order},
     };
     let work = Awos::new(
         b"awos-1",
-        b"sample",
+        b"sample&99LAB",
         b"SER^Serum^HL70487",
         b"P",
         b"tube",
@@ -382,7 +382,23 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
         &[work],
         address(),
         response_metadata()?,
-        Capabilities::default(),
+        work_capabilities(),
+        utf8_options(),
+    )?;
+    let cancelled = Awos::new(
+        b"awos-1",
+        b"sample&99LAB",
+        b"SER^Serum^HL70487",
+        b"P",
+        b"tube",
+        b"test^Test^99LAB",
+        WorkAction::Cancel,
+    )?;
+    let cancellation = work_order(
+        &[cancelled],
+        address(),
+        response_metadata()?,
+        work_capabilities(),
         utf8_options(),
     )?;
     for (control, status, expected) in [
@@ -392,10 +408,18 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
         ("UC", "IP", AwosOutcome::UnableToCancel),
     ] {
         let incoming = format!(
-            "MSH|^~\\&|A|AF|M|MF|20260101||ORL^O34^ORL_O42|orl1|P|2.5.1||||||UNICODE UTF-8|||LAB-28^IHE\rMSA|AA|rsp-1\rSPM|1|||SER|||||||P\rSAC|||tube\rORC|{control}|awos-1|||{status}\r"
+            "MSH|^~\\&|A|AF|M|MF|20260101120000+0000||ORL^O34^ORL_O42|orl1|P|2.5.1||||||UNICODE UTF-8|||LAB-28^IHE\rMSA|AA|rsp-1\rSPM|1|||SER|||||||P\rSAC|||tube\rORC|{control}|awos-1|||{status}\r"
         );
         let message = Message::parse(incoming.as_bytes(), utf8_options())?;
-        let parsed = WorkResponse::new(&message, &sent)?;
+        let request = if matches!(control, "CR" | "UC") {
+            &cancellation
+        } else {
+            &sent
+        };
+        let parsed = WorkResponse::new(&message, request)?;
+        if matches!(control, "CR" | "UC") {
+            assert!(WorkResponse::new(&message, &sent).is_err());
+        }
         assert_eq!(parsed.acceptance(), AckCode::Aa);
         assert_eq!(
             parsed.decisions().first().map(|d| d.outcome),
@@ -411,7 +435,7 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
 }
 
 fn results_message(awos: &str, extra: &str) -> Result<Message, analyte_hl7::Error> {
-    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01||SER^Serum^HL70487|||||||P\rSAC|||000tube\rOBR||{awos}||test^Test^99LAB\rORC|SC||||CM\r{extra}").as_bytes(), utf8_options())
+    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101120000+0000||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01&99LAB||SER^Serum^HL70487|||||||P\rSAC|||000tube\rOBR||{awos}||test^Test^99LAB\rORC|SC||||CM\r{extra}").as_bytes(), utf8_options())
 }
 
 fn observation(code: &str, sub_id: &str, kind: &str, value: &str, status: &str) -> String {
@@ -431,11 +455,11 @@ fn observation(code: &str, sub_id: &str, kind: &str, value: &str, status: &str) 
             },
         ),
         (6, "0-2"),
-        (7, "N"),
+        (7, "N^Normal^HL70078"),
         (10, status),
         (15, "operator^Synthetic"),
         (17, "instrument^99LAB~module^99LAB"),
-        (18, "202601011200"),
+        (18, "20260101120000"),
         (28, "RSLT"),
     ] {
         if let Some(field) = fields.get_mut(index) {
@@ -452,7 +476,7 @@ fn law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_
         Field,
         law::{Parent, ResultStatus, Results, Value},
     };
-    let mut body = observation("test^Test^99LAB", "1^run01", "SN", "<^0.1", "C");
+    let mut body = observation("test^Test^99LAB", "1^1^1", "SN", "<^0.1", "C");
     body.push_str("TCD|test^Test^99LAB|^1^:^5\rNTE|1|Z|Synthetic observation note\r");
     let message = results_message("awos-1", &body)?;
     let results = Results::new(&message)?;
@@ -465,7 +489,7 @@ fn law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_
         Some(b"awos-1".as_slice())
     );
     assert_eq!(result.code(), b"test^Test^99LAB");
-    assert_eq!(result.sub_id(), b"1^run01");
+    assert_eq!(result.sub_id(), b"1^1^1");
     assert_eq!(result.status(), ResultStatus::Corrected);
     assert!(matches!(
         result.values().first(),
@@ -477,14 +501,17 @@ fn law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_
     );
     assert_eq!(
         result.specimen().field(2).map(Field::raw),
-        Some(b"sample-01".as_slice())
+        Some(b"sample-01&99LAB".as_slice())
     );
     assert_eq!(
         result.units().map(Field::raw),
         Some(b"mg/L^mg/L^UCUM".as_slice())
     );
     assert_eq!(result.range().map(Field::raw), Some(b"0-2".as_slice()));
-    assert_eq!(result.flags().map(Field::raw), Some(b"N".as_slice()));
+    assert_eq!(
+        result.flags().map(Field::raw),
+        Some(b"N^Normal^HL70078".as_slice())
+    );
     assert_eq!(result.equipment().map(|f| f.repetitions().count()), Some(2));
     assert!(
         results
@@ -501,7 +528,9 @@ fn law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original()
 -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::Results;
     let mut body = observation("test^Test^99LAB", "1", "NM", "1.20", "F");
-    body.push_str(&observation("other^Other^99LAB", "2", "NM", "2.30", "F"));
+    body.push_str(
+        &observation("other^Other^99LAB", "2", "NM", "2.30", "F").replacen("OBX|1|", "OBX|2|", 1),
+    );
     body.push_str("TCD|mismatch^Mismatch^99LAB\r");
     let message = results_message("awos-1", &body)?;
     let original = message.serialize();
@@ -677,7 +706,7 @@ fn law_tf2b_c4_extended_control_id_is_scoped_to_law() -> Result<(), Box<dyn std:
         CacheAnswer::WorkExists,
         Response {
             control_id: control_id(long)?,
-            timestamp: b"202601011200",
+            timestamp: b"20260101120000+0000",
         },
         Responsibility::StoredAndInterpreted,
         utf8_options(),
@@ -692,4 +721,92 @@ fn law_tf2b_c4_extended_control_id_is_scoped_to_law() -> Result<(), Box<dyn std:
         Some(long.as_slice())
     );
     Ok(())
+}
+
+#[test]
+fn law_tf2b_b7_trigger_rejection_and_query_processing_errors_have_distinct_actions()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{
+        AckCode,
+        law::{ErrorLocation, Failure, receive_query, receive_results},
+    };
+    let request = query("QPD|WOS^Work Order Step^IHELAW|tag")?;
+    let failure = receive_query(&request)
+        .err()
+        .ok_or("accepted missing container")?;
+    assert!(matches!(failure, Failure::MalformedTrigger(_)));
+    assert_eq!(failure.acknowledgment_code(), Some(AckCode::Ae));
+    assert_eq!(
+        failure.location(),
+        Some(ErrorLocation {
+            segment: "QPD",
+            field: 3
+        })
+    );
+    let original = std::str::from_utf8(request.raw())?;
+    let wrong = Message::parse(
+        original.replace("LAB-27^IHE", "LAB-28^IHE").as_bytes(),
+        utf8_options(),
+    )?;
+    let failure = receive_query(&wrong)
+        .err()
+        .ok_or("accepted wrong profile")?;
+    assert!(matches!(failure, Failure::ContentReject(_)));
+    assert_eq!(failure.acknowledgment_code(), Some(AckCode::Ar));
+    let mut body = observation("test^Test^99LAB", "1", "NM", "1.20", "F");
+    body.push_str("TCD|other^Other^99LAB\r");
+    let message = results_message("awos-1", &body)?;
+    let failure = receive_results(&message)
+        .err()
+        .ok_or("accepted inconsistent result")?;
+    assert!(matches!(failure, Failure::ContentReject(_)));
+    assert_eq!(failure.acknowledgment_code(), Some(AckCode::Ar));
+    assert_eq!(
+        failure.location(),
+        Some(ErrorLocation {
+            segment: "TCD",
+            field: 1
+        })
+    );
+    let failure = Failure::QueryRejected {
+        location: ErrorLocation {
+            segment: "QPD",
+            field: 3,
+        },
+    };
+    assert_eq!(failure.acknowledgment_code(), None);
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_b7_invalid_ack_and_inconsistent_orl_fail_without_ack_loop()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::law::{Failure, receive_acknowledgment, receive_work_response};
+    let sent = results_message(
+        "awos-1",
+        &observation("test^Test^99LAB", "1", "NM", "1.20", "F"),
+    )?;
+    let response = Message::parse(b"MSH|^~\\&|M|MF|A|AF|20260101120000+0000||ACK^R22^ACK|ack1|P|2.5.1||||||UNICODE UTF-8|||LAB-29^IHE\rMSA|AA|wrong-id\r", utf8_options())?;
+    let failure = receive_acknowledgment(&response, &sent)
+        .err()
+        .ok_or("accepted wrong correlation")?;
+    assert!(matches!(failure, Failure::InvalidAcknowledgment(_)));
+    assert_eq!(failure.acknowledgment_code(), None);
+    assert_eq!(
+        failure.location().map(|l| (l.segment, l.field)),
+        Some(("MSA", 2))
+    );
+    let failure = receive_work_response(&response, &sent)
+        .err()
+        .ok_or("accepted wrong response type")?;
+    assert!(matches!(failure, Failure::InconsistentOrl(_)));
+    assert_eq!(failure.acknowledgment_code(), None);
+    Ok(())
+}
+
+fn work_capabilities() -> analyte_hl7::law::Capabilities {
+    analyte_hl7::law::Capabilities {
+        specimen: true,
+        ..analyte_hl7::law::Capabilities::default()
+    }
 }

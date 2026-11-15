@@ -1,4 +1,4 @@
-//! LAW field and component constraints, from TF-2b Appendix C and Ãƒâ€šÃ‚Â§2.2.
+//! LAW field and component constraints, from TF-2b Appendix C and ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§2.2.
 use super::{Error, content, raw};
 use crate::{Message, Segment};
 
@@ -165,6 +165,12 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             for (field, length) in [(7, 26), (9, 15), (10, 50), (11, 3), (12, 60), (18, 16)] {
                 check(segment, "MSH", field, true, length, 1)?;
             }
+            if !timestamp(raw(segment, 7), true) {
+                return Err(content("MSH", 7));
+            }
+            if raw(segment, 12) != b"2.5.1" {
+                return Err(content("MSH", 12));
+            }
             if raw(segment, 11) != b"P" {
                 return Err(content("MSH", 11));
             }
@@ -231,6 +237,23 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
                 check(segment, "OBX", field, true, length, maximum)?;
             }
             coded(segment, "OBX", 3, true)?;
+            coded(segment, "OBX", 8, false)?;
+            if !timestamp(raw(segment, 19), false) {
+                return Err(content("OBX", 19));
+            }
+            if raw(segment, 2) == b"CE" {
+                coded(segment, "OBX", 5, true)?;
+            }
+            let supplemental = raw(segment, 3)
+                .split(|b| *b == segment.delimiters.component)
+                .nth(3);
+            if segment
+                .field(5)
+                .is_some_and(|field| field.repetitions().count() > 1)
+                && !matches!(supplemental, Some(b"S_RAW" | b"S_OTHER"))
+            {
+                return Err(content("OBX", 5));
+            }
             if !matches!(raw(segment, 11), b"X" | b"P" | b"R" | b"F" | b"C") {
                 return Err(content("OBX", 11));
             }
@@ -271,6 +294,34 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
                     return Err(content("OBX", 6));
                 }
             }
+            let sub_id: Vec<_> = raw(segment, 4)
+                .split(|b| *b == segment.delimiters.component)
+                .collect();
+            if sub_id.first().is_none_or(|id| id.is_empty()) || sub_id.len() > 3 {
+                return Err(content("OBX", 4));
+            }
+            for id in sub_id.iter().skip(1) {
+                if !id.is_empty()
+                    && (!id.iter().all(u8::is_ascii_digit) || id.iter().all(|b| *b == b'0'))
+                {
+                    return Err(content("OBX", 4));
+                }
+            }
+            for field in [16, 18] {
+                for repetition in segment
+                    .field(field)
+                    .ok_or(content("OBX", field))?
+                    .repetitions()
+                {
+                    let mut parts = repetition.components();
+                    if parts.next().is_none_or(|p| p.raw().is_empty()) {
+                        return Err(content("OBX", field));
+                    }
+                    if field == 18 && parts.next().is_none_or(|p| p.raw().is_empty()) {
+                        return Err(content("OBX", field));
+                    }
+                }
+            }
             let equipment = segment.field(18).ok_or(content("OBX", 18))?;
             if equipment.repetitions().count() < 2 {
                 return Err(content("OBX", 18));
@@ -298,6 +349,23 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
         }
         b"SPM" => {
             check(segment, "SPM", 1, true, 4, 1)?;
+            let specimen_id = raw(segment, 2);
+            if !specimen_id.is_empty() && specimen_id != b"\"\"" {
+                let first = specimen_id
+                    .split(|b| *b == segment.delimiters.component)
+                    .next()
+                    .unwrap_or_default();
+                let parts: Vec<_> = first
+                    .split(|b| *b == segment.delimiters.subcomponent)
+                    .collect();
+                if parts.first().is_none_or(|p| p.is_empty())
+                    || (parts.get(1).is_none_or(|p| p.is_empty())
+                        && (parts.get(2).is_none_or(|p| p.is_empty())
+                            || parts.get(3).is_none_or(|p| p.is_empty())))
+                {
+                    return Err(content("SPM", 2));
+                }
+            }
             check(segment, "SPM", 4, true, 250, 1)?;
             check(segment, "SPM", 11, true, 250, 1)?;
             if !matches!(
@@ -343,4 +411,53 @@ pub(super) fn header(message: &Message, transaction: &[u8], triggered: bool) -> 
         }
     }
     Ok(())
+}
+
+fn digits(raw: &[u8]) -> Option<u16> {
+    raw.iter().try_fold(0u16, |value, byte| {
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        value
+            .checked_mul(10)?
+            .checked_add(u16::from(byte.checked_sub(b'0')?))
+    })
+}
+
+pub(super) fn timestamp(value: &[u8], zone: bool) -> bool {
+    if value.len() != if zone { 19 } else { 14 } {
+        return false;
+    }
+    let part = |start, end| value.get(start..end).and_then(digits);
+    let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) = (
+        part(0, 4),
+        part(4, 6),
+        part(6, 8),
+        part(8, 10),
+        part(10, 12),
+        part(12, 14),
+    ) else {
+        return false;
+    };
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year.is_multiple_of(400) || (year.is_multiple_of(4) && !year.is_multiple_of(100)) => {
+            29
+        }
+        2 => 28,
+        _ => return false,
+    };
+    if year == 0 || day == 0 || day > days || hour > 23 || minute > 59 || second > 59 {
+        return false;
+    }
+    if zone {
+        if !matches!(value.get(14), Some(b'+' | b'-')) {
+            return false;
+        }
+        if part(15, 17).is_none_or(|v| v > 23) || part(17, 19).is_none_or(|v| v > 59) {
+            return false;
+        }
+    }
+    true
 }

@@ -37,83 +37,60 @@ escapes, limits, charset failures, control validation, edition-specific errors,
 ACK conditions and property tests. Repository-wide verification uses the checks
 in AGENTS.md. No real analyzer or external lab app is used by tests.
 
-## LAW implementation status and simulator evidence
+## LAW implementation status
 
-The `law` module provides a borrowed LAB-27 QBP query view and RSP rendering.
-It checks the message triple, first transaction profile, NE/AL mode, segment
-order/cardinality, query scopes, required/forbidden parameters, bounded IDs,
-query tags and immediate response mode. Tests use synthetic data and proptest.
-This is partial implementation, not LAW conformance: field/component usages,
-exact query descriptions, location coding, option negotiation and complete
-header validation still need coverage. Do not use this view as a complete
-profile acceptance decision.
+Evidence remains **documented and partial** (PaLM TF Rev 11.0). This module is
+pure: it performs no I/O, storage, order replay, clinical decision or external
+pointer retrieval. The host must retain complete original bytes, establish
+storage responsibility and own the analyzer-specific deadline.
 
-Not yet covered: restricted negative
-LAB-28; AWOS downloads, cancellations and ORL correlation/outcomes; LAB-29
-whole-message validation, typed results and scoped enhanced content; distinct
-LAW error classes and response rendering; full Appendix C predicates; capability
-negotiation; lifecycle and storage integration scenarios. None of the grouped
-LAW checklist rows is claimed complete by the query tests alone.
+Covered by source-named synthetic tests and a query property test:
 
-For a future Gazelle run, retain a de-identified recording with exact message
-bytes, direction, relative timing and outcomes. Record the tool build, validation
-profile identifier and revision, PaLM TF revision, Analyzer Manager actor,
-selected options and peer configuration. List each scenario and its validation
-report: all query forms, genuine empty work versus unavailable lookup, multi-AWOS
-acceptance/rejection, duplicate AWOS after uncertain acceptance, cancellation
-races, unsolicited results, corrections/reruns, inconsistent result rejection,
-selected enhanced content, lost ACK, disconnect, restart and storage failure.
-Record changes to the validation profile between runs. Network exchanges belong
-to the host/dialog integration, not this pure module. No Gazelle run has been
-performed; evidence remains documented and partial.
+- Six LAB-27 query scopes; QPD predicates; RSP correlation and exact QPD echo;
+  work/no-work/unavailable decisions with distinct followups and error locations.
+- LAB-28 work grouped by specimen/container, unique supplied AWOS IDs, explicit
+  priority/dilution/repeat/reflex instructions gated by peer capabilities, and
+  the restricted negative form with query identity echoes.
+- ORL/O34 using ORL_O42; message acceptance separate from request outcomes;
+  correlation and missing/unknown/duplicate responses; matching new/cancel
+  outcomes and control/status pairs. Decisions never retract prior acceptance.
+- Atomic LAB-29 interpretation; unsolicited null AWOS; source specimen/container,
+  OBX-3/4, statuses, values, units, ranges, flags, notes and equipment retained.
+  Original segments retain additional source fields. TCD identity inconsistency
+  rejects the whole message. ACK/R22 uses the existing responsibility checks.
+- Shared usage/cardinality/length checks, supported field positions, UTF-8 and
+  profile headers, timestamp precision/timezone, numeric units, status/datatype
+  subsets, equipment multiplicity, SPM/OBX sequencing and repeated-value rules.
+  LAW's extended control-ID limit is scoped; base HL7 limits remain unchanged.
+- Recovery classes for malformed triggers, content rejection, invalid ACK,
+  inconsistent ORL and host query rejection. Failed responses do not start ACK
+  loops. Unnamespaced local diagnostics remain text rather than invented codes.
 
-### Step 1: LAB-27 responses
+Not yet complete:
 
-`query_response` renders correlated RSP/K11 with exact QPD echo and error
-locations, reversing addresses through the existing acknowledgment renderer.
-Positive responses require stored-and-interpreted responsibility. Work and a
-genuine empty cache both acknowledge query processing with OK; the explicit
-followup distinguishes a work download from the restricted negative LAB-28.
-Unavailable lookups use an error response and never request a negative download.
-Output is bounded before each append. Tests cover these decisions, correlation,
-header reversal, error locations, storage refusal and output limits.
+- Every Appendix C field/component and option predicate and its individual test.
+  The shared validator is not a complete LAW conformance validator.
+- Complete typed validation of all value composites and enhanced-content
+  relationships, specimen-level observations, and every message-group predicate.
+- Outgoing app-supplied patient/encounter, extended specimen/container/order
+  content and related observations; full capability/profile negotiation.
+  Related-observation and pooling manager options are not selected or implemented.
+- Qualified simulator evidence and host integration cases (durability failures,
+  restart, lost replies, cancellation races, timing and external-data retention).
 
-### Step 2: LAB-28 work and response handling
+Do not interpret a successful view construction or passing local tests as full
+LAW conformance. Tests do not establish the clinical reconciliation/lifecycle
+policy. The host must preserve uncertain prior acceptance and stable identities.
 
-`work_order` builds one or more AWOS with caller-supplied stable IDs, specimen,
-container and test/battery. Duplicate IDs within one download are rejected.
-Replicates use separate AWOS. Optional priority, dilution, manager repeat and
-automatic repeat/reflex permissions come only from explicit instructions and
-require matching peer capabilities. `negative_work` emits only MSH/SPM/SAC/ORC,
-with NULL specimen type, unknown role, query identification echoes and DC.
-`WorkResponse` separates message acceptance from per-AWOS outcomes, checks
-correlation, duplicate/unknown/missing responses and control/status consistency.
-It does not mutate prior AWOS acceptance. Complete schema predicates remain
-part of the profile-validation step.
+## Recording a Gazelle run
 
-### Step 3: LAB-29 results and acknowledgments
-
-`Results` returns observations only after the whole message is parsed. It keeps
-AWOS (including explicit unsolicited null), specimen/container context, coded
-OBX-3, run/sub-ID, status, typed value repetitions, original numeric spelling,
-units, ranges, flags and equipment hierarchy. Original segments retain extended
-fields such as instance IDs, timing, probability and external-reference
-classification; no external pointer is fetched or treated as retained data.
-Notes, inventory, timing and TCD keep explicit parents. A mismatched TCD-1
-rejects the complete message; the borrowed input remains untouched. ACK/R22
-rendering calls the existing acknowledgment function, checks successful whole
-interpretation before AA, and adds the LAB-29 profile. Full profile predicates
-and additional datatype component checks remain for step 4.
-
-### Step 4: field validation progress
-
-Shared field rules now represent M/R/RE/RE.AN/X and require conditional usage to
-be resolved explicitly. Typed input boundaries check LAW header profile,
-triggered versus response acknowledgment fields and UTF-8 declaration. Shared
-segment checks cover required fields, bounded repetitions, supported field
-positions, coded identities, result datatype/status subsets, numeric-unit
-predicates, observation type, equipment multiplicity and specimen/container
-identity. Result grouping rejects missing/duplicate ORC, misplaced patient/visit,
-repeated container, duplicate TCD and incomplete completed orders. Outgoing work
-is checked against the same segment rules. This remains incomplete: every
-Appendix C component/option predicate is not yet represented or tested.
+Retain a de-identified recording with exact bytes, direction, relative timing
+and outcomes. Record the tool build, validation profile identifier and revision,
+PaLM TF revision, Analyzer Manager actor, selected options and peer configuration.
+List each scenario and its validation report: every query form, genuine empty
+work versus unavailable lookup, multi-AWOS decisions, duplicates after uncertain
+acceptance, cancellation races, unsolicited results, corrections/reruns,
+inconsistent result rejection, selected enhanced content, lost ACK, disconnect,
+restart and storage failure. Record validation-profile changes between runs.
+Network exchanges belong to host/dialog integration. No Gazelle run has been
+performed and the evidence level has not been raised.

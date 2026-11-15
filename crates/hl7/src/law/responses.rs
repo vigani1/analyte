@@ -48,7 +48,7 @@ impl QueryResponse {
     }
 }
 
-/// Builds RSP with MSA/QAK correlation and an exact QPD echo (TF-2b Ã‚Â§3.27.4).
+/// Builds RSP with MSA/QAK correlation and an exact QPD echo (TF-2b Ãƒâ€šÃ‚Â§3.27.4).
 ///
 /// The caller must establish durable responsibility before positive acceptance.
 /// An unavailable lookup uses QAK AE and has no negative-work followup.
@@ -62,6 +62,9 @@ pub fn query_response(
     responsibility: Responsibility,
     options: Options,
 ) -> Result<QueryResponse, Error> {
+    if !super::profile::timestamp(response.timestamp, true) {
+        return Err(content("MSH", 7));
+    }
     let (code, status, error, followup) = match answer {
         CacheAnswer::WorkExists => (AckCode::Aa, b"OK".as_slice(), None, QueryFollowup::Work),
         CacheAnswer::NoWork => (AckCode::Aa, b"OK".as_slice(), None, QueryFollowup::Negative),
@@ -107,10 +110,7 @@ pub fn query_response(
         wire.field(value)?;
     }
     wire.append(b"\r")?;
-    for segment in ack.segments().skip(1) {
-        wire.append(segment.raw())?;
-        wire.append(b"\r")?;
-    }
+    append_ack_segments(&mut wire, &ack)?;
     wire.append(b"QAK")?;
     for value in [query.tag(), status, raw(query.qpd, 1)] {
         wire.field(value)?;
@@ -126,6 +126,36 @@ pub fn query_response(
         },
     )?;
     Ok(QueryResponse { message, followup })
+}
+
+// The generic ACK API accepts a scalar HL7 code and an unnamespaced local
+// diagnostic. Keep the latter as text rather than inventing its coding system.
+pub(super) fn append_ack_segments(wire: &mut Wire, ack: &Message) -> Result<(), Error> {
+    for segment in ack.segments().skip(1) {
+        if segment.id() == b"ERR" {
+            let mut code = raw(segment, 3).to_vec();
+            code.push(ack.delimiters().component);
+            code.push(ack.delimiters().component);
+            code.extend_from_slice(b"HL70357");
+            wire.append(b"ERR")?;
+            for value in [
+                b"".as_slice(),
+                raw(segment, 2),
+                &code,
+                raw(segment, 4),
+                b"",
+                b"",
+                b"",
+                raw(segment, 5),
+            ] {
+                wire.field(value)?;
+            }
+        } else {
+            wire.append(segment.raw())?;
+        }
+        wire.append(b"\r")?;
+    }
+    Ok(())
 }
 
 /// Bounded output assembly shared by LAW renderers; check before allocating.

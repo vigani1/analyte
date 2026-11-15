@@ -1,11 +1,13 @@
 use super::responses::Wire;
 use super::{Error, Identity, Query, Scope, content};
 use crate::{Message, Msa, Options, Response};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Negotiated outgoing options. Absence never authorizes clinical decisions.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Capabilities {
+    /// Peer accepts supplied specimen identity and characteristics.
+    pub specimen: bool,
     /// Peer accepts explicit requested dilution.
     pub dilution: bool,
     /// Peer accepts app-authorized manager rerun/reflex status.
@@ -166,6 +168,7 @@ fn header(
     }
     let mut profiles = b"LAB-28^IHE".to_vec();
     for (enabled, name) in [
+        (capabilities.specimen, b"LAW_SPECIMEN".as_slice()),
         (capabilities.dilution, b"LAW_DILUTIONS".as_slice()),
         (capabilities.manager_repeat, b"LAW_AM_RR"),
         (capabilities.repeat_control, b"LAW_AM_RR_CONTROL"),
@@ -219,6 +222,9 @@ pub fn work_order(
     if work.is_empty() || work.len() > options.limits.segments {
         return Err(content("OBR", 0));
     }
+    if !capabilities.specimen {
+        return Err(content("SPM", 2));
+    }
     let mut ids = BTreeSet::new();
     for awos in work {
         if !ids.insert(awos.id) {
@@ -227,12 +233,27 @@ pub fn work_order(
     }
     let mut wire = Wire::new(options.limits.message_bytes, b'|');
     header(&mut wire, address, response, capabilities)?;
+    let mut groups: BTreeMap<(&[u8], &[u8]), Vec<&Awos<'_>>> = BTreeMap::new();
     for awos in work {
+        groups
+            .entry((awos.specimen, awos.container))
+            .or_default()
+            .push(awos);
+    }
+    for (ordinal, group) in groups.values().enumerate() {
+        let awos = group.first().ok_or(content("SPM", 0))?;
+        if group
+            .iter()
+            .any(|other| other.specimen_type != awos.specimen_type || other.role != awos.role)
+        {
+            return Err(content("SPM", 4));
+        }
+        let sequence = ordinal.checked_add(1).ok_or(content("SPM", 1))?.to_string();
         segment(
             &mut wire,
             b"SPM",
             &[
-                b"1",
+                sequence.as_bytes(),
                 awos.specimen,
                 b"",
                 awos.specimen_type,
@@ -246,78 +267,80 @@ pub fn work_order(
             ],
         )?;
         segment(&mut wire, b"SAC", &[b"", b"", awos.container])?;
-        let control = match awos.action {
-            WorkAction::New => b"NW",
-            WorkAction::Cancel => b"CA",
-        };
-        segment(
-            &mut wire,
-            b"ORC",
-            &[
-                control,
-                b"",
-                b"",
-                b"",
-                b"",
-                b"",
-                b"",
-                b"",
-                response.timestamp,
-            ],
-        )?;
-        let instruction = awos.instructions;
-        if let Some(priority) = instruction.priority {
-            if !capabilities.priority {
-                return Err(content("TQ1", 9));
-            }
-            safe(priority, "TQ1", 9, 250)?;
-            segment(
-                &mut wire,
-                b"TQ1",
-                &[b"", b"", b"", b"", b"", b"", b"", b"", priority],
-            )?;
-        }
-        segment(&mut wire, b"OBR", &[b"", awos.id, b"", awos.test])?;
-        if instruction.dilution.is_some()
-            || instruction.repeat.is_some()
-            || instruction.automatic_repeat.is_some()
-            || instruction.reflex.is_some()
-        {
-            if instruction.dilution.is_some() && !capabilities.dilution {
-                return Err(content("TCD", 2));
-            }
-            if instruction.repeat.is_some() && !capabilities.manager_repeat {
-                return Err(content("TCD", 8));
-            }
-            if (instruction.automatic_repeat.is_some() || instruction.reflex.is_some())
-                && !capabilities.repeat_control
-            {
-                return Err(content("TCD", 6));
-            }
-            for (value, field) in [(instruction.dilution, 2), (instruction.repeat, 8)] {
-                if let Some(value) = value {
-                    safe(value, "TCD", field, 250)?;
-                }
-            }
-            let permission = |value| match value {
-                Some(true) => b"Y".as_slice(),
-                Some(false) => b"N",
-                None => b"",
+        for awos in group {
+            let control = match awos.action {
+                WorkAction::New => b"NW",
+                WorkAction::Cancel => b"CA",
             };
             segment(
                 &mut wire,
-                b"TCD",
+                b"ORC",
                 &[
-                    awos.test,
-                    instruction.dilution.unwrap_or_default(),
+                    control,
                     b"",
                     b"",
                     b"",
-                    permission(instruction.automatic_repeat),
-                    permission(instruction.reflex),
-                    instruction.repeat.unwrap_or_default(),
+                    b"",
+                    b"",
+                    b"",
+                    b"",
+                    response.timestamp.get(..14).ok_or(content("ORC", 9))?,
                 ],
             )?;
+            let instruction = awos.instructions;
+            if let Some(priority) = instruction.priority {
+                if !capabilities.priority {
+                    return Err(content("TQ1", 9));
+                }
+                safe(priority, "TQ1", 9, 250)?;
+                segment(
+                    &mut wire,
+                    b"TQ1",
+                    &[b"", b"", b"", b"", b"", b"", b"", b"", priority],
+                )?;
+            }
+            segment(&mut wire, b"OBR", &[b"", awos.id, b"", awos.test])?;
+            if instruction.dilution.is_some()
+                || instruction.repeat.is_some()
+                || instruction.automatic_repeat.is_some()
+                || instruction.reflex.is_some()
+            {
+                if instruction.dilution.is_some() && !capabilities.dilution {
+                    return Err(content("TCD", 2));
+                }
+                if instruction.repeat.is_some() && !capabilities.manager_repeat {
+                    return Err(content("TCD", 8));
+                }
+                if (instruction.automatic_repeat.is_some() || instruction.reflex.is_some())
+                    && !capabilities.repeat_control
+                {
+                    return Err(content("TCD", 6));
+                }
+                for (value, field) in [(instruction.dilution, 2), (instruction.repeat, 8)] {
+                    if let Some(value) = value {
+                        safe(value, "TCD", field, 250)?;
+                    }
+                }
+                let permission = |value| match value {
+                    Some(true) => b"Y".as_slice(),
+                    Some(false) => b"N",
+                    None => b"",
+                };
+                segment(
+                    &mut wire,
+                    b"TCD",
+                    &[
+                        awos.test,
+                        instruction.dilution.unwrap_or_default(),
+                        b"",
+                        b"",
+                        b"",
+                        permission(instruction.automatic_repeat),
+                        permission(instruction.reflex),
+                        instruction.repeat.unwrap_or_default(),
+                    ],
+                )?;
+            }
         }
     }
     let message = Message::parse(&wire.bytes, options)?;
@@ -360,7 +383,17 @@ pub fn negative_work(
     segment(
         &mut wire,
         b"ORC",
-        &[b"DC", b"", b"", b"", b"", b"", b"", b"", response.timestamp],
+        &[
+            b"DC",
+            b"",
+            b"",
+            b"",
+            b"",
+            b"",
+            b"",
+            b"",
+            response.timestamp.get(..14).ok_or(content("ORC", 9))?,
+        ],
     )?;
     let message = Message::parse(&wire.bytes, options)?;
     for segment in message.segments() {
@@ -429,6 +462,27 @@ impl<'a> WorkResponse<'a> {
             .filter(|s| s.id() == b"OBR")
             .map(|s| super::raw(s, 2))
             .collect();
+        let mut requests = BTreeMap::new();
+        let mut action = None;
+        for segment in sent.segments() {
+            match segment.id() {
+                b"ORC" => {
+                    action = match super::raw(segment, 1) {
+                        b"NW" => Some(WorkAction::New),
+                        b"CA" => Some(WorkAction::Cancel),
+                        b"DC" => None,
+                        _ => return Err(content("ORC", 1)),
+                    };
+                }
+                b"OBR" => {
+                    let action = action.ok_or(content("ORC", 1))?;
+                    if requests.insert(super::raw(segment, 2), action).is_some() {
+                        return Err(content("OBR", 2));
+                    }
+                }
+                _ => {}
+            }
+        }
         let mut decisions = Vec::new();
         let mut has_specimen = false;
         let mut error_count = 0usize;
@@ -480,6 +534,25 @@ impl<'a> WorkResponse<'a> {
                 (b"UC", b"IP" | b"CM") => AwosOutcome::UnableToCancel,
                 _ => return Err(content("ORC", 1)),
             };
+            match (requests.get(id), outcome) {
+                (Some(WorkAction::New), AwosOutcome::Accepted | AwosOutcome::UnableToAccept)
+                | (
+                    Some(WorkAction::Cancel),
+                    AwosOutcome::CancelAccepted | AwosOutcome::UnableToCancel,
+                ) => {}
+                (
+                    Some(WorkAction::New),
+                    AwosOutcome::CancelAccepted | AwosOutcome::UnableToCancel,
+                )
+                | (Some(WorkAction::Cancel), AwosOutcome::Accepted | AwosOutcome::UnableToAccept)
+                | (
+                    None,
+                    AwosOutcome::Accepted
+                    | AwosOutcome::UnableToAccept
+                    | AwosOutcome::CancelAccepted
+                    | AwosOutcome::UnableToCancel,
+                ) => return Err(content("ORC", 1)),
+            }
             decisions.push(AwosDecision {
                 id: Identity(id),
                 outcome,
