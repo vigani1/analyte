@@ -339,3 +339,38 @@ fn adr0002_component_parts_invalid_declarations_have_specific_errors() -> Result
     }
     Ok(())
 }
+
+#[test]
+fn adr_0002_vidas_installed_sample_limit_preserves_numeric_toml() -> Result<(), Error> {
+    use analyte_config::VidasSampleLimit;
+    let definition = include_str!("../examples/vidas_literal.toml");
+    for (number, expected) in [
+        (12, VidasSampleLimit::Twelve),
+        (17, VidasSampleLimit::Seventeen),
+    ] {
+        let definition =
+            definition.replace("sample_limit = 12", &format!("sample_limit = {number}"));
+        let valid = draft(&definition, OVERRIDES)?.validate()?;
+        assert_eq!(
+            valid
+                .effective()
+                .machine()
+                .vidas
+                .as_ref()
+                .expect("VIDAS example")
+                .sample_limit,
+            expected
+        );
+        assert!(
+            valid
+                .canonical()
+                .contains(&format!("sample_limit = {number}"))
+        );
+    }
+    for number in [0, 11, 13, 16, 18, 255] {
+        let definition =
+            definition.replace("sample_limit = 12", &format!("sample_limit = {number}"));
+        assert!(draft(&definition, OVERRIDES).is_err());
+    }
+    Ok(())
+}

@@ -531,7 +531,6 @@ fn validate_protocol(m: &Machine, path: &str) -> Result<(), Error> {
         && (!(1..=80).contains(&v.chunk)
             || m.framing.limit > 1920
             || !matches!(v.suffix.as_slice(), [] | [13] | [10] | [13, 10])
-            || !matches!(v.sample_limit, 12 | 17)
             || ![
                 v.acknowledgment_ms,
                 v.interbyte_ms,

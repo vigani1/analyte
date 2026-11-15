@@ -275,7 +275,7 @@ fn vidas(
     if patient.len() > 17 {
         return Err(OrderMappingError::Overlong("patient-id"));
     }
-    if order.sample.as_str().len() > usize::from(installed.sample_limit) {
+    if order.sample.as_str().len() > usize::from(u8::from(installed.sample_limit)) {
         return Err(OrderMappingError::Overlong("sample-id"));
     }
     // BCI A section 4 has no specimen-type destination; so is origin and si is empty.
@@ -296,10 +296,11 @@ fn vidas(
     {
         return Err(OrderMappingError::UnmappedPriority);
     }
-    let limit = if installed.sample_limit == 12 {
-        analyte_vidas::syntax::SampleLimit::Twelve
-    } else {
-        analyte_vidas::syntax::SampleLimit::Seventeen
+    let limit = match installed.sample_limit {
+        analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
+        analyte_config::VidasSampleLimit::Seventeen => {
+            analyte_vidas::syntax::SampleLimit::Seventeen
+        }
     };
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;

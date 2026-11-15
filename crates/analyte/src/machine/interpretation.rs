@@ -70,10 +70,13 @@ pub(crate) fn map(
                 .ok_or_else(|| invalid("VIDAS settings missing"))?;
             let message = analyte_vidas::syntax::Message::parse(
                 std::str::from_utf8(&packet.body)?,
-                if installed.sample_limit == 12 {
-                    analyte_vidas::syntax::SampleLimit::Twelve
-                } else {
-                    analyte_vidas::syntax::SampleLimit::Seventeen
+                match installed.sample_limit {
+                    analyte_config::VidasSampleLimit::Twelve => {
+                        analyte_vidas::syntax::SampleLimit::Twelve
+                    }
+                    analyte_config::VidasSampleLimit::Seventeen => {
+                        analyte_vidas::syntax::SampleLimit::Seventeen
+                    }
                 },
             )?;
             super::vendor_model::vidas(machine, id, &message, time)

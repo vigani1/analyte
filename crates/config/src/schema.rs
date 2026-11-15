@@ -623,6 +623,37 @@ pub struct Poct {
     pub acknowledgment_ms: u32,
 }
 
+/// Installed VIDAS sample ID ceiling; only documented layouts are representable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "u8", into = "u8")]
+pub enum VidasSampleLimit {
+    /// Twelve-character installed layout.
+    Twelve,
+    /// Seventeen-character installed layout.
+    Seventeen,
+}
+
+impl TryFrom<u8> for VidasSampleLimit {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            12 => Ok(Self::Twelve),
+            17 => Ok(Self::Seventeen),
+            _ => Err("VIDAS sample_limit must be 12 or 17"),
+        }
+    }
+}
+
+impl From<VidasSampleLimit> for u8 {
+    fn from(value: VidasSampleLimit) -> Self {
+        match value {
+            VidasSampleLimit::Twelve => 12,
+            VidasSampleLimit::Seventeen => 17,
+        }
+    }
+}
+
 /// Explicit installed VIDAS Literal settings; no defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -642,7 +673,7 @@ pub struct Vidas {
     /// Accept either checksum case.
     pub accept_either_case: bool,
     /// Installed sample ID ceiling, twelve or seventeen.
-    pub sample_limit: u8,
+    pub sample_limit: VidasSampleLimit,
     /// Peer ACK deadline.
     pub acknowledgment_ms: u32,
     /// Interbyte deadline.
