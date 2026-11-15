@@ -1,3 +1,4 @@
+//! Validated identity types belong to the shared model to prevent guessed identities.
 use crate::{Identifier, Reason};
 use serde::{Deserialize, Serialize};
 use uuid::{Uuid, Variant, Version};

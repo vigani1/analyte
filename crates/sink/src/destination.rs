@@ -1,3 +1,4 @@
+//! Validated HTTP destinations belong to the sink network boundary.
 use crate::Error;
 use analyte_contract::SigningSecret;
 use analyte_model::Identifier;

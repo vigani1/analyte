@@ -1,3 +1,4 @@
+//! Order acknowledgment interpretation belongs beside HL7 order encoding.
 use super::{Control, Error, Family, OrderMessage, SpecimenResponse, invalid, laboratory, raw};
 use crate::{AckCode, Field, Message, Msa, Msh, Segment, Version};
 use std::collections::{BTreeMap, BTreeSet};

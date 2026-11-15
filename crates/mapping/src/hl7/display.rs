@@ -1,3 +1,4 @@
+//! Legacy HL7 display-response mapping belongs beside HL7 order translations.
 use crate::orders::{AppOrder, OrderMappingError};
 use crate::outbound_codes::{
     map_priority as outbound_priority, map_specimen as outbound_specimen, map_test as outbound_test,

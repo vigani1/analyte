@@ -1,3 +1,4 @@
+//! LAW result grouping belongs to the HL7 profile syntax boundary.
 use super::responses::Wire;
 use super::{Error, Identity, content, raw};
 use crate::{AckCode, AckError, Field, Message, Options, Response, Responsibility, Segment};
