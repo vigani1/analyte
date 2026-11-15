@@ -14,8 +14,8 @@ themselves are never committed.
 
 ## Durable custody boundaries
 
-ADR 0003 specifies ASTM and HL7. The other runtime boundaries and their tests
-are listed here; extending that ADR is an owner decision.
+[ADR 0003](../adr/0003-clinical-safety-rules.md) and [ADR 0010](../adr/0010-acknowledgment-boundaries.md)
+decide these boundaries; this table names the test that guards each one.
 
 | Protocol | Before positive acknowledgment or destructive command | Test evidence |
 | --- | --- | --- |
