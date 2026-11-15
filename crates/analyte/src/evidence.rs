@@ -136,16 +136,7 @@ pub(crate) async fn persist_mapping(
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
-    let atomic = match machine.snapshot.effective().stack() {
-        analyte_config::Stack::Law(_) => true,
-        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
-        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
-        | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
-        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_))
-        | analyte_config::Stack::Poct(_)
-        | analyte_config::Stack::VidasLiteral(_)
-        | analyte_config::Stack::Autolyser(_) => false,
-    };
+    let atomic = atomic_batch(machine);
     let lifecycle = atomic.then_some(law_lifecycle());
     let work_conflict = work_conflict(store, machine, id).await?;
     let mapping = if work_conflict.is_some() {
@@ -160,19 +151,7 @@ pub(crate) async fn persist_mapping(
         reading,
         corrections,
         findings,
-    } = map_reading(mapping)?;
-    // A rejected LAW batch must not register otherwise-new history without an
-    // outbox delivery: a later accepted retry would be mistaken for a retransmission.
-    let (reading, corrections) = if atomic && !accepted && matches!(reading, Reading::Results(_)) {
-        (
-            Reading::Failed(analyte_model::Reason::new(
-                "LAW mapping requires operator review; inspect protected findings and original receipt",
-            )?),
-            Vec::new(),
-        )
-    } else {
-        (reading, corrections)
-    };
+    } = prepare_reading(map_reading(mapping)?, atomic)?;
     let interpretation = Interpretation {
         driver: driver(machine)?,
         config_version: config_version(machine)?,
@@ -192,21 +171,7 @@ pub(crate) async fn persist_mapping(
     };
     let result = store
         .request(deadline(), move |store| {
-            let findings = findings
-                .into_iter()
-                .map(|finding| {
-                    Ok(analyte_store::Parked {
-                        kind: Identifier::new("mapping_finding")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        reason: analyte_model::Reason::new(&finding)
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        targets: vec![
-                            Identifier::new(&uuid::Uuid::from(id).to_string())
-                                .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        ],
-                    })
-                })
-                .collect::<Result<Vec<_>, analyte_store::Error>>()?;
+            let findings = park_findings(id, findings)?;
             let receipt = store
                 .receipt(id)?
                 .ok_or(analyte_store::Error::Conflict)?
@@ -269,6 +234,67 @@ pub(crate) async fn persist_mapping(
     let (result, successful) = result;
     let successful = work_conflict.map_or(successful, InterpretationOutcome::WorkConflict);
     mapping_outcome(result, successful)
+}
+
+fn prepare_reading(mapped: MappedReading, atomic: bool) -> Result<MappedReading, Error> {
+    let MappedReading {
+        accepted,
+        reading,
+        corrections,
+        findings,
+    } = mapped;
+    // A rejected LAW batch must not register otherwise-new history without an
+    // outbox delivery: a later accepted retry would be mistaken for a retransmission.
+    let (reading, corrections) = if atomic && !accepted && matches!(reading, Reading::Results(_)) {
+        (
+            Reading::Failed(analyte_model::Reason::new(
+                "LAW mapping requires operator review; inspect protected findings and original receipt",
+            )?),
+            Vec::new(),
+        )
+    } else {
+        (reading, corrections)
+    };
+    Ok(MappedReading {
+        accepted,
+        reading,
+        corrections,
+        findings,
+    })
+}
+
+fn atomic_batch(machine: &Machine) -> bool {
+    match machine.snapshot.effective().stack() {
+        analyte_config::Stack::Law(_) => true,
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
+        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
+        | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
+        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_))
+        | analyte_config::Stack::Poct(_)
+        | analyte_config::Stack::VidasLiteral(_)
+        | analyte_config::Stack::Autolyser(_) => false,
+    }
+}
+
+fn park_findings(
+    id: ReceiptId,
+    findings: Vec<String>,
+) -> Result<Vec<analyte_store::Parked>, analyte_store::Error> {
+    findings
+        .into_iter()
+        .map(|finding| {
+            Ok(analyte_store::Parked {
+                kind: Identifier::new("mapping_finding")
+                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+                reason: analyte_model::Reason::new(&finding)
+                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+                targets: vec![
+                    Identifier::new(&uuid::Uuid::from(id).to_string())
+                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                ],
+            })
+        })
+        .collect::<Result<Vec<_>, analyte_store::Error>>()
 }
 
 // One audit dispatch for normal and rejected-batch commits; recovery never bypasses it.
