@@ -11,6 +11,8 @@ pub mod secrets;
 pub mod service;
 mod space;
 pub mod status;
+#[cfg(feature = "test-hooks")]
+pub mod test_hooks;
 
 /// The orchestration boundary retains concrete errors as their original causes.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;

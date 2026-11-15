@@ -624,3 +624,247 @@ async fn lis01_hl7_251_adr0003_recordings_deliver_once_and_store_before_ack() ->
     reference.close().await?;
     Ok(())
 }
+
+fn recording_deadline(path: &Path) -> Result<Duration, Error> {
+    let loaded = Program::load(path)?;
+    let settings = loaded
+        .machines()
+        .iter()
+        .find(|m| m.id().as_str() == "astm")
+        .ok_or("machine absent")?
+        .snapshot()
+        .effective();
+    Ok(Duration::from_millis(u64::from(
+        settings.machine().dialog.send_timeout_ms,
+    )))
+}
+
+async fn recording_eof(peer: &mut tokio::net::TcpStream) -> Result<(), Error> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    peer.shutdown().await?;
+    let mut byte = [0];
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut byte)).await??,
+        0,
+        "unexpected extra host byte"
+    );
+    Ok(())
+}
+
+fn recording_frames(path: &Path) -> Result<Vec<Vec<u8>>, Error> {
+    let db = database(path)?;
+    let mut statement = db.prepare("SELECT raw FROM frames ORDER BY sequence")?;
+    Ok(statement
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<Vec<_>, _>>()?)
+}
+
+async fn failure_recording_case(name: &str, completes: bool) -> Result<(), Error> {
+    let directory = tempfile::tempdir()?;
+    let path = config(directory.path(), true)?;
+    let receiver_path = directory.path().join("reference.db");
+    let mut reference = Reference::start(
+        &receiver_path,
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let (header, events) = recording(name)?;
+    let deadline = recording_deadline(&path)?;
+    let mut peer = connect(&path, "astm").await?;
+    if name == "astm-split-merged" {
+        use tokio::io::AsyncReadExt;
+        analyte_sim::replay(
+            &mut peer,
+            events.get(..3).ok_or("split prefix absent")?,
+            &[],
+            deadline,
+        )
+        .await?;
+        let mut byte = [0];
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), peer.read(&mut byte))
+                .await
+                .is_err(),
+            "partial frame must not be acknowledged"
+        );
+        assert!(recording_frames(&path)?.is_empty());
+        analyte_sim::replay(
+            &mut peer,
+            events.get(3..).ok_or("merged suffix absent")?,
+            &[],
+            deadline,
+        )
+        .await?;
+    } else if name == "astm-lost-ack" {
+        // Observe and discard the first host ACK, then act as a machine that never received it.
+        analyte_sim::replay(
+            &mut peer,
+            events.get(..4).ok_or("first send absent")?,
+            &[],
+            deadline,
+        )
+        .await?;
+        let (_, original) = recording("astm")?;
+        assert_eq!(
+            recording_frames(&path)?,
+            vec![original.get(2).ok_or("frame absent")?.bytes.clone()]
+        );
+        analyte_sim::replay(
+            &mut peer,
+            events.get(4..).ok_or("repeat absent")?,
+            &[],
+            deadline,
+        )
+        .await?;
+    } else {
+        analyte_sim::replay(&mut peer, &events, &header.exceptions, deadline).await?;
+    }
+    // EOF proves no extra ACK followed the expected NAK, incomplete frame, or EOT.
+    recording_eof(&mut peer).await?;
+    if completes {
+        let delivered = reference.event().await?;
+        assert_content(&delivered, "astm", "00012A", "12.30", "final", 0)?;
+        wait_state(&path, "done", 1).await?;
+    }
+    service.stop().await?;
+    assert_eq!(receiver_count(&receiver_path)?, i64::from(completes));
+    let db = database(&path)?;
+    let interpretations: i64 = db.query_row("SELECT count(*) FROM outbox", [], |r| r.get(0))?;
+    assert_eq!(interpretations, i64::from(completes));
+    if completes {
+        let (_, original) = recording("astm")?;
+        let expected = &original.get(2).ok_or("frame absent")?.bytes;
+        assert_eq!(
+            recording_frames(&path)?,
+            vec![expected.clone()],
+            "repeated frame must not be journaled twice in one transfer"
+        );
+        let raw: Vec<u8> =
+            db.query_row("SELECT raw FROM receipts WHERE raw=?1", [expected], |r| {
+                r.get(0)
+            })?;
+        assert_eq!(&raw, expected);
+    } else {
+        assert!(
+            recording_frames(&path)?.is_empty(),
+            "invalid or incomplete frames cannot become accepted journal frames"
+        );
+        let expected = &events.get(2).ok_or("bad input absent")?.bytes;
+        let raw: Vec<u8> =
+            db.query_row("SELECT raw FROM receipts WHERE raw=?1", [expected], |r| {
+                r.get(0)
+            })?;
+        assert_eq!(&raw, expected, "rejected wire bytes must be retained");
+        let parked: i64 = db.query_row("SELECT count(*) FROM parked", [], |r| r.get(0))?;
+        assert!(parked > 0);
+    }
+    reference.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn lis01_6_3_3_6_5_1_recording_broken_checksum_is_retained_nacked_and_not_delivered()
+-> Result<(), Error> {
+    failure_recording_case("astm-broken-checksum", false).await
+}
+#[tokio::test]
+async fn lis01_8_1_6_3_1_2_recording_split_and_merged_reads_ack_only_complete_frame()
+-> Result<(), Error> {
+    failure_recording_case("astm-split-merged", true).await
+}
+#[tokio::test]
+async fn lis01_6_3_2_6_3_4_recording_lost_ack_repeats_ack_without_second_delivery()
+-> Result<(), Error> {
+    failure_recording_case("astm-lost-ack", true).await
+}
+#[tokio::test]
+async fn adr0003_lis01_6_3_1_2_recording_disconnect_mid_frame_retains_bytes_without_ack_or_delivery()
+-> Result<(), Error> {
+    failure_recording_case("astm-disconnect", false).await
+}
+
+#[cfg(feature = "test-hooks")]
+#[tokio::test]
+async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_retains_original_and_delivers_once()
+-> Result<(), Error> {
+    use tokio::io::AsyncReadExt;
+    let directory = tempfile::tempdir()?;
+    let path = config(directory.path(), true)?;
+    let receiver_path = directory.path().join("reference.db");
+    let mut reference = Reference::start(
+        &receiver_path,
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let (hook, control) = analyte::test_hooks::AstmCommitted::new();
+    let mut loaded = program(&path, &reference.url)?;
+    loaded.pause_astm_committed_for_test("astm", hook)?;
+    let service = Running::start_program(loaded, "synthetic-api")?;
+    let (header, before_ack) = recording("astm-restart-before-ack")?;
+    let deadline = recording_deadline(&path)?;
+    let mut peer = connect(&path, "astm").await?;
+    analyte_sim::replay(&mut peer, &before_ack, &header.exceptions, deadline).await?;
+    control.reached().await?;
+    let expected = &before_ack.get(2).ok_or("frame absent")?.bytes;
+    assert_eq!(recording_frames(&path)?, vec![expected.clone()]);
+    assert_eq!(receiver_count(&receiver_path)?, 0);
+    let db = database(&path)?;
+    let original_transfer: String =
+        db.query_row("SELECT transfer FROM frames", [], |r| r.get(0))?;
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        0
+    );
+    let mut byte = [0];
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), peer.read(&mut byte))
+            .await
+            .is_err(),
+        "ACK escaped paused durable boundary"
+    );
+    control.stop();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut byte)).await??,
+        0,
+        "connection must close without sending the frame ACK"
+    );
+    service.stop().await?;
+    assert_eq!(recording_frames(&path)?, vec![expected.clone()]);
+    assert_eq!(receiver_count(&receiver_path)?, 0);
+    drop(peer);
+    let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "astm").await?;
+    let (header, retransmission) = recording("astm")?;
+    analyte_sim::replay(&mut peer, &retransmission, &header.exceptions, deadline).await?;
+    recording_eof(&mut peer).await?;
+    let delivered = reference.event().await?;
+    assert_content(&delivered, "astm", "00012A", "12.30", "final", 0)?;
+    wait_state(&path, "done", 1).await?;
+    restarted.stop().await?;
+    // Distinct transfer evidence is retained; only the completed transfer becomes a result.
+    assert_eq!(
+        recording_frames(&path)?,
+        vec![expected.clone(), expected.clone()]
+    );
+    let original: Vec<u8> = database(&path)?.query_row(
+        "SELECT raw FROM frames WHERE transfer=?1",
+        [&original_transfer],
+        |r| r.get(0),
+    )?;
+    assert_eq!(&original, expected);
+    assert_eq!(
+        database(&path)?.query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+            .get::<_, i64>(0))?,
+        1
+    );
+    assert_eq!(
+        database(&path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
+    assert_eq!(receiver_count(&receiver_path)?, 1);
+    reference.close().await?;
+    Ok(())
+}
