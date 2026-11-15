@@ -155,13 +155,13 @@ mod equivalence {
         loop {
             match reader.read_event() {
                 Ok(Event::Start(_)) => {
-                    depth = depth.checked_add(1).ok_or_else(|| Error::Depth)?;
+                    depth = depth.checked_add(1).ok_or(Error::Depth)?;
                     if depth > maximum_depth {
                         return Err(Error::Depth);
                     }
                 }
                 Ok(Event::End(_)) => {
-                    depth = depth.checked_sub(1).ok_or_else(|| Error::Unbalanced)?;
+                    depth = depth.checked_sub(1).ok_or(Error::Unbalanced)?;
                     if depth == 0 {
                         return Ok(Some(
                             usize::try_from(reader.buffer_position()).map_err(|_| Error::Limit)?,

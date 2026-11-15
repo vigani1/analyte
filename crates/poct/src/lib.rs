@@ -6,6 +6,7 @@
 //! See the crate README for the host contract and checklist-to-test mapping.
 #![forbid(unsafe_code)]
 
+/// Bounded XML grammar and its module-local errors.
 pub mod syntax;
 
 pub use syntax::{Document, Element, Error, Limits};
