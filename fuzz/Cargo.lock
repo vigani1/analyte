@@ -13,6 +13,7 @@ dependencies = [
 name = "analyte-autolyser"
 version = "0.1.0"
 dependencies = [
+ "analyte-framing",
  "thiserror",
 ]
 
@@ -33,9 +34,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "analyte-dialog"
+version = "0.1.0"
+dependencies = [
+ "analyte-autolyser",
+ "analyte-framing",
+ "analyte-hl7",
+ "analyte-poct",
+ "analyte-vidas",
+ "thiserror",
+]
+
+[[package]]
 name = "analyte-framing"
 version = "0.1.0"
 dependencies = [
+ "quick-xml",
  "thiserror",
 ]
 
@@ -46,6 +60,7 @@ dependencies = [
  "analyte-astm",
  "analyte-autolyser",
  "analyte-contract",
+ "analyte-dialog",
  "analyte-framing",
  "analyte-hl7",
  "analyte-poct",
