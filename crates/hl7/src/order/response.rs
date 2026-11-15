@@ -257,44 +257,10 @@ impl<'a> OrderResponse<'a> {
     /// malformed order identities and unknown or unexpected ORC-1 values.
     pub fn new(message: &'a Message, sent: &'a OrderMessage) -> Result<Self, Error> {
         let sent_header = Msh::new(sent.message())?;
-        let header = Msh::new(message)?;
-        let version = header.version();
-        if version != sent_header.version() {
-            return Err(Error::Correlation {
-                segment: "MSH",
-                field: 12,
-            });
-        }
-        let mut kind = header.message_type();
-        let [code, event, structure] = sent.family.response();
-        let valid_code = kind.next() == Some(code);
-        let valid_event = kind.next() == Some(event);
-        let valid_structure = match (sent.family, kind.next()) {
-            (Family::Orm, None) => true,
-            (Family::Orm | Family::Oml, Some(value)) => value == structure,
-            (Family::Oml, None) => false,
-        };
-        if !valid_code || !valid_event || !valid_structure {
-            return Err(invalid("MSH", 9));
-        }
-        if header.control_id() == sent_header.control_id() {
-            return Err(Error::Correlation {
-                segment: "MSH",
-                field: 10,
-            });
-        }
+        let version = validate_response_header(message, sent, sent_header)?;
         let mut segments = message.segments().skip(1).peekable();
         let msa = Msa::new(segments.next().ok_or_else(|| invalid("MSA", 0))?)?;
-        if msa.control_id() != sent_header.control_id() {
-            return Err(Error::Correlation {
-                segment: "MSA",
-                field: 2,
-            });
-        }
-        match msa.code() {
-            AckCode::Aa | AckCode::Ae | AckCode::Ar => {}
-            AckCode::Ca | AckCode::Ce | AckCode::Cr => return Err(invalid("MSA", 1)),
-        }
+        validate_acceptance(msa, sent_header)?;
         let mut decisions = Vec::new();
         let mut expected = BTreeMap::new();
         let mut sent_fillers = Vec::new();
@@ -445,29 +411,7 @@ fn read_orders<'a>(
         } else {
             None
         };
-        if let Some(obr) = detail {
-            let test = field(obr, 4).ok_or_else(|| invalid("OBR", 4))?;
-            let max = match version {
-                Version::V231 => 200,
-                Version::V251 => 250,
-            };
-            if test.is_null() || test.raw().len() > max || test.repetitions().count() != 1 {
-                return Err(invalid("OBR", 4));
-            }
-            let ce = test.repetitions().next().ok_or_else(|| invalid("OBR", 4))?;
-            if !crate::datatypes::coded(&ce.components().collect::<Vec<_>>(), version) {
-                return Err(invalid("OBR", 4));
-            }
-            if !raw(common, 7).is_empty()
-                && !raw(obr, 27).is_empty()
-                && raw(common, 7) != raw(obr, 27)
-            {
-                return Err(Error::Correlation {
-                    segment: "OBR",
-                    field: 27,
-                });
-            }
-        }
+        validate_order_detail(common, detail, version)?;
         let placer =
             identities(common, detail, 2, true, version)?.ok_or_else(|| invalid("ORC", 2))?;
         let filler = identities(common, detail, 3, false, version)?;
@@ -526,6 +470,83 @@ fn read_orders<'a>(
                 .notes
                 .push(segments.next().ok_or_else(|| invalid("NTE", 0))?);
         }
+    }
+    Ok(())
+}
+
+fn validate_order_detail(
+    common: Segment<'_>,
+    detail: Option<Segment<'_>>,
+    version: Version,
+) -> Result<(), Error> {
+    if let Some(obr) = detail {
+        let test = field(obr, 4).ok_or_else(|| invalid("OBR", 4))?;
+        let max = match version {
+            Version::V231 => 200,
+            Version::V251 => 250,
+        };
+        if test.is_null() || test.raw().len() > max || test.repetitions().count() != 1 {
+            return Err(invalid("OBR", 4));
+        }
+        let ce = test.repetitions().next().ok_or_else(|| invalid("OBR", 4))?;
+        if !crate::datatypes::coded(&ce.components().collect::<Vec<_>>(), version) {
+            return Err(invalid("OBR", 4));
+        }
+        if !raw(common, 7).is_empty() && !raw(obr, 27).is_empty() && raw(common, 7) != raw(obr, 27)
+        {
+            return Err(Error::Correlation {
+                segment: "OBR",
+                field: 27,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_response_header(
+    message: &Message,
+    sent: &OrderMessage,
+    sent_header: Msh<'_>,
+) -> Result<Version, Error> {
+    let header = Msh::new(message)?;
+    let version = header.version();
+    if version != sent_header.version() {
+        return Err(Error::Correlation {
+            segment: "MSH",
+            field: 12,
+        });
+    }
+    let mut kind = header.message_type();
+    let [code, event, structure] = sent.family.response();
+    let valid_code = kind.next() == Some(code);
+    let valid_event = kind.next() == Some(event);
+    let valid_structure = match (sent.family, kind.next()) {
+        (Family::Orm, None) => true,
+        (Family::Orm | Family::Oml, Some(value)) => value == structure,
+        (Family::Oml, None) => false,
+    };
+    if !valid_code || !valid_event || !valid_structure {
+        return Err(invalid("MSH", 9));
+    }
+    if header.control_id() == sent_header.control_id() {
+        return Err(Error::Correlation {
+            segment: "MSH",
+            field: 10,
+        });
+    }
+    Ok(version)
+}
+
+fn validate_acceptance(msa: Msa<'_>, sent_header: Msh<'_>) -> Result<(), Error> {
+    if msa.control_id() != sent_header.control_id() {
+        return Err(Error::Correlation {
+            segment: "MSA",
+            field: 2,
+        });
+    }
+    match msa.code() {
+        AckCode::Aa | AckCode::Ae | AckCode::Ar => {}
+        AckCode::Ca | AckCode::Ce | AckCode::Cr => return Err(invalid("MSA", 1)),
     }
     Ok(())
 }
