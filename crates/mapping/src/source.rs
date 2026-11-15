@@ -30,22 +30,13 @@ impl Source<'_> {
         let Record::Hl7(header) = self.nodes.first()?.record else {
             return None;
         };
-        let escape = char::from(*header.field(2)?.raw().get(2)?);
-        let mut parts = raw.split(escape);
-        parts.next();
-        let mut issue = None;
-        while let Some(code) = parts.next() {
-            if parts.next().is_none() {
-                return Some(crate::Problem::UnsupportedEscape);
+        match analyte_hl7::inspect_text_escapes(raw, *header.field(2)?.raw().get(2)?) {
+            Some(analyte_hl7::TextEscape::Unsupported) => Some(crate::Problem::UnsupportedEscape),
+            Some(analyte_hl7::TextEscape::Formatting) => {
+                Some(crate::Problem::UnsupportedFormatting)
             }
-            match code {
-                "H" | "N" => return Some(crate::Problem::UnsupportedFormatting),
-                _ if code.starts_with('.') => return Some(crate::Problem::UnsupportedFormatting),
-                "F" | "S" | "T" | "R" | "E" => {}
-                _ => issue = Some(crate::Problem::UnsupportedEscape),
-            }
+            None => None,
         }
-        issue
     }
 
     pub(crate) fn attach_comments(&mut self) -> Result<(), Error> {
