@@ -462,9 +462,18 @@ admissions; preflight rejection with no bytes; and queried-work cancellation.
 They use temporary stores and the reference receiver. Accepted, rejected and
 cancelled/refused work also survives a restart without resend.
 
-Step 5 is deferred: TF-2b B.5 governs message acknowledgements; B.6 and TF-2x 2.2.4
-require independent analyzer- and manager-initiated links. This step keeps the
-existing analyzer-initiated connection and makes no topology-conformance claim.
-Splitting and coordinating query-triggered followups across independently opened
-links is a larger transport/config change. Existing receive, send, query and ORL
-deadlines remain configurable. No new dependency, stored format or contract change.
+## LAW persistent-link scope (step 5)
+
+The agreed scope is one persistent link per configured LAW machine, carrying all
+three transactions. `law.connection_mode = "persistent"` is required. The existing
+TCP server/client transport selection controls who opens it, without a second
+role field or duplicated protocol path. Independent per-transaction links fail
+validation specifically at `law.connection_mode`. This subset does not meet
+TF-2b B.6's independent-link topology; that row remains unchecked.
+
+Tests in `tests/law/connections.rs` cover both directions, all three transactions
+on the same link, client reconnection without replay, and first-byte deadlines
+with retained partial bytes. Configuration/startup tests name the supported
+scope and the unsupported topology explicitly. All existing query, ORL, receive,
+send and operation deadlines come from config; idle scheduling does not replace
+them. The final matrix is in the protocol checklist. Evidence remains documented.

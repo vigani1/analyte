@@ -143,7 +143,11 @@ other placer-owned OBR field; an OML position mapping is refused.
 ## LAW configuration (results, queries and work)
 
 `examples/law.toml` selects `dialog.kind = "law_manager"`, MLLP and HL7
-2.5.1. LAW requires UTF-8, CR segments, strict escapes and store-and-forward
+2.5.1. `[law].connection_mode = "persistent"` explicitly selects one link for
+all three transactions. `[transport].kind` selects `tcp_server` (the analyzer
+opens it) or `tcp_client` (Analyte opens it); the site endpoint is respectively
+the local bind address or the analyzer address. LAW requires UTF-8, CR segments,
+strict escapes and store-and-forward
 responsibility. `[law.peer]` explicitly declares every enhanced-content flag;
 `LawPeer::capabilities` supplies the existing pure LAW builders. No option is
 implicitly enabled. Local overrides may replace the whole `[law]` policy.
@@ -164,8 +168,9 @@ The declarations have documented evidence in `tests/law.rs`. The program now
 runs LAB-29 results, configured LAB-27 followups, unsolicited LAB-28 with
 `orders.send_ahead = true`, and app-requested cancellation of previously accepted
 work (including queried work with send-ahead disabled). No attempt is resent.
-Other connection roles and independent links remain unwired; the current runtime
-uses the existing analyzer-initiated TCP connection. Trusted empty uses the restricted negative
+Both TCP roles use the same persistent session. The value
+`connection_mode = "independent_per_transaction"` fails validation specifically
+at `law.connection_mode`; independent per-transaction links are not supported. Trusted empty uses the restricted negative
 LAB-28; untrusted, failed, stale, paused or late lookups receive an error RSP.
 
 The specimen namespace binds SPM-2 when supported; the container namespace binds
@@ -188,6 +193,8 @@ starts after issuance for both work and cancel ORLs. Partial input still uses
 pause and stale/untrusted feed admission use the shared store checks. A failed
 idle lookup produces no work bytes and retains the receiving connection. Tests:
 `law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead` in this
-crate, and the program's source-named `tests/law/work.rs` matrix. TF-2b B.6's
-independent manager-initiated broadcast link and lifetime policy are step 5,
-not implied by enabling send-ahead here.
+crate, and the program's source-named `tests/law/work.rs` matrix. The single-link
+scope and specific rejection are tested by
+`law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_independent_links`.
+This declared subset does not implement TF-2b B.6's independent directional links
+or short-lived connections. No full LAW connection-conformance claim is made.

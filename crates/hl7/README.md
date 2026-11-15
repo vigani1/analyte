@@ -569,3 +569,13 @@ send-ahead/cancellation now reuse that host path (step 4), including existing
 protocol API was needed. Seven program/reference-receiver tests in
 `tests/law/work.rs` cover outcomes, restore pause and recovery without resend.
 Independent directional links and Gazelle remain separate host gates.
+
+
+The program now declares `law.connection_mode = "persistent"` for one TCP link
+in either configured client/server direction, carrying all LAW transactions.
+Independent per-transaction links are rejected specifically by config validation;
+the TF-2b B.6 independent-link checklist remains unchecked. Pure protocol builders
+and receive views do not select a connection role or implement host retries.
+Program evidence is listed by test in `docs/protocols/ihe-law.md`, including
+`law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`.
+No Gazelle run or full LAW actor conformance is claimed.

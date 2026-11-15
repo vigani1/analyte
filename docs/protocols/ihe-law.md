@@ -7,14 +7,15 @@ in an independent review on 2026-11-15. Field-profile implementation now covers
 all five Appendix C groups. Evidence is still **documented**, not simulated.
 Section/page references identify sources; no source tables or examples are copied.
 
-Checked rows mean their stated pure-code behavior has named local tests. An
+Checked rows mean their stated behavior has named local tests at the specified
+pure-crate or program boundary. An
 unchecked row can have partial evidence; its remaining work is stated explicitly.
 A planned test is not evidence and does not exist yet. Even a checked field row
 does not establish simulator, host integration or overall actor conformance.
 The crate README records exact fields and source discrepancies. Test names below
 are in `crates/hl7/tests/` unless a different path is given.
 
-## Scope decisions to confirm at phase start
+## Agreed scope and qualification
 
 - **Actor:** Analyte implements the **Analyzer Manager** (it receives
   results and distributes work the lab app authorized). Analyzer behavior
@@ -53,7 +54,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Outgoing supported builders intersect explicit content selection with peer capabilities.
 - [ ] **R** Use directional MLLP initiating connections; tolerate persistent/per-transaction connections and independent establishment (TF-2b B.6, pp.79–80; TF-2x §2.2.4 dependency).
   Tests: `mllp_r1_1_2_roundtrip_chunk_boundaries`.
-  Partial transport evidence in crates/framing/tests/codecs.rs. LAW initiating direction, independent links and persistent/per-transaction host sessions still need integration tests.
+  The running program supports one declared persistent link in either TCP role, carrying all three transactions. Config explicitly rejects independent per-transaction links (`crates/config/tests/law.rs::law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_independent_links`). Program tests: `law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`, `law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work` in `crates/analyte/tests/law/connections.rs`. Independent links, cross-link ownership, independent establishment and short-lived transaction connections remain unimplemented, so this B.6 row stays unchecked.
 - [x] **R** Use NE/AL application acknowledgement mode and correct header reversal/MSA-2 correlation; do not reject incoming application/facility names merely for differing from configured values (TF-2b B.5, pp.78–79; HL7 §2.9, pp.2-24–2-28, §2.15.8.2).
   Tests: `law_tf2b_c4_msh_15_16_c_m_x_predicate_is_trigger_versus_response`, `law_tf2b_c4_c3_b5_receive_query_reply_reversal_correlation_ignored_content`.
   Pure header/acknowledgment policy; host storage evidence is a separate gate.
@@ -302,7 +303,7 @@ gaps are superseded only by named evidence; unchecked actor/conformance gates
 stay open.
 
 
-## Program integration checkpoint: step 4 ? send-ahead and cancellation
+## Program integration checkpoint: step 4 - send-ahead and cancellation
 
 Evidence remains **documented**. No Gazelle or real analyzer was used. Tests below
 live in `crates/analyte/tests/law/work.rs`, compiled under `tests/delivery.rs`, and
@@ -315,9 +316,59 @@ run the program with temporary stores and the reference receiver.
 - [x] Restart during Sending or admitted CancelRequested recovers retained items as Uncertain, never repeats work or cancel bytes (ADR 0003 rule 8). Test: `law_tf2b_3_28_adr0003_restart_during_sending_or_cancelling_is_uncertain_without_resend`. The shared startup recovery now covers both states.
 - [x] Shared restore pause blocks both new work and cancel admission (ADR 0003, TF-2b 3.28.4). Test: `law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation`. Cancellation still rechecks the fresh trusted feed inside the shared transaction.
 - [x] An unmapped command is retained as Rejected without Sending or bytes (TF-2b 3.28.4; ADR 0003). Test: `law_tf2b_3_28_adr0003_unmapped_send_is_rejected_before_reservation_or_bytes`.
-- [ ] Independent directional connections and lifetime policy (TF-2b B.6, TF-2x 2.2.4). Step 5 remains: manager-initiated broadcast connection, analyzer-initiated query/result connection, cross-link followup ownership, independent establishment and persistent/short-lived tests. This checkpoint uses the existing analyzer-initiated connection for all traffic; it is not B.6-conformant. B.5 message acknowledgement rules remain in the pure crate and existing host paths. Splitting the topology is a larger transport/config change, so it was not included in this round.
+- [ ] Independent directional connections and lifetime policy (TF-2b B.6, TF-2x 2.2.4). The agreed step-5 scope below supports one persistent link in either configured direction. Manager-initiated broadcast and analyzer-initiated query/result links operating independently, cross-link followup ownership, independent establishment and short-lived transaction connections remain unimplemented and explicitly unsupported in config. The current subset is not B.6-conformant.
 - [ ] Complete LAW actor qualification: returned-result content against originating work, remaining enhanced work groups/options, directional links, and a recorded Gazelle run. The existing receive/send/query/ORL deadlines are configurable and covered by source-named tests; that does not close the independent-link requirement.
 
 No protocol API, dependency, store schema or contract was added for step 4. The
 merge from main brings alerts schema 6 and admin; those are not a LAW schema or
 admin/CLI implementation change in this step.
+
+
+## Final program scope: steps 5-7
+
+The owner selected one persistent link per LAW machine, in the configured TCP
+client/server direction, carrying LAB-27, LAB-28 and LAB-29. This is the supported
+program subset; it does not change the normative independent-link requirement.
+Evidence remains **documented**. No Gazelle or real-machine qualification occurred.
+
+- [x] Explicit persistent-link selection and a specific `law.connection_mode` error for `independent_per_transaction`. Test: `crates/config/tests/law.rs::law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_independent_links`.
+- [x] Both roles validate without startup I/O. Test: `crates/analyte/tests/receive.rs::law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io`.
+- [x] All three transactions share one persistent connection in both configured directions (B.5 and the declared B.6 subset). Test: `crates/analyte/tests/law/connections.rs::law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`.
+- [x] Client disconnect/first-byte timeout retains evidence, reconnects and never replays reserved work. Test: `crates/analyte/tests/law/connections.rs::law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work`.
+- [ ] Independent per-transaction/directional links: separate listeners/initiators, cross-link query followup ownership, independent establishment and short-lived lifetime policy remain. The explicit unsupported config mode prevents a full B.6 claim.
+- [ ] Gazelle qualification: record tool build, profile revision, actor/options, scenarios and validation results. Local synthetic tests are not simulator evidence.
+- [ ] Full actor/workflow qualification: validate returned result content against durable originating work; remaining enhanced content/groups, pooling/relationships and complete workflows remain as listed above. Isolate/parent needs app-supplied identities in a future contract; rack/tray forms are still explicitly rejected.
+- [ ] Shared stored-byte reprocessing integration: `feat/reprocess-resend` and `machine/interpretation.rs` are not on main at this checkpoint. When merged, route LAB-29 through `evidence::interpret(store, machine, id)` and prove a parked LAW receipt reprocesses after a mapping fix.
+
+### Program end-to-end evidence index (step 7)
+
+All tests below run with temporary protected stores and the repository reference
+receiver. Tests name their TF-2b sections/ADR boundaries. Each index row concerns
+only the stated behavior; unchecked actor and simulator gates stay open.
+
+| Behavior | Named program test |
+| --- | --- |
+| LAB-29 store before ACK, split input, AA only after interpretation | `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack` |
+| LAB-29 storage failure and near-full disk never AA | `law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa`, `law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa` |
+| Delivered once, retransmission no delivery, explicit C new revision | `law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c` |
+| Uninterpretable retained with error ACK | `law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_delivery` |
+| Unsolicited explicit identity, ambiguous data parked | `law_tf2b_3_29_4_unsolicited_uses_explicit_analyzer_order_not_invented_awos` |
+| Query found, one item/AWOS, reordered ORL outcomes | `law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome` |
+| Trusted empty, restricted negative work, correlated ORL without items | `law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_orl_without_items` |
+| Untrusted/read failure/restore pause never empty | `law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not_no_work` |
+| Unreachable without trusted snapshot never empty | `law_tf2b_3_27_4_unreachable_app_without_snapshot_never_answers_no_work` |
+| Late query includes first-byte and storage budget | `law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage` |
+| Unsupported query forms are AR | `law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work` |
+| Send-ahead accepted/rejected/mixed AWOS; restart without resend | `law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos` |
+| No reply/disconnect, including cancellation, becomes Uncertain | `law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_replayed` |
+| Crash during Sending or CancelRequested, no resend | `law_tf2b_3_28_adr0003_restart_during_sending_or_cancelling_is_uncertain_without_resend` |
+| Cancel confirmed/refused/mixed per AWOS, retained identities | `law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos` |
+| Restore pause blocks send-ahead and cancellation | `law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation` |
+| Query work can be cancelled with send-ahead disabled | `law_tf2b_3_27_3_28_queried_work_uses_the_same_cancel_exchange_without_send_ahead` |
+| Both TCP roles, all transactions on one persistent link | `law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions` |
+| Client reconnect/deadline retains partial data, no replay | `law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work` |
+
+LAB-29 cases are in `crates/analyte/tests/law/results.rs`, query cases in
+`queries.rs`, send/cancel cases in `work.rs`, and role cases in `connections.rs`.
+All compile under `crates/analyte/tests/delivery.rs`. Store trust/paging tests,
+config validation and pure profile tests remain listed in earlier rows.

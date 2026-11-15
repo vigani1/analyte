@@ -5,8 +5,9 @@ level, and phase 4 (IHE LAW) has its full profile rules; its program wiring is
 in progress. The program receives and parks results from every stack, answers
 machine queries and sends work lists for ASTM, HL7 legacy, VIDAS and Autolyser
 through one durable order path that never resends. LAW results, supported queries,
-per-AWOS send-ahead and cancellation now use that path; independent directional
-LAW links and qualification remain open. Recordings replay through
+per-AWOS send-ahead and cancellation now use that path on one declared persistent
+TCP client/server link. Independent per-transaction LAW links are rejected;
+full topology/actor qualification and Gazelle remain open. Recordings replay through
 the program (fake machine). From phase 9: OS services, safe restore and the
 release process exist; the admin page is in progress. Phase 7 machine configs
 wait on the lab's settings and recordings. Nothing has met a real machine yet.

@@ -422,8 +422,11 @@ an uncertain machine order merely because a service was restarted.
 
 ## LAW results and query runtime (steps 2–3)
 
-`law_manager` now runs a dedicated LAB-29 receiver on an analyzer-initiated TCP
-server link. Its complete MLLP block and configuration provenance are durable
+`law_manager` runs one explicitly configured persistent TCP link carrying
+LAB-27, LAB-28 and LAB-29. Select `transport.kind = "tcp_server"` when the analyzer
+opens the link, or `"tcp_client"` when Analyte opens it, and declare
+`law.connection_mode = "persistent"`. The site endpoint is the bind or peer
+address for that role. Its complete MLLP block and configuration provenance are durable
 before profile validation, mapping or ACK. Existing LAW views/ACK builders and
 the shared revision/outbox transaction own interpretation and delivery. AA
 requires successful durable interpretation; failed content is parked with AE
@@ -462,15 +465,17 @@ work. Both reuse the query exchange builder, shared per-AWOS reservation and ORL
 handler. CR confirms cancellation per item; UC preserves its preceding state with
 a CancelRefused event. No reply, disconnect or restart makes the admitted attempt
 Uncertain; neither original work nor cancellation is resent. Restore pause blocks
-both admissions. Independent directional LAW links remain unimplemented (step 5);
-this checkpoint still sends on the existing analyzer-initiated connection. Results-only
+both admissions. Independent per-transaction links are not supported:
+`law.connection_mode = "independent_per_transaction"` fails with a specific
+validation error. This is a declared single-link subset, not full TF-2b B.6
+connection conformance. Results-only
 config still rejects queries without a work layout. No full actor conformance is
 claimed at this checkpoint.
 `tests/law/results.rs` contains nine synthetic program/reference-receiver cases,
 including a durable-commit pause, raw/interpretation storage failures, low disk,
 unsolicited results, complete OG run identities and partial-block expiry.
-`tests/receive.rs::law_tf2b_3_29_manager_selects_dedicated_receiver_without_startup_io`
-checks startup selection/role restriction. `tests/law/queries.rs` adds thirteen
+`tests/receive.rs::law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io`
+checks startup selection in both roles. `tests/law/queries.rs` adds thirteen
 program/reference-receiver cases, including paging past a full page for other
 analyzers, blocked cache access, an unreachable receiver, restore pause, late
 queries, item reservation storage failure, ORL outcomes and no replay. Evidence
@@ -478,3 +483,19 @@ remains documented. `tests/law/work.rs` adds seven cases for send-ahead and
 cancellation, including per-AWOS mixed outcomes, restart during Sending and
 CancelRequested, no resend, preflight rejection, and restore pause. Originating-work
 result correlation, directional link qualification and Gazelle remain.
+
+
+`tests/law/connections.rs::law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`
+exercises both roles through the program/reference receiver.
+`law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work` covers
+normal disconnect and first-byte timeout, retained partial bytes, and reconnect
+without repeating reserved work. The shared client supervisor treats its cancelled
+owner's closed event queue as session teardown. Receive, send, transport operation,
+query and ORL response deadlines retain their explicit config values.
+
+Independent directional links, per-transaction connection lifetime, complete
+originating-work result validation, additional enhanced workflows and a recorded
+Gazelle run remain open in [the LAW checklist](../../docs/protocols/ihe-law.md).
+Evidence stays documented; synthetic reference-receiver tests do not qualify a
+clinical analyzer. The shared stored-byte reprocessing entry point is not yet on
+main at this checkpoint; LAW integration with that entry point remains pending.
