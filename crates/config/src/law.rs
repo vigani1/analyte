@@ -48,13 +48,13 @@ impl LawPeer {
     }
 }
 
-/// Declared LAW link topology. The host currently supports one persistent link only.
+/// Declared LAW link topology.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LawConnectionMode {
     /// One configured TCP client or server link carries LAB-27, LAB-28 and LAB-29.
     Persistent,
-    /// Independent transaction links (TF-2b B.6); explicitly rejected until implemented.
+    /// Analyzer-initiated LAB-27/29 and independent manager-initiated LAB-28 links (B.6).
     IndependentPerTransaction,
 }
 
@@ -62,8 +62,11 @@ pub enum LawConnectionMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Law {
-    /// Explicit single-link scope; direction comes from the transport configuration.
+    /// Explicit link ownership; transport selects the persistent direction or inbound listener.
     pub connection_mode: LawConnectionMode,
+    /// Analyzer listener for independent manager-initiated LAB-28, separate from the site listener.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outbound_endpoint: Option<std::net::SocketAddr>,
     /// Explicit work layout; absence leaves query execution and work sending disabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work: Option<LawWork>,
@@ -185,13 +188,32 @@ pub(crate) fn validate(machine: &MachineDocument, path: &str) -> Result<(), Erro
         return Ok(());
     };
     match law.connection_mode {
-        LawConnectionMode::Persistent => {}
+        LawConnectionMode::Persistent => {
+            if law.outbound_endpoint.is_some() {
+                return Err(invalid(
+                    path,
+                    "law.outbound_endpoint",
+                    "a persistent link uses only the site endpoint",
+                ));
+            }
+        }
         LawConnectionMode::IndependentPerTransaction => {
-            return Err(invalid(
-                path,
-                "law.connection_mode",
-                "independent per-transaction LAW links are not supported; configure one persistent link carrying LAB-27, LAB-28 and LAB-29",
-            ));
+            if machine.transport.kind != crate::TransportKind::TcpServer {
+                return Err(invalid(
+                    path,
+                    "law.connection_mode",
+                    "independent LAW requires an inbound tcp_server for LAB-27/LAB-29",
+                ));
+            }
+            if law.outbound_endpoint.is_none_or(|peer| {
+                peer.port() == 0 || peer.ip().is_unspecified() || peer.ip().is_multicast()
+            }) {
+                return Err(invalid(
+                    path,
+                    "law.outbound_endpoint",
+                    "independent LAW requires an explicit analyzer listener address and nonzero port",
+                ));
+            }
         }
     }
 

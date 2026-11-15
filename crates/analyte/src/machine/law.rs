@@ -1,4 +1,5 @@
 //! LAW program exchanges; all protocol views, builders and ACK rules stay in hl7.
+pub(super) mod independent;
 use crate::orders::law::{Connection, Reply, response_metadata};
 use crate::{Error, evidence, invalid};
 use analyte_framing::mllp;
@@ -15,7 +16,18 @@ pub(super) async fn session(
     settings: &analyte_config::LawStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
+    stop: watch::Receiver<bool>,
+) -> Result<(), Error> {
+    session_with_outbound(machine, settings, store, conn, stop, None).await
+}
+
+async fn session_with_outbound(
+    machine: &evidence::Connection<'_>,
+    settings: &analyte_config::LawStack,
+    store: &Handle,
+    conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
+    outbound: Option<&tokio::sync::mpsc::Sender<independent::Work>>,
 ) -> Result<(), Error> {
     let config = settings;
     let mut options = settings.options();
@@ -42,7 +54,7 @@ pub(super) async fn session(
                     return Err(invalid("LAW receive deadline expired"));
                 },
                 () = async { idle.tick().await; } => {
-                    if opened && decoder.pending().is_empty() {
+                    if outbound.is_none() && opened && decoder.pending().is_empty() {
                         let outgoing = tokio::select! {
                             biased;
                             () = super::stopping(&mut stop) => break,
@@ -87,12 +99,28 @@ pub(super) async fn session(
                                 () = super::stopping(&mut stop) => return Ok(()),
                                 result = tokio::time::timeout_at(end, process(store, machine, event, options, processing_stop, &mut orders, started)) => result.map_err(|_| invalid("LAW processing deadline expired; no acceptance promised"))??,
                             };
+                            let mut ready=None;
+                            let mut followup_deadline=None;
+                            let response=match (response,outbound) {
+                                (Some(Reply::Followup {response,work}),Some(sender))=> {
+                                    followup_deadline=orders.due();
+                                    let (notify,wait)=tokio::sync::oneshot::channel();
+                                    let pending=independent::Work {orders:std::mem::replace(&mut orders,Connection::new()?),message:work,ready:wait};
+                                    if let Err(error)=sender.try_send(pending) {
+                                        orders=error.into_inner().orders;
+                                        return Err(invalid("LAW outbound queue unavailable; reserved work not issued"));
+                                    }
+                                    ready=Some(notify);
+                                    Some(Reply::Response(response))
+                                }
+                                (response,_)=>response,
+                            };
                             let (response, has_followup) = match response {
                                 None => (Vec::new(), false),
                                 Some(Reply::Response(message)) => (vec![message], false),
                                 Some(Reply::Followup { response, work }) => (vec![response, work], true),
                             };
-                            let write_end = if has_followup { orders.due().map(tokio::time::Instant::from_std).map_or(end, |due| due.min(end)) } else { end };
+                            let write_end = followup_deadline.or_else(||has_followup.then(||orders.due()).flatten()).map(tokio::time::Instant::from_std).map_or(end,|due|due.min(end));
                             for message in response {
                                 let send_until = tokio::time::Instant::now().checked_add(send).ok_or("LAW send deadline overflow")?;
                                 tokio::select! {
@@ -101,6 +129,7 @@ pub(super) async fn session(
                                     result = write(conn, &message, limit, write_end.min(send_until)) => result?,
                                 }
                             }
+                            if let Some(ready)=ready { let _ = ready.send(()); }
                             if has_followup { orders.issued(Duration::from_millis(u64::from(config.policy.response_ms)))?; }
                             until = if decoder.pending().is_empty() { None } else { Some(end) };
                         }

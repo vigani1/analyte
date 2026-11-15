@@ -1,8 +1,8 @@
 # Analyte plan
 
 Status, 2026-11-15: phases 1 to 6 and 8 are built at the documented level,
-including IHE LAW as Analyzer Manager in the program (one persistent link;
-independent links and successful recorded simulator qualification remain). The program receives and parks
+including IHE LAW as Analyzer Manager in the program (persistent or independent
+directional links; successful recorded simulator qualification remains). The program receives and parks
 results from every stack, answers machine queries and sends work lists for
 ASTM, HL7, LAW, VIDAS and Autolyser through one durable order path that never
 resends. Recordings replay through the program. From phase 9: OS services,

@@ -167,9 +167,23 @@ pub struct Hl7Orders {
     pub send: Option<Hl7SendOrders>,
 }
 
-/// Persistent LAW link policy; work is carried by the enabled order capability.
+/// Validated LAW connection ownership, with no absent independent destination.
+#[derive(Debug, Clone, Copy)]
+pub enum LawLinks {
+    /// All transactions share the configured persistent link.
+    Persistent,
+    /// Separate inbound query/result links and a host-owned outbound work destination.
+    Independent {
+        /// Analyzer's LAB-28 listener.
+        outbound: std::net::SocketAddr,
+    },
+}
+
+/// LAW link policy; work is carried by the enabled order capability.
 #[derive(Debug, Clone)]
 pub struct LawPolicy {
+    /// Validated ownership and destination.
+    pub links: LawLinks,
     /// Supported lookup scopes.
     pub query_forms: Vec<LawQueryForm>,
     /// Explicit peer capabilities.
@@ -263,7 +277,7 @@ pub struct Hl7Stack {
     pub orders: Option<Hl7Orders>,
 }
 
-/// LAW over one persistent MLLP/TCP link.
+/// LAW over MLLP/TCP with explicit connection ownership.
 #[derive(Debug, Clone)]
 pub struct LawStack {
     /// TCP link.
@@ -442,6 +456,14 @@ impl Stack {
                     limits: limits(&machine.syntax),
                     mappings: mappings(),
                     policy: LawPolicy {
+                        links: match law.connection_mode {
+                            LawConnectionMode::Persistent => LawLinks::Persistent,
+                            LawConnectionMode::IndependentPerTransaction => LawLinks::Independent {
+                                outbound: law
+                                    .outbound_endpoint
+                                    .expect("validated independent LAW has an outbound endpoint"),
+                            },
+                        },
                         query_forms: law.query_forms.clone(),
                         peer: law.peer.clone(),
                         query_deadline_ms: law.query_deadline_ms,

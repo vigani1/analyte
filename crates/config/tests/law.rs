@@ -239,7 +239,7 @@ fn adr0002_law_overrides_replace_policy_and_change_protected_provenance() -> Res
 }
 
 #[test]
-fn law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_independent_links()
+fn law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint()
 -> Result<(), Error> {
     for role in ["tcp_server", "tcp_client"] {
         load(&LAW.replace("kind = \"tcp_server\"", &format!("kind = \"{role}\"")))?;
@@ -249,8 +249,14 @@ fn law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_in
         "connection_mode = \"independent_per_transaction\"",
     );
     assert!(
-        matches!(load(&unsupported), Err(Error::Invalid { key, reason, .. }) if key=="law.connection_mode" && reason.contains("independent per-transaction LAW links are not supported"))
+        matches!(load(&unsupported), Err(Error::Invalid { key, .. }) if key=="law.outbound_endpoint")
     );
+    let independent =
+        unsupported.replace("[law]", "[law]\noutbound_endpoint = \"127.0.0.1:15100\"");
+    load(&independent)?;
+    assert!(load(&independent.replace("kind = \"tcp_server\"", "kind = \"tcp_client\"")).is_err());
+    assert!(load(&independent.replace("127.0.0.1:15100", "0.0.0.0:0")).is_err());
+    assert!(load(&independent.replace("independent_per_transaction", "persistent")).is_err());
     assert!(load(&LAW.replace("connection_mode = \"persistent\"", "")).is_err());
     Ok(())
 }
