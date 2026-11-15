@@ -164,3 +164,16 @@ fn lis01_6_3_1_overlong_and_incomplete_evidence() -> Result<(), a::Error> {
     assert!(d.finish().is_none());
     Ok(())
 }
+
+#[test]
+fn lis01_6_4_link_control_inside_frame_is_reported_not_swallowed() {
+    for control in [a::ENQ, a::EOT, a::ACK, a::NAK] {
+        let wire = [a::STX, b'1', b'A', control];
+        let events = astm(&wire);
+        assert!(matches!(
+            events.as_slice(),
+            [a::Event::Rejected { error: a::Error::LinkControlInFrame(c), raw }]
+                if *c == control && raw.as_slice() == wire
+        ));
+    }
+}

@@ -1,5 +1,6 @@
 //! MLLP Release 1 §§1.2–1.3, single-byte framing only.
 use thiserror::Error;
+
 /// Start block byte.
 pub const SB: u8 = 11;
 /// End block byte.
@@ -34,6 +35,7 @@ pub enum Error {
     #[error("incomplete block")]
     Incomplete,
 }
+
 /// Complete block or bounded rejected evidence; payloads must not be logged.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -47,6 +49,7 @@ pub enum Event {
         raw: Vec<u8>,
     },
 }
+
 /// Valid maximum payload size, excluding three framing bytes.
 #[derive(Debug, Clone, Copy)]
 pub struct Limit(usize);
@@ -62,12 +65,14 @@ impl Limit {
         }
     }
 }
+
 #[derive(Debug)]
 enum State {
     Idle,
     Text,
     Trailer,
 }
+
 /// Incremental block decoder bounded by payload limit plus four evidence bytes.
 #[derive(Debug)]
 pub struct Decoder {
@@ -76,6 +81,7 @@ pub struct Decoder {
     raw: Vec<u8>,
     count: usize,
 }
+
 impl Decoder {
     /// Creates an idle decoder without allocating from input.
     #[must_use]
@@ -87,11 +93,13 @@ impl Decoder {
             count: 0,
         }
     }
+
     /// Exact partial block; callers must journal bytes before feeding them.
     #[must_use]
     pub fn pending(&self) -> &[u8] {
         &self.raw
     }
+
     fn reject(&mut self, error: Error) -> Event {
         self.state = State::Idle;
         Event::Rejected {
@@ -99,6 +107,7 @@ impl Decoder {
             raw: std::mem::take(&mut self.raw),
         }
     }
+
     /// Finishes a connection or deadline and returns incomplete evidence.
     pub fn finish(&mut self) -> Option<Event> {
         if self.raw.is_empty() {
@@ -107,6 +116,7 @@ impl Decoder {
             Some(self.reject(Error::Incomplete))
         }
     }
+
     /// Consumes a byte. Outside bytes each produce an error; new SB restarts;
     /// all other defects return to idle. No bytes disappear silently.
     pub fn push(&mut self, byte: u8) -> Option<Event> {
@@ -152,9 +162,11 @@ impl Decoder {
         }
     }
 }
+
 fn valid(byte: u8) -> bool {
     byte > 31 || byte == CR
 }
+
 /// Encodes permitted §1.2 payload bytes, without character conversion.
 /// # Errors
 /// Rejects an oversized payload or a forbidden control byte before allocation.

@@ -37,11 +37,13 @@ impl FrameNumber {
             Err(Error::BadFrameNumber(byte))
         }
     }
+
     /// Returns the exact ASCII digit.
     #[must_use]
     pub const fn ascii(self) -> u8 {
         self.0
     }
+
     /// Advances a new frame, rolling seven over to zero.
     #[must_use]
     pub fn next(self) -> Self {
@@ -52,6 +54,7 @@ impl FrameNumber {
         })
     }
 }
+
 /// Checksum compatibility selected explicitly by machine configuration.
 #[derive(Debug, Clone, Copy, Default)]
 pub enum HexPolicy {
@@ -61,6 +64,7 @@ pub enum HexPolicy {
     /// Also accept lowercase checksum letters, preserving original bytes.
     AcceptLowercase,
 }
+
 /// Valid total frame bound, including seven overhead bytes.
 #[derive(Debug, Clone, Copy)]
 pub struct Limit(usize);
@@ -69,6 +73,7 @@ impl Default for Limit {
         Self(64_000)
     }
 }
+
 impl Limit {
     /// Accepts total limits 8 through 64,000 (at least one text byte).
     /// # Errors
@@ -81,6 +86,7 @@ impl Limit {
         }
     }
 }
+
 /// Specific framing failures; no payload is included in display messages.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum Error {
@@ -96,6 +102,11 @@ pub enum Error {
     /// Restricted text byte under §§6.6/8.6.
     #[error("restricted text byte {0:#04x}")]
     ControlInText(u8),
+    /// A link-control byte (ENQ, EOT, ACK or NAK) arrived inside a frame. The
+    /// partial frame is abandoned; the dialog must still act on this control
+    /// byte as received (for example EOT ends the transfer, §§6.4/8.4).
+    #[error("link control byte {0:#04x} inside a frame")]
+    LinkControlInFrame(u8),
     /// Hexadecimal digit is lowercase in strict mode.
     #[error("lowercase checksum")]
     LowercaseChecksum,
@@ -120,6 +131,7 @@ pub enum Error {
     #[error("incomplete frame")]
     Incomplete,
 }
+
 /// Complete validated frame with exact wire representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
@@ -128,28 +140,33 @@ pub struct Frame {
     text_end: usize,
     final_frame: bool,
 }
+
 impl Frame {
     /// Exact wire bytes, including checksum case and trailer.
     #[must_use]
     pub fn raw(&self) -> &[u8] {
         &self.raw
     }
+
     /// Text bytes without decoding or normalization.
     #[must_use]
     pub fn text(&self) -> &[u8] {
         self.raw.get(2..self.text_end).unwrap_or_default()
     }
+
     /// Valid frame digit; dialog must check expected sequence.
     #[must_use]
     pub const fn number(&self) -> FrameNumber {
         self.number
     }
+
     /// Whether ETX ended this frame.
     #[must_use]
     pub const fn is_final(&self) -> bool {
         self.final_frame
     }
 }
+
 /// One bounded decoder output. Outside bytes remain available to the dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -165,6 +182,7 @@ pub enum Event {
     /// Byte outside a frame (including dialog controls).
     Outside(u8),
 }
+
 #[derive(Debug)]
 enum State {
     Idle,
@@ -175,6 +193,7 @@ enum State {
     Cr(u8),
     Lf,
 }
+
 /// Incremental decoder retaining at most the configured total bound plus one evidence byte.
 #[derive(Debug)]
 pub struct Decoder {
@@ -187,6 +206,7 @@ pub struct Decoder {
     text_end: usize,
     final_frame: bool,
 }
+
 impl Decoder {
     /// Creates an empty decoder; no allocation depends on wire input.
     #[must_use]
@@ -202,6 +222,7 @@ impl Decoder {
             final_frame: false,
         }
     }
+
     fn reject(&mut self, error: Error) -> Event {
         self.state = State::Idle;
         Event::Rejected {
@@ -209,11 +230,13 @@ impl Decoder {
             raw: std::mem::take(&mut self.raw),
         }
     }
+
     /// Returns retained partial bytes for inspection/journaling.
     #[must_use]
     pub fn pending(&self) -> &[u8] {
         &self.raw
     }
+
     /// Ends a connection or deadline, returning incomplete evidence and resetting.
     pub fn finish(&mut self) -> Option<Event> {
         if self.raw.is_empty() {
@@ -222,6 +245,7 @@ impl Decoder {
             Some(self.reject(Error::Incomplete))
         }
     }
+
     /// Consumes one byte. Resumes framing at the next STX after any defect.
     /// An interrupting STX belongs to the new pending frame, not the rejection.
     pub fn push(&mut self, byte: u8) -> Option<Event> {
@@ -241,6 +265,10 @@ impl Decoder {
         }
         if matches!(self.state, State::Idle) {
             return Some(Event::Outside(byte));
+        }
+        if is_link_control(byte) {
+            self.raw.push(byte);
+            return Some(self.reject(Error::LinkControlInFrame(byte)));
         }
         // Leave room for the offending byte so no received evidence is lost.
         if self.raw.len() == self.limit.0 {
@@ -306,9 +334,16 @@ impl Decoder {
         }
     }
 }
+
+/// ENQ, EOT, ACK and NAK steer the link; they are never frame content.
+fn is_link_control(b: u8) -> bool {
+    matches!(b, ENQ | EOT | ACK | NAK)
+}
+
 fn restricted(b: u8) -> bool {
     matches!(b, 1..=6 | 10 | 16..=23)
 }
+
 fn hex(b: u8, policy: HexPolicy) -> Result<u8, Error> {
     match b {
         b'0'..=b'9' => Ok(b.wrapping_sub(b'0')),
@@ -320,6 +355,7 @@ fn hex(b: u8, policy: HexPolicy) -> Result<u8, Error> {
         _ => Err(Error::NonHexChecksum(b)),
     }
 }
+
 /// Encodes one record lazily into bounded frames, advancing numbers only on output.
 /// Does not concatenate records or interpret text encoding.
 /// # Errors
