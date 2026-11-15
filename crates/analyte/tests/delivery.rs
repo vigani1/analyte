@@ -1,4 +1,6 @@
 //! Phase 1 synthetic program-to-reference-receiver tests (ADR 0008, plan 13).
+#[path = "orders/cases.rs"]
+mod order_cases;
 mod support;
 use analyte::{Error, config::Program, service};
 use axum::{

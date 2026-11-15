@@ -1,4 +1,5 @@
 //! ASTM journaling precedes every data ACK (ADR 0003).
+use crate::orders::astm::{Pending, Request};
 use crate::{Error, config::Machine, deadline, evidence, invalid};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
 use analyte_model::{Identifier, ReceiptId};
@@ -42,17 +43,28 @@ pub(super) async fn session(
     let mut raw = Vec::new();
     let mut payload = Vec::new();
     let mut partial = Vec::new();
+    let mut pending: Option<Pending<'_>> = None;
+    let mut response: Option<Vec<Vec<u8>>> = None;
+    let mut response_deadline = None;
+    let mut query_started = None;
     let result = async {
         loop {
             let event = tokio::select! {
                 biased;
                 () = super::stopping(&mut stop) => break,
+                () = std::future::ready(()), if response.is_some() && wake.is_none() => None,
                 () = tokio::time::sleep(wake.map_or(Duration::from_secs(1), |d: Duration| d.saturating_sub(start.elapsed()))) => None,
                 event = conn.receive() => match event {
                     Ok(Some(event)) => Some(event),
                     Ok(None) => break,
                     Err(analyte_transport::Error::Deadline(_)) => None,
                     Err(error) => return Err(error.into()),
+                },
+                answer = async { match pending.as_mut() { Some(query) => query.finish(machine).await, None => std::future::pending().await } }, if pending.is_some() => {
+                    response_deadline = pending.as_ref().map(Pending::deadline);
+                    pending = None;
+                    response = answer?;
+                    None
                 },
             };
             let bytes = match event {
@@ -65,7 +77,10 @@ pub(super) async fn session(
                 Some(analyte_transport::Event::Closed(_)) => break,
                 Some(analyte_transport::Event::Failed(_) | analyte_transport::Event::RecordingFailed(_)) | None => Vec::new(),
             };
-            let events = if bytes.is_empty() { vec![Event::Tick] } else { bytes.into_iter().map(Event::Byte).collect() };
+            let events = if bytes.is_empty() && response.is_some() && wake.is_none() {
+                if response_deadline.is_some_and(|until| Instant::now() >= until) { response = crate::orders::astm::failure(machine); }
+                match response.take() { Some(records) => vec![Event::Send(records)], None => vec![Event::Tick] }
+            } else if bytes.is_empty() { vec![Event::Tick] } else { bytes.into_iter().map(Event::Byte).collect() };
             for event in events {
                 if let Event::Byte(byte) = &event {
                     if *byte == analyte_framing::astm::STX { partial.clear(); }
@@ -100,6 +115,7 @@ pub(super) async fn session(
                             actions.extend(dialog.step(start.elapsed(), if committed.is_ok() { Event::Committed(id) } else { Event::CommitFailed(id) })?);
                         }
                         Action::Record(record) => {
+                            if record.first() == Some(&b'Q') && query_started.is_none() { query_started = Some(Instant::now()); }
                             if payload.len().checked_add(record.len()).is_none_or(|n| n > settings.syntax.bytes) { return Err(invalid("ASTM message bound exceeded")); }
                             payload.extend_from_slice(&record);
                         }
@@ -108,13 +124,24 @@ pub(super) async fn session(
                                 if end == End::Normal {
                                     let id = ReceiptId::new();
                                     let time = evidence::receive(store, machine, id, std::mem::take(&mut raw)).await?;
-                                    evidence::interpret(store, machine, id, time, &payload).await?;
+                                    match crate::orders::astm::request(machine,&payload)? {
+                                        None => { evidence::interpret(store, machine, id, time, &payload).await?; },
+                                        Some(Request::Cancel) => { pending = None; response = None; response_deadline = None; },
+                                        Some(Request::Unsupported) => { pending = None; response = crate::orders::astm::failure(machine); response_deadline = None; },
+                                        Some(Request::Orders(samples)) => {
+                                            if pending.is_some() || response.is_some() {
+                                                pending = None; response = crate::orders::astm::failure(machine); response_deadline = None;
+                                            } else {
+                                                pending = Some(Pending::new(store,machine,samples,query_started.unwrap_or_else(Instant::now))?);
+                                            }
+                                        },
+                                    }
                                     store.request(deadline(), move |s| s.finish_transfer(&transfer_id, Some(id))).await?;
                                 } else {
                                     store.request(deadline(), move |s| s.finish_transfer(&transfer_id, None)).await?;
                                 }
                             }
-                            raw.clear(); payload.clear();
+                            raw.clear(); payload.clear(); query_started = None;
                         }
                         Action::Deadline(next) => wake = next,
                         Action::Refused(error) => return Err(error.into()),
@@ -125,7 +152,7 @@ pub(super) async fn session(
                             evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
                         }
                         Action::CommitFailed(_) | Action::LimitReached => return Err(invalid("ASTM storage or resource limit refused transfer")),
-                        Action::Sent(_) => return Err(invalid("receive service received an unexpected sender outcome")),
+                        Action::Sent(_) => {},
                     }
                 }
             }
