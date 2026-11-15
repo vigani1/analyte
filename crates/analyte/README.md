@@ -65,7 +65,7 @@ stop, transports close and join (5 seconds), and the store drains and closes
 (5 seconds). Interrupted claims retry after restart with the same ID and bytes.
 Delivery/store failures stop the service visibly. Individual machine failures
 remain isolated. HTTP requests have a 3-second deadline, local delivery storage
-operations 2 seconds, idle claims back off 100 ms, retries range from 1?60 seconds,
+operations 2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
 and order polls run every 5 seconds with a 30-second freshness policy.
 As with the store's existing worker, an uninterruptible operating-system flush
 cannot safely be forcibly cancelled; owner destructors join rather than detach.
