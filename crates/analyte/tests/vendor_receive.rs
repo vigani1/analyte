@@ -209,6 +209,7 @@ impl Running {
             match interpretation.outcome {
                 analyte_store::Reading::Results(results) => {
                     for result in results {
+                        assert_eq!(result.processing, analyte_model::ProcessingMode::Unknown);
                         assert!(matches!(
                             result.identity,
                             analyte_model::IdentityStatus::Unresolved(_)

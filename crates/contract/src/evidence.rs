@@ -759,6 +759,8 @@ pub struct ObservationIdentity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessingMode {
+    /// The machine did not state a processing mode; never production-eligible.
+    Unknown,
     /// Eligible for production delivery.
     Production,
     /// Training evidence only.

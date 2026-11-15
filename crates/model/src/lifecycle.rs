@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 /// Mode is explicit so training and debugging cannot silently become production.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProcessingMode {
+    /// The machine did not state a processing mode; never production-eligible.
+    Unknown,
     /// Eligible for production delivery.
     Production,
     /// Training evidence only.

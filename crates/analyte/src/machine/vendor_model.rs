@@ -59,7 +59,7 @@ fn result(
     Ok(ResultContent {
         receipt,
         sample,
-        processing: ProcessingMode::Production,
+        processing: ProcessingMode::Unknown,
         identity,
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![part])?)?,
     })

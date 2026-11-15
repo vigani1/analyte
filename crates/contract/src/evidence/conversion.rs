@@ -310,6 +310,7 @@ impl From<&analyte_model::TimePrecision> for TimePrecision {
 impl From<&analyte_model::ProcessingMode> for ProcessingMode {
     fn from(v: &analyte_model::ProcessingMode) -> Self {
         match v {
+            analyte_model::ProcessingMode::Unknown => Self::Unknown,
             analyte_model::ProcessingMode::Production => Self::Production,
             analyte_model::ProcessingMode::Training => Self::Training,
             analyte_model::ProcessingMode::Debug => Self::Debug,
