@@ -1,6 +1,7 @@
 //! Source adapters preserve parser boundaries; mapping never splits wire text.
+use crate::FieldSyntax;
 use crate::{Error, Position};
-use analyte_config::{Field as Selection, Group, SyntaxKind};
+use analyte_config::{Field as Selection, Group};
 
 #[derive(Clone, Copy)]
 pub(crate) enum Record<'a> {
@@ -18,7 +19,7 @@ pub(crate) struct Node<'a> {
 
 pub(crate) struct Source<'a> {
     pub nodes: Vec<Node<'a>>,
-    pub syntax: SyntaxKind,
+    pub syntax: FieldSyntax,
     pub component_separator: u8,
     pub charset: analyte_hl7::Charset,
 }
@@ -271,7 +272,7 @@ pub(crate) fn astm(message: &analyte_astm::Message) -> Source<'_> {
         .collect();
     Source {
         nodes,
-        syntax: SyntaxKind::AstmLis02,
+        syntax: FieldSyntax::AstmLis02,
         component_separator: message.delimiters().bytes().get(2).copied().unwrap_or(b'^'),
         charset: analyte_hl7::Charset::Latin1,
     }
@@ -305,7 +306,7 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
     };
     let mut source = Source {
         nodes: Vec::new(),
-        syntax: SyntaxKind::Hl7V2,
+        syntax: FieldSyntax::Hl7V2,
         component_separator: message.delimiters().bytes().get(1).copied().unwrap_or(b'^'),
         charset: message.charset(),
     };

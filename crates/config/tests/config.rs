@@ -92,6 +92,10 @@ fn adr_0003_identity_remains_unresolved_without_evidence() -> Result<(), Error> 
             .effective()
             .machine()
             .mappings
+            .as_ref()
+            .ok_or_else(|| Error::FileSize {
+                path: "fixture".into()
+            })?
             .identity
             .run
             .is_empty()
@@ -101,6 +105,10 @@ fn adr_0003_identity_remains_unresolved_without_evidence() -> Result<(), Error> 
             .effective()
             .machine()
             .mappings
+            .as_ref()
+            .ok_or_else(|| Error::FileSize {
+                path: "fixture".into()
+            })?
             .identity
             .correction_status_codes
             .iter()
@@ -217,5 +225,52 @@ fn adr0003_identity_selectors_are_validated() -> Result<(), Error> {
     assert!(
         matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.correction_status_codes")
     );
+    Ok(())
+}
+
+#[test]
+fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() -> Result<(), Error>
+{
+    for example in [
+        include_str!("../examples/poct.toml"),
+        include_str!("../examples/vidas_literal.toml"),
+        include_str!("../examples/autolyser.toml"),
+    ] {
+        let config = draft(example, OVERRIDES)?.validate()?;
+        assert!(config.effective().machine().mappings.is_none());
+        assert_eq!(
+            config.effective().machine().evidence.level,
+            EvidenceLevel::Documented
+        );
+        // A complete field-position section is rejected by the semantic boundary.
+        let fields = &HL7[HL7.find("[mappings]").ok_or_else(|| Error::FileSize {
+            path: "fixture".into(),
+        })?..HL7.find("[evidence]").ok_or_else(|| Error::FileSize {
+            path: "fixture".into(),
+        })?];
+        let bad = format!("{example}\n{fields}");
+        assert!(matches!(
+            draft(&bad, OVERRIDES)?.validate(),
+            Err(Error::VendorFieldMappings { .. })
+        ));
+        let bad = example.replacen(
+            &format!(
+                "kind = \"{}\"",
+                match config.effective().machine().syntax.kind {
+                    analyte_config::SyntaxKind::Poct => "poct",
+                    analyte_config::SyntaxKind::VidasLiteral => "vidas_literal",
+                    analyte_config::SyntaxKind::Autolyser => "autolyser",
+                    analyte_config::SyntaxKind::AstmLis02 => "astm_lis02",
+                    analyte_config::SyntaxKind::Hl7V2 => "hl7_v2",
+                }
+            ),
+            "kind = \"mllp\"",
+            1,
+        );
+        assert!(matches!(
+            draft(&bad, OVERRIDES)?.validate(),
+            Err(Error::IncompatibleStack { .. })
+        ));
+    }
     Ok(())
 }

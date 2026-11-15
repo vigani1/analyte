@@ -27,7 +27,7 @@ impl Closing {
 }
 
 pub(crate) async fn run(
-    machine: Machine,
+    mut machine: Machine,
     store: Arc<Handle>,
     mut stop: watch::Receiver<bool>,
     file_root: std::path::PathBuf,
@@ -47,7 +47,10 @@ pub(crate) async fn run(
     let endpoint = &machine.snapshot.effective().site().endpoint;
     match machine.snapshot.effective().machine().transport.kind {
         TransportKind::TcpServer => {
-            let listener = analyte_transport::tcp::bind(endpoint.parse()?).await?;
+            let listener = match machine.listener.take() {
+                Some(listener) => tokio::net::TcpListener::from_std(listener)?,
+                None => analyte_transport::tcp::bind(endpoint.parse()?).await?,
+            };
             loop {
                 let accepted = tokio::select! {
                     biased;
@@ -111,6 +114,9 @@ async fn session(
     match machine.snapshot.effective().machine().dialog.kind {
         analyte_config::DialogKind::AstmLink => astm::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::Hl7Receiver => hl7::session(machine, store, conn, stop).await,
+        analyte_config::DialogKind::Poct
+        | analyte_config::DialogKind::VidasLiteral
+        | analyte_config::DialogKind::Autolyser => Err(invalid("vendor runner is not wired")),
         analyte_config::DialogKind::FilePickup => Err(invalid("file pickup dialog is not wired")),
     }
 }

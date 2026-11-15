@@ -8,6 +8,9 @@ pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
         namespace: Identifier::new(match machine.snapshot.effective().machine().syntax.kind {
             analyte_config::SyntaxKind::AstmLis02 => "analyte-astm",
             analyte_config::SyntaxKind::Hl7V2 => "analyte-hl7",
+            analyte_config::SyntaxKind::Poct => "analyte-poct",
+            analyte_config::SyntaxKind::VidasLiteral => "analyte-vidas",
+            analyte_config::SyntaxKind::Autolyser => "analyte-autolyser",
         })?,
         value: Identifier::new(env!("CARGO_PKG_VERSION"))?,
     })
@@ -52,6 +55,11 @@ fn mapped(
         revision: Revision(0),
     };
     match effective.machine().syntax.kind {
+        analyte_config::SyntaxKind::Poct
+        | analyte_config::SyntaxKind::VidasLiteral
+        | analyte_config::SyntaxKind::Autolyser => {
+            Err(invalid("vendor syntax bypasses field mapping"))
+        }
         analyte_config::SyntaxKind::AstmLis02 => {
             let limits = effective
                 .astm_limits()

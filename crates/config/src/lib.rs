@@ -22,6 +22,26 @@ pub enum Error {
         /// Missing identity setting.
         setting: &'static str,
     },
+    /// Protocol layers or transport cannot be combined.
+    #[error("{path}: incompatible protocol stack")]
+    IncompatibleStack {
+        /// Source layer.
+        path: String,
+    },
+    /// Field selectors cannot interpret vendor messages.
+    #[error("{path}: vendor syntax requires codes, without field-position mappings")]
+    VendorFieldMappings {
+        /// Source layer.
+        path: String,
+    },
+    /// A required installed policy is missing, invalid or belongs to another stack.
+    #[error("{path}: invalid or missing {protocol} settings")]
+    ProtocolSettings {
+        /// Source layer.
+        path: String,
+        /// Policy needing correction.
+        protocol: &'static str,
+    },
     /// Input exceeds the file budget.
     #[error("{path}: file exceeds 1048576 bytes; split or reduce the configuration")]
     FileSize {
@@ -168,7 +188,7 @@ impl Draft {
             self.machine.syntax = v;
         }
         if let Some(v) = o.mappings {
-            self.machine.mappings = v;
+            self.machine.mappings = Some(v);
         }
         if let Some(v) = o.deviations {
             self.machine.deviations = v;

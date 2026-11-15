@@ -64,6 +64,7 @@ fn field(field: &Field, syntax: SyntaxKind, path: &str, key: &str) -> Result<(),
         SyntaxKind::AstmLis02 => {
             matches!(record, "H" | "P" | "O" | "R" | "C" | "Q" | "L" | "M" | "S")
         }
+        SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => false,
         SyntaxKind::Hl7V2 => {
             record.len() == 3
                 && record
@@ -141,16 +142,27 @@ pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
                 && f.kind == FramingKind::Mllp
                 && s.kind == SyntaxKind::Hl7V2
         }
+        DialogKind::Poct => {
+            matches!(t.kind, TransportKind::TcpClient | TransportKind::TcpServer)
+                && f.kind == FramingKind::Poct
+                && s.kind == SyntaxKind::Poct
+        }
+        DialogKind::VidasLiteral => {
+            t.kind != TransportKind::WatchedFolder
+                && f.kind == FramingKind::VidasLiteral
+                && s.kind == SyntaxKind::VidasLiteral
+        }
+        DialogKind::Autolyser => {
+            t.kind != TransportKind::WatchedFolder
+                && f.kind == FramingKind::Autolyser
+                && s.kind == SyntaxKind::Autolyser
+        }
         DialogKind::FilePickup => {
             t.kind == TransportKind::WatchedFolder && f.kind == FramingKind::None
         }
     };
     if !compatible {
-        return Err(invalid(
-            path,
-            "dialog.kind",
-            "select ASTM link with LIS01/LIS02 on serial or TCP, HL7 receiver with MLLP/HL7 on TCP, or file pickup with unframed folder input",
-        ));
+        return Err(Error::IncompatibleStack { path: path.into() });
     }
     if (d.kind == DialogKind::AstmLink) != d.contention_priority.is_some()
         || (d.kind == DialogKind::Hl7Receiver) != d.acknowledgment.is_some()
@@ -283,6 +295,7 @@ pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
             ));
         }
     }
+    validate_protocol(m, path)?;
     validate_mappings(m, path)?;
     if m.deviations.len() > 128 || m.evidence.capabilities.len() > 128 {
         return Err(invalid(
@@ -324,7 +337,9 @@ pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
 }
 
 fn validate_mappings(m: &Machine, path: &str) -> Result<(), Error> {
-    let mapping = &m.mappings;
+    let Some(mapping) = &m.mappings else {
+        return validate_tables(m.tests(), m.units(), path);
+    };
     for (key, len) in [
         ("mappings.tests", mapping.tests.len()),
         ("mappings.units", mapping.units.len()),
@@ -385,9 +400,20 @@ fn validate_mappings(m: &Machine, path: &str) -> Result<(), Error> {
             ));
         }
     }
-    let mut tests = std::collections::HashSet::new();
-    for test in &mapping.tests {
-        if !tests.insert((&test.machine_system, &test.machine_code)) {
+    validate_tables(m.tests(), m.units(), path)
+}
+
+fn validate_tables(tests: &[TestMapping], units: &[UnitMapping], path: &str) -> Result<(), Error> {
+    if tests.len() > 4096 || units.len() > 4096 {
+        return Err(invalid(
+            path,
+            "codes",
+            "limit each code table to 4096 entries",
+        ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for test in tests {
+        if !seen.insert((&test.machine_system, &test.machine_code)) {
             return Err(invalid(
                 path,
                 "mappings.tests",
@@ -395,15 +421,91 @@ fn validate_mappings(m: &Machine, path: &str) -> Result<(), Error> {
             ));
         }
     }
-    let mut units = std::collections::HashSet::new();
-    for unit in &mapping.units {
-        if !units.insert(&unit.original) {
+    let mut seen = std::collections::HashSet::new();
+    for unit in units {
+        if !seen.insert(&unit.original) {
             return Err(invalid(
                 path,
                 "mappings.units",
                 "remove duplicate original unit entries",
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_protocol(m: &Machine, path: &str) -> Result<(), Error> {
+    let vendor = match m.syntax.kind {
+        SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 => false,
+        SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => true,
+    };
+    if vendor && (m.mappings.is_some() || m.codes.is_none()) {
+        return Err(Error::VendorFieldMappings { path: path.into() });
+    }
+    if !vendor && (m.mappings.is_none() || m.codes.is_some()) {
+        return Err(invalid(
+            path,
+            "mappings",
+            "record syntax requires field mappings only",
+        ));
+    }
+    let valid_ms = |value| (1..=300_000).contains(&value);
+    let bad = |protocol| Error::ProtocolSettings {
+        path: path.into(),
+        protocol,
+    };
+    if (m.syntax.kind == SyntaxKind::Poct) != m.poct.is_some() {
+        return Err(bad("poct"));
+    }
+    if (m.syntax.kind == SyntaxKind::VidasLiteral) != m.vidas.is_some() {
+        return Err(bad("vidas"));
+    }
+    if (m.syntax.kind == SyntaxKind::Autolyser) != m.autolyser.is_some() {
+        return Err(bad("autolyser"));
+    }
+    if let Some(p) = &m.poct
+        && (!(1..=128).contains(&p.pending_messages)
+            || !(1..=64).contains(&p.depth)
+            || !(1..=65536).contains(&p.elements)
+            || !(1..=1048576).contains(&p.attribute_bytes)
+            || !valid_ms(p.response_ms)
+            || !valid_ms(p.acknowledgment_ms)
+            || m.syntax.encoding != Encoding::Utf8)
+    {
+        return Err(bad("poct"));
+    }
+    if let Some(v) = &m.vidas
+        && (!(1..=80).contains(&v.chunk)
+            || m.framing.limit > 1920
+            || !matches!(v.suffix.as_slice(), [] | [13] | [10] | [13, 10])
+            || !matches!(v.sample_limit, 12 | 17)
+            || ![
+                v.acknowledgment_ms,
+                v.interbyte_ms,
+                v.session_ms,
+                v.commit_ms,
+                v.backoff_ms,
+            ]
+            .into_iter()
+            .all(valid_ms)
+            || m.syntax.encoding != Encoding::Ascii)
+    {
+        return Err(bad("vidas"));
+    }
+    if let Some(a) = &m.autolyser
+        && (!(2..=11038).contains(&m.framing.limit)
+            || ![
+                a.poll_ms,
+                a.acknowledgment_ms,
+                a.response_ms,
+                a.interbyte_ms,
+                a.storage_ms,
+            ]
+            .into_iter()
+            .all(valid_ms)
+            || m.syntax.encoding != Encoding::Ascii)
+    {
+        return Err(bad("autolyser"));
     }
     Ok(())
 }

@@ -1,20 +1,21 @@
 //! Replacement grouping and mapping orchestration.
+use crate::FieldSyntax;
 use crate::source::Source;
 use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, present, text};
 use crate::{MappedResult, UnmappedObservation, identity, result, value};
-use analyte_config::{SyntaxKind, Validated};
+use analyte_config::Validated;
 use analyte_model::*;
 
 fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode, Error> {
     let field = match source.syntax {
-        SyntaxKind::AstmLis02 => 12,
-        SyntaxKind::Hl7V2 => 11,
+        FieldSyntax::AstmLis02 => 12,
+        FieldSyntax::Hl7V2 => 11,
     };
     match source.component(0, field, 1, 1)?.as_deref() {
         Some("P") => Ok(ProcessingMode::Production),
         Some("T") => Ok(ProcessingMode::Training),
         Some("D") => Ok(ProcessingMode::Debug),
-        Some("Q") if source.syntax == SyntaxKind::AstmLis02 => Ok(ProcessingMode::QualityControl),
+        Some("Q") if source.syntax == FieldSyntax::AstmLis02 => Ok(ProcessingMode::QualityControl),
         _ => {
             finding(
                 output,
@@ -77,7 +78,7 @@ pub(crate) fn message(
         crate::reserve_evidence(&mut output, source, index)?;
         let position = source.position(index, 0);
         let finding_start = output.findings.len();
-        let astm = source.syntax == SyntaxKind::AstmLis02;
+        let astm = source.syntax == FieldSyntax::AstmLis02;
         let value_field = if astm { 4 } else { 5 };
         let values = value::values(source, index, value_field, &mut output)?;
         let sample = identity::sample(source, index, config, &mut output)?;
@@ -94,19 +95,11 @@ pub(crate) fn message(
         };
         // LIS02 section 5.6.1 provides both a universal and a manufacturer identifier.
         // The explicit table must select exactly one interpretation if both occur.
-        let mut matches = machine.mappings.tests.iter().filter(|entry| {
-            (standard_code.as_deref() == Some(entry.machine_code.as_str())
-                || manufacturer_code.as_deref() == Some(entry.machine_code.as_str()))
-                && system
-                    .as_deref()
-                    .is_none_or(|s| s == entry.machine_system.as_str())
-        });
-        let translation = matches.next();
-        let translation = if matches.next().is_none() {
-            translation
-        } else {
-            None
-        };
+        let codes = [standard_code.as_deref(), manufacturer_code.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        let translation = crate::test_translation(machine.tests(), &codes, system.as_deref());
         let source_code = match (standard_code.as_deref(), system.as_deref(), translation) {
             (Some(code), Some(system), _) => Some(NamespacedId {
                 value: identifier(code, position)?,
@@ -138,8 +131,7 @@ pub(crate) fn message(
         let observation = identity::observation(source, index, config, source_code, &mut output)?;
         let status_field = if astm { 9 } else { 11 };
         let status_text = source.raw(index, status_field)?.unwrap_or_default();
-        let correction = machine
-            .mappings
+        let correction = crate::field_mappings(config)?
             .identity
             .correction_status_codes
             .iter()

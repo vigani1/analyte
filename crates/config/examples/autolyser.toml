@@ -1,0 +1,50 @@
+# Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
+schema_version = 1
+name = "generic-synthetic"
+deviations = []
+[transport]
+kind = "tcp_server"
+operation_timeout_ms = 10000
+
+[framing]
+kind = "autolyser"
+limit = 11038
+
+[dialog]
+kind = "autolyser"
+receive_timeout_ms = 30000
+send_timeout_ms = 15000
+[syntax]
+kind = "autolyser"
+encoding = "ascii"
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 128
+repetitions = 128
+components = 128
+[autolyser]
+poll_ms = 1000
+acknowledgment_ms = 5000
+response_ms = 10000
+interbyte_ms = 5000
+storage_ms = 5000
+controls = false
+recover_last_on_poll = true
+download = false
+
+[codes]
+tests = [{machine_code="SYN", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
+units = [{original="mg/L", ucum="mg/L"}]
+[evidence]
+level = "documented"
+[[evidence.capabilities]]
+model = "synthetic"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "tcp_server"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []
