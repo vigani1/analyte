@@ -1,0 +1,268 @@
+//! POCT01-A2 DML reviewer with durable custody before every acceptance.
+use super::{
+    vendor::{self, Input, ms},
+    vendor_model,
+};
+use crate::{Error, config::Machine, evidence, invalid};
+use analyte_model::ReceiptId;
+use analyte_poct::{
+    Body, CommitOutcome, ControlId, Dialog, DialogAction, DialogConfig, DialogEvent, Header,
+    Limits, Message, Timestamp,
+};
+use analyte_store::Handle;
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
+use tokio::sync::watch;
+
+/// Locates a complete XML root without treating quoted text or comments as framing.
+/// Syntax and POCT containment remain the protocol crate's responsibility.
+fn frame_length(raw: &[u8], maximum_depth: usize) -> Result<Option<usize>, Error> {
+    let mut reader = quick_xml::Reader::from_reader(raw);
+    let mut depth = 0usize;
+    loop {
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::Start(_)) => {
+                depth = depth
+                    .checked_add(1)
+                    .ok_or_else(|| invalid("POCT XML depth exhausted"))?;
+                if depth > maximum_depth {
+                    return Err(invalid("POCT XML depth limit exceeded"));
+                }
+            }
+            Ok(quick_xml::events::Event::End(_)) => {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or_else(|| invalid("POCT unbalanced XML root"))?;
+                if depth == 0 {
+                    return Ok(Some(usize::try_from(reader.buffer_position())?));
+                }
+            }
+            Ok(quick_xml::events::Event::Empty(_)) if depth == 0 => {
+                return Ok(Some(usize::try_from(reader.buffer_position())?));
+            }
+            Ok(quick_xml::events::Event::Eof) | Err(_) => return Ok(None),
+            Ok(
+                quick_xml::events::Event::Empty(_)
+                | quick_xml::events::Event::Text(_)
+                | quick_xml::events::Event::CData(_)
+                | quick_xml::events::Event::Comment(_)
+                | quick_xml::events::Event::Decl(_)
+                | quick_xml::events::Event::PI(_)
+                | quick_xml::events::Event::DocType(_)
+                | quick_xml::events::Event::GeneralRef(_),
+            ) => {}
+        }
+    }
+}
+
+pub(super) async fn session(
+    machine: &Machine,
+    store: &Handle,
+    conn: &mut analyte_transport::Connection,
+    mut stop: watch::Receiver<bool>,
+) -> Result<(), Error> {
+    let settings = machine.snapshot.effective().machine();
+    let policy = settings
+        .poct
+        .as_ref()
+        .ok_or_else(|| invalid("POCT policy missing"))?;
+    let limits = Limits {
+        message_bytes: settings.framing.limit.min(settings.syntax.bytes),
+        depth: policy.depth,
+        elements: policy.elements,
+        attribute_bytes: policy.attribute_bytes,
+    };
+    let mut dialog = Dialog::new(
+        DialogConfig {
+            pending_messages: policy.pending_messages,
+            message_bytes: limits.message_bytes,
+            response_timeout: ms(policy.response_ms),
+            unannounced_ack_timeout: ms(policy.acknowledgment_ms),
+        },
+        ControlId::new(&uuid::Uuid::now_v7().simple().to_string())?,
+    )?;
+    let start = Instant::now();
+    let mut raw = Vec::new();
+    loop {
+        let input =
+            vendor::input(machine, store, conn, &mut stop, Duration::from_millis(10)).await?;
+        match input {
+            Input::Opened => {}
+            Input::Tick => {
+                let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
+                if process(actions, &mut dialog, start, machine, store, conn, limits).await? {
+                    break;
+                }
+            }
+            Input::End => {
+                let _ = dialog.step(start.elapsed(), DialogEvent::Disconnected)?;
+                break;
+            }
+            Input::Bytes(bytes) => {
+                for byte in bytes {
+                    if raw.len() >= limits.message_bytes {
+                        evidence::park_bytes(
+                            store,
+                            machine,
+                            std::mem::take(&mut raw),
+                            "POCT XML message byte limit exceeded",
+                        )
+                        .await?;
+                        return Err(invalid("POCT message limit exceeded"));
+                    }
+                    raw.push(byte);
+                    if byte != b'>' {
+                        continue;
+                    }
+                    let Some(length) = frame_length(&raw, policy.depth)? else {
+                        continue;
+                    };
+                    let wire = raw
+                        .get(..length)
+                        .ok_or_else(|| invalid("POCT framing length"))?
+                        .to_vec();
+                    raw.drain(..length);
+                    let message = match Message::parse(&wire, limits) {
+                        Ok(message) => message,
+                        Err(error) => {
+                            evidence::park_bytes(
+                                store,
+                                machine,
+                                wire,
+                                &format!("POCT syntax: {error}"),
+                            )
+                            .await?;
+                            return Err(error.into());
+                        }
+                    };
+                    let actions =
+                        dialog.step(start.elapsed(), DialogEvent::Received(Box::new(message)))?;
+                    if process(actions, &mut dialog, start, machine, store, conn, limits).await? {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+    if !raw.is_empty() {
+        evidence::park_bytes(
+            store,
+            machine,
+            raw,
+            "POCT incomplete XML on timeout or disconnect",
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+async fn process(
+    actions: Vec<DialogAction>,
+    dialog: &mut Dialog,
+    start: Instant,
+    machine: &Machine,
+    store: &Handle,
+    conn: &mut analyte_transport::Connection,
+    limits: Limits,
+) -> Result<bool, Error> {
+    let mut actions: VecDeque<_> = actions.into();
+    while let Some(action) = actions.pop_front() {
+        match action {
+            DialogAction::InspectHello {
+                device_id: _,
+                capabilities: _,
+            } => {
+                actions.extend(dialog.step(start.elapsed(), DialogEvent::HelloDecision(true))?);
+            }
+            DialogAction::Store { ticket, message } => {
+                let id = ReceiptId::new();
+                let operation = async {
+                    let time =
+                        evidence::receive(store, machine, id, message.document().raw().to_vec())
+                            .await?;
+                    match message.body() {
+                        Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
+                            match vendor_model::poct(machine, id, &message, time) {
+                                Ok(reading) => {
+                                    evidence::vendor_reading(store, machine, id, reading).await?;
+                                }
+                                Err(error) => {
+                                    vendor::failed(
+                                        machine,
+                                        store,
+                                        id,
+                                        &format!("POCT interpretation: {error}"),
+                                    )
+                                    .await?;
+                                    return Ok::<_, Error>(CommitOutcome::ApplicationError(
+                                        analyte_poct::ApplicationError::UnsupportedValue,
+                                    ));
+                                }
+                            }
+                        }
+                        Body::Hello { .. }
+                        | Body::Status { .. }
+                        | Body::EndTopic(_)
+                        | Body::Terminate(_)
+                        | Body::Acknowledgement { .. }
+                        | Body::Escape { .. }
+                        | Body::Request(_) => {}
+                    }
+                    Ok(CommitOutcome::Stored)
+                };
+                let outcome = match operation.await {
+                    Ok(outcome) => outcome,
+                    Err(error) => {
+                        tracing::error!(machine = machine.id.as_str(), error_kind = %error, "POCT custody failed");
+                        CommitOutcome::Failed
+                    }
+                };
+                actions.extend(
+                    dialog.step(start.elapsed(), DialogEvent::Committed { ticket, outcome })?,
+                );
+            }
+            DialogAction::Send { control_id, body } => {
+                let message = analyte_poct::build(
+                    &Header {
+                        control_id,
+                        created: Timestamp::parse(&jiff::Timestamp::now().to_string())?,
+                    },
+                    &body,
+                    limits,
+                )?;
+                vendor::write(
+                    conn,
+                    message.document().raw(),
+                    ms(machine
+                        .snapshot
+                        .effective()
+                        .machine()
+                        .dialog
+                        .send_timeout_ms),
+                )
+                .await?;
+            }
+            DialogAction::ReadEnabled(_) => {}
+            DialogAction::Deferred(message) => {
+                evidence::park_bytes(
+                    store,
+                    machine,
+                    message.document().raw().to_vec(),
+                    "POCT message deferred by bounded custody queue",
+                )
+                .await?;
+                return Err(invalid("POCT backpressure violated"));
+            }
+            DialogAction::TopicComplete => {
+                actions.extend(dialog.step(start.elapsed(), DialogEvent::Finish)?);
+            }
+            DialogAction::Close {
+                normal: _,
+                unresolved: _,
+            } => return Ok(true),
+        }
+    }
+    Ok(false)
+}

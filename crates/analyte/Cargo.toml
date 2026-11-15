@@ -9,6 +9,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+analyte-poct = { workspace = true }
+analyte-vidas = { workspace = true }
+analyte-autolyser = { workspace = true }
+quick-xml = { workspace = true }
 analyte-sink = { workspace = true }
 thiserror = { workspace = true }
 serialport = { workspace = true }

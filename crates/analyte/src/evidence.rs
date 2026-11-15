@@ -244,3 +244,52 @@ pub(crate) async fn park_bytes(
         .await?;
     Ok(())
 }
+
+/// Saves vendor model evidence through the same revision and delivery transaction.
+/// Cancellation may leave a committed interpretation; never infer failure from timeout.
+pub(crate) async fn vendor_reading(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    reading: Reading,
+) -> Result<(), Error> {
+    let corrections = match &reading {
+        Reading::Results(results) => vec![false; results.len()],
+        Reading::Failed(_) => Vec::new(),
+    };
+    let mut findings = Vec::new();
+    if let Reading::Results(results) = &reading {
+        for result in results {
+            if let analyte_model::IdentityStatus::Unresolved(reason) = &result.identity {
+                findings.push(analyte_store::Parked {
+                    kind: Identifier::new("unresolved_identity")?,
+                    reason: reason.clone(),
+                    targets: vec![Identifier::new(&uuid::Uuid::from(id).to_string())?],
+                });
+            }
+        }
+    }
+    let interpretation = Interpretation {
+        driver: driver(machine)?,
+        config_version: Identifier::new("1")?,
+        config: machine.snapshot.canonical().as_bytes().to_vec(),
+        outcome: reading,
+    };
+    let destination = machine.snapshot.effective().site().destination.name.clone();
+    store
+        .request(deadline(), move |store| {
+            let receipt = store
+                .receipt(id)?
+                .ok_or(analyte_store::Error::Conflict)?
+                .metadata;
+            store.interpret_reconciled(
+                id,
+                interpretation,
+                &corrections,
+                &findings,
+                |assigned, outcomes| build_deliveries(assigned, outcomes, &receipt, &destination),
+            )
+        })
+        .await?;
+    Ok(())
+}

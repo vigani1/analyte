@@ -1,8 +1,13 @@
 //! One owner per machine; transport sessions never replay queued writes.
 mod astm;
+mod autolyser;
 mod folder;
 mod hl7;
+mod poct;
 mod serial;
+mod vendor;
+mod vendor_model;
+mod vidas;
 use crate::{Error, config::Machine, invalid};
 use analyte_config::TransportKind;
 use analyte_store::Handle;
@@ -114,9 +119,13 @@ async fn session(
     match machine.snapshot.effective().machine().dialog.kind {
         analyte_config::DialogKind::AstmLink => astm::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::Hl7Receiver => hl7::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::Poct
-        | analyte_config::DialogKind::VidasLiteral
-        | analyte_config::DialogKind::Autolyser => Err(invalid("vendor runner is not wired")),
+        analyte_config::DialogKind::Poct => poct::session(machine, store, conn, stop).await,
+        analyte_config::DialogKind::VidasLiteral => {
+            vidas::session(machine, store, conn, stop).await
+        }
+        analyte_config::DialogKind::Autolyser => {
+            autolyser::session(machine, store, conn, stop).await
+        }
         analyte_config::DialogKind::FilePickup => Err(invalid("file pickup dialog is not wired")),
     }
 }
