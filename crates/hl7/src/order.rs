@@ -6,6 +6,10 @@
 use crate::{Field, Message, Segment};
 use thiserror::Error;
 
+/// Encoded EI byte budget used by the supported ORC-2/3 and ORC-4 builders.
+/// Includes component separators and assigning-namespace components (HL7 ch.4).
+pub const ORDER_ID_MAX_BYTES: usize = 22;
+
 mod laboratory;
 mod response;
 mod types;

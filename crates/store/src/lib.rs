@@ -12,6 +12,7 @@ mod receipts;
 mod sql_types;
 mod transfers;
 pub use alerts::*;
+pub use transfers::{FrameSequence, TransferOutcome};
 mod machine_orders;
 mod migration;
 mod reprocess;
@@ -21,7 +22,7 @@ mod restore;
 pub use resend::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
@@ -106,8 +107,8 @@ pub enum Error {
     /// The dedicated worker stopped.
     #[error("storage worker stopped")]
     Closed,
-    /// The store-assigned placer plus configured namespace cannot fit the edition's EI.
-    #[error("HL7 placer identity exceeds edition limit or has no namespace")]
+    /// The generated local command identity exceeds the caller's byte budget.
+    #[error("command identity exceeds caller byte limit")]
     ItemIdentityTooLong,
     /// Input exceeds a configured bound or violates its declared provenance.
     #[error("invalid or oversized storage input")]

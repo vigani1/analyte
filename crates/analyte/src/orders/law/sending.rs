@@ -191,6 +191,18 @@ impl Connection {
             let identity = key.clone();
             let owner = self.owner.clone();
             let namespace = command.settings.placer_namespace.clone();
+            let groups = command
+                .app
+                .tests
+                .iter()
+                .cloned()
+                .map(|test| vec![test])
+                .collect::<Vec<_>>();
+            // Keep the existing logical identity budget; rendering independently owns
+            // LAW's EI.1-only wire form and validates it against the profile.
+            let max_identity_bytes = law::AWOS_ID_MAX_BYTES
+                .saturating_sub(namespace.as_str().len())
+                .saturating_sub(1);
             self.reserving.push(key);
             let reserved = store
                 .request(until, move |store| {
@@ -203,9 +215,10 @@ impl Connection {
                                 freshness,
                             },
                             analyte_store::ReserveOptions {
-                                items: OrderItems::PerTest {
-                                    namespace: &namespace,
-                                    identity_bytes: 50,
+                                items: OrderItems::Groups {
+                                    groups: &groups,
+                                    namespace: Some(&namespace),
+                                    max_identity_bytes,
                                 },
                                 owner: Some(&owner),
                                 prepare: Some(&mut |record| {

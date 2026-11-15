@@ -33,7 +33,7 @@ impl Command {
             analyte_config::Edition::V251 => Version::V251,
         };
         let group = app.fields().id.as_str().to_owned();
-        if group.len() > 22 {
+        if group.len() > order::ORDER_ID_MAX_BYTES {
             return Err(invalid("HL7-app-order-id-too-long-for-ORC-4"));
         }
         Ok(Self {
@@ -349,6 +349,16 @@ pub(super) async fn next(
             }
         };
         let namespace = send.placer_namespace.clone();
+        let groups = command
+            .app
+            .tests
+            .iter()
+            .cloned()
+            .map(|test| vec![test])
+            .collect::<Vec<_>>();
+        let max_identity_bytes = order::ORDER_ID_MAX_BYTES
+            .saturating_sub(namespace.as_str().len())
+            .saturating_sub(1);
         let identity = key.clone();
         let owner = owner.clone();
         reserving.push(key.clone());
@@ -363,9 +373,10 @@ pub(super) async fn next(
                         freshness,
                     },
                     analyte_store::ReserveOptions {
-                        items: OrderItems::PerTest {
-                            namespace: &namespace,
-                            identity_bytes: 22,
+                        items: OrderItems::Groups {
+                            groups: &groups,
+                            namespace: Some(&namespace),
+                            max_identity_bytes,
                         },
                         owner: Some(&owner),
                         prepare: Some(&mut |record| {

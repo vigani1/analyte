@@ -17,6 +17,108 @@ fn legacy(path: &Path) -> Result<Connection, Error> {
     Ok(db)
 }
 
+#[test]
+fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_bounds()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("frames-v7.db");
+    let mut db = legacy(&path)?;
+    Store::migrate_v7(&mut db, 65_536)?;
+    // These are the evidence protections installed when schema 7 was opened.
+    for operation in ["update", "delete"] {
+        db.execute_batch(&format!("CREATE TRIGGER immutable_frames_{operation} BEFORE {operation} ON frames BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
+    }
+    db.execute("INSERT INTO transfers VALUES ('legacy','open',NULL)", [])?;
+    let provenance = FrameProvenance {
+        machine: Identifier::new("machine")?,
+        driver: analyte_model::NamespacedId {
+            namespace: Identifier::new("synthetic")?,
+            value: Identifier::new("v1")?,
+        },
+        config: b"original config".to_vec(),
+    };
+    db.execute(
+        "INSERT INTO frame_provenance VALUES ('legacy',?1)",
+        [key(&provenance)?],
+    )?;
+    db.execute(
+        "INSERT INTO frames(transfer,number,raw) VALUES ('legacy',1,?1),('legacy',7,?2)",
+        params![b"first exact frame", b"second exact frame"],
+    )?;
+    assert!(
+        db.execute(
+            "INSERT INTO frames(transfer,number,raw) VALUES ('legacy',8,x'00')",
+            []
+        )
+        .is_err()
+    );
+    db.execute("UPDATE sqlite_sequence SET seq=900 WHERE name='frames'", [])?;
+    db.execute("UPDATE machine_activity SET time=123", [])?;
+    let before = snapshot(&db)?;
+    drop(db);
+    let mut store = open(&path)?;
+    assert_eq!(snapshot(&store.db)?, before);
+    assert!(store.db.execute("UPDATE frames SET raw=x'00'", []).is_err());
+    assert!(store.db.execute("DELETE FROM frames", []).is_err());
+    assert!(matches!(
+        FrameSequence::new(32, 31),
+        Err(Error::InvalidInput)
+    ));
+    let transfer = Identifier::new("legacy")?;
+    assert_eq!(
+        store.journal_frame(
+            &transfer,
+            FrameSequence::new(31, 31)?,
+            b"new exact frame",
+            &provenance
+        )?,
+        901
+    );
+    let frames = store.frames(&transfer, 0)?;
+    assert_eq!(
+        frames.iter().map(|frame| frame.number).collect::<Vec<_>>(),
+        vec![1, 7, 31]
+    );
+    assert_eq!(
+        frames.last().ok_or("missing new frame")?.raw,
+        b"new exact frame"
+    );
+    let reason = analyte_model::Reason::new("caller-specific incomplete exchange")?;
+    store.finish_transfer(&transfer, TransferOutcome::Incomplete(reason))?;
+    assert_eq!(
+        store
+            .parked(0)?
+            .first()
+            .ok_or("missing incomplete evidence")?
+            .details()?
+            .reason
+            .as_str(),
+        "caller-specific incomplete exchange"
+    );
+    assert!(matches!(
+        store.journal_frame(&transfer, FrameSequence::new(0, 0)?, b"late", &provenance),
+        Err(Error::Conflict)
+    ));
+    let another = Identifier::new("byte-sequence")?;
+    store.journal_frame(
+        &another,
+        FrameSequence::new(u8::MAX, u8::MAX)?,
+        b"maximum sequence",
+        &provenance,
+    )?;
+    assert_eq!(
+        store
+            .frames(&another, 0)?
+            .first()
+            .ok_or("missing maximum sequence")?
+            .number,
+        u8::MAX
+    );
+    drop(store);
+    assert_eq!(open(&path)?.frames(&transfer, 0)?.len(), 3);
+    Ok(())
+}
+
 type Snapshot = BTreeMap<String, Vec<Vec<Value>>>;
 
 fn snapshot(db: &Connection) -> Result<Snapshot, Error> {

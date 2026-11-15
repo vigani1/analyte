@@ -67,6 +67,12 @@ impl Store {
         if version <= 6 {
             Self::migrate_v7(&mut db, limits.record_bytes)?;
         }
+        if version <= 7 {
+            let tx = db.transaction()?;
+            tx.execute_batch(include_str!("migration_v8.sql"))?;
+            Self::integrity(&tx)?;
+            tx.commit()?;
+        }
         // SQL constraints also protect evidence from accidental maintenance updates.
         for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
             db.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER IF NOT EXISTS immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;

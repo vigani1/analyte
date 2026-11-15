@@ -478,7 +478,7 @@ pub fn context(
     position: Option<(SampleField, &[u8])>,
     options: Options,
 ) -> Result<OrderMessage, Error> {
-    scalar(group, "ORC", 4, 22, true)?;
+    scalar(group, "ORC", 4, super::ORDER_ID_MAX_BYTES, true)?;
     let mut output = Vec::new();
     for row in sent.message.segments() {
         if row.id() == b"ORC" || row.id() == b"OBR" {

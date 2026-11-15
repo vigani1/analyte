@@ -113,7 +113,10 @@ fn identity_key<'a>(
     number: usize,
     version: Version,
 ) -> Result<Vec<&'a [u8]>, Error> {
-    if field.is_null() || field.raw().len() > 22 || field.repetitions().count() != 1 {
+    if field.is_null()
+        || field.raw().len() > super::ORDER_ID_MAX_BYTES
+        || field.repetitions().count() != 1
+    {
         return Err(invalid(segment, number));
     }
     let value = field

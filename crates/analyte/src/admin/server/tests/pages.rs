@@ -298,7 +298,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             bytes.extend(b"FRAME-TAIL");
             s.journal_frame(
                 &transfer,
-                1,
+                analyte_store::FrameSequence::new(1, 7)?,
                 &bytes,
                 &analyte_store::FrameProvenance {
                     machine: Identifier::new("synthetic")

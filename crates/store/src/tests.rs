@@ -58,8 +58,8 @@ fn adr0003_frame_committed_before_ack_survives_restart() -> TestResult {
     let transfer = Identifier::new("transfer-1")?;
     {
         let mut store = open(&path)?;
-        let first = store.frame(&transfer, 1, b"frame-one")?;
-        assert!(store.frame(&transfer, 2, b"frame-two")? > first);
+        let first = store.frame(&transfer, FrameSequence::new(1, 7)?, b"frame-one")?;
+        assert!(store.frame(&transfer, FrameSequence::new(2, 7)?, b"frame-two")? > first);
     }
     let store = open(&path)?;
     assert_eq!(store.incomplete("")?, vec!["transfer-1"]);
@@ -93,7 +93,11 @@ fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
         Err(Error::Capacity)
     ));
     assert!(matches!(
-        store.frame(&Identifier::new("transfer")?, 0, b"frame"),
+        store.frame(
+            &Identifier::new("transfer")?,
+            FrameSequence::new(0, 7)?,
+            b"frame"
+        ),
         Err(Error::Capacity)
     ));
     assert_eq!(store.raw(metadata.id)?, None);
@@ -129,9 +133,9 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
             .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    store.db.execute_batch("PRAGMA user_version=8")?;
+    store.db.execute_batch("PRAGMA user_version=9")?;
     drop(store);
-    assert!(matches!(open(&path), Err(Error::SchemaTooNew(8))));
+    assert!(matches!(open(&path), Err(Error::SchemaTooNew(9))));
     Ok(())
 }
 
@@ -608,12 +612,17 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
     let mut store = open(&temp.path().join("store.db"))?;
     let complete = Identifier::new("complete")?;
     let aborted = Identifier::new("aborted")?;
-    store.frame(&complete, 1, b"first")?;
-    store.frame(&aborted, 1, b"partial")?;
+    store.frame(&complete, FrameSequence::new(1, 7)?, b"first")?;
+    store.frame(&aborted, FrameSequence::new(1, 7)?, b"partial")?;
     let metadata = receipt(b"first")?;
     store.receive(&metadata, b"first", b"config")?;
-    store.finish_transfer(&complete, Some(metadata.id))?;
-    store.finish_transfer(&aborted, None)?;
+    store.finish_transfer(&complete, TransferOutcome::Complete(metadata.id))?;
+    store.finish_transfer(
+        &aborted,
+        TransferOutcome::Incomplete(Reason::new(
+            "ASTM transfer ended before a complete receipt was retained",
+        )?),
+    )?;
     assert_eq!(store.incomplete("")?, vec!["aborted"]);
     assert_eq!(
         store
@@ -627,7 +636,7 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
         Some(b"partial".as_slice())
     );
     assert!(matches!(
-        store.frame(&complete, 2, b"late"),
+        store.frame(&complete, FrameSequence::new(2, 7)?, b"late"),
         Err(Error::Conflict)
     ));
     assert_eq!(
@@ -710,7 +719,11 @@ fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult
     seed_delivery(&v1, metadata.id, id, "key")?;
     v1.db.execute("UPDATE outbox SET state='in_flight'", [])?;
     v1.attempted(id, &Attempt::RetryAt(10), 0)?;
-    v1.frame(&Identifier::new("transfer")?, 1, b"frame")?;
+    v1.frame(
+        &Identifier::new("transfer")?,
+        FrameSequence::new(1, 7)?,
+        b"frame",
+    )?;
     let audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("test")?,
@@ -1028,7 +1041,11 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
         "INSERT INTO interpretations VALUES (?1,1,?2)",
         params![key(&metadata.id)?, key(&evidence)?],
     )?;
-    v2.frame(&Identifier::new("legacy-transfer")?, 1, b"legacy-frame")?;
+    v2.frame(
+        &Identifier::new("legacy-transfer")?,
+        FrameSequence::new(1, 7)?,
+        b"legacy-frame",
+    )?;
     let triggers: Vec<String> = v2
         .db
         .prepare("SELECT name FROM sqlite_master WHERE type='trigger'")?

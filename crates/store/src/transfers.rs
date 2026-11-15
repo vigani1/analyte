@@ -1,23 +1,45 @@
 //! Transfers storage responsibilities.
 use crate::{Error, FrameProvenance, Store, key};
-use analyte_model::{Identifier, ReceiptId};
+use analyte_model::{Identifier, Reason, ReceiptId};
 use rusqlite::{OptionalExtension, params};
 
+/// A sequence value checked against the bound supplied by its protocol owner.
+/// This is independent of the store's monotonic journal identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameSequence(u8);
+
+impl FrameSequence {
+    /// Admits a byte-sized sequence only within the caller's inclusive maximum.
+    /// # Errors
+    /// Refuses a value above that maximum without writing any evidence.
+    pub fn new(number: u8, maximum: u8) -> Result<Self, Error> {
+        if number > maximum {
+            return Err(Error::InvalidInput);
+        }
+        Ok(Self(number))
+    }
+}
+
+/// A closed transfer either names retained receipt evidence or an explicit reason.
+pub enum TransferOutcome {
+    /// Every frame belongs to this already stored receipt.
+    Complete(ReceiptId),
+    /// The caller could not complete the transfer; retain its exact reason.
+    Incomplete(Reason),
+}
+
 impl Store {
-    /// Commits one ASTM frame before returning its monotonic journal sequence.
+    /// Commits one bounded frame before returning its monotonic journal sequence.
     /// # Errors
     /// Refuses closed transfers, oversized frames, invalid frame numbers or capacity failures.
     pub(super) fn frame(
         &mut self,
         transfer: &Identifier,
-        number: u8,
+        sequence: FrameSequence,
         raw: &[u8],
     ) -> Result<i64, Error> {
         self.bound(raw)?;
         self.capacity(raw.len())?;
-        if number > 7 {
-            return Err(Error::InvalidInput);
-        }
         let tx = self.db.transaction()?;
         tx.execute(
             "INSERT OR IGNORE INTO transfers VALUES (?1,'open',NULL)",
@@ -33,7 +55,7 @@ impl Store {
         }
         tx.execute(
             "INSERT INTO frames(transfer,number,raw) VALUES (?1,?2,?3)",
-            params![transfer.as_str(), number, raw],
+            params![transfer.as_str(), sequence.0, raw],
         )?;
         let sequence = tx.last_insert_rowid();
         tx.commit()?;
@@ -46,12 +68,11 @@ impl Store {
     pub fn finish_transfer(
         &mut self,
         transfer: &Identifier,
-        receipt: Option<ReceiptId>,
+        outcome: TransferOutcome,
     ) -> Result<(), Error> {
-        let state = if receipt.is_some() {
-            "complete"
-        } else {
-            "aborted"
+        let (state, receipt, reason) = match outcome {
+            TransferOutcome::Complete(receipt) => ("complete", Some(receipt), None),
+            TransferOutcome::Incomplete(reason) => ("aborted", None, Some(reason)),
         };
         let receipt = receipt.map(|id| key(&id)).transpose()?;
         let tx = self.db.transaction()?;
@@ -62,13 +83,13 @@ impl Store {
         {
             return Err(Error::Conflict);
         }
-        if receipt.is_none() {
+        if let Some(reason) = reason {
             tx.execute(
                 "INSERT INTO parked(evidence) VALUES (?1)",
                 [crate::parked::evidence(
                     "incomplete_transfer",
                     transfer.as_str(),
-                    "ASTM transfer ended before a complete receipt was retained",
+                    reason.as_str(),
                     None,
                 )?],
             )?;
@@ -103,7 +124,7 @@ impl Store {
     pub fn journal_frame(
         &mut self,
         transfer: &Identifier,
-        number: u8,
+        sequence: FrameSequence,
         raw: &[u8],
         provenance: &FrameProvenance,
     ) -> Result<i64, Error> {
@@ -127,6 +148,6 @@ impl Store {
                 )?;
             }
         }
-        self.frame(transfer, number, raw)
+        self.frame(transfer, sequence, raw)
     }
 }

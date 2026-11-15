@@ -572,6 +572,20 @@ fn adr0004_sending_reservations_survive_restart_and_plan11_listing_is_filtered_a
     Ok(())
 }
 
+fn test_groups(
+    names: &[&str],
+) -> Result<Vec<Vec<analyte_model::NamespacedId>>, analyte_model::TextError> {
+    names
+        .iter()
+        .map(|name| {
+            Ok(vec![analyte_model::NamespacedId {
+                namespace: Identifier::new("local")?,
+                value: Identifier::new(name)?,
+            }])
+        })
+        .collect()
+}
+
 fn reserve_two(store: &mut Store) -> Result<MachineOrder, Box<dyn std::error::Error>> {
     let mut page = page(1, "requested", false, 200)?;
     page.orders.first_mut().ok_or("missing fixture")?.document = serde_json::json!({"version":1,"state":"requested","tombstone":false,"tests":[{"namespace":"local","value":"a"},{"namespace":"local","value":"b"}]}).to_string();
@@ -585,9 +599,10 @@ fn reserve_two(store: &mut Store) -> Result<MachineOrder, Box<dyn std::error::Er
                 freshness: 30,
             },
             ReserveOptions {
-                items: OrderItems::PerTest {
-                    namespace: &Identifier::new("lab")?,
-                    identity_bytes: 22,
+                items: OrderItems::Groups {
+                    groups: &test_groups(&["a", "b"])?,
+                    namespace: Some(&Identifier::new("lab")?),
+                    max_identity_bytes: 18,
                 },
                 ..Default::default()
             },
@@ -847,9 +862,12 @@ fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() 
                     freshness: 30
                 },
                 ReserveOptions {
-                    items: OrderItems::PerTest {
-                        namespace: &Identifier::new(&namespace)?,
-                        identity_bytes: 22
+                    items: OrderItems::Groups {
+                        groups: &test_groups(&["test"])?,
+                        namespace: Some(&Identifier::new(&namespace)?),
+                        max_identity_bytes: 22usize
+                            .saturating_sub(namespace.len())
+                            .saturating_sub(1)
                     },
                     ..Default::default()
                 }
@@ -1141,9 +1159,10 @@ fn plan11_restore_pause_blocks_hl7_items_and_owned_dsr_in_shared_transaction() -
         store.reserve_send(
             &candidate,
             ReserveOptions {
-                items: OrderItems::PerTest {
-                    namespace: &Identifier::new("lab")?,
-                    identity_bytes: 22
+                items: OrderItems::Groups {
+                    groups: &test_groups(&["test"])?,
+                    namespace: Some(&Identifier::new("lab")?),
+                    max_identity_bytes: 18
                 },
                 ..Default::default()
             }
@@ -1182,9 +1201,10 @@ fn plan11_restore_pause_blocks_hl7_items_and_owned_dsr_in_shared_transaction() -
             .reserve_send(
                 &candidate,
                 ReserveOptions {
-                    items: OrderItems::PerTest {
-                        namespace: &Identifier::new("lab")?,
-                        identity_bytes: 22
+                    items: OrderItems::Groups {
+                        groups: &test_groups(&["test"])?,
+                        namespace: Some(&Identifier::new("lab")?),
+                        max_identity_bytes: 18
                     },
                     ..Default::default()
                 }
@@ -1212,9 +1232,10 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
         store.reserve_send(
             &candidate,
             ReserveOptions {
-                items: OrderItems::PerTest {
-                    namespace: &namespace,
-                    identity_bytes: 22
+                items: OrderItems::Groups {
+                    groups: &test_groups(&["test"])?,
+                    namespace: Some(&namespace),
+                    max_identity_bytes: 18
                 },
                 owner: Some(&owner),
                 prepare: Some(&mut |record| -> Result<(), Error> {
@@ -1254,9 +1275,10 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
         store.reserve_send(
             &candidate,
             ReserveOptions {
-                items: OrderItems::PerTest {
-                    namespace: &namespace,
-                    identity_bytes: 22
+                items: OrderItems::Groups {
+                    groups: &test_groups(&["test"])?,
+                    namespace: Some(&namespace),
+                    max_identity_bytes: 18
                 },
                 owner: Some(&owner),
                 prepare: Some(&mut |_| -> Result<(), Error> { Err(Error::InvalidInput) }),
@@ -1496,6 +1518,131 @@ fn rule9_typed_trust_matrix_and_configured_age_boundary() -> TestResult {
                 )?
                 .is_ok(),
             expected.is_trusted()
+        );
+    }
+    Ok(())
+}
+
+// ADR 0003 rules 4/8: caller grouping cannot omit, duplicate or invent cached tests.
+#[test]
+fn adr0003_caller_groups_are_exact_and_identity_budget_has_no_namespace_assumptions() -> TestResult
+{
+    let temp = tempfile::tempdir()?;
+    let long_namespace = Identifier::new(&"n".repeat(256))?;
+    for (case, namespace) in [None, Some(&long_namespace)].into_iter().enumerate() {
+        let path = temp.path().join(format!("grouping-{case}.db"));
+        let mut store = open(&path)?;
+        let mut cached = page(1, "requested", false, 200)?;
+        cached.orders.first_mut().ok_or("missing order")?.document = serde_json::json!({
+            "version":1,"state":"requested","tombstone":false,
+            "tests":[{"namespace":"local","value":"a"},{"namespace":"local","value":"b"},{"namespace":"local","value":"c"}]
+        }).to_string();
+        store.order_page(&cached)?;
+        let key = identity()?;
+        let candidate = OrderReservation {
+            identity: &key,
+            version: NonZeroU64::MIN,
+            now: 101,
+            freshness: 30,
+        };
+        for groups in [
+            vec![],
+            vec![vec![]],
+            test_groups(&["a", "b"])?,
+            test_groups(&["a", "a", "c"])?,
+            test_groups(&["a", "b", "unknown"])?,
+        ] {
+            assert!(matches!(
+                store.reserve_send(
+                    &candidate,
+                    ReserveOptions {
+                        items: OrderItems::Groups {
+                            groups: &groups,
+                            namespace,
+                            max_identity_bytes: 3
+                        },
+                        ..Default::default()
+                    }
+                ),
+                Err(Error::InvalidInput)
+            ));
+        }
+        let one_per_test = test_groups(&["c", "a", "b"])?;
+        let first = one_per_test
+            .first()
+            .ok_or("missing c")?
+            .iter()
+            .chain(one_per_test.get(1).ok_or("missing a")?)
+            .cloned()
+            .collect::<Vec<_>>();
+        let groups = vec![first, one_per_test.get(2).ok_or("missing b")?.clone()];
+        assert!(matches!(
+            store.reserve_send(
+                &candidate,
+                ReserveOptions {
+                    items: OrderItems::Groups {
+                        groups: &groups,
+                        namespace,
+                        max_identity_bytes: 2
+                    },
+                    ..Default::default()
+                }
+            ),
+            Err(Error::ItemIdentityTooLong)
+        ));
+        for table in [
+            "machine_orders",
+            "machine_order_items",
+            "machine_order_history",
+            "machine_order_item_history",
+            "outbox",
+        ] {
+            assert_eq!(
+                store
+                    .db
+                    .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| row
+                        .get::<_, i64>(0))?,
+                0
+            );
+        }
+        let order = store
+            .reserve_send(
+                &candidate,
+                ReserveOptions {
+                    items: OrderItems::Groups {
+                        groups: &groups,
+                        namespace,
+                        max_identity_bytes: 3,
+                    },
+                    ..Default::default()
+                },
+            )?
+            .map_err(std::io::Error::other)?;
+        assert_eq!(
+            order
+                .items
+                .iter()
+                .map(|item| item.tests.clone())
+                .collect::<Vec<_>>(),
+            groups
+        );
+        assert!(
+            order
+                .items
+                .iter()
+                .all(|item| item.placer.len() == 3 && item.placer_namespace.as_ref() == namespace)
+        );
+        drop(store);
+        let store = open(&path)?;
+        assert_eq!(
+            store
+                .machine_order(&key)?
+                .ok_or("missing reservation")?
+                .items
+                .iter()
+                .map(|item| item.tests.clone())
+                .collect::<Vec<_>>(),
+            groups
         );
     }
     Ok(())

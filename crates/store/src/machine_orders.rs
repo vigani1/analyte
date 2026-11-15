@@ -80,9 +80,9 @@ pub struct MachineOrderItem {
     /// State before a cancellation request; retained to handle explicit refusal.
     #[serde(default)]
     pub cancel_from: Option<OrderState>,
-    /// Store-assigned EI.1; callers supply the configured EI.2 separately.
+    /// Store-assigned local command identity; the namespace is retained separately.
     pub placer: String,
-    /// EI.2 retained with the item so config changes cannot change a cancellation identity.
+    /// Retained logical namespace; configuration changes cannot alter cancellation identity.
     #[serde(default)]
     pub placer_namespace: Option<Identifier>,
     /// Last evidenced lifecycle state.
@@ -120,17 +120,19 @@ pub enum ItemDecision {
     CancelRefused,
 }
 
-/// Reservation shape; protocol code cannot supply its own collision-prone identities.
+/// Caller-selected command coverage; the store owns collision-free local identities.
 #[derive(Debug, Clone, Copy)]
 pub enum OrderItems<'a> {
-    /// One item covers all tests in an ASTM/vendor record or query display.
+    /// One command covers the complete, current cached test list.
     Together,
-    /// One item per HL7 test, bounded by the encoded EI field length.
-    PerTest {
-        /// Required configured placer namespace.
-        namespace: &'a Identifier,
-        /// Edition's maximum encoded EI length.
-        identity_bytes: usize,
+    /// Explicit nonempty groups must cover the cached tests exactly once.
+    Groups {
+        /// Caller-selected grouping and order, rechecked against the current cache.
+        groups: &'a [Vec<NamespacedId>],
+        /// Logical namespace retained with each command, when supplied.
+        namespace: Option<&'a Identifier>,
+        /// Maximum bytes in the generated local identity, after caller-owned encoding overhead.
+        max_identity_bytes: usize,
     },
 }
 
@@ -433,23 +435,38 @@ fn create_items(
     }
     let groups = match shape {
         OrderItems::Together => vec![tests],
-        OrderItems::PerTest { .. } => tests.into_iter().map(|test| vec![test]).collect(),
+        OrderItems::Groups { groups, .. } => {
+            if groups.is_empty()
+                || groups.len() > 100
+                || groups
+                    .iter()
+                    .any(|group| group.is_empty() || group.len() > 100)
+            {
+                return Err(Error::InvalidInput);
+            }
+            let mut remaining = tests;
+            for test in groups.iter().flatten() {
+                let position = remaining
+                    .iter()
+                    .position(|candidate| candidate == test)
+                    .ok_or(Error::InvalidInput)?;
+                remaining.remove(position);
+            }
+            if !remaining.is_empty() {
+                return Err(Error::InvalidInput);
+            }
+            groups.to_vec()
+        }
     };
     let mut items = Vec::new();
     for (offset, tests) in groups.into_iter().enumerate() {
         let index = u16::try_from(offset.checked_add(1).ok_or(Error::InvalidInput)?)
             .map_err(|_| Error::InvalidInput)?;
         let placer = format!("{}-{index}", order.id);
-        if let OrderItems::PerTest {
-            namespace,
-            identity_bytes,
+        if let OrderItems::Groups {
+            max_identity_bytes, ..
         } = shape
-            && (namespace.as_str().is_empty()
-                || placer
-                    .len()
-                    .checked_add(namespace.as_str().len())
-                    .and_then(|n| n.checked_add(1))
-                    .is_none_or(|n| n > identity_bytes))
+            && placer.len() > max_identity_bytes
         {
             return Err(Error::ItemIdentityTooLong);
         }
@@ -462,7 +479,7 @@ fn create_items(
             placer,
             placer_namespace: match shape {
                 OrderItems::Together => None,
-                OrderItems::PerTest { namespace, .. } => Some(namespace.clone()),
+                OrderItems::Groups { namespace, .. } => namespace.cloned(),
             },
             state: order.state,
             updated_at: order.updated_at,

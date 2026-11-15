@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub enum AlertKey {
     /// Oldest unfinished delivery.
     OldestUndelivered,
-    /// Last durable message or ASTM frame from this machine.
+    /// Last durable message or journaled frame from this machine.
     MachineSilent(Identifier),
     /// Free bytes relative to the configured reserve.
     DiskReserve,
@@ -497,7 +497,12 @@ mod tests {
             },
             config: vec![],
         };
-        store.journal_frame(&transfer, 1, b"synthetic", &provenance)?;
+        store.journal_frame(
+            &transfer,
+            crate::FrameSequence::new(1, 7)?,
+            b"synthetic",
+            &provenance,
+        )?;
         assert_eq!(
             store.alert_value(&machine, 100, &[(Identifier::new("lab")?, 30)])?,
             None

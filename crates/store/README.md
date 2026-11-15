@@ -1,13 +1,13 @@
 # analyte-store
 
-One protected SQLite database holds receipt evidence, the ASTM frame journal,
+One protected SQLite database holds receipt evidence, the bounded frame journal,
 versioned readings, parked items, immutable deliveries, attempts, order pages and
 audit entries. The host must protect the database directory (including WAL, SHM
 and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 7 is
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 8 is
 created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
 Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
@@ -123,13 +123,18 @@ provide bounded receipt and audit pages for the protected operator interface.
 
 Schema v5 is a forward-only migration; v4 and its histories are unchanged.
 Each new reservation creates retained command items and append-only item history
-in the same transaction, without an app event. ASTM/vendor records and query
-displays use one item covering all app tests. HL7 send-ahead uses one item per
-test through `reserve_send` with `ReserveOptions`. EI.1 is `<machine-order-id>-<item-index>`;
-SQLite's retained AUTOINCREMENT parent ID and the one-based index own uniqueness.
-The host supplies the required configured EI.2 namespace; it is retained with
-the item so configuration changes cannot alter a later cancellation identity. Encoded identity
-limits refuse the transaction; no truncation or partial reservation is possible.
+in the same transaction, without an app event. `OrderItems::Together` covers the
+current cached test list in one command. `OrderItems::Groups` retains the explicit
+groups and order supplied by the caller, after checking that they partition the
+cached tests exactly. Empty, missing, duplicate or invented coverage refuses the
+transaction. Local identity `<machine-order-id>-<item-index>` is unique through
+SQLite's retained AUTOINCREMENT parent ID and the one-based index. The optional
+logical namespace is retained so config changes cannot alter cancellation identity.
+
+The caller supplies `max_identity_bytes` for the generated local identity after
+accounting for its encoding overhead. The store does not choose a delimiter,
+protocol grouping or composite identity limit. A too-small budget rolls back the
+whole reservation; no truncation or partial reservation is possible.
 
 V4 did not retain original test coverage. Its migrated orders get one item with
 `coverage_known=false`, empty coverage, and `migration-v5-coverage-unavailable`
@@ -254,3 +259,21 @@ foreign-key integrity, counters and reservation identity allocation, and proves
 that unreadable parking or ownership rolls the upgrade back without changing legacy
 rows. Noncanonical cancellation-version tokens are refused rather than normalized
 into replay guards.
+
+## Schema 8: caller-owned protocol constraints
+
+`FrameSequence::new(number, maximum)` validates a byte-sized sequence against the
+caller's inclusive bound before journal writes. The store has no ASTM rollover
+rule. Schema 8 widens the old frame-column constraint to the byte domain; it keeps
+all frame bytes, transfer links, journal IDs, the AUTOINCREMENT high-water mark,
+evidence protections and machine activity. Copying old frames does not generate
+new activity. The migration test compares every table before and after upgrading
+a real schema-7 fixture and tests a sequence above seven, rejection above the
+caller bound, the byte maximum, closed transfers and reopening.
+
+`TransferOutcome::Complete` links retained receipt evidence;
+`TransferOutcome::Incomplete` requires the caller's typed reason. The host owns
+ASTM-specific explanations and supplies the framing crate's sequence maximum.
+HL7 and LAW callers build one group per test and calculate the remaining identity
+budget using named constants from `analyte-hl7`. Existing wire limits and the
+logical namespace budgets are preserved; the store does not know their encodings.
