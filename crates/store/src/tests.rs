@@ -4040,3 +4040,74 @@ fn mutation_plan11_alerts_oldest_delivery_age_includes_zero_and_keeps_future_unk
     );
     Ok(())
 }
+
+#[test]
+fn mutation_plan11_restore_busy_copy_refuses_with_timeout_and_preserves_both_stores() -> TestResult
+{
+    struct LockSource {
+        source: PathBuf,
+        held: std::sync::Mutex<Option<Connection>>,
+    }
+    impl FreeSpace for LockSource {
+        fn available(&self, _: &Path) -> std::io::Result<u64> {
+            let mut held = self
+                .held
+                .lock()
+                .map_err(|_| std::io::Error::other("probe lock poisoned"))?;
+            if held.is_none() {
+                let db = Connection::open(&self.source).map_err(std::io::Error::other)?;
+                db.execute_batch("BEGIN EXCLUSIVE")
+                    .map_err(std::io::Error::other)?;
+                *held = Some(db);
+            }
+            Ok(u64::MAX)
+        }
+    }
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("backup.db");
+    let path = temp.path().join("current.db");
+    let backup = receipt(b"backup original")?;
+    let current = receipt(b"current original")?;
+    let mut store = open(&source)?;
+    store.receive(&backup, b"backup original", b"config")?;
+    drop(store);
+    let db = Connection::open(&source)?;
+    db.execute_batch("PRAGMA journal_mode=DELETE")?;
+    drop(db);
+    let mut store = open(&path)?;
+    store.receive(&current, b"current original", b"config")?;
+    drop(store);
+    let original = std::fs::read(&source)?;
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: vec![],
+        time: 1,
+        reason: Reason::new("test locked backup")?,
+    };
+    let result = Store::restore(
+        &path,
+        &source,
+        limits(),
+        Box::new(LockSource {
+            source: source.clone(),
+            held: std::sync::Mutex::new(None),
+        }),
+        &audit,
+        Instant::now() + HANG_GUARD,
+    );
+    assert!(
+        matches!(result, Err(Error::Timeout)),
+        "busy copy must be a timeout: {result:?}"
+    );
+    assert_eq!(std::fs::read(&source)?, original);
+    let db = Connection::open(&path)?;
+    let raw: Vec<u8> = db.query_row(
+        "SELECT raw FROM receipts WHERE id=?1",
+        [key(&current.id)?],
+        |r| r.get(0),
+    )?;
+    assert_eq!(raw, b"current original");
+    assert!(!path.with_extension("before-restore").exists());
+    Ok(())
+}
