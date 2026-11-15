@@ -1,5 +1,6 @@
 //! Host-polled Autolyser connection; a corrupt report blocks R until L recovery.
-use super::custody::{self, Input, ms};
+use super::connection_input::Input;
+use super::custody::{self, ms};
 use crate::{Error, evidence, invalid};
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
@@ -61,7 +62,7 @@ pub(super) async fn session(
     let result = async {
         loop {
             state.end_code = "Autolyser-input-failed";
-            let input = custody::input(
+            let input = super::connection_input::journaled(
                 machine,
                 store,
                 conn,

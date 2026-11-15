@@ -1,36 +1,6 @@
 //! Shared host custody boundary, independent of vendor conversation rules.
-use crate::{Error, evidence, invalid};
-use analyte_model::ReceiptId;
-use analyte_store::Handle;
+use crate::{Error, invalid};
 use std::time::Duration;
-use tokio::sync::watch;
-
-pub(super) use super::connection_input::Input;
-/// Every transport chunk is durably journaled before a dialog sees any byte.
-/// Dropping this wait cannot cancel an already queued store request.
-pub(super) async fn input(
-    machine: &evidence::Connection<'_>,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: &mut watch::Receiver<bool>,
-    wait: Duration,
-) -> Result<Input, Error> {
-    let event = tokio::select! {
-        biased;
-        () = super::stopping(stop) => return Ok(Input::Closed(None)),
-        () = tokio::time::sleep(wait) => return Ok(Input::Tick),
-        event = super::connection_input::receive(conn) => event,
-    };
-    match event {
-        Ok(Input::Bytes { bytes }) => {
-            evidence::receive(store, machine, ReceiptId::new(), bytes.clone()).await?;
-            Ok(Input::Bytes { bytes })
-        }
-        Ok(event) => Ok(event),
-        Err(analyte_transport::Error::Deadline(_)) => Ok(Input::Tick),
-        Err(error) => Err(error.into()),
-    }
-}
 
 pub(super) async fn write(
     conn: &mut analyte_transport::Connection,

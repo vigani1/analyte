@@ -1,5 +1,6 @@
 //! VIDAS upload custody, with installed checksum, suffix and timer policy.
-use super::custody::{self, Input, ms};
+use super::connection_input::Input;
+use super::custody::{self, ms};
 use crate::{Error, evidence, invalid};
 use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_framing::vidas::{Config, Decoder};
@@ -110,7 +111,7 @@ pub(super) async fn session(
                 );
             }
             state.end_code = "VIDAS-input-failed";
-            let input = custody::input(
+            let input = super::connection_input::journaled(
                 machine,
                 store,
                 conn,

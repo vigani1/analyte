@@ -480,7 +480,8 @@ impl<'a, 'm> Host<'a, 'm> {
                         return Ok(());
                     }
                 }
-                Input::Closed(_) => {
+                Input::Closed(None) => return Err("LAW independent peer closed before ORL".into()),
+                Input::Closed(Some(_)) => {
                     return Err(invalid("LAW independent peer disconnected"));
                 }
                 Input::Failed(reason) => {

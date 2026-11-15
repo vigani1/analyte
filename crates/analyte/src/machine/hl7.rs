@@ -54,7 +54,6 @@ pub(super) async fn session(
                 () = tokio::time::sleep(wait) => None,
                 event = connection_input::receive(conn) => match event {
                     Ok(event) => Some(event),
-
                     Err(analyte_transport::Error::Deadline(_)) => None,
                     Err(error) => return Err(error.into()),
                 },

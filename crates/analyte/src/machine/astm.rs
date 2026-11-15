@@ -60,7 +60,6 @@ pub(super) async fn session(
                 () = tokio::time::sleep(wake.map_or(Duration::from_secs(1), |d: Duration| d.saturating_sub(start.elapsed()))) => None,
                 event = connection_input::receive(conn) => match event {
                     Ok(event) => Some(event),
-
                     Err(analyte_transport::Error::Deadline(_)) => None,
                     Err(error) => return Err(error.into()),
                 },
