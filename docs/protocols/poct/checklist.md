@@ -1,29 +1,4 @@
-# POCT1-A (CLSI POCT01-A2)
-
-Evidence level: documented. Phase 5.
-
-Current conformance checklist, written in our own words. Checked rows name
-executable synthetic tests; unchecked rows state remaining work. These tests
-support documented implementation, not hardware or simulator qualification.
-
-The final review audited the cited test bodies and their call paths. Parser tests
-prove parsing, builders prove output syntax, and dialog tests prove ordered
-actions with host-reported custody; only tests labelled program/reference-receiver
-exercise transport, protected storage and delivery together. A row stays unchecked
-where its full claim exceeds that evidence, even if some component tests pass.
-
-## Supported scope
-
-- **Edition:** POCT01-A2 (2006), archived by CLSI but still current.
-- **Role:** Analyte implements the **Device Messaging Layer (DML)
-  Observation Reviewer** over TCP. Device behavior lives only in the test
-  peer. Policies and authorized lists stay in the lab app.
-- **Out of scope unless claimed later:** the physical Access Point (Appendix
-  A, which needs further lower-layer standards) and the HL7 Observation
-  Reporting Interface (Appendix C). Analyte's HTTPS contract is not ORI.
-- **Conformance gate:** incomplete. Basic Profile components and the program paths
-  named below are implemented and tested; unchecked rows retain the remaining
-  evidence gaps. Examples and passing component tests alone do not close them.
+# POCT conformance
 
 ## Checklist
 
@@ -60,4 +35,4 @@ where its full claim exceeds that evidence, even if some component tests pass.
 - [ ] **C** Physical Access Point: meet selected physical/link discovery, IAS and networked-AP requirements with referenced lower-layer specifications (Appendix A §§7–8, pp.38–46). TCP DML alone does not satisfy this. Remaining: outside the supported Observation Reviewer TCP profile; no conformance claimed.
 - [ ] **C** Device actor: implement Appendix B's Device-side obligations in the peer; physical compatible Device claims additionally require Appendix A §6, pp.36–38. Remaining: outside the supported Observation Reviewer TCP profile; no conformance claimed.
 - [ ] **C** ORI: implement Observation Reviewer-side HL7 reporting/acknowledgement/order-result association flows (Appendix C §§2–4, pp.203–222), including referenced base definitions. HTTPS is separate. Remaining: outside the supported Observation Reviewer TCP profile; no conformance claimed.
-- [ ] **R, project gate** Test a minimum-capability Basic peer, every advertised extension, malformed input, async backpressure, timeout, lost ACK/reconnection, duplicate observation, restart and disk failure. Examples supplement these tests. Remaining: every advertised extension must be tested when added. Basic failure evidence: `poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline`, `poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack`, `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction` (program/reference receiver, replacing the standalone index test as host evidence), the Hello/control-ID program tests above, and the host storage-failure tests in [vendor_receive.rs](../../crates/analyte/tests/vendor_receive.rs).
+- [ ] **R, project gate** Test a minimum-capability Basic peer, every advertised extension, malformed input, async backpressure, timeout, lost ACK/reconnection, duplicate observation, restart and disk failure. Examples supplement these tests. Remaining: every advertised extension must be tested when added. Basic failure evidence: `poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline`, `poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack`, `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction` (program/reference receiver, replacing the standalone index test as host evidence), the Hello/control-ID program tests above, and the host storage-failure tests in [vendor_receive.rs](../../../crates/analyte/tests/vendor_receive.rs).

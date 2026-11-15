@@ -7,10 +7,10 @@ themselves are never committed.
 
 | Standard | File | Phase |
 | --- | --- | --- |
-| ASTM LIS01-A2 + LIS02-A2 | [astm.md](astm.md) | 2 |
-| HL7 v2.3.1 + v2.5.1, MLLP | [hl7.md](hl7.md) | 3 |
-| IHE LAW (PaLM Rev 11.0) | [ihe-law.md](ihe-law.md) | 4 |
-| POCT01-A2 | [poct1-a.md](poct1-a.md) | 5 |
+| ASTM LIS01-A2 + LIS02-A2 | [astm.md](astm/README.md) | 2 |
+| HL7 v2.3.1 + v2.5.1, MLLP | [hl7.md](hl7/README.md) | 3 |
+| IHE LAW (PaLM Rev 11.0) | [ihe-law.md](law/README.md) | 4 |
+| POCT01-A2 | [poct1-a.md](poct/README.md) | 5 |
 
 ## Durable custody boundaries
 
