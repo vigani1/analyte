@@ -1,3 +1,4 @@
-//! Conversation state machines, one per connection, with their own deadlines and no I/O of their own.
-
+//! Deterministic LIS01-A2 dialogs. Evidence level: documented.
 #![forbid(unsafe_code)]
+
+pub mod astm;

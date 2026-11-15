@@ -9,8 +9,19 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+analyte-model = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+jiff = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }
+subtle = { workspace = true }
 
 [dev-dependencies]
+proptest = { workspace = true }
 
 [lints]
 workspace = true
