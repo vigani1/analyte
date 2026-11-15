@@ -1,13 +1,11 @@
 //! VIDAS upload custody, with installed checksum, suffix and timer policy.
 use super::vendor::{self, Input, ms};
 use crate::{Error, evidence, invalid};
+use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
+use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
-use analyte_vidas::{
-    dialog::{Action, Dialog, Event, Policy, Timer},
-    framing::{Config, Decoder},
-    syntax::Message,
-};
+use analyte_vidas::syntax::Message;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
@@ -278,9 +276,9 @@ async fn process_inline(
                             evidence::vendor_reading(store, machine, id, reading).await?;
                         }
                         Err(error) => {
-                            vendor::failed(
-                                machine,
+                            evidence::failed_reading(
                                 store,
+                                machine,
                                 id,
                                 &format!("VIDAS interpretation: {error}"),
                             )

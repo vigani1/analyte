@@ -9,11 +9,15 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+analyte-poct.workspace = true
+analyte-vidas.workspace = true
+analyte-autolyser.workspace = true
 analyte-hl7 = { workspace = true }
 analyte-framing = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+quick-xml.workspace = true
 proptest = { workspace = true }
 
 [lints]

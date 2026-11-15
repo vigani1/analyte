@@ -13,6 +13,7 @@ members = ["."]
 
 [dependencies]
 libfuzzer-sys = "=0.4.13"
+analyte-dialog = { path = "../crates/dialog" }
 analyte-framing = { path = "../crates/framing" }
 analyte-astm = { path = "../crates/astm" }
 analyte-hl7 = { path = "../crates/hl7" }

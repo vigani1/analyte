@@ -4,7 +4,7 @@ Evidence level: **documented**, from the Autolyser / Autolyser ISE Operator's
 Manual Rev18, chapter 23 (pp.175-187). No machine or official simulator tested.
 Tests use our synthetic research fixtures, never copied vendor examples.
 
-`records` parses and builds fixed-width worklists and both result layouts.
+`syntax` parses and builds fixed-width worklists and both result layouts.
 Patient codes and values retain spaces, leading zeroes and case. The optional
 8+7 constructor appends seven spaces to exactly eight supplied characters;
 it does not normalize arbitrary identifiers. Analysis codes occupy four bytes.
@@ -99,3 +99,8 @@ response clears it; corrupt input keeps it through L recovery. An empty L does
 not clear it. Disconnect or restart with an open guard blocks further R requests
 until an operator reconciles and resolves that guard. This prevents a new session
 from silently advancing a cursor whose previous outcome is uncertain.
+
+Conversation state and deadline policy live in `analyte-dialog`, in `src/autolyser.rs`.
+Conversation tests live in `crates/dialog/tests/autolyser.rs`.
+
+Checksum envelopes live in `crates/framing/src/autolyser.rs`.

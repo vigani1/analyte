@@ -53,7 +53,7 @@ pub enum MachineOrder {
     /// One validated request per assay, in the app's order.
     Vidas(Vec<analyte_vidas::syntax::Message>),
     /// A complete validated host-initiated insertion.
-    Autolyser(analyte_autolyser::records::Worklist),
+    Autolyser(analyte_autolyser::syntax::Worklist),
 }
 
 impl MachineOrder {
@@ -94,7 +94,7 @@ pub enum OrderMappingError {
     MissingCupPosition,
     /// An Autolyser field fails the documented fixed-width rules.
     #[error("Autolyser request is not representable: {0}")]
-    Autolyser(#[from] analyte_autolyser::records::Error),
+    Autolyser(#[from] analyte_autolyser::syntax::Error),
     /// A field exceeds its documented or installed ceiling.
     #[error("overlong-{0}")]
     Overlong(&'static str),

@@ -1,9 +1,7 @@
 //! Synthetic tests traced to the vendor research notes, not vendor captures.
-use analyte_vidas::{
-    dialog::{Action, Dialog, Event, Policy, Timer},
-    framing::{Checksum, Config, Decoder, Mode},
-    syntax::{Message, SampleLimit},
-};
+use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
+use analyte_framing::vidas::{Checksum, Config, Decoder, Mode};
+use analyte_vidas::syntax::{Message, SampleLimit};
 use std::time::Duration;
 
 fn config(
