@@ -81,8 +81,8 @@ Not yet complete:
 - Related observations and full capability/profile negotiation.
   Related-observation and pooling message workflows are not implemented;
   the outside-pooling field predicates can be validated explicitly.
-- Qualified simulator evidence and host integration cases (durability failures,
-  restart, lost replies, cancellation races, timing and external-data retention).
+- Recorded simulator conversations, broader cancellation-race qualification and
+  external-data retention. Existing host evidence is indexed in the LAW checklist.
 
 Do not interpret a successful view construction or passing local tests as full
 LAW conformance. Tests do not establish the clinical reconciliation/lifecycle
@@ -375,7 +375,7 @@ The [LAW checklist](../../docs/protocols/ihe-law.md) distinguishes implemented
 field evidence from partial or planned workflow tests. Still absent are a
 qualified Gazelle run, complete option/profile negotiation, related-observation
 sending/reference resolution, full pooling workflows, external-pointer retention
-integration, and LAW-specific host/dialog durability/recovery/lifecycle evidence.
+integration. Existing host durability/recovery evidence is indexed there.
 Evidence remains **documented**.
 
 ## Recording a Gazelle run
@@ -388,8 +388,8 @@ work versus unavailable lookup, multi-AWOS decisions, duplicates after uncertain
 acceptance, cancellation races, unsolicited results, corrections/reruns,
 inconsistent result rejection, selected enhanced content, lost ACK, disconnect,
 restart and storage failure. Record validation-profile changes between runs.
-Network exchanges belong to host/dialog integration. No Gazelle run has been
-performed and the evidence level has not been raised.
+Network exchanges belong to host/dialog integration. [Message-level Gazelle validation](../../docs/conformance/gazelle/README.md)
+is recorded; a simulator conversation remains missing and evidence stays documented.
 
 ## Legacy deferred query implementation status
 
@@ -519,8 +519,8 @@ segment location rather than incorrectly calling every extra segment DSC.
 Still open: generic parent/group/change workflows, full optional order-content
 predicates and associated O21 observation/instruction groups, immediate Q01,
 general non-LAW query conformance statements and quantitative/tabular forms,
-continuation/fragmentation, and host tests for uncertain delivery, deadlines,
-cancellation/restart and durable recovery. Unselected TQ2, O35/O36 and query
+continuation/fragmentation, and broader workflow qualification. Host uncertainty, deadlines, cancellation
+and restart tests now exist in [program orders](../analyte/ORDERS.md). Unselected TQ2, O35/O36 and query
 subscription/replay capabilities are not implied by the supported subset.
 Pure replay tests prove deterministic bytes and stable identities; they do not
 prove lost-ACK or restart behavior. Additional display units/escaping and local
@@ -538,50 +538,9 @@ injection and field limits. `Subject::Unspecified` makes no nonpatient claim;
 An absent ORM specimen source stays empty; OML still rejects missing SPM-4.
 These APIs remain pure and do not reserve, transmit, cancel or infer acceptance.
 
-The program integration declares `law_manager` and
-explicit peer capabilities in `analyte-config::LawPeer`. Its `capabilities()`
-method feeds this crate's existing capability intersection; the LAW views and
-builders remain the source of protocol rules. LAB-29 receiving and explicitly
-configured query-triggered LAB-28/ORL exchanges are enabled.
-Host query scope is exact specimen/container ID and analyzer-specific
-all-pending. Isolate/parent and rack/tray-position queries must receive an error;
-isolate/parent needs app-supplied identities in a future contract version.
-This checkpoint adds no simulator evidence.
+## LAW program integration
 
-The LAB-29 runtime uses `receive_results` and `result_acknowledgment` with
-host-owned durable responsibility. `AckError::unlocated` permits LAW's optional
-ERR-2 to stay absent when the host cannot prove the failing occurrence; the
-generic HL7 builder still requires a location. The small API addition is tested
-by `law_tf2b_c1_unknown_error_location_is_omitted_never_invented`. Protocol
-failures retain their full causes in the protected interpretation. See the
-program's `tests/law/results.rs` for durable receiving/delivery evidence.
-
-Step 3 adds `CacheAnswer::Rejected` (QAK AR, no work followup), tested alongside
-empty/found/unavailable outcomes in `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`.
-Both work builders now use the LAW syntax entry point, retaining LAW's 50-character
-control ID boundary (`law_tf2b_c4_work_and_negative_builders_keep_fifty_character_control_ids`).
-The negative-query builder projects received EI values to the C.11 manager-authored
-EI.1 subset, while RSP retains its exact QPD echo. Qualified-container regression
-coverage is in `law_tf2b_3_28_4_negative_lab28_for_genuine_no_work`. Host reservation,
-ORL and failure evidence is in the program's `tests/law/queries.rs`. Unsolicited
-send-ahead/cancellation now reuse that host path (step 4), including existing
-`WorkAction::Cancel` and `AwosOutcome::CancelAccepted`/`UnableToCancel`; no new
-protocol API was needed. Seven program/reference-receiver tests in
-`tests/law/work.rs` cover outcomes, restore pause and recovery without resend.
-Independent directional links and Gazelle remain separate host gates.
-
-
-The program now declares `law.connection_mode = "persistent"` for one TCP link
-in either configured client/server direction, carrying all LAW transactions.
-Independent per-transaction links are rejected specifically by config validation;
-the TF-2b B.6 independent-link checklist remains unchecked. Pure protocol builders
-and receive views do not select a connection role or implement host retries.
-Program evidence is listed by test in `docs/protocols/ihe-law.md`, including
-`law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`.
-No Gazelle run or full LAW actor conformance is claimed.
-
-The program's shared stored-byte interpretation path also selects LAW parsing
-and `map_law` for operator reprocessing; it cannot fall back to generic HL7.
-`law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix`
-uses a LAW-valid 50-character control ID and checks immutable evidence and one
-reference-receiver delivery after repair. This adds no protocol-crate API.
+The program receives results, answers supported queries and sends/cancels work
+on one persistent TCP link in either configured direction. Evidence remains
+**documented**. The [LAW checklist](../../docs/protocols/ihe-law.md) owns the
+current test matrix and remaining actor/simulator qualification gates.

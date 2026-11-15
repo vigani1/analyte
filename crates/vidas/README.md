@@ -1,8 +1,9 @@
 # analyte-vidas
 
-Evidence: **documented, from notes only**. Source: `docs/research/vidas.md`,
-which summarizes BCI A/B and the older VIDAS PC manual. No manual was available
-for this implementation. Synthetic property tests are not simulator evidence.
+Evidence level: **documented**. The implementation was built from
+[research notes](../../docs/research/vidas.md), whose sources were BCI Link
+161150-486 revisions A/B and VIDAS PC User Manual F. Synthetic property tests
+are not simulator evidence.
 
 Pure vendor framing, tagged syntax and one-transfer conversations; no I/O or
 clock. Only the VIDAS PC Literal family is supported, not ASTM, XML/FTP, mini
@@ -78,28 +79,13 @@ evidence remains documented and site validation is still required.
 
 ## Program receive integration
 
-The `analyte` program drives this crate over configured connections. Incoming
-bytes are journaled with driver/config versions before the dialog sees them;
-complete receipts and interpretations are then stored through the protected store.
-Unresolved result identities remain unresolved, are parked with their reason,
-and create no result delivery. Inspect them with `analyte parked list`.
-The program never derives a run identity from sample, value, timestamp or receipt.
+The host retains raw receipts and parks unresolved identities; see
+[program receive behavior](../analyte/README.md).
 
 ## Program work-list download
 
-The program now drives the existing download dialog through the shared order
-mapper and durable reservation path; see [program order behavior](../analyte/ORDERS.md).
-Enable both `[vidas] download = true` and `[orders] send_ahead = true`, with
-explicit outbound assay mappings, admitted priorities and `patient_namespace`.
-Permission alone does not schedule work. Every assay is mapped before one order
-reservation writes `Sending`, without an app event. Each assay has its own
-request/session; only every request reaching confirmed `Complete` produces one
-`Sent` event. This confirms transport, never application `Accepted` or clinical
-acceptance. A timeout, disconnect, refusal or unexpected input ends the active
-order as `Uncertain` with its specific code. `Park` closes the connection for
-reconciliation and records that outcome in the same run. Restart changes only
-remaining `Sending` entries to `Uncertain`; confirmed `Sent` stays `Sent`.
-Neither path automatically replays an order, including partially sent work lists.
+The runtime uses the shared reservation and recovery rules in
+[program orders](../analyte/ORDERS.md). Protocol limits follow below.
 
 The host accepts at most 100 assays per app order (also subject to configured
 bounds), one explicit 1-4 byte assay code per request. Patient IDs must match the

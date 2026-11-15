@@ -56,19 +56,10 @@ Vendor receive examples are `examples/poct.toml`, `examples/vidas_literal.toml`
 and `examples/autolyser.toml`. They require explicit installed policies and use
 `[codes]` for exact test/unit translations instead of field-position `[mappings]`.
 Incompatible stacks and vendor field mappings have distinct typed errors.
-All three examples remain synthetic and documented. VIDAS work-list sending
-requires both download permission and an explicit outbound order table; see
-`../analyte/ORDERS.md`. Autolyser host-initiated insertion follows its existing dialog after a completed
-host poll and idle interval.
-
-
-For outbound VIDAS or Autolyser work lists, `[orders]` requires an explicit
-`patient_namespace = "assigning-system"`. It names the only assigning system
-allowed in the vendor's unqualified patient field. Autolyser also requires
-`clone = true` or `clone = false`; omission never means false. These settings
-are not needed by receive-only machines without `[orders]`. Namespace mismatch
-and missing patient data are rejected by the shared outbound patient boundary;
-configuration alone does not send an order.
+All three examples remain synthetic and documented. Outbound permissions and
+patient-namespace rules are owned by [program orders](../analyte/ORDERS.md);
+wire limits belong to the [VIDAS](../vidas/README.md) and
+[Autolyser](../autolyser/README.md) protocol guides.
 
 Vendor order tables omit `[orders.astm]`, which remains required for ASTM.
 Vendor tables cannot enable ASTM queries or carry ASTM destinations. Send-ahead
@@ -88,12 +79,8 @@ must occupy exactly four printable bytes; list mappings use only `T` or `R`.
 Missing patient, specimen medium or cup position in an app order produces a
 specific rejection before reservation or transmission. Cup zero is never inferred.
 
-ASTM can also use `specimen_types` with explicit printable machine codes. Its
-optional `[orders.astm] specimen_type` selector is limited to O field 16,
-component 1 (LIS02 section 8.4.16.1). The optional position selector stays in
-O field 4 and sends the exact slot. No selector means that context stays off the
-wire. A configured selector requires its context; unknown specimen codes cause
-specific order rejection. See `../analyte/ORDERS.md` for selectors and examples.
+ASTM optional position/specimen context is documented in
+[program orders](../analyte/ORDERS.md#astm-optional-order-context-lis02-section-8).
 
 
 HL7 legacy order queries opt in through `[orders.query]` and `[orders.hl7]`;
@@ -164,20 +151,8 @@ Query and response deadlines must be 1 through 60000 milliseconds. LAW permits
 only explicit C correction status and cannot select legacy display queries or
 non-LAW order layouts.
 
-The declarations have documented evidence in `tests/law.rs`. The program now
-runs LAB-29 results, configured LAB-27 followups, unsolicited LAB-28 with
-`orders.send_ahead = true`, and app-requested cancellation of previously accepted
-work (including queried work with send-ahead disabled). No attempt is resent.
-Both TCP roles use the same persistent session. The value
-`connection_mode = "independent_per_transaction"` fails validation specifically
-at `law.connection_mode`; independent per-transaction links are not supported. Trusted empty uses the restricted negative
-LAB-28; untrusted, failed, stale, paused or late lookups receive an error RSP.
-
-The specimen namespace binds SPM-2 when supported; the container namespace binds
-qualified incoming queries to the app's SampleId. Manager-authored SAC and AWOS
-fields send EI.1 only, per the existing LAW profile; the shared item store retains
-the explicit placer namespace. For unqualified returned AWOS, select an explicit
-fixed result-mapping namespace. No namespace or AWOS is guessed.
+Program behavior and current qualification gates are maintained in the
+[LAW checklist](../../docs/protocols/ihe-law.md).
 
 LAW identity selects OBR-2 AWOS (OBR-2.2 namespace or an explicit fixed fallback)
 and the complete OBX-4 OG. Config cannot replace these with arbitrary selectors

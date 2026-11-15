@@ -83,21 +83,21 @@ Section references are to Appendix B of POCT01-A2. Tests are in `tests/`.
 
 | Checklist row | Implementation and tests |
 | --- | --- |
-| Mandatory receives and reviewer sends, §4.4 | `messages::poct01_b_6_mandatory_message_bodies_and_control_ids`; `builders::poct01_b_6_reviewer_builders_round_trip_and_correlate` |
-| Hello accept/reject and ordered startup, §4.1.2 | `dialog::poct01_b_4_1_2_startup_and_rejection_in_sequence`; `poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline` |
-| Capabilities and repeated topics, §§4.1.3,5.6–5.7 | `Body::Hello`, `Capabilities`; `dialog::poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination` |
-| Patient/nonpatient, zero/multiple observations and EOT, §§4.1.4–4.1.5 | `messages::poct01_b_6_10_patient_and_nonpatient_values_are_explicit`; dialog zero/multiple transfer tests; mapping tests |
-| Custody gate and independent observation identity, §3.2 / ADR 0003 | `dialog::poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`; all `duplicate` tests |
-| Error ACK, Escape and termination, §§3.4,4.1.11–4.1.12 | `dialog::poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes`; Escape correlation, remote END and normal termination tests |
-| Application timeout without replay, §3.6 | `dialog::poct01_b_3_6_no_resend_on_application_timeout`; Hello policy latency test |
-| Required objects, order, cardinality, codes and correlation, §§5–6 | `structure.rs`; missing/duplicate/order/role tests in `messages`; correlation tests in `builders` and `dialog` |
-| POCT coded/quantity/time/null/encapsulated types, §8 | `data.rs`; quantity-spelling property, null/code/translation, offset/precision, interval and encapsulated metadata tests |
-| Local normative structure handling, §12 | Executable rules in `structure.rs` and fixed data-type metadata checks; auxiliary metadata, invalid fixed attributes and interval-choice tests in `messages` |
-| Asynchronous observation order and bounded backpressure, §9 | `dialog::poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`; `poct01_b_9_bounded_backpressure_returns_unconsumed_input` |
+| Mandatory receives and reviewer sends, Â§4.4 | `messages::poct01_b_6_mandatory_message_bodies_and_control_ids`; `builders::poct01_b_6_reviewer_builders_round_trip_and_correlate` |
+| Hello accept/reject and ordered startup, Â§4.1.2 | `dialog::poct01_b_4_1_2_startup_and_rejection_in_sequence`; `poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline` |
+| Capabilities and repeated topics, Â§Â§4.1.3,5.6â€“5.7 | `Body::Hello`, `Capabilities`; `dialog::poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination` |
+| Patient/nonpatient, zero/multiple observations and EOT, Â§Â§4.1.4â€“4.1.5 | `messages::poct01_b_6_10_patient_and_nonpatient_values_are_explicit`; dialog zero/multiple transfer tests; mapping tests |
+| Custody gate and independent observation identity, Â§3.2 / ADR 0003 | `dialog::poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`; all `duplicate` tests |
+| Error ACK, Escape and termination, Â§Â§3.4,4.1.11â€“4.1.12 | `dialog::poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes`; Escape correlation, remote END and normal termination tests |
+| Application timeout without replay, Â§3.6 | `dialog::poct01_b_3_6_no_resend_on_application_timeout`; Hello policy latency test |
+| Required objects, order, cardinality, codes and correlation, Â§Â§5â€“6 | `structure.rs`; missing/duplicate/order/role tests in `messages`; correlation tests in `builders` and `dialog` |
+| POCT coded/quantity/time/null/encapsulated types, Â§8 | `data.rs`; quantity-spelling property, null/code/translation, offset/precision, interval and encapsulated metadata tests |
+| Local normative structure handling, Â§12 | Executable rules in `structure.rs` and fixed data-type metadata checks; auxiliary metadata, invalid fixed attributes and interval-choice tests in `messages` |
+| Asynchronous observation order and bounded backpressure, Â§9 | `dialog::poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`; `poct01_b_9_bounded_backpressure_returns_unconsumed_input` |
 | Project failure gate | Minimum-capability startup, malformed XML/typed-input properties, backpressure, timeout, store failure, disconnected/unresolved tickets, lost-ACK/restart duplicate restoration and same-ID conflict tests |
 
-The source's message models in §6 define object order/containment; §8 supplies
-value semantics and §12 supplies element/data-type metadata. In particular,
+The source's message models in Â§6 define object order/containment; Â§8 supplies
+value semantics and Â§12 supplies element/data-type metadata. In particular,
 `OBS.critical_lo-hi_limit` uses the declared element spelling, consistent with
 the patient model and the data-element declarations. No DTD, standard example or
 vendor manual is distributed here.
@@ -112,8 +112,9 @@ engine tolerates asynchronous observations without requiring a profile flag to
 enable it; this does not enable continuous/unsolicited operation.
 
 Physical Access Point (Appendix A), the Device actor and HL7 Observation Reporting
-Interface (Appendix C) are outside this crate's claim. Host TCP/store integration,
-Linux execution and fuzz-target CI are separate integration gates;
+Interface (Appendix C) are outside this crate's claim. Host TCP/store integration
+is tested in `crates/analyte/tests/vendor_receive.rs`; Linux and fuzz execution
+are tracked by CI;
 the crate tests themselves perform no analyzer or lab-app I/O.
 
 ## XML policy
@@ -143,10 +144,8 @@ Unresolved result identities remain unresolved, are parked with their reason,
 and create no app delivery. Inspect them with `analyte parked list`.
 The program never derives a run identity from sample, value, timestamp or receipt.
 
-Worklist download is **not wired into the program yet**. VIDAS and Autolyser
-send-ahead will follow the phase 6 machine-order store API (`reserve_send`,
-lifecycle history and operator reconciliation) after `feat/program-orders`
-merges. The vendor config download permission does not schedule an operation.
+VIDAS and Autolyser work-list sending is implemented; see
+[program orders](../analyte/ORDERS.md).
 POCT optional order/list extensions remain outside the supported profile.
 
 Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,

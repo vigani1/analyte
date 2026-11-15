@@ -63,33 +63,13 @@ production qualification belong to the host and are deliberately not included.
 
 ## Program receive integration
 
-The `analyte` program drives this crate over configured connections. Incoming
-bytes are journaled with driver/config versions before the dialog sees them;
-complete receipts and interpretations are then stored through the protected store.
-Unresolved result identities remain unresolved, are parked with their reason,
-and create no result delivery. Inspect them with `analyte parked list`.
-The program never derives a run identity from sample, value, timestamp or receipt.
+The host retains raw receipts and parks unresolved identities; see
+[program receive behavior](../analyte/README.md).
 
 ## Program work-list download
 
-The program now sends insertions through the shared order mapper and durable
-reservation path; see [program order behavior](../analyte/ORDERS.md).
-The host initiates polling and insertion, following this crate's dialog. A
-completed stored poll response opens the next idle interval for an insertion;
-an unanswered initial poll never reserves an order. Enable both
-`[autolyser] download = true` and `[orders] send_ahead = true`. Patient namespace,
-clone flag, analysis-code, specimen-medium and list mappings are explicit.
-
-Mapping finishes before `reserve_send` writes `Sending`, with no app event.
-The host sends STX, waits for ACK, then sends the work list, checksum and EOT
-without an extra command letter. Only the complete, durably stored `Y` plus
-binary position reply produces one `Sent` event, never automatic `Accepted`.
-A partial or unanswered exchange, disconnect, bad ACK, negative or unknown
-reply becomes `Uncertain` with a specific code and closes for reconciliation.
-A mid-send `Park` finalizes that order in the same run, while pending storage
-effects are consumed before closing. Restart changes only remaining `Sending`
-entries to `Uncertain`; `Sent` stays `Sent`. Orders are never automatically
-replayed. Result-poll custody guards remain separate, as described below.
+The runtime uses the shared reservation and recovery rules in
+[program orders](../analyte/ORDERS.md). Protocol limits follow below.
 
 One insertion contains 1-99 tests, each an exact four-byte printable analysis
 code. The app patient ID must match `patient_namespace`, use printable ASCII

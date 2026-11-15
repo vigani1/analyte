@@ -99,8 +99,8 @@ app events. The same reservation and completion rules apply to query answers.
 
 ## Durable command items
 
-Every new machine-order reservation retains items atomically in schema v5.
-ASTM and vendor records cover all tests in one item; HL7 send-ahead will reserve
+Every new machine-order reservation retains items atomically in schema v6.
+ASTM and vendor records cover all tests in one item; HL7 send-ahead reserves
 one item per test. Store-owned placer identities are `<machine-order-id>-<index>`;
 the HL7 configuration must supply their namespace. App order IDs belong in
 ORC-4, independently of these identities. Neither identity may be truncated.
@@ -261,20 +261,20 @@ missing or mismatched patient context is rejected at the order boundary.
 
 | Required case | VIDAS | Autolyser |
 | --- | --- | --- |
-| Normal send; Sent survives restart | [All assays](tests/orders/vidas.rs#L84) | [Both clone values](tests/orders/autolyser.rs#L108) |
-| Timeout | [Covered](tests/orders/vidas.rs#L131) | [Covered](tests/orders/autolyser.rs#L163); [partial reply](tests/orders/autolyser.rs#L182) |
-| Disconnect mid-send | [Covered](tests/orders/vidas.rs#L155) | [Covered](tests/orders/autolyser.rs#L221) |
-| Restart during Sending; no replay | [Covered](tests/orders/vidas.rs#L175) | [Covered](tests/orders/autolyser.rs#L241) |
-| Unmapped test | [Covered](tests/orders/vidas.rs#L219) | [Covered](tests/orders/autolyser.rs#L281) |
-| Unmapped specimen type | [Covered](tests/orders/vidas.rs#L228) | [Covered](tests/orders/autolyser.rs#L291) |
-| Missing required position | Not applicable: Literal has no position field | [Covered](tests/orders/autolyser.rs#L307) |
-| Wrong patient namespace | [Covered](tests/orders/vidas.rs#L234) | [Covered](tests/orders/autolyser.rs#L322) |
-| Missing namespace configuration | [Covered](tests/orders/vidas.rs#L295) | [Covered](tests/orders/autolyser.rs#L363) |
-| Missing patient | [Covered](tests/orders/vidas.rs#L240) | [Covered](tests/orders/autolyser.rs#L328) |
-| Over-long ID | [Sample](tests/orders/vidas.rs#L246); [patient](tests/orders/vidas.rs#L252) | [Patient](tests/orders/autolyser.rs#L334) |
-| Cancelled before send | [Covered](tests/orders/vidas.rs#L258) | [Covered](tests/orders/autolyser.rs#L340) |
-| Park mid-send: same-round Uncertain and event | [Covered](tests/orders/vidas.rs#L326) | [Covered](tests/orders/autolyser.rs#L201) |
-| Unanswered result poll cannot send an order | Not applicable: Literal does not poll for results | [Covered](tests/orders/autolyser.rs#L146) |
+| Normal send; Sent survives restart | [vidas_bci_a_ch3_5_all_assays_confirm_once_sent_survives_restart](tests/orders/vidas.rs) | [autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_stays_sent_on_restart](tests/orders/autolyser.rs) |
+| Timeout | [vidas_bci_a_ch3_adr0004_ack_timeout_is_uncertain_never_resends](tests/orders/vidas.rs) | [autolyser_rev18_ch23_unanswered_insertion_is_uncertain_not_sent](tests/orders/autolyser.rs); [autolyser_rev18_ch23_parked_partial_reply_is_uncertain_same_round_with_timeout_code](tests/orders/autolyser.rs) |
+| Disconnect mid-send | [vidas_bci_a_ch3_adr0004_disconnect_mid_send_is_uncertain](tests/orders/vidas.rs) | [autolyser_rev18_ch23_disconnect_mid_send_retains_partial_reply_and_uncertain_code](tests/orders/autolyser.rs) |
+| Restart during Sending; no replay | [adr0004_rule8_vidas_restart_during_send_recovers_sending_without_replay](tests/orders/vidas.rs) | [adr0004_rule8_autolyser_restart_during_send_recovers_only_sending_never_replays](tests/orders/autolyser.rs) |
+| Unmapped test | [vidas_bci_a_ch4_unmapped_test_rejected_before_send](tests/orders/vidas.rs) | [autolyser_rev18_ch23_unmapped_test_rejects_whole_order_before_insertion](tests/orders/autolyser.rs) |
+| Unmapped specimen type | [vidas_bci_a_ch4_unmapped_specimen_type_rejected_before_send](tests/orders/vidas.rs) | [autolyser_rev18_ch23_unmapped_specimen_type_rejects_before_insertion](tests/orders/autolyser.rs) |
+| Missing required position | Not applicable: Literal has no position field | [autolyser_rev18_ch23_missing_cup_position_never_autoassigns_zero](tests/orders/autolyser.rs) |
+| Wrong patient namespace | [adr0004_vidas_wrong_patient_namespace_rejected_before_send](tests/orders/vidas.rs) | [adr0004_autolyser_wrong_patient_namespace_rejects_before_insertion](tests/orders/autolyser.rs) |
+| Missing namespace configuration | [adr0004_vidas_missing_patient_namespace_prevents_program_start](tests/orders/vidas.rs) | [adr0004_autolyser_missing_patient_namespace_prevents_program_start](tests/orders/autolyser.rs) |
+| Missing patient | [vidas_bci_a_ch4_missing_patient_rejected_before_send](tests/orders/vidas.rs) | [autolyser_rev18_ch23_missing_patient_never_uses_sample_id](tests/orders/autolyser.rs) |
+| Over-long ID | [vidas_pc_ch4_14_overlong_sample_id_never_truncated](tests/orders/vidas.rs); [vidas_bci_a_ch4_overlong_patient_id_never_truncated](tests/orders/vidas.rs) | [autolyser_rev18_ch23_overlong_patient_id_never_truncated](tests/orders/autolyser.rs) |
+| Cancelled before send | [adr0004_vidas_cancelled_before_send_has_no_wire_or_app_send_event](tests/orders/vidas.rs) | [adr0004_autolyser_cancelled_before_send_has_no_insertion_or_send_event](tests/orders/autolyser.rs) |
+| Park mid-send: same-round Uncertain and event | [vidas_bci_a_ch3_park_mid_send_commits_uncertain_same_round_then_closes](tests/orders/vidas.rs) | [autolyser_rev18_ch23_parked_bad_ack_is_uncertain_same_round](tests/orders/autolyser.rs) |
+| Unanswered result poll cannot send an order | Not applicable: Literal does not poll for results | [autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_order](tests/orders/autolyser.rs) |
 
 The suites contain 13 VIDAS and 18 Autolyser tests. They also cover Autolyser's
 invalid cup slots, missing specimen medium and negative/unknown insertion replies.
@@ -326,34 +326,9 @@ Sending, trusted empty/untrusted/stale answers, unknown filters, missed query
 deadlines, AA/AE/AR/lost/wrong ACKs, disconnect and ordinary result delivery with
 queries enabled. Synthetic peers do not raise the evidence level.
 
-## Restore and reconciliation (plan ?11, ADR 0003 rules 2, 4, 8)
+## Restore and reconciliation
 
-1. Stop the service. Keep the backup and data directory protected as clinical data.
-2. Run `analyte --config analyte.toml --actor operator-name restore --from backup.db --reason "Recovery after disk failure"`.
-   Integrity and supported schema are checked before migration of a staged copy.
-   Normal store owners prevent restore through an OS file lock.
-3. The previous database is retained as `analyte.before-restore`; it is never
-   overwritten or deleted. Existing recovery files refuse a further restore.
-   Archive the previous store securely before a later restore. Interrupted
-   `analyte.restore-pending` files block opening: preserve all files and investigate
-   before proceeding; never remove evidence just to start the service.
-4. Restart the service. Result receiving and app deliveries continue. Delivery
-   retries retain the original ID and bytes; the receiver must accept duplicates.
-   Machine order reservations are paused, including query answers. Untrusted
-   lookups follow their configured error/silence policy, never ?no orders?.
-5. Inspect `analyte --config analyte.toml orders list` and status. Compare each
-   machine's work list and actual outcomes with the app, including commands sent
-   after the backup. Correct the app's requested work and reconcile uncertain
-   entries before releasing the pause. This is an operator responsibility;
-   Analyte cannot infer what reached a machine from an older backup.
-6. Run `analyte --config analyte.toml --actor operator-name orders resume-after-restore --reason "Machines and app reconciled"`.
-   This audited command clears the global pause; it sends no machine command.
-   Existing reservations continue to forbid automatic replay.
-
-The marker is the latest restore/resume action in the append-only audit trail;
-no schema migration or driver-specific exception is needed. Evidence remains
-**documented**, based on synthetic tests, without real-machine qualification.
-
+Follow the [operator restore procedure](README.md#restore-and-reconciliation-plan-11-adr-0003-rules-2-4-8).
 
 ## HL7 send-ahead and cancellation
 
@@ -399,90 +374,9 @@ no reply, disconnect, cancel accepted/refused through the reference app feed,
 restart while Sending, no resend, actual placer-ID overflow, overlong ORC-4,
 and paused restore admission. They do not qualify a physical analyzer.
 
-## LAW query-triggered work checkpoint (step 3)
+## LAW orders
 
-The explicit `[law.work]` and shared `[orders]` tables enable LAB-27 by container
-ID or all pending work for this analyzer. Raw QBP is durable before lookup or
-response. One bounded `Store::pending_orders` read API shares the existing cache
-trust rule, including freshness, generation and restore pause. Multi-page reads
-run in one store-owner request; a filtered-empty page with a cursor is not no-work.
-Size/deadline exhaustion is an error. Sample IDs retain their original spelling.
-
-Query-triggered followups use the pure LAW builders and the shared per-test item
-reservation path (one AWOS per explicitly requested test). The store supplies
-placer identity and retains its configured namespace; LAW emits EI.1 only.
-Preflight occurs before Sending commits, and the complete multi-order message
-is built before positive output. Partial preparation failure reconciles any
-owned reservations as Uncertain, never a resend or partial positive work list.
-
-Correlated ORL outcomes go through `finish_order_items`; MSA AA alone is not
-acceptance. Replies are matched by AWOS, not array position. Timeouts, disconnects,
-late/invalid ORL and lost store responses preserve uncertainty. A repeated query
-cannot reserve any prior order again. Fresh, authoritative empty produces the
-restricted negative LAB-28 without items; its ORL is retained and correlation is
-audited without an order transition. Unsupported forms use QAK AR; failed/stale/
-untrusted/paused/late lookups use AE. Neither makes a no-work claim.
-
-`tests/law/queries.rs` names the source sections for thirteen program/reference-receiver
-tests. Results-only config without a work layout remains covered by
-`tests/law/results.rs::law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_acceptance`.
-This historical query checkpoint is extended by step 4 below. Original-work
-result correlation, independent directional links and hardware/Gazelle qualification
-remain. Evidence is documented.
-
-
-## LAW send-ahead and cancellation checkpoint (step 4)
-
-`orders.send_ahead = true` opts into unsolicited LAB-28 with the existing
-`law.work` bindings. One bounded candidate page is considered per idle interval.
-The same preflight and per-test reservation function admits queried and unsolicited
-work. One shared LAW builder, writer, pending exchange and ORL handler serve both.
-Each AWOS keeps its stored placer identity; only explicit per-AWOS OK/UA determines
-acceptance/rejection. Missing, late or inconsistent replies become Uncertain.
-
-App `cancel_requested` versions use the existing shared cancellation admission
-transaction and the LAW Cancel control. The retained AWOS IDs and test coverage
-identify each request; no new AWOS or item is allocated for cancellation. CR becomes
-CancelConfirmed; UC produces CancelRefused and preserves the preceding item state.
-Mixed cancellation outcomes remain per item and use the shared store's aggregate
-policy. Cancellation works for queried work even with send-ahead disabled. Each
-app cancellation version is admitted once, including after UC and restart.
-
-The shared restore pause helper blocks new and cancel admission. Idle read failures
-are reported without issuing bytes or converting them into an empty answer. Any
-owned in-flight store call is reconciled before continuing. Disconnect, response
-timeout, shutdown and restart cannot repeat work or cancel commands. Startup
-recovery now handles admitted CancelRequested attempts alongside Sending; both
-become Uncertain with retained item evidence and an app event.
-
-Seven tests in `tests/law/work.rs` (under `delivery.rs`) cite TF-2b 3.28.4/C.8 and
-ADR 0003: accepted/rejected/mixed AWOS; CR/UC/mixed cancellations; timeout and
-disconnect; crash during Sending or CancelRequested; restore pause for both
-admissions; preflight rejection with no bytes; and queried-work cancellation.
-They use temporary stores and the reference receiver. Accepted, rejected and
-cancelled/refused work also survives a restart without resend.
-
-## LAW persistent-link scope (step 5)
-
-The agreed scope is one persistent link per configured LAW machine, carrying all
-three transactions. `law.connection_mode = "persistent"` is required. The existing
-TCP server/client transport selection controls who opens it, without a second
-role field or duplicated protocol path. Independent per-transaction links fail
-validation specifically at `law.connection_mode`. This subset does not meet
-TF-2b B.6's independent-link topology; that row remains unchecked.
-
-Tests in `tests/law/connections.rs` cover both directions, all three transactions
-on the same link, client reconnection without replay, and first-byte deadlines
-with retained partial bytes. Configuration/startup tests name the supported
-scope and the unsupported topology explicitly. All existing query, ORL, receive,
-send and operation deadlines come from config; idle scheduling does not replace
-them. The final matrix is in the protocol checklist. Evidence remains documented.
-
-
-Audited LAW result reprocessing uses the shared stored-byte interpretation entry
-point merged from main. It has no transport handle, never sends work or ACKs,
-and preserves the atomic LAW batch policy before revision/outbox commit. The
-mapping-repair regression in `tests/law/results.rs` verifies the original receipt
-and first interpretation are unchanged, the parked item resolves, and a repeated
-reprocess produces no delivery. Persistent-client deadline evidence is in
-`law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines`.
+Queries, send-ahead and cancellation share durable per-AWOS reservations and
+never replay machine work after uncertainty or restart. The current scope,
+limitations and named tests are maintained in the
+[LAW checklist](../../docs/protocols/ihe-law.md).
