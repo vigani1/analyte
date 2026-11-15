@@ -73,43 +73,17 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
         };
         let validated = load(&machine, &site, "schema_version=1")?;
         assert_eq!(variant(validated.effective().stack()), expected, "{name}");
-        let raw = validated.effective().machine();
         let canonical: toml::Value = toml::from_str(validated.canonical())?;
         assert!(canonical.get("stack").is_none());
         assert_eq!(toml::Value::try_from(validated.effective())?, canonical);
         let original: toml::Value = toml::from_str(&machine)?;
+        let raw = validated.effective().machine();
         match validated.effective().stack() {
             Stack::Astm(analyte_config::RecordTransport::Stream(stack)) => {
-                assert_eq!(
-                    Some(stack.frame_limit()),
-                    original
-                        .get("framing")
-                        .and_then(|f| f.get("limit"))
-                        .and_then(toml::Value::as_integer)
-                        .and_then(|n| usize::try_from(n).ok())
-                );
-                assert_eq!(stack.mappings().tests.len(), raw.tests().len());
-                assert!(matches!(stack.transport().kind(), StreamKind::Serial(_)));
-                assert_eq!(stack.orders().is_some(), name == "orders.toml");
-                if let Some(orders) = &stack.orders() {
-                    assert!(orders.query().is_some());
-                    assert_eq!(orders.layout().test.field, 5);
-                }
+                assert_astm_example(stack, raw, name, &original);
             }
             Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) => {
-                assert_eq!(stack.transport().role(), TcpRole::Server);
-                assert_eq!(stack.mappings().tests.len(), raw.tests().len());
-                assert_eq!(
-                    stack.orders().is_some(),
-                    matches!(name, "hl7_orders.toml" | "hl7_send.toml")
-                );
-                if let Some(orders) = &stack.orders() {
-                    assert_eq!(orders.query().is_some(), name == "hl7_orders.toml");
-                    assert_eq!(orders.send().is_some(), name == "hl7_send.toml");
-                    if let Some(send) = &orders.send() {
-                        assert_eq!(send.placer_namespace().as_str(), "LAB");
-                    }
-                }
+                assert_hl7_example(stack, raw, name);
             }
             Stack::Law(stack) => {
                 assert_eq!(stack.transport().role(), TcpRole::Server);
@@ -250,4 +224,43 @@ fn adr0012_protocol_and_transport_are_independent_and_invalid_pairs_fail_loading
         assert!(load(&wrong, SITE, "schema_version=1").is_err());
     }
     Ok(())
+}
+
+fn assert_astm_example(
+    stack: &analyte_config::AstmStack,
+    raw: &analyte_config::Machine,
+    name: &str,
+    original: &toml::Value,
+) {
+    assert_eq!(
+        Some(stack.frame_limit()),
+        original
+            .get("framing")
+            .and_then(|f| f.get("limit"))
+            .and_then(toml::Value::as_integer)
+            .and_then(|n| usize::try_from(n).ok())
+    );
+    assert_eq!(stack.mappings().tests.len(), raw.tests().len());
+    assert!(matches!(stack.transport().kind(), StreamKind::Serial(_)));
+    assert_eq!(stack.orders().is_some(), name == "orders.toml");
+    if let Some(orders) = &stack.orders() {
+        assert!(orders.query().is_some());
+        assert_eq!(orders.layout().test.field, 5);
+    }
+}
+
+fn assert_hl7_example(stack: &analyte_config::Hl7Stack, raw: &analyte_config::Machine, name: &str) {
+    assert_eq!(stack.transport().role(), TcpRole::Server);
+    assert_eq!(stack.mappings().tests.len(), raw.tests().len());
+    assert_eq!(
+        stack.orders().is_some(),
+        matches!(name, "hl7_orders.toml" | "hl7_send.toml")
+    );
+    if let Some(orders) = &stack.orders() {
+        assert_eq!(orders.query().is_some(), name == "hl7_orders.toml");
+        assert_eq!(orders.send().is_some(), name == "hl7_send.toml");
+        if let Some(send) = &orders.send() {
+            assert_eq!(send.placer_namespace().as_str(), "LAB");
+        }
+    }
 }

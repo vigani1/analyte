@@ -426,12 +426,6 @@ impl Stack {
                 .clone()
                 .expect("validated record stack requires mappings")
         };
-        let codes = || {
-            machine
-                .codes
-                .clone()
-                .expect("validated vendor stack requires code tables")
-        };
         let acknowledgment = || {
             machine
                 .dialog
@@ -464,57 +458,13 @@ impl Stack {
                 mappings: mappings(),
                 orders: machine.orders.as_ref().map(hl7_orders),
             }))),
-            DialogKind::LawManager => {
-                let law = machine
-                    .law
-                    .as_ref()
-                    .expect("validated LAW stack requires policy");
-                Self::Law(Box::new(LawStack {
-                    transport: tcp(&machine.transport),
-                    frame_limit,
-                    timeouts,
-                    acknowledgment: acknowledgment(),
-                    limits: limits(&machine.syntax),
-                    mappings: mappings(),
-                    policy: LawPolicy {
-                        links: match law.connection_mode {
-                            LawConnectionMode::Persistent => LawLinks::Persistent,
-                            LawConnectionMode::IndependentPerTransaction => LawLinks::Independent {
-                                outbound: law
-                                    .outbound_endpoint
-                                    .expect("validated independent LAW has an outbound endpoint"),
-                            },
-                        },
-                        query_forms: law.query_forms.clone(),
-                        peer: law.peer.clone(),
-                        query_deadline_ms: law.query_deadline_ms,
-                        response_ms: law.response_ms,
-                    },
-                    orders: machine.orders.as_ref().map(|orders| LawOrders {
-                        work: law
-                            .work
-                            .clone()
-                            .expect("validated LAW orders require work layout"),
-                        tests: orders.tests.clone(),
-                        priorities: orders.priorities.clone(),
-                        specimen_types: orders
-                            .specimen_types
-                            .clone()
-                            .expect("validated LAW orders require specimen mappings"),
-                        placer_namespace: orders
-                            .placer_namespace
-                            .clone()
-                            .expect("validated LAW orders require placer namespace"),
-                        send_ahead: orders.send_ahead,
-                    }),
-                }))
-            }
+            DialogKind::LawManager => Self::Law(Box::new(law_stack(machine, timeouts))),
             DialogKind::Poct => Self::Poct(Box::new(PoctStack {
                 transport: tcp(&machine.transport),
                 frame_limit,
                 timeouts,
                 limits: limits(&machine.syntax),
-                codes: codes(),
+                codes: code_tables(machine),
                 policy: machine
                     .poct
                     .clone()
@@ -525,7 +475,7 @@ impl Stack {
                 frame_limit,
                 timeouts,
                 limits: limits(&machine.syntax),
-                codes: codes(),
+                codes: code_tables(machine),
                 policy: machine
                     .vidas
                     .clone()
@@ -545,7 +495,7 @@ impl Stack {
                 frame_limit,
                 timeouts,
                 limits: limits(&machine.syntax),
-                codes: codes(),
+                codes: code_tables(machine),
                 policy: machine
                     .autolyser
                     .clone()
@@ -562,29 +512,97 @@ impl Stack {
                     send_ahead: orders.send_ahead,
                 }),
             })),
-            DialogKind::FilePickup => match machine.syntax.kind {
-                SyntaxKind::AstmLis02 => {
-                    Self::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
-                        operation_timeout_ms: machine.transport.operation_timeout_ms,
-                        frame_limit,
-                        timeouts,
-                        syntax: astm_syntax(&machine.syntax),
-                        mappings: mappings(),
-                        orders: machine.orders.as_ref().map(astm_orders),
-                    })))
-                }
-                SyntaxKind::Hl7V2 => Self::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
-                    operation_timeout_ms: machine.transport.operation_timeout_ms,
-                    frame_limit,
-                    timeouts,
-                    syntax: hl7_syntax(&machine.syntax),
-                    mappings: mappings(),
-                    orders: machine.orders.as_ref().map(hl7_orders),
-                }))),
-                SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
-                    unreachable!("validated file pickup supports only LIS02 or HL7")
-                }
+            DialogKind::FilePickup => file_stack(machine, timeouts),
+        }
+    }
+}
+
+#[expect(
+    clippy::expect_used,
+    reason = "private conversion runs only after validate_machine proves required sections and options"
+)]
+fn law_stack(machine: &MachineDocument, timeouts: DialogTimeouts) -> LawStack {
+    let law = machine
+        .law
+        .as_ref()
+        .expect("validated LAW stack requires policy");
+    LawStack {
+        transport: tcp(&machine.transport),
+        frame_limit: machine.framing.limit,
+        timeouts,
+        acknowledgment: machine
+            .dialog
+            .acknowledgment
+            .expect("validated MLLP dialog requires acknowledgment policy"),
+        limits: limits(&machine.syntax),
+        mappings: machine
+            .mappings
+            .clone()
+            .expect("validated record stack requires mappings"),
+        policy: LawPolicy {
+            links: match law.connection_mode {
+                LawConnectionMode::Persistent => LawLinks::Persistent,
+                LawConnectionMode::IndependentPerTransaction => LawLinks::Independent {
+                    outbound: law
+                        .outbound_endpoint
+                        .expect("validated independent LAW has an outbound endpoint"),
+                },
             },
+            query_forms: law.query_forms.clone(),
+            peer: law.peer.clone(),
+            query_deadline_ms: law.query_deadline_ms,
+            response_ms: law.response_ms,
+        },
+        orders: machine.orders.as_ref().map(|orders| LawOrders {
+            work: law
+                .work
+                .clone()
+                .expect("validated LAW orders require work layout"),
+            tests: orders.tests.clone(),
+            priorities: orders.priorities.clone(),
+            specimen_types: orders
+                .specimen_types
+                .clone()
+                .expect("validated LAW orders require specimen mappings"),
+            placer_namespace: orders
+                .placer_namespace
+                .clone()
+                .expect("validated LAW orders require placer namespace"),
+            send_ahead: orders.send_ahead,
+        }),
+    }
+}
+
+#[expect(
+    clippy::expect_used,
+    reason = "private conversion runs only after validate_machine proves required sections and options"
+)]
+fn file_stack(machine: &MachineDocument, timeouts: DialogTimeouts) -> Stack {
+    match machine.syntax.kind {
+        SyntaxKind::AstmLis02 => Stack::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
+            operation_timeout_ms: machine.transport.operation_timeout_ms,
+            frame_limit: machine.framing.limit,
+            timeouts,
+            syntax: astm_syntax(&machine.syntax),
+            mappings: machine
+                .mappings
+                .clone()
+                .expect("validated record stack requires mappings"),
+            orders: machine.orders.as_ref().map(astm_orders),
+        }))),
+        SyntaxKind::Hl7V2 => Stack::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
+            operation_timeout_ms: machine.transport.operation_timeout_ms,
+            frame_limit: machine.framing.limit,
+            timeouts,
+            syntax: hl7_syntax(&machine.syntax),
+            mappings: machine
+                .mappings
+                .clone()
+                .expect("validated record stack requires mappings"),
+            orders: machine.orders.as_ref().map(hl7_orders),
+        }))),
+        SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
+            unreachable!("validated file pickup supports only LIS02 or HL7")
         }
     }
 }
@@ -1506,4 +1524,15 @@ pub enum RecordTransport<S, F> {
     Stream(S),
     /// Complete-file handoff settings, without wire acknowledgments.
     Folder(F),
+}
+
+#[expect(
+    clippy::expect_used,
+    reason = "private conversion runs only after validate_machine proves required sections and options"
+)]
+fn code_tables(machine: &MachineDocument) -> CodeTables {
+    machine
+        .codes
+        .clone()
+        .expect("validated vendor stack requires code tables")
 }
