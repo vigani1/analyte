@@ -88,7 +88,7 @@ async fn setup_with_freshness(
     if paused {
         pause(&path, &reference.url).await?;
     }
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let peer = connect(&path, "law").await?;
     wait_feed(&path).await?;
     Ok((temp, path, reference, running, peer))
@@ -576,7 +576,7 @@ async fn law_tf2b_3_27_4_unreachable_app_without_snapshot_never_answers_no_work(
     .await?;
     let url = reference.url.clone();
     reference.close().await?;
-    let running = Running::start(&path, &url, "synthetic-api")?;
+    let running = Running::start(&path, &url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     for form in [CONTAINER, ALL] {
         send(&mut peer, query(form, "unreachable").as_bytes()).await?;
@@ -735,7 +735,7 @@ async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservat
         let mut loaded = program(&path, &reference.url)?;
         let (hook, control) = analyte::test_hooks::Committed::new();
         loaded.pause_law_committed_for_test("law", hook)?;
-        let running = Running::start_program(loaded, "synthetic-api")?;
+        let running = Running::start_program(loaded, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         wait_feed(&path).await?;
         let request = query(form, "durable");
@@ -820,7 +820,7 @@ async fn law_tf2b_b7_6_returned_work_must_match_downloaded_awos() -> Result<(), 
             std::str::from_utf8(field(&work, b"OBR", 4)?)?,
         );
     running.stop().await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     let baseline = count(&path, "outbox")?;
     for (id, bad, location) in [

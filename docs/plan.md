@@ -257,6 +257,9 @@ them can be collected at any time and kept as test data.
 - Alerts on oldest undelivered item, stalled machines and disk space.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM
   port changes are handled.
+- Store startup has a validated 30..3600-second budget (600 seconds by default),
+  structured per-step progress and cooperative SQLite interruption. Each migration
+  version remains transactional and resumable after timeout.
 - Backups of the store; a tested restore. Restoring an older store
   reconciles deliveries and orders before any machine gets a command.
 - **Machine configs:** the shipped definition, the site settings and local

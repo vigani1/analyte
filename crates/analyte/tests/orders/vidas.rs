@@ -48,7 +48,7 @@ async fn setup(
             &value,
         )?)?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let peer = connect(&path, "vidas").await?;
     Ok((temp, path, reference, service, peer))
 }
@@ -108,7 +108,7 @@ async fn vidas_bci_a_ch3_5_all_assays_confirm_once_sent_survives_restart() -> Re
     .await?;
     drop(peer);
     service.stop().await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "vidas").await?;
     assert!(
         // Deliberate quiet window: no reply may arrive.
@@ -185,7 +185,7 @@ async fn adr0004_rule8_vidas_restart_during_send_recovers_sending_without_replay
     service.crash().await?;
     drop(peer);
     state(&path, "Sending").await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "vidas").await?;
     event(
         &path,
@@ -318,7 +318,7 @@ async fn adr0004_vidas_missing_patient_namespace_prevents_program_start() -> Res
             &order()?,
         )?)?])
         .await?;
-    let Err(error) = Running::start(&path, &reference.url, "synthetic-api") else {
+    let Err(error) = Running::start(&path, &reference.url, "synthetic-api").await else {
         return Err("program admitted a missing patient namespace".into());
     };
     assert!(error.to_string().contains("orders.patient_namespace"));

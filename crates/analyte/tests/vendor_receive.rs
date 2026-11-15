@@ -120,6 +120,7 @@ impl Running {
                 Ok(())
             },
             secrets,
+            None,
         ));
         let peer = TcpStream::connect(address).await?;
         Ok(Self {
@@ -166,6 +167,7 @@ impl Running {
                 Ok(())
             },
             secrets,
+            None,
         ));
         let peer = TcpStream::connect(self.listener.local_addr()?).await?;
         let running = Self {

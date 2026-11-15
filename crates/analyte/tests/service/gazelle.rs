@@ -104,6 +104,7 @@ async fn gazelle_lab28_live() -> Result<(), Error> {
             Ok(())
         },
         secrets,
+        None,
     ));
     let outcome = tokio::select! {
         () = failure.wake.notified() => Err("Gazelle transport, capture or session failure; preserved original evidence".into()),

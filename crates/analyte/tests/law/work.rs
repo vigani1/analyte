@@ -52,7 +52,7 @@ async fn law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos() -> Result<(
         no_work(&mut peer).await?;
         running.stop().await?;
         drop(peer);
-        let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+        let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         no_work(&mut peer).await?;
         assert_eq!(count(&path, "machine_orders")?, 1);
@@ -159,7 +159,7 @@ async fn law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos() ->
         no_work(&mut peer).await?;
         running.stop().await?;
         drop(peer);
-        let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+        let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         no_work(&mut peer).await?;
         assert_eq!(count(&path, "machine_orders")?, 1);
@@ -211,7 +211,7 @@ async fn law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_repla
             }
             state(&path, "Uncertain").await?;
             running.stop().await?;
-            let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+            let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
             let mut peer = connect(&path, "law").await?;
             no_work(&mut peer).await?;
             assert_eq!(count(&path, "machine_orders")?, 1);
@@ -258,7 +258,7 @@ async fn law_tf2b_3_28_adr0003_restart_during_sending_or_cancelling_is_uncertain
         .await?;
         state(&path, before).await?;
         drop(peer);
-        let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+        let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         state(&path, "Uncertain").await?;
         no_work(&mut peer).await?;
@@ -312,7 +312,7 @@ async fn law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation(
             &value,
         )?)?])
         .await?;
-    let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
+    let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     wait_feed(&path).await?;
     wait_cancel_cache(&path).await?;
