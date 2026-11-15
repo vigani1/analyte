@@ -3,3 +3,13 @@
 One file per hard-to-reverse decision, named `NNNN-short-title.md`, with
 context, decision and consequences. A superseded record stays and links to its
 replacement.
+
+| ADR                                             | Decision                                           |
+| ----------------------------------------------- | -------------------------------------------------- |
+| [0001](0001-rust-and-layered-architecture.md)   | Rust and a layered architecture                    |
+| [0002](0002-config-first.md)                    | Config first, code only where config cannot do it  |
+| [0003](0003-clinical-safety-rules.md)           | Clinical safety rules                              |
+| [0004](0004-outbound-only-polled-orders.md)     | Outbound connections only, orders polled           |
+| [0005](0005-evidence-levels.md)                 | Evidence levels for drivers and machine configs    |
+| [0006](0006-apache-2-license.md)                | Apache License 2.0                                 |
+| [0007](0007-standards-first.md)                 | Standards first, machines after                    |

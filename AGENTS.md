@@ -34,6 +34,10 @@ the data, flag it and stop; never guess.
   file. Write code only when a config cannot express the behavior, and then as
   a small piece in the right layer, never as a special case inside a shared
   one.
+- **Standards first:** implement a standard from its official documents and
+  test it against official examples or simulators, independent of any
+  machine. Never shape a standard's code around one machine's behavior; that
+  belongs in the machine's config.
 - **The host owns the risky parts:** port access, buffering, deadlines,
   durable storage, credentials and HTTPS stay in core code, never in a driver.
 - **Two-question test** before building anything "for the future": would it be

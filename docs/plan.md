@@ -55,6 +55,10 @@ evidence; the app decides.
    inbound ports to the internet.
 6. One common model for results, orders and sample identity, including the
    position.
+7. Standards first, machines after. Each standard is implemented completely
+   from its official documents and tested against official examples or
+   simulators, independent of any machine. Machines are then added as configs
+   on top, by us or the community.
 
 ## 5. Architecture
 
@@ -130,8 +134,8 @@ are built.
 
 | Protocol          | Source documents                                        | How it is tested before real machines |
 | ----------------- | ------------------------------------------------------- | ------------------------------------- |
-| ASTM              | CLSI LIS01-A2 + LIS02-A2, vendor manuals                | Vendor traces, recordings             |
-| HL7 v2 + MLLP     | HL7 v2.5.1 and v2.3.1, MLLP Release 1                    | Vendor traces, HL7 tools              |
+| ASTM              | CLSI LIS01-A2 + LIS02-A2, vendor manuals                | Examples in the standards, then vendor traces |
+| HL7 v2 + MLLP     | HL7 v2.5.1 and v2.3.1, MLLP Release 1                    | Examples in the standard, HL7 tools, then vendor traces |
 | IHE LAW           | IHE PaLM Technical Framework Vol. 1 and 2b, Rev 11.0     | IHE Gazelle simulator                 |
 | POCT1-A           | CLSI POCT1-A2                                           | Documents only at first               |
 | Vendor formats    | Each vendor's interface manual                          | Vendor examples, recordings           |
@@ -152,7 +156,8 @@ Machine documents used for the first machines:
 ## 9. First machines
 
 These six machines from one lab are the hardware test bed: the first real
-machines Analyte supports and proves.
+machines to reach the proven level. They are added as configs (or vendor
+format pieces) after the standards they use are complete.
 
 | Machine                | Protocol                          | Direction                         | Evidence today | Missing                                          |
 | ---------------------- | --------------------------------- | --------------------------------- | -------------- | ------------------------------------------------ |
@@ -202,22 +207,26 @@ machines Analyte supports and proves.
 | #   | Work                                                                                | Done when                                  |
 | --- | ----------------------------------------------------------------------------------- | ------------------------------------------ |
 | 0   | Name, license, repo, this plan, first ADRs                                          | Plan approved                              |
-| 1   | Workspace, common model, store, outbox, delivery, fake machine, first reference receiver, CI | A fake result reaches the reference receiver |
-| 2   | Serial transport, ASTM framing + records, push and query dialogs                    | cobas and Biolyte recordings pass          |
-| 3   | TCP transport, MLLP, HL7 syntax and acknowledgments                                  | iFlash and Swelab traces pass              |
-| 4   | Full reference receiver (results, orders "changes since", signatures) and published contract docs with conformance tests | The reference receiver passes the conformance tests end to end |
-| 5   | Pilot at the lab with cobas e 411 and iFlash 1200                                    | Real results reach the receiving app, validated |
-| 6   | Order cache, query answers, work lists                                               | Machines ask; Analyte answers in time      |
-| 7   | VIDAS and Autolyser pieces (start/end framing, tags, fixed width, polling dialog)    | All six machines work                      |
-| 8   | IHE LAW transactions                                                                 | Gazelle simulator passes                   |
-| 9   | Admin page, installers, release process, docs for adding a machine                   | Another lab can install it                 |
-| 10  | POCT1-A; plugin interface once three formats prove it                                | Contributors add machines                  |
+| 1   | Core: workspace, common model, store, outbox, delivery, fake machine, first reference receiver, CI | A fake result reaches the reference receiver, failure paths included |
+| 2   | ASTM complete: serial and TCP transport, LIS01 framing, LIS02 records, all dialogs (machine pushes, machine asks, host sends ahead) | Conforms to LIS01-A2 and LIS02-A2, tested with their examples (documented) |
+| 3   | HL7 v2 complete: 2.3.1 and 2.5.1 syntax, acknowledgments, MLLP              | Conforms to HL7 v2 and MLLP Release 1, tested with official examples and HL7 tools (documented) |
+| 4   | IHE LAW: LAB-27 query, LAB-28 work order, LAB-29 results                     | Passes the IHE Gazelle simulator (simulated) |
+| 5   | POCT1-A                                                                      | Conforms to POCT1-A2, tested with its examples (documented) |
+| 6   | Orders and query answers, generic: order cache, "changes since" polling, deadlines; full reference receiver and published contract with conformance tests | Contract conformance tests pass end to end; query answers meet configured deadlines |
+| 7   | Machine configs: cobas e 411, Biolyte 2000, iFlash 1200, Swelab Lumi        | Each config passes its vendor traces (simulated) |
+| 8   | Vendor formats: VIDAS Literal, Autolyser (start/end framing, tags, fixed width, polling dialog) | Each piece passes its vendor examples (documented or simulated) |
+| 9   | Real-lab pilot with the six machines, admin page, installers, release process, docs for adding a machine | The six machines reach proven at the lab; another lab can install it |
+| 10  | Plugin interface once three formats prove it                                 | Contributors add machines                  |
+
+A standard is done when it conforms to its official documents, at the
+documented or simulated level, never when one machine happens to pass. The
+proven level comes only from real machines in phase 9.
 
 ## 14. Open decisions
 
 1. Exact JSON contract and signing scheme for any lab app (phase 1 ADR).
 2. Plugin mechanism (WASM components or out-of-process), decided only after
-   phase 7.
+   the vendor formats (phase 8).
 
 ## 15. Research behind this plan
 

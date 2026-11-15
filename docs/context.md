@@ -53,6 +53,7 @@ is just one app that might integrate someday. The research files still say
 | Analyte is its own product; the contract is designed for any lab app, not from one app | 2026-11-15 |
 | Build and test against a reference receiver inside this repository         | 2026-11-15 |
 | The first lab's six machines are the hardware test bed for the drivers     | 2026-11-15 |
+| Standards first, machines after: each standard is complete and conformant before machine configs | 2026-11-15 |
 
 ## The first machines (hardware test bed)
 
