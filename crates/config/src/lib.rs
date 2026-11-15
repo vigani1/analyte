@@ -16,6 +16,24 @@ pub const MAX_FILE_BYTES: usize = 1_048_576;
 /// A config failure names its source file and actionable key.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A part separator collides with a protocol delimiter.
+    #[error("{path}: component_parts separator is a protocol delimiter")]
+    PartSeparator {
+        /// Source layer.
+        path: String,
+    },
+    /// A component or part position is outside the declared bounds.
+    #[error("{path}: component_parts position is out of range")]
+    PartIndex {
+        /// Source layer.
+        path: String,
+    },
+    /// Code and dilution cannot select the same part.
+    #[error("{path}: component_parts code and dilution must differ")]
+    PartOverlap {
+        /// Source layer.
+        path: String,
+    },
     /// Required identity configuration is absent; no mapping default is invented.
     #[error("{path}: mappings.identity.{setting}: required setting is missing")]
     MissingIdentitySetting {
