@@ -233,3 +233,71 @@ fn adr0008_unknown_processing_stays_unknown_and_cannot_deliver()
     assert!(evidence::ProcessingMode::Production.may_deliver_to_production());
     Ok(())
 }
+
+#[test]
+fn adr0008_order_context_reuses_position_and_never_defaults()
+-> Result<(), Box<dyn std::error::Error>> {
+    let minimal: Order = decode(include_bytes!("../../../docs/contract/vectors/order.json"))?;
+    assert!(minimal.fields().position.is_none());
+    assert!(minimal.fields().patient.is_none());
+    assert!(minimal.fields().specimen_type.is_none());
+    let bytes = include_bytes!("../../../docs/contract/vectors/order-context.json");
+    let order: Order = decode(bytes)?;
+    let position: &evidence::SamplePosition = order.fields().position.as_ref().ok_or("position")?;
+    assert_eq!(position.slot.as_str(), "03");
+    assert_eq!(
+        order
+            .fields()
+            .patient
+            .as_ref()
+            .ok_or("patient")?
+            .id
+            .value
+            .as_str(),
+        "000PatA"
+    );
+    assert_eq!(
+        serde_json::to_value(order)?,
+        serde_json::from_slice::<Value>(bytes)?
+    );
+    for field in ["position", "patient", "specimen_type"] {
+        let mut bad: Value = serde_json::from_slice(bytes)?;
+        bad[field] = serde_json::json!({});
+        assert!(decode::<Order>(&serde_json::to_vec(&bad)?).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0008_order_context_null_is_unknown_and_nested_required_fields_are_required()
+-> Result<(), Box<dyn std::error::Error>> {
+    let bytes = include_bytes!("../../../docs/contract/vectors/order-context.json");
+    let mut nulls: Value = serde_json::from_slice(bytes)?;
+    for field in ["position", "patient", "specimen_type"] {
+        nulls[field] = Value::Null;
+    }
+    let order: Order = decode(&serde_json::to_vec(&nulls)?)?;
+    assert!(order.fields().position.is_none());
+    assert!(order.fields().specimen_type.is_none());
+    assert!(order.fields().patient.is_none());
+    for (object, field) in [
+        ("position", "kind"),
+        ("position", "slot"),
+        ("specimen_type", "namespace"),
+        ("specimen_type", "value"),
+        ("patient", "id"),
+    ] {
+        let mut bad: Value = serde_json::from_slice(bytes)?;
+        bad[object].as_object_mut().ok_or("object")?.remove(field);
+        assert!(decode::<Order>(&serde_json::to_vec(&bad)?).is_err());
+    }
+    for field in ["namespace", "value"] {
+        let mut bad: Value = serde_json::from_slice(bytes)?;
+        bad["patient"]["id"]
+            .as_object_mut()
+            .ok_or("id")?
+            .remove(field);
+        assert!(decode::<Order>(&serde_json::to_vec(&bad)?).is_err());
+    }
+    Ok(())
+}

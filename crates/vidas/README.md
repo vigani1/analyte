@@ -71,8 +71,9 @@ Missing identity/classification/mapping evidence requires parking under ADR 0003
 The interpretation of `valid` is never clinical acceptance. Unknown order codes
 can be rejected by the PC after transport ACK; `Complete` promises transport only.
 
-No hardware captures, official simulator, Linux execution, MSRV execution or
-fuzz campaign has validated this capability. Site validation is still required.
+Synthetic automated checks do not establish interoperability with an installed
+VIDAS PC. No hardware recording or official simulator qualifies this capability;
+evidence remains documented and site validation is still required.
 
 
 ## Program receive integration
@@ -81,16 +82,44 @@ The `analyte` program drives this crate over configured connections. Incoming
 bytes are journaled with driver/config versions before the dialog sees them;
 complete receipts and interpretations are then stored through the protected store.
 Unresolved result identities remain unresolved, are parked with their reason,
-and create no app delivery. Inspect them with `analyte parked list`.
+and create no result delivery. Inspect them with `analyte parked list`.
 The program never derives a run identity from sample, value, timestamp or receipt.
 
-Worklist download is **not wired into the program yet**. VIDAS and Autolyser
-send-ahead will follow the phase 6 machine-order store API (`reserve_send`,
-lifecycle history and operator reconciliation) after `feat/program-orders`
-merges. The vendor config download permission does not schedule an operation.
-POCT optional order/list extensions remain outside the supported profile.
+## Program work-list download
+
+The program now drives the existing download dialog through the shared order
+mapper and durable reservation path; see [program order behavior](../analyte/ORDERS.md).
+Enable both `[vidas] download = true` and `[orders] send_ahead = true`, with
+explicit outbound assay mappings, admitted priorities and `patient_namespace`.
+Permission alone does not schedule work. Every assay is mapped before one order
+reservation writes `Sending`, without an app event. Each assay has its own
+request/session; only every request reaching confirmed `Complete` produces one
+`Sent` event. This confirms transport, never application `Accepted` or clinical
+acceptance. A timeout, disconnect, refusal or unexpected input ends the active
+order as `Uncertain` with its specific code. `Park` closes the connection for
+reconciliation and records that outcome in the same run. Restart changes only
+remaining `Sending` entries to `Uncertain`; confirmed `Sent` stays `Sent`.
+Neither path automatically replays an order, including partially sent work lists.
+
+The host accepts at most 100 assays per app order (also subject to configured
+bounds), one explicit 1-4 byte assay code per request. Patient IDs must match the
+configured namespace and fit 17 printable ASCII bytes; sample IDs must fit the
+installed 12- or 17-byte ceiling. Values retain case and leading zeros; missing
+patient context, unmapped tests and over-long IDs are rejected before sending.
+Literal has no specimen-type or physical-position tag. Supplied specimen type
+is rejected as unmapped; it is never placed in origin `so` or structural `si`.
+No name, demographics, position or dilution is invented. Framing, suffix,
+checksum and deadline settings remain explicit as listed above. Multi-packet
+downloads and machine/application acceptance evidence remain outside this scope.
+
+Program/reference-receiver download tests are in
+[`tests/orders/vidas.rs`](../analyte/tests/orders/vidas.rs); the
+[coverage table](../analyte/ORDERS.md#vendor-end-to-end-coverage) maps each
+required case to its test. These synthetic conversations leave evidence at
+**documented**. Raw transport and order evidence stay in protected storage;
+ordinary logs contain no patient data.
 
 Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
-parking, operator visibility, zero reference-receiver deliveries and storage
+parking, operator visibility, zero reference-receiver result deliveries and storage
 failure. They do not raise the documented evidence level. No current vendor
 crate path supplies a resolved result identity for a delivery test.

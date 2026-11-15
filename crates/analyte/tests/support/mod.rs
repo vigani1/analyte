@@ -230,3 +230,21 @@ pub(super) async fn wait_state(path: &Path, state: &str, count: i64) -> Result<(
     })
     .await?
 }
+
+pub(super) fn vendor_config(root: &Path, name: &str, definition: &str) -> Result<Fixture, Error> {
+    let mut fixture = config(root, false)?;
+    fixture.listeners.first_mut().ok_or("listener missing")?.0 = name.into();
+    let text =
+        std::fs::read_to_string(&fixture.path)?.replace("id = 'hl7'", &format!("id = '{name}'"));
+    std::fs::write(&fixture.path, text)?;
+    std::fs::write(root.join("hl7.toml"), definition)?;
+    Ok(fixture)
+}
+
+impl Running {
+    pub(super) async fn crash(self) -> Result<(), Error> {
+        self.task.abort();
+        assert!(self.task.await.is_err_and(|error| error.is_cancelled()));
+        Ok(())
+    }
+}

@@ -479,3 +479,152 @@ async fn adr0004_disconnect_before_astm_ack_preserves_uncertain_outcome_and_even
     reference.close().await?;
     Ok(())
 }
+
+// LIS02 section 8.4.4 and section 8.4.16.1; explicit synthetic destinations.
+async fn astm_context_exchange(
+    send: bool,
+    destinations: bool,
+    specimen: Option<&str>,
+    expected: &[u8],
+    rejection: Option<&str>,
+) -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    configure_orders(temp.path(), send)?;
+    let definition = temp.path().join("astm.toml");
+    let mut text=std::fs::read_to_string(&definition)?.replace("[orders.query]","specimen_types=[{app={namespace='synthetic',value='SERUM'},machine='SER'}]\n[orders.query]");
+    if destinations {
+        text.push_str("\nposition={group='order',record='O',field=4,component=2,repetition=1}\nspecimen_type={group='order',record='O',field=16,component=1,repetition=1}\n");
+    }
+    std::fs::write(definition, text)?;
+    let receiver_path = temp.path().join("receiver.db");
+    let reference = Reference::start(
+        &receiver_path,
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../../docs/contract/vectors/order-context.json"
+    ))?;
+    if let Some(code) = specimen {
+        *value
+            .pointer_mut("/specimen_type/value")
+            .ok_or("specimen value")? = code.into();
+    } else {
+        value
+            .as_object_mut()
+            .ok_or("order")?
+            .remove("specimen_type");
+    }
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(&serde_json::to_vec(
+            &value,
+        )?)?])
+        .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "astm").await?;
+    wait_cache(&path).await?;
+    if !send {
+        assert_eq!(query(&mut peer, "000Ab12").await?, expected);
+    } else if rejection.is_none() {
+        assert_eq!(receive_orders(&mut peer).await?, expected);
+    }
+    if let Some(code) = rejection {
+        machine_state(&path, "Rejected", 1).await?;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
+                .await
+                .is_err()
+        );
+        wait_state(&path, "done", 1).await?;
+        let bytes: Vec<u8> = rusqlite::Connection::open(&receiver_path)?.query_row(
+            "SELECT body FROM deliveries WHERE kind='order-events'",
+            [],
+            |r| r.get(0),
+        )?;
+        let body: serde_json::Value = serde_json::from_slice(&bytes)?;
+        assert_eq!(
+            body.get("state").and_then(serde_json::Value::as_str),
+            Some("rejected")
+        );
+        assert_eq!(
+            body.get("source_status")
+                .and_then(serde_json::Value::as_str),
+            Some(code)
+        );
+    } else {
+        machine_state(&path, "Sent", 1).await?;
+        wait_state(&path, "done", 1).await?;
+    }
+    assert_eq!(receiver_count(&receiver_path)?, 1);
+    assert_eq!(
+        database(&path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
+    drop(peer);
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+#[tokio::test]
+async fn lis02_section8_o_record_send_ahead_and_query_forward_configured_position_and_specimen_exactly()
+-> Result<(), Error> {
+    for send in [true, false] {
+        astm_context_exchange(
+            send,
+            true,
+            Some("SERUM"),
+            b"H|\\^&|||Analyte|||||||P|1\rP|1\rO|1|000Ab12|^03|^^^SEND|R||||||N||||SER\rL|1|N\r",
+            None,
+        )
+        .await?;
+    }
+    Ok(())
+}
+#[tokio::test]
+async fn lis02_section8_o_record_no_destinations_leave_context_empty_even_when_supplied_unknown()
+-> Result<(), Error> {
+    for send in [true, false] {
+        astm_context_exchange(
+            send,
+            false,
+            Some("UNKNOWN"),
+            b"H|\\^&|||Analyte|||||||P|1\rP|1\rO|1|000Ab12||^^^SEND|R||||||N\rL|1|N\r",
+            None,
+        )
+        .await?;
+    }
+    Ok(())
+}
+#[tokio::test]
+async fn lis02_section8_o_record_unmapped_specimen_rejects_send_ahead_and_query_without_partial_order()
+-> Result<(), Error> {
+    for send in [true, false] {
+        astm_context_exchange(
+            send,
+            true,
+            Some("UNKNOWN"),
+            b"H|\\^&|||Analyte|||||||P|1\rL|1|Q\r",
+            Some("rejected: unmapped-specimen-type"),
+        )
+        .await?;
+    }
+    Ok(())
+}
+#[tokio::test]
+async fn lis02_section8_o_record_missing_required_specimen_rejects_without_guessing()
+-> Result<(), Error> {
+    for send in [true, false] {
+        astm_context_exchange(
+            send,
+            true,
+            None,
+            b"H|\\^&|||Analyte|||||||P|1\rL|1|Q\r",
+            Some("rejected: missing-specimen-type"),
+        )
+        .await?;
+    }
+    Ok(())
+}

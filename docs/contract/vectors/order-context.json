@@ -1,0 +1,31 @@
+{
+  "id": "order-1",
+  "version": 1,
+  "state": "requested",
+  "sample_id": "000Ab12",
+  "tests": [
+    {
+      "namespace": "synthetic",
+      "value": "TEST"
+    }
+  ],
+  "priority": "routine",
+  "target_analyzers": null,
+  "expires_at": null,
+  "tombstone": false,
+  "position": {
+    "kind": "tray",
+    "carrier": "A",
+    "slot": "03"
+  },
+  "specimen_type": {
+    "namespace": "synthetic",
+    "value": "SERUM"
+  },
+  "patient": {
+    "id": {
+      "namespace": "synthetic",
+      "value": "000PatA"
+    }
+  }
+}

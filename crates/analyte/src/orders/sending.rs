@@ -51,7 +51,7 @@ pub(crate) struct Reserved {
     /// Persisted identity used for every subsequent outcome.
     pub(crate) order: MachineOrder,
     /// Complete records ready for the connection sender.
-    pub(crate) records: Vec<Vec<u8>>,
+    pub(crate) payload: analyte_mapping::MachineOrder,
 }
 
 /// One bounded candidate page per idle interval; the cursor prevents starvation.
@@ -140,7 +140,7 @@ pub(crate) async fn next(
         if let Ok(order) = reserved {
             return Ok(Some(Reserved {
                 order,
-                records: super::astm::envelope(vec![mapped.record().to_vec()], b'N'),
+                payload: mapped,
             }));
         }
     }
@@ -153,20 +153,7 @@ pub(crate) async fn uncertain(
     order: &MachineOrder,
     code: &str,
 ) -> Result<(), Error> {
-    let id = order.id;
-    let code = SourceText::new(code)?;
-    store
-        .request(deadline(), move |store| {
-            store.transition_order(
-                id,
-                OrderState::Uncertain,
-                code,
-                jiff::Timestamp::now().as_second(),
-                super::event,
-            )
-        })
-        .await?;
-    Ok(())
+    complete(store, order, OrderState::Uncertain, code).await
 }
 
 /// Records a specific failed transfer as uncertain; normal transfer becomes Sent.
@@ -184,12 +171,22 @@ pub(crate) async fn finished(
         analyte_dialog::astm::End::Interrupt => "ASTM-transfer-interrupted",
         analyte_dialog::astm::End::Incomplete => "ASTM-transfer-incomplete",
     };
-    let id = order.id;
     let state = if end == analyte_dialog::astm::End::Normal {
         OrderState::Sent
     } else {
         OrderState::Uncertain
     };
+    complete(store, order, state, code).await
+}
+
+/// Commits a protocol's definitive transport outcome with exactly one app event.
+pub(crate) async fn complete(
+    store: &Handle,
+    order: &MachineOrder,
+    state: OrderState,
+    code: &str,
+) -> Result<(), Error> {
+    let id = order.id;
     let code = SourceText::new(code)?;
     store
         .request(deadline(), move |store| {
