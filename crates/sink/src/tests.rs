@@ -53,6 +53,7 @@ fn until() -> Result<Instant, Error> {
 fn limits() -> Limits {
     Limits {
         request_timeout: Duration::from_secs(2),
+        store_timeout: Duration::from_secs(30),
         backoff_min: Duration::from_secs(1),
         backoff_max: Duration::from_secs(3),
         freshness: Duration::from_secs(30),
