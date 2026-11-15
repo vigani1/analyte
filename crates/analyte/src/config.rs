@@ -24,6 +24,7 @@ pub struct Machine {
 
 /// Validated program settings. Paths are resolved relative to the program file.
 pub struct Program {
+    pub(crate) source_path: PathBuf,
     alerts: Vec<Alert>,
     alert_interval: Duration,
     admin_address: Option<std::net::SocketAddrV4>,
@@ -304,6 +305,7 @@ impl Program {
             }
         }
         Ok(Self {
+            source_path: std::path::absolute(path)?,
             alerts,
             alert_interval: Duration::from_secs(file.alert_interval_seconds),
             admin_address,

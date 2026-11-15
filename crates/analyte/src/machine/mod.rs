@@ -4,6 +4,8 @@ mod autolyser;
 mod autolyser_custody;
 mod folder;
 mod hl7;
+pub(crate) mod interpretation;
+pub use interpretation::reprocess;
 mod poct;
 mod serial;
 mod vendor;

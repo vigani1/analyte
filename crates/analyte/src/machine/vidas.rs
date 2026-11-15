@@ -1,15 +1,12 @@
 //! VIDAS upload custody, with installed checksum, suffix and timer policy.
-use super::{
-    vendor::{self, Input, ms},
-    vendor_model,
-};
+use super::vendor::{self, Input, ms};
 use crate::{Error, config::Machine, evidence, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_vidas::{
     dialog::{Action, Dialog, Event, Policy, Timer},
-    framing::{Checksum, Config, Decoder, Mode},
-    syntax::{Message, SampleLimit},
+    framing::{Config, Decoder},
+    syntax::Message,
 };
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
@@ -53,22 +50,7 @@ pub(super) async fn session(
         .vidas
         .as_ref()
         .ok_or_else(|| invalid("VIDAS settings missing"))?;
-    let config = Config::new(
-        if installed.alternate {
-            Mode::Alternate
-        } else {
-            Mode::Literal
-        },
-        installed.chunk,
-        settings.framing.limit,
-        &installed.suffix,
-        Checksum {
-            include_stx: installed.include_stx,
-            include_suffix: installed.include_suffix,
-            uppercase: installed.uppercase,
-            accept_either_case: installed.accept_either_case,
-        },
-    )?;
+    let config = super::interpretation::vidas_config(machine)?;
     let policy = Policy {
         acknowledgment: ms(installed.acknowledgment_ms),
         interbyte: ms(installed.interbyte_ms),
@@ -289,21 +271,8 @@ async fn process_inline(
             Action::Store(packet) => {
                 let id = ReceiptId::new();
                 let operation = async {
-                    let time = evidence::receive(store, machine, id, packet.raw).await?;
-                    let reading = std::str::from_utf8(&packet.body)
-                        .map_err(|e| -> Error { e.into() })
-                        .and_then(|text| {
-                            Message::parse(
-                                text,
-                                if installed.sample_limit == 12 {
-                                    SampleLimit::Twelve
-                                } else {
-                                    SampleLimit::Seventeen
-                                },
-                            )
-                            .map_err(Into::into)
-                        })
-                        .and_then(|message| vendor_model::vidas(machine, id, &message, time));
+                    let time = evidence::receive(store, machine, id, packet.raw.clone()).await?;
+                    let reading = super::interpretation::map(machine, id, time, &packet.raw);
                     match reading {
                         Ok(reading) => {
                             evidence::vendor_reading(store, machine, id, reading).await?;

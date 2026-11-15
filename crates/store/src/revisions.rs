@@ -55,7 +55,7 @@ impl Store {
     pub fn interpret_reconciled<F>(
         &mut self,
         receipt: ReceiptId,
-        mut evidence: Interpretation,
+        evidence: Interpretation,
         corrections: &[bool],
         findings: &[crate::Parked],
         build: F,
@@ -63,10 +63,55 @@ impl Store {
     where
         F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
     {
-        let stored = self.receipt(receipt)?.ok_or(Error::Conflict)?;
-        if evidence.config != stored.config
-            || evidence.driver != stored.metadata.driver
-            || evidence.config_version != stored.metadata.config_version
+        self.reconcile(receipt, evidence, (corrections, findings), None, build)
+    }
+
+    /// Reinterprets retained bytes under current provenance, appending a version.
+    /// Reconciliation, parking, resolution and exactly one audit commit together.
+    /// No machine I/O or order lifecycle operation is performed.
+    /// # Errors
+    /// Rejects missing receipts, unrelated/resolved parked items, invalid audit evidence,
+    /// bounds, delivery construction and storage failures without partial effects.
+    pub fn reprocess_reconciled<F>(
+        &mut self,
+        action: &crate::Reprocess,
+        evidence: Interpretation,
+        corrections: &[bool],
+        findings: &[crate::Parked],
+        build: F,
+    ) -> Result<InterpretationCommit, Error>
+    where
+        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
+    {
+        if action.audit.action.as_str() != "receipt-reprocess" {
+            return Err(Error::InvalidInput);
+        }
+        self.reconcile(
+            action.receipt,
+            evidence,
+            (corrections, findings),
+            Some(action),
+            build,
+        )
+    }
+
+    fn reconcile<F>(
+        &mut self,
+        receipt: ReceiptId,
+        mut evidence: Interpretation,
+        mapping: (&[bool], &[crate::Parked]),
+        action: Option<&crate::Reprocess>,
+        build: F,
+    ) -> Result<InterpretationCommit, Error>
+    where
+        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
+    {
+        let (corrections, findings) = mapping;
+        let stored = self.receipt(receipt)?.ok_or(Error::UnknownReceipt)?;
+        if action.is_none()
+            && (evidence.config != stored.config
+                || evidence.driver != stored.metadata.driver
+                || evidence.config_version != stored.metadata.config_version)
         {
             return Err(Error::InvalidInput);
         }
@@ -87,7 +132,14 @@ impl Store {
             .collect::<Result<Vec<_>, _>>()?;
         let limit = self.limits.record_bytes;
         let receipt_key = key(&receipt)?;
-        let tx = self.db.transaction()?;
+        let tx = self
+            .db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        if let Some(action) = action
+            && let Some(parked) = action.parked
+        {
+            crate::reprocess::check_parked(&tx, parked, receipt)?;
+        }
         let version: i64 = tx.query_row(
             "SELECT coalesce(max(version),0)+1 FROM interpretations WHERE receipt=?1",
             [&receipt_key],
@@ -178,7 +230,38 @@ impl Store {
         if encoded.len() > limit {
             return Err(Error::InvalidInput);
         }
-        let mut required = encoded.len();
+        let successful = findings.is_empty()
+            && match &evidence.outcome {
+                Reading::Failed(_) => false,
+                Reading::Results(results) => {
+                    !results.is_empty()
+                        && results.iter().all(|r| !r.requires_parking())
+                        && outcomes.iter().all(|o| {
+                            matches!(
+                                o,
+                                RevisionOutcome::New(_)
+                                    | RevisionOutcome::Correction(_)
+                                    | RevisionOutcome::Retransmission(_)
+                            )
+                        })
+                }
+            };
+        let audit = action
+            .map(|action| crate::reprocess::audit_evidence(action, version, successful))
+            .transpose()?;
+        let mut required = encoded
+            .len()
+            .checked_add(
+                audit
+                    .as_ref()
+                    .map_or(0, String::len)
+                    .checked_mul(2)
+                    .ok_or(Error::Capacity)?,
+            )
+            .ok_or(Error::Capacity)?;
+        if audit.as_ref().is_some_and(|value| value.len() > limit) {
+            return Err(Error::InvalidInput);
+        }
         for finding in &findings {
             required = required.checked_add(finding.len()).ok_or(Error::Capacity)?;
         }
@@ -194,6 +277,7 @@ impl Store {
                 .ok_or(Error::Capacity)?;
         }
         Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
+        let findings_empty = findings.is_empty();
         for finding in findings {
             tx.execute("INSERT INTO parked(evidence) VALUES (?1)", [finding])?;
         }
@@ -230,10 +314,26 @@ impl Store {
             Reading::Failed(reason) => {
                 tx.execute(
                     "INSERT INTO parked(evidence) VALUES (?1)",
-                    [key(&("interpretation_failure", &receipt_key, reason))?],
+                    [key(&(
+                        "interpretation_failure",
+                        &receipt_key,
+                        reason,
+                        version,
+                    ))?],
                 )?;
             }
             Reading::Results(results) => {
+                if action.is_some() && results.is_empty() && findings_empty {
+                    tx.execute(
+                        "INSERT INTO parked(evidence) VALUES (?1)",
+                        [key(&(
+                            "interpretation_failure",
+                            &receipt_key,
+                            "reprocessing produced no results",
+                            version,
+                        ))?],
+                    )?;
+                }
                 for (index, (result, outcome)) in results.iter().zip(&outcomes).enumerate() {
                     if result.requires_parking()
                         || matches!(
@@ -248,11 +348,21 @@ impl Store {
                                 &receipt_key,
                                 index,
                                 format!("{outcome:?}"),
+                                version,
                             ))?],
                         )?;
                     }
                 }
             }
+        }
+        if let (Some(action), Some(audit)) = (action, audit) {
+            if successful && let Some(parked) = action.parked {
+                tx.execute(
+                    "UPDATE parked SET resolution=?2 WHERE id=?1 AND resolution IS NULL",
+                    params![parked, &audit],
+                )?;
+            }
+            tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [audit])?;
         }
         tx.commit()?;
         Ok(InterpretationCommit { version, outcomes })

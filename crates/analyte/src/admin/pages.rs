@@ -12,15 +12,15 @@ use axum::{
 use serde::Deserialize;
 use std::sync::{Arc, atomic::Ordering};
 
-const PAGE: usize = 50;
+pub(super) const PAGE: usize = 50;
 const RAW_PAGE: usize = 4096;
-pub(super) const NAV: &str = "<nav><a href=\"/\">Overview</a> <a href=\"/machines\">Machines</a> <a href=\"/parked\">Parked items</a> <a href=\"/orders\">Machine orders</a></nav>";
+pub(super) const NAV: &str = "<nav><a href=\"/\">Overview</a> <a href=\"/machines\">Machines</a> <a href=\"/parked\">Parked items</a> <a href=\"/orders\">Machine orders</a> <a href=\"/deliveries\">Deliveries</a></nav>";
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Cursor {
     #[serde(default, deserialize_with = "cursor_value")]
-    after: u64,
+    pub(super) after: u64,
 }
 
 fn cursor_value<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
@@ -176,7 +176,7 @@ pub(super) async fn parked(
             let mut html = String::new();
             let mut last = None;
             for row in s.parked(after)?.into_iter().take(PAGE) {
-                let evidence: Parked = serde_json::from_str(&row.evidence)?;
+                let evidence = row.details()?;
                 html.push_str(&format!("<section><h2><a href=\"/parked/{}\">Parked {}</a></h2><p>Category: {}. Reason: {}.</p>", row.id, row.id, escape(evidence.kind.as_str()), escape(evidence.reason.as_str())));
                 html.push_str(&metadata(s, &evidence)?);
                 html.push_str(if row.resolution.is_some() { "<p>Resolved</p></section>" } else { "<p>Unresolved</p></section>" });
@@ -216,7 +216,7 @@ pub(super) async fn detail(
             let Some(row) = s.parked_item(id)? else {
                 return Ok(None);
             };
-            let mut evidence: Parked = serde_json::from_str(&row.evidence)?;
+            let mut evidence = row.details()?;
             evidence.targets = evidence
                 .targets
                 .into_iter()
@@ -240,6 +240,11 @@ pub(super) async fn detail(
         escape(evidence.kind.as_str()),
         escape(evidence.reason.as_str())
     ));
+    if resolution.is_none() {
+        html.push_str(&format!(
+            "<p><a href=\"/parked/{id}/reprocess\">Reprocess this parked item</a></p>"
+        ));
+    }
     if let Some(resolution) = resolution {
         html.push_str(&format!("<p>Resolution: {}</p>", escape(&resolution)));
     }
@@ -424,7 +429,7 @@ pub(super) async fn raw(
                     let Some(row) = s.parked_item(id)? else {
                         return Ok(None);
                     };
-                    let evidence: Parked = serde_json::from_str(&row.evidence)?;
+                    let evidence = row.details()?;
                     if !evidence.targets.contains(&form.target) {
                         return Err(analyte_store::Error::InvalidInput);
                     }

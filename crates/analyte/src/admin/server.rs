@@ -26,6 +26,7 @@ pub(super) struct Machine {
 }
 
 pub(super) struct Context {
+    pub(super) config_path: std::path::PathBuf,
     token: Token,
     pub(super) sessions: Sessions,
     host: String,
@@ -68,6 +69,7 @@ pub(crate) async fn prepare(
         .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
         .collect();
     let state = Arc::new(Context {
+        config_path: program.source_path.clone(),
         token,
         sessions: Sessions::default(),
         origin: format!("http://{host}"),
@@ -110,6 +112,15 @@ fn router(state: Arc<Context>) -> Router {
         .route("/parked/{id}", get(super::pages::detail))
         .route("/parked/{id}/raw", post(super::pages::raw))
         .route("/orders", get(super::pages::orders))
+        .route("/deliveries", get(super::actions::deliveries))
+        .route(
+            "/deliveries/{id}/resend",
+            get(super::actions::confirm_resend).post(super::actions::resend),
+        )
+        .route(
+            "/parked/{id}/reprocess",
+            get(super::actions::confirm_reprocess).post(super::actions::reprocess),
+        )
         .layer(DefaultBodyLimit::max(1024))
         .layer(middleware::from_fn_with_state(state.clone(), protect))
         .with_state(state)

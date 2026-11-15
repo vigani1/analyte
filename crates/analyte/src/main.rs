@@ -16,8 +16,8 @@ struct Cli {
     #[arg(long, global = true, default_value = "analyte.toml")]
     config: PathBuf,
     /// Explicit local operator identity, recorded in the audit trail.
-    #[arg(long, global = true, default_value = "local-operator", value_parser = Identifier::new)]
-    actor: Identifier,
+    #[arg(long, global = true, value_parser = Identifier::new)]
+    actor: Option<Identifier>,
     #[command(subcommand)]
     command: Command,
 }
@@ -52,6 +52,14 @@ enum Command {
     Parked {
         #[command(subcommand)]
         command: Parked,
+    },
+    Receipts {
+        #[command(subcommand)]
+        command: Receipts,
+    },
+    Deliveries {
+        #[command(subcommand)]
+        command: Deliveries,
     },
     Restore {
         #[arg(long)]
@@ -92,11 +100,85 @@ enum Parked {
     Show {
         id: i64,
     },
+    Reprocess {
+        id: i64,
+        #[arg(long)]
+        reason: String,
+    },
     Resolve {
         id: i64,
         #[arg(long)]
         reason: String,
     },
+}
+
+#[derive(Subcommand)]
+enum Receipts {
+    Reprocess {
+        #[arg(value_parser = receipt_id)]
+        id: analyte_model::ReceiptId,
+        #[arg(long)]
+        reason: String,
+    },
+}
+#[derive(Subcommand)]
+enum Deliveries {
+    List {
+        #[arg(long, default_value_t = 0)]
+        after: i64,
+        #[arg(long)]
+        reason: String,
+    },
+    Resend {
+        #[arg(value_parser = delivery_id)]
+        id: analyte_model::DeliveryId,
+        #[arg(long)]
+        reason: String,
+    },
+}
+fn receipt_id(value: &str) -> Result<analyte_model::ReceiptId, String> {
+    uuid::Uuid::parse_str(value)
+        .map_err(|e| e.to_string())?
+        .try_into()
+        .map_err(|e: analyte_model::InvalidUuid| e.to_string())
+}
+fn delivery_id(value: &str) -> Result<analyte_model::DeliveryId, String> {
+    uuid::Uuid::parse_str(value)
+        .map_err(|e| e.to_string())?
+        .try_into()
+        .map_err(|e: analyte_model::InvalidUuid| e.to_string())
+}
+fn required_actor(actor: Option<Identifier>) -> Result<Identifier, Error> {
+    actor.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--actor is required for recovery commands",
+        )
+        .into()
+    })
+}
+async fn recover(
+    config: &std::path::Path,
+    actor: Identifier,
+    target: analyte::recovery::ReprocessTarget,
+    reason: String,
+) -> Result<(), Error> {
+    let reason = Reason::new(&reason)?;
+    let program = Program::load(config)?;
+    let mut store = analyte::open_system_store(&program).await?;
+    let result = analyte::recovery::reprocess(&store, &program, target, actor, reason).await;
+    store.shutdown(until()).await?;
+    let commit = result?;
+    analyte::output::line(&format!(
+        "Interpretation {} recorded; decisions: {:?}. Inspect parked items for failures.",
+        commit.version, commit.outcomes
+    ))?;
+    Ok(())
+}
+fn until() -> Instant {
+    Instant::now()
+        .checked_add(Duration::from_secs(5))
+        .unwrap_or(Instant::now())
 }
 
 fn main() -> Result<(), Error> {
@@ -124,6 +206,10 @@ fn main() -> Result<(), Error> {
 }
 
 async fn execute(cli: Cli) -> Result<(), Error> {
+    let actor = cli
+        .actor
+        .clone()
+        .unwrap_or(Identifier::new("local-operator")?);
     match cli.command {
         Command::Admin {
             command: Admin::Token { rotate: _ },
@@ -146,7 +232,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         ))
         .into()),
         Command::Orders { command } => {
-            analyte::orders::run(&Program::load(&cli.config)?, cli.actor, command).await
+            analyte::orders::run(&Program::load(&cli.config)?, actor, command).await
         }
         Command::CheckConfig { file } => {
             let program = Program::load(&file)?;
@@ -177,11 +263,77 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             .await
         }
         Command::Status { file } => analyte::status::print(&Program::load(&file)?).await,
-        Command::Parked { command } => operator(&cli.config, cli.actor, command).await,
+        Command::Parked {
+            command: Parked::Reprocess { id, reason },
+        } => {
+            recover(
+                &cli.config,
+                required_actor(cli.actor)?,
+                analyte::recovery::ReprocessTarget::Parked(id),
+                reason,
+            )
+            .await
+        }
+        Command::Parked { command } => operator(&cli.config, actor, command).await,
+        Command::Receipts {
+            command: Receipts::Reprocess { id, reason },
+        } => {
+            recover(
+                &cli.config,
+                required_actor(cli.actor)?,
+                analyte::recovery::ReprocessTarget::Receipt(id),
+                reason,
+            )
+            .await
+        }
+        Command::Deliveries { command } => {
+            let actor = required_actor(cli.actor)?;
+            let program = Program::load(&cli.config)?;
+            let mut store = analyte::open_system_store(&program).await?;
+            let result = async {
+                match command {
+                    Deliveries::List { after, reason } => {
+                        let audit = Audit {
+                            actor,
+                            action: Identifier::new("deliveries-list")?,
+                            targets: Vec::new(),
+                            time: jiff::Timestamp::now().as_second(),
+                            reason: Reason::new(&reason)?,
+                        };
+                        let rows = store
+                            .request(until(), move |s| {
+                                let rows = s.deliveries(after)?;
+                                s.audit(&audit)?;
+                                Ok(rows)
+                            })
+                            .await?;
+                        for row in rows {
+                            analyte::output::line(&format!(
+                                "{} {} {} {:?}",
+                                row.sequence,
+                                uuid::Uuid::from(row.id),
+                                row.destination.as_str(),
+                                row.state
+                            ))?;
+                        }
+                        Ok::<_, Error>(())
+                    }
+                    Deliveries::Resend { id, reason } => {
+                        analyte::recovery::resend(&store, id, true, actor, Reason::new(&reason)?)
+                            .await?;
+                        analyte::output::line("Delivery queued with its original ID and bytes.")?;
+                        Ok(())
+                    }
+                }
+            }
+            .await;
+            store.shutdown(until()).await?;
+            result
+        }
         Command::Restore { from, reason } => {
             let program = Program::load(&cli.config)?;
             let audit = Audit {
-                actor: cli.actor,
+                actor,
                 action: Identifier::new("store-restore")?,
                 targets: Vec::new(),
                 time: jiff::Timestamp::now().as_second(),
@@ -245,6 +397,11 @@ async fn operator(
                 vec![Identifier::new(&id.to_string())?],
                 "operator inspected parked item".to_owned(),
             ),
+            Parked::Reprocess { .. } => {
+                return Err(
+                    std::io::Error::other("reprocess must use the recovery entry point").into(),
+                );
+            }
             Parked::Resolve { id, reason } => (
                 "parked-resolve",
                 vec![Identifier::new(&id.to_string())?],
@@ -264,6 +421,7 @@ async fn operator(
                     .checked_add(Duration::from_secs(5))
                     .unwrap_or(Instant::now()),
                 move |store| match command {
+                    Parked::Reprocess { .. } => Err(analyte_store::Error::InvalidInput),
                     Parked::Resolve { id, .. } => {
                         store.resolve(id, &audit)?;
                         Ok(Vec::new())

@@ -151,8 +151,8 @@ pub(super) async fn session(
                 item = files.recv() => item.ok_or_else(|| invalid("file owner stopped"))?,
             };
             let id = ReceiptId::new();
-            let time = evidence::receive(store, machine, id, item.bytes.clone()).await?;
-            let accepted = evidence::interpret(store, machine, id, time, &item.bytes).await?;
+            evidence::receive(store, machine, id, item.bytes.clone()).await?;
+            let accepted = evidence::interpret(store, machine, id).await?;
             item.stored
                 .send(accepted)
                 .map_err(|_| invalid("file completion reply lost; source remains claimed"))?;
