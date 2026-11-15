@@ -82,4 +82,3 @@ mod tests {
         assert!(Location::at(raw, Terminator::Cr, 4, 0).is_none());
     }
 }
-
