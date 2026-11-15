@@ -74,6 +74,57 @@ pub struct AstmOrderFields {
     pub action_code: Identifier,
 }
 
+/// Exact QRD filter agreed with this machine; unsupported filters fail closed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hl7QueryFilter {
+    /// QRD field number, excluding metadata, quantity and the specimen selector.
+    pub field: u16,
+    /// Exact wire value, including any explicitly agreed components.
+    pub value: String,
+}
+
+/// One DSP-3 line, repeated in this order for each requested test.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "source", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DsrLine {
+    /// Exact specimen identifier.
+    SampleId,
+    /// Original app order identifier.
+    OrderId,
+    /// Explicit outbound test translation.
+    TestCode,
+    /// Explicit outbound priority translation.
+    Priority,
+    /// Supplied physical slot; absent stays empty.
+    Position,
+    /// Explicit specimen-type translation; absent stays empty.
+    SpecimenType,
+    /// Supplied patient ID under the configured namespace; absent stays empty.
+    PatientId,
+    /// Explicit presentation text, including empty padding lines.
+    Literal {
+        /// Exact plain display text.
+        value: String,
+    },
+}
+
+/// Legacy QRY/QCK/DSR interface agreement; no send-ahead is implied.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hl7OrderQuery {
+    /// QRD-8 or QRD-10 interpreted as the exact specimen ID, component 1 only.
+    pub sample_field: u16,
+    /// Exact trailing components for the specimen selector (empty only when agreed).
+    pub sample_suffix: String,
+    /// Every other nonempty QRD selector must match an explicit filter.
+    pub filters: Vec<Hl7QueryFilter>,
+    /// Ordered DSP lines for each test; at most 128 lines per test.
+    pub lines: Vec<DsrLine>,
+    /// Budget for the DSR application ACK, measured from wire issuance.
+    pub acknowledgment_ms: u32,
+}
+
 /// Opt-in outbound order capability. Nothing is sent by its absence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -95,10 +146,19 @@ pub struct Orders {
     pub clone: Option<bool>,
     /// ASTM record layout, required only by the ASTM stack.
     pub astm: Option<AstmOrderFields>,
+    /// Explicit legacy HL7 query layout and acknowledgment deadline.
+    pub hl7: Option<Hl7OrderQuery>,
 }
 
 impl Orders {
     fn validate_stack(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+        if machine.syntax.kind != SyntaxKind::Hl7V2 && self.hl7.is_some() {
+            return Err(invalid(
+                path,
+                "orders.hl7",
+                "HL7 query layout applies only to HL7",
+            ));
+        }
         let vendor_download = match machine.syntax.kind {
             SyntaxKind::AstmLis02 => {
                 if self.astm.is_none() {
@@ -112,7 +172,11 @@ impl Orders {
             }
             SyntaxKind::VidasLiteral => Some(machine.vidas.as_ref().is_some_and(|v| v.download)),
             SyntaxKind::Autolyser => Some(machine.autolyser.as_ref().is_some_and(|a| a.download)),
-            SyntaxKind::Hl7V2 | SyntaxKind::Poct => {
+            SyntaxKind::Hl7V2 => {
+                self.validate_hl7(machine, path)?;
+                return Ok(());
+            }
+            SyntaxKind::Poct => {
                 return Err(invalid(
                     path,
                     "orders",
@@ -174,13 +238,158 @@ impl Orders {
         Ok(())
     }
 
+    fn validate_hl7(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+        let layout = self.hl7.as_ref().ok_or_else(|| {
+            invalid(
+                path,
+                "orders.hl7",
+                "supply explicit HL7 query selectors, DSP layout and ACK deadline",
+            )
+        })?;
+        if self.send_ahead || self.query.is_none() || self.astm.is_some() || self.clone.is_some() {
+            return Err(invalid(
+                path,
+                "orders",
+                "HL7 currently supports explicit legacy queries only",
+            ));
+        }
+        if self
+            .query
+            .as_ref()
+            .is_some_and(|query| !matches!(query.when_untrusted, WhenUntrusted::Error))
+        {
+            return Err(invalid(
+                path,
+                "orders.query.when_untrusted",
+                "HL7 unavailable queries require an explicit AE response (error)",
+            ));
+        }
+        if !matches!(layout.sample_field, 8 | 10) {
+            return Err(invalid(
+                path,
+                "orders.hl7.sample_field",
+                "choose QRD-8 or QRD-10 for the agreed specimen selector",
+            ));
+        }
+        if layout.sample_suffix.len() > 250
+            || !layout.sample_suffix.is_ascii()
+            || (!layout.sample_suffix.is_empty() && !layout.sample_suffix.starts_with('^'))
+            || layout
+                .sample_suffix
+                .bytes()
+                .any(|b| b.is_ascii_control() || b"|~\\".contains(&b))
+        {
+            return Err(invalid(
+                path,
+                "orders.hl7.sample_suffix",
+                "supply exact trailing selector components, beginning with ^, or an explicit empty string",
+            ));
+        }
+        let mut seen = HashSet::new();
+        if layout.filters.len() > 6
+            || layout.filters.iter().any(|f| {
+                !(5..=12).contains(&f.field)
+                    || matches!(f.field, 7)
+                    || f.field == layout.sample_field
+                    || !seen.insert(f.field)
+                    || f.value.is_empty()
+                    || f.value.len() > 250
+                    || !f.value.is_ascii()
+                    || f.value.bytes().any(|b| b.is_ascii_control() || b == b'|')
+            })
+            || [8, 9, 10]
+                .into_iter()
+                .any(|field| field != layout.sample_field && !seen.contains(&field))
+        {
+            return Err(invalid(
+                path,
+                "orders.hl7.filters",
+                "provide unique exact selectors including all required QRD fields other than the sample",
+            ));
+        }
+        let mut fields = vec![String::new(); 12];
+        for (number, value) in [
+            (1_usize, "20000101"),
+            (2, "D"),
+            (3, "D"),
+            (4, "config"),
+            (7, "1^LI"),
+        ] {
+            if let Some(field) = number
+                .checked_sub(1)
+                .and_then(|index| fields.get_mut(index))
+            {
+                *field = value.to_owned();
+            }
+        }
+        if let Some(field) = usize::from(layout.sample_field)
+            .checked_sub(1)
+            .and_then(|index| fields.get_mut(index))
+        {
+            *field = format!("CONFIG{}", layout.sample_suffix);
+        }
+        for filter in &layout.filters {
+            if let Some(field) = usize::from(filter.field)
+                .checked_sub(1)
+                .and_then(|index| fields.get_mut(index))
+            {
+                *field = filter.value.clone();
+            }
+        }
+        let edition = match machine.syntax.edition {
+            Some(crate::Edition::V231) => "2.3.1",
+            Some(crate::Edition::V251) => "2.5.1",
+            None => return Err(invalid(path, "syntax.edition", "HL7 requires an edition")),
+        };
+        let wire = format!(
+            "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02|config|P|{edition}\rQRD|{}\r",
+            fields.join("|")
+        );
+        let syntax = analyte_hl7::Message::parse(wire.as_bytes(), analyte_hl7::Options::default())
+            .and_then(|message| analyte_hl7::query::Request::new(&message).map(|_| ()));
+        if syntax.is_err() {
+            return Err(invalid(
+                path,
+                "orders.hl7.filters",
+                "selector suffix and filters must form a valid edition-specific QRD",
+            ));
+        }
+        if !(1..=60_000).contains(&layout.acknowledgment_ms) {
+            return Err(invalid(
+                path,
+                "orders.hl7.acknowledgment_ms",
+                "use 1 to 60000 milliseconds",
+            ));
+        }
+        if layout.lines.is_empty() || layout.lines.len()>128 || !layout.lines.iter().any(|l|matches!(l,DsrLine::SampleId)) || !layout.lines.iter().any(|l|matches!(l,DsrLine::TestCode)) || layout.lines.iter().any(|line| matches!(line,DsrLine::Literal{value} if value.len()>300 || !value.is_ascii() || value.bytes().any(|b|b.is_ascii_control() || b"|^~\\&".contains(&b)))) {
+            return Err(invalid(path,"orders.hl7.lines","supply 1 to 128 plain DSP lines including sample_id and test_code"));
+        }
+        if layout.lines.iter().any(|l| matches!(l, DsrLine::PatientId))
+            != self.patient_namespace.is_some()
+        {
+            return Err(invalid(
+                path,
+                "orders.patient_namespace",
+                "supply a namespace exactly when patient_id is mapped",
+            ));
+        }
+        if self.tests.iter().any(|t| t.machine_components.len() != 1) {
+            return Err(invalid(
+                path,
+                "orders.tests",
+                "HL7 display tests require one explicit plain text code",
+            ));
+        }
+        Ok(())
+    }
+
     /// Refuses ambiguous tables, unbounded queries and invalid field ownership.
     pub(crate) fn validate(&self, machine: &Machine, path: &str) -> Result<(), Error> {
         let fail = || {
             invalid(
                 path,
                 "orders",
-                "use bounded, unique outbound mappings and standard O-record destinations",
+                "use bounded, unique outbound mappings and explicit protocol destinations",
             )
         };
         self.validate_stack(machine, path)?;
@@ -237,7 +446,12 @@ impl Orders {
                                 .as_str()
                                 .bytes()
                                 .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b)),
-                            SyntaxKind::VidasLiteral | SyntaxKind::Hl7V2 | SyntaxKind::Poct => true,
+                            SyntaxKind::Hl7V2 => t
+                                .machine
+                                .as_str()
+                                .bytes()
+                                .any(|b| !(32..127).contains(&b) || b"|^~\\&".contains(&b)),
+                            SyntaxKind::VidasLiteral | SyntaxKind::Poct => true,
                         }
                 })
             {

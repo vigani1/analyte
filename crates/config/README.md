@@ -94,3 +94,11 @@ component 1 (LIS02 section 8.4.16.1). The optional position selector stays in
 O field 4 and sends the exact slot. No selector means that context stays off the
 wire. A configured selector requires its context; unknown specimen codes cause
 specific order rejection. See `../analyte/ORDERS.md` for selectors and examples.
+
+
+HL7 legacy order queries opt in through `[orders.query]` and `[orders.hl7]`;
+see [the synthetic layout](examples/hl7_orders.toml). The specimen selector,
+exact trailing components, other supported QRD filters, DSP line sources and
+application-ACK deadline are all explicit and validated. Unsupported filters
+never become empty work. HL7 requires the error policy for untrusted lookups;
+this interface does not enable ORM/OML send-ahead or cancellations.

@@ -56,6 +56,16 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
     assert_eq!(reserved.state, OrderState::Sending);
     assert_eq!(
         store
+            .machine_order(&identity()?)?
+            .ok_or("reservation lookup absent")?
+            .id,
+        reserved.id
+    );
+    let mut missing = identity()?;
+    missing.machine = Identifier::new("absent")?;
+    assert!(store.machine_order(&missing)?.is_none());
+    assert_eq!(
+        store
             .db
             .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
         0
@@ -659,5 +669,48 @@ fn adr0004_cancel_refusal_restores_sent_and_missing_cancel_is_uncertain() -> Tes
                 .is_empty()
         );
     }
+    Ok(())
+}
+
+#[test]
+fn adr0003_cancelled_query_wait_can_only_claim_its_retained_reservation_owner() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("owned.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let candidate = identity()?;
+    let reservation = OrderReservation {
+        identity: &candidate,
+        version: NonZeroU64::MIN,
+        now: 101,
+        freshness: 30,
+    };
+    let first = Identifier::new("connection-one")?;
+    let second = Identifier::new("connection-two")?;
+    let record = store
+        .reserve_send_owned(&reservation, &first)?
+        .map_err(std::io::Error::other)?;
+    assert_eq!(record.source_code.as_str(), "host-reserved:connection-one");
+    assert!(matches!(
+        store.reserve_send_owned(&reservation, &second)?,
+        Err(SendRefusal::AlreadyReserved)
+    ));
+    drop(store);
+    let store = open(&path)?;
+    let restored = store
+        .machine_order(&candidate)?
+        .ok_or("reservation absent")?;
+    assert_eq!(
+        restored.source_code.as_str(),
+        "host-reserved:connection-one"
+    );
+    assert_eq!(restored.state, OrderState::Sending);
+    assert_eq!(restored.items.len(), 1);
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        0
+    );
     Ok(())
 }

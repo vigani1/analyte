@@ -1,5 +1,6 @@
 //! Host-owned order lookup, command reservation and operator reconciliation.
 pub(crate) mod astm;
+pub(crate) mod hl7;
 mod operator;
 pub(crate) mod sending;
 use crate::{Error, config::Machine};
@@ -8,8 +9,51 @@ use analyte_model::{Identifier, NamespacedId, SampleId};
 use analyte_store::{MachineOrder, OrderEventDelivery};
 pub use operator::{Command, Outcome, run};
 
+/// A mapped order version to recheck before issuing any query response bytes.
+pub(crate) struct Candidate {
+    pub(crate) identity: analyte_store::MachineOrderKey,
+    pub(crate) version: std::num::NonZeroU64,
+}
+
 /// Cache policy shared with the destination poller (ADR 0004).
 pub(crate) const FRESHNESS_SECONDS: u64 = 30;
+
+/// One cache policy for every query dialog: timeout is unavailable, never empty.
+pub(crate) async fn lookup(
+    store: &analyte_store::Handle,
+    machine: &Machine,
+    sample: SampleId,
+    until: std::time::Instant,
+) -> Result<analyte_store::Lookup, Error> {
+    let destination = destination(machine);
+    match store
+        .request(until, move |store| {
+            store.orders(
+                &destination,
+                &sample,
+                jiff::Timestamp::now().as_second(),
+                FRESHNESS_SECONDS,
+            )
+        })
+        .await
+    {
+        Ok(answer) => Ok(answer),
+        Err(analyte_store::Error::Timeout) => Ok(analyte_store::Lookup::NotTrusted),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Only current requested work addressed to this machine enters any outbound mapper.
+pub(crate) fn eligible(order: &analyte_contract::Order, machine: &Machine) -> bool {
+    let fields = order.fields();
+    !fields.tombstone
+        && fields.state == analyte_contract::evidence::OrderState::Requested
+        && fields.target_analyzers.as_ref().is_none_or(|targets| {
+            targets
+                .iter()
+                .any(|target| target.as_str() == machine.id.as_str())
+        })
+}
 
 /// Adapts validated app fields without inventing a code system or position.
 pub(crate) fn app_order(

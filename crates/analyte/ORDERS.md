@@ -75,7 +75,7 @@ transaction. Neither command sends or retries machine work.
 
 ## Deferred
 
-HL7 QRY/QCK/DSR query handling and ORM/OML send-ahead are a separate round.
+HL7 ORM/OML send-ahead and cancellation are a separate round.
 Live-machine validation, vendor-specific acceptance evidence and wider ASTM
 query selectors are not claimed by these synthetic tests.
 
@@ -113,8 +113,8 @@ coverage and reasons. Reconciliation stays per order, audited, and never resends
 
 Migrated v4 orders explicitly mark original test coverage unavailable, because
 v4 did not retain it. Their existing reservations continue to prevent replay.
-The store API is implemented; HL7 program/config wiring remains deferred
-until its own implementation steps are complete.
+The store API and legacy HL7 query wiring are implemented. HL7 send-ahead and
+cancellation remain deferred.
 
 ## VIDAS Literal work lists
 
@@ -279,3 +279,47 @@ The suites contain 13 VIDAS and 18 Autolyser tests. They also cover Autolyser's
 invalid cup slots, missing specimen medium and negative/unknown insertion replies.
 Evidence remains **documented**; the table is synthetic regression coverage,
 not qualification against hardware or an official simulator.
+
+
+## HL7 legacy display queries
+
+Evidence remains **documented** (HL7 2.3.1 section 2.18 and 2.5.1 section 5.10).
+The synthetic [HL7 orders example](../config/examples/hl7_orders.toml) explicitly
+selects which QRD field carries the sample, its exact trailing components, and
+all supported nonempty selectors. Config validation checks a synthetic query
+against the selected edition. No QRF filter, continuation, range, wildcard or
+undeclared selector is ignored; unsupported queries are retained for review.
+The interface uses original acknowledgment mode. Send-ahead stays disabled.
+
+A complete QRY MLLP block, with driver/config provenance, is durable before any
+QCK. Query time starts with the first block byte, including split reads, raw
+storage and lookup. Trusted empty yields QAK NF; unavailable, stale, late or
+untrusted answers yield AE. HL7 requires `when_untrusted = "error"`. Lookup uses
+the same cache freshness and requested/target rules as ASTM and vendor orders.
+
+`orders.hl7.lines` gives the exact DSP-3 layout for each requested test. The
+ordered lines repeat per test and per app order, without an implicit header or
+vendor positions. Supported sources are sample_id, order_id, test_code,
+priority, position (the supplied slot), specimen_type, patient_id and explicit
+literal text (including blank padding). Test/priority/specimen translations
+are explicit; patient_id also needs a matching patient_namespace. Absent optional
+context produces an empty line, never a substitute. Plain ASCII DSP values are
+bounded to 300 bytes and cannot inject HL7 delimiters. Unmapped or unrepresentable
+orders are rejected with an app event; no partial display is transmitted.
+
+The shared reservation path rechecks every candidate before QCK/DSR issuance.
+Each app order has one durable item covering all its tests, still Sending with
+no app event. QCK and DSR have distinct control IDs; the DSR is rendered before
+reservation so a quantity/size failure cannot transmit partial work. ACK^Q03 AA
+for the actual DSR ID becomes Sent (one app event), never Accepted. AE, AR,
+invalid/wrong-edition ACK, lost ACK and disconnect become Uncertain with distinct
+codes. Incoming ACK bytes are durable before the lifecycle changes. The
+acknowledgment_ms timer starts at DSR issuance. Neither query replay nor restart
+can reserve the same order again. In-flight reservation keys survive a cancelled
+host wait so connection cleanup can find any reservation that committed.
+
+Program tests in `tests/orders/hl7.rs` use the temporary store and reference
+receiver for both editions, exact DSP text, store-before-reply, no event while
+Sending, trusted empty/untrusted/stale answers, unknown filters, missed query
+deadlines, AA/AE/AR/lost/wrong ACKs, disconnect and ordinary result delivery with
+queries enabled. Synthetic peers do not raise the evidence level.

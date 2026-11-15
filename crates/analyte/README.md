@@ -56,7 +56,8 @@ transaction as their interpretation. Retransmissions, conflicts, parked results,
 training and debug do not enqueue. One supervised worker serves all destinations,
 and one poller per destination maintains the order cache. Startup automatically
 recovers interrupted app attempts with an audit per delivery under ADR 0008.
-No machine orders are issued; queries never receive invented empty orders.
+Machine orders require explicit `[orders]` capabilities; queries never receive
+invented empty orders.
 
 Ctrl-C, termination on Unix and Ctrl-Break on Windows stop admission. Owners
 finish submitted commits (15 seconds), then the delivery worker stops claiming
@@ -139,3 +140,11 @@ deadline. Without the feature, both the hook and its call site compile out.
 `test-hooks` is test-only and must never be enabled for release builds.
 Exercise its restart test with
 `cargo test -p analyte --all-features --test delivery recording`.
+
+
+HL7 legacy QRY^Q02 queries can opt into the shared order cache and reservation
+path with the explicit [DSP layout](../config/examples/hl7_orders.toml).
+QCK/DSR replies follow durable raw storage. Trusted empty is NF; untrusted,
+stale or late lookup is AE. DSR application receipt is Sent, never Accepted;
+negative, missing or disconnected ACKs are Uncertain. HL7 ORM/OML send-ahead
+and cancellation are not enabled by this query capability. See [ORDERS.md](ORDERS.md).

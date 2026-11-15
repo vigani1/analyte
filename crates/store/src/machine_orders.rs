@@ -38,6 +38,22 @@ pub struct MachineOrder {
     pub items: Vec<MachineOrderItem>,
 }
 
+const RESERVATION_OWNER_PREFIX: &str = "host-reserved:";
+
+impl MachineOrder {
+    /// True only while this connection's retained reservation is still Sending.
+    /// Completed outcomes and another connection's reservation are never owned here.
+    #[must_use]
+    pub fn reserved_by(&self, owner: &Identifier) -> bool {
+        self.state == OrderState::Sending
+            && self
+                .source_code
+                .as_str()
+                .strip_prefix(RESERVATION_OWNER_PREFIX)
+                == Some(owner.as_str())
+    }
+}
+
 /// Retained command identity and test coverage, independent of app order revisions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MachineOrderItem {
@@ -222,6 +238,26 @@ impl Store {
         )
     }
 
+    /// Reserves query work with a retained connection owner for cancelled-wait recovery.
+    /// Only the matching owner may treat an interrupted request as its own reservation.
+    /// # Errors
+    /// Reports storage failures; expected eligibility refusals remain explicit values.
+    pub fn reserve_send_owned(
+        &mut self,
+        candidate: &OrderReservation<'_>,
+        owner: &Identifier,
+    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
+        let code = SourceText::new(&format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()))
+            .map_err(|_| Error::InvalidInput)?;
+        self.start_order(
+            candidate,
+            OrderState::Sending,
+            code,
+            OrderItems::Together,
+            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+        )
+    }
+
     /// Reserves per-test HL7 items atomically with the parent, without an app event.
     /// # Errors
     /// Refuses oversized identities, missing/oversized test coverage and I/O failures.
@@ -346,6 +382,25 @@ impl Store {
         append(&tx, &record, event.as_ref(), limit)?;
         tx.commit()?;
         Ok(Ok(record))
+    }
+
+    /// Looks up a reservation by its immutable key after an interrupted store wait.
+    /// # Errors
+    /// Reports storage failures or invalid retained evidence; absence is explicit.
+    pub fn machine_order(&self, identity: &MachineOrderKey) -> Result<Option<MachineOrder>, Error> {
+        let id = self
+            .db
+            .query_row(
+                "SELECT id FROM machine_orders WHERE destination=?1 AND order_id=?2 AND machine=?3",
+                params![
+                    identity.destination.as_str(),
+                    identity.order.as_str(),
+                    identity.machine.as_str()
+                ],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?;
+        id.map(|id| load(&self.db, id)).transpose()
     }
 
     /// Returns a bounded page without exposing cache payloads.

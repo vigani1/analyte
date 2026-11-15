@@ -1,6 +1,8 @@
 //! Phase 1 synthetic program-to-reference-receiver tests (ADR 0008, plan 13).
 #[path = "orders/autolyser.rs"]
 mod autolyser_cases;
+#[path = "orders/hl7.rs"]
+mod hl7_order_cases;
 #[path = "orders/cases.rs"]
 mod order_cases;
 mod support;
