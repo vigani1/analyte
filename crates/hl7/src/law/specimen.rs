@@ -1,7 +1,5 @@
 //! Specimen/container profiles from TF-2b C.11/C.12, B.1 and 2.2.4.
-use super::control::{
-    characters, component_error, excluded_fields, field, part, primitive, scalar,
-};
+use super::control::{component_error, excluded_fields, field, part, primitive, scalar};
 use super::patient::{coded, excluded, extras, universal_type};
 use super::{ControlDirection, Error, Profile, content, raw};
 use crate::Segment;
@@ -26,19 +24,6 @@ pub(super) fn set_id(value: &[u8]) -> Option<usize> {
             .checked_add(usize::from(byte.checked_sub(b'0')?))
     })?;
     (number > 0).then_some(number)
-}
-
-fn bounded_composite(
-    value: &[u8],
-    name: &'static str,
-    number: usize,
-    maximum: usize,
-    direction: ControlDirection,
-) -> Result<(), Error> {
-    if direction == ControlDirection::Send && characters(value) > maximum {
-        return Err(content(name, number));
-    }
-    Ok(())
 }
 
 fn eip(value: &[u8], number: usize, direction: ControlDirection) -> Result<(), Error> {
@@ -79,7 +64,7 @@ fn eip(value: &[u8], number: usize, direction: ControlDirection) -> Result<(), E
     if supported_length > 80 {
         return Err(content("SPM", number));
     }
-    bounded_composite(value, "SPM", number, 80, direction)
+    super::order::limit(value, "SPM", number, 80, direction)
 }
 
 fn option_field(
@@ -231,7 +216,7 @@ fn specimen(
             extras(raw(segment, number), b'^', &[1], direction, |position| {
                 component_error("SPM", number, position)
             })?;
-            bounded_composite(raw(segment, number), "SPM", number, 26, direction)?;
+            super::order::limit(raw(segment, number), "SPM", number, 26, direction)?;
         }
     }
     if profile.pooling_outside {
@@ -251,7 +236,7 @@ fn ei(value: &[u8], number: usize, direction: ControlDirection) -> Result<(), Er
     extras(value, b'^', &[1], direction, |position| {
         component_error("SAC", number, position)
     })?;
-    bounded_composite(value, "SAC", number, 80, direction)
+    super::order::limit(value, "SAC", number, 80, direction)
 }
 
 // NM is a signed decimal spelling, not a floating point computation. This
@@ -305,7 +290,7 @@ fn units(value: &[u8], direction: ControlDirection) -> Result<(), Error> {
     extras(value, b'^', &[1, 2, 3], direction, |position| {
         component_error("SAC", 24, position)
     })?;
-    bounded_composite(value, "SAC", 24, 250, direction)
+    super::order::limit(value, "SAC", 24, 250, direction)
 }
 
 fn dilution(value: &[u8], direction: ControlDirection) -> Result<(), Error> {
@@ -327,7 +312,7 @@ fn dilution(value: &[u8], direction: ControlDirection) -> Result<(), Error> {
     extras(value, b'^', &[2, 3, 4], direction, |position| {
         component_error("SAC", 29, position)
     })?;
-    bounded_composite(value, "SAC", 29, 20, direction)
+    super::order::limit(value, "SAC", 29, 20, direction)
 }
 
 fn container(

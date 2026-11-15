@@ -201,28 +201,12 @@ pub fn acknowledgment(
     .ok_or(crate::Error::AckMode)?;
     let d = request.message.delimiters();
     let mut output = Vec::new();
-    for segment in ack.segments() {
-        if segment.id() == b"MSH" {
-            output.extend_from_slice(b"MSH");
-            for field in 2..=18 {
-                output.push(d.field);
-                if field == 9 {
-                    output.extend_from_slice(b"QCK");
-                    output.push(d.component);
-                    output.extend_from_slice(b"Q02");
-                    if msh.version() == Version::V251 {
-                        output.push(d.component);
-                        output.extend_from_slice(b"QCK_Q02");
-                    }
-                } else {
-                    output.extend_from_slice(raw(segment, field));
-                }
-            }
-        } else {
-            output.extend_from_slice(segment.raw());
-        }
-        output.push(b'\r');
-    }
+    encode_response_segments(
+        &mut output,
+        &ack,
+        msh.version(),
+        (b"QCK", b"Q02", b"QCK_Q02"),
+    );
     output.extend_from_slice(b"QAK");
     // Original-style queries have no QAK tag (2.3.1 §2.24.22.1).
     output.push(d.field);
@@ -270,28 +254,12 @@ pub fn display(
     }
     let qck = acknowledgment(request, response, CacheAnswer::Found, options)?;
     let mut output = Vec::new();
-    for segment in qck.segments() {
-        if segment.id() == b"MSH" {
-            output.extend_from_slice(b"MSH");
-            for field in 2..=18 {
-                output.push(d.field);
-                if field == 9 {
-                    output.extend_from_slice(b"DSR");
-                    output.push(d.component);
-                    output.extend_from_slice(b"Q03");
-                    if Msh::new(request.message)?.version() == Version::V251 {
-                        output.push(d.component);
-                        output.extend_from_slice(b"DSR_Q03");
-                    }
-                } else {
-                    output.extend_from_slice(raw(segment, field));
-                }
-            }
-        } else {
-            output.extend_from_slice(segment.raw());
-        }
-        output.push(b'\r');
-    }
+    encode_response_segments(
+        &mut output,
+        &qck,
+        Msh::new(request.message)?.version(),
+        (b"DSR", b"Q03", b"DSR_Q03"),
+    );
     output.extend_from_slice(request.definition.raw());
     output.push(b'\r');
     if let Some(filter) = request.filter {
@@ -319,4 +287,37 @@ pub fn display(
         }
     }
     Message::parse(&output, options)
+}
+
+// Both query replies retain the acknowledgment fields and replace only MSH-9.
+fn encode_response_segments(
+    output: &mut Vec<u8>,
+    message: &Message,
+    version: Version,
+    kind: (&[u8], &[u8], &[u8]),
+) {
+    let (message_type, event, structure) = kind;
+    let d = message.delimiters();
+    for segment in message.segments() {
+        if segment.id() == b"MSH" {
+            output.extend_from_slice(b"MSH");
+            for field in 2..=18 {
+                output.push(d.field);
+                if field == 9 {
+                    output.extend_from_slice(message_type);
+                    output.push(d.component);
+                    output.extend_from_slice(event);
+                    if version == Version::V251 {
+                        output.push(d.component);
+                        output.extend_from_slice(structure);
+                    }
+                } else {
+                    output.extend_from_slice(raw(segment, field));
+                }
+            }
+        } else {
+            output.extend_from_slice(segment.raw());
+        }
+        output.push(b'\r');
+    }
 }

@@ -135,17 +135,7 @@ impl Dialog {
         id: ControlId<'_>,
         wait: Duration,
     ) -> Result<(), Error> {
-        if wait.is_zero() {
-            return Err(Error::Configuration);
-        }
-        if now < self.now {
-            return Err(Error::TimeReversed);
-        }
-        let until = now.checked_add(wait).ok_or(Error::Exhausted)?;
-        let orders = self.orders.as_mut().ok_or(Error::Configuration)?;
-        if !matches!(orders.waiting, Waiting::Idle) {
-            return Err(Error::Busy);
-        }
+        let (orders, until) = self.prepare_wait(now, wait)?;
         orders.waiting = Waiting::Display {
             id: id.raw().to_vec(),
             until,
@@ -156,6 +146,16 @@ impl Dialog {
     /// # Errors
     /// Rejects a busy/disabled exchange or an unrepresentable deadline.
     pub fn await_order_response(&mut self, now: Duration, wait: Duration) -> Result<(), Error> {
+        let (orders, until) = self.prepare_wait(now, wait)?;
+        orders.waiting = Waiting::Order { until };
+        Ok(())
+    }
+    // Validate both outbound waits in the same order before changing state.
+    fn prepare_wait(
+        &mut self,
+        now: Duration,
+        wait: Duration,
+    ) -> Result<(&mut Orders, Duration), Error> {
         if wait.is_zero() {
             return Err(Error::Configuration);
         }
@@ -167,8 +167,7 @@ impl Dialog {
         if !matches!(orders.waiting, Waiting::Idle) {
             return Err(Error::Busy);
         }
-        orders.waiting = Waiting::Order { until };
-        Ok(())
+        Ok((orders, until))
     }
     pub(super) fn prepare_reply(
         &mut self,
