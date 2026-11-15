@@ -245,6 +245,7 @@ impl Dialog {
                 out.push(Action::Rejected(error, raw));
                 if matches!(self.state, State::Receiving(_)) {
                     out.push(Action::Write(vec![NAK]));
+                    self.set_timer(self.config.timers.receive);
                 }
                 if let Some(byte) = control {
                     self.control(byte, out)?;
@@ -271,11 +272,13 @@ impl Dialog {
                             Action::Conflict(frame.raw().to_vec()),
                             Action::Write(vec![NAK]),
                         ]);
+                        self.set_timer(self.config.timers.receive);
                     }
                     self.state = State::Receiving(receive);
                 } else if frame.number() != receive.expected {
                     out.push(Action::UnexpectedFrame(frame.raw().to_vec()));
                     out.push(Action::Write(vec![NAK]));
+                    self.set_timer(self.config.timers.receive);
                     self.state = State::Receiving(receive);
                 } else if receive.count
                     >= u64::try_from(self.config.frames).map_err(|_| Error::Exhausted)?
