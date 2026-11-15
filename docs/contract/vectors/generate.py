@@ -26,7 +26,7 @@ for name in ['unresolved-identity','missing-sample','multi-part-coded','withdraw
 
 event=dict(contract_version=1,delivery_id='019ab000-0000-7000-8000-000000000002',created_at='2026-11-15T12:00:00Z',source=delivery['source'],order_id='order-1',order_version=1,state='uncertain',occurred_at='2026-11-15T11:59:59Z',source_status='timeout',reason='No answer')
 write('event.json',event)
-write('order.json',dict(id='order-1',version=1,state='requested',sample_id='000Ab12',tests=['TEST'],priority='routine',target_analyzers=None,expires_at=None,tombstone=False))
+write('order.json',dict(id='order-1',version=1,state='requested',sample_id='000Ab12',tests=[code('TEST')],priority='routine',target_analyzers=None,expires_at=None,tombstone=False))
 body=json.dumps(delivery,separators=(',',':'))
 key=bytes(range(32)); secret='whsec_'+base64.b64encode(key).decode(); timestamp='1794744000'
 signature='v1,'+base64.b64encode(hmac.new(key,(delivery['delivery_id']+'.'+timestamp+'.'+body).encode(),hashlib.sha256).digest()).decode()

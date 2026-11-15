@@ -4,7 +4,10 @@
   "state": "requested",
   "sample_id": "000Ab12",
   "tests": [
-    "TEST"
+    {
+      "namespace": "synthetic",
+      "value": "TEST"
+    }
   ],
   "priority": "routine",
   "target_analyzers": null,
