@@ -117,8 +117,8 @@ output. Paths are passed as data, never interpolated into executable scripts.
 Missing utilities, permission errors and invalid output refuse admission.
 Installing a faster native probe later does not change the storage boundary.
 
-Admin actions, retention and real machine validation
-remain outside this work. Serial hardware and Linux runtime
+Admin actions are implemented below. Retention and real machine validation
+remain open. Serial hardware and Linux runtime
 verification remain CI/lab work; localhost integration tests run on Windows here.
 
 Credentials are loaded by the host at startup from `ANALYTE_SECRET_<NAME>`:
@@ -201,7 +201,7 @@ stale or late lookup is AE. DSR application receipt is Sent, never Accepted;
 negative, missing or disconnected ACKs are Uncertain. HL7 ORM/OML send-ahead
 and cancellation require the separate explicit `[orders.hl7_send]` capability. See [ORDERS.md](ORDERS.md).
 
-## Restore and reconciliation (plan ?11, ADR 0003 rules 2, 4, 8)
+## Restore and reconciliation (plan §11, ADR 0003 rules 2, 4, 8)
 
 1. Stop the service. Keep the backup and data directory protected as clinical data.
 2. Run `analyte --config analyte.toml --actor operator-name restore --from backup.db --reason "Recovery after disk failure"`.
@@ -215,7 +215,7 @@ and cancellation require the separate explicit `[orders.hl7_send]` capability. S
 4. Restart the service. Result receiving and app deliveries continue. Delivery
    retries retain the original ID and bytes; the receiver must accept duplicates.
    Machine order reservations are paused, including query answers. Untrusted
-   lookups follow their configured error/silence policy, never ?no orders?.
+   lookups follow their configured error/silence policy, never "no orders".
 5. Inspect `analyte --config analyte.toml orders list` and status. Compare each
    machine's work list and actual outcomes with the app, including commands sent
    after the backup. Correct the app's requested work and reconcile uncertain
@@ -471,90 +471,9 @@ restarted by recovery actions. Inspect the log after a forced stop, preserve the
 store and follow the existing recovery/reconciliation procedures. Never replay
 an uncertain machine order merely because a service was restarted.
 
-## LAW results and query runtime (steps 2–3)
+## LAW program integration
 
-`law_manager` runs one explicitly configured persistent TCP link carrying
-LAB-27, LAB-28 and LAB-29. Select `transport.kind = "tcp_server"` when the analyzer
-opens the link, or `"tcp_client"` when Analyte opens it, and declare
-`law.connection_mode = "persistent"`. The site endpoint is the bind or peer
-address for that role. Its complete MLLP block and configuration provenance are durable
-before profile validation, mapping or ACK. Existing LAW views/ACK builders and
-the shared revision/outbox transaction own interpretation and delivery. AA
-requires successful durable interpretation; failed content is parked with AE
-or AR. A storage failure closes without AA. Malformed syntax without a trustworthy
-response header is retained and the connection closes. Partial blocks are
-bounded by the configured first-byte receive deadline and parked on expiry.
-
-AWOS is the order identity when present. An unsolicited result can use an
-explicit analyzer order/authority; missing evidence is unresolved, never invented.
-The entire OG is retained; changed non-C content conflicts, a C correction gets
-a new revision, and retransmissions create no delivery. A conflicting batch
-cannot register revisions or deliver its otherwise-new subset; a later accepted
-retry can still deliver those results. The shared transaction rolls back the
-batch before its failed interpretation is parked. Units and values keep source spelling.
-
-LAB-27 is enabled by the explicit query-work layout in the config crate's
-`examples/law_orders.toml`. It supports exact SampleId/container and analyzer-specific
-all-pending lookup. The latter pages through one new store read using the same
-trust/freshness/restore rule as SampleId lookup. Unsupported forms receive QAK AR;
-unavailable, stale, failed, paused or late answers receive AE, never no-work.
-
-Positive availability owns a built LAB-28 followup before the RSP can be issued.
-Each AWOS is a shared durable per-test item, reserved and preflighted before any
-positive output. ORL bytes are stored before per-AWOS acceptance/rejection reaches
-`finish_order_items`, matched by ID even when reply order differs. Missing replies,
-disconnects and invalid correlation become Uncertain; reservations forbid replay.
-Trusted empty uses the crate's restricted negative followup with no reservation;
-its ORL is correlated and audited without changing an order. Query budgets start
-at the first MLLP byte, including raw storage and reservations. Response timers
-start at followup issuance. Cancellation cleanup retains every submitted key so
-a committed reservation can be recovered even if its caller lost the response.
-
-LAW send-ahead is enabled by explicit `orders.send_ahead = true`. Cancellation
-from a trusted app feed is enabled for previously accepted queried or sent-ahead
-work. Both reuse the query exchange builder, shared per-AWOS reservation and ORL
-handler. CR confirms cancellation per item; UC preserves its preceding state with
-a CancelRefused event. No reply, disconnect or restart makes the admitted attempt
-Uncertain; neither original work nor cancellation is resent. Restore pause blocks
-both admissions. Independent per-transaction links are not supported:
-`law.connection_mode = "independent_per_transaction"` fails with a specific
-validation error. This is a declared single-link subset, not full TF-2b B.6
-connection conformance. Results-only
-config still rejects queries without a work layout. No full actor conformance is
-claimed at this checkpoint.
-`tests/law/results.rs` contains ten synthetic program/reference-receiver cases,
-including a durable-commit pause, raw/interpretation storage failures, low disk,
-unsolicited results, complete OG run identities and partial-block expiry.
-`tests/receive.rs::law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io`
-checks startup selection in both roles. `tests/law/queries.rs` adds thirteen
-program/reference-receiver cases, including paging past a full page for other
-analyzers, blocked cache access, an unreachable receiver, restore pause, late
-queries, item reservation storage failure, ORL outcomes and no replay. Evidence
-remains documented. `tests/law/work.rs` adds seven cases for send-ahead and
-cancellation, including per-AWOS mixed outcomes, restart during Sending and
-CancelRequested, no resend, preflight rejection, and restore pause. Originating-work
-result correlation, directional link qualification and Gazelle remain.
-
-
-`tests/law/connections.rs::law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`
-exercises both roles through the program/reference receiver.
-`law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work` covers
-normal disconnect and first-byte timeout, retained partial bytes, and reconnect
-without repeating reserved work. The shared client supervisor treats its cancelled
-owner's closed event queue as session teardown. Receive, send, transport operation,
-query and ORL response deadlines retain their explicit config values.
-
-Independent directional links, per-transaction connection lifetime, complete
-originating-work result validation, additional enhanced workflows and a recorded
-Gazelle run remain open in [the LAW checklist](../../docs/protocols/ihe-law.md).
-Evidence stays documented; synthetic reference-receiver tests do not qualify a
-clinical analyzer. LAB-29 now calls `evidence::interpret(store, machine, id)`;
-the shared `machine/interpretation.rs` reads and validates the stored MLLP bytes
-with the LAW parser/views and mapper. The existing atomic LAW batch/revision
-policy also applies to audited reprocessing. The regression
-`law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix`
-proves mapping repair, append-only interpretation/config provenance, parked
-resolution, a single reference-receiver delivery and idempotent reprocessing,
-without machine traffic. Its 50-character control ID requires the LAW entry point.
-`law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines` also
-covers explicit client-side query and ORL budgets.
+The program receives results, answers supported queries and sends/cancels work
+on one persistent TCP link in either configured direction. Evidence remains
+**documented**. The [LAW checklist](../../docs/protocols/ihe-law.md) owns the
+current test matrix and remaining actor/simulator qualification gates.

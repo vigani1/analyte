@@ -91,22 +91,23 @@ What this means:
 
 ### Before machine configs (phase 7)
 
-A first attempt at the four configs stopped rather than guess. Besides the
-settings above, config cannot yet express:
+No machine config is qualified yet. Component decomposition and per-test value
+expectations now cover the cobas mapping prerequisites. `crates/config/src/schema.rs`
+provides selectors, QC equality rules and correction-code lists;
+`crates/config/src/orders.rs` provides legacy QRY/QCK/DSR layouts and deadlines.
 
-Config now supports component parts (including test code and dilution inside one
-ASTM component) and per-test numeric/qualitative value expectations, covering
-those cobas e 411 mapping prerequisites. No machine config is qualified yet.
+- cobas e 411: no known remaining mapping expressiveness gap; installed host
+  codes, serial settings and a recording still need confirmation.
+- iFlash 1200: the legacy query exchange exists. Config does not select vendor
+  result-status semantics or turn parallel OBR-only QC groups into observations;
+  those remain gaps rather than guessed mappings.
+- Swelab Lumi: no specific config extension can yet be justified; framing,
+  encoding, edition and sample selectors require the installed protocol evidence.
+- Biolyte 2000: no known config expressiveness gap; confirm serial flow control
+  and a recording before qualifying a config.
 
-Remaining config gaps:
-
-- iFlash 1200: the legacy HL7 query dialog (being built in phase 3), its own
-  result-status handling and QC sent as parallel OBR-only groups.
-
-These become small, general config features in the mapping and HL7 layers,
-each tested from its source, after the open standards work merges. A machine
-quirk that config cannot express is added as a new named deviation in code,
-never as a guess.
+Machine-specific behavior must be supported by evidence before adding a named
+deviation. No default sample identities or inferred protocol settings are allowed.
 
 ## Reference receiver
 
@@ -127,7 +128,10 @@ answers "no orders" when unsure, and every result keeps the three identities.
 1. From the lab: the settings and recordings listed under "Still needed from
    outside"; then write the four standard machine configs at the documented
    level (see [adding a machine](adding-a-machine.md)).
-2. A recorded IHE Gazelle run for LAW (simulated level).
+2. A recorded IHE Gazelle simulator conversation for LAW. Message-level validation
+   already passes all eight Analyzer Manager messages and found a SAC-3/SAC-10
+   defect that was fixed; see [reports](conformance/gazelle/README.md). Evidence
+   remains documented.
 3. Before a pilot: choose the alert channel, and write down the supported
    outage length, disk reserve, retention, and backup and restore targets.
 4. Lab pilot: install as a service, rehearse a restore, raise each machine to

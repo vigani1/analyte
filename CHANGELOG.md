@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Local bearer-token admin page, named-responder alerts, and audited stored-byte
+  reprocessing and exact-payload resend.
+- LAW program receiving, query-triggered work, send-ahead and cancellation on one
+  persistent link; independent links and simulator qualification remain open.
+- HL7 ORM/OML, VIDAS and Autolyser order sending with durable reservations,
+  explicit uncertain outcomes and restart without replay.
+- Recorded Gazelle message validation: all eight Analyzer Manager messages pass;
+  validation found and led to a fix for the SAC-3/SAC-10 conflict.
+
 - Rust workspace with separate transport, framing, dialog, syntax, mapping and
   shared result layers. Protocol work covers ASTM, HL7 v2 over MLLP, IHE LAW,
   POCT01-A2, VIDAS Literal and Autolyser within the documented protocol scopes.

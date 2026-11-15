@@ -7,7 +7,7 @@ talks to each machine in its own protocol (ASTM, HL7, IHE LAW, POCT1-A or a
 vendor format), stores every message safely, and passes results and orders
 to a lab app over HTTPS in one common format.
 
-**Status:** planning. Nothing is built yet. See [docs/plan.md](docs/plan.md).
+**Status:** the receive, delivery, order and operator runtimes are built at the documented evidence level; machine qualification and the lab pilot remain. See [docs/plan.md](docs/plan.md).
 
 - Machines are added with a config file, not new code, whenever they speak a
   standard protocol.
