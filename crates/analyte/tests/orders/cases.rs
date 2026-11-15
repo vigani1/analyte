@@ -292,3 +292,136 @@ async fn lis01_transfer_ack_is_sent_not_application_acceptance_and_disconnect_is
     reference.close().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_order_response()
+-> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    configure_orders(temp.path(), false)?;
+    let definition = temp.path().join("astm.toml");
+    std::fs::write(
+        &definition,
+        std::fs::read_to_string(&definition)?.replace("deadline_ms = 1000", "deadline_ms = 20"),
+    )?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(include_bytes!(
+            "../../../../docs/contract/vectors/order.json"
+        ))?])
+        .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "astm").await?;
+    wait_cache(&path).await?;
+    peer.write_all(b"\x05").await?;
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(2), peer.read_u8()).await??,
+        6
+    );
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    let request = b"H|\\^&|||SYN|||||||P|1\rQ|1|^000Ab12||ALL||||||||O\rL|1|N\r";
+    for frame in analyte_framing::astm::encode(
+        request,
+        analyte_framing::astm::FrameNumber::FIRST,
+        analyte_framing::astm::Limit::new(64000)?,
+    )? {
+        peer.write_all(&frame).await?;
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), peer.read_u8()).await??,
+            6
+        );
+    }
+    peer.write_all(b"\x04").await?;
+    assert!(receive_orders(&mut peer).await?.ends_with(b"L|1|Q\r"));
+    astm(
+        &mut peer,
+        b"H|\\^&|||SYN|||||||P|1\rQ|1|^000Ab12||||||||||A\rL|1|N\r",
+    )
+    .await?;
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), peer.read_u8())
+            .await
+            .is_err()
+    );
+    drop(peer);
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn adr0004_required_position_absent_rejects_query_order_and_delivers_specific_event()
+-> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    configure_orders(temp.path(), false)?;
+    let definition = temp.path().join("astm.toml");
+    let mut text = std::fs::read_to_string(&definition)?;
+    text.push_str("\nposition = {group=\"order\",record=\"O\",field=4,component=1,repetition=1}\n");
+    std::fs::write(&definition, text)?;
+    let receiver_path = temp.path().join("receiver.db");
+    let reference = Reference::start(
+        &receiver_path,
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(include_bytes!(
+            "../../../../docs/contract/vectors/order.json"
+        ))?])
+        .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "astm").await?;
+    wait_cache(&path).await?;
+    assert!(query(&mut peer, "000Ab12").await?.ends_with(b"L|1|Q\r"));
+    machine_state(&path, "Rejected", 1).await?;
+    wait_state(&path, "done", 1).await?;
+    let reason: String =
+        database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |r| r.get(0))?;
+    assert!(reason.contains("required specimen position was not supplied"));
+    assert_eq!(receiver_count(&receiver_path)?, 1);
+    drop(peer);
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn adr0004_disconnect_before_astm_ack_preserves_uncertain_outcome_and_events()
+-> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    configure_orders(temp.path(), true)?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(include_bytes!(
+            "../../../../docs/contract/vectors/order.json"
+        ))?])
+        .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "astm").await?;
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), peer.read_u8()).await??,
+        5
+    );
+    drop(peer);
+    machine_state(&path, "Uncertain", 1).await?;
+    wait_state(&path, "done", 2).await?;
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

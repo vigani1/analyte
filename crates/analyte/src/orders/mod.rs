@@ -11,6 +11,7 @@ pub use operator::{Command, Outcome, run};
 /// Cache policy shared with the destination poller (ADR 0004).
 pub(crate) const FRESHNESS_SECONDS: u64 = 30;
 
+/// Adapts validated app fields without inventing a code system or position.
 pub(crate) fn app_order(
     order: &analyte_contract::Order,
 ) -> Result<analyte_mapping::AppOrder, Error> {
@@ -70,6 +71,7 @@ fn build_event(record: &MachineOrder, reason: Option<&str>) -> Result<OrderEvent
     )?)
 }
 
+/// Returns the app namespace used for cache lookups and lifecycle events.
 pub(crate) fn destination(machine: &Machine) -> Identifier {
     machine.snapshot.effective().site().destination.name.clone()
 }

@@ -39,6 +39,9 @@ pub enum Error {
     /// An immutable identity or state transition conflicted.
     #[error("identity or state constraint conflict")]
     Conflict,
+    /// The model rejected a machine-order lifecycle transition.
+    #[error("machine-order lifecycle transition rejected: {0}")]
+    OrderTransition(#[from] analyte_model::TransitionError),
     /// SQLite reported a full disk.
     #[error("disk full")]
     DiskFull,

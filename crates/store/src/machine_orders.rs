@@ -233,9 +233,7 @@ impl Store {
         {
             return Ok(Err(SendRefusal::WrongMachine));
         }
-        let state = OrderState::Requested
-            .transition(initial)
-            .map_err(|_| Error::Conflict)?;
+        let state = OrderState::Requested.transition(initial)?;
         tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,?5,?6,?6,?7)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),key(&state)?,now,code.as_str()])?;
         let record = MachineOrder {
             id: tx.last_insert_rowid(),
@@ -327,7 +325,7 @@ impl Store {
         if now < record.updated_at || audit.is_some() && record.state != OrderState::Uncertain {
             return Err(Error::Conflict);
         }
-        record.state = record.state.transition(to).map_err(|_| Error::Conflict)?;
+        record.state = record.state.transition(to)?;
         record.updated_at = now;
         record.source_code = code;
         tx.execute(

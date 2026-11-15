@@ -3,8 +3,11 @@ use crate::{Error, config::Machine, deadline};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};
 
+/// A durable reservation paired with its already mapped, bounded wire records.
 pub(crate) struct Reserved {
+    /// Persisted identity used for every subsequent outcome.
     pub(crate) order: MachineOrder,
+    /// Complete records ready for the connection sender.
     pub(crate) records: Vec<Vec<u8>>,
 }
 
@@ -124,6 +127,25 @@ pub(crate) async fn uncertain(
     Ok(())
 }
 
+/// Records a specific failed transfer as uncertain; normal transfer remains Sent.
+pub(crate) async fn finished(
+    store: &Handle,
+    order: &MachineOrder,
+    end: analyte_dialog::astm::End,
+) -> Result<(), Error> {
+    // LIS01 confirms transfer, not the analyzer application's acceptance.
+    // Only explicit application evidence may advance Sent to Accepted.
+    let code = match end {
+        analyte_dialog::astm::End::Normal => return Ok(()),
+        analyte_dialog::astm::End::Abort => "ASTM-transfer-aborted",
+        analyte_dialog::astm::End::Timeout => "ASTM-transfer-timeout",
+        analyte_dialog::astm::End::Interrupt => "ASTM-transfer-interrupted",
+        analyte_dialog::astm::End::Incomplete => "ASTM-transfer-incomplete",
+    };
+    uncertain(store, order, code).await
+}
+
+/// Marks interrupted Sent reservations uncertain without issuing another command.
 pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     let until = deadline();
     let mut after = 0;

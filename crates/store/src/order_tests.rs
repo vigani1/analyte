@@ -221,3 +221,59 @@ fn plan11_schema3_to4_preserves_rows_and_triggers() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn adr0004_sent_reservations_survive_restart_and_plan11_listing_is_filtered_and_bounded()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("orders.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let first = store
+        .reserve_send(&identity()?, NonZeroU64::MIN, 101, 30, event)?
+        .map_err(std::io::Error::other)?;
+    let mut second_key = identity()?;
+    second_key.machine = Identifier::new("second-machine")?;
+    let second = store
+        .reserve_send(&second_key, NonZeroU64::MIN, 101, 30, event)?
+        .map_err(std::io::Error::other)?;
+    drop(store);
+    let mut store = open(&path)?;
+    assert!(matches!(
+        store.reserve_send(&identity()?, NonZeroU64::MIN, 102, 30, event)?,
+        Err(SendRefusal::AlreadyReserved)
+    ));
+    store.limits.page_rows = 1;
+    let mut filter = MachineOrderFilter {
+        after: 0,
+        machine: None,
+        state: None,
+    };
+    let rows = store.machine_orders(&filter)?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows.first().ok_or("first page absent")?.id, first.id);
+    filter.after = first.id;
+    assert_eq!(
+        store
+            .machine_orders(&filter)?
+            .first()
+            .ok_or("second page absent")?
+            .id,
+        second.id
+    );
+    filter.after = second.id;
+    assert!(store.machine_orders(&filter)?.is_empty());
+    filter.after = 0;
+    filter.machine = Some(second_key.machine);
+    assert_eq!(
+        store
+            .machine_orders(&filter)?
+            .first()
+            .ok_or("machine filter absent")?
+            .id,
+        second.id
+    );
+    filter.state = Some(OrderState::Accepted);
+    assert!(store.machine_orders(&filter)?.is_empty());
+    Ok(())
+}

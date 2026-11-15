@@ -101,6 +101,15 @@ pub(super) async fn session(
                 }
                 let mut actions = VecDeque::new();
                 if matches!(event, Event::Byte(analyte_framing::astm::ENQ)) {
+                    // Start the query budget before admission and journaling.
+                    // A new transfer supersedes a pending lookup, so no cached
+                    // order response can wait behind another machine message.
+                    query_started = Some(Instant::now());
+                    if pending.is_some() || response.is_some() {
+                        pending = None;
+                        response = crate::orders::astm::failure(machine);
+                        response_deadline = None;
+                    }
                     let expected = settings.framing.limit.checked_add(machine.snapshot.canonical().len()).ok_or_else(|| invalid("ASTM admission size overflow"))?;
                     let capacity = store.request(deadline(), move |s| s.admission(expected)).await;
                     if let Err(error) = &capacity { tracing::error!(machine = machine.id.as_str(), error_kind = %error, "storage admission refused"); }
@@ -163,10 +172,8 @@ pub(super) async fn session(
                         }
                         Action::CommitFailed(_) | Action::LimitReached => return Err(invalid("ASTM storage or resource limit refused transfer")),
                         Action::Sent(end) => {
-                            if let Some(order) = active_order.take() && end != End::Normal {
-                                crate::orders::sending::uncertain(store,&order,"ASTM-transfer-incomplete").await?;
-                                // LIS01 frame ACKs confirm transfer, not LIS02 application acceptance.
-                                // Successful transfers remain Sent until explicit machine evidence.
+                            if let Some(order) = active_order.take() {
+                                crate::orders::sending::finished(store,&order,end).await?;
                             }
                         },
                     }

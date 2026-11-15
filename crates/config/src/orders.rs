@@ -79,6 +79,7 @@ pub struct Orders {
 }
 
 impl Orders {
+    /// Refuses ambiguous tables, unbounded queries and invalid field ownership.
     pub(crate) fn validate(&self, machine: &Machine, path: &str) -> Result<(), Error> {
         let fail = || {
             invalid(

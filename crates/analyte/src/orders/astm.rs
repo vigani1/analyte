@@ -10,7 +10,7 @@ use std::{future::Future, pin::Pin, time::Instant};
 mod tests;
 
 type LookupFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<Vec<Lookup>, analyte_store::Error>> + Send + 'a>>;
+    Pin<Box<dyn Future<Output = Result<Option<Vec<Vec<u8>>>, Error>> + Send + 'a>>;
 
 /// Owned by one connection; dropping cancels lookup without issuing machine work.
 pub(crate) struct Pending<'a> {
@@ -18,12 +18,17 @@ pub(crate) struct Pending<'a> {
     until: Instant,
 }
 
+/// Parsed query intent, distinct from a trusted cache answer.
 pub(crate) enum Request {
+    /// Exact specimen identifiers requested by the machine.
     Orders(Vec<SampleId>),
+    /// Cancel the pending lookup without sending machine work.
     Cancel,
+    /// Selectors outside the declared specimen-only subset.
     Unsupported,
 }
 
+/// Recognizes supported query intent without normalizing specimen identifiers.
 pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Request>, Error> {
     if machine
         .snapshot
@@ -101,12 +106,14 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
 }
 
 impl<'a> Pending<'a> {
+    /// Returns the immutable total budget for this query.
     pub(crate) fn deadline(&self) -> Instant {
         self.until
     }
+    /// Creates one owned lookup future measured from transfer start.
     pub(crate) fn new(
         store: &'a Handle,
-        machine: &Machine,
+        machine: &'a Machine,
         samples: Vec<SampleId>,
         started: Instant,
     ) -> Result<Self, Error> {
@@ -123,86 +130,128 @@ impl<'a> Pending<'a> {
                 query.deadline_ms,
             )))
             .ok_or_else(|| invalid("query deadline overflow"))?;
-        let destination = super::destination(machine);
-        let byte_limit = machine.snapshot.effective().machine().syntax.bytes;
-        let future = Box::pin(async move {
-            let mut answers = Vec::new();
-            let mut bytes = 0usize;
-            for sample in samples {
-                let destination = destination.clone();
-                let answer = store
-                    .request(until, move |s| {
-                        s.orders(
-                            &destination,
-                            &sample,
-                            jiff::Timestamp::now().as_second(),
-                            super::FRESHNESS_SECONDS,
-                        )
-                    })
-                    .await?;
-                if let Lookup::Orders(orders) = &answer {
-                    for order in orders {
-                        bytes = bytes
-                            .checked_add(order.document.len())
-                            .filter(|n| *n <= byte_limit)
-                            .ok_or(analyte_store::Error::InvalidInput)?;
-                    }
-                }
-                answers.push(answer);
-            }
-            Ok(answers)
-        });
+        let future = Box::pin(answer(store, machine, samples, until));
         Ok(Self { future, until })
     }
 
+    /// Polls the same lookup; late answers produce only error or silence.
     pub(crate) async fn finish(
         &mut self,
         machine: &Machine,
     ) -> Result<Option<Vec<Vec<u8>>>, Error> {
-        let result =
-            tokio::time::timeout_at(tokio::time::Instant::from_std(self.until), &mut self.future)
-                .await;
-        let Ok(Ok(answers)) = result else {
-            return Ok(failure(machine));
-        };
-        if Instant::now() >= self.until {
-            return Ok(failure(machine));
+        match tokio::time::timeout_at(tokio::time::Instant::from_std(self.until), &mut self.future)
+            .await
+        {
+            Ok(Ok(records)) if Instant::now() < self.until => Ok(records),
+            Ok(Ok(_)) | Err(_) => Ok(failure(machine)),
+            Ok(Err(error)) => Err(error),
         }
-        let mut records = Vec::new();
-        for answer in answers {
-            match answer {
-                Lookup::NotTrusted => return Ok(failure(machine)),
-                Lookup::NoOrders => {}
-                Lookup::Orders(orders) => {
-                    for cached in orders {
-                        let order: analyte_contract::Order =
-                            analyte_contract::decode(cached.document.as_bytes())?;
-                        if order.fields().state != analyte_contract::evidence::OrderState::Requested
-                            || order.fields().tombstone
-                        {
-                            continue;
-                        }
-                        let Ok(mapped) = super::app_order(&order).and_then(|order| {
-                            Ok(analyte_mapping::map_order(&order, &machine.snapshot)?)
-                        }) else {
+    }
+}
+
+async fn answer(
+    store: &Handle,
+    machine: &Machine,
+    samples: Vec<SampleId>,
+    until: Instant,
+) -> Result<Option<Vec<Vec<u8>>>, Error> {
+    let mut records = Vec::new();
+    let mut bytes = 0usize;
+    let limits = &machine.snapshot.effective().machine().syntax;
+    for sample in samples {
+        let destination = super::destination(machine);
+        let answer = match store
+            .request(until, move |s| {
+                s.orders(
+                    &destination,
+                    &sample,
+                    jiff::Timestamp::now().as_second(),
+                    super::FRESHNESS_SECONDS,
+                )
+            })
+            .await
+        {
+            Ok(answer) => answer,
+            Err(analyte_store::Error::Timeout) => return Ok(failure(machine)),
+            Err(error) => return Err(error.into()),
+        };
+        match answer {
+            Lookup::NotTrusted => return Ok(failure(machine)),
+            Lookup::NoOrders => {}
+            Lookup::Orders(orders) => {
+                for cached in orders {
+                    bytes = bytes
+                        .checked_add(cached.document.len())
+                        .filter(|n| *n <= limits.bytes)
+                        .ok_or_else(|| invalid("query response byte limit exceeded"))?;
+                    let order: analyte_contract::Order =
+                        analyte_contract::decode(cached.document.as_bytes())?;
+                    let fields = order.fields();
+                    if fields.state != analyte_contract::evidence::OrderState::Requested
+                        || fields.tombstone
+                    {
+                        continue;
+                    }
+                    if fields.target_analyzers.as_ref().is_some_and(|targets| {
+                        !targets
+                            .iter()
+                            .any(|target| target.as_str() == machine.id.as_str())
+                    }) {
+                        continue;
+                    }
+                    let mapped = match super::app_order(&order).and_then(|order| {
+                        Ok(analyte_mapping::map_order(&order, &machine.snapshot)?)
+                    }) {
+                        Ok(mapped) => mapped,
+                        Err(error) => {
+                            let reason =
+                                analyte_model::SourceText::new(&format!("rejected: {error}"))?;
+                            let identity = analyte_store::MachineOrderKey {
+                                destination: super::destination(machine),
+                                order: cached.id,
+                                machine: machine.id.clone(),
+                            };
+                            let version = fields.version;
+                            let rejected = store
+                                .request(until, move |store| {
+                                    store.reject_unsent(
+                                        &analyte_store::OrderReservation {
+                                            identity: &identity,
+                                            version,
+                                            now: jiff::Timestamp::now().as_second(),
+                                            freshness: super::FRESHNESS_SECONDS,
+                                        },
+                                        reason,
+                                        super::event,
+                                    )
+                                })
+                                .await?;
+                            if let Err(refusal) = rejected {
+                                tracing::info!(reason=%refusal,"query mapping rejection was superseded before recording");
+                            }
                             return Ok(failure(machine));
-                        };
-                        records.push(mapped.record().to_vec());
-                        if records.len() > machine.snapshot.effective().machine().syntax.records {
-                            return Ok(failure(machine));
                         }
+                    };
+                    records.push(mapped.record().to_vec());
+                    if records
+                        .len()
+                        .checked_mul(2)
+                        .and_then(|n| n.checked_add(2))
+                        .is_none_or(|n| n > limits.records)
+                    {
+                        return Ok(failure(machine));
                     }
                 }
             }
         }
-        if Instant::now() >= self.until {
-            return Ok(failure(machine));
-        }
-        let code = if records.is_empty() { b'I' } else { b'N' };
-        Ok(Some(envelope(records, code)))
     }
+    if Instant::now() >= until {
+        return Ok(failure(machine));
+    }
+    let code = if records.is_empty() { b'I' } else { b'N' };
+    Ok(Some(envelope(records, code)))
 }
-
+/// Applies the explicit failure policy without manufacturing an empty answer.
 pub(crate) fn failure(machine: &Machine) -> Option<Vec<Vec<u8>>> {
     match machine
         .snapshot
@@ -219,6 +268,7 @@ pub(crate) fn failure(machine: &Machine) -> Option<Vec<Vec<u8>>> {
     }
 }
 
+/// Wraps mapped orders with independent patient groups and explicit termination.
 pub(crate) fn envelope(mut orders: Vec<Vec<u8>>, termination: u8) -> Vec<Vec<u8>> {
     let mut records = vec![b"H|\\^&|||Analyte|||||||P|1\r".to_vec()];
     for (index, order) in orders.drain(..).enumerate() {

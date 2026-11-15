@@ -22,7 +22,7 @@ pub(crate) fn destinations(program: &Program, loopback: bool) -> Result<Vec<Dest
             store_timeout: Duration::from_secs(2),
             backoff_min: Duration::from_secs(1),
             backoff_max: Duration::from_secs(60),
-            freshness: Duration::from_secs(30),
+            freshness: Duration::from_secs(crate::orders::FRESHNESS_SECONDS),
             poll_interval: Duration::from_secs(5),
             page_size: 100,
             max_pages: 100,
