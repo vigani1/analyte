@@ -19,18 +19,14 @@ pub(crate) struct Connection {
     reserving: Vec<MachineOrderKey>,
     exchange: Option<Exchange>,
     cursor: String,
+    clock: Instant,
 }
 
-/// A positive availability response always owns its required LAB-28 followup.
-pub(crate) enum Reply {
-    Response(Message),
-    Followup { response: Message, work: Message },
-}
+pub(crate) use analyte_dialog::law::Reply;
 
 struct Exchange {
     records: Vec<MachineOrder>,
-    sent: Message,
-    until: Instant,
+    protocol: analyte_dialog::law::WorkExchange,
     query: Option<ReceiptId>,
 }
 
@@ -41,22 +37,27 @@ impl Connection {
             reserving: Vec::new(),
             exchange: None,
             cursor: String::new(),
+            clock: Instant::now(),
         })
     }
     pub(crate) fn due(&self) -> Option<Instant> {
-        self.exchange.as_ref().map(|exchange| exchange.until)
+        self.exchange
+            .as_ref()
+            .and_then(|exchange| self.clock.checked_add(exchange.protocol.deadline()))
     }
     pub(crate) async fn tick(&mut self, store: &Handle) -> Result<(), Error> {
-        if self.due().is_some_and(|until| Instant::now() >= until) {
+        if self
+            .exchange
+            .as_ref()
+            .is_some_and(|exchange| exchange.protocol.expired(self.clock.elapsed()))
+        {
             self.close(store, "LAW-ORL-timeout").await?;
         }
         Ok(())
     }
     pub(crate) fn issued(&mut self, wait: Duration) -> Result<(), Error> {
         if let Some(exchange) = &mut self.exchange {
-            exchange.until = Instant::now()
-                .checked_add(wait)
-                .ok_or("LAW ORL deadline overflow")?;
+            exchange.protocol.issued(self.clock.elapsed(), wait)?;
         }
         Ok(())
     }
@@ -110,20 +111,22 @@ impl Connection {
             Ok(query) => query,
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                return response_metadata(|response| {
-                    let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
-                    law::reject_trigger(
-                        message.raw(),
-                        response,
-                        error
-                            .acknowledgment_code()
-                            .ok_or("query failure has no ACK outcome")?,
-                        detail,
-                        options,
-                    )?
-                    .map(Reply::Response)
-                    .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
-                });
+                return crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law)
+                    .build(|response| {
+                        let detail =
+                            error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
+                        law::reject_trigger(
+                            message.raw(),
+                            response,
+                            error
+                                .acknowledgment_code()
+                                .ok_or("query failure has no ACK outcome")?,
+                            detail,
+                            options,
+                        )?
+                        .map(Reply::Response)
+                        .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
+                    });
             }
         };
         let stack = super::settings::law(machine)?;
@@ -223,18 +226,12 @@ impl Connection {
         );
         let sample = match query.scope() {
             law::Scope::Container(id) => {
-                let mut parts = id.raw().split(|byte| *byte == b'^');
-                let value = parts.next().ok_or("LAW container ID missing")?;
-                let namespace = parts.next().unwrap_or_default();
-                if (!namespace.is_empty()
-                    && namespace != work.container_namespace.as_str().as_bytes())
-                    || parts.any(|part| !part.is_empty())
-                {
+                if !id.is_local_to(work.container_namespace.as_str().as_bytes()) {
                     return Err(invalid(
                         "LAW container assigning authority outside configured SampleId binding",
                     ));
                 }
-                Some(SampleId::new(std::str::from_utf8(value)?)?)
+                Some(SampleId::new(std::str::from_utf8(id.value())?)?)
             }
             law::Scope::AllPending => None,
             law::Scope::Rack { .. }
@@ -309,14 +306,16 @@ impl Connection {
             return Err(invalid("LAW query deadline after reservation"));
         }
         let followup = if prepared.is_empty() {
-            response_metadata(|response| {
-                Ok(law::negative_work(
-                    query,
-                    address(&work),
-                    response,
-                    options,
-                )?)
-            })?
+            crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(
+                |response| {
+                    Ok(law::negative_work(
+                        query,
+                        address(&work),
+                        response,
+                        options,
+                    )?)
+                },
+            )?
         } else {
             let refs = prepared
                 .iter()
@@ -342,8 +341,10 @@ impl Connection {
         let prepared_query = prepared.is_empty().then_some(receipt);
         self.exchange = Some(Exchange {
             records: prepared.into_iter().map(|(_, record)| record).collect(),
-            sent: followup,
-            until,
+            protocol: analyte_dialog::law::WorkExchange::new(
+                followup,
+                until.duration_since(self.clock),
+            ),
             query: prepared_query,
         });
         Ok(outgoing)
@@ -361,7 +362,7 @@ impl Connection {
                 .await?;
             return Ok(());
         };
-        if Instant::now() >= exchange.until {
+        if exchange.protocol.expired(self.clock.elapsed()) {
             self.close(store, "LAW-ORL-late").await?;
             evidence::failed_reading(
                 store,
@@ -372,7 +373,7 @@ impl Connection {
             .await?;
             return Ok(());
         }
-        let response = law::receive_work_response(message, &exchange.sent);
+        let response = exchange.protocol.response(message);
         if let Err(error) = &response {
             evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
         }
@@ -475,7 +476,7 @@ fn reply(
     answer: law::CacheAnswer<'_>,
     options: Options,
 ) -> Result<Reply, Error> {
-    response_metadata(|response| {
+    crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(|response| {
         Ok(Reply::Response(
             law::query_response(
                 query,
@@ -487,18 +488,5 @@ fn reply(
             .message()
             .clone(),
         ))
-    })
-}
-
-pub(crate) fn response_metadata<T>(
-    build: impl FnOnce(analyte_hl7::Response<'_>) -> Result<T, Error>,
-) -> Result<T, Error> {
-    let id = uuid::Uuid::now_v7().simple().to_string();
-    let timestamp = jiff::Timestamp::now()
-        .strftime("%Y%m%d%H%M%S%z")
-        .to_string();
-    build(analyte_hl7::Response {
-        control_id: law::control_id(id.as_bytes())?,
-        timestamp: timestamp.as_bytes(),
     })
 }

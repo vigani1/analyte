@@ -1,7 +1,7 @@
 //! Host-owned HL7 unsolicited work and cancellation; HL7 ch.4 and ADR 0003/0004.
-use crate::{Error, config::Machine, deadline, invalid};
+use crate::{Error, config::Machine, deadline};
 use analyte_hl7::{
-    Options, Version,
+    Options,
     order::{self, OrderMessage, OrderResponse, Outcome},
 };
 use analyte_model::{Identifier, OrderState, SourceText};
@@ -13,277 +13,26 @@ pub(super) struct Exchange {
     pub(super) record: MachineOrder,
     pub(super) message: OrderMessage,
 }
-struct Command {
-    settings: analyte_config::Hl7Orders,
-    version: Version,
+type Command = analyte_mapping::Hl7Command;
+fn command(
+    machine: &Machine,
+    app: &analyte_contract::Order,
     options: Options,
-    app: analyte_mapping::AppOrder,
-    group: String,
+) -> Result<Command, Error> {
+    Ok(Command::new(&machine.snapshot, app, options)?)
 }
-impl Command {
-    fn new(
-        machine: &Machine,
-        app: &analyte_contract::Order,
-        options: Options,
-    ) -> Result<Self, Error> {
-        let configured = super::settings::hl7(machine).ok_or("HL7 orders absent")?;
-        let settings = configured.orders.clone();
-        if settings
-            .send
-            .as_ref()
-            .is_some_and(|send| send.settings.require_patient_identification)
-        {
-            return Err(invalid(
-                "HL7-patient-name-required-but-not-carried-by-contract",
-            ));
-        }
-        let version = match configured.syntax.edition {
-            analyte_config::Edition::V231 => Version::V231,
-            analyte_config::Edition::V251 => Version::V251,
-        };
-        let group = app.fields().id.as_str().to_owned();
-        let namespace = settings
-            .send
-            .as_ref()
-            .ok_or("HL7 send config absent")?
-            .placer_namespace
-            .as_str();
-        if group
-            .len()
-            .checked_add(namespace.len())
-            .and_then(|n| n.checked_add(1))
-            .is_none_or(|n| n > order::EI_MAX_BYTES)
-        {
-            return Err(invalid("HL7-app-order-id-too-long-for-ORC-4"));
-        }
-        Ok(Self {
-            settings,
-            version,
-            options,
-            app: super::app_order(app)?,
-            group,
+fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<OrderMessage, Error> {
+    let items = record
+        .items
+        .iter()
+        .map(|item| analyte_mapping::OutboundItem {
+            placer: &item.placer,
+            namespace: item.placer_namespace.as_ref(),
+            tests: &item.tests,
         })
-    }
-    fn build(&self, record: &MachineOrder, cancel: bool) -> Result<OrderMessage, Error> {
-        let cfg = self
-            .settings
-            .send
-            .as_ref()
-            .ok_or("HL7 send config absent")?;
-        let cfg = &cfg.settings;
-        let timestamp = jiff::Timestamp::now()
-            .strftime("%Y%m%d%H%M%S%z")
-            .to_string();
-        let id = uuid::Uuid::now_v7()
-            .simple()
-            .to_string()
-            .chars()
-            .skip(12)
-            .collect::<String>();
-        let header = order::Header {
-            application: cfg.application.as_str().as_bytes(),
-            facility: cfg.facility.as_ref().map_or(b"", |v| v.as_str().as_bytes()),
-            peer_application: cfg.peer_application.as_str().as_bytes(),
-            peer_facility: cfg
-                .peer_facility
-                .as_ref()
-                .map_or(b"", |v| v.as_str().as_bytes()),
-            control_id: analyte_hl7::ControlId::new(id.as_bytes())?,
-            timestamp: order::Timestamp::new(timestamp.as_bytes())?,
-            version: self.version,
-            processing: match cfg.processing {
-                analyte_config::Hl7Processing::Production => order::Processing::Production,
-                analyte_config::Hl7Processing::Training => order::Processing::Training,
-                analyte_config::Hl7Processing::Debugging => order::Processing::Debugging,
-            },
-        };
-        if cancel {
-            let mut orders = Vec::new();
-            for item in &record.items {
-                let namespace = item
-                    .placer_namespace
-                    .as_ref()
-                    .ok_or("HL7-item-has-no-placer-namespace")?;
-                orders.push(order::Order::Cancel {
-                    placer: order::OrderId::new(
-                        item.placer.as_bytes(),
-                        namespace.as_str().as_bytes(),
-                    )?,
-                    filler: None,
-                });
-            }
-            let sent = match self.version {
-                Version::V231 => {
-                    order::orm(&orders, order::Subject::Unspecified, header, self.options)?
-                }
-                Version::V251 => {
-                    order::oml(&orders, order::Subject::Unspecified, header, self.options)?
-                }
-            };
-            return Ok(order::context(
-                &sent,
-                self.group.as_bytes(),
-                None,
-                self.options,
-            )?);
-        }
-        let sample = order::SampleId::new(self.app.sample.as_str().as_bytes())?;
-        let source = match (&cfg.specimen_system, &self.app.specimen_type) {
-            (Some(system), Some(specimen)) => {
-                let mapped = self
-                    .settings
-                    .tables
-                    .specimen_types
-                    .as_ref()
-                    .and_then(|types| types.iter().find(|value| value.app == *specimen))
-                    .ok_or("HL7-unmapped-specimen-type")?;
-                let code = order::Code::new(
-                    mapped.machine.as_str().as_bytes(),
-                    b"",
-                    system.as_str().as_bytes(),
-                )?;
-                Some(
-                    if let Some(version) = &cfg.specimen_version
-                        && self.version == Version::V251
-                    {
-                        code.with_version(version.as_str().as_bytes())?
-                    } else {
-                        code
-                    },
-                )
-            }
-            (Some(_), None) => return Err(invalid("HL7-missing-specimen-type")),
-            (None, _) => None,
-        };
-        let priority = self
-            .settings
-            .tables
-            .priorities
-            .iter()
-            .find(|priority| {
-                priority.app.as_str()
-                    == match self.app.priority {
-                        analyte_mapping::AppOrderPriority::Routine => "routine",
-                        analyte_mapping::AppOrderPriority::Urgent => "urgent",
-                        analyte_mapping::AppOrderPriority::Stat => "stat",
-                    }
-            })
-            .ok_or("HL7-unmapped-priority")?;
-        let priority = match &priority.machine {
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
-                order::Priority::Routine
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::S) => {
-                order::Priority::Stat
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::A) => {
-                order::Priority::Asap
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::P) => {
-                order::Priority::Preop
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::C) => {
-                order::Priority::Callback
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => {
-                order::Priority::TimingCritical
-            }
-            analyte_config::MachinePriority::Code(analyte_config::PriorityCode::Prn) => {
-                order::Priority::AsNeeded
-            }
-            analyte_config::MachinePriority::Custom(_) => {
-                return Err(invalid("HL7-unsupported-priority"));
-            }
-        };
-        let mut orders = Vec::new();
-        for item in &record.items {
-            let namespace = item
-                .placer_namespace
-                .as_ref()
-                .ok_or("HL7-item-has-no-placer-namespace")?;
-            let placer =
-                order::OrderId::new(item.placer.as_bytes(), namespace.as_str().as_bytes())?;
-            if cancel {
-                orders.push(order::Order::Cancel {
-                    placer,
-                    filler: None,
-                });
-                continue;
-            }
-            let [test] = item.tests.as_slice() else {
-                return Err(invalid("HL7-send-item-must-cover-one-test"));
-            };
-            let mapped = self
-                .settings
-                .tables
-                .tests
-                .iter()
-                .find(|mapped| mapped.app == *test)
-                .ok_or("HL7-unmapped-test")?;
-            let [code, text, system] = mapped.machine_components.as_slice() else {
-                return Err(invalid("HL7-test-components"));
-            };
-            orders.push(order::Order::New {
-                placer,
-                filler: None,
-                test: order::Code::new(code.as_bytes(), text.as_bytes(), system.as_bytes())?,
-                specimen: order::Specimen {
-                    sample,
-                    field: if cfg.sample_field == 18 {
-                        order::SampleField::Placer1
-                    } else {
-                        order::SampleField::Placer2
-                    },
-                    source,
-                },
-                priority,
-                timing: order::Timing {
-                    start: None,
-                    end: None,
-                },
-            });
-        }
-        let subject = if cancel {
-            order::Subject::Unspecified
-        } else {
-            match (&self.settings.patient_namespace, &self.app.patient) {
-                (Some(namespace), Some(patient)) if *namespace == patient.namespace => {
-                    order::Subject::Identifier {
-                        identifier: patient.value.as_str().as_bytes(),
-                        namespace: patient.namespace.as_str().as_bytes(),
-                    }
-                }
-                (Some(_), Some(_)) => return Err(invalid("HL7-patient-namespace-mismatch")),
-                _ => order::Subject::Unspecified,
-            }
-        };
-        let sent = match self.version {
-            Version::V231 => order::orm(&orders, subject, header, self.options)?,
-            Version::V251 => order::oml(&orders, subject, header, self.options)?,
-        };
-        let position = if cancel {
-            None
-        } else {
-            cfg.position_field
-                .zip(self.app.position.as_ref())
-                .map(|(field, position)| {
-                    (
-                        if field == 18 {
-                            order::SampleField::Placer1
-                        } else {
-                            order::SampleField::Placer2
-                        },
-                        position.slot.as_str().as_bytes(),
-                    )
-                })
-        };
-        Ok(order::context(
-            &sent,
-            self.group.as_bytes(),
-            position,
-            self.options,
-        )?)
-    }
+        .collect::<Vec<_>>();
+    let metadata = crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
+    Ok(command.map(&items, cancel, metadata.response()?)?)
 }
 
 pub(super) async fn next(
@@ -295,9 +44,7 @@ pub(super) async fn next(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let settings = super::settings::hl7(machine)
-        .map(|settings| settings.orders)
-        .ok_or("HL7 settings missing")?;
+    let settings = super::settings::hl7(machine).ok_or("HL7 settings missing")?;
     let Some(send) = &settings.send else {
         return Ok(None);
     };
@@ -321,8 +68,8 @@ pub(super) async fn next(
         .await?;
     for (record, cached) in cancels {
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
-        let command = Command::new(machine, &app, options)?;
-        let message = command.build(&record, true)?;
+        let command = command(machine, &app, options)?;
+        let message = build(&command, &record, true)?;
         let id = record.id;
         reserving.push(record.key.clone());
         let owner = owner.clone();
@@ -361,7 +108,7 @@ pub(super) async fn next(
             machine: machine.id.clone(),
         };
         let version = app.fields().version;
-        let command = match Command::new(machine, &app, options) {
+        let command = match command(machine, &app, options) {
             Ok(command) => command,
             Err(error) => {
                 reject(store, key, version, &error.to_string(), freshness).await?;
@@ -370,8 +117,7 @@ pub(super) async fn next(
         };
         let namespace = send.placer_namespace.clone();
         let groups = command
-            .app
-            .tests
+            .tests()
             .iter()
             .cloned()
             .map(|test| vec![test])
@@ -401,8 +147,7 @@ pub(super) async fn next(
                         owner: Some(&owner),
                         prepare: Some(&mut |record| {
                             message = Some(
-                                command
-                                    .build(record, false)
+                                build(&command, record, false)
                                     .map_err(analyte_store::Error::DeliveryBuild)?,
                             );
                             Ok(())

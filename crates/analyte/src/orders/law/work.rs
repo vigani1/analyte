@@ -1,173 +1,38 @@
-//! Bounded app-to-AWOS adaptation; protocol rendering stays in analyte-hl7.
-use super::response_metadata;
-use crate::{Error, invalid};
+//! Host reservation views and response metadata for the pure LAW mapper.
+use crate::{Error, config::Machine};
 use analyte_hl7::{Message, Options, law};
+pub(super) use analyte_mapping::{LawCommand as Command, law_address as address};
 use analyte_store::MachineOrder;
-use std::sync::Arc;
-
-pub(super) struct Command {
-    pub(super) app: analyte_mapping::AppOrder,
-    pub(super) settings: Arc<analyte_config::LawOrders>,
-    pub(super) priority: bool,
-    pub(super) specimen: bool,
+pub(super) fn command(machine: &Machine, app: &analyte_contract::Order) -> Result<Command, Error> {
+    Ok(Command::new(&machine.snapshot, app)?)
 }
-impl Command {
-    pub(super) fn new(
-        machine: &crate::config::Machine,
-        app: &analyte_contract::Order,
-    ) -> Result<Self, Error> {
-        let law = super::super::settings::law(machine)?;
-        let peer = law.policy.peer.capabilities();
-        Ok(Self {
-            app: super::super::app_order(app)?,
-            settings: Arc::new(
-                law.orders
-                    .as_ref()
-                    .ok_or("LAW order mappings absent")?
-                    .clone(),
-            ),
-            priority: peer.priority,
-            specimen: peer.specimen,
-        })
-    }
-}
-struct WireAwos {
-    id: String,
-    specimen: String,
-    container: String,
-    specimen_type: String,
-    test: String,
-    priority: Option<String>,
-}
-
-fn plain(value: &str) -> Result<&str, Error> {
-    if value.is_empty()
-        || !value.is_ascii()
-        || value
-            .bytes()
-            .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
-    {
-        return Err(invalid(
-            "LAW outbound value cannot be represented without changing its identity",
-        ));
-    }
-    Ok(value)
-}
-
 pub(super) fn render(
     commands: &[(&Command, &MachineOrder)],
     action: law::WorkAction,
     options: Options,
 ) -> Result<Message, Error> {
-    let (first, _) = commands.first().ok_or("LAW work empty")?;
-    let mut wire = Vec::new();
-    for (command, record) in commands {
-        let sample = plain(command.app.sample.as_str())?;
-        let specimen = command
-            .app
-            .specimen_type
-            .as_ref()
-            .ok_or("LAW specimen type missing")?;
-        let mapped = command
-            .settings
-            .specimen_types
-            .iter()
-            .find(|entry| entry.app == *specimen)
-            .ok_or("LAW specimen type unmapped")?;
-        let priority = if command.priority && action == law::WorkAction::New {
-            let app = match command.app.priority {
-                analyte_mapping::AppOrderPriority::Routine => "routine",
-                analyte_mapping::AppOrderPriority::Urgent => "urgent",
-                analyte_mapping::AppOrderPriority::Stat => "stat",
-            };
-            Some(format!(
-                "{}^^HL70485",
-                plain(
-                    command
-                        .settings
-                        .priorities
-                        .iter()
-                        .find(|p| p.app.as_str() == app)
-                        .ok_or("LAW priority unmapped")?
-                        .machine
-                        .as_str()
-                )?
-            ))
-        } else {
-            None
-        };
-        for item in &record.items {
-            if wire.len() >= options.limits.segments {
-                return Err(invalid("LAW query AWOS limit exceeded"));
-            }
-            let [test] = item.tests.as_slice() else {
-                return Err(invalid("LAW item must cover one AWOS test"));
-            };
-            let mapped_test = command
-                .settings
-                .tests
-                .iter()
-                .find(|entry| entry.app == *test)
-                .ok_or("LAW test unmapped")?;
-            wire.push(WireAwos {
-                // C.6 manager-authored AWOS supports EI.1 only. The shared store
-                // still retains the explicit logical namespace beside this identity.
-                id: item.placer.clone(),
-                specimen: format!(
-                    "{sample}&{}",
-                    command.settings.work.specimen_namespace.as_str()
-                ),
-                container: sample.to_owned(),
-                specimen_type: format!(
-                    "{}^^{}",
-                    plain(mapped.machine.as_str())?,
-                    command.settings.work.specimen_system.as_str()
-                ),
-                test: mapped_test.machine_components.join("^"),
-                priority: priority.clone(),
-            });
-        }
-    }
-    let awos = wire
+    let items = commands
         .iter()
-        .map(|item| {
-            Ok(law::Awos::new(
-                item.id.as_bytes(),
-                item.specimen.as_bytes(),
-                item.specimen_type.as_bytes(),
-                first.settings.work.specimen_role.as_str().as_bytes(),
-                item.container.as_bytes(),
-                item.test.as_bytes(),
-                action,
-            )?
-            .with_instructions(law::Instructions {
-                priority: item.priority.as_ref().map(String::as_bytes),
-                ..law::Instructions::default()
-            }))
+        .map(|(_, record)| {
+            record
+                .items
+                .iter()
+                .map(|item| analyte_mapping::OutboundItem {
+                    placer: &item.placer,
+                    namespace: item.placer_namespace.as_ref(),
+                    tests: &item.tests,
+                })
+                .collect::<Vec<_>>()
         })
-        .collect::<Result<Vec<_>, Error>>()?;
-    let capabilities = law::Capabilities {
-        priority: first.priority,
-        specimen: first.specimen,
-        ..law::Capabilities::default()
-    };
-    response_metadata(|response| {
-        Ok(law::work_order(
-            &awos,
-            None,
-            address(&first.settings.work),
-            response,
-            capabilities,
-            options,
+        .collect::<Vec<_>>();
+    let refs = commands
+        .iter()
+        .zip(&items)
+        .map(|((command, _), items)| (*command, items.as_slice()))
+        .collect::<Vec<_>>();
+    crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(|response| {
+        Ok(analyte_mapping::map_law_work(
+            &refs, action, options, response,
         )?)
     })
-}
-
-pub(super) fn address(config: &analyte_config::LawWork) -> law::Address<'_> {
-    law::Address {
-        application: config.application.as_str().as_bytes(),
-        facility: config.facility.as_str().as_bytes(),
-        peer_application: config.peer_application.as_str().as_bytes(),
-        peer_facility: config.peer_facility.as_str().as_bytes(),
-    }
 }

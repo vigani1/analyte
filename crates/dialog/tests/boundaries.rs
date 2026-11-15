@@ -23,7 +23,7 @@ fn adr0003_0010_astm_commit_identity_tracks_transfer_and_failed_request_ordinals
             let id = out
                 .iter()
                 .find_map(|a| {
-                    if let Action::Commit(id, _) = a {
+                    if let Action::Commit(id, _, _) = a {
                         Some(*id)
                     } else {
                         None
@@ -97,7 +97,7 @@ fn adr0003_lis01_6_4_eot_during_commit_ends_incomplete_and_late_commit_never_ack
     let id = out
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _) = a {
+            if let Action::Commit(id, _, _) = a {
                 Some(*id)
             } else {
                 None
@@ -216,7 +216,7 @@ fn adr0003_rule7_lis01_6_3_receiver_limits_refuse_without_commit_or_ack() -> Tes
                 let id = out
                     .iter()
                     .find_map(|a| {
-                        if let Action::Commit(id, raw) = a {
+                        if let Action::Commit(id, _, raw) = a {
                             assert_eq!(raw, &wire);
                             Some(*id)
                         } else {

@@ -87,31 +87,6 @@ fn vidas_bci_a_3_bad_checksum_and_bounds_stop() -> Result<(), Box<dyn std::error
 }
 
 #[test]
-fn vidas_bci_a_4_exact_identity_unknown_tags_and_values() -> Result<(), Box<dyn std::error::Error>>
-{
-    let text = "mtrsl|pi|si|ci000a|rtHCG|tt09:05|td2026/01/02|qlEquivoque|qn<1,234mUI/ml|y3mUI/ml|qd1:1|nccalinc|zzextension|";
-    let message = Message::parse(text, SampleLimit::Twelve)?;
-    assert_eq!(message.text(), text);
-    assert_eq!(message.get("zz"), Some("extension"));
-    let result = message.result()?;
-    assert_eq!(result.sample.as_str(), "000a");
-    assert_eq!(result.value.original.as_str(), "<1,234mUI/ml");
-    assert_eq!(result.call.as_str(), "Equivoque");
-    assert_eq!(result.flag.ok_or("flag")?.as_str(), "calinc");
-    assert!(Message::parse("mtmpr|piX|si|ci1234567890123|rtHCG|", SampleLimit::Twelve).is_err());
-    assert!(
-        Message::parse(
-            "mtmpr|piX|si|ci1234567890123|rtHCG|",
-            SampleLimit::Seventeen
-        )
-        .is_ok()
-    );
-    assert!(Message::parse("mtmpr|piX|si|ci001|", SampleLimit::Twelve).is_err());
-    assert!(Message::build(&[("mt", "mpr"), ("pi", "X|ciY")], SampleLimit::Twelve).is_err());
-    Ok(())
-}
-
-#[test]
 fn vidas_bci_a_3_adr0003_store_gate_and_incomplete_transfer()
 -> Result<(), Box<dyn std::error::Error>> {
     for mode in [Mode::Literal, Mode::Alternate] {

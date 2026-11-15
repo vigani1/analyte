@@ -1,0 +1,125 @@
+# 0012. One layout and one naming scheme for every protocol and machine
+
+Status: accepted, 2026-11-15. Refines [ADR 0001](0001-rust-and-layered-architecture.md)
+and [ADR 0002](0002-config-first.md).
+
+## Context
+
+ASTM and HL7 split their code across the layer crates, while POCT, VIDAS and
+Autolyser keep framing, dialog or mapping inside their own crate. Protocol
+notes have different shapes, vendor protocols have none, and the repository
+has no place for machine definitions. Output functions are called `build`,
+`encode`, `serialize` or `write` for the same meaning. A measurement on
+2026-11-15 found 57 production functions over 100 lines and six over the
+cognitive complexity limit, because no size lint was enabled.
+
+A reader, a reviewer or a community contributor should find any part of any
+protocol or machine in the same place, under the same name, explained the same
+way. HL7 alone now has five editions (2.3.1, 2.5.1, 2.6, 2.8.2, 2.9.1), so
+versions need one pattern before they multiply.
+
+## Decision
+
+### 1. Protocol keys
+
+Every protocol has one lower-case key, used unchanged in file names, module
+names, config values and docs: `astm`, `hl7`, `law`, `poct`, `vidas`,
+`autolyser`. A profile of another standard (LAW on HL7) keeps its own key and
+lives under its base standard's syntax crate.
+
+### 2. Code template
+
+Every protocol, standard or vendor, uses the same places:
+
+| Concern | Place |
+| --- | --- |
+| Message boundaries and checksums | `crates/framing/src/<key>.rs`, when the protocol has its own framing |
+| Conversation state, deadlines, acknowledgment choice | `crates/dialog/src/<key>.rs` |
+| Grammar: bytes to structure and back | `crates/<key>/src/syntax.rs` (a profile: `crates/hl7/src/<key>/`) |
+| Typed named-field access | `crates/<key>/src/views.rs` |
+| Version rules | `crates/<key>/src/version.rs` |
+| Machine terms to the common model and back | `crates/mapping/src/<key>.rs` |
+| Connection driving (I/O, store calls, timers) | `crates/analyte/src/machine/<key>.rs` |
+| Order sending | `crates/analyte/src/orders/<key>.rs` |
+
+A file grows into a folder of the same name (`law.rs` plus `law/`) when it has
+separate responsibilities. A concern that a protocol lacks has no file.
+
+### 3. Versions
+
+A standard with several versions has one implementation. `version.rs` holds
+the `Version` enum and the table of rules that differ by version. There are no
+per-version copies of parsers, dialogs or mappings. The machine definition
+names its version, and an unsupported version fails config validation. Every
+row in the table names its source section and has a test.
+
+### 4. Protocol notes
+
+Every protocol, vendor formats included, has `docs/protocols/<key>/` with the
+same four files:
+
+| File | Holds |
+| --- | --- |
+| `README.md` | What the protocol is, Analyte's role in it, source document names and editions, scope, evidence level |
+| `decisions.md` | Each choice the standard leaves open or Analyte adds on top of it (role, strictness, supported options, readings of ambiguous text, defaults, safety-driven departures): what Analyte does, why, the source section or ADR behind it, and the test that guards it. Plain requirements live only in `checklist.md` |
+| `checklist.md` | The conformance checklist, one or more tests per row |
+| `versions.md` | Supported versions, the difference table with sources, and the compatibility rule for unlisted versions |
+
+Notes are written in our own words; nothing is copied from the documents.
+
+### 5. Machines
+
+Each machine definition lives in `machines/<vendor>/<model>/`, lower-case and
+hyphenated (`machines/roche/cobas-e411/`):
+
+| Entry | Holds |
+| --- | --- |
+| `machine.toml` | The shipped definition: protocol key, version, transport kind, mappings, named departures, evidence level |
+| `README.md` | Fixed sections: Machine, Connection, Settings on the machine, Supported workflows, Departures, Evidence, Open questions, Sources |
+| `recordings/` | ADR 0009 recordings, synthetic or de-identified only |
+
+Site settings and credentials never enter the repository. A workspace test
+loads every `machines/**/machine.toml`, validates it, replays every recording
+and checks that the README states the same evidence level as the definition.
+The protocol and the transport kind are independent settings, so any protocol
+can run over any transport that its framing supports.
+
+### 6. Names
+
+- One verb per meaning: `parse` (bytes or text to typed values), `encode`
+  (typed values to bytes), `map` (machine terms to model terms, or back),
+  `validate` (a rule check that returns a specific error). A term defined by a
+  standard keeps the standard's name (for example HL7 escape decoding).
+- A name says what the item holds. No `utils`, `common`, `helpers`, `misc`, or
+  names that point to a neighbour instead of the content.
+- Modules use `name.rs` plus `name/`, never `mod.rs`. Unit tests that leave
+  their module go to `<module>/tests.rs`.
+- File names never repeat their folder, and item names never repeat their
+  module.
+
+### 7. Size and complexity
+
+The workspace enables `too_many_lines` (100), `cognitive_complexity` (25),
+`fn_params_excessive_bools`, `struct_excessive_bools`, `items_after_statements`,
+`module_name_repetitions` and `similar_names`. An exception is a narrow
+`#[expect(..., reason = "...")]`, for a flat table that reads best whole. A
+production file over about 600 lines needs a stated reason in review.
+Several related yes/no flags become one enum of named states.
+
+### 8. Every crate says what it owns
+
+Each crate's `lib.rs` starts with its layer, what it owns and what it must
+not do. Domain terms (receipt, delivery, revision, custody, parked item and so
+on) are defined once in `docs/glossary.md`.
+
+## Consequences
+
+- Adding a protocol means filling the same template; adding a machine means
+  one `machines/` folder and no code.
+- POCT, VIDAS and Autolyser move their framing, dialog and mapping into the
+  layer crates. The plan's crate table changes with them.
+- `crates/config/examples/` keeps synthetic teaching configs. Real machines
+  live only in `machines/`.
+- Existing protocol notes move into the four-file shape without losing
+  content.
+- New code that breaks the size limits fails CI, so the cleanup holds.

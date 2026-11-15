@@ -353,8 +353,9 @@ or cancellation. Review provenance and actual exercised scope before changing
 
 ## Contribute the definition
 
-The plan does not establish a `machines/` folder convention. Contribute configs
-as a PR with their evidence; agree their placement with maintainers. Keep site
+Contribute a machine as one `machines/<vendor>/<model>/` folder with
+`machine.toml`, `README.md` and `recordings/`, as
+[ADR 0012](adr/0012-uniform-layout-and-naming.md) describes. Keep site
 addresses, credentials, patient data and original captures out of the PR.
 
 Include the definition, supported model/software and capabilities, honest evidence

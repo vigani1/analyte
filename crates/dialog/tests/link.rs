@@ -37,7 +37,7 @@ fn commit(d: &mut Dialog, actions: &[Action], ok: bool) -> Vec<Action> {
     actions
         .iter()
         .filter_map(|a| {
-            if let Action::Commit(id, _) = a {
+            if let Action::Commit(id, _, _) = a {
                 Some(*id)
             } else {
                 None
@@ -72,6 +72,7 @@ fn adr0003_lis01_6_3_2_6_5_1_commit_duplicate_and_conflict() -> TestResult {
     let frames = wire(b"R|synthetic\r", FrameNumber::FIRST, Limit::default())?;
     let frame = frames.first().ok_or("missing frame")?;
     let a = feed(&mut d, 0, frame);
+    assert!(a.iter().any(|action| matches!(action, Action::Commit(_, number, bytes) if *number == FrameNumber::FIRST && bytes == frame)));
     assert!(!a.contains(&Action::Write(vec![ACK])));
     let committed = commit(&mut d, &a, true);
     assert!(committed.contains(&Action::Write(vec![ACK])));
@@ -315,7 +316,7 @@ fn adr0003_late_commit_and_failed_retry_have_distinct_identity() -> TestResult {
     let old = a
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _) = a {
+            if let Action::Commit(id, _, _) = a {
                 Some(*id)
             } else {
                 None
@@ -324,12 +325,12 @@ fn adr0003_late_commit_and_failed_retry_have_distinct_identity() -> TestResult {
         .ok_or("no commit")?;
     commit(&mut d, &a, false);
     let b = feed(&mut d, 0, frame);
-    assert!(!b.contains(&Action::Commit(old, frame.clone())));
+    assert!(!b.contains(&Action::Commit(old, FrameNumber::FIRST, frame.clone())));
     assert!(step(&mut d, 0, Event::Committed(old)).contains(&Action::Refused(Error::StaleCommit)));
     let id = b
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _) = a {
+            if let Action::Commit(id, _, _) = a {
                 Some(*id)
             } else {
                 None
@@ -423,7 +424,7 @@ fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult
     let id = again
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _) = a {
+            if let Action::Commit(id, _, _) = a {
                 Some(*id)
             } else {
                 None

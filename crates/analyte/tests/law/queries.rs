@@ -242,6 +242,20 @@ async fn quiet(peer: &mut TcpStream) -> Result<(), Error> {
     );
     Ok(())
 }
+/// Waits until `table` holds at least `expected` rows. Messages the host
+/// deliberately leaves unanswered have no wire event that marks their storage.
+async fn wait_count(path: &Path, table: &str, expected: i64) -> Result<i64, Error> {
+    tokio::time::timeout(HANG_GUARD, async {
+        loop {
+            let found = count(path, table)?;
+            if found >= expected {
+                return Ok::<_, Error>(found);
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await?
+}
 async fn wait_audit(path: &Path) -> Result<(), Error> {
     tokio::time::timeout(HANG_GUARD, async {
         loop {
@@ -894,7 +908,7 @@ async fn law_tf2b_b7_1_b7_2_host_correlates_errors_without_ack_loops() -> Result
         send(&mut peer, ack.as_bytes()).await?;
         quiet(&mut peer).await?;
     }
-    assert_eq!(count(&path, "receipts")?, 9);
+    assert_eq!(wait_count(&path, "receipts", 9).await?, 9);
     assert_eq!(count(&path, "machine_orders")?, 0);
     assert_eq!(count(&path, "outbox")?, 0);
     running.stop().await?;

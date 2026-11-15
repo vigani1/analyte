@@ -20,6 +20,17 @@ pub fn parse_message(bytes: &[u8], options: Options) -> Result<Message, crate::E
     Message::parse_law(bytes, options)
 }
 
+/// Borrows MSH-9 components without applying the general HL7 control profile.
+/// LAW's compatible versions and ignored elements are checked by transaction views.
+pub fn message_type(message: &Message) -> impl Iterator<Item = &[u8]> {
+    message
+        .segments()
+        .next()
+        .and_then(|segment| segment.field(9))
+        .map_or(b"".as_slice(), crate::Field::raw)
+        .split(|byte| Some(byte) == message.delimiters().bytes().get(1))
+}
+
 /// Validates MSH, MSA and ERR fields/components and their message predicates.
 /// RE availability is supplied by the caller: omission means no value is available;
 /// supplied values are always checked. No identities or clinical values are invented.

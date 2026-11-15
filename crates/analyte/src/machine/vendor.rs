@@ -49,14 +49,16 @@ pub(super) async fn write(
     bytes: &[u8],
     budget: Duration,
 ) -> Result<(), Error> {
-    tokio::time::timeout(budget, async {
-        for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
-            conn.write(chunk.to_vec()).await?;
+    let until = tokio::time::Instant::now()
+        .checked_add(budget)
+        .ok_or_else(|| invalid("vendor write deadline overflow"))?;
+    conn.write_all(bytes, Some(until)).await.map_err(|error| {
+        if matches!(error, analyte_transport::Error::Deadline("write all")) {
+            invalid("vendor write deadline exceeded; outcome uncertain")
+        } else {
+            error.into()
         }
-        Ok::<_, Error>(())
     })
-    .await
-    .map_err(|_| invalid("vendor write deadline exceeded; outcome uncertain"))?
 }
 
 pub(super) async fn failed(
