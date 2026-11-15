@@ -94,3 +94,13 @@ any app can test itself without our reference receiver.
   and rotated by the host, never by a driver.
 - A breaking change needs contract version 2, served alongside version 1
   during migration.
+
+### Frozen wire types
+
+Version 1 evidence types deliberately own separate copies of the model's text,
+value, result and identity validators. Model changes must not silently change
+accepted version 1 documents. The property tests in
+`crates/contract/tests/agreement.rs` compare acceptance and rejection for bounded
+text, decimal notation, UUID identities, UTC offsets, bounded and nonempty
+evidence lists, unit mapping sources and decoded text interpretation. A divergence
+requires an explicit contract decision rather than sharing these implementations.
