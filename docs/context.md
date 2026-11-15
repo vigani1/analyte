@@ -118,6 +118,10 @@ the lab PC only makes outbound connections, orders are polled, receivers store
 before answering and treat a repeated delivery ID as done, Analyte never
 answers "no orders" when unsure, and every result keeps the three identities.
 
+## Guides
+
+- [Adding a machine](adding-a-machine.md): settings, configuration, recordings and evidence.
+
 ## Next steps
 
 1. Finish IHE LAW in the program, then a recorded IHE Gazelle run (simulated).
