@@ -11,11 +11,12 @@ async fn setup(
     ack_ms: u32,
     query_ms: u32,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
-    setup_with_freshness(edition, ack_ms, 30).await
+    setup_with_freshness(edition, ack_ms, query_ms, 30).await
 }
 async fn setup_with_freshness(
     edition: &str,
     ack_ms: u32,
+    query_ms: u32,
     freshness: u64,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
@@ -348,7 +349,7 @@ async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result
 async fn rule9_hl7_query_freshness_follows_destination_config() -> Result<(), Error> {
     for (freshness, expected) in [(10, "QAK||AE\r"), (120, "QAK||NF\r")] {
         let (_temp, path, reference, service, mut peer) =
-            setup_with_freshness("v251", 3000, freshness).await?;
+            setup_with_freshness("v251", 30000, 30000, freshness).await?;
         reference.close().await?;
         database(&path)?.execute(
             "UPDATE feed SET polled=?1",
