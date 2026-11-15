@@ -50,12 +50,12 @@ impl Text {
 }
 
 macro_rules! wire {
-    ($name:ident { $($field:ident : $ty:ty),* $(,)? }) => {
+    ($name:ident { $($(#[$attr:meta])* $field:ident : $ty:ty),* $(,)? }) => {
         #[doc = concat!("Version 1 ", stringify!($name), "; unknown fields are ignored.")]
         #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct $name {
             $(#[doc = concat!("The ", stringify!($field), " value, defined in docs/contract/v1.md.")]
-            pub $field: $ty),*
+            $(#[$attr])* pub $field: $ty),*
         }
     };
 }
@@ -95,10 +95,19 @@ wire!(EventFields {
     order_id: Text, order_version: std::num::NonZeroU64, state: evidence::OrderState,
     occurred_at: Text, source_status: evidence::SourceText, reason: Option<Text>
 });
+wire!(Patient {
+    id: evidence::NamespacedId
+});
 wire!(OrderFields {
     id: Text, version: std::num::NonZeroU64, state: evidence::OrderState, sample_id: Text,
     tests: Vec<evidence::NamespacedId>, priority: Priority, target_analyzers: Option<Vec<Text>>,
-    expires_at: Option<Text>, tombstone: bool
+    expires_at: Option<Text>, tombstone: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    position: Option<evidence::SamplePosition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    specimen_type: Option<evidence::NamespacedId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    patient: Option<Patient>
 });
 wire!(OrdersPageFields { contract_version: u8, orders: Vec<Order>, next_cursor: Text, complete: bool });
 wire!(ErrorBody {
