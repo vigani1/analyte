@@ -101,6 +101,19 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
     if let Some(orders) = &m.orders {
         orders.validate(m, path)?;
     }
+    validate_transport(m, path)?;
+    validate_stack(m, path)?;
+    validate_protocol_selection(m, path)?;
+    validate_dialog_and_framing(m, path)?;
+    validate_syntax(m, path)?;
+    validate_departures(m, path)?;
+    validate_protocol(m, path)?;
+    validate_mappings(m, path)?;
+    validate_evidence(m, path)?;
+    Ok(())
+}
+
+fn validate_transport(m: &MachineDocument, path: &str) -> Result<(), Error> {
     let t = &m.transport;
     if !(1..=300_000).contains(&t.operation_timeout_ms) {
         return Err(invalid(
@@ -139,6 +152,11 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
             ));
         }
     }
+    Ok(())
+}
+
+fn validate_stack(m: &MachineDocument, path: &str) -> Result<(), Error> {
+    let t = &m.transport;
     let f = &m.framing;
     let d = &m.dialog;
     let s = &m.syntax;
@@ -197,6 +215,10 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
             },
         });
     }
+    Ok(())
+}
+
+fn validate_protocol_selection(m: &MachineDocument, path: &str) -> Result<(), Error> {
     let protocol_matches = match m.protocol {
         Protocol::Astm => m.syntax.kind == SyntaxKind::AstmLis02,
         Protocol::Hl7 => {
@@ -214,6 +236,12 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
             "selected protocol does not match syntax and dialog",
         ));
     }
+    Ok(())
+}
+
+fn validate_dialog_and_framing(m: &MachineDocument, path: &str) -> Result<(), Error> {
+    let d = &m.dialog;
+    let f = &m.framing;
     if (d.kind == DialogKind::AstmLink) != d.contention_priority.is_some()
         || matches!(d.kind, DialogKind::Hl7Receiver | DialogKind::LawManager)
             != d.acknowledgment.is_some()
@@ -259,6 +287,11 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
             )
         })?;
     }
+    Ok(())
+}
+
+fn validate_syntax(m: &MachineDocument, path: &str) -> Result<(), Error> {
+    let s = &m.syntax;
     if (s.kind == SyntaxKind::Hl7V2)
         != (s.edition.is_some() && s.terminator.is_some() && s.escapes.is_some())
         || (s.kind == SyntaxKind::AstmLis02
@@ -286,6 +319,13 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
             ));
         }
     }
+    Ok(())
+}
+
+fn validate_departures(m: &MachineDocument, path: &str) -> Result<(), Error> {
+    let s = &m.syntax;
+    let f = &m.framing;
+    let d = &m.dialog;
     // Compatibility choices must remain visible to reviewers as named departures.
     if s.allow_utf8_in_v231
         && (s.kind != SyntaxKind::Hl7V2
@@ -358,8 +398,10 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
             ));
         }
     }
-    validate_protocol(m, path)?;
-    validate_mappings(m, path)?;
+    Ok(())
+}
+
+fn validate_evidence(m: &MachineDocument, path: &str) -> Result<(), Error> {
     if m.deviations.len() > 128 || m.evidence.capabilities.len() > 128 {
         return Err(invalid(
             path,
@@ -407,45 +449,7 @@ fn validate_mappings(m: &MachineDocument, path: &str) -> Result<(), Error> {
             .ok_or_else(|| invalid(path, "codes", "vendor syntax requires code tables"))?;
         return validate_tables(&codes.tests, &codes.units, path);
     };
-    if let Some(parts) = &mapping.component_parts {
-        if m.syntax.kind != SyntaxKind::AstmLis02 {
-            return Err(invalid(
-                path,
-                "mappings.component_parts",
-                "requires ASTM LIS02",
-            ));
-        }
-        if parts.separator.is_control() || "|\\^&".contains(parts.separator) {
-            return Err(Error::PartSeparator { path: path.into() });
-        }
-        if !(1..=1024).contains(&parts.component)
-            || !(1..=1024).contains(&parts.count)
-            || !(1..=parts.count).contains(&parts.code)
-            || parts
-                .dilution
-                .is_some_and(|i| !(1..=parts.count).contains(&i))
-        {
-            return Err(Error::PartIndex { path: path.into() });
-        }
-        if let Some(applied) = &parts.applied {
-            field(
-                &applied.field,
-                m.syntax.kind,
-                path,
-                "mappings.component_parts.applied.field",
-            )?;
-            if applied.yes == applied.no || parts.dilution.is_none() {
-                return Err(invalid(
-                    path,
-                    "mappings.component_parts.applied",
-                    "requires dilution and distinct yes/no codes",
-                ));
-            }
-        }
-        if parts.dilution == Some(parts.code) {
-            return Err(Error::PartOverlap { path: path.into() });
-        }
-    }
+    validate_component_parts(m, mapping, path)?;
     for (key, len) in [
         ("mappings.tests", mapping.tests.len()),
         ("mappings.units", mapping.units.len()),
@@ -509,6 +513,53 @@ fn validate_mappings(m: &MachineDocument, path: &str) -> Result<(), Error> {
     validate_tables(&mapping.tests, &mapping.units, path)
 }
 
+fn validate_component_parts(
+    m: &MachineDocument,
+    mapping: &Mappings,
+    path: &str,
+) -> Result<(), Error> {
+    if let Some(parts) = &mapping.component_parts {
+        if m.syntax.kind != SyntaxKind::AstmLis02 {
+            return Err(invalid(
+                path,
+                "mappings.component_parts",
+                "requires ASTM LIS02",
+            ));
+        }
+        if parts.separator.is_control() || "|\\^&".contains(parts.separator) {
+            return Err(Error::PartSeparator { path: path.into() });
+        }
+        if !(1..=1024).contains(&parts.component)
+            || !(1..=1024).contains(&parts.count)
+            || !(1..=parts.count).contains(&parts.code)
+            || parts
+                .dilution
+                .is_some_and(|i| !(1..=parts.count).contains(&i))
+        {
+            return Err(Error::PartIndex { path: path.into() });
+        }
+        if let Some(applied) = &parts.applied {
+            field(
+                &applied.field,
+                m.syntax.kind,
+                path,
+                "mappings.component_parts.applied.field",
+            )?;
+            if applied.yes == applied.no || parts.dilution.is_none() {
+                return Err(invalid(
+                    path,
+                    "mappings.component_parts.applied",
+                    "requires dilution and distinct yes/no codes",
+                ));
+            }
+        }
+        if parts.dilution == Some(parts.code) {
+            return Err(Error::PartOverlap { path: path.into() });
+        }
+    }
+    Ok(())
+}
+
 fn validate_tables(tests: &[TestMapping], units: &[UnitMapping], path: &str) -> Result<(), Error> {
     if tests.len() > 4096 || units.len() > 4096 {
         return Err(invalid(
@@ -541,27 +592,7 @@ fn validate_tables(tests: &[TestMapping], units: &[UnitMapping], path: &str) -> 
 }
 
 fn validate_protocol(m: &MachineDocument, path: &str) -> Result<(), Error> {
-    // The permissive TOML document becomes exactly one table family at this boundary.
-    match (&m.mappings, &m.codes, m.syntax.kind) {
-        (Some(_), None, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
-        | (None, Some(_), SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser) => {}
-        (
-            Some(_),
-            Some(_) | None,
-            SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser,
-        )
-        | (None, None, SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser) => {
-            return Err(Error::VendorFieldMappings { path: path.into() });
-        }
-        (None, Some(_) | None, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
-        | (Some(_), Some(_), SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2) => {
-            return Err(invalid(
-                path,
-                "mappings",
-                "record syntax requires field mappings only",
-            ));
-        }
-    }
+    validate_mapping_family(m, path)?;
     let valid_ms = |value| (1..=300_000).contains(&value);
     let bad = |protocol| Error::ProtocolSettings {
         path: path.into(),
@@ -651,6 +682,31 @@ fn validate_protocol(m: &MachineDocument, path: &str) -> Result<(), Error> {
             || m.syntax.encoding != Encoding::Ascii)
     {
         return Err(bad("autolyser"));
+    }
+    Ok(())
+}
+
+fn validate_mapping_family(m: &MachineDocument, path: &str) -> Result<(), Error> {
+    // The permissive TOML document becomes exactly one table family at this boundary.
+    match (&m.mappings, &m.codes, m.syntax.kind) {
+        (Some(_), None, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
+        | (None, Some(_), SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser) => {}
+        (
+            Some(_),
+            Some(_) | None,
+            SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser,
+        )
+        | (None, None, SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser) => {
+            return Err(Error::VendorFieldMappings { path: path.into() });
+        }
+        (None, Some(_) | None, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
+        | (Some(_), Some(_), SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2) => {
+            return Err(invalid(
+                path,
+                "mappings",
+                "record syntax requires field mappings only",
+            ));
+        }
     }
     Ok(())
 }

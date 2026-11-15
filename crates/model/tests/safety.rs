@@ -249,9 +249,8 @@ fn adr0002_receipt_provenance_and_adr0003_conflicts_keep_both_receipts()
     Ok(())
 }
 
-#[test]
-fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
--> Result<(), Box<dyn std::error::Error>> {
+fn replacement_parts()
+-> Result<(NamespacedId, Vec<ResultValue>, ResultPart), Box<dyn std::error::Error>> {
     let named = NamespacedId {
         namespace: Identifier::new("synthetic-system")?,
         value: Identifier::new("TEST")?,
@@ -311,6 +310,13 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
         times: EvidenceList::new(vec![])?,
         received_at: jiff::Timestamp::UNIX_EPOCH,
     };
+    Ok((named, values, supported_part))
+}
+
+#[test]
+fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (named, values, supported_part) = replacement_parts()?;
     let part = ResultPart {
         test: named.clone(),
         values: EvidenceList::new(values)?,
