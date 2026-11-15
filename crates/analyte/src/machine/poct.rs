@@ -247,9 +247,8 @@ async fn process(
                                     evidence::vendor_reading(store, machine, id, reading).await?;
                                 }
                                 Err(error) => {
-                                    vendor::failed(
+                                    evidence::failed_reading(store, 
                                         machine,
-                                        store,
                                         id,
                                         &format!("POCT interpretation: {error}"),
                                     )

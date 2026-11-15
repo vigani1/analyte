@@ -278,9 +278,8 @@ async fn process_inline(
                             evidence::vendor_reading(store, machine, id, reading).await?;
                         }
                         Err(error) => {
-                            vendor::failed(
+                            evidence::failed_reading(store, 
                                 machine,
-                                store,
                                 id,
                                 &format!("VIDAS interpretation: {error}"),
                             )

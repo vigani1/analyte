@@ -217,9 +217,8 @@ async fn process(
                 match super::interpretation::map(machine, id, time, &report.raw) {
                     Ok(reading) => evidence::vendor_reading(store, machine, id, reading).await?,
                     Err(error) => {
-                        vendor::failed(
+                        evidence::failed_reading(store, 
                             machine,
-                            store,
                             id,
                             &format!("Autolyser interpretation: {error}"),
                         )
@@ -251,7 +250,7 @@ async fn process(
                 *recovering = true;
                 let reason = format!("Autolyser: {error}");
                 let parked = match receipt.take() {
-                    Some((id, _)) => vendor::failed(machine, store, id, &reason).await,
+                    Some((id, _)) => evidence::failed_reading(store, machine, id, &reason).await,
                     None => evidence::park_bytes(store, machine, Vec::new(), &reason).await,
                 };
                 if let Err(error) = parked {

@@ -1,5 +1,5 @@
 //! Shared host custody boundary, independent of vendor conversation rules.
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use std::time::Duration;
@@ -59,15 +59,6 @@ pub(super) async fn write(
             error.into()
         }
     })
-}
-
-pub(super) async fn failed(
-    machine: &Machine,
-    store: &Handle,
-    receipt: ReceiptId,
-    reason: &str,
-) -> Result<(), Error> {
-    evidence::failed_reading(store, machine, receipt, reason).await
 }
 
 pub(super) fn ms(value: u32) -> Duration {
