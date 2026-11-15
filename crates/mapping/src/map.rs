@@ -271,6 +271,8 @@ pub(crate) fn message(
                                 | Problem::MissingSample
                                 | Problem::UnknownTest
                                 | Problem::UnsupportedValue
+                                | Problem::UnsupportedFormatting
+                                | Problem::UnsupportedEscape
                                 | Problem::UnknownProcessing
                                 | Problem::ConflictingClassification
                                 | Problem::InvalidTime

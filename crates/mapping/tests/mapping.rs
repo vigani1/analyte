@@ -5,6 +5,40 @@ use analyte_model::*;
 use proptest::prelude::*;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+// HL7 2.5.1 sections 2.7.3, 2.7.6 pp.2-18-20.
+#[test]
+fn hl7_251_2_7_3_2_7_6_formatting_is_unsupported_evidence_not_clean_text() -> TestResult {
+    for kind in ["ST", "TX", "FT"] {
+        for raw in [
+            r"before\H\marked\N\after",
+            r"first\.br\second",
+            r"\.in+2\indented",
+        ] {
+            let output = hl7(
+                &format!("OBR|1||001\rOBX|1|{kind}|SYN^Synthetic^synthetic||{raw}||||||F\r"),
+                HL7_CONFIG,
+            )?;
+            let value = first(&output)?.values.as_slice().first().ok_or("value")?;
+            assert_eq!(value.original.as_str(), raw);
+            assert!(value.decoded_text.is_none());
+            assert!(matches!(
+                &value.parsed,
+                ValueInterpretation::Unsupported { .. }
+            ));
+            assert!(
+                output
+                    .findings
+                    .iter()
+                    .any(|finding| finding.position.record == 3
+                        && finding.position.field == 5
+                        && finding.problem == Problem::UnsupportedFormatting)
+            );
+            assert!(output.requires_parking());
+        }
+    }
+    Ok(())
+}
 const ASTM_CONFIG: &str = include_str!("../../config/examples/astm.toml");
 const HL7_CONFIG: &str = include_str!("../../config/examples/hl7.toml");
 const SITE: &str = include_str!("../../config/examples/site.toml");
@@ -815,6 +849,28 @@ fn rule6_application_comes_only_from_configured_source_evidence() -> TestResult 
                 .applied,
             expected
         );
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 sections 2.7.2, 2.7.5, 2.7.7: no repertoire/local/hex agreement is inferred.
+#[test]
+fn hl7_251_2_7_unsupported_escapes_never_become_clean_text() -> TestResult {
+    for raw in [r"A\X41\B", r"A\Zlocal\B", r"A\C2842\B", r"A\M2442\B"] {
+        let output = hl7(
+            &format!("OBR|1||001\rOBX|1|TX|SYN^Synthetic^synthetic||{raw}||||||F\r"),
+            HL7_CONFIG,
+        )?;
+        let value = first(&output)?.values.as_slice().first().ok_or("value")?;
+        assert_eq!(value.original.as_str(), raw);
+        assert!(value.decoded_text.is_none());
+        assert!(
+            output
+                .findings
+                .iter()
+                .any(|f| f.problem == Problem::UnsupportedEscape)
+        );
+        assert!(output.requires_parking());
     }
     Ok(())
 }

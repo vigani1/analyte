@@ -99,6 +99,14 @@ then becomes the test list, one or more tests per row.
 
   **Evidence:** [control.rs](../../crates/hl7/tests/control.rs): `hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence` checks missing/null, invalid dates, repetition/composite misuse, valid reduced precision and unchanged source bytes.
 
+Formatting/highlighting in result values is retained and parked, with no clean decoded
+text. `hl7_251_2_7_3_2_7_6_formatting_is_unsupported_evidence_not_clean_text`
+(mapping tests) checks ST/TX/FT, original spelling, absent decoded text and the
+specific finding. `hl7_251_2_7_6_formatting_command_grammar` (control tests)
+checks command names and argument grammar. Source: 2.5.1 sections 2.7.3, 2.7.6,
+pp.2-18 through 2-20. Hex/local/repertoire escapes require an agreement; none is
+inferred (`hl7_251_2_7_unsupported_escapes_never_become_clean_text`).
+
 ### E. Original/enhanced ACK and errors
 
 - [ ] B — Both MSH-15/16 unvalued selects original mode; otherwise validate and apply the enhanced condition fields. 231 ch.2 §§2.12.1, 2.24.1.15–16 pp.107–112, 143–144; 251 ch.2 §§2.9, 2.15.9.15–16 pp.24–28, 78.

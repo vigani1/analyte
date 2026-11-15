@@ -25,6 +25,28 @@ pub(crate) struct Source<'a> {
 }
 
 impl Source<'_> {
+    pub(crate) fn text_problem(&self, raw: &str) -> Option<crate::Problem> {
+        let Record::Hl7(header) = self.nodes.first()?.record else {
+            return None;
+        };
+        let escape = char::from(*header.field(2)?.raw().get(2)?);
+        let mut parts = raw.split(escape);
+        parts.next();
+        let mut issue = None;
+        while let Some(code) = parts.next() {
+            if parts.next().is_none() {
+                return Some(crate::Problem::UnsupportedEscape);
+            }
+            match code {
+                "H" | "N" => return Some(crate::Problem::UnsupportedFormatting),
+                _ if code.starts_with('.') => return Some(crate::Problem::UnsupportedFormatting),
+                "F" | "S" | "T" | "R" | "E" => {}
+                _ => issue = Some(crate::Problem::UnsupportedEscape),
+            }
+        }
+        issue
+    }
+
     pub(crate) fn attach_comments(&mut self) -> Result<(), Error> {
         for index in 0..self.nodes.len() {
             let parent = self

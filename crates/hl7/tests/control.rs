@@ -2,6 +2,48 @@
 use analyte_hl7::*;
 use proptest::prelude::*;
 
+// HL7 2.5.1 section 2.7.6 pp.2-19-20; synthetic command/argument cases.
+#[test]
+fn hl7_251_2_7_6_formatting_command_grammar() -> Result<(), Error> {
+    for command in [
+        ".br", ".fi", ".nf", ".ce", ".sp", ".sp3", ".sp 3", ".in+2", ".in -3", ".ti2", ".ti-2",
+        ".sk4",
+    ] {
+        let raw = wire(
+            "2.5.1",
+            "",
+            "",
+            "",
+            &format!("OBX|1|FT|SYN||\\{command}\\\r"),
+        );
+        assert_eq!(parse(&raw)?.serialize(), raw);
+    }
+    for command in [
+        ".unknown", ".br2", ".ce x", ".sp0", ".sp-2", ".sp1.5", ".in", ".ti+", ".in2x", ".sk",
+        ".sk-2",
+    ] {
+        let raw = wire(
+            "2.5.1",
+            "",
+            "",
+            "",
+            &format!("OBX|1|FT|SYN||\\{command}\\\r"),
+        );
+        assert!(
+            matches!(
+                parse(&raw),
+                Err(Error::Escape {
+                    segment: 2,
+                    field: 5,
+                    ..
+                })
+            ),
+            "{command}"
+        );
+    }
+    Ok(())
+}
+
 fn wire(version: &str, accept: &str, application: &str, charset: &str, body: &str) -> Vec<u8> {
     format!("MSH|^~\\&|SENDER|SF|RECEIVER|RF|202601011200||ORU^R01^ORU_R01|00017|P|{version}|||{accept}|{application}||{charset}\r{body}").into_bytes()
 }

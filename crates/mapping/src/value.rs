@@ -24,7 +24,15 @@ pub(crate) fn values(
     let mut values = Vec::new();
     for (ordinal, original) in originals.into_iter().enumerate() {
         let repetition = ordinal.saturating_add(1);
-        let parsed = if astm {
+        let text_problem = source.text_problem(&original);
+        let parsed = if let Some(problem) = &text_problem {
+            let reason = if *problem == Problem::UnsupportedFormatting {
+                "HL7 formatting or highlighting is not interpreted"
+            } else {
+                "HL7 escape requires an unsupported interpretation agreement"
+            };
+            unsupported(&data_type, position, reason)?
+        } else if astm {
             decimal(&original, true)
         } else {
             match data_type.as_str() {
@@ -51,7 +59,11 @@ pub(crate) fn values(
             }
         };
         if parsed.is_unsupported() {
-            finding(output, position, Problem::UnsupportedValue)?;
+            finding(
+                output,
+                position,
+                text_problem.unwrap_or(Problem::UnsupportedValue),
+            )?;
         }
         values.push(ResultValue {
             decoded_text: None,
