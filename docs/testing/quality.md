@@ -64,6 +64,40 @@ with Windows access denied; retry succeeded. An intermediate after run was
 cancelled when the final boundary tests were added; its partial counts are not
 used in this table.
 
+### Official-source audit after merging current main
+
+The initial framing/dialog rounds had not read the official text directly.
+That omission was corrected in this audit using local protected copies under
+`C:/Users/super/projects/analyte/references/text/`; no source text was copied
+into the repository. Read: `hl7-mllp-r1.txt` §1.2–1.3;
+`clsi-lis01-a2.txt` §§6.2.4–6.4.1; HL7 v2.5.1 `V251_CH02.txt`
+§§2.9.2–2.9.3, 2.15.5, 2.15.9.9–10; and `V251_CH02A.txt` §2.A.44.
+ADRs 0003/0010 and clinical rule 7 supply the host-specific guarantees.
+
+| Added tests audited | Source and conclusion |
+| --- | --- |
+| Framing encoder size boundary | Rule 7 supplies the ceiling; MLLP R1 §1.2 supplies the envelope. Expectation retained. |
+| Framing payload repertoire | MLLP R1 §1.2 excludes 0x1F and permits CR and single-byte values above 0x1F. Expectation retained. |
+| Framing partial disconnect evidence/reset | ADR 0003 requires evidence retention; MLLP R1 §1.2 defines when a block is complete. Reset is host decoder policy. Expectation retained. |
+| ASTM transfer/request ordinals | ADRs 0003/0010 require matching durable callbacks; these ordinals are host identities, not LIS01 frame numbers. Expectation retained. |
+| ASTM peer ENQ takeover | LIS01-A2 §§6.2.6–6.2.7.1 and 6.3.5.3 support busy/contention/interrupt takeover. Expectation retained. |
+| ASTM EOT during pending commit | LIS01-A2 §6.4.1 returns the link to neutral; ADR 0003 prevents a late callback from ACKing it. Expectation retained. |
+| ASTM sender byte/record ceilings | Rule 7 defines configured inclusive ceilings and rejection before transmission; §6.3 supplies framing only. Expectation retained. |
+| ASTM split-frame ceiling | Rule 7 bounds encoded frames; LIS01-A2 §6.3.1 supplies splitting. Expectation retained. |
+| ASTM receiver ceilings | Rule 7 bounds retained work; ADR 0003 requires refusal without commit/ACK. Expectation retained. |
+| HL7 receipt namespace/ordinal | ADR 0003 host identity; not MSH-10. Fixed the shared fixture's missing MSH-9.3 per §§2.15.9.9/2.A.44. |
+| HL7 partial-input deadline | Rule 7 host absolute deadline; MLLP R1 specifies no timeout value. Expectation retained. |
+| HL7 busy send refusal | ADR 0010 custody isolation with response phases from §§2.9.2–2.9.3. Fixture corrected as above. |
+| HL7 callback identity/phase matrix | ADRs 0003/0010 host callback rules, with §§2.9.2–2.9.3 response phases. Fixture corrected as above. |
+| HL7 diagnostic bounds | Rule 7 host metadata ceiling; §2.15.5 does not prescribe a 64-byte application-code ceiling. Renamed to `rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt`; assertions retained as explicit host policy. |
+
+The fixture previously implied that a two-component MSH-9 was valid for this
+2.5.1 exchange. Main now correctly rejects that input; expectations were not
+changed to accept it. After the fixture correction all added framing/dialog
+tests pass on merged main. Comments distinguish standard wire requirements
+from host safety policy. Historical mutation counts above remain historical;
+they were not rerun against the newly merged production code.
+
 ### Dialog round: every missed mutation
 
 Dialog baseline: `14fa7875572ec7da6d5084a0497aa26a795140c7`, with the same

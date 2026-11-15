@@ -1,10 +1,14 @@
 //! Synthetic host-callback, deadline and custody cases (ADRs 0003/0010, rule 7).
+//! HL7 2.5.1 §§2.9.2–2.9.3 define response responsibility. Receipt ordinals,
+//! callback phases, a non-extending timeout and diagnostic byte ceilings are
+//! Analyte host policies; MLLP R1 does not prescribe a timeout duration.
 use analyte_dialog::hl7::{Action, Config, Dialog, Error, Event, ReceiptId};
 use analyte_hl7::{AckCode, AckError, ControlId, Options, Response};
 use std::time::Duration;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
-const MESSAGE: &[u8] = b"MSH|^~\\&|A|B|C|D|20261115||ORU^R01|001|P|2.5.1\r";
+// HL7 2.5.1 §2.15.9.9 and §2.A.44 require the message structure component.
+const MESSAGE: &[u8] = b"MSH|^~\\&|A|B|C|D|20261115||ORU^R01^ORU_R01|001|P|2.5.1\r";
 
 fn dialog(epoch: u64) -> Result<Dialog, Error> {
     Ok(Dialog::new(
@@ -205,7 +209,7 @@ fn adr0003_0010_hl7_251_2_9_callbacks_require_matching_receipt_and_phase() -> Te
 }
 
 #[test]
-fn rule7_hl7_251_2_15_5_error_metadata_bounds_refuse_without_losing_pending_receipt() -> TestResult
+fn rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt() -> TestResult
 {
     let application = [b'X'; 65];
     for (segment, code, app, accepted) in [

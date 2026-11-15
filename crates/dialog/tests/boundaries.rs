@@ -1,4 +1,7 @@
 //! Synthetic state-machine boundaries from the clinical rules and protocol scopes.
+//! LIS01-A2 §§6.2.6–6.2.7.1/6.3.5 govern takeover; §6.4 governs EOT.
+//! Configured ceilings and commit identity ordinals are Analyte rules 1/7 and
+//! ADRs 0003/0010, not limits or identities specified by LIS01-A2 §6.3.
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Error, Event, Role, Timers};
 use analyte_framing::astm::{self, ACK, ENQ, EOT, FrameNumber, Limit, NAK};
 use std::time::Duration;
