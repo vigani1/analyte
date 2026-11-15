@@ -96,7 +96,8 @@ pub(super) async fn session(
                 }
             }
             Input::End => {
-                let _ = dialog.step(start.elapsed(), DialogEvent::Disconnected)?;
+                let actions = dialog.step(start.elapsed(), DialogEvent::Disconnected)?;
+                process(actions, &mut dialog, start, machine, store, conn, limits).await?;
                 break;
             }
             Input::Bytes(bytes) => {
@@ -298,10 +299,14 @@ async fn process(
             DialogAction::TopicComplete => {
                 actions.extend(dialog.step(start.elapsed(), DialogEvent::Finish)?);
             }
-            DialogAction::Close {
-                normal: _,
-                unresolved: _,
-            } => return Ok(true),
+            DialogAction::Close { normal, unresolved } => {
+                if !normal || !unresolved.is_empty() {
+                    evidence::park_bytes(store, machine, Vec::new(), &format!(
+                        "POCT dialog closure: normal={normal}; unresolved custody tickets: {unresolved:?}; inspect retained transport journal"
+                    )).await?;
+                }
+                return Ok(true);
+            }
         }
     }
     Ok(false)

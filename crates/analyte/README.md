@@ -565,3 +565,7 @@ without including error text or panic payloads in ordinary logs.
 Receipt and interpretation config versions are the lowercase SHA-256 digest of
 the canonical effective config. Each host connection has a fresh UUID, shared by
 its receipts and parked evidence; a watched-folder session has its own UUID.
+
+VIDAS, Autolyser and POCT disconnect and storage-failure dialog effects are
+processed before the host returns. Parking retains the reason with the existing
+transport evidence; a failed parking write is reported alongside its original error.
