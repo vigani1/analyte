@@ -25,6 +25,18 @@ which apply to people and coding assistants alike.
 - Each machine config or driver states its evidence level (proven, simulated
   or documented) and never raises it without the evidence.
 
+## Test concurrency
+
+Cargo defaults to two test threads per binary through `.cargo/config.toml`.
+The service tests open real temporary databases and local HTTP receivers;
+starting all of them together can exhaust the five-second service startup
+budget on Windows. A failed service can otherwise look like a later peer or
+cache wait timing out. This limit preserves the production deadlines and the
+tests' 60-second hang guard. It trades suite duration for bounded concurrent
+fixture startup. Override `RUST_TEST_THREADS` or pass `-- --test-threads=N`
+when deliberately stress testing; monitor service startup failures as well as
+the final wait error.
+
 ## AI-assisted contributions
 
 AI tools are allowed, with these conditions:

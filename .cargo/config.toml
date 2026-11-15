@@ -1,0 +1,4 @@
+[env]
+# Service integration tests each own runtimes, storage threads and HTTP receivers.
+# Bound fixture startup pressure without changing any production or test deadline.
+RUST_TEST_THREADS = { value = "2", force = false }
