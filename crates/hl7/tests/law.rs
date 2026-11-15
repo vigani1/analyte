@@ -216,3 +216,196 @@ fn law_tf2b_b5_rsp_requires_storage_and_bounds_output() -> Result<(), Box<dyn st
     ));
     Ok(())
 }
+
+fn address() -> analyte_hl7::law::Address<'static> {
+    analyte_hl7::law::Address {
+        application: b"M",
+        facility: b"MF",
+        peer_application: b"A",
+        peer_facility: b"AF",
+    }
+}
+
+fn utf8_options() -> Options {
+    Options {
+        charset: analyte_hl7::Charset::Utf8,
+        ..Options::default()
+    }
+}
+
+#[test]
+fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{
+        Field,
+        law::{Awos, Capabilities, Instructions, WorkAction, work_order},
+    };
+    let a = Awos::new(
+        b"awos-1",
+        b"sample-01",
+        b"SER^Serum^HL70487",
+        b"P",
+        b"000tube",
+        b"test^Test^99LAB",
+        WorkAction::New,
+    )?;
+    let b = Awos::new(
+        b"awos-2",
+        b"sample-01",
+        b"SER^Serum^HL70487",
+        b"P",
+        b"000tube",
+        b"test^Test^99LAB",
+        WorkAction::New,
+    )?;
+    let message = work_order(
+        &[a, b],
+        address(),
+        response_metadata()?,
+        Capabilities::default(),
+        utf8_options(),
+    )?;
+    let ids: Vec<_> = message
+        .segments()
+        .filter(|s| s.id() == b"OBR")
+        .filter_map(|s| s.field(2))
+        .map(Field::raw)
+        .collect();
+    assert_eq!(ids, [b"awos-1".as_slice(), b"awos-2"]);
+    assert!(!message.segments().any(|s| s.id() == b"TCD"));
+    assert!(
+        work_order(
+            &[a, a],
+            address(),
+            response_metadata()?,
+            Capabilities::default(),
+            utf8_options()
+        )
+        .is_err()
+    );
+    let instructed = a.with_instructions(Instructions {
+        dilution: Some(b"^1^:^5"),
+        automatic_repeat: Some(false),
+        reflex: Some(true),
+        priority: Some(b"S^Stat^HL70485"),
+        ..Instructions::default()
+    });
+    assert!(
+        work_order(
+            &[instructed],
+            address(),
+            response_metadata()?,
+            Capabilities::default(),
+            utf8_options()
+        )
+        .is_err()
+    );
+    let enabled = Capabilities {
+        dilution: true,
+        repeat_control: true,
+        priority: true,
+        ..Capabilities::default()
+    };
+    let message = work_order(
+        &[instructed],
+        address(),
+        response_metadata()?,
+        enabled,
+        utf8_options(),
+    )?;
+    let tcd = message
+        .segments()
+        .find(|s| s.id() == b"TCD")
+        .ok_or("missing TCD")?;
+    assert_eq!(tcd.field(2).map(Field::raw), Some(b"^1^:^5".as_slice()));
+    assert_eq!(tcd.field(6).map(Field::raw), Some(b"N".as_slice()));
+    assert_eq!(tcd.field(7).map(Field::raw), Some(b"Y".as_slice()));
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_3_28_4_negative_lab28_for_genuine_no_work() -> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{Field, law::negative_work};
+    for (body, container) in [
+        (
+            "QPD|WOS^Work Order Step^IHELAW|tag|000tube",
+            b"000tube".as_slice(),
+        ),
+        ("QPD|WOS_ALL^Work Order Step All^IHELAW|tag", b"\"\""),
+    ] {
+        let request = query(body)?;
+        let result = negative_work(
+            Query::new(&request)?,
+            address(),
+            response_metadata()?,
+            utf8_options(),
+        )?;
+        assert_eq!(
+            result
+                .segments()
+                .map(analyte_hl7::Segment::id)
+                .collect::<Vec<_>>(),
+            [b"MSH", b"SPM", b"SAC", b"ORC"]
+        );
+        let spm = result.segments().find(|s| s.id() == b"SPM").ok_or("SPM")?;
+        assert_eq!(spm.field(4).map(Field::raw), Some(b"\"\"".as_slice()));
+        assert_eq!(spm.field(11).map(Field::raw), Some(b"U".as_slice()));
+        let sac = result.segments().find(|s| s.id() == b"SAC").ok_or("SAC")?;
+        assert_eq!(sac.field(3).map(Field::raw), Some(container));
+        let orc = result.segments().find(|s| s.id() == b"ORC").ok_or("ORC")?;
+        assert_eq!(orc.field(1).map(Field::raw), Some(b"DC".as_slice()));
+        assert_eq!(
+            orc.field(9).map(Field::raw),
+            Some(b"202601011200".as_slice())
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{
+        AckCode,
+        law::{Awos, AwosOutcome, Capabilities, WorkAction, WorkResponse, work_order},
+    };
+    let work = Awos::new(
+        b"awos-1",
+        b"sample",
+        b"SER^Serum^HL70487",
+        b"P",
+        b"tube",
+        b"test^Test^99LAB",
+        WorkAction::New,
+    )?;
+    let sent = work_order(
+        &[work],
+        address(),
+        response_metadata()?,
+        Capabilities::default(),
+        utf8_options(),
+    )?;
+    for (control, status, expected) in [
+        ("OK", "SC", AwosOutcome::Accepted),
+        ("UA", "CA", AwosOutcome::UnableToAccept),
+        ("CR", "CA", AwosOutcome::CancelAccepted),
+        ("UC", "IP", AwosOutcome::UnableToCancel),
+    ] {
+        let incoming = format!(
+            "MSH|^~\\&|A|AF|M|MF|20260101||ORL^O34^ORL_O42|orl1|P|2.5.1|||||||||LAB-28^IHE\rMSA|AA|rsp-1\rSPM||||SER\rSAC|||tube\rORC|{control}|awos-1|||{status}\r"
+        );
+        let message = Message::parse(incoming.as_bytes(), Options::default())?;
+        let parsed = WorkResponse::new(&message, &sent)?;
+        assert_eq!(parsed.acceptance(), AckCode::Aa);
+        assert_eq!(
+            parsed.decisions().first().map(|d| d.outcome),
+            Some(expected)
+        );
+        assert_eq!(
+            parsed.decisions().first().map(|d| d.id.raw()),
+            Some(b"awos-1".as_slice())
+        );
+        assert_eq!(parsed.message().raw(), incoming.as_bytes());
+    }
+    Ok(())
+}

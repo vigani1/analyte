@@ -268,3 +268,10 @@ impl<'a> Query<'a> {
 mod responses;
 
 pub use responses::{CacheAnswer, QueryFollowup, QueryResponse, query_response};
+
+mod work;
+
+pub use work::{
+    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, WorkAction, WorkResponse,
+    negative_work, work_order,
+};

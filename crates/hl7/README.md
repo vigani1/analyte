@@ -77,3 +77,16 @@ followup distinguishes a work download from the restricted negative LAB-28.
 Unavailable lookups use an error response and never request a negative download.
 Output is bounded before each append. Tests cover these decisions, correlation,
 header reversal, error locations, storage refusal and output limits.
+
+### Step 2: LAB-28 work and response handling
+
+`work_order` builds one or more AWOS with caller-supplied stable IDs, specimen,
+container and test/battery. Duplicate IDs within one download are rejected.
+Replicates use separate AWOS. Optional priority, dilution, manager repeat and
+automatic repeat/reflex permissions come only from explicit instructions and
+require matching peer capabilities. `negative_work` emits only MSH/SPM/SAC/ORC,
+with NULL specimen type, unknown role, query identification echoes and DC.
+`WorkResponse` separates message acceptance from per-AWOS outcomes, checks
+correlation, duplicate/unknown/missing responses and control/status consistency.
+It does not mutate prior AWOS acceptance. Complete schema predicates remain
+part of the profile-validation step.
