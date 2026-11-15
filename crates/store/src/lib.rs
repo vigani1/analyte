@@ -16,6 +16,8 @@ pub const SCHEMA_VERSION: i64 = 6;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
+mod status;
+pub use status::StatusLifecycle;
 mod revisions;
 pub use revisions::{InterpretationCommit, RevisionOutcome};
 mod query;
