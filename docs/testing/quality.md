@@ -30,7 +30,7 @@ new tests; they are not a prediction of the final coverage.
 | analyte-mapping | 84.97 | 81.47 | 221 / 185 / 49 / 0 | 399 / 7 / 49 / 0 (combined replays) |
 | analyte-contract | 86.92 | 83.28 | 53 / 52 / 71 / 0 | 105 / 0 / 71 / 0 |
 | analyte-sink | 92.86 | 83.53 | 32 / 46 / 18 / 16 | 91 / 3 / 18 / 0 (combined replays; all 3 equivalent) |
-| analyte-store | 91.64 | 77.57 | Mixed focused baselines; see store report | 313 / 7 / 55 / 0 across 375 mutations; all 7 survivors equivalent; 191 candidates pending |
+| analyte-store | 91.64 | 77.57 | Mixed focused baselines; see store report | 313 / 7 / 55 / 0 across 375 earlier-round mutations; all 7 survivors equivalent; Part 3 stopped on bug |
 | analyte | 64.60 | 58.03 | Outside requested mutation scope | Not run |
 | analyte-astm | 90.73 | 90.20 | Outside requested mutation scope | Not run |
 | analyte-autolyser | 84.79 | 77.49 | Outside requested mutation scope | Not run |
@@ -451,3 +451,11 @@ PR #87 merged at `546195a`. Its completed subset and historical remaining invent
 Thirteen tests were added, with no production or dependency changes. State/clock, independent cancellation checks, per-item identity, bounded evidence, immutable command bytes and poll idempotence/reserve are checked directly. All five required local checks pass; store has 116 passed and one ignored manual benchmark. No test was skipped or weakened, and no short real-time hang deadline was added.
 
 **PR #93 is ready for this subset; the overall store round remains incomplete.** Cumulative completed outcomes: 313 caught, seven equivalent survivors and 55 unviable, across 375 of 566 candidates. The exact remaining 191 candidates are backup (5), restore (22), migration (12), open (20), startup (13), worker (17), reprocess (5), alerts (23), capacity (10), query (38) and lib (26). Earlier partial lib/alerts results do not complete those modules. Linux/MSRV and running the fuzzers were not performed locally; separate fuzz-bin compilation passed.
+
+### Store round 3 stopped on a production bug
+
+[Part 3 triage](store-mutations.md#store-round-3-stopped-on-restore-capacity-admission-bug) records a new failing test: restore publishes successfully with a zero-byte free-space probe, despite the configured disk reserve and normal admission refusing it. Production code is unchanged. PR #98 remains draft under the stop-on-real-bug rule.
+
+Five tests were added (four passing recovery cases and the failing reproducer). Combined local mutation outcomes at stop: backup 5 caught; restore 20 caught, 1 unresolved miss, 1 unviable; migration 10 caught, 2 unresolved misses. No equivalent or timeout is claimed. Only backup is complete; modules 1–5 as a group and the overall store round are unfinished. Raw logs stay local; the Markdown records every command and catching test.
+
+Part 3 checks: fmt, Clippy, deny and fuzz-bin compilation exit 0. Workspace tests exit 101 on the retained restore-capacity regression (store: 120 passed, 1 failed, 1 ignored). All logs remain local. No passing whole-store or whole-workspace result is claimed for this stop.

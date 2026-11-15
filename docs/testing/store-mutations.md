@@ -451,8 +451,74 @@ Fetched main and ran `git merge --signoff origin/main` before final verification
 
 Final check exit codes and sibling logs preserve the output. The first Clippy run found two missing semicolons in new test match arms; both were fixed without suppressions, then all five checks were rerun. No Linux or minimum-Rust run was performed locally; those remain CI work.
 
-## Store round 3: backup through startup and worker custody
+## Store round 3: stopped on restore capacity admission bug
 
-Baseline: `56f087b3fa2723c0c45e25a593afe2ce9426e182` (origin/main). Branch `test/mutation-store-3`.
-This round is in progress. Production code remains unchanged; raw logs stay local under `target/store-round-3/`.
-Only test changes and Markdown triage will be committed.
+Baseline: `56f087b3fa2723c0c45e25a593afe2ce9426e182` (origin/main). Branch `test/mutation-store-3`, PR #98. No production code or dependencies changed. Raw mutation, replay and check logs remain local under `target/store-round-3/`; only tests and Markdown triage are committed.
+
+### Blocking production bug
+
+`Store::restore` returns success and publishes the replacement database even when its supplied `FreeSpace` probe reports zero bytes available. Normal `Store::admission(1)` with the same limits and zero-space probe returns `Error::Capacity`. Restore passes the probe into `open_locked`, then writes the restore audit and publishes without a capacity admission check. This violates the configured minimum-reserve rule (`Limits::reserve_bytes`), clinical rule 7 and plan section 11. The original store is displaced to before-restore; the test does not claim data loss or reproduce a physically full disk.
+`mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing` fails on unmodified production code: expected `Err(Error::Capacity)`, received `Ok(...current.before-restore)`. It also requires the current receipt to remain in place after a refused restore. The failing test is retained unchanged; no production fix, ignore or weakened assertion is included.
+Following the explicit stop-on-real-bug rule, the round stops here and PR #98 remains draft. The minimum modules 1–5 were not completed because of this bug, rather than a session-size cutoff.
+
+### Runs and per-module counts at stop
+
+Cargo-mutants 27.1.0, pinned Rust 1.100.0, all features, scratch copies, 60-second tests and 180-second builds. Counts below combine exact-name results; replays do not add new distinct candidates.
+
+| Module | Caught | Missed/unresolved | Equivalent | Unviable | Timeout | State |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `backup.rs` | 5 | 0 | 0 | 0 | 0 | Mutation triage complete |
+| `migration.rs` | 10 | 2 | 0 | 0 | 0 | Incomplete at stop |
+| `restore.rs` | 20 | 1 | 0 | 1 | 0 | Incomplete at stop |
+| `open.rs`, `startup.rs`, `worker.rs`, `reprocess.rs`, `query.rs`, `alerts.rs`, `capacity.rs`, `lib.rs` | Not run | Not run | Not classified | Not run | Not run | Not started |
+
+| Run | Caught | Missed | Unviable | Timeout |
+| --- | ---: | ---: | ---: | ---: |
+| `recovery-before` | 19 | 7 | 1 | 0 |
+| `recovery-recheck` | 7 | 1 | 0 | 0 |
+| `migration-before` | 10 | 2 | 0 | 0 |
+
+Commands (PowerShell, repository root):
+
+```powershell
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/store/src/backup.rs --file crates/store/src/restore.rs --cargo-test-arg plan11 -o target/store-round-3/recovery-before
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/store/src/backup.rs --file crates/store/src/restore.rs -F '25:21|26:21|50:26|60:20|77:21|78:21' --cargo-test-arg mutation_plan11_ -o target/store-round-3/recovery-recheck
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/store/src/migration.rs --cargo-test-arg migration -o target/store-round-3/migration-before
+cargo test -p analyte-store mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing
+```
+
+The recovery replay ran before the new capacity regression was added. Its unmutated baseline and the four new passing recovery tests passed. Repeating it now will encounter the retained production-bug regression until that bug is fixed; no test should be skipped to manufacture a passing full suite.
+
+### Every Part 3 baseline miss
+
+| Baseline missed mutation | Decision and evidence |
+| --- | --- |
+| `crates/store/src/backup.rs:25:21: delete match arm rusqlite::backup::StepResult::More in Store::backup` | Real test gap, caught by `tests::mutation_plan11_backup_and_restore_keep_every_page_and_the_displaced_store`. Exact failing-test log retained locally in `target/store-round-3/recovery-recheck/mutants.out/log/crates__store__src__backup.rs_line_25_col_21.log`. |
+| `crates/store/src/backup.rs:26:21: delete match arm rusqlite::backup::StepResult::Busy &#124; rusqlite::backup::StepResult::Locked in Store::backup` | Real test gap, caught by `tests::mutation_plan11_backup_refuses_a_locked_source_without_reporting_corruption`. Exact failing-test log retained locally in `target/store-round-3/recovery-recheck/mutants.out/log/crates__store__src__backup.rs_line_26_col_21.log`. |
+| `crates/store/src/restore.rs:50:26: replace &#124;&#124; with && in Store::restore` | Real test gap, caught by `tests::mutation_plan11_restore_refuses_each_existing_recovery_file_before_staging`. Exact failing-test log retained locally in `target/store-round-3/recovery-recheck/mutants.out/log/crates__store__src__restore.rs_line_50_col_26.log`. |
+| `crates/store/src/restore.rs:60:20: replace < with == in Store::restore` | Real test gap, caught by `tests::mutation_plan11_restore_accepts_schema_one_and_refuses_nonpositive_schema`. Exact failing-test log retained locally in `target/store-round-3/recovery-recheck/mutants.out/log/crates__store__src__restore.rs_line_60_col_20.log`. |
+| `crates/store/src/restore.rs:60:20: replace < with <= in Store::restore` | Real test gap, caught by `tests::mutation_plan11_restore_accepts_schema_one_and_refuses_nonpositive_schema`. Exact failing-test log retained locally in `target/store-round-3/recovery-recheck/mutants.out/log/crates__store__src__restore.rs_line_60_col_20_002.log`. |
+| `crates/store/src/restore.rs:77:21: delete match arm rusqlite::backup::StepResult::More in Store::restore` | Real test gap, caught by `tests::mutation_plan11_backup_and_restore_keep_every_page_and_the_displaced_store`. Exact failing-test log retained locally in `target/store-round-3/recovery-recheck/mutants.out/log/crates__store__src__restore.rs_line_77_col_21.log`. |
+| `crates/store/src/restore.rs:78:21: delete match arm rusqlite::backup::StepResult::Busy &#124; rusqlite::backup::StepResult::Locked in Store::restore` | Unresolved error-classification gap at stop. The new source-lock test catches the backup arm but does not exercise this separate restore arm. No equivalence claim or closure is made. |
+| `crates/store/src/migration.rs:46:36: replace > with == in Store::migrate_v7` | Unresolved canonical-evidence size-boundary gap at stop. No new regression/replay was completed for this mutation, and no equivalence is claimed. |
+| `crates/store/src/migration.rs:46:36: replace > with >= in Store::migrate_v7` | Unresolved canonical-evidence size-boundary gap at stop. No new regression/replay was completed for this mutation, and no equivalence is claimed. |
+
+### Test claims and remaining work
+
+Five tests added: four passing recovery cases and the failing capacity reproducer. The large copy checks more than 64 SQLite pages, every frame after restore, the displaced original store, restore pause and audit. The lock case checks backup Timeout rather than Corruption. Independent recovery-file sentinels and schema -1/0/1 cases check refusal or migration without overwriting evidence. These are plan section 11 / ADR 0003 host-store guarantees, not analyzer ACK or interoperability claims.
+All new operation guards use shared HANG_GUARD. No production code, dependency, machine evidence level or plan claim changed. No new subsystem was introduced.
+Backup has a complete five-mutant result. Restore and migration require the three unresolved misses above plus bug resolution. No open/startup, worker, reprocess, query, alerts, capacity or lib runs were started. Do not treat any of these as completed or equivalent.
+
+### Round 3 checks at stop
+
+Fetched main and ran `git merge --signoff origin/main`: already up to date. Windows, pinned Rust 1.100.0:
+
+| Check | Output |
+| --- | --- |
+| `cargo fmt --check` | Exit 0; no diagnostics. |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Exit 0; dev profile finished successfully. |
+| `cargo test --workspace` | Exit 101 on the retained capacity regression: store 120 passed, 1 failed, 1 manual benchmark ignored. Cargo stops there; no full-suite pass is claimed. |
+| `cargo deny check` | Exit 0; advisories ok, bans ok, licenses ok, sources ok; existing duplicate-dependency warnings remain. |
+| `cargo check --manifest-path fuzz/Cargo.toml --bins` | Exit 0; binaries compiled, not executed. |
+
+All output stays local in `target/store-round-3/checks/`; the independent failing reproduction is in `target/store-round-3/restore-capacity-bug.log`. No Linux or minimum-Rust checks were run locally. No raw logs or generated evidence are committed.
