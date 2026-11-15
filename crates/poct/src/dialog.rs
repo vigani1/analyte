@@ -278,7 +278,13 @@ impl Dialog {
                 self.receive(message, &mut actions)?;
             }
             DialogEvent::InvalidHello { reference, error } => {
-                if matches!(self.phase, Phase::Hello) {
+                if matches!(self.phase, Phase::Hello)
+                    && reference.as_str().len() <= self.config.message_bytes
+                {
+                    // Header recovery does not accept Hello, but its source ID
+                    // has still occurred and cannot be reused by the final ACK.
+                    self.received_id_bytes = reference.as_str().len();
+                    self.received_ids.insert(reference.clone());
                     self.send(
                         Outbound::ApplicationError { reference, error },
                         &mut actions,

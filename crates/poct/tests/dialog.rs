@@ -541,3 +541,50 @@ fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
     startup(&mut Dialog::new(config, ControlId::new("new-session")?)?)?;
     Ok(())
 }
+
+// POCT01-A2 B 4.1.2 p.78 and 5.13 p.99: a recovered rejected Hello ID is still used.
+#[test]
+fn poct01_b5_13_rejected_hello_reference_cannot_be_reused_by_terminal_ack()
+-> Result<(), DialogError> {
+    let mut dialog = dialog(2)?;
+    let rejected = step(
+        &mut dialog,
+        DialogEvent::InvalidHello {
+            reference: ControlId::new("rejected-hello")?,
+            error: ApplicationError::DataType,
+        },
+    )?;
+    let end_id = rejected
+        .iter()
+        .find_map(|a| {
+            if let DialogAction::Send {
+                control_id,
+                body: Outbound::Terminate(_),
+            } = a
+            {
+                Some(control_id.as_str())
+            } else {
+                None
+            }
+        })
+        .ok_or(DialogError::State)?;
+    let ack = common::message(
+        "ACK.R01",
+        "rejected-hello",
+        &format!(
+            "<ACK><ACK.type_cd V=\"AA\"/>{}</ACK>",
+            common::field("ACK.ack_control_id", end_id)
+        ),
+    );
+    let actions = step(&mut dialog, received(&ack)?)?;
+    assert!(matches!(actions.first(), Some(DialogAction::Park { .. })));
+    assert!(matches!(
+        sends(&actions).as_slice(),
+        [Outbound::Escape { .. }]
+    ));
+    assert!(matches!(
+        actions.last(),
+        Some(DialogAction::Close { normal: false, .. })
+    ));
+    Ok(())
+}
