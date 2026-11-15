@@ -1,6 +1,7 @@
 # 0008. Contract with lab apps (version 1)
 
-Status: accepted, 2026-11-15
+Status: accepted, 2026-11-15; amended 2026-11-15 before release (order
+states and optional order fields, matching contract v1)
 
 ## Context
 
@@ -55,17 +56,22 @@ are relative to it.
   - `408`, `429`, `5xx` or no answer: retried with capped exponential backoff
     and jitter, honouring `Retry-After`;
   - any other status: parked.
-- Order status changes (sent, accepted, rejected, done, cancel confirmed,
-  uncertain) travel to `POST /order-events` through the same outbox.
+- Order status changes (requested, sent, accepted, rejected, done, cancel
+  requested, cancel confirmed, uncertain) travel to `POST /order-events`
+  through the same outbox. Analyte's internal "sending" state is never sent.
 
 **Orders: `GET /orders?cursor=<cursor>&limit=<n>`.**
 
 - Without a cursor the app returns a full snapshot, paged; with one, the
   changes since it. Each page returns `orders`, `next_cursor` and
   `complete` (true on the last page). The cursor is opaque to Analyte.
-- Each order carries its ID, version, state, sample ID, requested tests,
-  priority, optional target analyzers and expiry. A deleted or withdrawn
-  order arrives as a tombstone.
+- Each order carries its ID, version, state, sample ID, requested tests
+  (each with its code system), priority, optional target analyzers and expiry.
+  It may also carry a sample position, a specimen type and a patient
+  identifier when a machine needs them for a work list; none is ever
+  defaulted, and the patient identifier is the only patient data the contract
+  carries (no names or demographics). A deleted or withdrawn order arrives as
+  a tombstone.
 - `410 Gone` means the cursor is no longer valid: Analyte marks its cache
   untrusted and reloads the snapshot.
 - Analyte commits each page together with its cursor. The cache is trusted

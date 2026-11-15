@@ -66,7 +66,7 @@ These are not optional and need an ADR to change.
 
 1. **Store before acknowledging.** Never tell a machine "got it" for data that
    is not durably stored. If storage fails or the disk is nearly full, refuse
-   visibly. The exact boundary per protocol is in ADR 0003 (for ASTM: each
+   visibly. The exact boundary per protocol is in ADR 0003 and ADR 0010 (for ASTM: each
    frame before its ACK).
 2. **Never drop data.** Failed parses, unknown tests and undeliverable results
    are parked with a reason and shown to an operator, never deleted.
