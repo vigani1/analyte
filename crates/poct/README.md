@@ -120,7 +120,7 @@ message retain metadata beyond the common model's summary.
 
 This is a source-to-test index, not a complete conformance claim. The audited
 completion gates and outstanding evidence are in
-[the protocol checklist](../../docs/protocols/poct1-a.md). Component tests prove
+[the protocol checklist](../../docs/protocols/poct/README.md). Component tests prove
 only their own boundaries; program tests are identified explicitly.
 
 Section references are to Appendix B of POCT01-A2. Tests are in `tests/`.

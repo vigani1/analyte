@@ -483,7 +483,7 @@ an uncertain machine order merely because a service was restarted.
 
 The program receives results, answers supported queries and sends/cancels work
 on one persistent TCP link in either configured direction. Evidence remains
-**documented**. The [LAW checklist](../../docs/protocols/ihe-law.md) owns the
+**documented**. The [LAW checklist](../../docs/protocols/law/README.md) owns the
 current test matrix and remaining actor/simulator qualification gates.
 
 Folder and serial worker shutdown reports worker errors and panics separately,
