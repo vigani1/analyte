@@ -1,0 +1,8 @@
+# Synthetic installation; credential names only.
+schema_version = 1
+endpoint = "127.0.0.1:5600"
+[destination]
+name = "demo"
+base_url = "https://lab.example.invalid"
+api_key_name = "demo-api"
+signing_key_name = "demo-signing"

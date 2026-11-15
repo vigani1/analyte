@@ -97,6 +97,7 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-astm`      | ASTM record syntax                                           |
 | `analyte-hl7`       | HL7 v2 syntax, acknowledgments, LAW transactions             |
 | `analyte-config`    | Machine config files (TOML), validation, versions            |
+| `analyte-mapping`   | Parsed messages → common model, driven by machine config     |
 | `analyte-contract`  | The app contract: documents, signing, validation (ADR 0008)   |
 | `analyte-sink`      | Delivery to apps and order polling                           |
 | `analyte-sim`       | Fake machine and replay of recordings                        |
