@@ -83,6 +83,8 @@ async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never
 fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orders()
 -> Result<(), Error> {
     let machine = machine("error")?;
+    // LIS02-A2 section 6.13 p.13: the edition is LIS2-A2, not a legacy numeric version.
+    assert!(envelope(Vec::new(), b'Q')[0].starts_with(b"H|\\^&|||Analyte|||||||P|LIS2-A2|"));
     assert!(matches!(
         request(
             &machine,
@@ -173,5 +175,25 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
         drop(pending);
         store.shutdown(crate::deadline()).await?;
     }
+    Ok(())
+}
+
+// LIS02-A2 section 6.14 p.13 and section 5.6.2 p.10: generated UTC date/time to seconds.
+#[test]
+fn lis02_6_14_p13_generated_header_time() -> Result<(), Error> {
+    let before = jiff::Timestamp::now().strftime("%Y%m%d%H%M%S").to_string();
+    let records = envelope(Vec::new(), b'N');
+    let header = std::str::from_utf8(&records[0])?;
+    let timestamp = header
+        .trim_end_matches('\r')
+        .split('|')
+        .nth(13)
+        .ok_or("missing H-14")?;
+    let after = jiff::Timestamp::now().strftime("%Y%m%d%H%M%S").to_string();
+    assert_eq!(timestamp.len(), 19);
+    assert!(timestamp.ends_with("+0000"));
+    let digits = timestamp.get(..14).ok_or("short time")?;
+    assert!(digits.bytes().all(|b| b.is_ascii_digit()));
+    assert!(digits >= before.as_str() && digits <= after.as_str());
     Ok(())
 }
