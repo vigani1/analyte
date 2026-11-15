@@ -14,7 +14,7 @@ multiple-packet download sessions are deliberately outside this API.
 There are no configuration defaults. Supply every framing setting explicitly:
 
 - Literal versus Alternate ACK boundary.
-- Maximum RS chunk length (1?80) and payload length (1?1920). Documented ceilings
+- Maximum RS chunk length (1–80) and payload length (1–1920). Documented ceilings
   are enforced; installed chunking remains an explicit choice.
 - Checksum span (`include_stx`, normally false according to the notes), outgoing
   hex letter case and whether incoming case is flexible.
