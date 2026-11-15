@@ -2,10 +2,10 @@ use super::*;
 use analyte_model::{Digest, NamespacedId, ReceiptId, ReceiptMetadata, SampleId};
 use analyte_store::{Audit, CachedOrder, OrderPage, Parked};
 
-fn encode(text: &str) -> String {
+pub(super) fn encode(text: &str) -> String {
     text.bytes().map(|byte| format!("%{byte:02X}")).collect()
 }
-fn csrf(html: &str) -> Result<String, Error> {
+pub(super) fn csrf(html: &str) -> Result<String, Error> {
     Ok(html
         .split("name=\"csrf\"")
         .nth(1)
@@ -14,7 +14,7 @@ fn csrf(html: &str) -> Result<String, Error> {
         .ok_or("CSRF field missing")?
         .to_owned())
 }
-fn cookie(response: &str) -> Result<String, Error> {
+pub(super) fn cookie(response: &str) -> Result<String, Error> {
     Ok(response
         .lines()
         .find_map(|line| line.strip_prefix("set-cookie: "))
@@ -23,7 +23,7 @@ fn cookie(response: &str) -> Result<String, Error> {
         .to_owned())
 }
 
-async fn login(host: &str, bearer: &str) -> Result<String, Error> {
+pub(super) async fn login(host: &str, bearer: &str) -> Result<String, Error> {
     let challenge = request(host, "/login", "", None).await?;
     assert!(challenge.starts_with("HTTP/1.1 401"));
     let csrf = csrf(&challenge)?;
@@ -96,6 +96,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         });
     }
     let state = Arc::new(Context {
+        config_path: directory.path().join("program.toml"),
         token: Token::load(directory.path())?,
         sessions: Sessions::default(),
         origin: format!("http://{host}"),

@@ -3,6 +3,7 @@ use analyte_model::{OrderState, Reason};
 use std::{io::Write, sync::Mutex};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
+mod actions;
 mod pages;
 
 #[derive(Clone)]
@@ -286,6 +287,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
     let state = Arc::new(Context {
+        config_path: directory.path().join("program.toml"),
         token: Token::load(directory.path())?,
         sessions: Sessions::default(),
         origin: format!("http://{host}"),
