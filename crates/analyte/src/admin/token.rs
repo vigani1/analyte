@@ -144,7 +144,7 @@ mod tests {
     // Plan section 11: missing or malformed credentials cannot enable a listener.
     #[test]
     fn plan11_token_loading_refuses_missing_and_malformed_files() -> Result<(), crate::Error> {
-        let directory = tempfile::tempdir()?;
+        let directory = crate::admin::private_tempdir()?;
         assert!(matches!(
             Token::load(directory.path()),
             Err(TokenError::Missing)
@@ -164,7 +164,7 @@ mod tests {
     // Plan section 11: rotation installs a full random credential and replaces it.
     #[test]
     fn plan11_token_rotation_installs_256_bits() -> Result<(), crate::Error> {
-        let directory = tempfile::tempdir()?;
+        let directory = crate::admin::private_tempdir()?;
         let first = rotate_token(directory.path())?;
         assert_eq!(STANDARD.decode(&first)?.len(), 32);
         assert_eq!(
@@ -202,7 +202,7 @@ mod tests {
     // Plan section 12: interrupted provisioning cannot overwrite retained evidence.
     #[test]
     fn plan12_pending_rotation_preserves_old_token() -> Result<(), crate::Error> {
-        let directory = tempfile::tempdir()?;
+        let directory = crate::admin::private_tempdir()?;
         let token = rotate_token(directory.path())?;
         std::fs::write(directory.path().join("admin-token.pending"), b"incomplete")?;
         assert!(rotate_token(directory.path()).is_err());

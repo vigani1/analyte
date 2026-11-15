@@ -27,3 +27,16 @@ fn escape(value: &str) -> String {
         out
     })
 }
+
+/// A temporary data directory with the owner-only mode the host requires on Unix
+/// (the default temporary directory may allow group or other access).
+#[cfg(test)]
+pub(crate) fn private_tempdir() -> std::io::Result<tempfile::TempDir> {
+    let directory = tempfile::tempdir()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(directory)
+}

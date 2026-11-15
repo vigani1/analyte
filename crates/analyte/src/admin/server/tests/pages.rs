@@ -45,7 +45,7 @@ async fn login(host: &str, bearer: &str) -> Result<String, Error> {
 // its session's CSRF POST and a durable audit, including repeated views.
 #[tokio::test(flavor = "multi_thread")]
 async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(), Error> {
-    let directory = tempfile::tempdir()?;
+    let directory = crate::admin::private_tempdir()?;
     let bearer = crate::admin::rotate_token(directory.path())?;
     let limits = analyte_store::Limits {
         reserve_bytes: 1,

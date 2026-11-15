@@ -31,7 +31,7 @@ impl analyte_store::FreeSpace for Space {
 // endpoint, owns the enabled server, and joins it before closing the store.
 #[tokio::test(flavor = "multi_thread")]
 async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), Error> {
-    let directory = tempfile::tempdir()?;
+    let directory = crate::admin::private_tempdir()?;
     std::fs::write(
         directory.path().join("machine.toml"),
         include_str!("../../../../config/examples/hl7.toml"),
@@ -165,7 +165,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
         .with_writer(move || writer.clone())
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
-    let directory = tempfile::tempdir()?;
+    let directory = crate::admin::private_tempdir()?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
