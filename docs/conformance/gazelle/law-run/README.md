@@ -81,10 +81,13 @@ Analyte reports `LAW component rejected at MSH-7.1`; the existing validator
 requires seconds precision and an explicit offset. The relevant local source is
 `crates/hl7/src/law/control.rs` (`validate_control`, C.4), and the existing test is
 `law_tf2b_c4_msh_7_m_ts_precision_calendar_timezone_and_singleton` in
-`crates/hl7/tests/law_control.rs` (PaLM TF-2b C.4). This records an interoperability
-conflict requiring standards/simulator review; it does not by itself establish
-which implementation should change. No timestamp was repaired, no timezone was
-guessed, and no parser or dialog was changed to make this run pass.
+`crates/hl7/tests/law_control.rs`. PaLM TF-2b Rev 11 Appendix C.4,
+Table C.4-6 requires MSH-7 to carry the time zone; it is the one timestamp that
+must include it, and all other times in the message are relative to it.
+The simulator's ORL omits that required element and is non-conformant to Rev 11.
+Analyte's refusal is the conformant behaviour. No tolerance was added: no
+timestamp was repaired, no timezone was guessed, and no parser or dialog was
+changed to make this run pass.
 
 The reply's MSA-2 is `01a1df33ccc873c18d414f31167d93b5`, matching the first
 outgoing MSH-10. Its per-item control is `ORC|OK|1-1|||SC`. Those wire values were
@@ -129,6 +132,10 @@ results, independent/directional multi-link operation, corrected/rerun results,
 restart/replay, a real machine, or complete actor conformance. The profile conflict
 must be resolved before repeating the scenario; neither order may be silently
 replayed.
+
+What remains: a run against a simulator build that sends MSH-7 with an offset,
+or a separately decided, explicitly configured named deviation (never a default)
+if real analyzers turn out to omit it.
 
 ## Artifacts and privacy
 

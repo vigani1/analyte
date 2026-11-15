@@ -191,7 +191,9 @@ fn failure(directory: &Path, machine: &str, path: &Path, reason: &str) {
             "{}.failed",
             path.file_name().unwrap_or_default().to_string_lossy()
         ));
-        let _ = private_write(&marker, text.as_bytes());
+        if let Err(error) = private_write(&marker, text.as_bytes()) {
+            tracing::error!(machine, error_kind = ?error.kind(), "capture connection failure marker could not be persisted");
+        }
     }
 }
 

@@ -65,14 +65,19 @@ impl Owner {
                         let bytes = claim.read()?;
                         if let Some(tap) = recorder.as_mut().and_then(|factory| factory()) {
                             use analyte_transport::recording::Kind;
-                            let now = Instant::now();
-                            let _ = tap.record(Kind::Open, now, b"watched folder receipt");
-                            for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
-                                if tap.record(Kind::In, Instant::now(), chunk).is_err() {
-                                    break;
-                                }
+                            let result = tap
+                                .record(Kind::Open, Instant::now(), b"watched folder receipt")
+                                .and_then(|()| {
+                                    for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
+                                        tap.record(Kind::In, Instant::now(), chunk)?;
+                                    }
+                                    tap.record(Kind::Close, Instant::now(), b"file read complete")
+                                });
+                            if let Err(error) = result {
+                                // Tap::record publishes every failure to the shared worker state.
+                                // The capture worker logs once and persists the failed markers.
+                                tracing::debug!(error_kind = %error, "watched-folder capture failure handed to recorder worker");
                             }
-                            let _ = tap.record(Kind::Close, Instant::now(), b"file read complete");
                         }
                         let (reply, response) = mpsc::sync_channel(1);
                         let mut item = Item {
