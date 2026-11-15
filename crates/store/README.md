@@ -212,3 +212,8 @@ Tests `law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_neve
 and `law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust`
 cover paging, targeting, prior reservations, expiry/tombstones, future/stale clocks,
 reset generations and restore pause. No schema or contract change is involved.
+
+Orders and items use the model's single lifecycle transition function, including
+audited operator reconciliation. Cancellation refusal restores the retained
+per-item `cancel_from` states rather than searching historical aggregate JSON.
+Correlated HL7/LAW replies may accept or reject a reserved Sending exchange.

@@ -85,13 +85,18 @@ query selectors are not claimed by these synthetic tests.
 | From | Allowed next states |
 | --- | --- |
 | Requested | Sending, CancelRequested, Rejected |
-| Sending (internal only) | Sent, Uncertain |
+| Sending (internal only) | Sent, Accepted, Rejected, Uncertain |
 | Sent | Accepted, Rejected, CancelRequested, Uncertain |
 | Accepted | Done, Rejected, CancelRequested, Uncertain |
 | CancelRequested | CancelConfirmed, Done, Rejected, Uncertain |
 | Uncertain | Accepted, Done, Rejected, CancelRequested, CancelConfirmed |
 | Done, Rejected, CancelConfirmed | None |
 
+Correlated HL7/LAW application replies may move a reserved Sending exchange
+directly to Accepted or Rejected. Explicit cancellation refusal restores only
+the retained per-item `cancel_from` state (Sent or Accepted). Orders and items
+use the same model transition function, including operator reconciliation;
+a terminal item cannot be overwritten by reconciling its uncertain aggregate.
 All other transitions, including every attempt to return to Sending, are refused.
 Contract conversion explicitly rejects Sending; only real transfer outcomes become
 app events. The same reservation and completion rules apply to query answers.

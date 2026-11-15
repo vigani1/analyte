@@ -1,6 +1,6 @@
 //! Durable machine command reservations; a reserved identity is never sent twice.
 use crate::{Audit, CachedOrder, Error, OrderEventDelivery, Store, digest, key};
-use analyte_model::{Identifier, NamespacedId, OrderState, SourceText};
+use analyte_model::{Identifier, NamespacedId, OrderState, OrderTransition, SourceText};
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU64;
@@ -474,7 +474,7 @@ impl Store {
         {
             return Ok(Err(SendRefusal::WrongMachine));
         }
-        let state = OrderState::Requested.transition(initial)?;
+        let state = OrderState::Requested.transition(OrderTransition::Advance(initial))?;
         tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,?5,?6,?6,?7)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),key(&state)?,now,code.as_str()])?;
         let mut record = MachineOrder {
             id: tx.last_insert_rowid(),
@@ -648,7 +648,12 @@ impl Store {
             item.updated_at = now;
             write_item(&tx, item, limit)?;
         }
-        let mut state = aggregate(&order.items);
+        let states = order
+            .items
+            .iter()
+            .map(|item| item.state)
+            .collect::<Vec<_>>();
+        let mut state = aggregate(&states);
         if cancelling
             && refused
             && !order
@@ -656,8 +661,16 @@ impl Store {
                 .iter()
                 .any(|item| item.state == OrderState::Uncertain)
         {
-            let previous: String = tx.query_row("SELECT evidence FROM machine_order_history WHERE machine_order=?1 AND json_extract(evidence,'$.state') IN ('Sent','Accepted') ORDER BY sequence DESC LIMIT 1", [id], |row| row.get(0))?;
-            state = serde_json::from_str::<MachineOrder>(&previous)?.state;
+            let previous = order
+                .items
+                .iter()
+                .map(|item| {
+                    let previous = item.cancel_from.ok_or(Error::Corruption)?;
+                    Ok(OrderState::CancelRequested
+                        .transition(OrderTransition::CancelRefused(previous))?)
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+            state = aggregate(&previous);
         }
         // Aggregation is a distinct rule: mixed item outcomes may produce Uncertain
         // even when one item is terminal. It never manufactures a Sent event.
@@ -777,11 +790,9 @@ impl Store {
         {
             return Err(Error::Conflict);
         }
-        record.state = record.state.transition(to)?;
+        record.state = record.state.transition(OrderTransition::Advance(to))?;
         for item in &mut record.items {
-            if audit.is_none() {
-                item.state.transition(to)?;
-            }
+            item.state.transition(OrderTransition::Advance(to))?;
             if to == OrderState::CancelRequested {
                 item.cancel_from = Some(item.state);
             }
@@ -925,58 +936,27 @@ fn write_item(tx: &Transaction<'_>, item: &MachineOrderItem, limit: usize) -> Re
 }
 
 fn item_decision(item: &MachineOrderItem, decision: ItemDecision) -> Result<OrderState, Error> {
-    let next = match decision {
-        ItemDecision::Sent => OrderState::Sent,
-        ItemDecision::Accepted => OrderState::Accepted,
-        ItemDecision::Rejected => OrderState::Rejected,
-        ItemDecision::Uncertain => OrderState::Uncertain,
-        ItemDecision::CancelConfirmed => OrderState::CancelConfirmed,
+    let change = match decision {
+        ItemDecision::Sent => OrderTransition::Advance(OrderState::Sent),
+        ItemDecision::Accepted => OrderTransition::Advance(OrderState::Accepted),
+        ItemDecision::Rejected => OrderTransition::Advance(OrderState::Rejected),
+        ItemDecision::Uncertain => OrderTransition::Advance(OrderState::Uncertain),
+        ItemDecision::CancelConfirmed => OrderTransition::Advance(OrderState::CancelConfirmed),
         ItemDecision::CancelRefused => {
-            if item.state != OrderState::CancelRequested {
-                return Err(Error::Conflict);
-            }
-            return item
-                .cancel_from
-                .filter(|state| matches!(state, OrderState::Sent | OrderState::Accepted))
-                .ok_or(Error::Conflict);
+            OrderTransition::CancelRefused(item.cancel_from.ok_or(Error::Conflict)?)
         }
     };
-    let valid = match item.state {
-        OrderState::Sending => matches!(
-            next,
-            OrderState::Sent | OrderState::Accepted | OrderState::Rejected | OrderState::Uncertain
-        ),
-        OrderState::Sent => matches!(
-            next,
-            OrderState::Accepted | OrderState::Rejected | OrderState::Uncertain
-        ),
-        OrderState::Accepted => matches!(next, OrderState::Rejected | OrderState::Uncertain),
-        OrderState::CancelRequested => {
-            matches!(next, OrderState::CancelConfirmed | OrderState::Uncertain)
-        }
-        OrderState::Requested
-        | OrderState::Done
-        | OrderState::Rejected
-        | OrderState::CancelConfirmed
-        | OrderState::Uncertain => false,
-    };
-    if !valid {
-        return Err(Error::OrderTransition(analyte_model::TransitionError {
-            from: item.state,
-            to: next,
-        }));
-    }
-    Ok(next)
+    Ok(item.state.transition(change)?)
 }
 
-fn aggregate(items: &[MachineOrderItem]) -> OrderState {
+fn aggregate(states: &[OrderState]) -> OrderState {
     for state in [
         OrderState::Accepted,
         OrderState::Rejected,
         OrderState::CancelConfirmed,
         OrderState::Sent,
     ] {
-        if !items.is_empty() && items.iter().all(|item| item.state == state) {
+        if !states.is_empty() && states.iter().all(|item| *item == state) {
             return state;
         }
     }
@@ -1021,17 +1001,19 @@ mod item_transition_tests {
             ItemDecision::CancelConfirmed,
             ItemDecision::CancelRefused,
         ];
+        // ADR 0003 rule 8 / ORDERS.md: items use the same evidenced moves as orders.
+        // finish_order_items separately requires a reserved exchange.
         // Columns: Sent, Accepted, Rejected, Uncertain, CancelConfirmed, CancelRefused.
         for (state, allowed) in [
-            (N, [false; 6]),
+            (N, [false, false, true, false, false, false]),
             (G, [true, true, true, true, false, false]),
             (S, [false, true, true, true, false, false]),
             (A, [false, false, true, true, false, false]),
-            (Q, [false, false, false, true, true, true]),
+            (Q, [false, false, true, true, true, true]),
             (D, [false; 6]),
             (R, [false; 6]),
             (C, [false; 6]),
-            (U, [false; 6]),
+            (U, [false, true, true, false, true, false]),
         ] {
             let item = MachineOrderItem {
                 machine_order: 1,

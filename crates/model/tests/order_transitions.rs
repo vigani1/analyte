@@ -1,5 +1,6 @@
 //! Safety rule 8: the lifecycle table is exhaustive, including every illegal move.
 use analyte_model::OrderState::{self, *};
+use analyte_model::OrderTransition;
 
 const STATES: [OrderState; 9] = [
     Requested,
@@ -19,7 +20,7 @@ macro_rules! row {
         fn $test() {
             let allowed: &[OrderState] = &[$($allowed),*];
             for to in STATES {
-                let result = $from.transition(to);
+                let result = $from.transition(OrderTransition::Advance(to));
                 if allowed.contains(&to) { assert_eq!(result, Ok(to)); }
                 else { assert_eq!(result,Err(analyte_model::TransitionError { from:$from,to }), "illegal transition {:?} -> {:?}",$from,to); }
             }
@@ -32,7 +33,11 @@ row!(
     Requested,
     [Sending, CancelRequested, Rejected]
 );
-row!(rule8_sending_moves, Sending, [Sent, Uncertain]);
+row!(
+    rule8_sending_moves,
+    Sending,
+    [Sent, Accepted, Rejected, Uncertain]
+);
 row!(
     rule8_sent_moves,
     Sent,
@@ -56,3 +61,21 @@ row!(
     Uncertain,
     [Accepted, Done, Rejected, CancelRequested, CancelConfirmed]
 );
+
+// ADR 0003 rule 8: explicit refusal restores only the recorded Sent/Accepted state.
+#[test]
+fn rule8_cancel_refusal_requires_cancellation_and_retained_state() {
+    for from in STATES {
+        for previous in STATES {
+            let result = from.transition(OrderTransition::CancelRefused(previous));
+            if from == CancelRequested && matches!(previous, Sent | Accepted) {
+                assert_eq!(result, Ok(previous));
+            } else {
+                assert_eq!(
+                    result,
+                    Err(analyte_model::TransitionError { from, to: previous })
+                );
+            }
+        }
+    }
+}

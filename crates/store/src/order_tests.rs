@@ -1071,3 +1071,122 @@ fn adr0003_0008_item_reasons_are_lossless_when_aggregate_summary_is_bounded() ->
     assert!(rejected.items.iter().all(|item| item.source_code == reason));
     Ok(())
 }
+
+// ADR 0003 rule 8: an aggregate Uncertain state never authorizes rewriting a terminal item.
+#[test]
+fn adr0003_rule8_operator_reconciliation_checks_items_and_rolls_back() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("reconcile-items.db"))?;
+    let record = reserve_two(&mut store)?;
+    let outcomes = [ItemDecision::Uncertain, ItemDecision::Rejected]
+        .into_iter()
+        .zip([1, 2])
+        .map(|(decision, index)| {
+            Ok(ItemOutcome {
+                index,
+                decision,
+                code: SourceText::new("peer-evidence")?,
+            })
+        })
+        .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
+    let uncertain = store.finish_order_items(record.id, &outcomes, 102, event)?;
+    assert_eq!(uncertain.state, OrderState::Uncertain);
+    let history: i64 =
+        store
+            .db
+            .query_row("SELECT count(*) FROM machine_order_item_history", [], |r| {
+                r.get(0)
+            })?;
+    let audit_count: i64 = store
+        .db
+        .query_row("SELECT count(*) FROM audit", [], |r| r.get(0))?;
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("orders-reconcile")?,
+        targets: vec![Identifier::new(&record.id.to_string())?],
+        time: 103,
+        reason: analyte_model::Reason::new("synthetic operator evidence")?,
+    };
+    assert!(matches!(
+        store.reconcile_order(record.id, OrderState::Accepted, &audit, event),
+        Err(Error::OrderTransition(analyte_model::TransitionError {
+            from: OrderState::Rejected,
+            to: OrderState::Accepted
+        }))
+    ));
+    let retained = store.machine_order(&record.key)?.ok_or("missing order")?;
+    assert_eq!(
+        serde_json::to_value(&retained)?,
+        serde_json::to_value(&uncertain)?
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM machine_order_item_history", [], |r| r
+                .get::<_, i64>(0))?,
+        history
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM audit", [], |r| r.get::<_, i64>(0))?,
+        audit_count
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
+    Ok(())
+}
+
+// ADR 0003 rule 8 / ORDERS.md: refusal restores retained item state, not a past aggregate snapshot.
+#[test]
+fn adr0003_rule8_cancel_refusal_uses_cancel_from_not_history_json() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("cancel-from.db"))?;
+    let record = reserve_two(&mut store)?;
+    let outcomes = [1, 2].map(|index| ItemOutcome {
+        index,
+        decision: ItemDecision::Sent,
+        code: SourceText::new("AA").expect("constant"),
+    });
+    store.finish_order_items(record.id, &outcomes, 102, event)?;
+    let cancelled = store.transition_order(
+        record.id,
+        OrderState::CancelRequested,
+        SourceText::new("CA")?,
+        103,
+        event,
+    )?;
+    assert!(
+        cancelled
+            .items
+            .iter()
+            .all(|item| item.cancel_from == Some(OrderState::Sent))
+    );
+    // Deliberately conflicting historical aggregate: the current per-item evidence must win.
+    let mut past = cancelled.clone();
+    past.state = OrderState::Accepted;
+    for snapshot in [&past, &cancelled] {
+        store.db.execute(
+            "INSERT INTO machine_order_history(machine_order,evidence) VALUES (?1,?2)",
+            rusqlite::params![record.id, serde_json::to_string(snapshot)?],
+        )?;
+    }
+    let outcomes = [1, 2].map(|index| ItemOutcome {
+        index,
+        decision: ItemDecision::CancelRefused,
+        code: SourceText::new("UC").expect("constant"),
+    });
+    let restored = store.finish_order_items(record.id, &outcomes, 104, event)?;
+    assert_eq!(restored.state, OrderState::Sent);
+    assert!(
+        restored
+            .items
+            .iter()
+            .all(|item| item.state == OrderState::Sent)
+    );
+    Ok(())
+}

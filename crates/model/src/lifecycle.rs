@@ -56,37 +56,59 @@ pub struct TransitionError {
     pub to: OrderState,
 }
 
+/// Evidence for a lifecycle change; cancellation refusal restores retained state only.
+#[derive(Debug, Clone, Copy)]
+pub enum OrderTransition {
+    /// A newly evidenced state, without resending work.
+    Advance(OrderState),
+    /// Explicit cancellation refusal, with the item's retained pre-cancel state.
+    CancelRefused(OrderState),
+}
+
 impl OrderState {
     /// Checks a state change without performing I/O or resending an order.
     /// Terminal states have no outgoing transitions. Uncertain outcomes can only
     /// be reconciled with machine evidence or a cancellation request.
     /// # Errors
     /// Returns both states when the change is illegal.
-    pub fn transition(self, to: Self) -> Result<Self, TransitionError> {
-        let valid = match self {
-            Self::Requested => matches!(to, Self::Sending | Self::CancelRequested | Self::Rejected),
-            Self::Sending => matches!(to, Self::Sent | Self::Uncertain),
-            Self::Sent => matches!(
-                to,
-                Self::Accepted | Self::Rejected | Self::CancelRequested | Self::Uncertain
-            ),
-            Self::Accepted => matches!(
-                to,
-                Self::Done | Self::Rejected | Self::CancelRequested | Self::Uncertain
-            ),
-            Self::CancelRequested => matches!(
-                to,
-                Self::CancelConfirmed | Self::Done | Self::Rejected | Self::Uncertain
-            ),
-            Self::Uncertain => matches!(
-                to,
-                Self::Accepted
-                    | Self::Done
-                    | Self::Rejected
-                    | Self::CancelRequested
-                    | Self::CancelConfirmed
-            ),
-            Self::Done | Self::Rejected | Self::CancelConfirmed => false,
+    pub fn transition(self, change: OrderTransition) -> Result<Self, TransitionError> {
+        let to = match change {
+            OrderTransition::Advance(to) | OrderTransition::CancelRefused(to) => to,
+        };
+        let valid = match change {
+            OrderTransition::CancelRefused(previous) => {
+                self == Self::CancelRequested && matches!(previous, Self::Sent | Self::Accepted)
+            }
+            OrderTransition::Advance(_) => match self {
+                Self::Requested => {
+                    matches!(to, Self::Sending | Self::CancelRequested | Self::Rejected)
+                }
+                Self::Sending => matches!(
+                    to,
+                    Self::Sent | Self::Accepted | Self::Rejected | Self::Uncertain
+                ),
+                Self::Sent => matches!(
+                    to,
+                    Self::Accepted | Self::Rejected | Self::CancelRequested | Self::Uncertain
+                ),
+                Self::Accepted => matches!(
+                    to,
+                    Self::Done | Self::Rejected | Self::CancelRequested | Self::Uncertain
+                ),
+                Self::CancelRequested => matches!(
+                    to,
+                    Self::CancelConfirmed | Self::Done | Self::Rejected | Self::Uncertain
+                ),
+                Self::Uncertain => matches!(
+                    to,
+                    Self::Accepted
+                        | Self::Done
+                        | Self::Rejected
+                        | Self::CancelRequested
+                        | Self::CancelConfirmed
+                ),
+                Self::Done | Self::Rejected | Self::CancelConfirmed => false,
+            },
         };
         if valid {
             Ok(to)
