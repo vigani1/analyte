@@ -376,7 +376,7 @@ fn hl7_251_2_6_configured_limits_reject_without_truncation() {
 }
 proptest! {
     #[test]
-    fn hl7_251_2_6_encode_parse_identity(value in "[a-zA-Z0-9 ^&~]{0,300}") {
+    fn hl7_251_2_6_serialize_parse_identity(value in "[a-zA-Z0-9 ^&~]{0,300}") {
         let raw = wire("2.5.1", "", "", "", &format!("NTE|1||{value}|\r"));
         let first = parse(&raw)?;
         prop_assert_eq!(first.encode(), raw);

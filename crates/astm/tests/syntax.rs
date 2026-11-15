@@ -207,7 +207,7 @@ fn lis02_9_9_all_result_codes_remain_distinct() {
 }
 
 #[test]
-fn lis02_5_4_encode_selected_delimiters() -> Result<(), Error> {
+fn lis02_5_4_serialize_selected_delimiters() -> Result<(), Error> {
     let messages = parse(b"H|\\^&|\rP|1|a;b&F&c^d\\e\rL|1\r", Limits::default())?;
     let target = Delimiters::new(b';', b'~', b':', b'!')?;
     let encoded = messages
@@ -229,7 +229,7 @@ fn lis02_5_4_encode_selected_delimiters() -> Result<(), Error> {
 
 proptest! {
     #[test]
-    fn lis02_5_7_parse_encode_identity(value in "[a-zA-Z0-9 ^\\\\]{0,100}") {
+    fn lis02_5_7_parse_serialize_identity(value in "[a-zA-Z0-9 ^\\\\]{0,100}") {
         let wire = format!("H|\\^&|\rP|1|{value}\rL|1\r");
         let parsed = parse(wire.as_bytes(), Limits::default());
         prop_assert!(parsed.is_ok());
