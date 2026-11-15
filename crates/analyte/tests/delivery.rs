@@ -401,7 +401,9 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
     let path = config(directory.path(), false)?;
     // A real outage refuses connections; an unserved listener would instead
     // queue half-finished attempts that the receiver later answers first.
-    let address = TcpListener::bind("127.0.0.1:0").await?.local_addr()?;
+    let socket = tokio::net::TcpSocket::new_v4()?;
+    socket.bind("127.0.0.1:0".parse()?)?;
+    let address = socket.local_addr()?;
     let service = Running::start(&path, &format!("http://{address}"), "synthetic-api").await?;
     let mut peer = connect(&path, "hl7").await?;
     assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
@@ -422,7 +424,7 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
         }
     })
     .await??;
-    let listener = TcpListener::bind(address).await?;
+    let listener = socket.listen(1024)?;
     let mut reference =
         Reference::start(&directory.path().join("reference.db"), listener, false).await?;
     let event = reference.event().await?;
