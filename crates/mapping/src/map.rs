@@ -159,6 +159,14 @@ pub(crate) fn message(
         if translation.is_none() {
             finding(&mut output, source.position(index, 3), Problem::UnknownTest)?;
         }
+        if let Some(entry) = translation {
+            value::check_kind(
+                &values,
+                entry.value_kind,
+                source.position(index, value_field),
+                &mut output,
+            )?;
+        }
         let test = translation.map_or_else(
             || source_code.clone(),
             |t| NamespacedId {
@@ -238,7 +246,8 @@ pub(crate) fn message(
                                     "missing identity {setting} at record {} field {}",
                                     f.position.record, f.position.field
                                 )),
-                                Problem::ComponentParts
+                                Problem::ValueKindMismatch { .. }
+                                | Problem::ComponentParts
                                 | Problem::MissingSample
                                 | Problem::UnknownTest
                                 | Problem::UnsupportedValue

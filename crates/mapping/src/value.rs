@@ -179,3 +179,32 @@ fn structured(
         },
     )))
 }
+
+/// Test expectations constrain interpretation without changing source evidence.
+pub(crate) fn check_kind(
+    values: &EvidenceList<ResultValue>,
+    expected: analyte_config::ValueKind,
+    position: Position,
+    output: &mut Output,
+) -> Result<(), Error> {
+    use analyte_config::ValueKind;
+    for value in values.as_slice() {
+        let fits = match expected {
+            ValueKind::Either => true,
+            ValueKind::Numeric => matches!(value.parsed, ValueInterpretation::Numeric(_)),
+            ValueKind::Coded => {
+                matches!(value.parsed, ValueInterpretation::Coded(_))
+                    || (matches!(value.parsed, ValueInterpretation::Text)
+                        && !value.original.as_str().is_empty()
+                        && matches!(
+                            decimal(value.original.as_str(), true),
+                            ValueInterpretation::Text
+                        ))
+            }
+        };
+        if !fits {
+            finding(output, position, Problem::ValueKindMismatch { expected })?;
+        }
+    }
+    Ok(())
+}

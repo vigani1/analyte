@@ -150,6 +150,11 @@ pub struct Input {
 /// A problem requiring host review; contains positions rather than patient data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problem {
+    /// Source value does not fit the configured test expectation.
+    ValueKindMismatch {
+        /// Required interpretation.
+        expected: analyte_config::ValueKind,
+    },
     /// Declared component decomposition does not match the source.
     ComponentParts,
 

@@ -349,6 +349,9 @@ pub struct SampleSelection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TestMapping {
+    /// Expected interpretation; omission preserves permissive mapping.
+    #[serde(default)]
+    pub value_kind: ValueKind,
     /// Code as received.
     pub machine_code: Identifier,
     /// Source assigning system.
@@ -700,4 +703,17 @@ pub struct DilutionSource {
     pub yes: Identifier,
     /// Exact not-applied code.
     pub no: Identifier,
+}
+
+/// Expected source value interpretation, without clinical interpretation.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValueKind {
+    /// Require an exact numeric interpretation.
+    Numeric,
+    /// Require qualitative text or a coded interpretation.
+    Coded,
+    /// Preserve existing protocol interpretation.
+    #[default]
+    Either,
 }
