@@ -1,4 +1,4 @@
-//! Bounded configuration loading and immutable activation snapshots (ADR 0002).
+//! Configuration boundary: owns bounded loading and validated settings, without connection I/O.
 #![forbid(unsafe_code)]
 
 mod law;

@@ -1,4 +1,4 @@
-//! POCT01-A2 Basic Profile Observation Reviewer. Evidence level: documented.
+//! Syntax layer: owns POCT Basic Profile messages, without framing, I/O or custody decisions.
 //!
 //! Pure message syntax, reviewer builders, duplicate comparison.
 //! The host owns transport, clocks, protected storage and trusted identity resolution.

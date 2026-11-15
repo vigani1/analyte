@@ -1,4 +1,4 @@
-//! Shared, protocol-neutral evidence, without I/O or clinical interpretation.
+//! Shared model: owns protocol-neutral identities and evidence, without I/O or clinical interpretation.
 //!
 //! A receipt identifies what arrived. A delivery identifies one immutable payload
 //! sent to an app; retries keep that ID. A result identifies an observation and

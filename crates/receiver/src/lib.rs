@@ -1,4 +1,4 @@
-//! Durable reference receiver. Deploy behind a TLS reverse proxy; the binary binds loopback.
+//! Reference integration endpoint: owns durable contract receipt and orders, without clinical decisions.
 #![forbid(unsafe_code)]
 use analyte_contract::{Delivery, OrderEvent, SigningSecret, content_digest, decode};
 use axum::{
