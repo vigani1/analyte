@@ -423,6 +423,19 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
             &sent
         };
         let parsed = WorkResponse::new(&message, request)?;
+        let wrong_container = Message::parse(
+            incoming
+                .replace("SAC|||tube", "SAC|||different-tube")
+                .as_bytes(),
+            utf8_options(),
+        )?;
+        assert!(matches!(
+            WorkResponse::new(&wrong_container, request),
+            Err(Error::Inconsistent {
+                segment: "SAC",
+                field: 3
+            })
+        ));
         if matches!(control, "CR" | "UC") {
             assert!(WorkResponse::new(&message, &sent).is_err());
         }

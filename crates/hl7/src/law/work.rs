@@ -661,8 +661,18 @@ impl<'a> WorkResponse<'a> {
             .collect();
         let mut requests = BTreeMap::new();
         let mut action = None;
+        let mut source_specimen = b"".as_slice();
+        let mut source_container = b"".as_slice();
         for segment in sent.segments() {
             match segment.id() {
+                b"SPM" => {
+                    source_specimen = super::raw(segment, 2);
+                    source_container = b"";
+                    action = None;
+                }
+                b"SAC" => {
+                    source_container = super::raw(segment, 3);
+                }
                 b"ORC" => {
                     action = match super::raw(segment, 1) {
                         b"NW" => Some(WorkAction::New),
@@ -673,7 +683,13 @@ impl<'a> WorkResponse<'a> {
                 }
                 b"OBR" => {
                     let action = action.ok_or(content("ORC", 1))?;
-                    if requests.insert(super::raw(segment, 2), action).is_some() {
+                    if requests
+                        .insert(
+                            super::raw(segment, 2),
+                            (action, source_specimen, source_container),
+                        )
+                        .is_some()
+                    {
                         return Err(content("OBR", 2));
                     }
                 }
@@ -682,6 +698,8 @@ impl<'a> WorkResponse<'a> {
         }
         let mut decisions = Vec::new();
         let mut has_specimen = false;
+        let mut response_specimen = b"".as_slice();
+        let mut response_container = b"".as_slice();
         let mut error_count = 0usize;
         let mut seen = BTreeSet::new();
         super::profile::validate_segment(msa_segment)?;
@@ -703,12 +721,15 @@ impl<'a> WorkResponse<'a> {
                 }
                 b"SPM" => {
                     has_specimen = true;
+                    response_specimen = super::raw(s, 2);
+                    response_container = b"";
                     continue;
                 }
                 b"SAC" => {
                     if !has_specimen {
                         return Err(content("SAC", 0));
                     }
+                    response_container = super::raw(s, 3);
                     continue;
                 }
                 b"ORC" => {
@@ -723,6 +744,20 @@ impl<'a> WorkResponse<'a> {
             if !expected.contains(&id) || !seen.insert(id) {
                 return Err(content("ORC", 2));
             }
+            let (_, expected_specimen, expected_container) =
+                requests.get(id).ok_or(content("ORC", 2))?;
+            if !response_specimen.is_empty() && response_specimen != *expected_specimen {
+                return Err(Error::Inconsistent {
+                    segment: "SPM",
+                    field: 2,
+                });
+            }
+            if !response_container.is_empty() && response_container != *expected_container {
+                return Err(Error::Inconsistent {
+                    segment: "SAC",
+                    field: 3,
+                });
+            }
             let status = super::raw(s, 5);
             let outcome = match (super::raw(s, 1), status) {
                 (b"OK", b"SC" | b"IP" | b"CM") => AwosOutcome::Accepted,
@@ -731,7 +766,7 @@ impl<'a> WorkResponse<'a> {
                 (b"UC", b"IP" | b"CM") => AwosOutcome::UnableToCancel,
                 _ => return Err(content("ORC", 1)),
             };
-            match (requests.get(id), outcome) {
+            match (requests.get(id).map(|request| &request.0), outcome) {
                 (Some(WorkAction::New), AwosOutcome::Accepted | AwosOutcome::UnableToAccept)
                 | (
                     Some(WorkAction::Cancel),
