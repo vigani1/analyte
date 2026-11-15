@@ -112,3 +112,5 @@ crate path supplies a resolved result identity for a delivery test.
 
 Conversation state and deadline policy live in `analyte-dialog`, in `src/vidas.rs`.
 Conversation tests live in `crates/dialog/tests/vidas.rs`.
+
+Checksum envelopes live in `crates/framing/src/vidas.rs`.

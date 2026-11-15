@@ -65,6 +65,7 @@ dependencies = [
 name = "analyte-autolyser"
 version = "0.1.0"
 dependencies = [
+ "analyte-framing",
  "proptest",
  "thiserror",
 ]

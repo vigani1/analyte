@@ -2,12 +2,10 @@
 use super::vendor::{self, Input, ms};
 use crate::{Error, evidence, invalid};
 use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
+use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
-use analyte_vidas::{
-    framing::{Config, Decoder},
-    syntax::Message,
-};
+use analyte_vidas::syntax::Message;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 

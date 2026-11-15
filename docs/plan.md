@@ -106,7 +106,7 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-model`     | Common model: results, orders, identities, revisions         |
 | `analyte-store`     | Local storage (SQLite), outbox, audit                        |
 | `analyte-transport` | Serial, TCP, folder                                          |
-| `analyte-framing`   | ASTM frames, MLLP, start/end + checksum, lines               |
+| `analyte-framing`   | ASTM, MLLP, VIDAS and Autolyser envelopes, lines               |
 | `analyte-dialog`    | ASTM, HL7, LAW, POCT, VIDAS and Autolyser conversations                                  |
 | `analyte-astm`      | ASTM record syntax                                           |
 | `analyte-hl7`       | HL7 v2 syntax, acknowledgments, LAW transactions             |
@@ -116,8 +116,8 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-sink`      | Delivery to apps and order polling                           |
 | `analyte-sim`       | Fake machine and replay of recordings                        |
 | `analyte-poct`      | POCT01-A2 DML Observation Reviewer (XML)                     |
-| `analyte-vidas`     | VIDAS Literal framing and tagged messages                    |
-| `analyte-autolyser` | Autolyser host-polled framing and fixed-width records        |
+| `analyte-vidas`     | VIDAS tagged message syntax                    |
+| `analyte-autolyser` | Autolyser fixed-width record syntax        |
 | `analyte-receiver`  | Reference receiver: a small app that implements the contract |
 | `analyte`           | The program: service, CLI, admin page                        |
 

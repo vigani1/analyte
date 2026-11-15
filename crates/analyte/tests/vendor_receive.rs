@@ -409,8 +409,8 @@ async fn xml(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
     .await?
 }
 
-fn vidas_config() -> Result<analyte_vidas::framing::Config, Error> {
-    use analyte_vidas::framing::{Checksum, Config, Mode};
+fn vidas_config() -> Result<analyte_framing::vidas::Config, Error> {
+    use analyte_framing::vidas::{Checksum, Config, Mode};
     Ok(Config::new(
         Mode::Literal,
         80,
@@ -477,7 +477,7 @@ async fn poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery() -
 }
 
 fn report() -> Result<Vec<u8>, Error> {
-    use analyte_autolyser::records::{Field, List, PatientCode, Report, Sample, Value};
+    use analyte_autolyser::syntax::{Field, List, PatientCode, Report, Sample, Value};
     Ok(Report::build(
         &PatientCode::from_eight(b"00012aBC")?,
         List::Routine,
@@ -597,7 +597,7 @@ async fn vidas_literal_rule2_unknown_test_is_unmapped_and_operator_visible() -> 
 #[tokio::test]
 async fn autolyser_rev18_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error>
 {
-    use analyte_autolyser::records::{Field, Report};
+    use analyte_autolyser::syntax::{Field, Report};
     let mut run = Running::start(include_str!("../../config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
     let mut report = Report::parse(&report()?, false)?;

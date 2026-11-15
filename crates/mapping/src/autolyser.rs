@@ -11,7 +11,7 @@ use analyte_model::*;
 pub fn map(
     machine: &Validated,
     receipt: ReceiptId,
-    report: &analyte_autolyser::records::Report,
+    report: &analyte_autolyser::syntax::Report,
     time: jiff::Timestamp,
 ) -> Result<Output, Error> {
     let mut output = Output::default();
@@ -63,7 +63,7 @@ pub fn map_order(
     machine: &analyte_config::AutolyserStack,
     settings: &analyte_config::AutolyserOrders,
 ) -> Result<MachineOrder, OrderMappingError> {
-    use analyte_autolyser::records::{Field, List, PatientCode, Sample, Worklist};
+    use analyte_autolyser::syntax::{Field, List, PatientCode, Sample, Worklist};
     if !machine.policy.download {
         return Err(OrderMappingError::Disabled);
     }

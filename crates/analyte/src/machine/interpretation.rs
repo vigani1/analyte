@@ -105,7 +105,7 @@ pub(crate) fn map(
             )?)
         }
         Stack::VidasLiteral(settings) => {
-            let mut decoder = analyte_vidas::framing::Decoder::new(vidas_config(machine)?);
+            let mut decoder = analyte_framing::vidas::Decoder::new(vidas_config(machine)?);
             let mut packet = None;
             for byte in payload {
                 if packet.is_some() {
@@ -134,7 +134,7 @@ pub(crate) fn map(
         }
         Stack::Autolyser(settings) => {
             let report =
-                analyte_autolyser::records::Report::parse(payload, settings.policy.controls)?;
+                analyte_autolyser::syntax::Report::parse(payload, settings.policy.controls)?;
             Ok(analyte_mapping::map_autolyser(
                 &machine.snapshot,
                 id,
@@ -202,8 +202,8 @@ fn map_hl7(
     )?)
 }
 
-pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_vidas::framing::Config, Error> {
-    use analyte_vidas::framing::{Checksum, Config, Mode};
+pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Error> {
+    use analyte_framing::vidas::{Checksum, Config, Mode};
     let settings = match machine.snapshot.effective().stack() {
         Stack::VidasLiteral(settings) => settings,
         Stack::Astm(_)

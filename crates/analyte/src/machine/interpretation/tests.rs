@@ -201,7 +201,7 @@ mod poct_peer;
 #[tokio::test]
 async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_parked_without_machine_io()
 -> Result<(), Error> {
-    use analyte_autolyser::records::{Field, List, PatientCode, Report, Sample, Value};
+    use analyte_autolyser::syntax::{Field, List, PatientCode, Report, Sample, Value};
     let report = Report::build(
         &PatientCode::from_eight(b"00012aBC")?,
         List::Routine,
