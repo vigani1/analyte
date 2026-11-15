@@ -73,3 +73,47 @@ rules in section 8 use exactly the same machine.
 Not implemented: ports, clocks, durable storage/restart replay, syntax parsing,
 MLLP/HL7 dialogs, vendor polling, multi-message outgoing queues or clinical order
 lifecycle decisions. Those belong to their owning layers or later work.
+
+# HL7 over MLLP dialog
+
+Evidence: **documented**. `hl7::Dialog` uses the shared MLLP R1 decoder and
+HL7 2.3.1/2.5.1 acknowledgment builder. Feed bytes individually and execute
+all returned actions in order. Supply monotonic time and wake at `Deadline`.
+The configurable wait bounds partial framing, commit, interpretation, response
+metadata and outgoing acknowledgment waits. Garbage never extends a wait.
+
+Each connection needs a unique host epoch. Journal every byte before feeding
+it; commit actions contain exact complete MLLP blocks. Parked, rejected,
+unmatched and queue-full actions contain evidence for protected storage,
+never ordinary logs. Syntax failures cannot safely be correlated and receive
+no acknowledgment. Duplicate IDs are never deduplicated here: each arrival
+gets a new receipt so the host can reconcile duplicates and changed content.
+
+After commit, original mode requests interpretation. Enhanced mode requests
+fresh metadata for CA first, then interpretation; the shared builder applies
+MSH-15/16 suppression independently. Supply a newly generated MSH-10 and current
+time for **each** ResponseNeeded, including suppressed responses. The host owns
+global response ID uniqueness. NotInterpretable selects AR for rejection or AE
+for content errors and carries a bounded ERR code/location. Commit failure or
+expiry selects AR/CR; interpretation expiry selects AR. Response metadata expiry
+closes the dialog without a fabricated response. Late replies are refused.
+
+The interpreter must distinguish generic ACK transactions from functional
+order/query exchanges: those replies require their own later transaction layer,
+not Interpreted as a substitute for a functional response. This module does not
+implement query/order semantics, deferred MCF, application-ACK conversations,
+restart replay, durable duplicate detection or clinical order lifecycle. A
+received MSA is reported without generating another ACK. Sender outcomes retain
+the six codes and MSA-2 correlation; timeout/disconnect means uncertain, never
+an automatic retry. An enhanced CA means durable acceptance only, not completion
+of a later application exchange. Use a new dialog after disconnect.
+
+Checklist evidence in `tests/hl7.rs`: E original/enhanced selection, independent
+AL/NE/ER/SU conditions and suppression, AA/AE/AR and CA/CR responsibility gates,
+response IDs and MSA-2 correlation, all six MSA outcomes, structured 2.5.1 ERR,
+late replies/store failures; K split and merged framing, bounded queue overflow,
+partial EOF/deadline, invalid trailer, no byte handshake, sender uncertainty.
+The shared framing/syntax crates own repertoire, encoding, full error rendering
+and parser limits. Restart reconciliation and real durability latency tests
+require the future host/store integration; no simulator or real machine claim
+is made. The random-event property guards uncommitted positive responses.

@@ -50,6 +50,7 @@ name = "analyte-dialog"
 version = "0.1.0"
 dependencies = [
  "analyte-framing",
+ "analyte-hl7",
  "proptest",
  "thiserror",
 ]
