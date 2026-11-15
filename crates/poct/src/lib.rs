@@ -1,14 +1,15 @@
 //! POCT01-A2 Basic Profile Observation Reviewer. Evidence level: documented.
 //!
-//! Pure message syntax, reviewer builders, dialog, duplicate comparison.
+//! Pure message syntax, reviewer builders, duplicate comparison.
 //! The host owns transport, clocks, protected storage and trusted identity resolution.
 //! No acceptance ACK is emitted until the host reports durable custody.
 //! See the crate README for the host contract and checklist-to-test mapping.
 #![forbid(unsafe_code)]
 
-mod xml;
+/// Bounded XML grammar and its module-local errors.
+pub mod syntax;
 
-pub use xml::{Document, Element, Error, Limits};
+pub use syntax::{Document, Element, Error, Limits};
 
 mod data;
 mod message;
@@ -21,11 +22,6 @@ pub use message::{
 
 mod build;
 pub use build::{ApplicationError, EscapeReason, Outbound, TerminationReason, build};
-
-mod dialog;
-pub use dialog::{
-    CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogError, DialogEvent,
-};
 
 mod duplicate;
 pub use duplicate::{

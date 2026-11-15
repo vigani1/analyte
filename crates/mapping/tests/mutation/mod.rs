@@ -288,11 +288,11 @@ fn rule2_hl7_mapping_refuses_unqualified_structure_without_losing_original() -> 
     let raw=b"MSH|^~\\&|SYN||||202611151200||OUL^R22|MSG|P|2.3.1\rSPM|1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     assert!(map_hl7(&message, &cfg, input()).is_err());
-    assert_eq!(message.serialize(), raw);
+    assert_eq!(message.encode(), raw);
     let raw=b"MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rSAC|||container-without-specimen\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     assert!(map_hl7(&message, &config(HL7_CONFIG)?, input()).is_err());
-    assert_eq!(message.serialize(), raw);
+    assert_eq!(message.encode(), raw);
     Ok(())
 }
 

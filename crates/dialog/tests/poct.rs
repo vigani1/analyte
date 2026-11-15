@@ -1,9 +1,10 @@
 //! Appendix B sections 3, 4 and 9 deterministic reviewer conversation tests.
-mod common;
-use analyte_poct::{
-    ApplicationError, CommitId, CommitOutcome, ControlId, Dialog, DialogAction, DialogConfig,
-    DialogError, DialogEvent, Message, Outbound,
+use analyte_dialog::poct::{
+    CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent, Error as DialogError,
 };
+#[path = "../../poct/tests/peer_messages.rs"]
+mod peer_messages;
+use analyte_poct::{ApplicationError, ControlId, Message, Outbound};
 use std::time::Duration;
 
 fn dialog(capacity: usize) -> Result<Dialog, DialogError> {
@@ -21,7 +22,7 @@ fn dialog(capacity: usize) -> Result<Dialog, DialogError> {
 fn received(raw: &str) -> Result<DialogEvent, DialogError> {
     Ok(DialogEvent::Received(Box::new(Message::parse(
         raw.as_bytes(),
-        common::limits(),
+        peer_messages::limits(),
     )?)))
 }
 
@@ -64,7 +65,7 @@ fn complete(
 }
 
 fn startup(dialog: &mut Dialog) -> Result<(), DialogError> {
-    let inspect = step(dialog, received(&common::hello("hello"))?)?;
+    let inspect = step(dialog, received(&peer_messages::hello("hello"))?)?;
     assert!(matches!(
         inspect.first(),
         Some(DialogAction::InspectHello { .. })
@@ -74,7 +75,7 @@ fn startup(dialog: &mut Dialog) -> Result<(), DialogError> {
     assert!(sends(&store).is_empty());
     let ack = complete(dialog, ticket(&store)?, CommitOutcome::Stored)?;
     assert!(matches!(sends(&ack).as_slice(),[Outbound::Accept(id)] if id.as_str() == "hello"));
-    let store = step(dialog, received(&common::status("status", "2"))?)?;
+    let store = step(dialog, received(&peer_messages::status("status", "2"))?)?;
     assert!(sends(&store).is_empty());
     let ack = complete(dialog, ticket(&store)?, CommitOutcome::Stored)?;
     assert!(
@@ -84,14 +85,14 @@ fn startup(dialog: &mut Dialog) -> Result<(), DialogError> {
 }
 
 fn observation(id: &str) -> String {
-    common::observation(id, true, "<OBS.value V=\"7.20\" U=\"unit\"/>")
+    peer_messages::observation(id, true, "<OBS.value V=\"7.20\" U=\"unit\"/>")
 }
 
 fn eot() -> String {
-    common::message(
+    peer_messages::message(
         "EOT.R01",
         "eot",
-        &format!("<EOT>{}</EOT>", common::field("EOT.topic_cd", "OBS")),
+        &format!("<EOT>{}</EOT>", peer_messages::field("EOT.topic_cd", "OBS")),
     )
 }
 
@@ -99,7 +100,7 @@ fn eot() -> String {
 fn poct01_b_4_1_2_startup_and_rejection_in_sequence() -> Result<(), DialogError> {
     startup(&mut dialog(2)?)?;
     let mut rejected = dialog(2)?;
-    step(&mut rejected, received(&common::hello("h"))?)?;
+    step(&mut rejected, received(&peer_messages::hello("h"))?)?;
     let actions = step(&mut rejected, DialogEvent::HelloDecision(false))?;
     assert!(matches!(
         sends(&actions).as_slice(),
@@ -111,7 +112,10 @@ fn poct01_b_4_1_2_startup_and_rejection_in_sequence() -> Result<(), DialogError>
             .any(|a| matches!(a, DialogAction::Close { normal: false, .. }))
     );
     let mut early_status = dialog(2)?;
-    let actions = step(&mut early_status, received(&common::status("s", "0"))?)?;
+    let actions = step(
+        &mut early_status,
+        received(&peer_messages::status("s", "0"))?,
+    )?;
     assert!(matches!(
         sends(&actions).as_slice(),
         [Outbound::Escape { .. }, Outbound::Terminate(_)]
@@ -245,13 +249,13 @@ fn poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination()
             }
         })
         .ok_or(DialogError::State)?;
-    let raw = common::message(
+    let raw = peer_messages::message(
         "ACK.R01",
         "final-ack",
         &format!(
             "<ACK>{}{}</ACK>",
-            common::field("ACK.type_cd", "AA"),
-            common::field("ACK.ack_control_id", id.as_str())
+            peer_messages::field("ACK.type_cd", "AA"),
+            peer_messages::field("ACK.ack_control_id", id.as_str())
         ),
     );
     assert!(
@@ -267,10 +271,13 @@ fn poct01_b_4_1_11_remote_end_waits_for_prior_custody() -> Result<(), DialogErro
     let mut dialog = dialog(3)?;
     startup(&mut dialog)?;
     let t = ticket(&step(&mut dialog, received(&observation("o"))?)?)?;
-    let end = common::message(
+    let end = peer_messages::message(
         "END.R01",
         "end",
-        &format!("<TRM>{}</TRM>", common::field("TRM.reason_cd", "USR")),
+        &format!(
+            "<TRM>{}</TRM>",
+            peer_messages::field("TRM.reason_cd", "USR")
+        ),
     );
     let end = ticket(&step(&mut dialog, received(&end)?)?)?;
     assert!(sends(&complete(&mut dialog, end, CommitOutcome::Stored)?).is_empty());
@@ -289,12 +296,12 @@ fn poct01_b_4_1_11_remote_end_waits_for_prior_custody() -> Result<(), DialogErro
 #[test]
 fn poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline() -> Result<(), DialogError> {
     let mut minimal = dialog(2)?;
-    let raw = common::message(
+    let raw = peer_messages::message(
         "HEL.R01",
         "minimal",
         &format!(
             "<DEV>{}</DEV>",
-            common::field("DEV.device_id", "synthetic-device")
+            peer_messages::field("DEV.device_id", "synthetic-device")
         ),
     );
     step(&mut minimal, received(&raw)?)?;
@@ -302,7 +309,7 @@ fn poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline() -> Result<(), Dia
     let actions = complete(&mut minimal, ticket(&store)?, CommitOutcome::Stored)?;
     assert!(matches!(sends(&actions).as_slice(), [Outbound::Accept(_)]));
     let mut slow = dialog(2)?;
-    step(&mut slow, received(&common::hello("h"))?)?;
+    step(&mut slow, received(&peer_messages::hello("h"))?)?;
     let store = slow.step(Duration::from_secs(10), DialogEvent::HelloDecision(true))?;
     let actions = slow.step(
         Duration::from_millis(12500),
@@ -323,10 +330,10 @@ fn poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline() -> Result<(), Dia
 #[test]
 fn poct01_b_4_1_12_escape_correlation_and_final_ack_correlation() -> Result<(), DialogError> {
     let mut valid = dialog(2)?;
-    step(&mut valid, received(&common::hello("h"))?)?;
+    step(&mut valid, received(&peer_messages::hello("h"))?)?;
     let store = step(&mut valid, DialogEvent::HelloDecision(true))?;
     complete(&mut valid, ticket(&store)?, CommitOutcome::Stored)?;
-    let store = step(&mut valid, received(&common::status("s", "0"))?)?;
+    let store = step(&mut valid, received(&peer_messages::status("s", "0"))?)?;
     let actions = complete(&mut valid, ticket(&store)?, CommitOutcome::Stored)?;
     let request = actions
         .iter()
@@ -342,13 +349,13 @@ fn poct01_b_4_1_12_escape_correlation_and_final_ack_correlation() -> Result<(), 
             }
         })
         .ok_or(DialogError::State)?;
-    let escape = common::message(
+    let escape = peer_messages::message(
         "ESC.R01",
         "escape",
         &format!(
             "<ESC>{}{}</ESC>",
-            common::field("ESC.esc_control_id", request.as_str()),
-            common::field("ESC.detail_cd", "CNC")
+            peer_messages::field("ESC.esc_control_id", request.as_str()),
+            peer_messages::field("ESC.detail_cd", "CNC")
         ),
     );
     assert!(
@@ -357,13 +364,13 @@ fn poct01_b_4_1_12_escape_correlation_and_final_ack_correlation() -> Result<(), 
             .any(|a| matches!(a, DialogAction::TopicComplete))
     );
     step(&mut valid, DialogEvent::Finish)?;
-    let ack = common::message(
+    let ack = peer_messages::message(
         "ACK.R01",
         "wrong-ack",
         &format!(
             "<ACK>{}{}</ACK>",
-            common::field("ACK.type_cd", "AA"),
-            common::field("ACK.ack_control_id", "not-the-end")
+            peer_messages::field("ACK.type_cd", "AA"),
+            peer_messages::field("ACK.ack_control_id", "not-the-end")
         ),
     );
     assert!(
@@ -414,7 +421,7 @@ fn poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack() -> Res
 fn poct01_b4_1_2_invalid_capabilities_are_retained_and_termination_has_deadline()
 -> Result<(), DialogError> {
     let mut dialog = dialog(2)?;
-    let raw = common::hello("bad").replace(
+    let raw = peer_messages::hello("bad").replace(
         "<DSC.max_message_sz NULL=\"PINF\"/>",
         "<DSC.max_message_sz V=\"0\"/>",
     );
@@ -522,12 +529,12 @@ fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
                 }
             })
             .ok_or(DialogError::State)?;
-        let ack = common::message(
+        let ack = peer_messages::message(
             "ACK.R01",
             &"a".repeat(256),
             &format!(
                 "<ACK><ACK.type_cd V=\"AA\"/>{}</ACK>",
-                common::field("ACK.ack_control_id", end_id)
+                peer_messages::field("ACK.ack_control_id", end_id)
             ),
         );
         let closed = step(&mut full, received(&ack)?)?;
@@ -568,12 +575,12 @@ fn poct01_b5_13_rejected_hello_reference_cannot_be_reused_by_terminal_ack()
             }
         })
         .ok_or(DialogError::State)?;
-    let ack = common::message(
+    let ack = peer_messages::message(
         "ACK.R01",
         "rejected-hello",
         &format!(
             "<ACK><ACK.type_cd V=\"AA\"/>{}</ACK>",
-            common::field("ACK.ack_control_id", end_id)
+            peer_messages::field("ACK.ack_control_id", end_id)
         ),
     );
     let actions = step(&mut dialog, received(&ack)?)?;

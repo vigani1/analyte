@@ -26,3 +26,23 @@ section 2.8.1; Analyte retains original bytes even when it cannot use a constitu
 Unsupported message semantics, invalid headers and unsupported configured
 versions remain explicit failures. Compatibility never supplies missing
 identity or clinical meaning. See the checklist for current evidence gaps.
+
+## Implemented grammar rule owner
+
+`crates/hl7/src/version.rs` owns edition selection and the grammar difference
+table. The refactor preserves existing acceptance, including the shared
+timestamp precision forms and the explicit LAW and UTF-8 policies.
+
+| Rule | Sources | Regression coverage |
+| --- | --- | --- |
+| Response trigger omission and MSG lengths | 2.3.1 section 2.24.1.9; 2.5.1 sections 2.15.9.9, 2.A.44 | control message type components |
+| Required message time | 2.3.1 section 2.24.1.7; 2.5.1 section 2.15.9.7 | control requires valid message time |
+| Timestamp precision (shared acceptance) | 2.3.1 section 2.8.44; 2.5.1 sections 2.A.22, 2.A.77 | query keeps timestamp precision and offsets |
+| Coded component lengths | 2.3.1 section 2.8.3; 2.5.1 sections 2.A.6, 2.A.13 | datatype coded component lengths; LAW CWE cases |
+| URI universal ID code | 2.3.1 section 2.8.20; 2.5.1 section 2.A.33, table 0301 | query URI code is edition specific |
+| XCN component count and lengths | 2.3.1 section 2.8.49; 2.5.1 section 2.A.86 | query XCN extended components and lengths |
+| Family name count, required surname and lengths | 2.3.1 section 2.8.49.2; 2.5.1 section 2.A.30 | query XCN extended components and lengths |
+| Name type codes | 2.3.1 section 2.8.49.10; 2.5.1 section 2.A.86.10, table 0200 | query name codes |
+| Order sequence required components and lengths | 2.3.1 section 4.4; 2.5.1 section 2.A.50 | datatype order sequence required fields and lengths |
+| Interval component lengths | 2.3.1 section 2.8.35; 2.5.1 section 2.A.63 | query TQ component constraints |
+| Timing component lengths | 2.3.1 section 4.4; 2.5.1 section 2.A.76 | query TQ component constraints |

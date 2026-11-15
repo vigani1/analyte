@@ -288,7 +288,7 @@ impl Message {
     }
     /// Serializes the original wire spelling without losing optional escapes or trailing nulls.
     #[must_use]
-    pub fn serialize(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         for record in &self.records {
             bytes.extend_from_slice(&record.raw);
@@ -558,9 +558,9 @@ impl Message {
     /// Serializes using selected delimiters, translating delimiter escapes while preserving other operations.
     /// # Errors
     /// Rejects a new delimiter that collides with a literal optional escape body.
-    pub fn serialize_with(&self, target: Delimiters) -> Result<Vec<u8>, Error> {
+    pub fn encode_with(&self, target: Delimiters) -> Result<Vec<u8>, Error> {
         if target == self.delimiters {
-            return Ok(self.serialize());
+            return Ok(self.encode());
         }
         let mut output = Vec::new();
         for (record_index, record) in self.records.iter().enumerate() {

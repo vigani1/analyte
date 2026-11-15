@@ -77,7 +77,7 @@ fn check(
     direction: ControlDirection,
 ) -> TestResult {
     let message = message(&fields(id, direction, changes)?)?;
-    let original = message.serialize();
+    let original = message.encode();
     let result = profile.validate_segment(message.segments().nth(1).ok_or("fixture")?, direction);
     assert_eq!(message.raw(), original);
     Ok(result?)
@@ -321,7 +321,7 @@ fn law_tf2b_c7_obx_5_st_tx_and_rule5_original_values_units() -> TestResult {
                 .map(|v| v.raw()),
             Some(value.as_bytes())
         );
-        assert_eq!(message.raw(), message.serialize());
+        assert_eq!(message.raw(), message.encode());
     }
     for (kind, max) in [("ST", 200), ("TX", 65536)] {
         both(
@@ -356,7 +356,7 @@ fn law_tf2b_c7_obx_5_st_tx_and_rule5_original_values_units() -> TestResult {
         Some(b"mg/L^original unit^UCUM".as_slice())
     );
     let bad = result_message(&[(5, "1,234")], "")?;
-    let original = bad.serialize();
+    let original = bad.encode();
     assert!(law::Results::new(&bad).is_err());
     assert_eq!(bad.raw(), original);
     Ok(())

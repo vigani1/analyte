@@ -1,7 +1,7 @@
 //! Host-polled Autolyser connection; a corrupt report blocks R until L recovery.
 use super::vendor::{self, Input, ms};
 use crate::{Error, evidence, invalid};
-use analyte_autolyser::dialog::{Action, Config, Dialog, Event, Recovery, Request};
+use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use std::{collections::VecDeque, time::Instant};
@@ -217,9 +217,9 @@ async fn process(
                 match super::interpretation::map(machine, id, time, &report.raw) {
                     Ok(reading) => evidence::vendor_reading(store, machine, id, reading).await?,
                     Err(error) => {
-                        vendor::failed(
-                            machine,
+                        evidence::failed_reading(
                             store,
+                            machine,
                             id,
                             &format!("Autolyser interpretation: {error}"),
                         )
@@ -232,7 +232,7 @@ async fn process(
             }
             Action::Park(error) => {
                 if let Some(order) = active.as_ref() {
-                    let code = if matches!(error, analyte_autolyser::dialog::Error::Incomplete)
+                    let code = if matches!(error, analyte_dialog::autolyser::Error::Incomplete)
                         && matches!(
                             *end_code,
                             "Autolyser-transfer-timeout"
@@ -251,7 +251,7 @@ async fn process(
                 *recovering = true;
                 let reason = format!("Autolyser: {error}");
                 let parked = match receipt.take() {
-                    Some((id, _)) => vendor::failed(machine, store, id, &reason).await,
+                    Some((id, _)) => evidence::failed_reading(store, machine, id, &reason).await,
                     None => evidence::park_bytes(store, machine, Vec::new(), &reason).await,
                 };
                 if let Err(error) = parked {
@@ -276,15 +276,15 @@ async fn process(
                     .as_ref()
                     .ok_or_else(|| invalid("unexpected Autolyser insertion outcome"))?;
                 let (outcome, code) = match reception {
-                    analyte_autolyser::dialog::Reception::Accepted(position) => (
+                    analyte_dialog::autolyser::Reception::Accepted(position) => (
                         analyte_model::OrderState::Sent,
                         format!("Autolyser-insertion-confirmed-position-{position:02X}"),
                     ),
-                    analyte_autolyser::dialog::Reception::Rejected(error) => (
+                    analyte_dialog::autolyser::Reception::Rejected(error) => (
                         analyte_model::OrderState::Uncertain,
                         format!("Autolyser-insertion-rejected-{error:?}"),
                     ),
-                    analyte_autolyser::dialog::Reception::Other(prefix, detail) => (
+                    analyte_dialog::autolyser::Reception::Other(prefix, detail) => (
                         analyte_model::OrderState::Uncertain,
                         format!("Autolyser-insertion-unknown-{prefix:02X}-{detail:02X}"),
                     ),
@@ -317,8 +317,8 @@ async fn process(
     }
 }
 
-fn park_code(error: &analyte_autolyser::dialog::Error) -> String {
-    use analyte_autolyser::dialog::Error;
+fn park_code(error: &analyte_dialog::autolyser::Error) -> String {
+    use analyte_dialog::autolyser::Error;
     match error {
         Error::Config => "Autolyser-parked-config".into(),
         Error::Busy => "Autolyser-parked-busy".into(),
