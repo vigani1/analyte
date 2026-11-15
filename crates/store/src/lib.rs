@@ -6,7 +6,9 @@ pub use alerts::*;
 mod machine_orders;
 mod migration;
 mod restore;
-const SCHEMA_VERSION: i64 = 6;
+/// Schema version this build creates and migrates to; readers wait for it
+/// before using tables added by the latest migration.
+pub const SCHEMA_VERSION: i64 = 6;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
