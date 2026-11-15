@@ -56,8 +56,9 @@ Vendor receive examples are `examples/poct.toml`, `examples/vidas_literal.toml`
 and `examples/autolyser.toml`. They require explicit installed policies and use
 `[codes]` for exact test/unit translations instead of field-position `[mappings]`.
 Incompatible stacks and vendor field mappings have distinct typed errors.
-All three examples remain synthetic and documented. Worklist download is not
-wired into the program yet; the download permission does not schedule sends.
+All three examples remain synthetic and documented. VIDAS work-list sending
+requires both download permission and an explicit outbound order table; see
+`../analyte/ORDERS.md`. Autolyser sending remains deferred.
 
 
 For outbound VIDAS or Autolyser work lists, `[orders]` requires an explicit
@@ -65,7 +66,7 @@ For outbound VIDAS or Autolyser work lists, `[orders]` requires an explicit
 allowed in the vendor's unqualified patient field. Autolyser also requires
 `clone = true` or `clone = false`; omission never means false. These settings
 are not needed by receive-only machines without `[orders]`. Namespace mismatch
-and missing patient data will be rejected at the outbound mapping boundary;
+and missing patient data are rejected by the VIDAS outbound mapping boundary;
 configuration alone does not send an order.
 
 Vendor order tables omit `[orders.astm]`, which remains required for ASTM.
@@ -73,3 +74,8 @@ Vendor tables cannot enable ASTM queries or carry ASTM destinations. Send-ahead
 also requires the vendor's explicit `download = true` permission. A clone
 setting on another stack, or a patient namespace on the current ASTM layout
 (which has no patient field), is rejected with the setting's qualified key.
+
+VIDAS outbound test mappings require one printable 1-4 byte assay code, without
+pipes. The stack has no specimen-type tag; supplied specimen types are rejected
+rather than misusing the origin or specimen-start tags. App patient IDs must
+match `patient_namespace` exactly before their values enter the vendor field.

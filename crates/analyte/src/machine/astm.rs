@@ -86,7 +86,7 @@ pub(super) async fn session(
             } else { None };
             let events = if let Some(reserved) = outgoing {
                 active_orders.push(reserved.order);
-                vec![Event::Send(reserved.records)]
+                vec![Event::Send(crate::orders::astm::envelope(vec![reserved.payload.record()?.to_vec()], b'N'))]
             } else if bytes.is_empty() && response.is_some() && wake.is_none() {
                 if response_deadline.is_some_and(|until| Instant::now() >= until) { response = crate::orders::astm::failure(machine); }
                 match response.take() {

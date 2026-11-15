@@ -16,7 +16,7 @@ Each outbound test maps an exact app `{namespace, value}` pair to explicit
 ASTM universal-test components. Priorities also require explicit translations.
 Specimen IDs retain their spelling. A required position missing from the app
 order causes rejection; neither the sample ID nor a made-up slot substitutes
-for it. Contract v1 currently supplies no order position.
+for it. Contract v1 can carry position; ASTM forwarding is a separate step.
 
 The first outbound repertoire uses standard ASTM delimiters and ASCII without
 reserved delimiter characters in data. Unrepresentable input is rejected,
@@ -93,3 +93,42 @@ query selectors are not claimed by these synthetic tests.
 All other transitions, including every attempt to return to Sending, are refused.
 Contract conversion explicitly rejects Sending; only real transfer outcomes become
 app events. The same reservation and completion rules apply to query answers.
+
+
+## VIDAS Literal work lists
+
+Evidence remains **documented**, from the existing VIDAS research notes (BCI A
+sections 3-5 and PC sections 10-24 through 10-26), not machine recordings.
+Enable both `[vidas] download = true` and `[orders] send_ahead = true`, with
+`patient_namespace` naming the accepted patient assigning system. Use the same
+explicit outbound test table, with exactly one 1-4 byte assay code in each
+`machine_components` entry. Omit `[orders.astm]`. The priority table admits only
+explicitly listed app priorities; Literal has no priority tag to transmit.
+
+The shared candidate/mapping/reservation path maps every assay before reserving
+one app order as Sending. VIDAS transmits one request per assay through its
+existing download dialog. Only completion of every request produces one Sent
+event (`VIDAS-transfer-confirmed`), never Accepted. A failed assay stops the
+entire reserved order as Uncertain, including any already transferred assays;
+it is never automatically retried. Restart recovery uses the shared Sending
+recovery path; Sent stays Sent.
+
+Missing patient, mismatched patient namespace, and patient/sample IDs exceeding
+17 bytes or the installed sample limit respectively are rejected before any
+transmission. IDs are copied exactly. Literal has no specimen-type tag: every
+supplied specimen type is rejected as `unmapped-specimen-type`, rather than
+being silently lost or placed in `so` (origin) or `si` (empty structural marker).
+The request includes only `mt`, `pi`, `si`, `ci` and `rt`; no demographics,
+position, dilution or other context is invented.
+
+Uncertain transfer codes distinguish acknowledgment/interbyte/session deadlines,
+disconnection, shutdown cancellation, write/input failures, framing/suffix
+failures and refusal/unexpected input. Raw incoming bytes are still journaled
+before the dialog receives them. Patient identifiers occur only in protected
+order evidence and wire data, not ordinary logs.
+
+`tests/orders/vidas.rs` drives the program with a temporary store and the
+reference receiver: multi-assay completion, timeout, mid-send disconnect,
+restart during Sending, Sent surviving restart, no replay, unmapped test and
+specimen type, wrong/missing patient context, over-long IDs and cancellation
+before sending. Autolyser sending remains deferred.

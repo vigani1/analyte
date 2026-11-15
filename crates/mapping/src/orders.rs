@@ -33,18 +33,29 @@ pub struct AppOrder {
     pub priority: AppOrderPriority,
     /// Position supplied by the app, never invented by the bridge.
     pub position: Option<SourceText>,
+    /// Optional exact patient identifier; the namespace is checked before encoding.
+    pub patient: Option<NamespacedId>,
+    /// Specimen type evidence, never substituted for origin metadata.
+    pub specimen_type: Option<NamespacedId>,
 }
 
-/// A complete bounded O record ready for an ASTM sender, without a send side effect.
-pub struct MachineOrder {
-    record: Vec<u8>,
+/// Complete mapped commands; mapping has no transmission or reservation side effects.
+pub enum MachineOrder {
+    /// A standard O record, including CR.
+    Astm(Vec<u8>),
+    /// One validated request per assay, in the app's order.
+    Vidas(Vec<analyte_vidas::syntax::Message>),
 }
 
 impl MachineOrder {
-    /// Borrows the mapped O record including its terminating CR.
-    #[must_use]
-    pub fn record(&self) -> &[u8] {
-        &self.record
+    /// Borrows an ASTM record, refusing another protocol's payload.
+    /// # Errors
+    /// Returns Disabled when this is not an ASTM command.
+    pub fn record(&self) -> Result<&[u8], OrderMappingError> {
+        match self {
+            Self::Astm(record) => Ok(record),
+            Self::Vidas(_) => Err(OrderMappingError::Disabled),
+        }
     }
 }
 
@@ -54,6 +65,21 @@ pub enum OrderMappingError {
     /// This machine has no outbound capability.
     #[error("outbound orders are disabled")]
     Disabled,
+    /// VIDAS requires an explicit patient identifier.
+    #[error("missing-patient")]
+    MissingPatient,
+    /// Patient assigning system does not match the configured system.
+    #[error("patient-namespace-mismatch")]
+    PatientNamespace,
+    /// The supplied specimen type has no wire mapping.
+    #[error("unmapped-specimen-type")]
+    UnmappedSpecimenType,
+    /// A field exceeds its documented or installed ceiling.
+    #[error("overlong-{0}")]
+    Overlong(&'static str),
+    /// Vendor syntax refuses the mapped request, without exposing patient content.
+    #[error("VIDAS request is not representable: {0}")]
+    Vidas(#[from] analyte_vidas::syntax::Error),
     /// No exact app-system and code match exists.
     #[error("unmapped test {0:?}")]
     UnmappedTest(NamespacedId),
@@ -68,13 +94,16 @@ pub enum OrderMappingError {
     Representation,
 }
 
-/// Maps every requested test before constructing a complete O record.
+/// Maps every requested test before constructing complete protocol commands.
 /// No wire output is returned for partial or ambiguous mappings.
 /// # Errors
-/// Refuses disabled capability, unmapped tests/priority, absent position and wire bounds.
+/// Refuses disabled capability, unmapped values, missing required context and wire bounds.
 pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, OrderMappingError> {
     let machine = config.effective().machine();
     let settings = machine.orders.as_ref().ok_or(OrderMappingError::Disabled)?;
+    if machine.syntax.kind == analyte_config::SyntaxKind::VidasLiteral {
+        return vidas(order, machine, settings);
+    }
     let astm = settings.astm.as_ref().ok_or(OrderMappingError::Disabled)?;
     let limits = &machine.syntax;
     if order.tests.is_empty() || order.tests.len() > limits.repetitions {
@@ -149,7 +178,7 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
         return Err(OrderMappingError::Representation);
     }
     record.push(b'\r');
-    Ok(MachineOrder { record })
+    Ok(MachineOrder::Astm(record))
 }
 
 fn set(
@@ -182,4 +211,93 @@ fn wire_text(value: &str) -> Result<(), OrderMappingError> {
         return Err(OrderMappingError::Representation);
     }
     Ok(())
+}
+
+// One shared patient boundary for all outbound stacks with an unqualified field.
+fn patient<'a>(
+    order: &'a AppOrder,
+    settings: &analyte_config::Orders,
+) -> Result<&'a str, OrderMappingError> {
+    let patient = order
+        .patient
+        .as_ref()
+        .ok_or(OrderMappingError::MissingPatient)?;
+    if settings.patient_namespace.as_ref() != Some(&patient.namespace) {
+        return Err(OrderMappingError::PatientNamespace);
+    }
+    Ok(patient.value.as_str())
+}
+
+fn vidas(
+    order: &AppOrder,
+    machine: &analyte_config::Machine,
+    settings: &analyte_config::Orders,
+) -> Result<MachineOrder, OrderMappingError> {
+    let installed = machine.vidas.as_ref().ok_or(OrderMappingError::Disabled)?;
+    if !installed.download {
+        return Err(OrderMappingError::Disabled);
+    }
+    let patient = patient(order, settings)?;
+    if patient.len() > 17 {
+        return Err(OrderMappingError::Overlong("patient-id"));
+    }
+    if order.sample.as_str().len() > usize::from(installed.sample_limit) {
+        return Err(OrderMappingError::Overlong("sample-id"));
+    }
+    // BCI A section 4 has no specimen-type destination; so is origin and si is empty.
+    if order.specimen_type.is_some() {
+        return Err(OrderMappingError::UnmappedSpecimenType);
+    }
+    if order.tests.is_empty()
+        || order.tests.len() > 100
+        || order.tests.len() > machine.syntax.records
+        || order.tests.len() > machine.syntax.repetitions
+    {
+        return Err(OrderMappingError::Representation);
+    }
+    if !settings
+        .priorities
+        .iter()
+        .any(|p| p.app.as_str() == order.priority.code())
+    {
+        return Err(OrderMappingError::UnmappedPriority);
+    }
+    let limit = if installed.sample_limit == 12 {
+        analyte_vidas::syntax::SampleLimit::Twelve
+    } else {
+        analyte_vidas::syntax::SampleLimit::Seventeen
+    };
+    let mut requests = Vec::new();
+    let mut total_bytes = 0usize;
+    for test in &order.tests {
+        let mapped = settings
+            .tests
+            .iter()
+            .find(|t| t.app == *test)
+            .ok_or_else(|| OrderMappingError::UnmappedTest(test.clone()))?;
+        let [code] = mapped.machine_components.as_slice() else {
+            return Err(OrderMappingError::Representation);
+        };
+        let request = analyte_vidas::syntax::Message::build(
+            &[
+                ("mt", "mpr"),
+                ("pi", patient),
+                ("si", ""),
+                ("ci", order.sample.as_str()),
+                ("rt", code),
+            ],
+            limit,
+        )?;
+        if request.text().len() > machine.framing.limit {
+            return Err(OrderMappingError::Representation);
+        }
+        total_bytes = total_bytes
+            .checked_add(request.text().len())
+            .ok_or(OrderMappingError::Representation)?;
+        if total_bytes > machine.syntax.bytes {
+            return Err(OrderMappingError::Representation);
+        }
+        requests.push(request);
+    }
+    Ok(MachineOrder::Vidas(requests))
 }

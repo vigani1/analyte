@@ -194,6 +194,22 @@ impl Orders {
                 return Err(fail());
             }
         }
+        if machine.syntax.kind == SyntaxKind::VidasLiteral
+            && self.tests.iter().any(|test| {
+                let [code] = test.machine_components.as_slice() else {
+                    return true;
+                };
+                code.is_empty()
+                    || code.len() > 4
+                    || code.bytes().any(|b| !(32..=126).contains(&b) || b == b'|')
+            })
+        {
+            return Err(invalid(
+                path,
+                "orders.tests",
+                "VIDAS requires one printable assay code of 1 to 4 bytes without a pipe",
+            ));
+        }
         let mut priorities = HashSet::new();
         for priority in &self.priorities {
             if !matches!(priority.app.as_str(), "routine" | "urgent" | "stat")

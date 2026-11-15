@@ -188,3 +188,19 @@ fn adr0002_outbound_settings_cannot_silently_apply_to_another_stack() -> TestRes
     }
     Ok(())
 }
+
+#[test]
+fn vidas_bci_a_section4_outbound_assay_codes_require_single_bounded_tag_value() -> TestResult {
+    let definition = include_str!("../examples/vidas_literal.toml")
+        .replace("download = false", "download = true");
+    for components in [r#"["ABCDE"]"#, r#"["A", "B"]"#, r#"["A|B"]"#] {
+        invalid_key(
+            vendor_config(
+                &definition,
+                &VENDOR_ORDERS.replace(r#"["SYN"]"#, components),
+            ),
+            "orders.tests",
+        );
+    }
+    Ok(())
+}

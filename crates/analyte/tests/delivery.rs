@@ -2,6 +2,8 @@
 #[path = "orders/cases.rs"]
 mod order_cases;
 mod support;
+#[path = "orders/vidas.rs"]
+mod vidas_cases;
 use analyte::{Error, config::Program, service};
 use axum::{
     body::{Body, to_bytes},

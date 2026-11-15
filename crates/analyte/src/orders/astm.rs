@@ -252,7 +252,7 @@ async fn answer(
                         },
                         version: fields.version,
                     });
-                    records.push(mapped.record().to_vec());
+                    records.push(mapped.record()?.to_vec());
                     if records
                         .len()
                         .checked_mul(2)

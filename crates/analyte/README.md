@@ -118,8 +118,11 @@ Vendor input is durably journaled before the dialog sees it. Complete receipts
 and interpretations keep driver/config versions. Unresolved identity is preserved
 and parked, never replaced with a generated run ID. `parked list` exposes its
 specific reason. No current vendor crate yields a resolved result identity, so
-vendor integration tests assert no reference-receiver delivery.
+vendor receive tests assert no reference-receiver result delivery.
 
-Worklist downloads are not wired yet. The configured download permission never
-schedules an order. VIDAS/Autolyser send-ahead will build on phase 6's durable
-`reserve_send` and lifecycle/reconciliation APIs after `feat/program-orders`.
+VIDAS work-list sending uses the shared order mapper, durable `reserve_send`
+and lifecycle APIs; see [ORDERS.md](ORDERS.md). The download permission alone
+does not schedule an order: `[orders]` must also explicitly enable send-ahead
+and configure the patient namespace and outbound codes. Successful transfer
+means Sent, never Accepted. Interrupted orders become Uncertain and are never
+automatically replayed. Autolyser work-list sending remains deferred.

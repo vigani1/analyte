@@ -29,13 +29,19 @@ pub(crate) fn app_order(
     Ok(analyte_mapping::AppOrder {
         sample: SampleId::new(fields.sample_id.as_str())?,
         tests,
+        patient: fields
+            .patient
+            .as_ref()
+            .map(|p| namespaced(&p.id))
+            .transpose()?,
+        specimen_type: fields.specimen_type.as_ref().map(namespaced).transpose()?,
         priority: match fields.priority {
             analyte_contract::Priority::Routine => analyte_mapping::AppOrderPriority::Routine,
             analyte_contract::Priority::Urgent => analyte_mapping::AppOrderPriority::Urgent,
             analyte_contract::Priority::Stat => analyte_mapping::AppOrderPriority::Stat,
         },
-        // Contract v1 currently supplies no position. A machine requiring it is
-        // rejected by the mapper; the host never substitutes its sample ID.
+        // Position forwarding is a separate ASTM change. VIDAS has no position
+        // destination; it never substitutes a position for sample identity.
         position: None,
     })
 }
@@ -74,4 +80,11 @@ fn build_event(record: &MachineOrder, reason: Option<&str>) -> Result<OrderEvent
 /// Returns the app namespace used for cache lookups and lifecycle events.
 pub(crate) fn destination(machine: &Machine) -> Identifier {
     machine.snapshot.effective().site().destination.name.clone()
+}
+
+fn namespaced(id: &analyte_contract::evidence::NamespacedId) -> Result<NamespacedId, Error> {
+    Ok(NamespacedId {
+        namespace: Identifier::new(id.namespace.as_str())?,
+        value: Identifier::new(id.value.as_str())?,
+    })
 }

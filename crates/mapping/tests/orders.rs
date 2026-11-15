@@ -27,6 +27,8 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
         }],
         priority: AppOrderPriority::Routine,
         position: None,
+        patient: None,
+        specimen_type: None,
     })
 }
 
@@ -34,7 +36,7 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
 fn lis02_section8_outbound_table_preserves_sample_and_never_reverses_inbound() -> TestResult {
     let config = config(include_str!("../../config/examples/orders.toml"))?;
     let mapped = map_order(&order()?, &config)?;
-    assert_eq!(mapped.record(), b"O|1|001a||^^^SEND|R||||||N\r");
+    assert_eq!(mapped.record()?, b"O|1|001a||^^^SEND|R||||||N\r");
     Ok(())
 }
 

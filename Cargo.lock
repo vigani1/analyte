@@ -129,6 +129,7 @@ dependencies = [
  "analyte-config",
  "analyte-hl7",
  "analyte-model",
+ "analyte-vidas",
  "jiff",
  "proptest",
  "thiserror",
