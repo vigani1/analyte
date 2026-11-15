@@ -180,6 +180,5 @@ pub(super) async fn session(
             evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
         }
     }
-    conn.cancellation().cancel();
     Ok(())
 }

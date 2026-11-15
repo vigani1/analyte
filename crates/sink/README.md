@@ -31,9 +31,16 @@ health combines store status with the same freshness policy.
 
 The loops borrow their resources and spawn no tasks. A watch boolean (true),
 or closing its sender, stops active and idle waits. The host owns and joins any
-tasks it creates. Cancellation after a claim can leave an in-flight item and a
-submitted storage write can commit: reconcile, then explicitly release that same
-ID. Network timeouts recorded as retries always retain the same ID and bytes.
+tasks it creates. The program uses `run_draining(stop, budget)`: stop claiming,
+let the active attempt finish under its existing request deadline and remaining
+shutdown budget, then cancel only on budget expiry. The lower-level `run` retains
+immediate cancellation for hosts that need it. A submitted store write can commit.
+Before worker startup, call the store's paged `recover_in_flight(now, audit)` until
+zero: interrupted app attempts automatically retry with the same ID and exact
+bytes, with an uncertain attempt and an audit per delivery (ADR 0008). An app may
+already have accepted it and must answer duplicate. Parked, conflict and paused
+items still need operator release. This recovery never sends orders to machines.
+Network timeouts recorded as retries also retain the same ID and bytes.
 
 This crate does not dispatch orders to analyzers, interpret clinical results,
 resolve parked evidence, host an admin UI, or load secrets from files.

@@ -246,6 +246,45 @@ impl<'a> Worker<'a> {
         Ok((classify_response(status, &bytes, retry.as_deref()), detail))
     }
 
+    /// Stops claiming on cancellation and drains the current attempt within `budget`.
+    /// Its HTTP deadline still applies. Expiry leaves an interrupted claim for
+    /// startup recovery with the same immutable ID and bytes (ADR 0008).
+    /// # Errors
+    /// Reports storage/configuration failures or expiry of the shutdown budget.
+    pub async fn run_draining(
+        &self,
+        mut stop: watch::Receiver<bool>,
+        budget: Duration,
+    ) -> Result<(), Error> {
+        loop {
+            if *stop.borrow() || stop.has_changed().is_err() {
+                return Ok(());
+            }
+            let started = std::sync::atomic::AtomicBool::new(false);
+            let attempt = async {
+                started.store(true, std::sync::atomic::Ordering::Relaxed);
+                self.deliver_once().await
+            };
+            tokio::pin!(attempt);
+            let outcome = tokio::select! {
+                biased;
+                () = cancelled(&mut stop) => {
+                    if !started.load(std::sync::atomic::Ordering::Relaxed) { return Ok(()); }
+                    tokio::time::timeout(budget, &mut attempt).await.map_err(|_| Error::Timeout)??;
+                    return Ok(());
+                }
+                result = &mut attempt => result?,
+            };
+            if outcome == DeliveryOutcome::Idle {
+                tokio::select! {
+                    biased;
+                    () = cancelled(&mut stop) => return Ok(()),
+                    () = tokio::time::sleep(Duration::from_millis(100)) => {}
+                }
+            }
+        }
+    }
+
     /// Runs until cancellation or a specific storage/configuration error.
     /// Dropping this future has the same uncertain-claim semantics as `deliver_once`.
     /// # Errors

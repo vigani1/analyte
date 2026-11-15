@@ -49,9 +49,60 @@ pub async fn serve(
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
 ) -> Result<(), Error> {
+    let secrets = crate::secrets::EnvironmentSecrets::load(&program)?;
+    serve_with(program, space, stop, secrets, false).await
+}
+
+/// Runs synthetic localhost tests with injected host credentials and explicit URL overrides.
+/// No production configuration can enable HTTP. All spawned tasks are joined.
+/// # Errors
+/// Reports startup, supervision and bounded shutdown failures.
+pub async fn serve_loopback_test(
+    program: Program,
+    space: Box<dyn FreeSpace>,
+    stop: impl Future<Output = Result<(), Error>>,
+    secrets: crate::secrets::EnvironmentSecrets,
+) -> Result<(), Error> {
+    serve_with(program, space, stop, secrets, true).await
+}
+
+async fn serve_with(
+    program: Program,
+    space: Box<dyn FreeSpace>,
+    stop: impl Future<Output = Result<(), Error>>,
+    secrets: crate::secrets::EnvironmentSecrets,
+    loopback: bool,
+) -> Result<(), Error> {
+    let destinations = crate::delivery::destinations(&program, loopback)?;
+    let secrets = Arc::new(secrets);
     let store = Arc::new(open_store(&program, space).await?);
+    crate::delivery::recover(&store).await?;
+    let (delivery_stop, delivery_stopped) = watch::channel(false);
+    let mut delivery_owners = JoinSet::new();
+    for destination in &destinations {
+        let destination = destination.clone();
+        let store = store.clone();
+        let secrets = secrets.clone();
+        let stop = delivery_stopped.clone();
+        delivery_owners.spawn(async move {
+            analyte_sink::Poller::new(&store, &destination, secrets.as_ref())
+                .run(stop)
+                .await
+        });
+    }
+    {
+        let store = store.clone();
+        let secrets = secrets.clone();
+        delivery_owners.spawn(async move {
+            analyte_sink::Worker::new(&store, &destinations, secrets.as_ref())
+                .run_draining(delivery_stopped, crate::delivery::SHUTDOWN_BUDGET)
+                .await
+        });
+    }
     let (shutdown, stopping) = watch::channel(false);
     let mut owners = JoinSet::new();
+    let mut ready_to_close = Vec::new();
+    let (close_transports, transports_closing) = watch::channel(false);
     for machine in program.machines {
         let store = store.clone();
         let stop = stopping.clone();
@@ -61,19 +112,31 @@ pub async fn serve(
                 .map(|b| format!("{b:02x}"))
                 .collect::<String>(),
         );
+        let (ready, received) = watch::channel(false);
+        ready_to_close.push(received);
+        let closing = machine::Closing {
+            ready: ready.clone(),
+            close: transports_closing.clone(),
+        };
         owners.spawn(async move {
             let id = machine.id.clone();
-            if let Err(error) = machine::run(machine, store, stop, file_root).await {
+            if let Err(error) = machine::run(machine, store, stop, file_root, closing).await {
                 tracing::error!(machine = id.as_str(), error_kind = %error, "machine owner stopped");
             }
+            ready.send_replace(true);
         });
     }
-    // Delivery-worker and order-poller startup belongs here. This receive-only
-    // release deliberately creates no deliveries and issues no machine orders.
     tokio::pin!(stop);
     let result = loop {
         tokio::select! {
             result = &mut stop => break result,
+            owner = delivery_owners.join_next(), if !delivery_owners.is_empty() => {
+                break match owner {
+                    Some(Ok(Err(error))) => Err(error.into()),
+                    Some(Err(error)) => Err(error.into()),
+                    Some(Ok(Ok(()))) | None => Err(invalid("delivery owner stopped unexpectedly")),
+                };
+            }
             owner = owners.join_next(), if !owners.is_empty() => {
                 if let Some(Err(error)) = owner {
                     tracing::error!(error_kind = %error, "machine supervisor observed task failure");
@@ -85,14 +148,33 @@ pub async fn serve(
     let until = tokio::time::Instant::now()
         .checked_add(Duration::from_secs(15))
         .unwrap_or(tokio::time::Instant::now());
-    let drained = tokio::time::timeout_at(until, async {
+    let commits_drained = tokio::time::timeout_at(until, async {
+        for ready in &mut ready_to_close {
+            machine::stopping(ready).await;
+        }
+    })
+    .await;
+    delivery_stop.send_replace(true);
+    let delivery_drained = tokio::time::timeout(crate::delivery::SHUTDOWN_BUDGET, async {
+        while let Some(owner) = delivery_owners.join_next().await {
+            owner??;
+        }
+        Ok::<_, Error>(())
+    })
+    .await;
+    if !matches!(delivery_drained, Ok(Ok(()))) {
+        delivery_owners.abort_all();
+        while delivery_owners.join_next().await.is_some() {}
+    }
+    close_transports.send_replace(true);
+    let drained = tokio::time::timeout(Duration::from_secs(5), async {
         while let Some(owner) = owners.join_next().await {
             owner?;
         }
         Ok::<_, Error>(())
     })
     .await;
-    if drained.is_err() {
+    if !matches!(drained, Ok(Ok(()))) {
         owners.abort_all();
         while owners.join_next().await.is_some() {}
     }
@@ -105,7 +187,13 @@ pub async fn serve(
                 .unwrap_or(Instant::now()),
         )
         .await?;
-    drained.map_err(|_| invalid("machine shutdown exceeded 15 seconds"))??;
+    commits_drained.map_err(|_| invalid("receive commits exceeded 15 seconds"))?;
+    drained.map_err(|_| invalid("transport shutdown exceeded 5 seconds"))??;
+    delivery_drained.map_err(|_| {
+        invalid(
+            "delivery shutdown exceeded 5 seconds; interrupted attempts will recover on restart",
+        )
+    })??;
     result
 }
 

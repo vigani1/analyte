@@ -938,3 +938,96 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
     store.shutdown(until()?).await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recovery() -> TestResult {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    for complete in [true, false] {
+        let directory = tempfile::tempdir()?;
+        let mut store = store(&directory.path().join("store.db")).await?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let destinations = [destination(&format!("http://{}", listener.local_addr()?))?];
+        let metadata = receipt()?;
+        let result = make_result(metadata.id, "drain-run")?;
+        let delivery = build_delivery(
+            &result,
+            &metadata,
+            Identifier::new("app")?,
+            jiff::Timestamp::now(),
+        )?;
+        let id = delivery.id;
+        let bytes = delivery.payload.clone();
+        enqueue(&store, metadata, result, delivery).await?;
+        let secrets = Secrets("key");
+        let worker = Worker::new(&store, &destinations, &secrets);
+        let (stop, stopped) = watch::channel(false);
+        let peer = async {
+            let (mut stream, _) = listener.accept().await?;
+            let mut headers = Vec::new();
+            while !headers.ends_with(b"\r\n\r\n") {
+                if headers.len() >= 8192 {
+                    return Err(std::io::Error::other("oversized test headers"));
+                }
+                headers.push(stream.read_u8().await?);
+            }
+            let mut body = vec![0; bytes.len()];
+            stream.read_exact(&mut body).await?;
+            assert_eq!(body, bytes);
+            stop.send_replace(true);
+            if complete {
+                let body = r#"{"contract_version":1,"status":"accepted"}"#;
+                stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await?;
+            } else {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+            }
+            Ok::<_, std::io::Error>(())
+        };
+        let (outcome, peer) = tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(
+                worker.run_draining(stopped, Duration::from_millis(75)),
+                peer
+            )
+        })
+        .await?;
+        peer?;
+        if complete {
+            outcome?;
+            assert_eq!(
+                destinations
+                    .first()
+                    .ok_or("destination missing")?
+                    .health(&store, jiff::Timestamp::now().as_second())
+                    .await?
+                    .pending_count,
+                0
+            );
+        } else {
+            assert!(matches!(outcome, Err(Error::Timeout)));
+            store
+                .request(until()?, |s| {
+                    s.recover_in_flight(
+                        jiff::Timestamp::now().as_second(),
+                        &analyte_store::Audit {
+                            actor: Identifier::new("startup")
+                                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            action: Identifier::new("recover")
+                                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            targets: vec![],
+                            time: 0,
+                            reason: Reason::new("ADR 0008 interrupted idempotent delivery")
+                                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        },
+                    )
+                })
+                .await?;
+            let claim = store
+                .request(until()?, |s| s.claim(jiff::Timestamp::now().as_second()))
+                .await?
+                .ok_or("recovered claim missing")?;
+            assert_eq!(claim.id, id);
+            assert_eq!(claim.payload, bytes);
+        }
+        store.shutdown(until()?).await?;
+    }
+    Ok(())
+}

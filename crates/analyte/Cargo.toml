@@ -9,6 +9,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+analyte-sink = { workspace = true }
+thiserror = { workspace = true }
 serialport = { workspace = true }
 fs4 = { workspace = true }
 analyte-model = { workspace = true }
@@ -31,6 +33,10 @@ jiff = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+analyte-receiver = { workspace = true }
+axum = { workspace = true }
+rusqlite = { workspace = true }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

@@ -10,11 +10,28 @@ use analyte_transport::{Backoff, Limits, connection};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 
+/// Separates completed receive commits from transport closure during shutdown.
+pub(crate) struct Closing {
+    pub(crate) ready: watch::Sender<bool>,
+    pub(crate) close: watch::Receiver<bool>,
+}
+
+impl Closing {
+    pub(crate) async fn after_commits(&mut self) -> Result<(), Error> {
+        self.ready.send_replace(true);
+        tokio::time::timeout(Duration::from_secs(25), stopping(&mut self.close))
+            .await
+            .map_err(|_| invalid("transport close stage exceeded 25 seconds"))?;
+        Ok(())
+    }
+}
+
 pub(crate) async fn run(
     machine: Machine,
     store: Arc<Handle>,
     mut stop: watch::Receiver<bool>,
     file_root: std::path::PathBuf,
+    mut closing: Closing,
 ) -> Result<(), Error> {
     let limits = Limits::new(
         16,
@@ -34,12 +51,12 @@ pub(crate) async fn run(
             loop {
                 let accepted = tokio::select! {
                     biased;
-                    _ = stop.changed() => return Ok(()),
+                    _ = stop.changed() => { closing.after_commits().await?; return Ok(()); },
                     accepted = listener.accept() => accepted?,
                 };
                 let (conn, side) = connection(limits);
                 let cancel = conn.cancellation();
-                let processing = drive(&machine, &store, conn, stop.clone());
+                let processing = drive(&machine, &store, conn, stop.clone(), &mut closing);
                 let transport = analyte_transport::tcp::pump(accepted.0, side);
                 // Drain ordered received/closed events even if the I/O owner finishes first.
                 let (result, transport) = tokio::join!(processing, transport);
@@ -56,8 +73,10 @@ pub(crate) async fn run(
         TransportKind::TcpClient => loop {
             let (conn, side) = connection(limits);
             let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
-            let (result, transport) =
-                tokio::join!(drive(&machine, &store, conn, stop.clone()), transport);
+            let (result, transport) = tokio::join!(
+                drive(&machine, &store, conn, stop.clone(), &mut closing),
+                transport
+            );
             result?;
             transport?;
             if *stop.borrow() {
@@ -68,8 +87,10 @@ pub(crate) async fn run(
                 () = tokio::time::sleep(Duration::from_millis(100)) => {}
             }
         },
-        TransportKind::Serial => serial::run(&machine, &store, limits, stop).await,
-        TransportKind::WatchedFolder => folder::session(&machine, &store, file_root, stop).await,
+        TransportKind::Serial => serial::run(&machine, &store, limits, stop, closing).await,
+        TransportKind::WatchedFolder => {
+            folder::session(&machine, &store, file_root, stop, closing).await
+        }
     }
 }
 
@@ -106,8 +127,12 @@ async fn drive(
     store: &Handle,
     mut conn: analyte_transport::Connection,
     stop: watch::Receiver<bool>,
+    closing: &mut Closing,
 ) -> Result<(), Error> {
-    let result = session(machine, store, &mut conn, stop).await;
+    let result = session(machine, store, &mut conn, stop.clone()).await;
+    if *stop.borrow() {
+        closing.after_commits().await?;
+    }
     conn.cancellation().cancel();
     // Drop closes the event consumer so a transport ending after an error cannot
     // wait behind unread events during shutdown.

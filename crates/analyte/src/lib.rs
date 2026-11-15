@@ -2,11 +2,14 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
+mod delivery;
 mod evidence;
 mod machine;
 pub mod output;
+pub mod secrets;
 pub mod service;
 mod space;
+pub mod status;
 
 /// The orchestration boundary retains concrete errors as their original causes.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;

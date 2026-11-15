@@ -138,6 +138,7 @@ pub(crate) async fn interpret(
         config: machine.snapshot.canonical().as_bytes().to_vec(),
         outcome: reading,
     };
+    let destination = machine.snapshot.effective().site().destination.name.clone();
     let result = store
         .request(deadline(), move |store| {
             let findings = findings
@@ -155,9 +156,22 @@ pub(crate) async fn interpret(
                     })
                 })
                 .collect::<Result<Vec<_>, analyte_store::Error>>()?;
-            store.interpret_reconciled(id, interpretation, &corrections, &findings, |_, _| {
-                Ok(Vec::new())
-            })
+            let receipt = store
+                .receipt(id)?
+                .ok_or(analyte_store::Error::Conflict)?
+                .metadata;
+            store.interpret_reconciled(
+                id,
+                interpretation,
+                &corrections,
+                &findings,
+                |assigned, outcomes| {
+                    if !accepted {
+                        return Ok(Vec::new());
+                    }
+                    build_deliveries(assigned, outcomes, &receipt, &destination)
+                },
+            )
         })
         .await?;
     Ok(accepted
@@ -165,6 +179,40 @@ pub(crate) async fn interpret(
             .outcomes
             .iter()
             .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved)))
+}
+
+// The store assigns revisions before this callback freezes bytes. Only new and
+// corrected production results can cross this boundary; replay never enqueues.
+fn build_deliveries(
+    assigned: &Interpretation,
+    outcomes: &[RevisionOutcome],
+    receipt: &ReceiptMetadata,
+    destination: &Identifier,
+) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error> {
+    let mut deliveries = Vec::new();
+    if let Reading::Results(results) = &assigned.outcome {
+        for (result, outcome) in results.iter().zip(outcomes) {
+            let fresh = match outcome {
+                RevisionOutcome::New(_) | RevisionOutcome::Correction(_) => true,
+                RevisionOutcome::Retransmission(_)
+                | RevisionOutcome::Conflict
+                | RevisionOutcome::Unresolved => false,
+            };
+            if fresh && result.processing.may_deliver_to_production() && !result.requires_parking()
+            {
+                deliveries.push(
+                    analyte_sink::build_delivery(
+                        result,
+                        receipt,
+                        destination.clone(),
+                        jiff::Timestamp::now(),
+                    )
+                    .map_err(|error| analyte_store::Error::DeliveryBuild(Box::new(error)))?,
+                );
+            }
+        }
+    }
+    Ok(deliveries)
 }
 
 pub(crate) async fn park_bytes(
