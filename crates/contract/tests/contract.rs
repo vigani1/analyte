@@ -70,7 +70,19 @@ fn adr0008_vectors_do_not_drift() -> Result<(), Box<dyn std::error::Error>> {
     let delivery: Delivery = decode(include_bytes!(
         "../../../docs/contract/vectors/delivery.json"
     ))?;
-    assert_eq!(delivery.fields().sample.id.as_str(), "000Ab12");
+    assert_eq!(
+        delivery
+            .fields()
+            .results
+            .first()
+            .ok_or("result")?
+            .sample
+            .as_ref()
+            .ok_or("sample")?
+            .id
+            .as_str(),
+        "000Ab12"
+    );
     let body_delivery: Delivery = decode(field("body")?.as_bytes())?;
     assert_eq!(
         serde_json::to_value(delivery)?,
@@ -136,7 +148,8 @@ fn adr0008_unknown_fields_and_invalid_decimal_are_handled() -> Result<(), Box<dy
     ))?;
     document["future_field"] = serde_json::json!({"future":true});
     let _: Delivery = decode(&serde_json::to_vec(&document)?)?;
-    document["results"][0]["value"]["decimal"]["number"] = serde_json::json!("NaN");
+    document["results"][0]["parts"][0]["values"][0]["parsed"]["numeric"]["number"] =
+        serde_json::json!("NaN");
     assert!(decode::<Delivery>(&serde_json::to_vec(&document)?).is_err());
     assert!(decode::<Delivery>(&vec![b' '; MAX_DOCUMENT_BYTES.saturating_add(1)]).is_err());
     assert!(Text::try_from(String::new()).is_err());
