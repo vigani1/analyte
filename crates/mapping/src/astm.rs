@@ -13,7 +13,7 @@ pub fn map(
 ) -> Result<Output, Error> {
     let syntax = astm_syntax(config)?;
     let settings = config.effective().stack().limits();
-    if message.records().len() > settings.records {
+    if message.records().len() > settings.records() {
         return Err(Error::Limit {
             position: Position {
                 record: 0,
@@ -34,7 +34,7 @@ pub fn map(
                 },
                 resource: "message bytes",
             })?;
-        if bytes > settings.bytes || record.raw().len() > settings.record_bytes {
+        if bytes > settings.bytes() || record.raw().len() > settings.record_bytes() {
             return Err(Error::Limit {
                 position: Position {
                     record: index.saturating_add(1),
@@ -45,7 +45,7 @@ pub fn map(
         }
     }
     let mut source = source::astm(message);
-    source.charset = match syntax.encoding {
+    source.charset = match syntax.encoding() {
         analyte_config::Encoding::Ascii => analyte_hl7::Charset::Ascii,
         analyte_config::Encoding::Latin1 => analyte_hl7::Charset::Latin1,
         analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
@@ -62,20 +62,20 @@ pub fn map_order(
     limits: &analyte_config::SyntaxLimits,
     settings: &analyte_config::AstmOrders,
 ) -> Result<MachineOrder, OrderMappingError> {
-    let astm = &settings.layout;
-    let settings = &settings.tables;
-    if order.tests.is_empty() || order.tests.len() > limits.repetitions {
+    let astm = &settings.layout();
+    let settings = &settings.tables();
+    if order.tests.is_empty() || order.tests.len() > limits.repetitions() {
         return Err(OrderMappingError::Representation);
     }
     let mut tests = Vec::new();
     for requested in &order.tests {
-        let mapped = outbound_test(&settings.tests, requested)?;
+        let mapped = outbound_test(settings.tests(), requested)?;
         for part in &mapped.machine_components {
             validate_text(part)?;
         }
         tests.push(mapped.machine_components.join("^"));
     }
-    let priority = outbound_priority(&settings.priorities, order.priority)?;
+    let priority = outbound_priority(settings.priorities(), order.priority)?;
     let mut fields: [String; 16] = std::array::from_fn(|_| String::new());
     fields[0] = "O".into();
     fields[1] = "1".into();
@@ -83,7 +83,7 @@ pub fn map_order(
         &mut fields,
         &astm.specimen,
         order.sample.as_str(),
-        limits.components,
+        limits.components(),
     )?;
     if let Some(position) = &astm.position {
         let value = order
@@ -97,19 +97,19 @@ pub fn map_order(
             &mut fields,
             position,
             value.slot.as_str(),
-            limits.components,
+            limits.components(),
         )?;
     }
     if let Some(destination) = &astm.specimen_type {
         let code = map_specimen(order, settings)?;
-        set(&mut fields, destination, code, limits.components)?;
+        set(&mut fields, destination, code, limits.components())?;
     }
     let prefix = "^".repeat(usize::from(astm.test.component).saturating_sub(1));
-    if settings.tests.iter().any(|t| {
+    if settings.tests().iter().any(|t| {
         t.machine_components
             .len()
             .checked_add(prefix.len())
-            .is_none_or(|n| n > limits.components)
+            .is_none_or(|n| n > limits.components())
     }) {
         return Err(OrderMappingError::Representation);
     }
@@ -122,13 +122,13 @@ pub fn map_order(
         &mut fields,
         &astm.priority,
         priority.machine.as_str(),
-        limits.components,
+        limits.components(),
     )?;
     set(
         &mut fields,
         &astm.action,
         astm.action_code.as_str(),
-        limits.components,
+        limits.components(),
     )?;
     let last_field = if astm.specimen_type.is_some() { 16 } else { 12 };
     let mut record = fields
@@ -136,8 +136,11 @@ pub fn map_order(
         .ok_or(OrderMappingError::Representation)?
         .join("|")
         .into_bytes();
-    if record.len() > limits.record_bytes
-        || record.len().checked_add(1).is_none_or(|n| n > limits.bytes)
+    if record.len() > limits.record_bytes()
+        || record
+            .len()
+            .checked_add(1)
+            .is_none_or(|n| n > limits.bytes())
     {
         return Err(OrderMappingError::Representation);
     }

@@ -19,7 +19,7 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let policy = &settings.policy;
+    let policy = &settings.policy();
     let limits = super::interpretation::poct_limits(settings);
     let mut dialog = Dialog::new(
         DialogConfig {
@@ -179,7 +179,7 @@ async fn process(
     settings: &analyte_config::PoctStack,
 ) -> Result<bool, Error> {
     let limits = super::interpretation::poct_limits(settings);
-    let send_timeout_ms = settings.timeouts.send_timeout_ms;
+    let send_timeout_ms = settings.timeouts().send_timeout_ms();
     let mut actions: VecDeque<_> = actions.into();
     while let Some(action) = actions.pop_front() {
         match action {

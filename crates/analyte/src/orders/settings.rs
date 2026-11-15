@@ -4,8 +4,8 @@ use analyte_config::{AstmOrders, Hl7Orders, LawStack, Stack};
 
 pub(super) fn astm(machine: &Machine) -> Option<&AstmOrders> {
     match machine.snapshot.effective().stack() {
-        Stack::Astm(s) => s.orders.as_ref(),
-        Stack::FileAstm(s) => s.orders.as_ref(),
+        Stack::Astm(s) => s.orders().as_ref(),
+        Stack::FileAstm(s) => s.orders().as_ref(),
         Stack::Hl7(_)
         | Stack::Law(_)
         | Stack::Poct(_)
@@ -17,8 +17,8 @@ pub(super) fn astm(machine: &Machine) -> Option<&AstmOrders> {
 
 pub(super) fn hl7(machine: &Machine) -> Option<&Hl7Orders> {
     match machine.snapshot.effective().stack() {
-        Stack::Hl7(s) => s.orders.as_ref(),
-        Stack::FileHl7(s) => s.orders.as_ref(),
+        Stack::Hl7(s) => s.orders().as_ref(),
+        Stack::FileHl7(s) => s.orders().as_ref(),
         Stack::Astm(_)
         | Stack::Law(_)
         | Stack::Poct(_)
@@ -43,13 +43,22 @@ pub(super) fn law(machine: &Machine) -> Result<&LawStack, Error> {
 
 pub(super) fn send_ahead(machine: &Machine) -> bool {
     match machine.snapshot.effective().stack() {
-        Stack::Astm(s) => s.orders.as_ref().is_some_and(|o| o.send_ahead),
-        Stack::FileAstm(s) => s.orders.as_ref().is_some_and(|o| o.send_ahead),
-        Stack::Hl7(s) => s.orders.as_ref().is_some_and(|o| o.send.is_some()),
-        Stack::FileHl7(s) => s.orders.as_ref().is_some_and(|o| o.send.is_some()),
-        Stack::Law(s) => s.orders.as_ref().is_some_and(|o| o.send_ahead),
-        Stack::VidasLiteral(s) => s.orders.as_ref().is_some_and(|o| o.send_ahead),
-        Stack::Autolyser(s) => s.orders.as_ref().is_some_and(|o| o.send_ahead),
+        Stack::Astm(s) => s.orders().as_ref().is_some_and(AstmOrders::send_ahead),
+        Stack::FileAstm(s) => s.orders().as_ref().is_some_and(AstmOrders::send_ahead),
+        Stack::Hl7(s) => s.orders().as_ref().is_some_and(|o| o.send().is_some()),
+        Stack::FileHl7(s) => s.orders().as_ref().is_some_and(|o| o.send().is_some()),
+        Stack::Law(s) => s
+            .orders()
+            .as_ref()
+            .is_some_and(analyte_config::LawOrders::send_ahead),
+        Stack::VidasLiteral(s) => s
+            .orders()
+            .as_ref()
+            .is_some_and(analyte_config::VidasOrders::send_ahead),
+        Stack::Autolyser(s) => s
+            .orders()
+            .as_ref()
+            .is_some_and(analyte_config::AutolyserOrders::send_ahead),
         Stack::Poct(_) => false,
     }
 }

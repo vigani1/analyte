@@ -38,7 +38,7 @@ pub(crate) enum Request {
 /// Recognizes supported query intent without normalizing specimen identifiers.
 pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Request>, Error> {
     if super::settings::astm(machine)
-        .and_then(|o| o.query.as_ref())
+        .and_then(|o| o.query().as_ref())
         .is_none()
     {
         return Ok(None);
@@ -130,7 +130,7 @@ impl<'a> Pending<'a> {
         started: Instant,
     ) -> Result<Self, Error> {
         let query = super::settings::astm(machine)
-            .and_then(|o| o.query.as_ref())
+            .and_then(|o| o.query().as_ref())
             .ok_or_else(|| invalid("query capability absent"))?;
         let until = started
             .checked_add(std::time::Duration::from_millis(u64::from(
@@ -173,7 +173,7 @@ async fn answer(
                 for cached in orders {
                     bytes = bytes
                         .checked_add(cached.document.len())
-                        .filter(|n| *n <= limits.bytes)
+                        .filter(|n| *n <= limits.bytes())
                         .ok_or_else(|| invalid("query response byte limit exceeded"))?;
                     let order: analyte_contract::Order =
                         analyte_contract::decode(cached.document.as_bytes())?;
@@ -217,7 +217,7 @@ async fn answer(
                         .len()
                         .checked_mul(2)
                         .and_then(|n| n.checked_add(2))
-                        .is_none_or(|n| n > limits.records)
+                        .is_none_or(|n| n > limits.records())
                     {
                         return Ok(failure(machine));
                     }
@@ -237,7 +237,7 @@ async fn answer(
 /// Applies the explicit failure policy without manufacturing an empty answer.
 pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
     match super::settings::astm(machine)?
-        .query
+        .query()
         .as_ref()?
         .when_untrusted
     {

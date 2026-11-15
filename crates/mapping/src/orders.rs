@@ -124,23 +124,23 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
     match config.effective().stack() {
         Stack::Astm(s) => crate::astm::map_order(
             order,
-            &s.syntax.limits,
-            s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
+            s.syntax().limits(),
+            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
         Stack::FileAstm(s) => crate::astm::map_order(
             order,
-            &s.syntax.limits,
-            s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
+            s.syntax().limits(),
+            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
         Stack::VidasLiteral(s) => crate::vidas::map_order(
             order,
             s,
-            s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
+            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
         Stack::Autolyser(s) => crate::autolyser::map_order(
             order,
             s,
-            s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
+            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
         Stack::Hl7(_) | Stack::FileHl7(_) | Stack::Law(_) | Stack::Poct(_) => {
             Err(OrderMappingError::Disabled)
@@ -172,7 +172,7 @@ pub(super) fn map_specimen<'a>(
         .as_ref()
         .ok_or(OrderMappingError::MissingSpecimenType)?;
     Ok(
-        outbound_specimen(settings.specimen_types.as_deref(), requested)?
+        outbound_specimen(settings.specimen_types().as_deref(), requested)?
             .machine
             .as_str(),
     )

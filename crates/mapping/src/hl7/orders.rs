@@ -23,8 +23,8 @@ impl Command {
         options: Options,
     ) -> Result<Self, Error> {
         let (syntax, settings) = match config.effective().stack() {
-            analyte_config::Stack::Hl7(stack) => (&stack.syntax, stack.orders.as_ref()),
-            analyte_config::Stack::FileHl7(stack) => (&stack.syntax, stack.orders.as_ref()),
+            analyte_config::Stack::Hl7(stack) => (&stack.syntax(), stack.orders().as_ref()),
+            analyte_config::Stack::FileHl7(stack) => (&stack.syntax(), stack.orders().as_ref()),
             analyte_config::Stack::Astm(_)
             | analyte_config::Stack::FileAstm(_)
             | analyte_config::Stack::Law(_)
@@ -36,21 +36,21 @@ impl Command {
         };
         let settings = settings.ok_or(Error::Context("HL7 orders absent"))?.clone();
         if settings
-            .send
+            .send()
             .as_ref()
-            .is_some_and(|send| send.settings.require_patient_identification)
+            .is_some_and(|send| send.settings().require_patient_identification)
         {
             return Err(Error::Context(
                 "HL7-patient-name-required-but-not-carried-by-contract",
             ));
         }
-        let version = syntax.edition.into();
+        let version = syntax.edition().into();
         let group = app.fields().id.as_str().to_owned();
         let namespace = settings
-            .send
+            .send()
             .as_ref()
             .ok_or(Error::Context("HL7 send config absent"))?
-            .placer_namespace
+            .placer_namespace()
             .as_str();
         if group
             .len()
@@ -84,10 +84,10 @@ impl Command {
     ) -> Result<OrderMessage, Error> {
         let cfg = self
             .settings
-            .send
+            .send()
             .as_ref()
             .ok_or(Error::Context("HL7 send config absent"))?;
-        let cfg = &cfg.settings;
+        let cfg = &cfg.settings();
         let header = order::Header {
             application: cfg.application.as_str().as_bytes(),
             facility: cfg.facility.as_ref().map_or(b"", |v| v.as_str().as_bytes()),
@@ -138,7 +138,7 @@ impl Command {
         let source = match (&cfg.specimen_system, &self.app.specimen_type) {
             (Some(system), Some(specimen)) => {
                 let mapped = crate::outbound_codes::map_specimen(
-                    self.settings.tables.specimen_types.as_deref(),
+                    self.settings.tables().specimen_types().as_deref(),
                     specimen,
                 )
                 .map_err(|source| Error::lookup("HL7-unmapped-specimen-type", source))?;
@@ -161,7 +161,7 @@ impl Command {
             (None, _) => None,
         };
         let priority = crate::outbound_codes::map_priority(
-            &self.settings.tables.priorities,
+            self.settings.tables().priorities(),
             self.app.priority,
         )
         .map_err(|source| Error::lookup("HL7-unmapped-priority", source))?;
@@ -208,7 +208,7 @@ impl Command {
             let [test] = item.tests else {
                 return Err(Error::Context("HL7-send-item-must-cover-one-test"));
             };
-            let mapped = crate::outbound_codes::map_test(&self.settings.tables.tests, test)
+            let mapped = crate::outbound_codes::map_test(self.settings.tables().tests(), test)
                 .map_err(|source| Error::lookup("HL7-unmapped-test", source))?;
             let [code, text, system] = mapped.machine_components.as_slice() else {
                 return Err(Error::Context("HL7-test-components"));
@@ -236,7 +236,7 @@ impl Command {
         let subject = if cancel {
             order::Subject::Unspecified
         } else {
-            match (&self.settings.patient_namespace, &self.app.patient) {
+            match (&self.settings.patient_namespace(), &self.app.patient) {
                 (Some(namespace), Some(patient)) if *namespace == patient.namespace => {
                     order::Subject::Identifier {
                         identifier: patient.value.as_str().as_bytes(),

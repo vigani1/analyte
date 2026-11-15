@@ -81,58 +81,58 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
         match validated.effective().stack() {
             Stack::Astm(stack) => {
                 assert_eq!(
-                    Some(stack.frame_limit),
+                    Some(stack.frame_limit()),
                     original
                         .get("framing")
                         .and_then(|f| f.get("limit"))
                         .and_then(toml::Value::as_integer)
                         .and_then(|n| usize::try_from(n).ok())
                 );
-                assert_eq!(stack.mappings.tests.len(), raw.tests().len());
-                assert!(matches!(stack.transport, StreamTransport::Serial { .. }));
-                assert_eq!(stack.orders.is_some(), name == "orders.toml");
-                if let Some(orders) = &stack.orders {
-                    assert!(orders.query.is_some());
-                    assert_eq!(orders.layout.test.field, 5);
+                assert_eq!(stack.mappings().tests.len(), raw.tests().len());
+                assert!(matches!(stack.transport(), StreamTransport::Serial { .. }));
+                assert_eq!(stack.orders().is_some(), name == "orders.toml");
+                if let Some(orders) = &stack.orders() {
+                    assert!(orders.query().is_some());
+                    assert_eq!(orders.layout().test.field, 5);
                 }
             }
             Stack::Hl7(stack) => {
-                assert_eq!(stack.transport.role, TcpRole::Server);
-                assert_eq!(stack.mappings.tests.len(), raw.tests().len());
+                assert_eq!(stack.transport().role(), TcpRole::Server);
+                assert_eq!(stack.mappings().tests.len(), raw.tests().len());
                 assert_eq!(
-                    stack.orders.is_some(),
+                    stack.orders().is_some(),
                     matches!(name, "hl7_orders.toml" | "hl7_send.toml")
                 );
-                if let Some(orders) = &stack.orders {
-                    assert_eq!(orders.query.is_some(), name == "hl7_orders.toml");
-                    assert_eq!(orders.send.is_some(), name == "hl7_send.toml");
-                    if let Some(send) = &orders.send {
-                        assert_eq!(send.placer_namespace.as_str(), "LAB");
+                if let Some(orders) = &stack.orders() {
+                    assert_eq!(orders.query().is_some(), name == "hl7_orders.toml");
+                    assert_eq!(orders.send().is_some(), name == "hl7_send.toml");
+                    if let Some(send) = &orders.send() {
+                        assert_eq!(send.placer_namespace().as_str(), "LAB");
                     }
                 }
             }
             Stack::Law(stack) => {
-                assert_eq!(stack.transport.role, TcpRole::Server);
-                assert_eq!(stack.policy.query_deadline_ms, 1500);
-                assert_eq!(stack.orders.is_some(), name == "law_orders.toml");
-                if let Some(orders) = &stack.orders {
-                    assert!(!orders.specimen_types.is_empty());
-                    assert_eq!(orders.work.application.as_str(), "HOST");
+                assert_eq!(stack.transport().role(), TcpRole::Server);
+                assert_eq!(stack.policy().query_deadline_ms(), 1500);
+                assert_eq!(stack.orders().is_some(), name == "law_orders.toml");
+                if let Some(orders) = &stack.orders() {
+                    assert!(!orders.specimen_types().is_empty());
+                    assert_eq!(orders.work().application.as_str(), "HOST");
                 }
             }
             Stack::Poct(stack) => {
-                assert_eq!(stack.policy.depth, 32);
-                assert!(!stack.codes.tests.is_empty());
+                assert_eq!(stack.policy().depth, 32);
+                assert!(!stack.codes().tests.is_empty());
             }
             Stack::VidasLiteral(stack) => {
-                assert_eq!(u8::from(stack.policy.sample_limit), 12);
-                assert!(!stack.codes.tests.is_empty());
-                assert!(stack.orders.is_none());
+                assert_eq!(u8::from(stack.policy().sample_limit), 12);
+                assert!(!stack.codes().tests.is_empty());
+                assert!(stack.orders().is_none());
             }
             Stack::Autolyser(stack) => {
-                assert_eq!(stack.policy.poll_ms, 1000);
-                assert!(!stack.codes.tests.is_empty());
-                assert!(stack.orders.is_none());
+                assert_eq!(stack.policy().poll_ms, 1000);
+                assert!(!stack.codes().tests.is_empty());
+                assert!(stack.orders().is_none());
             }
             Stack::FileAstm(_) | Stack::FileHl7(_) => panic!("no folder example is shipped"),
         }
@@ -149,7 +149,7 @@ fn adr0002_stack_is_built_after_overrides_and_keeps_serial_settings() -> TestRes
     let StreamTransport::Serial {
         settings,
         operation_timeout_ms,
-    } = &stack.transport
+    } = &stack.transport()
     else {
         panic!("serial transport")
     };
@@ -168,7 +168,7 @@ operation_timeout_ms=1234
         panic!("ASTM stack")
     };
     assert!(matches!(
-        stack.transport,
+        stack.transport(),
         StreamTransport::Tcp {
             role: TcpRole::Client,
             operation_timeout_ms: 1234

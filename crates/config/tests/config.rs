@@ -371,7 +371,7 @@ fn vidas(config: &analyte_config::Validated) -> Result<&analyte_config::Vidas, E
             protocol: "vidas",
         });
     };
-    Ok(&stack.policy)
+    Ok(stack.policy())
 }
 fn astm_frame_limit(config: &analyte_config::Validated) -> Result<usize, Error> {
     let analyte_config::Stack::Astm(stack) = config.effective().stack() else {
@@ -380,7 +380,7 @@ fn astm_frame_limit(config: &analyte_config::Validated) -> Result<usize, Error> 
             protocol: "astm",
         });
     };
-    Ok(stack.frame_limit)
+    Ok(stack.frame_limit())
 }
 
 #[test]
@@ -401,7 +401,7 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
             protocol: "hl7",
         });
     };
-    assert!(stack.syntax.options().allow_utf8_in_v231);
+    assert!(stack.syntax().options().allow_utf8_in_v231);
     for invalid in [
         declared.replace("edition = \"v231\"", "edition = \"v251\""),
         declared.replace("encoding = \"utf8\"", "encoding = \"ascii\""),
@@ -415,6 +415,6 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
             protocol: "hl7",
         });
     };
-    assert!(!stack.syntax.options().allow_utf8_in_v231);
+    assert!(!stack.syntax().options().allow_utf8_in_v231);
     Ok(())
 }

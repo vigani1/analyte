@@ -17,11 +17,11 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let mut options = settings.syntax.options();
-    options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit);
+    let mut options = settings.syntax().options();
+    options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit());
     let config = Config::new(
         options,
-        Duration::from_millis(u64::from(settings.timeouts.receive_timeout_ms)),
+        Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
         1,
     )?;
     let mut dialog = Dialog::new(config, 0);
@@ -29,16 +29,16 @@ pub(super) async fn session(
     let mut wake = None;
     let mut pending = BTreeMap::new();
     let enabled = settings
-        .orders
+        .orders()
         .as_ref()
-        .is_some_and(|o| o.query.is_some() || o.send.is_some());
+        .is_some_and(|o| o.query().is_some() || o.send().is_some());
     let mut queries = if enabled {
         Some(crate::orders::hl7::Connection::new(options)?)
     } else {
         None
     };
     if enabled {
-        dialog.enable_orders(settings.syntax.edition.into())?;
+        dialog.enable_orders(settings.syntax().edition().into())?;
     }
     let mut input_evidence = Vec::new();
     let mut write_error = None;

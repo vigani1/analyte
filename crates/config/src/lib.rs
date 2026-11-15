@@ -359,8 +359,8 @@ impl Effective {
     #[must_use]
     pub fn astm_limits(&self) -> Option<analyte_astm::Limits> {
         match &self.machine.stack {
-            Stack::Astm(s) => Some(s.syntax.parser_limits()),
-            Stack::FileAstm(s) => Some(s.syntax.parser_limits()),
+            Stack::Astm(s) => Some(s.syntax().parser_limits()),
+            Stack::FileAstm(s) => Some(s.syntax().parser_limits()),
             Stack::Hl7(_)
             | Stack::Law(_)
             | Stack::Poct(_)
@@ -374,8 +374,8 @@ impl Effective {
     #[must_use]
     pub fn hl7_options(&self) -> Option<analyte_hl7::Options> {
         match &self.machine.stack {
-            Stack::Hl7(s) => Some(s.syntax.options()),
-            Stack::FileHl7(s) => Some(s.syntax.options()),
+            Stack::Hl7(s) => Some(s.syntax().options()),
+            Stack::FileHl7(s) => Some(s.syntax().options()),
             Stack::Law(s) => Some(s.options()),
             Stack::Astm(_)
             | Stack::FileAstm(_)

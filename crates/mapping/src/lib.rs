@@ -94,8 +94,8 @@ fn is_law(config: &Validated) -> bool {
 fn astm_syntax(config: &Validated) -> Result<&analyte_config::AstmSyntax, Error> {
     use analyte_config::Stack;
     match config.effective().stack() {
-        Stack::Astm(s) => Ok(&s.syntax),
-        Stack::FileAstm(s) => Ok(&s.syntax),
+        Stack::Astm(s) => Ok(s.syntax()),
+        Stack::FileAstm(s) => Ok(s.syntax()),
         Stack::Hl7(_)
         | Stack::FileHl7(_)
         | Stack::Law(_)
@@ -108,8 +108,8 @@ fn astm_syntax(config: &Validated) -> Result<&analyte_config::AstmSyntax, Error>
 fn hl7_edition(config: &Validated) -> Result<analyte_config::Edition, Error> {
     use analyte_config::Stack;
     match config.effective().stack() {
-        Stack::Hl7(s) => Ok(s.syntax.edition),
-        Stack::FileHl7(s) => Ok(s.syntax.edition),
+        Stack::Hl7(s) => Ok(s.syntax().edition()),
+        Stack::FileHl7(s) => Ok(s.syntax().edition()),
         Stack::Law(_) => Ok(analyte_config::Edition::V251),
         Stack::Astm(_)
         | Stack::FileAstm(_)

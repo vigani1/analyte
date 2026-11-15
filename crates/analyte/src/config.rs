@@ -262,7 +262,7 @@ impl Program {
             .validate()?;
             if matches!(
                 snapshot.effective().stack(),
-                analyte_config::Stack::Astm(settings) if settings.checksum_hex == analyte_config::ChecksumHex::AcceptLowercase
+                analyte_config::Stack::Astm(settings) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
             ) {
                 return Err(invalid(
                     "ASTM receive dialog currently supports strict checksum hex only",
@@ -274,7 +274,7 @@ impl Program {
                 ));
             }
             if snapshot.canonical().len() > file.store.record_bytes
-                || snapshot.effective().stack().limits().bytes > file.store.record_bytes
+                || snapshot.effective().stack().limits().bytes() > file.store.record_bytes
             {
                 return Err(invalid(
                     "store record limit is smaller than machine message or effective config",

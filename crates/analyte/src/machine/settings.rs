@@ -41,31 +41,31 @@ impl Link<'_> {
 
 pub(super) fn transport(stack: &Stack) -> Link<'_> {
     match stack {
-        Stack::Astm(s) => stream(&s.transport, Session::Astm(s)),
-        Stack::VidasLiteral(s) => stream(&s.transport, Session::Vidas(s)),
-        Stack::Autolyser(s) => stream(&s.transport, Session::Autolyser(s)),
+        Stack::Astm(s) => stream(s.transport(), Session::Astm(s)),
+        Stack::VidasLiteral(s) => stream(s.transport(), Session::Vidas(s)),
+        Stack::Autolyser(s) => stream(s.transport(), Session::Autolyser(s)),
         Stack::Hl7(s) => Link::Tcp {
             session: Session::Hl7(s),
-            role: s.transport.role,
-            timeout_ms: s.transport.operation_timeout_ms,
+            role: s.transport().role(),
+            timeout_ms: s.transport().operation_timeout_ms(),
         },
         Stack::Law(s) => Link::Tcp {
             session: Session::Law(s),
-            role: s.transport.role,
-            timeout_ms: s.transport.operation_timeout_ms,
+            role: s.transport().role(),
+            timeout_ms: s.transport().operation_timeout_ms(),
         },
         Stack::Poct(s) => Link::Tcp {
             session: Session::Poct(s),
-            role: s.transport.role,
-            timeout_ms: s.transport.operation_timeout_ms,
+            role: s.transport().role(),
+            timeout_ms: s.transport().operation_timeout_ms(),
         },
         Stack::FileAstm(s) => Link::Folder {
-            timeout_ms: s.operation_timeout_ms,
-            bytes: s.syntax.limits.bytes,
+            timeout_ms: s.operation_timeout_ms(),
+            bytes: s.syntax().limits().bytes(),
         },
         Stack::FileHl7(s) => Link::Folder {
-            timeout_ms: s.operation_timeout_ms,
-            bytes: s.syntax.limits.bytes,
+            timeout_ms: s.operation_timeout_ms(),
+            bytes: s.syntax().limits().bytes(),
         },
     }
 }

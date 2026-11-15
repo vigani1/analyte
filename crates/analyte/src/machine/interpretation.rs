@@ -116,7 +116,7 @@ pub(crate) fn map(
             let packet = packet.ok_or_else(|| invalid("VIDAS receipt is incomplete"))?;
             let message = analyte_vidas::syntax::Message::parse(
                 std::str::from_utf8(&packet.body)?,
-                match settings.policy.sample_limit {
+                match settings.policy().sample_limit {
                     analyte_config::VidasSampleLimit::Twelve => {
                         analyte_vidas::syntax::SampleLimit::Twelve
                     }
@@ -134,7 +134,7 @@ pub(crate) fn map(
         }
         Stack::Autolyser(settings) => {
             let report =
-                analyte_autolyser::syntax::Report::parse(payload, settings.policy.controls)?;
+                analyte_autolyser::syntax::Report::parse(payload, settings.policy().controls)?;
             Ok(analyte_mapping::map_autolyser(
                 &machine.snapshot,
                 id,
@@ -142,10 +142,10 @@ pub(crate) fn map(
                 time,
             )?)
         }
-        Stack::Astm(settings) => map_astm(machine, payload, input, &settings.syntax),
-        Stack::FileAstm(settings) => map_astm(machine, payload, input, &settings.syntax),
-        Stack::Hl7(settings) => map_hl7(machine, payload, input, &settings.syntax),
-        Stack::FileHl7(settings) => map_hl7(machine, payload, input, &settings.syntax),
+        Stack::Astm(settings) => map_astm(machine, payload, input, settings.syntax()),
+        Stack::FileAstm(settings) => map_astm(machine, payload, input, settings.syntax()),
+        Stack::Hl7(settings) => map_hl7(machine, payload, input, settings.syntax()),
+        Stack::FileHl7(settings) => map_hl7(machine, payload, input, settings.syntax()),
         Stack::Law(settings) => {
             let message = analyte_hl7::law::parse_message(payload, settings.options())?;
             let results = analyte_hl7::law::receive_results(&message)?;
@@ -165,7 +165,7 @@ fn map_astm(
     syntax: &analyte_config::AstmSyntax,
 ) -> Result<analyte_mapping::Output, Error> {
     let messages = analyte_astm::parse_with(payload, syntax.parser_limits(), |bytes| match syntax
-        .encoding
+        .encoding()
     {
         analyte_config::Encoding::Ascii => bytes
             .is_ascii()
@@ -214,7 +214,7 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::
         | Stack::FileAstm(_)
         | Stack::FileHl7(_) => return Err(invalid("VIDAS settings missing")),
     };
-    let installed = &settings.policy;
+    let installed = &settings.policy();
     Ok(Config::new(
         if installed.alternate {
             Mode::Alternate
@@ -222,7 +222,7 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::
             Mode::Literal
         },
         installed.chunk,
-        settings.frame_limit,
+        settings.frame_limit(),
         &installed.suffix,
         Checksum {
             include_stx: installed.include_stx,
@@ -234,9 +234,9 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::
 }
 
 pub(super) fn poct_limits(settings: &analyte_config::PoctStack) -> analyte_poct::Limits {
-    let policy = &settings.policy;
+    let policy = &settings.policy();
     analyte_poct::Limits {
-        message_bytes: settings.frame_limit.min(settings.limits.bytes),
+        message_bytes: settings.frame_limit().min(settings.limits().bytes()),
         depth: policy.depth,
         elements: policy.elements,
         attribute_bytes: policy.attribute_bytes,
@@ -258,11 +258,11 @@ pub(crate) fn unpack<'a>(
         | Stack::Poct(_)
         | Stack::VidasLiteral(_)
         | Stack::Autolyser(_) => Ok(raw.into()),
-        Stack::Hl7(settings) => unpack_mllp(raw, settings.frame_limit),
-        Stack::Law(settings) => unpack_mllp(raw, settings.frame_limit),
+        Stack::Hl7(settings) => unpack_mllp(raw, settings.frame_limit()),
+        Stack::Law(settings) => unpack_mllp(raw, settings.frame_limit()),
         Stack::Astm(settings) => {
             use analyte_framing::astm::{Decoder, Event, HexPolicy, Limit};
-            let mut decoder = Decoder::new(Limit::new(settings.frame_limit)?, HexPolicy::Strict);
+            let mut decoder = Decoder::new(Limit::new(settings.frame_limit())?, HexPolicy::Strict);
             let mut payload = Vec::new();
             let mut final_frame = false;
             for byte in raw {
@@ -272,7 +272,7 @@ pub(crate) fn unpack<'a>(
                             if payload
                                 .len()
                                 .checked_add(frame.text().len())
-                                .is_none_or(|n| n > settings.syntax.limits.bytes)
+                                .is_none_or(|n| n > settings.syntax().limits().bytes())
                             {
                                 return Err(invalid("ASTM assembled receipt exceeds syntax bound"));
                             }

@@ -20,11 +20,11 @@ impl Command {
         let analyte_config::Stack::Law(law) = config.effective().stack() else {
             return Err(Error::Context("LAW settings absent"));
         };
-        let peer = law.policy.peer.capabilities();
+        let peer = law.policy().peer().capabilities();
         Ok(Self {
             app: crate::orders::app_order(app)?,
             settings: Arc::new(
-                law.orders
+                law.orders()
                     .as_ref()
                     .ok_or(Error::Context("LAW order mappings absent"))?
                     .clone(),
@@ -41,7 +41,7 @@ impl Command {
     /// Explicit assigning namespace retained beside each store-generated identity.
     #[must_use]
     pub fn placer_namespace(&self) -> &analyte_model::Identifier {
-        &self.settings.placer_namespace
+        self.settings.placer_namespace()
     }
 }
 struct WireAwos {
@@ -82,12 +82,12 @@ pub fn map_order(
             .as_ref()
             .ok_or(Error::Context("LAW specimen type missing"))?;
         let mapped =
-            crate::outbound_codes::map_specimen(Some(&command.settings.specimen_types), specimen)
+            crate::outbound_codes::map_specimen(Some(command.settings.specimen_types()), specimen)
                 .map_err(|source| Error::lookup("LAW specimen type unmapped", source))?;
         let priority = if command.priority && action == law::WorkAction::New {
             Some(validate_field(
                 crate::outbound_codes::map_priority(
-                    &command.settings.priorities,
+                    command.settings.priorities(),
                     command.app.priority,
                 )
                 .map_err(|source| Error::lookup("LAW priority unmapped", source))?
@@ -104,7 +104,7 @@ pub fn map_order(
             let [test] = item.tests else {
                 return Err(Error::Context("LAW item must cover one AWOS test"));
             };
-            let mapped_test = crate::outbound_codes::map_test(&command.settings.tests, test)
+            let mapped_test = crate::outbound_codes::map_test(command.settings.tests(), test)
                 .map_err(|source| Error::lookup("LAW test unmapped", source))?;
             wire.push(WireAwos {
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store
@@ -117,11 +117,11 @@ pub fn map_order(
                     };
                     law::WorkFields::new(
                         sample,
-                        command.settings.work.specimen_namespace.as_str(),
+                        command.settings.work().specimen_namespace.as_str(),
                         law::WorkCode {
                             code: validate_field(mapped.machine.as_str())?,
                             text: "",
-                            system: command.settings.work.specimen_system.as_str(),
+                            system: command.settings.work().specimen_system.as_str(),
                         },
                         law::WorkCode { code, text, system },
                         priority,
@@ -135,7 +135,7 @@ pub fn map_order(
         .map(|item| {
             Ok(item.fields.awos(
                 item.id.as_bytes(),
-                first.settings.work.specimen_role.as_str().as_bytes(),
+                first.settings.work().specimen_role.as_str().as_bytes(),
                 item.container.as_bytes(),
                 action,
             )?)
@@ -149,7 +149,7 @@ pub fn map_order(
     Ok(law::work_order(
         &awos,
         None,
-        address(&first.settings.work),
+        address(first.settings.work()),
         response,
         capabilities,
         options,

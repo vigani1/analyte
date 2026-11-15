@@ -45,7 +45,7 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let installed = &settings.policy;
+    let installed = &settings.policy();
     let config = super::interpretation::vidas_config(machine)?;
     let policy = Policy {
         acknowledgment: ms(installed.acknowledgment_ms),

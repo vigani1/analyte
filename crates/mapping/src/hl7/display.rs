@@ -15,8 +15,8 @@ pub fn map(
 ) -> Result<Vec<Vec<u8>>, OrderMappingError> {
     use analyte_config::Stack;
     let orders = match config.effective().stack() {
-        Stack::Hl7(s) => s.orders.as_ref(),
-        Stack::FileHl7(s) => s.orders.as_ref(),
+        Stack::Hl7(s) => s.orders().as_ref(),
+        Stack::FileHl7(s) => s.orders().as_ref(),
         Stack::Astm(_)
         | Stack::FileAstm(_)
         | Stack::Law(_)
@@ -26,14 +26,14 @@ pub fn map(
     }
     .ok_or(OrderMappingError::Disabled)?;
     let layout = &orders
-        .query
+        .query()
         .as_ref()
         .ok_or(OrderMappingError::Disabled)?
-        .layout;
-    let settings = &orders.tables;
+        .layout();
+    let settings = &orders.tables();
     let mut lines = Vec::new();
     for test in &order.tests {
-        let mapped = outbound_test(&settings.tests, test)?;
+        let mapped = outbound_test(settings.tests(), test)?;
         let Some(code) = mapped.machine_components.first() else {
             return Err(OrderMappingError::Representation);
         };
@@ -42,14 +42,14 @@ pub fn map(
                 DsrLine::SampleId => order.sample.as_str(),
                 DsrLine::OrderId => order_id,
                 DsrLine::TestCode => code,
-                DsrLine::Priority => outbound_priority(&settings.priorities, order.priority)?
+                DsrLine::Priority => outbound_priority(settings.priorities(), order.priority)?
                     .machine
                     .as_str(),
                 DsrLine::Position => order.position.as_ref().map_or("", |p| p.slot.as_str()),
                 DsrLine::PatientId => match &order.patient {
                     None => "",
                     Some(patient)
-                        if orders.patient_namespace.as_ref() == Some(&patient.namespace) =>
+                        if orders.patient_namespace().as_ref() == Some(&patient.namespace) =>
                     {
                         patient.value.as_str()
                     }
@@ -57,9 +57,11 @@ pub fn map(
                 },
                 DsrLine::SpecimenType => match &order.specimen_type {
                     None => "",
-                    Some(source) => outbound_specimen(settings.specimen_types.as_deref(), source)?
-                        .machine
-                        .as_str(),
+                    Some(source) => {
+                        outbound_specimen(settings.specimen_types().as_deref(), source)?
+                            .machine
+                            .as_str()
+                    }
                 },
                 DsrLine::Literal { value } => value,
             };
@@ -68,7 +70,7 @@ pub fn map(
                 || value
                     .bytes()
                     .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
-                || lines.len() >= config.effective().stack().limits().records
+                || lines.len() >= config.effective().stack().limits().records()
             {
                 return Err(OrderMappingError::Representation);
             }

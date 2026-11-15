@@ -130,13 +130,13 @@ impl Connection {
             }
         };
         let stack = super::settings::law(machine)?;
-        let settings = &stack.policy;
+        let settings = &stack.policy();
         let supported = match query.scope() {
             law::Scope::Container(_) => settings
-                .query_forms
+                .query_forms()
                 .contains(&analyte_config::LawQueryForm::Container),
             law::Scope::AllPending => settings
-                .query_forms
+                .query_forms()
                 .contains(&analyte_config::LawQueryForm::AllPending),
             law::Scope::Rack { .. }
             | law::Scope::Tray { .. }
@@ -157,7 +157,7 @@ impl Connection {
                 options,
             );
         }
-        if stack.orders.is_none() {
+        if stack.orders().is_none() {
             evidence::failed_reading(store, machine, receipt, "LAW query work layout is disabled")
                 .await?;
             return reply(
@@ -181,7 +181,9 @@ impl Connection {
             );
         }
         let until = started
-            .checked_add(Duration::from_millis(u64::from(settings.query_deadline_ms)))
+            .checked_add(Duration::from_millis(u64::from(
+                settings.query_deadline_ms(),
+            )))
             .ok_or("LAW query deadline overflow")?;
         match self
             .prepare(store, machine, query, receipt, until, options)
@@ -218,10 +220,10 @@ impl Connection {
         let freshness = machine.destination_limits.freshness.as_secs();
         let cfg = super::settings::law(machine)?;
         let work = Arc::new(
-            cfg.orders
+            cfg.orders()
                 .as_ref()
                 .ok_or("LAW work layout absent")?
-                .work
+                .work()
                 .clone(),
         );
         let sample = match query.scope() {
