@@ -522,3 +522,109 @@ Fetched main and ran `git merge --signoff origin/main`: already up to date. Wind
 | `cargo check --manifest-path fuzz/Cargo.toml --bins` | Exit 0; binaries compiled, not executed. |
 
 All output stays local in `target/store-round-3/checks/`; the independent failing reproduction is in `target/store-round-3/restore-capacity-bug.log`. No Linux or minimum-Rust checks were run locally. No raw logs or generated evidence are committed.
+
+### Resumed round 3: second stop on post-upgrade size growth
+
+The original zero-space reserve bug is fixed by merged PR #99 (`fix/restore-capacity`, head `a22a259efcf1c6005617ee687a58be749e97f217`). At the next safe point, origin/main was merged with `--signoff` (merge `971c202`); main's unchanged reserve regression was kept exactly once. It now passes.
+A further bound violation was reproduced against that exact fix in a local scratch archive before it merged: a valid schema-1 source and current store fit below a 73,729-byte database limit; restore then upgrades and publishes a 196,608-byte database instead of refusing with Capacity. The pre-staging source-size check does not account for migration growth. The source-space probe reports unlimited bytes, separating this from the earlier zero-space bug.
+`mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit` fails against #99 head with `Ok(...before-restore)`, published size 196608, configured limit 73729. It requires Capacity refusal and preservation of the current receipt. The test is retained on this branch; no production fix is included. Per the explicit stop-on-further-real-bug rule, PR #98 remains draft and modules 1–5 are not claimed complete.
+
+### Updated counts at the second stop
+
+These combine exact names on the original production baseline; the proposed-fix test above is separate and is not added as a mutation outcome. Query was interrupted after 17 of 38 candidates; unrun/in-flight candidates are not counted as timeouts or equivalents.
+
+| Module | Caught | Unresolved missed | Equivalent | Unviable | Timeout | State |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `backup.rs` | 5 | 0 | 0 | 0 | 0 | Complete mutation triage |
+| `migration.rs` | 12 | 0 | 0 | 0 | 0 | Complete mutation triage |
+| `open.rs` | 14 | 0 | 0 | 6 | 0 | Complete mutation triage |
+| `query.rs` | 2 | 7 | 0 | 8 | 0 | Partial: 17/38 completed |
+| `reprocess.rs` | 5 | 0 | 0 | 0 | 0 | Complete mutation triage |
+| `restore.rs` | 20 | 1 | 0 | 1 | 0 | Incomplete at stop |
+| `startup.rs` | 10 | 0 | 0 | 3 | 0 | Complete mutation triage |
+| `worker.rs` | 12 | 3 | 0 | 2 | 0 | Incomplete at stop |
+| `alerts.rs`, `capacity.rs` including `restore_capacity`, `lib.rs` | Not run | Not run | Not classified | Not run | Not run | Not started |
+
+### Every additional run
+
+| Run | Caught | Missed | Unviable | Timeout | State |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `migration-recheck` | 3 | 0 | 0 | 0 | Complete |
+| `startup-before` | 18 | 6 | 9 | 0 | Complete |
+| `worker-before` | 8 | 7 | 2 | 0 | Complete |
+| `startup-recheck` | 5 | 0 | 0 | 0 | Complete |
+| `integrity-recheck` | 1 | 0 | 0 | 0 | Complete |
+| `reprocess-before` | 5 | 0 | 0 | 0 | Complete |
+| `query-before` | 2 | 7 | 8 | 0 | Interrupted; partial |
+| `worker-recheck` | 6 | 0 | 1 | 0 | Complete |
+
+Commands (same toolchain/features/scratch mode and 60/180-second test/build limits):
+
+```powershell
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 1 --file crates/store/src/migration.rs -F '46:36' --cargo-test-arg mutation_adr0003_migration_canonical -o target/store-round-3/migration-recheck
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 3 --file crates/store/src/open.rs --file crates/store/src/startup.rs --cargo-test-arg startup -o target/store-round-3/startup-before
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/store/src/worker.rs --cargo-test-arg worker -o target/store-round-3/worker-before
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/store/src/open.rs --file crates/store/src/startup.rs -F '122:20|128:20|34:9|97:47|123:17' --cargo-test-arg startup -o target/store-round-3/startup-recheck
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 1 --file crates/store/src/open.rs -F '161:9' --cargo-test-arg mutation_adr0003_startup_foreign -o target/store-round-3/integrity-recheck
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 1 --file crates/store/src/reprocess.rs --cargo-test-arg reprocess -o target/store-round-3/reprocess-before
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/store/src/worker.rs -F '36:|144:9' --cargo-test-arg mutation_rule7_worker_ -o target/store-round-3/worker-recheck
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/store/src/query.rs --cargo-test-arg adr -o target/store-round-3/query-before
+```
+
+### Additional misses and exact resolution
+
+| Missed mutation | Decision and evidence |
+| --- | --- |
+| `crates/store/src/open.rs:122:20: replace <= with > in Store::open_locked_starting` | Real test gap, caught by `open::tests::mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_guards` in `startup-recheck`; full failing-test log retained locally. |
+| `crates/store/src/open.rs:128:20: replace <= with > in Store::open_locked_starting` | Real test gap, caught by `open::tests::mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_guards` in `startup-recheck`; full failing-test log retained locally. |
+| `crates/store/src/open.rs:161:9: replace Store::integrity -> Result<(), Error> with Ok(())` | Real test gap, caught by `open::tests::mutation_adr0003_startup_foreign_key_corruption_refuses_without_rewriting_raw` in `integrity-recheck`; full failing-test log retained locally. |
+| `crates/store/src/startup.rs:34:9: replace <impl std::fmt::Display for StartupStep>::fmt -> std::fmt::Result with Ok(Default::default())` | Real test gap, caught by `open::tests::mutation_plan11_startup_progress_names_and_completed_steps_are_visible` in `startup-recheck`; full failing-test log retained locally. |
+| `crates/store/src/startup.rs:97:47: delete ! in Startup::install` | Real test gap, caught by `open::tests::mutation_adr0003_startup_interrupts_sqlite_once_then_allows_cleanup` in `startup-recheck`; full failing-test log retained locally. |
+| `crates/store/src/startup.rs:123:17: replace != with == in Startup::run` | Real test gap, caught by `open::tests::mutation_plan11_startup_progress_names_and_completed_steps_are_visible` in `startup-recheck`; full failing-test log retained locally. |
+| `crates/store/src/worker.rs:36:26: replace &#124;&#124; with && in Handle::start` | Real test gap, caught by `tests::mutation_rule7_worker_capacity_bounds_are_inclusive` in `worker-recheck`; full failing-test log retained locally. |
+| `crates/store/src/worker.rs:36:38: replace > with == in Handle::start` | Real test gap, caught by `tests::mutation_rule7_worker_capacity_bounds_are_inclusive` in `worker-recheck`; full failing-test log retained locally. |
+| `crates/store/src/worker.rs:36:38: replace > with >= in Handle::start` | Real test gap, caught by `tests::mutation_rule7_worker_capacity_bounds_are_inclusive` in `worker-recheck`; full failing-test log retained locally. |
+| `crates/store/src/worker.rs:59:39: replace < with <= in Handle::start` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/worker.rs:72:17: replace Handle::start::<impl Drop for CancelStartup>::drop with ()` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/worker.rs:128:35: delete ! in Handle::shutdown` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/worker.rs:144:9: replace <impl Drop for Handle>::drop with ()` | Real test gap, caught by `tests::mutation_rule7_worker_drop_joins_the_store_owner_before_returning` in `worker-recheck`; full failing-test log retained locally. |
+| `crates/store/src/query.rs:49:9: replace Store::parked_receipt -> Result<ReceiptId, Error> with Ok(Default::default())` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/query.rs:72:9: replace Store::receipt_metadata -> Result<Option<ReceiptMetadata>, Error> with Ok(None)` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/query.rs:83:32: replace != with == in Store::receipt_metadata` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/query.rs:121:9: replace Store::cached_order -> Result<Option<crate::CachedOrder>, Error> with Ok(None)` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/query.rs:132:29: replace != with == in Store::cached_order` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/query.rs:149:9: replace Store::first_interpreted_connection_receipt -> Result<Option<Receipt>, Error> with Ok(None)` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+| `crates/store/src/query.rs:181:17: replace &#124;&#124; with && in Store::receipt` | Unresolved at the new bug stop; no equivalence or closure claimed. |
+
+The two earlier migration misses at migration.rs:46:36 are both caught by `migration::tests::mutation_adr0003_migration_canonical_parking_limit_is_inclusive_and_refusal_rolls_back` in `migration-recheck`. The canonical boundary is derived from independently expected JSON; overflow leaves schema/version/rows unchanged. The original restore Busy/Locked miss remains unresolved; the planned deterministic capacity-probe lock case was not run because the new bug triggered the stop rule.
+
+Eight tests were added in this continuation (12 net new tests versus main after removing the duplicate regression): one migration boundary, four startup cases (all schema versions, foreign-key refusal with retained raw evidence, one-shot interruption allowing cleanup, progress formatting/completion), two worker cases (inclusive queue bounds, joined owner cleanup) and the new failing restore-size regression. Tests use existing synthetic fixtures and HANG_GUARD, with no short real-time hang deadlines, production hooks, dependencies or raw-log commits.
+
+### Reproducing the proposed-fix failure
+
+The initial scratch check archived the exact #99 head before merge, appended only the new named test from this branch, and ran it. After #99 merged, the same failure was confirmed on the merged branch. No production fix is included in this PR.
+
+```powershell
+New-Item -ItemType Directory -Force target/store-round-3/fix-check | Out-Null
+git archive --format=tar -o target/store-round-3/fix-check.tar a22a259efcf1c6005617ee687a58be749e97f217
+tar -xf target/store-round-3/fix-check.tar -C target/store-round-3/fix-check
+python -c "from pathlib import Path; import re; s=Path('crates/store/src/tests.rs').read_text(); t=re.search(r'(?s)#\[test\]\s*fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit.*',s).group(0); p=Path('target/store-round-3/fix-check/crates/store/src/tests.rs'); p.write_text(p.read_text()+'\n'+t)"
+cargo test --manifest-path target/store-round-3/fix-check/Cargo.toml --target-dir target -p analyte-store mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit
+```
+
+Backup, migration, open/startup and reprocess have complete results on the baseline. Restore still needs the Busy/Locked case and the new post-upgrade size bug fixed; worker has three unresolved misses; query has seven misses among only 17 completed candidates. The remaining query candidates plus alerts, capacity (including restore_capacity) and lib were not run. No whole-store or minimum-subset completion is claimed.
+
+
+### Post-merge verification at the second stop
+
+Merged origin/main with `--signoff` in `971c202d05c65afe79383cde883e8df5172f6077`, including #99. The main reserve regression is byte-for-byte unchanged and exists once; it passes. The new size-growth regression still fails on the merged branch: `Ok(...before-restore)`, published 196608 bytes versus limit 73729. Branch changes relative to main are only tests and these Markdown reports.
+
+| Check | Observed output |
+| --- | --- |
+| `cargo fmt --check` | Exit 0; no formatting differences. |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Exit 0; finished dev profile in 21.11s. |
+| `cargo test --workspace` | Exit 101; store: 128 passed, 1 failed, 1 ignored. The only failure is `mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit`; the reserve regression from #99 passes. The workspace is not claimed green. |
+| `cargo deny check` | Exit 0; advisories ok, bans ok, licenses ok, sources ok; existing duplicate-dependency warnings remain. |
+| `cargo check --manifest-path fuzz/Cargo.toml --bins` | Exit 0; fuzz binaries compiled, not executed. |
+
+Logs stay local in `target/store-round-3/post-merge-checks/`. Earlier two-failure results in `resume-checks` predate the main merge and do not describe the final branch. Linux, minimum-Rust checks and fuzz execution were not run locally. PR #98 remains draft because a further real bug triggered the stop rule; no additional mutation or equivalence work was done after that finding.

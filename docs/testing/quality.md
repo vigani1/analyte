@@ -459,3 +459,12 @@ Thirteen tests were added, with no production or dependency changes. State/clock
 Five tests were added (four passing recovery cases and the failing reproducer). Combined local mutation outcomes at stop: backup 5 caught; restore 20 caught, 1 unresolved miss, 1 unviable; migration 10 caught, 2 unresolved misses. No equivalent or timeout is claimed. Only backup is complete; modules 1–5 as a group and the overall store round are unfinished. Raw logs stay local; the Markdown records every command and catching test.
 
 Part 3 checks: fmt, Clippy, deny and fuzz-bin compilation exit 0. Workspace tests exit 101 on the retained restore-capacity regression (store: 120 passed, 1 failed, 1 ignored). All logs remain local. No passing whole-store or whole-workspace result is claimed for this stop.
+
+### Store round 3 continuation: further restore size bug
+
+The original reserve bug is fixed by merged #99; origin/main was merged with signoff and main's regression kept exactly once. A new regression fails against its exact head `a22a259` and the merged branch: restore publishes 196,608 bytes under a 73,729-byte cap after upgrading a schema-1 backup. The pre-staging check measures the source image, not the final upgraded store. The regression is retained and PR #98 stays draft under the stop-on-further-real-bug rule; production code remains unchanged.
+
+The migration boundary misses and all open/startup misses are now caught in exact replays. Reprocess has five caught mutants. Worker has 12 caught, 3 unresolved misses, 2 unviable; query was interrupted after 17/38 candidates (2 caught, 7 unresolved misses, 8 unviable). Restore's Busy/Locked miss remains unresolved. No new equivalent classification is made. Eight tests were added in this continuation, including the failing size regression; raw logs remain local. See the appended store report for all runs, test names, scope and commands.
+
+
+Final post-merge verification: fmt, Clippy, deny and fuzz-bin compilation all exit 0. Workspace tests exit 101: store 128 passed, 1 failed, 1 ignored; only the new post-upgrade size regression fails, while #99's reserve regression passes. There are 12 net new tests versus main after keeping main's duplicate exactly once. The remaining work is restore's Busy/Locked miss and the new bug; three worker misses; query's seven misses plus 21 unrun candidates; alerts, capacity including restore_capacity, and lib. No production fixes or raw logs are committed. Linux/MSRV and fuzz execution were not run locally.
