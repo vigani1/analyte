@@ -162,48 +162,7 @@ fn map_one(
         source_status: model::SourceText::new(source_status.as_deref().unwrap_or(""))?,
         // POCT acceptance/discard codes do not establish clinical finality.
         status: model::ResultStatus::Unknown,
-        source_path: model::EvidenceList::new(vec![
-            model::SourceNode {
-                occurrence: 1,
-                kind: model::Identifier::new(
-                    document
-                        .elements()
-                        .first()
-                        .ok_or(analyte_poct::MessageError::Structure)?
-                        .name(),
-                )?,
-                sequence: None,
-                status: None,
-            },
-            model::SourceNode {
-                occurrence: source_occurrence(service.source_index)?,
-                kind: model::Identifier::new("SVC")?,
-                sequence: optional_literal(document, service.source_index, "SVC.sequence_nbr")
-                    .map(|s| model::SourceText::new(&s))
-                    .transpose()?,
-                status: optional_literal(document, service.source_index, "SVC.status_cd")
-                    .map(|s| model::SourceText::new(&s))
-                    .transpose()?,
-            },
-            model::SourceNode {
-                occurrence: source_occurrence(parent)?,
-                kind: model::Identifier::new(
-                    document
-                        .elements()
-                        .get(parent)
-                        .ok_or(analyte_poct::MessageError::Structure)?
-                        .name(),
-                )?,
-                sequence: None,
-                status: None,
-            },
-            model::SourceNode {
-                occurrence: source_occurrence(observation.source_index)?,
-                kind: model::Identifier::new("OBS")?,
-                sequence: None,
-                status: None,
-            },
-        ])?,
+        source_path: source_path(document, service, observation, parent)?,
         times: model::EvidenceList::new(times)?,
         received_at,
     };
@@ -360,4 +319,54 @@ fn source_occurrence(index: usize) -> Result<usize, MappingError> {
     index
         .checked_add(1)
         .ok_or_else(|| analyte_poct::MessageError::Structure.into())
+}
+
+fn source_path(
+    document: &analyte_poct::Document,
+    service: &Service,
+    observation: &Observation,
+    parent: usize,
+) -> Result<model::EvidenceList<model::SourceNode>, MappingError> {
+    Ok(model::EvidenceList::new(vec![
+        model::SourceNode {
+            occurrence: 1,
+            kind: model::Identifier::new(
+                document
+                    .elements()
+                    .first()
+                    .ok_or(analyte_poct::MessageError::Structure)?
+                    .name(),
+            )?,
+            sequence: None,
+            status: None,
+        },
+        model::SourceNode {
+            occurrence: source_occurrence(service.source_index)?,
+            kind: model::Identifier::new("SVC")?,
+            sequence: optional_literal(document, service.source_index, "SVC.sequence_nbr")
+                .map(|s| model::SourceText::new(&s))
+                .transpose()?,
+            status: optional_literal(document, service.source_index, "SVC.status_cd")
+                .map(|s| model::SourceText::new(&s))
+                .transpose()?,
+        },
+        model::SourceNode {
+            occurrence: source_occurrence(parent)?,
+            kind: model::Identifier::new(
+                document
+                    .elements()
+                    .get(parent)
+                    .ok_or(analyte_poct::MessageError::Structure)?
+                    .name(),
+            )?,
+            sequence: None,
+            status: None,
+        },
+        model::SourceNode {
+            occurrence: source_occurrence(observation.source_index)?,
+            kind: model::Identifier::new("OBS")?,
+            sequence: None,
+            status: None,
+        },
+    ])?)
 }

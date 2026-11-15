@@ -387,7 +387,6 @@ fn hl7_segments(
     message: &analyte_hl7::Message,
     structure: Hl7Structure,
 ) -> Result<Source<'_>, Error> {
-    let oul = matches!(structure, Hl7Structure::Oul | Hl7Structure::Law);
     let mut source = Source {
         message: Some(message),
         nodes: Vec::new(),
@@ -395,90 +394,104 @@ fn hl7_segments(
         component_separator: message.delimiters().bytes().get(1).copied().unwrap_or(b'^'),
         charset: message.charset(),
     };
-    let mut patient = Some(0);
-    let mut specimen = None;
-    let mut container = None;
-    let mut control = None;
-    let mut order = None;
-    let mut note_parent = Some(0);
+    let mut hierarchy = Hierarchy {
+        patient: Some(0),
+        specimen: None,
+        container: None,
+        control: None,
+        order: None,
+        note_parent: Some(0),
+    };
     for (index, segment) in message.segments().enumerate() {
         let position = Position {
             record: index.saturating_add(1),
             field: 0,
         };
         let name = std::str::from_utf8(segment.id()).map_err(|_| Error::Encoding { position })?;
-        let (parent, group) = match name {
+        let (parent, group) = hierarchy.parent(name, index, position, &source, &structure)?;
+        source.nodes.push(Node {
+            record: Record::Hl7(segment),
+            name: name.into(),
+            parent,
+            group,
+            comments: Vec::new(),
+        });
+        if name != "NTE" && name != "TCD" && name != "SID" {
+            hierarchy.note_parent = Some(index);
+        }
+    }
+    Ok(source)
+}
+
+struct Hierarchy {
+    patient: Option<usize>,
+    specimen: Option<usize>,
+    container: Option<usize>,
+    control: Option<usize>,
+    order: Option<usize>,
+    note_parent: Option<usize>,
+}
+
+impl Hierarchy {
+    fn parent(
+        &mut self,
+        name: &str,
+        index: usize,
+        position: Position,
+        source: &Source<'_>,
+        structure: &Hl7Structure,
+    ) -> Result<(Option<usize>, Group), Error> {
+        let oul = matches!(structure, Hl7Structure::Oul | Hl7Structure::Law);
+        Ok(match name {
             "MSH" if index == 0 => (None, Group::Message),
             "PID" => {
-                patient = Some(index);
-                specimen = None;
-                container = None;
-                control = None;
-                order = None;
+                self.patient = Some(index);
+                self.specimen = None;
+                self.container = None;
+                self.control = None;
+                self.order = None;
                 (Some(0), Group::Patient)
             }
             "ORC" => {
                 let parent = if oul {
-                    Some(order.ok_or(Error::Structure {
+                    Some(self.order.ok_or(Error::Structure {
                         position,
                         reason: "OUL ORC must follow OBR",
                     })?)
                 } else {
-                    order = None;
-                    patient
+                    self.order = None;
+                    self.patient
                 };
-                control = Some(index);
+                self.control = Some(index);
                 (parent, Group::Order)
             }
-            "OBR" => {
-                if oul && specimen.is_none() {
-                    return Err(Error::Structure {
-                        position,
-                        reason: "OUL order has no specimen group",
-                    });
-                }
-                let parent = if oul {
-                    control = None;
-                    if matches!(structure, Hl7Structure::Law) {
-                        container.or(specimen)
-                    } else {
-                        specimen
-                    }
-                } else {
-                    control.or(patient)
-                };
-                if !oul {
-                    control = None;
-                }
-                order = Some(index);
-                (parent, Group::Order)
-            }
+            "OBR" => self.order_parent(index, position, structure)?,
             "SPM" => {
-                container = None;
+                self.container = None;
                 if oul {
-                    control = None;
-                    order = None;
+                    self.control = None;
+                    self.order = None;
                 }
                 let parent = if oul {
-                    patient
+                    self.patient
                 } else {
-                    Some(order.ok_or(Error::Structure {
+                    Some(self.order.ok_or(Error::Structure {
                         position,
                         reason: "ORU specimen group has no order",
                     })?)
                 };
-                specimen = Some(index);
+                self.specimen = Some(index);
                 (parent, Group::Order)
             }
-            "SAC" if specimen.is_some() => {
-                container = Some(index);
-                (specimen, Group::Order)
+            "SAC" if self.specimen.is_some() => {
+                self.container = Some(index);
+                (self.specimen, Group::Order)
             }
             "OBX" => {
                 let parent = if oul {
-                    control.or(order).or(specimen)
+                    self.control.or(self.order).or(self.specimen)
                 } else {
-                    match (order, specimen) {
+                    match (self.order, self.specimen) {
                         (Some(o), Some(s)) if s > o => Some(s),
                         (Some(o), Some(_)) | (Some(o), None) => Some(o),
                         (None, Some(s)) => Some(s),
@@ -496,7 +509,8 @@ fn hl7_segments(
             "NTE" | "TCD" | "SID" => {
                 if name != "NTE"
                     && (!oul
-                        || !note_parent
+                        || !self
+                            .note_parent
                             .and_then(|i| source.nodes.get(i))
                             .is_some_and(|n| n.name == "OBX"))
                 {
@@ -505,26 +519,46 @@ fn hl7_segments(
                         reason: "test detail or substance is outside an OUL result group",
                     });
                 }
-                (note_parent, Group::Observation)
+                (self.note_parent, Group::Observation)
             }
-            "PV1" | "PV2" => (patient, Group::Patient),
+            "PV1" | "PV2" => (self.patient, Group::Patient),
             _ => {
                 return Err(Error::Structure {
                     position,
                     reason: "unsupported or misplaced segment; retain receipt for review",
                 });
             }
-        };
-        source.nodes.push(Node {
-            record: Record::Hl7(segment),
-            name: name.into(),
-            parent,
-            group,
-            comments: Vec::new(),
-        });
-        if name != "NTE" && name != "TCD" && name != "SID" {
-            note_parent = Some(index);
-        }
+        })
     }
-    Ok(source)
+
+    fn order_parent(
+        &mut self,
+        index: usize,
+        position: Position,
+        structure: &Hl7Structure,
+    ) -> Result<(Option<usize>, Group), Error> {
+        let oul = matches!(structure, Hl7Structure::Oul | Hl7Structure::Law);
+
+        if oul && self.specimen.is_none() {
+            return Err(Error::Structure {
+                position,
+                reason: "OUL order has no specimen group",
+            });
+        }
+        let parent = if oul {
+            self.control = None;
+            if matches!(structure, Hl7Structure::Law) {
+                self.container.or(self.specimen)
+            } else {
+                self.specimen
+            }
+        } else {
+            self.control.or(self.patient)
+        };
+        if !oul {
+            self.control = None;
+        }
+        self.order = Some(index);
+        Ok((parent, Group::Order))
+    }
 }
