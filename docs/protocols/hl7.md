@@ -130,6 +130,15 @@ inferred (`hl7_251_2_7_unsupported_escapes_never_become_clean_text`).
 - [ ] B — Declare legacy deferred-processing/MCF support separately from enhanced acceptance and deferred queries. 231 ch.2 §§2.12.2–2.13 pp.112–114; 251 ch.2 §2.14 p.61 and ch.5 §5.6 pp.52–60.
 - [ ] B — Test disk failure, response loss, late/mismatched ACK, duplicate message ID with changed content and restart after commit/before reply. Processing rules above plus project safety policy; timeout does not prove failure (engineering gate).
 
+ERR locations use the actual source segment occurrence and field when known,
+and remain unvalued when reconciliation cannot identify a source field. HL7 and
+LAW use one host builder. Source: 2.5.1 section 2.15.5.2 pp.2-67-68.
+`hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location` (receive tests)
+covers the second OBX and an unlocated conflict; `hl7_251_2_15_5_2_unknown_location_stays_unvalued`
+(control tests) checks wire rendering. LAW's
+`law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`
+(delivery tests) checks the same second-OBX mapping failure.
+
 ### F. Laboratory results, status and identity
 
 - [ ] B — Implement ORU^R01 and ACK with edition-specific grouping, requiredness and optional context/notes. 231 ch.7 §7.2.1 pp.487–488; 251 ch.7 §7.3.1 pp.12–13.

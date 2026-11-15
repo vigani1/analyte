@@ -2,7 +2,7 @@
 use crate::orders::law::{Connection, Reply, response_metadata};
 use crate::{Error, evidence, invalid};
 use analyte_framing::mllp;
-use analyte_hl7::{AckCode, AckError, Options, Responsibility, law};
+use analyte_hl7::{AckCode, Options, Responsibility, law};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use std::time::Duration;
@@ -215,16 +215,23 @@ async fn process(
             "LAW transaction disabled: unsolicited work/response traffic is not enabled",
         ));
     }
+    let error_location;
     let (code, responsibility, location) = match law::receive_results(&message) {
         Ok(_) => {
-            let accepted = evidence::interpret(store, machine, id).await?;
+            let (accepted, location) =
+                evidence::interpret_with_location(store, machine, id).await?;
+            error_location = location;
             if accepted {
                 (AckCode::Aa, Responsibility::StoredAndInterpreted, None)
             } else {
                 (
                     AckCode::Ae,
                     Responsibility::Stored,
-                    Some(AckError::unlocated(b"207", b"operator-review")),
+                    Some(super::hl7_error::build(
+                        error_location.as_ref(),
+                        b"207",
+                        b"operator-review",
+                    )),
                 )
             }
         }
@@ -232,34 +239,19 @@ async fn process(
             evidence::failed_reading(store, machine, id, &failure.to_string()).await?;
             // The pure failure names a segment/field but not its occurrence. Only
             // report a wire location when the original proves it is unambiguous.
-            let location = failure.location().filter(|location| {
-                location.field > 0
-                    && message
-                        .segments()
-                        .filter(|s| s.id() == location.segment.as_bytes())
-                        .count()
-                        == 1
+            error_location = failure.location().and_then(|location| {
+                super::hl7_error::Location::unique(&message, &location.segment, location.field)
             });
             (
                 failure
                     .acknowledgment_code()
                     .ok_or("LAW result failure has no ACK outcome")?,
                 Responsibility::Stored,
-                Some(
-                    match location.and_then(|location| {
-                        u16::try_from(location.field)
-                            .ok()
-                            .map(|field| (location, field))
-                    }) {
-                        Some((location, field)) => error(
-                            location.segment.as_bytes(),
-                            field,
-                            b"102",
-                            b"LAW-invalid-results",
-                        ),
-                        None => AckError::unlocated(b"102", b"LAW-invalid-results"),
-                    },
-                ),
+                Some(super::hl7_error::build(
+                    error_location.as_ref(),
+                    b"102",
+                    b"LAW-invalid-results",
+                )),
             )
         }
     };
@@ -276,19 +268,4 @@ async fn process(
             .map(Reply::Response),
         )
     })
-}
-
-fn error<'a>(
-    segment: &'a [u8],
-    field: u16,
-    code: &'a [u8],
-    application_code: &'a [u8],
-) -> AckError<'a> {
-    AckError {
-        segment,
-        occurrence: 1,
-        field,
-        code,
-        application_code,
-    }
 }

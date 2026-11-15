@@ -2,6 +2,28 @@
 use analyte_hl7::*;
 use proptest::prelude::*;
 
+// HL7 2.5.1 section 2.15.5.2 pp.2-67-68; 2.3.1 section 2.24.3.1.
+#[test]
+fn hl7_251_2_15_5_2_unknown_location_stays_unvalued() -> Result<(), Error> {
+    for (version, expected) in [
+        ("2.5.1", "ERR|||207|E|operator-review\r"),
+        ("2.3.1", "ERR|^^^207\r"),
+    ] {
+        let message = parse(&wire(version, "", "", "", ""))?;
+        let ack = acknowledgment(
+            &message,
+            response()?,
+            AckCode::Ae,
+            Responsibility::Stored,
+            Some(AckError::unlocated(b"207", b"operator-review")),
+            Options::default(),
+        )?
+        .ok_or(Error::AckMode)?;
+        assert!(ack.raw().ends_with(expected.as_bytes()));
+    }
+    Ok(())
+}
+
 // HL7 2.5.1 section 2.7.6 pp.2-19-20; synthetic command/argument cases.
 #[test]
 fn hl7_251_2_7_6_formatting_command_grammar() -> Result<(), Error> {
