@@ -1,5 +1,6 @@
 //! Synthetic program/reference-receiver LAB-27 and query-triggered LAB-28, TF-2b 3.27/3.28/B.7.
 use super::*;
+use crate::support::HANG_GUARD;
 #[path = "connections.rs"]
 mod connections;
 #[path = "work.rs"]
@@ -146,7 +147,7 @@ async fn send(peer: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 async fn packet(peer: &mut TcpStream) -> Result<analyte_hl7::Message, Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         assert_eq!(peer.read_u8().await?, 11);
         let mut bytes = Vec::new();
         loop {
@@ -233,6 +234,7 @@ fn count(path: &Path, table: &str) -> Result<i64, Error> {
 }
 async fn quiet(peer: &mut TcpStream) -> Result<(), Error> {
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(60), peer.read_u8())
             .await
             .is_err(),
@@ -241,7 +243,7 @@ async fn quiet(peer: &mut TcpStream) -> Result<(), Error> {
     Ok(())
 }
 async fn wait_audit(path: &Path) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let found: i64 = database(path)?.query_row(
                 "SELECT count(*) FROM audit WHERE json_extract(evidence,'$.action')='LAW-negative-query-ORL'",

@@ -1,8 +1,11 @@
 //! Synthetic program-to-peer custody tests, ADR 0003 and documented vendor scopes.
+#[path = "support/guard.rs"]
+mod guard;
 #[path = "../../poct/tests/common/mod.rs"]
 mod poct_peer;
 use analyte::{Error, config::Program, service};
 use analyte_store::FreeSpace;
+use guard::HANG_GUARD;
 use std::{
     path::Path,
     sync::{
@@ -137,7 +140,7 @@ impl Running {
 
     async fn restart(self) -> Result<Self, Error> {
         self.stop.send(()).map_err(|()| "service ended early")?;
-        tokio::time::timeout(Duration::from_secs(8), self.task).await???;
+        tokio::time::timeout(HANG_GUARD, self.task).await???;
         let mut program = Program::load(&self.path)?;
         // The reference receiver remains bound while only the program restarts.
         let url = self.url.clone();
@@ -171,7 +174,7 @@ impl Running {
             peer,
             ..self
         };
-        tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::time::timeout(HANG_GUARD, async {
             loop {
                 if running.database().is_ok_and(|db| {
                     db.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
@@ -311,7 +314,7 @@ impl Running {
     }
 
     async fn parked(&self, reason: &str) -> Result<(), Error> {
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG_GUARD, async {
             loop {
                 let db = self.database()?;
                 let count: i64 = db.query_row(
@@ -348,7 +351,7 @@ impl Running {
 
     async fn close(self) -> Result<(), Error> {
         self.stop.send(()).map_err(|()| "service ended early")?;
-        tokio::time::timeout(Duration::from_secs(8), self.task).await???;
+        tokio::time::timeout(HANG_GUARD, self.task).await???;
         assert_eq!(self.result_requests.load(Ordering::Acquire), 0);
         let db = rusqlite::Connection::open(self.directory.path().join("reference.db"))?;
         assert_eq!(
@@ -359,7 +362,7 @@ impl Running {
         self.receiver_stop
             .send(())
             .map_err(|()| "reference ended early")?;
-        tokio::time::timeout(Duration::from_secs(3), self.receiver_task).await???;
+        tokio::time::timeout(HANG_GUARD, self.receiver_task).await???;
         self.receiver
             .shutdown()
             .map_err(|_| "reference worker panicked")?;
@@ -369,11 +372,11 @@ impl Running {
 }
 
 async fn byte(peer: &mut TcpStream) -> Result<u8, Error> {
-    Ok(tokio::time::timeout(Duration::from_secs(5), peer.read_u8()).await??)
+    Ok(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??)
 }
 
 async fn xml(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         let mut raw = Vec::new();
         let mut ending = None;
         loop {
@@ -538,8 +541,7 @@ async fn adr0003_vendor_storage_failure_never_acknowledges_data() -> Result<(), 
         run.space.store(0, Ordering::Release);
         run.peer.write_all(&raw).await?;
         let mut reply = [0u8; 256];
-        let received =
-            tokio::time::timeout(Duration::from_secs(5), run.peer.read(&mut reply)).await?;
+        let received = tokio::time::timeout(HANG_GUARD, run.peer.read(&mut reply)).await?;
         match received {
             Ok(count) => assert_eq!(count, 0, "storage failure must close without acceptance"),
             Err(error) => assert!(matches!(
@@ -561,7 +563,7 @@ async fn autolyser_rev18_p175_adr0003_uncertain_r_blocks_restart_until_operator_
     let mut run = run.restart().await?;
     let mut bytes = [0u8; 1];
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), run.peer.read(&mut bytes)).await??,
+        tokio::time::timeout(HANG_GUARD, run.peer.read(&mut bytes)).await??,
         0
     );
     run.parked("Autolyser R may advance its cursor").await?;
@@ -675,7 +677,7 @@ async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Resul
         |r| r.get(0),
     )?;
     run.peer.write_all(first).await?;
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let bytes: i64 = run.database()?.query_row(
                 "SELECT coalesce(sum(length(raw)),0) FROM receipts",
@@ -696,7 +698,7 @@ async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Resul
     run.parked("Autolyser: durable storage unavailable").await?;
     let mut reply = [0u8; 8];
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), run.peer.read(&mut reply)).await??,
+        tokio::time::timeout(HANG_GUARD, run.peer.read(&mut reply)).await??,
         0
     );
     run.close().await

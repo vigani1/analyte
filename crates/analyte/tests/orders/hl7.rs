@@ -1,6 +1,7 @@
 //! HL7 2.3.1 section 2.18 / 2.5.1 section 5.10 and ADR 0003/0004/0008.
 use super::vendor_support::{event, no_event, state};
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -59,7 +60,7 @@ async fn setup_with_freshness(
         .await?;
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
     let peer = connect(&path, "hl7").await?;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             if database(&path)?.query_row(
                 "SELECT count(*) FROM feed WHERE complete=1 AND trusted=1",
@@ -87,7 +88,7 @@ async fn send(peer: &mut TcpStream, payload: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 async fn packet(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         assert_eq!(peer.read_u8().await?, 11);
         let mut bytes = Vec::new();
         loop {

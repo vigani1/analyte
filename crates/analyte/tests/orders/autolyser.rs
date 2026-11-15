@@ -1,6 +1,7 @@
 //! Rev18 chapter 23 pp.175-179 and ADR 0004/0008, synthetic peers only.
 use super::vendor_support::*;
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -69,11 +70,12 @@ async fn insertion(peer: &mut TcpStream, path: &Path, clone: bool) -> Result<(),
         b"000PatA        TSN0301SYN 201\x04"
     };
     let mut bytes = vec![0; expected.len()];
-    tokio::time::timeout(Duration::from_secs(5), peer.read_exact(&mut bytes)).await??;
+    tokio::time::timeout(HANG_GUARD, peer.read_exact(&mut bytes)).await??;
     assert_eq!(bytes, expected);
     Ok(())
 }
 async fn only_polls(peer: &mut TcpStream) -> Result<(), Error> {
+    // Deliberate quiet window: only empty polls may arrive.
     let until = tokio::time::Instant::now()
         .checked_add(Duration::from_millis(700))
         .ok_or("test deadline overflow")?;
@@ -85,7 +87,7 @@ async fn only_polls(peer: &mut TcpStream) -> Result<(), Error> {
     }
 }
 async fn wait_count(path: &Path, sql: &str, expected: i64) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let found: i64 = database(path)?.query_row(sql, [], |r| r.get(0))?;
             if found == expected {
@@ -99,7 +101,7 @@ async fn wait_count(path: &Path, sql: &str, expected: i64) -> Result<(), Error> 
 async fn closed(peer: &mut TcpStream) -> Result<(), Error> {
     let mut bytes = [0];
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut bytes)).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut bytes)).await??,
         0
     );
     Ok(())
@@ -344,7 +346,7 @@ async fn adr0004_autolyser_cancelled_before_send_has_no_insertion_or_send_event(
     let (temp, path, reference, service, mut peer) = setup(value, false).await?;
     // The cancelled order must be in the cache before "never sent" means anything;
     // wait for the poll to commit it instead of racing the first poll.
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let cached = database(&path)?
                 .query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?;

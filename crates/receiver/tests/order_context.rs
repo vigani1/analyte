@@ -1,6 +1,9 @@
 //! ADR 0008: the reference app retains optional order context without normalization.
+#[path = "../../analyte/tests/support/guard.rs"]
+mod guard;
 use analyte_contract::{Order, SigningSecret, decode};
 use analyte_receiver::Receiver;
+use guard::HANG_GUARD;
 
 #[tokio::test]
 async fn adr0008_seeded_patient_specimen_and_position_survive_the_feed()
@@ -24,9 +27,7 @@ async fn adr0008_seeded_patient_specimen_and_position_survive_the_feed()
             })
             .await
     });
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()?;
+    let client = reqwest::Client::builder().timeout(HANG_GUARD).build()?;
     let response = client
         .get(url)
         .bearer_auth("synthetic-api")

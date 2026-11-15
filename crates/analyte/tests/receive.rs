@@ -1,6 +1,9 @@
 //! Synthetic localhost receive-path tests, tied to ADR 0003 and protocol scopes.
+#[path = "support/guard.rs"]
+mod guard;
 use analyte::{Error, config::Program, service};
 use analyte_store::{FreeSpace, Store};
+use guard::HANG_GUARD;
 use std::{path::Path, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -90,7 +93,7 @@ async fn connect(program: &Program) -> Result<TcpStream, Error> {
         .site()
         .endpoint;
     let until = tokio::time::Instant::now()
-        .checked_add(Duration::from_secs(5))
+        .checked_add(HANG_GUARD)
         .unwrap_or(tokio::time::Instant::now());
     loop {
         if let Ok(stream) = TcpStream::connect(endpoint).await {
@@ -118,7 +121,7 @@ fn stored(program: &Program) -> Result<Store, Error> {
 }
 
 async fn read_ack(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         let mut bytes = Vec::new();
         while bytes.len() < 4096 {
             let byte = peer.read_u8().await?;
@@ -195,7 +198,7 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
         1
     );
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -216,10 +219,7 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     ));
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-        6
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     let payload = b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
     let frames = analyte_framing::astm::encode(
         payload,
@@ -230,10 +230,7 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     for frame in frames {
         wire.extend_from_slice(&frame);
         peer.write_all(&frame).await?;
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-            6
-        );
+        assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
         let store = stored(&program)?;
         let transfers = store.incomplete("")?;
         let transfer = analyte_model::Identifier::new(
@@ -243,7 +240,7 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     }
     peer.write_all(b"\x04").await?;
     let until = tokio::time::Instant::now()
-        .checked_add(Duration::from_secs(3))
+        .checked_add(HANG_GUARD)
         .unwrap_or(tokio::time::Instant::now());
     loop {
         let store = stored(&program)?;
@@ -263,7 +260,7 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -279,13 +276,10 @@ async fn adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded() -> Result<
     }));
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-        21
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 21);
     assert!(stored(&program)?.receipts("")?.is_empty());
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -332,7 +326,7 @@ async fn adr0003_hl7_full_disk_never_returns_positive_ack() -> Result<(), Error>
     assert!(String::from_utf8_lossy(&ack).contains("MSA|AR|message1"));
     assert!(stored(&program)?.receipts("")?.is_empty());
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -369,7 +363,7 @@ async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<()
     .await?;
     assert!(String::from_utf8_lossy(&read_ack(&mut peer).await?).contains("MSA|AA|message1"));
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -516,7 +510,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
         },
     ));
     let until = tokio::time::Instant::now()
-        .checked_add(Duration::from_secs(5))
+        .checked_add(HANG_GUARD)
         .ok_or("deadline overflow")?;
     loop {
         let store = stored(&program)?;
@@ -539,7 +533,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     assert!(!incoming.join("result.hl7").exists());
     Ok(())
 }
@@ -561,10 +555,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     ));
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-        6
-    );
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     let first = analyte_framing::astm::encode(
         b"H|\\^&||||||||||P|LIS2-A2|20261115120000\r",
         analyte_framing::astm::FrameNumber::FIRST,
@@ -572,10 +563,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     )?;
     for frame in first {
         peer.write_all(&frame).await?;
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(3), peer.read_u8()).await??,
-            6
-        );
+        assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     }
     let store = stored(&program)?;
     let transfers = store.incomplete("")?;
@@ -598,7 +586,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     // End the socket so its ordered Received event precedes Closed deterministically.
     peer.shutdown().await?;
     let until = tokio::time::Instant::now()
-        .checked_add(Duration::from_secs(3))
+        .checked_add(HANG_GUARD)
         .ok_or("deadline overflow")?;
     loop {
         let store = stored(&program)?;
@@ -618,7 +606,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
 
@@ -718,7 +706,7 @@ async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_a
     .await?;
     assert!(String::from_utf8(read_ack(&mut peer).await?)?.contains("MSA|AE"));
     shutdown.send(()).map_err(|_| "shutdown lost")?;
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(HANG_GUARD, owner).await???;
     let store = stored(&program)?;
     let receipt = store.receipts("")?.first().ok_or("receipt missing")?.id;
     let parked = store.parked(0)?.first().ok_or("parked missing")?.id;
@@ -832,6 +820,6 @@ async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Erro
     assert_ne!(metadata[0].connection, metadata[0].machine);
     drop(store);
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
-    tokio::time::timeout(Duration::from_secs(3), service).await???;
+    tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }

@@ -1,7 +1,10 @@
 //! Synthetic ADR 0008 contract regression cases.
 #![forbid(unsafe_code)]
+#[path = "../../analyte/tests/support/guard.rs"]
+mod guard;
 use analyte_contract::{Order, SigningSecret};
 use analyte_receiver::Receiver;
+use guard::HANG_GUARD;
 use serde_json::{Value, json};
 const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
 async fn post(
@@ -41,9 +44,7 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
             })
             .await
     });
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()?;
+    let client = reqwest::Client::builder().timeout(HANG_GUARD).build()?;
     let body = include_bytes!("../../../docs/contract/vectors/delivery.json");
     let id = "019ab000-0000-7000-8000-000000000001";
     // The contract owns evidence validation; invalid nested input must not reach storage.

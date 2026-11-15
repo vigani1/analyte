@@ -1,5 +1,6 @@
 //! Plan §11, ADR 0003 crash recovery and AGENTS concurrency: real forced process exit.
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const ROOT: &str = "ANALYTE_FORCED_EXIT_TEST_ROOT";
@@ -43,7 +44,7 @@ async fn forced_exit_child() -> Result<(), Error> {
     loaded.stall_store_on_shutdown_for_test()?;
     let running = Running::start_program(loaded, "synthetic-api")?;
     let mut astm_peer = connect(&path, "astm").await?;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         while database(&path)?
             .query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?
             == 0
@@ -60,7 +61,7 @@ async fn forced_exit_child() -> Result<(), Error> {
     )
     .await?;
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), astm_peer.read_u8()).await??,
+        tokio::time::timeout(HANG_GUARD, astm_peer.read_u8()).await??,
         5
     );
     let mut hl7_peer = connect(&path, "hl7").await?;
@@ -74,7 +75,7 @@ async fn forced_exit_child() -> Result<(), Error> {
     // The parent confirms that the receiver committed while its HTTP response is withheld.
     // Track the shutdown interval separately from child setup and order polling.
     std::fs::write(root.join("shutdown-ready"), b"ready")?;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         while !root.join("stop-request").exists() {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -126,7 +127,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
     assert!(original.outcome.contains("accepted"));
     let started = std::time::Instant::now();
     while !directory.path().join("shutdown-ready").exists() {
-        if started.elapsed() > Duration::from_secs(5) {
+        if started.elapsed() > HANG_GUARD {
             return Err("child did not reach shutdown boundary".into());
         }
         if child.0.try_wait()?.is_some() {
@@ -134,6 +135,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+    // Deliberate shutdown bound, also asserted below.
     let shutdown_started = std::time::Instant::now();
     std::fs::write(directory.path().join("stop-request"), b"stop")?;
     let status = loop {
@@ -221,6 +223,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
     let mut peer = connect(&path, "astm").await?;
     // LIS02 §11 and safety rule 8: reconnecting never replays the reserved machine order.
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
             .await
             .is_err()

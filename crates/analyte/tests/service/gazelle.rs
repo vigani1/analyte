@@ -1,5 +1,6 @@
 //! Explicit manual Gazelle run; CI must never opt into this external connection.
 use super::*;
+use crate::support::HANG_GUARD;
 use std::sync::{Mutex, atomic::AtomicUsize};
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
@@ -106,13 +107,13 @@ async fn gazelle_lab28_live() -> Result<(), Error> {
     ));
     let outcome = tokio::select! {
         () = failure.wake.notified() => Err("Gazelle transport, capture or session failure; preserved original evidence".into()),
-        result = tokio::time::timeout(Duration::from_secs(35), exchanges(&data, &artifacts, &reference)) => match result {
+        result = tokio::time::timeout(HANG_GUARD, exchanges(&data, &artifacts, &reference)) => match result {
             Ok(result) => result,
             Err(error) => Err(Box::new(error) as Error),
         }
     };
     let _ = stop.send(());
-    let shutdown = tokio::time::timeout(Duration::from_secs(30), service).await;
+    let shutdown = tokio::time::timeout(HANG_GUARD, service).await;
     let mut report = format!(
         "date={}\nendpoint={endpoint}\noutcome={outcome:?}\nfailed_connection_attempts={}\nshutdown={shutdown:?}\n",
         jiff::Timestamp::now(),

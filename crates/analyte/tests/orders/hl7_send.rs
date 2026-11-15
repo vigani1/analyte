@@ -1,6 +1,7 @@
 //! HL7 2.3.1 ch.4 / 2.5.1 sections 4.4 / ADR 0003/0004/0008 synthetic peers.
 use super::vendor_support::state;
 use super::*;
+use crate::support::HANG_GUARD;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -86,7 +87,7 @@ async fn setup_with_id(
     Ok((temp, path, reference, service, peer))
 }
 async fn packet(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
-    tokio::time::timeout(Duration::from_secs(8), async {
+    tokio::time::timeout(HANG_GUARD, async {
         assert_eq!(peer.read_u8().await?, 11);
         let mut bytes = Vec::new();
         loop {
@@ -224,6 +225,7 @@ async fn hl7_251_no_reply_disconnect_and_restart_never_resend() -> Result<(), Er
         let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
         let mut peer = connect(&path, "hl7").await?;
         assert!(
+            // Deliberate quiet window: no reply may arrive.
             tokio::time::timeout(Duration::from_millis(250), peer.read_u8())
                 .await
                 .is_err()
@@ -319,6 +321,7 @@ async fn hl7_231_orc4_overlong_group_is_rejected_before_any_reservation() -> Res
     assert!(code.contains("HL7-app-order-id-too-long-for-ORC-4"));
     assert_eq!(database(&path)?.query_row("SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.state')='Sending'",[],|row|row.get::<_,i64>(0))?,0);
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
             .await
             .is_err()
@@ -334,7 +337,7 @@ async fn adr0003_hl7_restart_during_sending_recovers_items_without_resend() -> R
     packet(&mut peer).await?;
     state(&path, "Sending").await?;
     service.crash().await?;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         let mut byte = [0];
         loop {
             match peer.read(&mut byte).await {
@@ -354,6 +357,7 @@ async fn adr0003_hl7_restart_during_sending_recovers_items_without_resend() -> R
         })?;
     assert_eq!(code, "host-restart");
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(250), peer.read_u8())
             .await
             .is_err()
@@ -387,7 +391,7 @@ async fn hl7_ei_actual_store_id_overflow_rejects_before_sending_reservation() ->
             &value,
         )?)?])
         .await?;
-    tokio::time::timeout(Duration::from_secs(8), state(&path, "Rejected")).await??;
+    tokio::time::timeout(HANG_GUARD, state(&path, "Rejected")).await??;
     let code: String = database(&path)?.query_row(
         "SELECT source_code FROM machine_orders WHERE order_id='order-2'",
         [],
@@ -396,6 +400,7 @@ async fn hl7_ei_actual_store_id_overflow_rejects_before_sending_reservation() ->
     assert_eq!(code, "HL7-placer-identity-too-long");
     assert_eq!(database(&path)?.query_row("SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.key.order')='order-2' AND json_extract(evidence,'$.state')='Sending'",[],|row|row.get::<_,i64>(0))?,0);
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
             .await
             .is_err()
@@ -414,7 +419,7 @@ async fn plan11_hl7_send_ahead_reserves_nothing_while_restore_paused() -> Result
     wait_feed(&path).await?;
     service.stop().await?;
     let mut wire = Vec::new();
-    tokio::time::timeout(Duration::from_secs(5), peer.read_to_end(&mut wire)).await??;
+    tokio::time::timeout(HANG_GUARD, peer.read_to_end(&mut wire)).await??;
     assert!(wire.is_empty(), "paused machine emitted work");
     for table in [
         "machine_orders",
