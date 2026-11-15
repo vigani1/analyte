@@ -24,73 +24,14 @@ pub fn map(
     let mut output = Output::default();
     for observation in observations {
         let mut part = observation.part;
-        let mut identity = observation.identity;
-        let mut processing = ProcessingMode::Unknown;
-        let mut correction = false;
-        if let analyte_config::Stack::Poct(settings) = machine.effective().stack()
-            && let Some(policy) = &settings.policy().identity
-        {
-            processing = policy.processing;
-            let service_index = part
-                .source_path
-                .as_slice()
-                .iter()
-                .find(|node| node.kind.as_str() == "SVC")
-                .map(|node| node.occurrence.saturating_sub(1));
-            let field = |name: &str| -> Option<&str> {
-                message
-                    .document()
-                    .elements()
-                    .iter()
-                    .find(|e| e.parent() == service_index && e.name() == name)
-                    .and_then(|e| {
-                        e.attributes()
-                            .iter()
-                            .find(|(k, _)| k == "V")
-                            .map(|(_, v)| v.as_str())
-                    })
-            };
-            correction = field("SVC.reason_cd") == Some("EDT");
-            let observed = field("SVC.observation_dttm").filter(|v| !v.is_empty());
-            let sequence = field("SVC.sequence_nbr").filter(|v| !v.is_empty());
-            if let (Some(device), Some(observed)) = (device.filter(|v| !v.is_empty()), observed)
-                && (!policy.sequence_number || sequence.is_some())
-            {
-                let mut run = vec![observed];
-                if policy.sequence_number
-                    && let Some(sequence) = sequence
-                {
-                    run.push(sequence);
-                }
-                let code = NamespacedId {
-                    namespace: Identifier::new(
-                        observation
-                            .source_code
-                            .system
-                            .as_deref()
-                            .or(observation.source_code.system_name.as_deref())
-                            .ok_or(Error::Context("POCT analyte namespace missing"))?,
-                    )?,
-                    value: Identifier::new(&observation.source_code.value)?,
-                };
-                identity = IdentityStatus::Resolved(ResultIdentity {
-                    observation: ObservationIdentity {
-                        code,
-                        sub_id: SourceText::new("")?,
-                        run: crate::identity_run(&run)?,
-                        order: NamespacedId {
-                            namespace: Identifier::new("poct-device")?,
-                            value: Identifier::new(device)?,
-                        },
-                    },
-                    revision: Revision(0),
-                });
-            } else {
-                identity = IdentityStatus::Unresolved(Reason::new(
-                    "POCT configured device/time/sequence identity evidence missing",
-                )?);
-            }
-        }
+        let (identity, processing, correction) = map_identity(
+            machine,
+            message,
+            observation.identity,
+            &observation.source_code,
+            &part,
+            device,
+        )?;
         let system = observation
             .source_code
             .system
@@ -116,4 +57,80 @@ pub fn map(
         });
     }
     Ok(output)
+}
+
+fn map_identity(
+    machine: &Validated,
+    message: &analyte_poct::Message,
+    mut identity: IdentityStatus,
+    source_code: &analyte_poct::Code,
+    part: &ResultPart,
+    device: Option<&str>,
+) -> Result<(IdentityStatus, ProcessingMode, bool), Error> {
+    let mut processing = ProcessingMode::Unknown;
+    let mut correction = false;
+    if let analyte_config::Stack::Poct(settings) = machine.effective().stack()
+        && let Some(policy) = &settings.policy().identity
+    {
+        processing = policy.processing;
+        let service_index = part
+            .source_path
+            .as_slice()
+            .iter()
+            .find(|node| node.kind.as_str() == "SVC")
+            .map(|node| node.occurrence.saturating_sub(1));
+        let field = |name: &str| -> Option<&str> {
+            message
+                .document()
+                .elements()
+                .iter()
+                .find(|e| e.parent() == service_index && e.name() == name)
+                .and_then(|e| {
+                    e.attributes()
+                        .iter()
+                        .find(|(k, _)| k == "V")
+                        .map(|(_, v)| v.as_str())
+                })
+        };
+        correction = field("SVC.reason_cd") == Some("EDT");
+        let observed = field("SVC.observation_dttm").filter(|v| !v.is_empty());
+        let sequence = field("SVC.sequence_nbr").filter(|v| !v.is_empty());
+        if let (Some(device), Some(observed)) = (device.filter(|v| !v.is_empty()), observed)
+            && (!policy.sequence_number || sequence.is_some())
+        {
+            let mut run = vec![observed];
+            if policy.sequence_number
+                && let Some(sequence) = sequence
+            {
+                run.push(sequence);
+            }
+            let code = NamespacedId {
+                namespace: Identifier::new(
+                    source_code
+                        .system
+                        .as_deref()
+                        .or(source_code.system_name.as_deref())
+                        .ok_or(Error::Context("POCT analyte namespace missing"))?,
+                )?,
+                value: Identifier::new(&source_code.value)?,
+            };
+            identity = IdentityStatus::Resolved(ResultIdentity {
+                observation: ObservationIdentity {
+                    code,
+                    sub_id: SourceText::new("")?,
+                    run: crate::identity_run(&run)?,
+                    order: NamespacedId {
+                        namespace: Identifier::new("poct-device")?,
+                        value: Identifier::new(device)?,
+                    },
+                },
+                revision: Revision(0),
+            });
+        } else {
+            identity = IdentityStatus::Unresolved(Reason::new(
+                "POCT configured device/time/sequence identity evidence missing",
+            )?);
+        }
+    }
+    Ok((identity, processing, correction))
 }
