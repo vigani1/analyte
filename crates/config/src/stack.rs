@@ -108,6 +108,8 @@ pub struct Hl7Syntax {
     pub terminator: Terminator,
     /// Malformed escape policy.
     pub escapes: Escapes,
+    /// Validated named vendor departure for UTF-8 in HL7 2.3.1.
+    pub allow_utf8_in_v231: bool,
     /// Resource ceilings.
     pub limits: SyntaxLimits,
 }
@@ -608,6 +610,7 @@ fn astm_syntax(syntax: &Syntax) -> AstmSyntax {
 )]
 fn hl7_syntax(syntax: &Syntax) -> Hl7Syntax {
     Hl7Syntax {
+        allow_utf8_in_v231: syntax.allow_utf8_in_v231,
         encoding: syntax.encoding,
         edition: syntax
             .edition
@@ -689,7 +692,10 @@ impl Hl7Syntax {
     /// Supplies all negotiated HL7 parser options without optional required fields.
     #[must_use]
     pub fn options(&self) -> analyte_hl7::Options {
-        hl7_options(self.encoding, self.terminator, self.escapes, &self.limits)
+        analyte_hl7::Options {
+            allow_utf8_in_v231: self.allow_utf8_in_v231,
+            ..hl7_options(self.encoding, self.terminator, self.escapes, &self.limits)
+        }
     }
 }
 
@@ -713,6 +719,7 @@ fn hl7_options(
     limits: &SyntaxLimits,
 ) -> analyte_hl7::Options {
     analyte_hl7::Options {
+        allow_utf8_in_v231: false,
         charset: match encoding {
             Encoding::Ascii => analyte_hl7::Charset::Ascii,
             Encoding::Latin1 => analyte_hl7::Charset::Latin1,

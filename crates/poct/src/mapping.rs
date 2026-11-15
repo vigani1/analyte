@@ -306,6 +306,7 @@ fn map_value(
         | Value::Encapsulated(_) => return Err(crate::MessageError::ObservationValue.into()),
     };
     Ok(model::ResultValue {
+        decoded_text: None,
         original: model::SourceText::new(&original)?,
         parsed,
     })

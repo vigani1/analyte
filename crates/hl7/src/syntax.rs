@@ -109,6 +109,8 @@ pub struct Options {
     pub terminator: Terminator,
     /// Malformed escapes.
     pub escapes: EscapePolicy,
+    /// Explicit vendor departure allowing the later UTF-8 code in HL7 2.3.1.
+    pub allow_utf8_in_v231: bool,
     /// Resource limits.
     pub limits: Limits,
 }
@@ -118,6 +120,7 @@ impl Default for Options {
             charset: Charset::Ascii,
             terminator: Terminator::Cr,
             escapes: EscapePolicy::Reject,
+            allow_utf8_in_v231: false,
             limits: Limits::default(),
         }
     }
@@ -302,7 +305,9 @@ impl Message {
         let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
             b"" | b"ASCII" => Charset::Ascii,
             b"8859/1" => Charset::Latin1,
-            b"UNICODE UTF-8" => Charset::Utf8,
+            b"UNICODE UTF-8" if version_id != b"2.3.1" || options.allow_utf8_in_v231 => {
+                Charset::Utf8
+            }
             _ => return Err(Error::UnsupportedCharset),
         };
         if charset != options.charset {
@@ -533,7 +538,8 @@ pub(crate) fn validate_escapes(
                             .get(1..)
                             .is_some_and(|s| s.iter().all(u8::is_ascii_hexdigit))
                 }
-                Some(b'Z' | b'.') => code.len() > 1,
+                Some(b'Z') => code.len() > 1,
+                Some(b'.') => formatting_command(code),
                 Some(b'C') => {
                     code.len() == 5
                         && code
@@ -563,6 +569,27 @@ pub(crate) fn validate_escapes(
     }
     Ok(())
 }
+// HL7 2.5.1 section 2.7.6: recognize instructions without executing layout.
+fn formatting_command(code: &[u8]) -> bool {
+    if matches!(code, b".br" | b".fi" | b".nf" | b".ce" | b".sp") {
+        return true;
+    }
+    let Some(command) = code.get(..3) else {
+        return false;
+    };
+    let argument = code.get(3..).unwrap_or_default();
+    let argument = argument.strip_prefix(b" ").unwrap_or(argument);
+    let digits = match command {
+        b".in" | b".ti" => argument
+            .strip_prefix(b"+")
+            .or_else(|| argument.strip_prefix(b"-"))
+            .unwrap_or(argument),
+        b".sp" | b".sk" => argument,
+        _ => return false,
+    };
+    !digits.is_empty() && digits.iter().all(u8::is_ascii_digit) && digits.iter().any(|b| *b != b'0')
+}
+
 fn decode(raw: &[u8], charset: Charset) -> Result<String, Error> {
     match charset {
         Charset::Ascii => {

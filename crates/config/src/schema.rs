@@ -289,6 +289,9 @@ pub struct Syntax {
     pub terminator: Option<Terminator>,
     /// Required only for HL7.
     pub escapes: Option<Escapes>,
+    /// Named vendor departure for the later UTF-8 code in HL7 2.3.1.
+    #[serde(default)]
+    pub allow_utf8_in_v231: bool,
     /// Total message bytes.
     pub bytes: usize,
     /// Maximum records or segments.

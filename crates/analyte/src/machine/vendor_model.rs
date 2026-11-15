@@ -135,6 +135,7 @@ pub(super) fn autolyser(
     for (index, value) in report.values.iter().enumerate() {
         let code = std::str::from_utf8(value.code.bytes())?;
         let value = ResultValue {
+            decoded_text: None,
             original: SourceText::new(std::str::from_utf8(value.text.bytes())?)?,
             parsed: ValueInterpretation::Text,
         };

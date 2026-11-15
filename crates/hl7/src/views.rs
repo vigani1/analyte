@@ -165,22 +165,6 @@ impl<'a> Msh<'a> {
                 field: 10,
             });
         }
-        let message_type = required(segment, 9)?;
-        let type_parts: Vec<_> = message_type
-            .raw()
-            .split(|b| *b == segment.delimiters.component)
-            .collect();
-        if type_parts.len() > 3
-            || type_parts.len() < 2
-            || type_parts.iter().any(|part| {
-                part.is_empty() || !part.iter().all(|b| b.is_ascii_alphanumeric() || *b == b'_')
-            })
-        {
-            return Err(Error::Control {
-                segment: "MSH",
-                field: 9,
-            });
-        }
         let processing_field = required(segment, 11)?;
         let mut processing_parts = processing_field
             .raw()
@@ -212,6 +196,81 @@ impl<'a> Msh<'a> {
                 });
             }
         };
+        let message_type = required(segment, 9)?;
+        let type_parts: Vec<_> = message_type
+            .raw()
+            .split(|b| *b == segment.delimiters.component)
+            .collect();
+        // HL7 2.3.1 section 2.24.1.9 permits omitted response/ACK triggers.
+        let response = matches!(
+            type_parts.first().copied().unwrap_or_default(),
+            b"ACK"
+                | b"ADR"
+                | b"DOC"
+                | b"DSR"
+                | b"EDR"
+                | b"ERP"
+                | b"MFD"
+                | b"MFK"
+                | b"MFR"
+                | b"ORD"
+                | b"ORF"
+                | b"ORN"
+                | b"ORR"
+                | b"ORS"
+                | b"OSR"
+                | b"PPT"
+                | b"PPV"
+                | b"PRR"
+                | b"PTR"
+                | b"QCK"
+                | b"R0R"
+                | b"RPA"
+                | b"RPI"
+                | b"RPL"
+                | b"RRA"
+                | b"RRD"
+                | b"RRE"
+                | b"RRG"
+                | b"RRI"
+                | b"RRO"
+                | b"SQR"
+                | b"SRR"
+                | b"TBR"
+                | b"VXR"
+                | b"VXX"
+        );
+        let omitted_trigger = version == Version::V231 && response;
+        if (version == Version::V251 && type_parts.len() != 3)
+            || type_parts.len() > 3
+            || (type_parts.len() < 2 && !omitted_trigger)
+            || type_parts.iter().enumerate().any(|(index, part)| {
+                (version == Version::V251 && part.len() > if index == 2 { 7 } else { 3 })
+                    || (part.is_empty() && !(index == 1 && omitted_trigger))
+                    || !part.iter().all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+            })
+        {
+            return Err(Error::Control {
+                segment: "MSH",
+                field: 9,
+            });
+        }
+        // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
+        // 2.3.1 retains optional usage. Validate a supplied TS in either edition.
+        let timestamp = segment.field(7);
+        if version == Version::V251 || timestamp.is_some_and(|field| !field.raw().is_empty()) {
+            let field = required(segment, 7)?;
+            let mut repetitions = field.repetitions();
+            let valid = repetitions.next().is_some_and(|value| {
+                crate::datatypes::timestamp(&value.components().collect::<Vec<_>>())
+            });
+            if field.raw().len() > 26 || !valid || repetitions.next().is_some() {
+                return Err(Error::Control {
+                    segment: "MSH",
+                    field: 7,
+                });
+            }
+        }
         let accept = condition(segment, 15)?;
         let application = condition(segment, 16)?;
         let mode = if accept.is_none() && application.is_none() {

@@ -232,7 +232,10 @@ mod tests;
 
 // Stored ASTM receipts contain accepted frames, MLLP receipts contain one block,
 // and folder receipts contain syntax bytes. Never infer the envelope from content.
-fn unpack<'a>(machine: &Machine, raw: &'a [u8]) -> Result<std::borrow::Cow<'a, [u8]>, Error> {
+pub(crate) fn unpack<'a>(
+    machine: &Machine,
+    raw: &'a [u8],
+) -> Result<std::borrow::Cow<'a, [u8]>, Error> {
     match machine.snapshot.effective().stack() {
         Stack::FileAstm(_)
         | Stack::FileHl7(_)

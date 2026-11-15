@@ -28,12 +28,32 @@ impl Command {
     ) -> Result<Self, Error> {
         let configured = super::settings::hl7(machine).ok_or("HL7 orders absent")?;
         let settings = configured.orders.clone();
+        if settings
+            .send
+            .as_ref()
+            .is_some_and(|send| send.settings.require_patient_identification)
+        {
+            return Err(invalid(
+                "HL7-patient-name-required-but-not-carried-by-contract",
+            ));
+        }
         let version = match configured.syntax.edition {
             analyte_config::Edition::V231 => Version::V231,
             analyte_config::Edition::V251 => Version::V251,
         };
         let group = app.fields().id.as_str().to_owned();
-        if group.len() > 22 {
+        let namespace = settings
+            .send
+            .as_ref()
+            .ok_or("HL7 send config absent")?
+            .placer_namespace
+            .as_str();
+        if group
+            .len()
+            .checked_add(namespace.len())
+            .and_then(|n| n.checked_add(1))
+            .is_none_or(|n| n > order::EI_MAX_BYTES)
+        {
             return Err(invalid("HL7-app-order-id-too-long-for-ORC-4"));
         }
         Ok(Self {

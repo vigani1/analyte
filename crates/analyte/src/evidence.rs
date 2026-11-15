@@ -81,13 +81,30 @@ pub(crate) async fn interpret(
     machine: &Machine,
     id: ReceiptId,
 ) -> Result<bool, Error> {
+    Ok(interpret_with_location(store, machine, id).await?.0)
+}
+
+pub(crate) async fn interpret_with_location(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+) -> Result<(bool, Option<crate::machine::hl7_error::Location>), Error> {
     let receipt = store
         .request(deadline(), move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
     let mapping = crate::machine::interpretation::map_retained(store, machine, &receipt).await;
-    Ok(persist_mapping(store, machine, id, mapping, None).await?.0)
+    let location = machine
+        .snapshot
+        .effective()
+        .hl7_options()
+        .and_then(|options| {
+            let payload = crate::machine::interpretation::unpack(machine, &receipt.raw).ok()?;
+            crate::machine::hl7_error::mapping_location(&mapping, &payload, options.terminator)
+        });
+    let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
+    Ok((accepted, location))
 }
 
 pub(crate) async fn persist_mapping(

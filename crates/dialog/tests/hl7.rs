@@ -12,7 +12,8 @@ fn dialog() -> Result<Dialog, Error> {
     ))
 }
 fn message(mode: &str) -> Vec<u8> {
-    format!("\x0bMSH|^~\\&|A|B|C|D|20261115||ORU^R01|001|P|2.5.1|||{mode}\r\x1c\r").into_bytes()
+    format!("\x0bMSH|^~\\&|A|B|C|D|20261115||ORU^R01^ORU_R01|001|P|2.5.1|||{mode}\r\x1c\r")
+        .into_bytes()
 }
 fn feed(d: &mut Dialog, bytes: &[u8]) -> Result<Vec<Action>, Error> {
     let mut out = Vec::new();
@@ -211,9 +212,9 @@ proptest! {
 fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
     for (code, accepted) in [
         ("AA", true),
-        ("CA", true),
         ("AE", false),
         ("AR", false),
+        ("CA", false),
         ("CE", false),
         ("CR", false),
     ] {
@@ -224,7 +225,7 @@ fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
             Event::Send(raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?),
         )?;
         let wrong = format!(
-            "\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01|reply|P|2.5.1\rMSA|{code}|other\r\x1c\r"
+            "\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01^ACK|reply|P|2.5.1\rMSA|{code}|other\r\x1c\r"
         );
         assert!(
             feed(&mut d, wrong.as_bytes())?
@@ -233,6 +234,32 @@ fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
         );
         let right = wrong.replace("|other", "|001");
         let out = feed(&mut d, right.as_bytes())?;
+
+        if matches!(code, "CA" | "CE" | "CR") {
+            assert!(out.iter().any(|a| matches!(
+                a,
+                Action::Parked(
+                    _,
+                    Error::AckPhase {
+                        expected: AckPhase::Application,
+                        ..
+                    }
+                )
+            )));
+            assert!(!out.iter().any(|a| matches!(a, Action::Sent(_, _))));
+            let completion = right.replace(&format!("MSA|{code}|"), "MSA|AA|");
+            assert!(
+                feed(&mut d, completion.as_bytes())?
+                    .iter()
+                    .any(|a| matches!(a, Action::Sent(_, Outcome::Accepted(AckCode::Aa))))
+            );
+            assert!(
+                feed(&mut d, right.as_bytes())?
+                    .iter()
+                    .any(|a| matches!(a, Action::Unmatched(_)))
+            );
+            continue;
+        }
         assert_eq!(
             out.iter()
                 .any(|a| matches!(a, Action::Sent(_, Outcome::Accepted(_)))),
@@ -315,5 +342,185 @@ fn adr_0003_malformed_message_is_committed_before_parking() -> TestResult {
             .any(|a| matches!(a, Action::Parked(bytes, _) if bytes == raw))
     );
     assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
+    Ok(())
+}
+
+// HL7 2.5.1 sections 2.9.2-2.9.3 pp.2-26-28: CA cannot finish application work.
+#[test]
+fn hl7_251_2_9_2_2_9_3_sender_preserves_ack_phases() -> TestResult {
+    let mut d = dialog()?;
+    let raw = message("AL|AL");
+    d.step(
+        Duration::ZERO,
+        Event::Send(raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?),
+    )?;
+    let reply = |code: &str| {
+        format!("\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01^ACK|reply|P|2.5.1\rMSA|{code}|001\r\x1c\r")
+    };
+    let early = feed(&mut d, reply("AA").as_bytes())?;
+    assert!(early.iter().any(|a| matches!(
+        a,
+        Action::Parked(
+            _,
+            Error::AckPhase {
+                expected: AckPhase::Accept,
+                received: AckCode::Aa
+            }
+        )
+    )));
+    assert!(!early.iter().any(|a| matches!(a, Action::Sent(_, _))));
+    let accepted = feed(&mut d, reply("CA").as_bytes())?;
+    assert!(!accepted.iter().any(|a| matches!(a, Action::Sent(_, _))));
+    let duplicate = feed(&mut d, reply("CA").as_bytes())?;
+    assert!(duplicate.iter().any(|a| matches!(
+        a,
+        Action::Parked(
+            _,
+            Error::AckPhase {
+                expected: AckPhase::Application,
+                received: AckCode::Ca
+            }
+        )
+    )));
+    let completed = feed(&mut d, reply("AA").as_bytes())?;
+    assert!(
+        completed
+            .iter()
+            .any(|a| matches!(a, Action::Sent(id, Outcome::Accepted(AckCode::Aa)) if id == b"001"))
+    );
+    Ok(())
+}
+
+fn ack_reply(code: &str) -> Vec<u8> {
+    format!("\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01^ACK|reply|P|2.5.1\rMSA|{code}|001\r\x1c\r")
+        .into_bytes()
+}
+fn sending(mode: &str) -> Result<(Dialog, Vec<Action>), Box<dyn std::error::Error>> {
+    let mut dialog = dialog()?;
+    let wire = message(mode);
+    let actions = dialog.step(
+        Duration::ZERO,
+        Event::Send(wire.get(1..wire.len().saturating_sub(2)).ok_or("payload")?),
+    )?;
+    Ok((dialog, actions))
+}
+
+// HL7 2.5.1 sections 2.9.3, 2.15.9.15-16: AL/NE/ER/SU apply separately.
+#[test]
+fn hl7_251_2_9_3_sender_acceptance_and_application_condition_matrix() -> TestResult {
+    for accept in ["AL", "NE", "ER", "SU"] {
+        for application in ["AL", "NE", "ER", "SU"] {
+            let (mut d, initial) = sending(&format!("{accept}|{application}"))?;
+            assert!(initial.iter().any(|a| matches!(a, Action::Write(_))));
+            if accept == "NE" && application == "NE" {
+                assert!(
+                    initial.iter().any(
+                        |a| matches!(a, Action::Sent(id, Outcome::NotRequested) if id == b"001")
+                    )
+                );
+                assert!(initial.iter().any(|a| matches!(a, Action::Deadline(None))));
+                continue;
+            }
+            if matches!(accept, "AL" | "SU") {
+                let out = feed(&mut d, &ack_reply("CA"))?;
+                if application == "NE" {
+                    assert!(
+                        out.iter()
+                            .any(|a| matches!(a, Action::Sent(_, Outcome::Accepted(AckCode::Ca))))
+                    );
+                    continue;
+                }
+                assert!(
+                    out.iter()
+                        .any(|a| matches!(a, Action::CommitAccepted(id) if id == b"001"))
+                );
+                assert!(!out.iter().any(|a| matches!(a, Action::Sent(_, _))));
+            }
+            if application == "NE" {
+                let out = d.step(Duration::from_secs(5), Event::Tick)?;
+                assert!(
+                    out.iter()
+                        .any(|a| matches!(a, Action::Sent(_, Outcome::Uncertain)))
+                );
+                continue;
+            }
+            let code = if application == "ER" { "AE" } else { "AA" };
+            let out = feed(&mut d, &ack_reply(code))?;
+            if code == "AE" {
+                assert!(
+                    out.iter()
+                        .any(|a| matches!(a, Action::Sent(_, Outcome::Rejected(AckCode::Ae))))
+                );
+            } else {
+                assert!(
+                    out.iter()
+                        .any(|a| matches!(a, Action::Sent(_, Outcome::Accepted(AckCode::Aa))))
+                );
+            }
+        }
+    }
+    for (mode, wrong, right) in [
+        ("SU|AL", "CE", "CA"),
+        ("ER|AL", "CA", "CE"),
+        ("NE|SU", "AE", "AA"),
+        ("NE|ER", "AA", "AR"),
+    ] {
+        let (mut d, _) = sending(mode)?;
+        let wire = ack_reply(wrong);
+        let out = feed(&mut d, &wire)?;
+        assert!(
+            out.iter().any(
+                |a| matches!(a, Action::Parked(raw, Error::AckCondition { .. }) if raw == &wire)
+            )
+        );
+        assert!(!out.iter().any(|a| matches!(a, Action::Sent(_, _))));
+        let out = feed(&mut d, &ack_reply(right))?;
+        if right == "CA" {
+            assert!(out.iter().any(|a| matches!(a, Action::CommitAccepted(_))));
+        } else {
+            assert!(out.iter().any(|a| matches!(a, Action::Sent(_, _))));
+        }
+    }
+    for code in ["CE", "CR"] {
+        let (mut d, _) = sending("AL|AL")?;
+        assert!(
+            feed(&mut d, &ack_reply(code))?
+                .iter()
+                .any(|a| matches!(a, Action::Sent(_, Outcome::Rejected(_))))
+        );
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 section 2.9.3: commit acceptance is retained, not application completion.
+#[test]
+fn hl7_251_2_9_3_sender_application_wait_is_bounded_and_never_resends() -> TestResult {
+    for disconnect in [false, true] {
+        let (mut d, _) = sending("AL|AL")?;
+        let mut out = Vec::new();
+        for byte in ack_reply("CA") {
+            out.extend(d.step(Duration::from_secs(4), Event::Byte(byte))?);
+        }
+        assert!(out.iter().any(|a| matches!(a, Action::CommitAccepted(_))));
+        assert!(out.iter().any(
+            |a| matches!(a, Action::Deadline(Some(until)) if *until == Duration::from_secs(9))
+        ));
+        let out = d.step(Duration::from_secs(8), Event::Tick)?;
+        assert!(!out.iter().any(|a| matches!(a, Action::Sent(_, _))));
+        let at = if disconnect { 8 } else { 9 };
+        let out = d.step(
+            Duration::from_secs(at),
+            if disconnect {
+                Event::Disconnect
+            } else {
+                Event::Tick
+            },
+        )?;
+        assert!(
+            out.iter()
+                .any(|a| matches!(a, Action::Sent(id, Outcome::Uncertain) if id == b"001"))
+        );
+        assert!(!out.iter().any(|a| matches!(a, Action::Write(_))));
+    }
     Ok(())
 }

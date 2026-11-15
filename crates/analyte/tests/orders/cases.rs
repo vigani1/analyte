@@ -527,9 +527,9 @@ async fn astm_context_exchange(
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
     if !send {
-        assert_eq!(query(&mut peer, "000Ab12").await?, expected);
+        assert_astm_context(&query(&mut peer, "000Ab12").await?, expected)?;
     } else if rejection.is_none() {
-        assert_eq!(receive_orders(&mut peer).await?, expected);
+        assert_astm_context(&receive_orders(&mut peer).await?, expected)?;
     }
     if let Some(code) = rejection {
         machine_state(&path, "Rejected", 1).await?;
@@ -576,7 +576,7 @@ async fn lis02_section8_o_record_send_ahead_and_query_forward_configured_positio
             send,
             true,
             Some("SERUM"),
-            b"H|\\^&|||Analyte|||||||P|1\rP|1\rO|1|000Ab12|^03|^^^SEND|R||||||N||||SER\rL|1|N\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12|^03|^^^SEND|R||||||N||||SER\rL|1|N\r",
             None,
         )
         .await?;
@@ -591,7 +591,7 @@ async fn lis02_section8_o_record_no_destinations_leave_context_empty_even_when_s
             send,
             false,
             Some("UNKNOWN"),
-            b"H|\\^&|||Analyte|||||||P|1\rP|1\rO|1|000Ab12||^^^SEND|R||||||N\rL|1|N\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12||^^^SEND|R||||||N\rL|1|N\r",
             None,
         )
         .await?;
@@ -606,7 +606,7 @@ async fn lis02_section8_o_record_unmapped_specimen_rejects_send_ahead_and_query_
             send,
             true,
             Some("UNKNOWN"),
-            b"H|\\^&|||Analyte|||||||P|1\rL|1|Q\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rL|1|Q\r",
             Some("rejected: unmapped-specimen-type"),
         )
         .await?;
@@ -621,7 +621,7 @@ async fn lis02_section8_o_record_missing_required_specimen_rejects_without_guess
             send,
             true,
             None,
-            b"H|\\^&|||Analyte|||||||P|1\rL|1|Q\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rL|1|Q\r",
             Some("rejected: missing-specimen-type"),
         )
         .await?;
@@ -715,5 +715,81 @@ async fn plan11_rule8_restore_blocks_astm_send_ahead_and_query_orders_on_wire() 
         service.stop().await?;
         reference.close().await?;
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn lis02_6_12_p12_nonproduction_queries_never_reserve_or_send() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    configure_orders(temp.path(), false)?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(include_bytes!(
+            "../../../../docs/contract/vectors/order.json"
+        ))?])
+        .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&path, "astm").await?;
+    wait_cache(&path).await?;
+    // LIS02-A2 section 6.12 p.12: non-production queries cannot issue patient work.
+    for (index, processing) in ["T", "D", "Q"].into_iter().enumerate() {
+        astm(
+            &mut peer,
+            format!("H|\\^&|||SYN|||||||{processing}|1\rQ|1|^000Ab12||ALL||||||||O\rL|1|N\r")
+                .as_bytes(),
+        )
+        .await?;
+        let reply = receive_orders(&mut peer).await?;
+        assert!(reply.ends_with(b"L|1|Q\r"));
+        assert!(!reply.windows(2).any(|w| w == b"O|"));
+        assert_eq!(
+            database(&path)?.query_row(
+                "SELECT count(*) FROM receipts WHERE length(raw)>0",
+                [],
+                |r| r.get::<_, i64>(0)
+            )?,
+            i64::try_from(index)? + 1
+        );
+        assert_eq!(
+            database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
+                .get::<_, i64>(0))?,
+            0
+        );
+    }
+    drop(peer);
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+fn assert_astm_context(actual: &[u8], expected: &[u8]) -> Result<(), Error> {
+    let (header, body) = actual.split_at(
+        actual
+            .iter()
+            .position(|b| *b == b'\r')
+            .ok_or("header missing")?,
+    );
+    let time = header.rsplit(|b| *b == b'|').next().ok_or("time missing")?;
+    assert_eq!(time.len(), 19);
+    assert!(time.ends_with(b"+0000"));
+    assert!(
+        time.get(..14)
+            .ok_or("short timestamp")?
+            .iter()
+            .all(u8::is_ascii_digit)
+    );
+    let mut normalized = header
+        .get(..header.len().checked_sub(20).ok_or("short header")?)
+        .ok_or("header")?
+        .to_vec();
+    normalized.extend_from_slice(body);
+    assert_eq!(normalized, expected);
     Ok(())
 }
