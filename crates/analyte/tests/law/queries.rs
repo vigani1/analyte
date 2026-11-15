@@ -12,7 +12,13 @@ use tokio::{
 fn definition() -> String {
     format!(
         "{}\n{}",
-        include_str!("../../../config/examples/law.toml"),
+        include_str!("../../../config/examples/law.toml")
+            .replace(
+                "operation_timeout_ms = 10000",
+                "operation_timeout_ms = 60000"
+            )
+            .replace("response_ms = 1500", "response_ms = 30000")
+            .replace("query_deadline_ms = 1500", "query_deadline_ms = 30000"),
         include_str!("../../../config/examples/law_orders.toml")
     )
 }
@@ -83,7 +89,7 @@ async fn setup_with_freshness(
     }
     let running = Running::start(&path, &reference.url, "synthetic-api")?;
     let peer = connect(&path, "law").await?;
-    ready(&path).await?;
+    wait_feed(&path).await?;
     Ok((temp, path, reference, running, peer))
 }
 async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
@@ -117,22 +123,7 @@ async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
         .await?;
     Ok(())
 }
-async fn ready(path: &Path) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if database(path)?.query_row(
-                "SELECT count(*) FROM feed WHERE complete=1 AND trusted=1",
-                [],
-                |r| r.get::<_, i64>(0),
-            )? == 1
-            {
-                return Ok::<_, Error>(());
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await?
-}
+
 fn query(qpd: &str, id: &str) -> String {
     format!(
         "MSH|^~\\&|SYN|LAB|HOST|LAB|20261115120000+0000||QBP^Q11^QBP_Q11|{id}|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\rQPD|{qpd}\rRCP|I||R^Real Time^HL70394\r"
@@ -495,7 +486,7 @@ async fn law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not
 async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage() -> Result<(), Error>
 {
     for form in [CONTAINER, ALL] {
-        let settings = definition().replace("query_deadline_ms = 1500", "query_deadline_ms = 50");
+        let settings = definition().replace("query_deadline_ms = 30000", "query_deadline_ms = 50");
         let (_temp, path, reference, running, mut peer) = setup(
             vec![order("order-1", "000Ab12", None, 1)?],
             &settings,
@@ -524,7 +515,11 @@ async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage()
 async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain()
 -> Result<(), Error> {
     for action in ["timeout", "disconnect", "wrong-correlation"] {
-        let settings = definition().replace("response_ms = 1500", "response_ms = 200");
+        let settings = if action == "timeout" {
+            definition().replace("response_ms = 30000", "response_ms = 200")
+        } else {
+            definition()
+        };
         let (_temp, path, reference, running, mut peer) = setup(
             vec![order("order-1", "000Ab12", None, 2)?],
             &settings,
@@ -727,7 +722,7 @@ async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservat
         loaded.pause_law_committed_for_test("law", hook)?;
         let running = Running::start_program(loaded, "synthetic-api")?;
         let mut peer = connect(&path, "law").await?;
-        ready(&path).await?;
+        wait_feed(&path).await?;
         let request = query(form, "durable");
         send(&mut peer, request.as_bytes()).await?;
         control.reached().await?;

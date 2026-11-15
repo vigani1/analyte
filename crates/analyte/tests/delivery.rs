@@ -157,7 +157,7 @@ impl Reference {
     }
 
     async fn close(self) -> Result<(), Error> {
-        self.capture.release.notify_waiters();
+        self.capture.release.notify_one();
         self.stop.send(()).map_err(|()| "reference stopped")?;
         tokio::time::timeout(Duration::from_secs(3), self.task).await???;
         self.receiver
@@ -347,7 +347,19 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
         database(&path)?.query_row("SELECT id,payload FROM outbox", [], |r| {
             Ok((r.get(0)?, r.get(1)?))
         })?;
-    wait_state(&path, "pending", 1).await?;
+    // Initial enqueue is also pending; prove an outage attempt actually failed.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let attempts: i64 =
+                database(&path)?
+                    .query_row("SELECT count(*) FROM attempts", [], |row| row.get(0))?;
+            if attempts > 0 {
+                return Ok::<_, Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await??;
     let listener = TcpListener::bind(address).await?;
     let mut reference =
         Reference::start(&directory.path().join("reference.db"), listener, false).await?;
@@ -398,19 +410,14 @@ async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_du
     let path = config(directory.path(), false)?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
+    drop(listener);
     let url = format!("http://{address}");
     let service = Running::start(&path, &url, "synthetic-api")?;
     let mut peer = connect(&path, "hl7").await?;
     assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
     service.stop().await?;
-    // The stopped program may have left an attempt queued on the not-yet-served
-    // listener. Close such leftovers so the receiver's first request is the
-    // recovery worker's, which is the behaviour under test.
-    while let Ok(Ok((stale, _))) =
-        tokio::time::timeout(Duration::from_millis(50), listener.accept()).await
-    {
-        drop(stale);
-    }
+    // Rebind only after the old owner stops: no stale attempt can reach the receiver.
+    let listener = TcpListener::bind(address).await?;
     let receiver_path = directory.path().join("reference.db");
     let mut reference = Reference::start(&receiver_path, listener, true).await?;
     let program = program(&path, &url)?;
@@ -908,13 +915,15 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
     let path = config(directory.path(), false)?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
+    drop(listener);
     let url = format!("http://{address}");
     let service = Running::start(&path, &url, "synthetic-api")?;
     let mut peer = connect(&path, "hl7").await?;
     assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
     service.stop().await?;
     let receiver_path = directory.path().join("reference.db");
-    let mut reference = Reference::start(&receiver_path, listener, true).await?;
+    let mut reference =
+        Reference::start(&receiver_path, TcpListener::bind(address).await?, true).await?;
     let program = program(&path, &url)?;
     let mut store = service::open_store(&program, Box::new(Space)).await?;
     let backup = directory.path().join("backup.db");

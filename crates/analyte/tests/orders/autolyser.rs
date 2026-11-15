@@ -342,12 +342,21 @@ async fn adr0004_autolyser_cancelled_before_send_has_no_insertion_or_send_event(
     let mut value = order()?;
     value["state"] = "cancel_requested".into();
     let (temp, path, reference, service, mut peer) = setup(value, false).await?;
+    // The cancelled order must be in the cache before "never sent" means anything;
+    // wait for the poll to commit it instead of racing the first poll.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let cached = database(&path)?
+                .query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?;
+            if cached == 1 {
+                return Ok::<_, Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await??;
     only_polls(&mut peer).await?;
     no_event(&path).await?;
-    assert_eq!(
-        database(&path)?.query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?,
-        1
-    );
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
             .get::<_, i64>(0))?,

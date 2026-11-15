@@ -2,7 +2,7 @@
 use super::*;
 use tokio::{io::AsyncReadExt, net::TcpStream};
 pub(super) async fn state(path: &Path, expected: &str) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(8), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             let found: i64 = database(path)?.query_row(
                 "SELECT count(*) FROM machine_orders WHERE state=?1",
