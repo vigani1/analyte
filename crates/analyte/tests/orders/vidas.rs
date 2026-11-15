@@ -275,6 +275,8 @@ async fn adr0004_vidas_cancelled_before_send_has_no_wire_or_app_send_event() -> 
         }
     })
     .await??;
+    // A trusted pass must exist, or "never sent" would hold without the cancel rule.
+    wait_feed(&path).await?;
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?,
         1
