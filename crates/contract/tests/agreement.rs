@@ -60,7 +60,8 @@ proptest! {
         }
     }
     #[test]
-    fn adr0008_unit_source_validation_agrees(original in text(), source in text(), target in text()) {
+    fn adr0008_unit_source_validation_agrees(original in text(), source in text(), target in text(), matching in any::<bool>()) {
+        let source = if matching { original.clone() } else { source };
         let value = serde_json::json!({"original": original, "mapping": {"source": source, "target": target}});
         prop_assert_eq!(serde_json::from_value::<model::Units>(value.clone()).is_ok(), serde_json::from_value::<wire::Units>(value).is_ok());
     }
