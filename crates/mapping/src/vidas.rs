@@ -1,7 +1,7 @@
 //! VIDAS code, original-value evidence and outgoing work mapping.
+use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
+use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient};
-use crate::outbound_codes::{map_priority as outbound_priority, map_test as outbound_test};
-use crate::result_evidence::{Error, map_part, map_result, map_test, map_units, push_result};
 use crate::{Output, Position};
 use analyte_config::Validated;
 use analyte_model::*;

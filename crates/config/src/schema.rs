@@ -1,3 +1,4 @@
+//! Raw TOML configuration shapes belong at the configuration input boundary.
 use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
 

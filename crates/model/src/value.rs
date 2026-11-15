@@ -1,3 +1,4 @@
+//! Exact values and explicit unit mappings belong to the shared clinical model.
 use crate::SourceText;
 use serde::{Deserialize, Serialize};
 

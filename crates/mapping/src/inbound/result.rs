@@ -1,7 +1,7 @@
 //! Source evidence accompanying each observation, without clinical decisions.
 use crate::FieldSyntax;
-use crate::source::Source;
-use crate::time;
+use crate::inbound::source::Source;
+use crate::inbound::time;
 use crate::{Error, Input, Output, Problem, finding, identifier, list, present, text};
 use analyte_config::Classification;
 use analyte_config::Validated;

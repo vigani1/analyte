@@ -66,14 +66,13 @@ impl Capture {
         let machine = self.machine.clone();
         move || {
             let path = directory.join(format!("{}.rec.jsonl", uuid::Uuid::now_v7()));
-            let (tap, worker) =
-                match recording::recording_with_header(path.clone(), 64, header.clone()) {
-                    Ok(pair) => pair,
-                    Err(error) => {
-                        failure(&directory, &machine, &path, &error.to_string());
-                        return None;
-                    }
-                };
+            let (tap, worker) = match recording::with_header(path.clone(), 64, header.clone()) {
+                Ok(pair) => pair,
+                Err(error) => {
+                    failure(&directory, &machine, &path, &error.to_string());
+                    return None;
+                }
+            };
             let mut state = state
                 .lock()
                 .expect("capture worker ownership mutex is never poisoned");

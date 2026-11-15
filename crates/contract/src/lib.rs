@@ -1,4 +1,4 @@
-//! Version 1 wire documents, independent of the clinical model.
+//! Integration contract: owns versioned wire documents and signatures, without clinical interpretation.
 #![forbid(unsafe_code)]
 pub mod evidence;
 mod response;

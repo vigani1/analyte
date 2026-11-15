@@ -397,25 +397,12 @@ impl Watch {
                 }
                 let cancellation = connection.cancellation();
                 let (reply, response) = mpsc::sync_channel(1);
-                let mut item = Item {
+                let item = Item {
                     connection,
                     completed: reply,
                 };
-                let until = handoff_deadline();
-                loop {
-                    match sender.try_send(item) {
-                        Ok(()) => break,
-                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                            return Ok(());
-                        }
-                        Err(tokio::sync::mpsc::error::TrySendError::Full(returned)) => {
-                            item = returned;
-                        }
-                    }
-                    if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
-                        return Ok(());
-                    }
-                    thread::sleep(Duration::from_millis(5));
+                if !handoff(sender, item, cancelled) {
+                    return Ok(());
                 }
                 if let Err(error) = claim.deliver(side) {
                     let interrupted = match &error {
@@ -437,18 +424,8 @@ impl Watch {
                     }
                     return Err(error.into());
                 }
-                // A lost reply leaves the source claimed; a restart reprocesses it safely.
-                let until = handoff_deadline();
-                let disposition = loop {
-                    match response.recv_timeout(Duration::from_millis(10)) {
-                        Ok(disposition) => break disposition,
-                        Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
-                        Err(mpsc::RecvTimeoutError::Timeout) => {
-                            if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
-                                return Ok(());
-                            }
-                        }
-                    }
+                let Some(disposition) = await_disposition(&response, cancelled) else {
+                    return Ok(());
                 };
                 let area = match disposition {
                     Disposition::Archive => "archive",
@@ -456,9 +433,54 @@ impl Watch {
                 };
                 claim.finish(&root.join(area).join(finish_name()))?;
             }
+            // Directory scans poll because producer renames have no notification channel.
+            // This interval also bounds observation of the host cancellation flag.
             thread::sleep(Duration::from_millis(100));
         }
         Ok(())
+    }
+}
+
+// The host exposes only an atomic cancellation flag, not a wakeable signal.
+// A blocking send could outlive both cancellation and the handoff deadline.
+fn handoff(
+    sender: &tokio::sync::mpsc::Sender<Item>,
+    mut item: Item,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> bool {
+    use std::sync::atomic::Ordering;
+    let until = handoff_deadline();
+    loop {
+        match sender.try_send(item) {
+            Ok(()) => return true,
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => return false,
+            Err(tokio::sync::mpsc::error::TrySendError::Full(returned)) => item = returned,
+        }
+        if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+// Timed channel waits preserve cancellation responsiveness without a wakeable
+// cancellation signal. A lost or late reply always leaves the claim recoverable.
+fn await_disposition(
+    response: &std::sync::mpsc::Receiver<Disposition>,
+    cancelled: &std::sync::atomic::AtomicBool,
+) -> Option<Disposition> {
+    use std::sync::{atomic::Ordering, mpsc::RecvTimeoutError};
+    let until = handoff_deadline();
+    loop {
+        match response.recv_timeout(Duration::from_millis(10)) {
+            Ok(disposition) => return Some(disposition),
+            Err(RecvTimeoutError::Disconnected) => return None,
+            Err(RecvTimeoutError::Timeout) => {
+                if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
+                    return None;
+                }
+            }
+        }
     }
 }
 

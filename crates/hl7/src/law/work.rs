@@ -1,3 +1,4 @@
+//! LAW work-message grammar belongs to the HL7 profile, without order lifecycle decisions.
 use super::content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, WorkNotes};
 use super::responses::Wire;
 use super::{Error, Identity, Query, Scope, content};

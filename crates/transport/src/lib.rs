@@ -1,4 +1,4 @@
-//! Host-owned bounded byte streams. No transport interprets protocol bytes.
+//! Transport layer: owns bounded byte I/O and recordings, without protocol interpretation.
 #![forbid(unsafe_code)]
 
 use std::{

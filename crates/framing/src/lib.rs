@@ -1,4 +1,4 @@
-//! Bounded, byte-oriented framing without I/O (documented evidence level).
+//! Framing layer: owns bounded byte boundaries and checksums, without I/O or message interpretation.
 //! Feed each received byte to a decoder, consuming each event immediately.
 //! Journal transport bytes before feeding: rejected/overlong input is reported in
 //! bounded fragments, not retained indefinitely. Never log payloads or events.

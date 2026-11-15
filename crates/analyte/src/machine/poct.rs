@@ -259,7 +259,7 @@ async fn process(
             DialogAction::Send { control_id, body } => {
                 let mut limits = limits;
                 limits.message_bytes = limits.message_bytes.min(dialog.outbound_message_limit());
-                let message = analyte_poct::build(
+                let message = analyte_poct::encode(
                     &Header {
                         control_id,
                         created: Timestamp::parse(
