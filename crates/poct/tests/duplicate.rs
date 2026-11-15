@@ -1,5 +1,5 @@
 //! Appendix B section 3.2 and ADR 0003 observation identity tests.
-mod common;
+mod peer_messages;
 use analyte_model::{
     Identifier, IdentityStatus, NamespacedId, ObservationIdentity, Reason, ResultIdentity,
     Revision, SourceText,
@@ -35,8 +35,8 @@ fn key(run: &str, revision: u64) -> Result<ObservationKey, analyte_model::TextEr
 }
 
 fn evidence(id: &str, value: &str) -> Result<ObservationEvidence, Box<dyn std::error::Error>> {
-    let raw = common::observation(id, true, &format!("<OBS.value V=\"{value}\" U=\"unit\"/>"));
-    let message = Message::parse(raw.as_bytes(), common::limits())?;
+    let raw = peer_messages::observation(id, true, &format!("<OBS.value V=\"{value}\" U=\"unit\"/>"));
+    let message = Message::parse(raw.as_bytes(), peer_messages::limits())?;
     observation_evidence(&message)?
         .into_iter()
         .next()
@@ -142,15 +142,15 @@ fn poct01_b_3_2_lost_ack_reconnect_and_restart_restore_same_identity() -> TestRe
             .is_err()
     );
     assert_eq!(restarted.entries().len(), 1);
-    for raw in [common::hello("h"), common::status("s", "0")] {
-        Message::parse(raw.as_bytes(), common::limits())?;
+    for raw in [peer_messages::hello("h"), peer_messages::status("s", "0")] {
+        Message::parse(raw.as_bytes(), peer_messages::limits())?;
     }
     Ok(())
 }
 
 #[test]
 fn poct01_b_3_2_resend_reason_and_attribute_order_are_not_new_results() -> TestResult {
-    let raw = common::observation("receipt", true, "<OBS.value V=\"1.20\" U=\"unit\"/>");
+    let raw = peer_messages::observation("receipt", true, "<OBS.value V=\"1.20\" U=\"unit\"/>");
     let retransmitted = raw
         .replace("<SVC>", "<SVC>\n ")
         .replace("V=\"1.20\" U=\"unit\"", "U=\"unit\" V=\"1.20\"")
@@ -159,8 +159,8 @@ fn poct01_b_3_2_resend_reason_and_attribute_order_are_not_new_results() -> TestR
             "<SVC.reason_cd V=\"RES\"/><SVC.sequence_nbr",
         );
     assert_eq!(
-        observation_evidence(&Message::parse(raw.as_bytes(), common::limits())?)?,
-        observation_evidence(&Message::parse(retransmitted.as_bytes(), common::limits())?)?
+        observation_evidence(&Message::parse(raw.as_bytes(), peer_messages::limits())?)?,
+        observation_evidence(&Message::parse(retransmitted.as_bytes(), peer_messages::limits())?)?
     );
     Ok(())
 }
