@@ -1,6 +1,10 @@
 # Analyte plan
 
-Status: planning, 2026-11-15. Nothing is built.
+Status, 2026-11-15: phase 1 is done (a fake result reaches the reference
+receiver, failure paths included). The protocol crates for ASTM, HL7 v2,
+POCT01-A2, IHE LAW (transactions; profile rules in progress) and the VIDAS and
+Autolyser vendor formats are built at the documented level. Everything is
+documented level; nothing has met a real machine yet.
 
 ## 1. Goal
 
