@@ -42,6 +42,18 @@ fn rule2_configured_coded_kind_refuses_empty_or_numeric_text_without_guessing() 
 
 #[test]
 fn hl7_251_7_4_2_2_status_only_and_missing_populated_value_type_stay_distinct() -> TestResult {
+    let raw=b"MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||001\rOBX|1||SYN^^synthetic||populated||||||F\r";
+    let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
+    assert!(matches!(
+        map_hl7(&message, &config(HL7_CONFIG)?, input()),
+        Err(analyte_mapping::Error::Structure {
+            position: analyte_mapping::Position {
+                record: 3,
+                field: 2
+            },
+            ..
+        })
+    ));
     let empty = hl7("OBR|1||001\rOBX|1||SYN^^synthetic||||||||X\r", HL7_CONFIG)?;
     assert_eq!(first(&empty)?.status, ResultStatus::NotPerformed);
     assert_eq!(
@@ -184,10 +196,26 @@ fn rule5_numeric_offset_evidence_keeps_reported_components_without_inferring_zon
 #[test]
 fn hl7_251_ch7_oru_specimen_observations_keep_their_specimen_owner() -> TestResult {
     let mapped = hl7(
-        "OBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\rSPM|1\rOBX|1|NM|SYN^^synthetic||2||||||F\r",
+        "OBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\rSPM|1\rOBX|1|NM|SYN^^synthetic||2||||||F\rOBR|2||002\rOBX|1|NM|SYN^^synthetic||3||||||F\r",
         HL7_CONFIG,
     )?;
-    assert_eq!(mapped.results.len(), 2);
+    assert_eq!(mapped.results.len(), 3);
+    let next_order = &mapped.results.get(2).ok_or("next order")?.content;
+    assert_eq!(
+        next_order.sample.as_ref().ok_or("sample")?.id.as_str(),
+        "002"
+    );
+    assert!(
+        !next_order
+            .parts
+            .as_slice()
+            .first()
+            .ok_or("part")?
+            .source_path
+            .as_slice()
+            .iter()
+            .any(|n| n.kind.as_str() == "SPM")
+    );
     let part = mapped
         .results
         .get(1)
