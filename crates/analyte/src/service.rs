@@ -223,6 +223,11 @@ async fn serve_with(
     let mut ready_to_close = Vec::new();
     let (close_transports, transports_closing) = watch::channel(false);
     for machine in program.machines {
+        let capture = crate::capture::Capture::new(
+            &machine,
+            &program.data_directory,
+            program.store_limits.reserve_bytes,
+        );
         let admin_state = AdminOwner(admin_states.get(machine.id.as_str()).cloned());
         let store = store.clone();
         let stop = stopping.clone();
@@ -243,7 +248,7 @@ async fn serve_with(
             let _admin_state = admin_state;
             let _component = component;
             let id = machine.id.clone();
-            if let Err(error) = machine::run(machine, store, stop, file_root, closing).await {
+            if let Err(error) = machine::run(machine, store, stop, file_root, closing, capture).await {
                 tracing::error!(machine = id.as_str(), error_kind = %error, "machine owner stopped");
             }
             ready.send_replace(true);

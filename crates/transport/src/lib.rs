@@ -238,6 +238,7 @@ pub struct IoSide {
     generation: u64,
     cancel: Cancellation,
     tap: Option<recording::Tap>,
+    recorder: Option<Box<dyn FnMut() -> Option<recording::Tap> + Send + Sync>>,
     settings: String,
 }
 
@@ -265,6 +266,7 @@ pub fn connection(limits: Limits) -> (Connection, IoSide) {
             generation: 0,
             cancel,
             tap: None,
+            recorder: None,
             settings: String::new(),
         },
     )
@@ -278,7 +280,21 @@ impl IoSide {
         self
     }
 
+    /// Creates a fresh optional recorder at each successful connection, including reconnects.
+    #[must_use]
+    pub fn with_recording_factory(
+        mut self,
+        factory: impl FnMut() -> Option<recording::Tap> + Send + Sync + 'static,
+    ) -> Self {
+        self.recorder = Some(Box::new(factory));
+        self
+    }
+
     fn start(&mut self, settings: String) -> Result<(), Error> {
+        if let Some(factory) = &mut self.recorder {
+            self.tap = None;
+            self.tap = factory();
+        }
         self.settings = settings;
         self.generation = self.generation.checked_add(1).ok_or(Error::InvalidLimits)?;
         self.session.store(self.generation, Ordering::Release);

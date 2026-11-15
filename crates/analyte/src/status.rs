@@ -62,6 +62,27 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
         );
     }
     for machine in program.machines() {
+        if machine.capture {
+            let marker = program
+                .data_directory
+                .join(format!("capture-{}.failure", machine.id().as_str()));
+            let capture = match std::fs::File::open(marker) {
+                Ok(file) => {
+                    use std::io::Read as _;
+                    let mut text = String::new();
+                    file.take(4096).read_to_string(&mut text)?;
+                    text.trim().to_owned()
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    "enabled; no recorded failure (capture completeness unknown)".into()
+                }
+                Err(error) => format!("status unavailable: {}", error.kind()),
+            };
+            lines.push(format!(
+                "machine={} capture={capture}",
+                machine.id().as_str()
+            ));
+        }
         let time = last
             .get(machine.id().as_str())
             .map_or_else(|| "unknown".to_owned(), ToString::to_string);

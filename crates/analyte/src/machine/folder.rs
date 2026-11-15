@@ -39,6 +39,7 @@ impl Owner {
         incoming: PathBuf,
         root: PathBuf,
         limit: u64,
+        mut recorder: Option<Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>>,
     ) -> Result<(Self, tokio::sync::mpsc::Receiver<Item>), Error> {
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
@@ -62,6 +63,17 @@ impl Owner {
                             return Ok(());
                         }
                         let bytes = claim.read()?;
+                        if let Some(tap) = recorder.as_mut().and_then(|factory| factory()) {
+                            use analyte_transport::recording::Kind;
+                            let now = Instant::now();
+                            let _ = tap.record(Kind::Open, now, b"watched folder receipt");
+                            for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
+                                if tap.record(Kind::In, Instant::now(), chunk).is_err() {
+                                    break;
+                                }
+                            }
+                            let _ = tap.record(Kind::Close, Instant::now(), b"file read complete");
+                        }
                         let (reply, response) = mpsc::sync_channel(1);
                         let mut item = Item {
                             bytes,
@@ -137,11 +149,16 @@ pub(super) async fn session(
     root: PathBuf,
     mut stop: watch::Receiver<bool>,
     mut closing: super::Closing,
+    capture: Option<&crate::capture::Capture>,
 ) -> Result<(), Error> {
     let (owner, mut files) = Owner::start(
         PathBuf::from(&machine.snapshot.effective().site().endpoint),
         root,
         u64::try_from(machine.snapshot.effective().machine().syntax.bytes)?,
+        capture.map(|c| {
+            Box::new(c.factory())
+                as Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>
+        }),
     )?;
     let result = async {
         loop {

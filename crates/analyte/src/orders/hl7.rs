@@ -713,6 +713,7 @@ mod tests {
         )?
         .validate()?;
         let machine = Machine {
+            capture: false,
             #[cfg(feature = "test-hooks")]
             law_committed: None,
             id: Identifier::new("synthetic")?,

@@ -311,10 +311,12 @@ async fn saturated_recorder_flags_failure_but_preserves_stream() -> TestResult {
     owner?;
     exercise?;
     std::thread::scope(|scope| -> TestResult {
-        scope
+        // ADR 0009: a saturated capture is incomplete even if queued records flush.
+        let result = scope
             .spawn(|| worker.run())
             .join()
-            .map_err(|_| "recorder panic")??;
+            .map_err(|_| "recorder panic")?;
+        assert!(result.is_err_and(|error| error.to_string().contains("recording queue full")));
         Ok(())
     })?;
     Ok(())

@@ -13,6 +13,7 @@ use std::{
 
 /// A machine's installation identity and validated effective settings.
 pub struct Machine {
+    pub(crate) capture: bool,
     #[cfg(feature = "test-hooks")]
     pub(crate) law_committed: Option<std::sync::Arc<crate::test_hooks::Committed>>,
     #[cfg(feature = "test-hooks")]
@@ -95,6 +96,8 @@ struct Limits {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Entry {
+    #[serde(default)]
+    capture: bool,
     id: analyte_model::Identifier,
     definition: PathBuf,
     site: PathBuf,
@@ -278,7 +281,20 @@ impl Program {
                     "store record limit is smaller than machine message or effective config",
                 ));
             }
+            if entry.capture
+                && (!entry
+                    .id
+                    .as_str()
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+                    || matches!(entry.id.as_str(), "." | ".."))
+            {
+                return Err(invalid(
+                    "capture machine ID must be one directory component",
+                ));
+            }
             machines.push(Machine {
+                capture: entry.capture,
                 #[cfg(feature = "test-hooks")]
                 law_committed: None,
                 #[cfg(feature = "test-hooks")]

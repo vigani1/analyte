@@ -229,7 +229,9 @@ them can be collected at any time and kept as test data.
 ## 10. Testing
 
 - **Recordings:** retain and replay synthetic or de-identified conversations in
-  the format owned by [ADR 0009](adr/0009-recording-format.md).
+  the format owned by [ADR 0009](adr/0009-recording-format.md). The program can
+  opt each machine into protected live capture (`capture = true`); capture failure
+  is separate from clinical custody and remains visible in status.
 - **Failure paths:** broken checksums, lost acknowledgments, split and merged
   reads, timeouts, disconnects, restart between storing and acknowledging,
   disk full, corrected and repeated results, late query replies; a crash

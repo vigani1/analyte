@@ -24,6 +24,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     )?
     .validate()?;
     Ok(Machine {
+        capture: false,
         #[cfg(feature = "test-hooks")]
         law_committed: None,
         #[cfg(feature = "test-hooks")]
