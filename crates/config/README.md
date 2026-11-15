@@ -177,7 +177,7 @@ only explicit C correction status and cannot select legacy display queries or
 non-LAW order layouts.
 
 Program behavior and current qualification gates are maintained in the
-[LAW checklist](../../docs/protocols/ihe-law.md).
+[LAW checklist](../../docs/protocols/law/README.md).
 
 LAW identity selects OBR-2 AWOS (OBR-2.2 namespace or an explicit fixed fallback)
 and the complete OBX-4 OG. Config cannot replace these with arbitrary selectors
@@ -201,4 +201,4 @@ Independent mode requires an inbound `tcp_server` site endpoint plus an explicit
 follow-ups and opens a separate outgoing connection per transaction. A query peer
 may close after RSP; work ownership survives that closure. Failed attempts are
 uncertain and never automatically resent. See the program's B.6 tests in
-`docs/protocols/ihe-law.md`; evidence remains documented.
+`docs/protocols/law/README.md`; evidence remains documented.
