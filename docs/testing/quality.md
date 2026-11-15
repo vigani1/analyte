@@ -30,7 +30,7 @@ new tests; they are not a prediction of the final coverage.
 | analyte-mapping | 84.97 | 81.47 | 221 / 185 / 49 / 0 | 399 / 7 / 49 / 0 (combined replays) |
 | analyte-contract | 86.92 | 83.28 | 53 / 52 / 71 / 0 | 105 / 0 / 71 / 0 |
 | analyte-sink | 92.86 | 83.53 | 32 / 46 / 18 / 16 | 91 / 3 / 18 / 0 (combined replays; all 3 equivalent) |
-| analyte-store | 91.64 | 77.57 | Mixed focused baselines; see store report | 313 / 7 / 55 / 0 across 375 earlier-round mutations; all 7 survivors equivalent; Part 3 stopped on bug |
+| analyte-store | 91.64 | 77.57 | Mixed focused baselines; see store report | 313 / 7 / 55 / 0 across 375 earlier-round mutations; all 7 survivors equivalent; Part 3 has two worker misses and #103 integration pending |
 | analyte | 64.60 | 58.03 | Outside requested mutation scope | Not run |
 | analyte-astm | 90.73 | 90.20 | Outside requested mutation scope | Not run |
 | analyte-autolyser | 84.79 | 77.49 | Outside requested mutation scope | Not run |
@@ -468,3 +468,15 @@ The migration boundary misses and all open/startup misses are now caught in exac
 
 
 Final post-merge verification: fmt, Clippy, deny and fuzz-bin compilation all exit 0. Workspace tests exit 101: store 128 passed, 1 failed, 1 ignored; only the new post-upgrade size regression fails, while #99's reserve regression passes. There are 12 net new tests versus main after keeping main's duplicate exactly once. The remaining work is restore's Busy/Locked miss and the new bug; three worker misses; query's seven misses plus 21 unrun candidates; alerts, capacity including restore_capacity, and lib. No production fixes or raw logs are committed. Linux/MSRV and fuzz execution were not run locally.
+
+
+### Store round 3 final continuation
+
+The third restore bug is fixed in PR #103, still pending integration at validation time. Its exact head `3dbd1bbda59238491153d8f7e415574a33d57fd4` was archived locally with this branch's tests and main's extended regression kept once: restore's complete 25-candidate rerun, including fill_stage and cleanup, had 23 caught and two unviable. This is pre-merge evidence, not a claim that #103 is on the test branch. The pre-#103 Busy/Locked miss is separately caught by a deterministic source-lock test (21 caught, one unviable across that older 22-candidate restore baseline).
+
+Query is complete at 22 caught / 16 unviable, alerts at 19 / 4, capacity including restore_capacity at 14 / 0, and lib at 24 / 2. No equivalents or unresolved mutant timeouts are claimed. Worker is 13 caught, two unresolved misses, two unviable. The exact remaining mutations are the owning-thread deadline equality at worker.rs:59:39 and CancelStartup::drop at worker.rs:72:17. Main still needs #103 merged with signoff and its extended regression kept once. The overall round remains incomplete; PR #98 is prepared for review with this exact remaining list.
+
+Sixteen tests were added this continuation. The report records every run, including zero-mutant setup failures and a timed-out broad library baseline replaced by a focused successful run. Counts combine exact replays without double-counting. The earlier query `adr` filter excluded existing `plan11` tests, so a focused miss is not evidence of absent workspace coverage; named new assertions and relevant existing tests fail in the recorded replays. Logs stay local and only Markdown triage is committed.
+
+
+Final verification after signed-off main merge `fdf6549`: fmt, Clippy, deny and fuzz-bin compilation exit 0. Workspace tests exit 101 at the carried size-growth regression (store: 144 passed, 1 failed, 1 ignored) while #103 remains open; that regression passes in the #103 archive. An earlier Autolyser integration timeout passed in isolation and in the final workspace rerun. PR #98 is marked ready for the completed subset with the two worker misses and #103 integration explicitly outstanding; no whole-round completion or green branch is claimed. Linux/MSRV and fuzz execution were not run locally.
