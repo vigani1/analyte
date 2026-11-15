@@ -15,9 +15,14 @@ use std::{
 };
 use tokio::sync::watch;
 
+#[derive(Clone, Copy)]
+enum Disposition {
+    Archive,
+    Quarantine,
+}
 struct Item {
-    bytes: Vec<u8>,
-    stored: mpsc::SyncSender<bool>,
+    connection: analyte_transport::Connection,
+    completed: mpsc::SyncSender<Disposition>,
 }
 
 struct Owner {
@@ -62,27 +67,17 @@ impl Owner {
                         if cancelled.load(Ordering::Acquire) {
                             return Ok(());
                         }
-                        let bytes = claim.read()?;
+                        let (connection, mut side) = analyte_transport::connection(
+                            analyte_transport::Limits::new(1, Duration::from_secs(5))?,
+                        );
                         if let Some(tap) = recorder.as_mut().and_then(|factory| factory()) {
-                            use analyte_transport::recording::Kind;
-                            let result = tap
-                                .record(Kind::Open, Instant::now(), b"watched folder receipt")
-                                .and_then(|()| {
-                                    for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
-                                        tap.record(Kind::In, Instant::now(), chunk)?;
-                                    }
-                                    tap.record(Kind::Close, Instant::now(), b"file read complete")
-                                });
-                            if let Err(error) = result {
-                                // Tap::record publishes every failure to the shared worker state.
-                                // The capture worker logs once and persists the failed markers.
-                                tracing::debug!(error_kind = %error, "watched-folder capture failure handed to recorder worker");
-                            }
+                            side = side.with_recording(tap);
                         }
+                        let cancellation = connection.cancellation();
                         let (reply, response) = mpsc::sync_channel(1);
                         let mut item = Item {
-                            bytes,
-                            stored: reply,
+                            connection,
+                            completed: reply,
                         };
                         let until = deadline();
                         loop {
@@ -100,11 +95,36 @@ impl Owner {
                             }
                             thread::sleep(Duration::from_millis(5));
                         }
+                        if let Err(error) = claim.deliver(side) {
+                            let interrupted = match &error {
+                                analyte_transport::folder::Error::Io { source, .. } => source
+                                    .get_ref()
+                                    .and_then(|source| {
+                                        source.downcast_ref::<analyte_transport::Error>()
+                                    })
+                                    .is_some_and(|source| {
+                                        matches!(
+                                            source,
+                                            analyte_transport::Error::ConsumerClosed
+                                                | analyte_transport::Error::Deadline(_)
+                                        )
+                                    }),
+                                analyte_transport::folder::Error::Oversized(_)
+                                | analyte_transport::folder::Error::Invalid(_) => false,
+                            };
+                            if interrupted
+                                && (cancelled.load(Ordering::Acquire)
+                                    || cancellation.is_cancelled())
+                            {
+                                return Ok(());
+                            }
+                            return Err(error.into());
+                        }
                         // A lost reply leaves the source claimed; a restart reprocesses it safely.
                         let until = deadline();
-                        let accepted = loop {
+                        let disposition = loop {
                             match response.recv_timeout(Duration::from_millis(10)) {
-                                Ok(accepted) => break accepted,
+                                Ok(disposition) => break disposition,
                                 Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
                                 Err(mpsc::RecvTimeoutError::Timeout) => {
                                     if cancelled.load(Ordering::Acquire) || Instant::now() >= until
@@ -114,7 +134,10 @@ impl Owner {
                                 }
                             }
                         };
-                        let area = if accepted { "archive" } else { "quarantine" };
+                        let area = match disposition {
+                            Disposition::Archive => "archive",
+                            Disposition::Quarantine => "quarantine",
+                        };
                         claim.finish(&root.join(area).join(uuid::Uuid::now_v7().to_string()))?;
                     }
                     thread::sleep(Duration::from_millis(100));
@@ -170,26 +193,80 @@ pub(super) async fn session(
     )?;
     let result = async {
         loop {
-            let item = tokio::select! {
+            let mut item = tokio::select! {
                 biased;
                 () = super::stopping(&mut stop) => break,
                 item = files.recv() => item.ok_or_else(|| invalid("file owner stopped"))?,
             };
+            let Some(raw) = receive(&mut item.connection, bytes, &mut stop).await? else {
+                break;
+            };
             let id = ReceiptId::new();
-            evidence::receive(store, machine, id, item.bytes.clone()).await?;
+            evidence::receive(store, machine, id, raw).await?;
             let accepted = evidence::interpret(store, machine, id).await?;
-            item.stored
-                .send(accepted)
+            item.completed
+                .send(if accepted {
+                    Disposition::Archive
+                } else {
+                    Disposition::Quarantine
+                })
                 .map_err(|_| invalid("file completion reply lost; source remains claimed"))?;
         }
         Ok(())
     }
     .await;
+    // Dropping queued connection endpoints unblocks a producer in deliver before joining it.
+    drop(files);
     if *stop.borrow() {
         closing.after_commits().await?;
     }
     owner.close().await?;
     result
+}
+
+// Closed(Disconnect) is the transport's complete-file boundary. A cancelled or
+// truncated connection never authorizes archive/quarantine, even if it supplied a prefix.
+async fn receive(
+    connection: &mut analyte_transport::Connection,
+    bound: usize,
+    stop: &mut watch::Receiver<bool>,
+) -> Result<Option<Vec<u8>>, Error> {
+    use analyte_transport::{Event, Reason};
+    let mut opened = false;
+    let mut raw = Vec::new();
+    loop {
+        let event = tokio::select! { biased;
+            () = super::stopping(stop) => return Ok(None),
+            event = connection.receive() => event?,
+        }
+        .ok_or_else(|| invalid("file transport ended before completion; source remains claimed"))?;
+        match event {
+            Event::Opened { .. } => {
+                if opened {
+                    return Err(invalid("file transport opened twice"));
+                }
+                opened = true;
+            }
+            Event::Received { bytes, .. } => {
+                if !opened
+                    || raw
+                        .len()
+                        .checked_add(bytes.len())
+                        .is_none_or(|size| size > bound)
+                {
+                    return Err(invalid("file transport receipt bound exceeded"));
+                }
+                raw.extend_from_slice(&bytes);
+            }
+            Event::Closed(Reason::Disconnect) if opened => return Ok(Some(raw)),
+            Event::Closed(reason) | Event::Failed(reason) => {
+                return Err(invalid(&format!(
+                    "file transport interrupted; source remains claimed: {reason:?}"
+                )));
+            }
+            Event::RecordingFailed(_) => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -220,5 +297,154 @@ mod tests {
             }));
             assert!(!output.contains("protected-"));
         }
+    }
+    #[tokio::test]
+    async fn adr0003_folder_transport_waits_for_custody_and_lost_reply_keeps_claim()
+    -> Result<(), Error> {
+        for disposition in [
+            Some(Disposition::Archive),
+            Some(Disposition::Quarantine),
+            None,
+        ] {
+            let temp = tempfile::tempdir()?;
+            let incoming = temp.path().join("incoming");
+            let root = temp.path().join("receipts");
+            std::fs::create_dir(&incoming)?;
+            let bytes = vec![0x7f; analyte_transport::CHUNK_LIMIT * 2 + 3];
+            std::fs::write(incoming.join("synthetic"), &bytes)?;
+            let (owner, mut files) = Owner::start(incoming.clone(), root.clone(), 16384, None)?;
+            let mut item = tokio::time::timeout(Duration::from_secs(10), files.recv())
+                .await?
+                .ok_or("file connection absent")?;
+            let (_stop, mut stop) = watch::channel(false);
+            assert_eq!(
+                receive(&mut item.connection, 16384, &mut stop)
+                    .await?
+                    .ok_or("file interrupted")?,
+                bytes
+            );
+            assert_eq!(std::fs::read_dir(root.join("archive"))?.count(), 0);
+            assert_eq!(std::fs::read_dir(root.join("quarantine"))?.count(), 0);
+            let claim = std::fs::read_dir(root.join("claimed"))?
+                .next()
+                .ok_or("claim absent")??
+                .path();
+            assert_eq!(std::fs::read(claim.join("input"))?, bytes);
+            if let Some(disposition) = disposition {
+                item.completed
+                    .send(disposition)
+                    .map_err(|_| invalid("custody reply lost"))?;
+            }
+            drop(item);
+            drop(files);
+            owner.close().await?;
+            let area = match disposition {
+                Some(Disposition::Archive) => "archive",
+                Some(Disposition::Quarantine) => "quarantine",
+                None => "claimed",
+            };
+            let retained = std::fs::read_dir(root.join(area))?
+                .next()
+                .ok_or("retained file absent")??
+                .path();
+            assert_eq!(std::fs::read(retained.join("input"))?, bytes);
+        }
+        Ok(())
+    }
+
+    struct Full;
+    impl analyte_store::FreeSpace for Full {
+        fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
+            Ok(0)
+        }
+    }
+    #[tokio::test]
+    async fn adr0003_file_astm_and_hl7_storage_refusal_never_release_claim() -> Result<(), Error> {
+        for definition in [
+            include_str!("../../../config/examples/astm.toml"),
+            include_str!("../../../config/examples/hl7.toml"),
+        ] {
+            let temp = tempfile::tempdir()?;
+            let incoming = temp.path().join("incoming");
+            let root = temp.path().join("files");
+            std::fs::create_dir(&incoming)?;
+            let raw = b"synthetic complete file; storage must precede interpretation";
+            std::fs::write(incoming.join("synthetic"), raw)?;
+            let start = definition.find("[transport]").ok_or("transport section")?;
+            let end = definition.find("[syntax]").ok_or("syntax section")?;
+            let definition = format!(
+                "{}[transport]\nkind='watched_folder'\noperation_timeout_ms=10000\n[framing]\nkind='none'\nlimit=65536\n[dialog]\nkind='file_pickup'\nreceive_timeout_ms=30000\nsend_timeout_ms=15000\n{}",
+                &definition[..start],
+                &definition[end..]
+            );
+            let site = include_str!("../../../config/examples/site.toml").replace(
+                "\"127.0.0.1:5600\"",
+                &toml::Value::String(incoming.to_string_lossy().into_owned()).to_string(),
+            );
+            let snapshot = analyte_config::Draft::load(
+                ("machine", &definition),
+                ("site", &site),
+                ("overrides", "schema_version=1"),
+            )?
+            .validate()?;
+            let machine = Machine {
+                id: analyte_model::Identifier::new("synthetic")?,
+                snapshot,
+                listener: None,
+                capture: false,
+                destination_limits: crate::delivery::limits(30),
+                #[cfg(feature = "test-hooks")]
+                law_committed: None,
+                #[cfg(feature = "test-hooks")]
+                astm_committed: None,
+            };
+            let mut store = Handle::start(
+                temp.path().join("store.db"),
+                analyte_store::Limits {
+                    reserve_bytes: 1024,
+                    database_bytes: 100_000_000,
+                    record_bytes: 65536,
+                    page_rows: 100,
+                    busy_timeout: Duration::from_millis(20),
+                },
+                Box::new(Full),
+                4,
+                deadline(),
+            )
+            .await?;
+            let (_stop, stop) = watch::channel(false);
+            let (ready, _ready) = watch::channel(false);
+            let (_close, close) = watch::channel(false);
+            let closing = super::super::Closing { ready, close };
+            let result = tokio::time::timeout(
+                Duration::from_secs(10),
+                session(&machine, &store, 65536, root.clone(), stop, closing, None),
+            )
+            .await?;
+            assert!(matches!(
+                result
+                    .as_ref()
+                    .err()
+                    .and_then(|error| error.downcast_ref::<analyte_store::Error>()),
+                Some(analyte_store::Error::Capacity)
+            ));
+            assert_eq!(std::fs::read_dir(root.join("archive"))?.count(), 0);
+            assert_eq!(std::fs::read_dir(root.join("quarantine"))?.count(), 0);
+            let watcher = Watcher::new(incoming, root.join("claimed"), None, 65536)?;
+            let recovered = watcher.recover()?;
+            assert_eq!(recovered.len(), 1);
+            assert_eq!(
+                recovered.first().ok_or("claimed input absent")?.read()?,
+                raw
+            );
+            assert!(
+                store
+                    .request(deadline(), |s| s.receipts(""))
+                    .await?
+                    .is_empty()
+            );
+            store.shutdown(deadline()).await?;
+        }
+        Ok(())
     }
 }
