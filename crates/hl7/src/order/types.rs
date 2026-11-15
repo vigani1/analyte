@@ -62,7 +62,7 @@ impl<'a> OrderId<'a> {
                 .and_then(|n| n.checked_add(2))
                 .ok_or(Error::Limit)?;
         }
-        if length > 22 {
+        if length > super::EI_MAX_BYTES {
             return Err(invalid("EI", 1));
         }
         Ok(Self {

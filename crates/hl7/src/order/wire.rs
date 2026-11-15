@@ -462,7 +462,7 @@ pub fn context(
     position: Option<(SampleField, &[u8])>,
     options: Options,
 ) -> Result<OrderMessage, Error> {
-    scalar(group, "ORC", 4, 22, true)?;
+    scalar(group, "ORC", 4, super::EI_MAX_BYTES, true)?;
     let mut output = Vec::new();
     for row in sent.message.segments() {
         if row.id() == b"ORC" || row.id() == b"OBR" {
@@ -474,7 +474,24 @@ pub fn context(
                 .map(|n| super::raw(row, n).to_vec())
                 .collect::<Vec<_>>();
             if row.id() == b"ORC" {
-                *fields.get_mut(3).ok_or(Error::Limit)? = group.to_vec();
+                // ORC-4 repeats ORC-2's complete assigning authority, not just EI.1.
+                // Both editions constrain the entire encoded EI to 22 bytes.
+                let placer = super::raw(row, 2);
+                let authority = placer
+                    .iter()
+                    .position(|byte| *byte == b'^')
+                    .and_then(|start| placer.get(start..))
+                    .ok_or_else(|| invalid("ORC", 4))?;
+                if group
+                    .len()
+                    .checked_add(authority.len())
+                    .is_none_or(|n| n > super::EI_MAX_BYTES)
+                {
+                    return Err(invalid("ORC", 4));
+                }
+                let mut group_number = group.to_vec();
+                group_number.extend_from_slice(authority);
+                *fields.get_mut(3).ok_or(Error::Limit)? = group_number;
             }
             if row.id() == b"OBR"
                 && let Some((field, value)) = position

@@ -999,7 +999,7 @@ fn hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context() ->
         .segments()
         .find(|s| s.id() == b"ORC")
         .ok_or(Error::Limit)?;
-    assert_eq!(common.field(4).ok_or(Error::Limit)?.raw(), b"app-order");
+    assert_eq!(common.field(4).ok_or(Error::Limit)?.raw(), b"app-order^LAB");
     let detail = enriched
         .message()
         .segments()
@@ -1037,5 +1037,47 @@ fn hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context() ->
         )
         .is_err()
     );
+    Ok(())
+}
+
+// HL7 2.3.1 section 4.3.1.4 and 2.5.1 section 4.5.1.4: same authority as ORC-2.
+#[test]
+fn hl7_231_4_3_1_4_251_4_5_1_4_group_ei_authority_and_complete_field_limit() -> Result<(), Error> {
+    for version in [Version::V231, Version::V251] {
+        for universal in [None, Some((b"1.2".as_slice(), b"ISO".as_slice()))] {
+            let mut request = new_order(b"sample", SampleField::Placer1)?;
+            if let Order::New { placer, .. } = &mut request {
+                *placer = OrderId::with_universal(b"x", b"LAB", universal)?;
+            }
+            let built = order::orm(
+                &[request],
+                Subject::Unspecified,
+                header(version)?,
+                Options::default(),
+            )?;
+            let authority = if universal.is_some() {
+                "^LAB^1.2^ISO"
+            } else {
+                "^LAB"
+            };
+            let group = "g".repeat(22_usize.checked_sub(authority.len()).ok_or(Error::Limit)?);
+            let enriched = order::context(&built, group.as_bytes(), None, Options::default())?;
+            let common = enriched
+                .message()
+                .segments()
+                .find(|s| s.id() == b"ORC")
+                .ok_or(Error::Limit)?;
+            let expected = format!("{group}{authority}");
+            assert_eq!(
+                common.field(4).ok_or(Error::Limit)?.raw(),
+                expected.as_bytes()
+            );
+            let overflow = format!("{group}g");
+            assert!(matches!(
+                order::context(&built, overflow.as_bytes(), None, Options::default()),
+                Err(Error::Content { field: 4, .. })
+            ));
+        }
+    }
     Ok(())
 }
