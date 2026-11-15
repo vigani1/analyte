@@ -529,3 +529,11 @@ filter interpretation remain as described above.
 No simulator or real-analyzer evidence was added. Evidence remains
 **documented**; the checked rows are not a whole-HL7 or whole-system conformance
 claim.
+
+
+Host order integration can add an explicit ORC-4 group and optional other
+placer-owned OBR position through `order::context`; it refuses sample overwrite,
+injection and field limits. `Subject::Unspecified` makes no nonpatient claim;
+`Subject::Identifier` renders only supplied PID identity without demographics.
+An absent ORM specimen source stays empty; OML still rejects missing SPM-4.
+These APIs remain pure and do not reserve, transmit, cancel or infer acceptance.

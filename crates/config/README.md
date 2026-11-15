@@ -131,3 +131,11 @@ ASTM/HL7 behavior. Numeric requires a parsed number; coded accepts nonempty
 qualitative text or a coded value, not a plain number. Mismatches retain the
 original value and park with `ValueKindMismatch`. No clinical decisions or
 numeric conversions are performed.
+
+
+HL7 unsolicited orders additionally require `[orders.hl7_send]`, `send_ahead`
+and `placer_namespace`; see [the teaching interface](examples/hl7_send.toml).
+The configured edition selects ORM/O01 or OML/O21. Header applications,
+processing, specimen placement and response deadline are explicit. Test
+components are code/text/system. Position output is available only in ORM's
+other placer-owned OBR field; an OML position mapping is refused.

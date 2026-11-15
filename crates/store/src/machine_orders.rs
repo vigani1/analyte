@@ -41,6 +41,13 @@ pub struct MachineOrder {
 const RESERVATION_OWNER_PREFIX: &str = "host-reserved:";
 
 impl MachineOrder {
+    /// True only for the connection that admitted this cancellation request.
+    #[must_use]
+    pub fn cancel_requested_by(&self, owner: &Identifier) -> bool {
+        self.state == OrderState::CancelRequested
+            && self.source_code.as_str().starts_with("app-cancel:")
+            && self.source_code.as_str().rsplit(':').next() == Some(owner.as_str())
+    }
     /// True only while this connection's retained reservation is still Sending.
     /// Completed outcomes and another connection's reservation are never owned here.
     #[must_use]
@@ -185,6 +192,14 @@ struct CachedFields {
     tests: Vec<NamespacedId>,
 }
 
+type Preflight<'a> = &'a mut dyn FnMut(&MachineOrder) -> Result<(), Error>;
+#[derive(Clone, Copy)]
+enum ChangeEvidence<'a> {
+    Machine,
+    Operator(&'a Audit),
+    AppCancel(NonZeroU64, u64),
+}
+
 impl Store {
     /// Returns a bounded page of unreserved cache candidates, never permission to send.
     /// The host must map a candidate and call `reserve_send` immediately before I/O.
@@ -238,6 +253,7 @@ impl Store {
             code,
             OrderItems::Together,
             None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+            None,
         )
     }
 
@@ -258,6 +274,7 @@ impl Store {
             code,
             OrderItems::Together,
             None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+            None,
         )
     }
 
@@ -275,7 +292,41 @@ impl Store {
             SourceText::new("host-reserved").map_err(|_| Error::InvalidInput)?,
             items,
             None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+            None,
         )
+    }
+
+    /// Atomically preflights exact store-assigned item identities before committing Sending.
+    /// The pure builder must perform no I/O. Failure rolls back parent, items and history.
+    /// # Errors
+    /// Reports preflight, identity, storage and eligibility failures without issuing bytes.
+    pub fn reserve_send_items_with<T>(
+        &mut self,
+        candidate: &OrderReservation<'_>,
+        items: OrderItems<'_>,
+        owner: &Identifier,
+        prepare: impl FnOnce(&MachineOrder) -> Result<T, Error>,
+    ) -> Result<Result<(MachineOrder, T), SendRefusal>, Error> {
+        let code = SourceText::new(&format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()))
+            .map_err(|_| Error::InvalidInput)?;
+        let mut builder = Some(prepare);
+        let mut payload = None;
+        let mut preflight = |record: &MachineOrder| {
+            payload = Some(builder.take().ok_or(Error::InvalidInput)?(record)?);
+            Ok(())
+        };
+        let reserved = self.start_order(
+            candidate,
+            OrderState::Sending,
+            code,
+            items,
+            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+            Some(&mut preflight),
+        )?;
+        match reserved {
+            Ok(order) => Ok(Ok((order, payload.ok_or(Error::InvalidInput)?))),
+            Err(refusal) => Ok(Err(refusal)),
+        }
     }
 
     /// Records a mapping rejection and app event without claiming anything was sent.
@@ -293,6 +344,7 @@ impl Store {
             reason,
             OrderItems::Together,
             Some(build),
+            None,
         )
     }
 
@@ -303,6 +355,7 @@ impl Store {
         code: SourceText,
         items: OrderItems<'_>,
         build: Option<impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+        prepare: Option<Preflight<'_>>,
     ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
         let OrderReservation {
             identity,
@@ -332,18 +385,7 @@ impl Store {
         if existing.is_some() {
             return Ok(Err(SendRefusal::AlreadyReserved));
         }
-        let poll = tx
-            .query_row(
-                "SELECT polled FROM feed WHERE destination=?1 AND complete=1 AND trusted=1",
-                [identity.destination.as_str()],
-                |r| r.get::<_, i64>(0),
-            )
-            .optional()?;
-        if poll
-            .and_then(|p| now.checked_sub(p))
-            .and_then(|age| u64::try_from(age).ok())
-            .is_none_or(|age| age >= freshness)
-        {
+        if !trusted_feed(&tx, &identity.destination, now, freshness)? {
             return Ok(Err(SendRefusal::Untrusted));
         }
         let cached = tx.query_row("SELECT evidence FROM orders WHERE destination=?1 AND id=?2 AND generation=(SELECT generation FROM feed WHERE destination=?1)",params![identity.destination.as_str(),identity.order.as_str()], |r| r.get::<_,String>(0)).optional()?;
@@ -384,6 +426,9 @@ impl Store {
             items: Vec::new(),
         };
         record.items = create_items(&tx, &record, fields.tests, items, limit)?;
+        if let Some(prepare) = prepare {
+            prepare(&record)?;
+        }
         let event = build.map(|build| build(&record)).transpose()?;
         append(&tx, &record, event.as_ref(), limit)?;
         tx.commit()?;
@@ -429,6 +474,54 @@ impl Store {
         ids.into_iter().map(|id| load(&self.db, id)).collect()
     }
 
+    /// Returns a bounded cancellation page; admission still rechecks the current feed.
+    /// # Errors
+    /// Reports retained evidence and database failures.
+    pub fn cancel_candidates(
+        &self,
+        destination: &Identifier,
+        machine: &Identifier,
+    ) -> Result<Vec<(MachineOrder, CachedOrder)>, Error> {
+        let mut statement=self.db.prepare("SELECT m.id,o.evidence FROM machine_orders m JOIN orders o ON o.destination=m.destination AND o.id=m.order_id JOIN feed f ON f.destination=o.destination AND f.generation=o.generation WHERE m.destination=?1 AND m.machine=?2 AND m.state IN ('\"Sent\"','\"Accepted\"') AND json_extract(json_extract(o.evidence,'$.document'),'$.state')='cancel_requested' AND NOT EXISTS(SELECT 1 FROM machine_order_history h WHERE h.machine_order=m.id AND json_extract(h.evidence,'$.source_code') LIKE 'app-cancel:'||json_extract(json_extract(o.evidence,'$.document'),'$.version')||':%') ORDER BY m.id LIMIT ?3")?;
+        let rows = statement
+            .query_map(
+                params![
+                    destination.as_str(),
+                    machine.as_str(),
+                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                ],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows.into_iter()
+            .map(|(id, evidence)| Ok((load(&self.db, id)?, serde_json::from_str(&evidence)?)))
+            .collect()
+    }
+
+    /// Rechecks an app cancellation and records its version once, before cancel bytes.
+    /// # Errors
+    /// Refuses stale/paused feeds, repeated cancellation versions and illegal states.
+    pub fn request_order_cancel(
+        &mut self,
+        id: i64,
+        version: NonZeroU64,
+        now: i64,
+        owner: &Identifier,
+        freshness: u64,
+        build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
+    ) -> Result<MachineOrder, Error> {
+        let code = SourceText::new(&format!("app-cancel:{version}:{}", owner.as_str()))
+            .map_err(|_| Error::InvalidInput)?;
+        self.change_order(
+            id,
+            OrderState::CancelRequested,
+            code,
+            now,
+            ChangeEvidence::AppCancel(version, freshness),
+            build,
+        )
+    }
+
     /// Persists a legal transition, history and its exact app event together.
     /// # Errors
     /// Refuses missing orders, illegal moves, clock reversal, bounds and I/O failures.
@@ -440,7 +533,7 @@ impl Store {
         now: i64,
         build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
     ) -> Result<MachineOrder, Error> {
-        self.change_order(id, to, code, now, None, build)
+        self.change_order(id, to, code, now, ChangeEvidence::Machine, build)
     }
 
     /// Commits completed exchange outcomes, conservative aggregation and one app event.
@@ -514,19 +607,27 @@ impl Store {
         } else {
             "item-outcomes"
         };
-        let summary = order
-            .items
-            .iter()
-            .map(|item| {
-                format!(
-                    "{}={:?}:{}",
-                    item.index,
-                    item.state,
-                    item.source_code.as_str()
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("; ");
+        let summary =
+            order
+                .items
+                .iter()
+                .map(|item| {
+                    format!(
+                        "{}={:?}:{}",
+                        item.index,
+                        item.state,
+                        item.source_code
+                            .as_str()
+                            .split(':')
+                            .next()
+                            .filter(|code| code.len() <= 64
+                                && code.bytes().all(|byte| byte.is_ascii_alphanumeric()
+                                    || matches!(byte, b'-' | b'_')))
+                            .unwrap_or("see-item-history")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
         order.source_code =
             SourceText::new(&format!("{prefix}: {summary}")).map_err(|_| Error::InvalidInput)?;
         tx.execute(
@@ -559,7 +660,14 @@ impl Store {
             return Err(Error::InvalidInput);
         }
         let code = SourceText::new("operator-reconciled").map_err(|_| Error::InvalidInput)?;
-        self.change_order(id, outcome, code, audit.time, Some(audit), build)
+        self.change_order(
+            id,
+            outcome,
+            code,
+            audit.time,
+            ChangeEvidence::Operator(audit),
+            build,
+        )
     }
 
     fn change_order(
@@ -568,7 +676,7 @@ impl Store {
         to: OrderState,
         code: SourceText,
         now: i64,
-        audit: Option<&Audit>,
+        evidence: ChangeEvidence<'_>,
         build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
     ) -> Result<MachineOrder, Error> {
         self.capacity(self.limits.record_bytes)?;
@@ -577,6 +685,28 @@ impl Store {
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let mut record = load(&tx, id)?;
+        let (audit, cancel_version) = match evidence {
+            ChangeEvidence::Machine => (None, None),
+            ChangeEvidence::Operator(audit) => (Some(audit), None),
+            ChangeEvidence::AppCancel(version, freshness) => (None, Some((version, freshness))),
+        };
+        if let Some((version, freshness)) = cancel_version {
+            if Self::restore_paused(&tx)?
+                || !trusted_feed(&tx, &record.key.destination, now, freshness)?
+            {
+                return Err(Error::Conflict);
+            }
+            let cached:String=tx.query_row("SELECT evidence FROM orders WHERE destination=?1 AND id=?2 AND generation=(SELECT generation FROM feed WHERE destination=?1)",params![record.key.destination.as_str(),record.key.order.as_str()],|row|row.get(0))?;
+            let cached: CachedOrder = serde_json::from_str(&cached)?;
+            let fields: CachedFields = serde_json::from_str(&cached.document)?;
+            if fields.version != version || fields.state != "cancel_requested" {
+                return Err(Error::Conflict);
+            }
+            let prior:i64=tx.query_row("SELECT count(*) FROM machine_order_history WHERE machine_order=?1 AND json_extract(evidence,'$.source_code') LIKE ?2",params![id,format!("app-cancel:{version}:%")],|row|row.get(0))?;
+            if prior != 0 {
+                return Err(Error::Conflict);
+            }
+        }
         if now < record.updated_at || audit.is_some() && record.state != OrderState::Uncertain {
             return Err(Error::Conflict);
         }
@@ -790,6 +920,25 @@ fn aggregate(items: &[MachineOrderItem]) -> OrderState {
         }
     }
     OrderState::Uncertain
+}
+
+fn trusted_feed(
+    db: &rusqlite::Connection,
+    destination: &Identifier,
+    now: i64,
+    freshness: u64,
+) -> Result<bool, Error> {
+    let poll = db
+        .query_row(
+            "SELECT polled FROM feed WHERE destination=?1 AND complete=1 AND trusted=1",
+            [destination.as_str()],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+    Ok(poll
+        .and_then(|p| now.checked_sub(p))
+        .and_then(|age| u64::try_from(age).ok())
+        .is_some_and(|age| age < freshness))
 }
 
 #[cfg(test)]

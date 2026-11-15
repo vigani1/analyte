@@ -180,3 +180,18 @@ reason. These details do not change contract v1 or enter ordinary logs.
 The marker is the latest restore/resume action in the append-only audit trail;
 no schema migration or driver-specific exception is needed. Evidence remains
 **documented**, based on synthetic tests, without real-machine qualification.
+
+
+`reserve_send_items_with` runs a pure message preflight with the actual assigned
+IDs before committing Sending. A failed preflight rolls back every item and
+history row. The shared `start_order` transaction checks `restore_paused` for
+all reservation variants, including per-test sends and owned DSR responses.
+App cancellation admission rechecks the feed's trust/version and restore pause
+in its write transaction. The admitted app version and connection owner are
+retained in append-only history; a refused cancellation cannot cause another
+automatic cancel for that same version. Original reservations always block
+resending new work, independently of subsequent app versions.
+
+Aggregate source summaries list item states and bounded diagnostic names; full
+machine reasons stay unchanged on every item. A long collection of reasons
+cannot overflow the aggregate text field and roll back otherwise valid evidence.

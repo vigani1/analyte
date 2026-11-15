@@ -24,7 +24,7 @@ pub fn map_display(
             .iter()
             .find(|t| t.app == *test)
             .ok_or_else(|| OrderMappingError::UnmappedTest(test.clone()))?;
-        let [code] = mapped.machine_components.as_slice() else {
+        let Some(code) = mapped.machine_components.first() else {
             return Err(OrderMappingError::Representation);
         };
         for line in &layout.lines {

@@ -147,7 +147,7 @@ path with the explicit [DSP layout](../config/examples/hl7_orders.toml).
 QCK/DSR replies follow durable raw storage. Trusted empty is NF; untrusted,
 stale or late lookup is AE. DSR application receipt is Sent, never Accepted;
 negative, missing or disconnected ACKs are Uncertain. HL7 ORM/OML send-ahead
-and cancellation are not enabled by this query capability. See [ORDERS.md](ORDERS.md).
+and cancellation require the separate explicit `[orders.hl7_send]` capability. See [ORDERS.md](ORDERS.md).
 
 ## Restore and reconciliation (plan ?11, ADR 0003 rules 2, 4, 8)
 

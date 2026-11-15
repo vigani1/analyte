@@ -97,18 +97,7 @@ pub(crate) async fn next(
     {
         return Ok(None);
     }
-    let destination = super::destination(machine);
-    let machine_id = machine.id.clone();
-    let cursor = after.clone();
-    let candidates = store
-        .request(deadline(), move |store| {
-            store.order_candidates(&destination, &machine_id, &cursor)
-        })
-        .await?;
-    if candidates.is_empty() {
-        after.clear();
-        return Ok(None);
-    }
+    let candidates = candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
         let order: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
@@ -166,6 +155,27 @@ pub(crate) async fn next(
         }
     }
     Ok(None)
+}
+
+/// Shared bounded candidate cursor for unsolicited protocols.
+pub(crate) async fn candidate_page(
+    store: &Handle,
+    machine: &Machine,
+    after: &mut String,
+) -> Result<Vec<analyte_store::CachedOrder>, Error> {
+    let destination = super::destination(machine);
+    let machine_id = machine.id.clone();
+    let cursor = after.clone();
+    let candidates = store
+        .request(deadline(), move |store| {
+            store.order_candidates(&destination, &machine_id, &cursor)
+        })
+        .await?;
+    if candidates.is_empty() {
+        after.clear();
+        return Ok(Vec::new());
+    }
+    Ok(candidates)
 }
 
 /// A link failure never proves that the machine did not receive its command.

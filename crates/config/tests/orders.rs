@@ -368,3 +368,43 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     assert!(config(section).is_err());
     Ok(())
 }
+
+#[test]
+fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -> TestResult {
+    let definition = include_str!("../examples/hl7.toml");
+    let section = include_str!("../examples/hl7_send.toml");
+    vendor_config(definition, section)?;
+    for (invalid, key) in [
+        (
+            section.replace(r#"placer_namespace = "LAB""#, ""),
+            "orders.placer_namespace",
+        ),
+        (
+            section.replace("response_ms = 1500", "response_ms = 0"),
+            "orders.hl7_send",
+        ),
+        (
+            section.replace(r#"processing = "T""#, r#"processing = "unknown""#),
+            "orders.hl7_send",
+        ),
+        (
+            section.replace("sample_field = 18", "sample_field = 17"),
+            "orders.hl7_send.position_field",
+        ),
+        (
+            section.replace(
+                "sample_field = 18",
+                "sample_field = 18\nposition_field = 18",
+            ),
+            "orders.hl7_send.position_field",
+        ),
+        (
+            section.replace(r#"["SYN","","L"]"#, r#"["SYN"]"#),
+            "orders.tests",
+        ),
+    ] {
+        invalid_key(vendor_config(definition, &invalid), key);
+    }
+    assert!(config(section).is_err());
+    Ok(())
+}

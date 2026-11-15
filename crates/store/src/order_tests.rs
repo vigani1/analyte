@@ -860,3 +860,90 @@ fn plan11_restore_pause_blocks_hl7_items_and_owned_dsr_in_shared_transaction() -
     );
     Ok(())
 }
+
+#[test]
+fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("preflight.db"))?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let identity = identity()?;
+    let candidate = OrderReservation {
+        identity: &identity,
+        version: NonZeroU64::MIN,
+        now: 102,
+        freshness: 30,
+    };
+    let owner = Identifier::new("connection")?;
+    let namespace = Identifier::new("LAB")?;
+    assert!(matches!(
+        store.reserve_send_items_with(
+            &candidate,
+            OrderItems::PerTest {
+                namespace: &namespace,
+                identity_bytes: 22
+            },
+            &owner,
+            |record| -> Result<(), Error> {
+                assert_eq!(
+                    record.items.first().ok_or(Error::InvalidInput)?.placer,
+                    format!("{}-1", record.id)
+                );
+                Err(Error::InvalidInput)
+            }
+        ),
+        Err(Error::InvalidInput)
+    ));
+    for table in [
+        "machine_orders",
+        "machine_order_items",
+        "machine_order_history",
+        "machine_order_item_history",
+        "outbox",
+    ] {
+        assert_eq!(
+            store
+                .db
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| row
+                    .get::<_, i64>(0))?,
+            0
+        );
+    }
+    store.audit(&Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("store-restore")?,
+        targets: Vec::new(),
+        time: 101,
+        reason: analyte_model::Reason::new("synthetic restore")?,
+    })?;
+    assert!(matches!(
+        store.reserve_send_items_with(
+            &candidate,
+            OrderItems::PerTest {
+                namespace: &namespace,
+                identity_bytes: 22
+            },
+            &owner,
+            |_| -> Result<(), Error> { Err(Error::InvalidInput) }
+        )?,
+        Err(SendRefusal::RestoreUnreconciled)
+    ));
+    Ok(())
+}
+
+#[test]
+fn adr0003_0008_item_reasons_are_lossless_when_aggregate_summary_is_bounded() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("reasons.db"))?;
+    let record = reserve_two(&mut store)?;
+    let reason = SourceText::new(&format!("HL7-UA:{}", "r".repeat(9000)))?;
+    let outcomes = [1, 2].map(|index| ItemOutcome {
+        index,
+        decision: ItemDecision::Rejected,
+        code: reason.clone(),
+    });
+    let rejected = store.finish_order_items(record.id, &outcomes, 102, event)?;
+    assert_eq!(rejected.state, OrderState::Rejected);
+    assert!(rejected.source_code.as_str().len() < 200);
+    assert!(rejected.items.iter().all(|item| item.source_code == reason));
+    Ok(())
+}

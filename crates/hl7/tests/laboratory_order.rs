@@ -26,7 +26,7 @@ fn new_order<'a>(sample: &'a [u8], source: Code<'a>) -> Result<Order<'a>, Error>
         specimen: Specimen {
             sample: SampleId::new(sample)?,
             field: SampleField::Placer1,
-            source,
+            source: Some(source),
         },
         priority: Priority::Stat,
         timing: Timing {

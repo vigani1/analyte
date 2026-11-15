@@ -21,6 +21,8 @@ pub(crate) struct Connection {
     reserving: Vec<analyte_store::MachineOrderKey>,
     input_evidence: Vec<u8>,
     owner: analyte_model::Identifier,
+    exchange: Option<(super::hl7_send::Exchange, Instant)>,
+    cursor: String,
 }
 impl Connection {
     pub(crate) fn new(options: Options) -> Result<Self, Error> {
@@ -33,6 +35,8 @@ impl Connection {
             reserving: Vec::new(),
             input_evidence: Vec::new(),
             owner: analyte_model::Identifier::new(&uuid::Uuid::now_v7().to_string())?,
+            exchange: None,
+            cursor: String::new(),
         })
     }
     pub(crate) fn wake(&self, machine: &Machine) -> Option<Instant> {
@@ -46,16 +50,78 @@ impl Connection {
                     .receive_timeout_ms,
             )))
         });
-        match (self.awaiting.as_ref().map(|(_, until)| *until), partial) {
+        let outbound = self.exchange.as_ref().map(|(_, until)| *until);
+        let waiting = match (self.awaiting.as_ref().map(|(_, until)| *until), outbound) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, None) => a,
+            (None, b) => b,
+        };
+        match (waiting, partial) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, None) => a,
             (None, b) => b,
         }
     }
+    pub(crate) async fn idle(
+        &mut self,
+        store: &Handle,
+        machine: &Machine,
+        conn: &mut analyte_transport::Connection,
+    ) -> Result<(), Error> {
+        if self.awaiting.is_some() || self.exchange.is_some() || !self.decoder.pending().is_empty()
+        {
+            return Ok(());
+        }
+        if let Some(exchange) = super::hl7_send::next(
+            store,
+            machine,
+            &self.owner,
+            self.options,
+            &mut self.cursor,
+            &mut self.reserving,
+        )
+        .await?
+        {
+            let wait = machine
+                .snapshot
+                .effective()
+                .machine()
+                .orders
+                .as_ref()
+                .and_then(|orders| orders.hl7_send.as_ref())
+                .ok_or("send settings")?
+                .response_ms;
+            let until = Instant::now()
+                .checked_add(Duration::from_millis(u64::from(wait)))
+                .ok_or("HL7 response deadline overflow")?;
+            self.exchange = Some((exchange, until));
+            self.reserving.clear();
+            let message = self
+                .exchange
+                .as_ref()
+                .ok_or("exchange absent")?
+                .0
+                .message
+                .message();
+            write(conn, message.raw(), self.options, until).await?;
+        }
+        Ok(())
+    }
     pub(crate) fn consumed(&mut self) {
         self.input_evidence.clear();
     }
     pub(crate) async fn tick(&mut self, store: &Handle, machine: &Machine) -> Result<(), Error> {
+        if self
+            .exchange
+            .as_ref()
+            .is_some_and(|(_, until)| Instant::now() >= *until)
+        {
+            if let Some((exchange, _)) = &self.exchange {
+                super::hl7_send::finish(store, exchange, None, "HL7-order-response-timeout")
+                    .await?;
+            }
+            self.exchange = None;
+        }
         if self
             .awaiting
             .as_ref()
@@ -88,12 +154,26 @@ impl Connection {
             if let Some(order) = store
                 .request(deadline(), move |store| store.machine_order(&identity))
                 .await?
-                && order.reserved_by(&self.owner)
+                && (order.reserved_by(&self.owner) || order.cancel_requested_by(&self.owner))
                 && !self.active.iter().any(|active| active.id == order.id)
             {
                 self.active.push(order);
             }
         }
+        if let Some((exchange, _)) = &self.exchange {
+            super::hl7_send::finish(
+                store,
+                exchange,
+                None,
+                if code == "HL7-DSR-disconnect" {
+                    "HL7-order-disconnect"
+                } else {
+                    "HL7-order-session-error"
+                },
+            )
+            .await?;
+        }
+        self.exchange = None;
         self.outcome(store, code, false).await?;
         if !self.input_evidence.is_empty() {
             evidence::park_bytes(
@@ -124,7 +204,23 @@ impl Connection {
                         .ok_or(analyte_store::Error::Corruption)?;
                     // A cancelled wait may have committed its outcome. Do not emit a
                     // second event or turn an already confirmed Sent back into uncertainty.
-                    if current.state == analyte_model::OrderState::Sending {
+                    if current.state == analyte_model::OrderState::CancelRequested {
+                        let outcomes = current
+                            .items
+                            .iter()
+                            .map(|item| analyte_store::ItemOutcome {
+                                index: item.index,
+                                decision: analyte_store::ItemDecision::Uncertain,
+                                code: code.clone(),
+                            })
+                            .collect::<Vec<_>>();
+                        store.finish_order_items(
+                            current.id,
+                            &outcomes,
+                            jiff::Timestamp::now().as_second(),
+                            super::event,
+                        )?;
+                    } else if current.state == analyte_model::OrderState::Sending {
                         store.transition_order(
                             current.id,
                             if sent {
@@ -177,6 +273,25 @@ impl Connection {
                             && let Ok(header) = Msh::new(&message)
                         {
                             let kind = header.message_type().next();
+                            if matches!(kind, Some(b"ORR" | b"ORL")) && self.exchange.is_some() {
+                                evidence::receive(store, machine, ReceiptId::new(), raw.clone())
+                                    .await?;
+                                let (exchange, until) =
+                                    self.exchange.as_ref().ok_or("HL7 order exchange absent")?;
+                                super::hl7_send::finish(
+                                    store,
+                                    exchange,
+                                    if Instant::now() < *until {
+                                        Some(&message)
+                                    } else {
+                                        None
+                                    },
+                                    "HL7-order-response-timeout",
+                                )
+                                .await?;
+                                self.exchange = None;
+                                continue;
+                            }
                             if kind == Some(b"QRY") {
                                 let receipt = ReceiptId::new();
                                 evidence::receive(store, machine, receipt, raw.clone()).await?;
@@ -314,6 +429,7 @@ impl Connection {
             }
         };
         if self.awaiting.is_none()
+            && self.exchange.is_none()
             && Instant::now() < until
             && let Some(sample) = selected
         {

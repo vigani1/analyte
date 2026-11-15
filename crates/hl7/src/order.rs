@@ -14,7 +14,7 @@ mod wire;
 pub use laboratory::SpecimenResponse;
 pub use response::{Decision, OrderResponse, Outcome};
 pub use types::*;
-pub use wire::{oml, orm};
+pub use wire::{context, oml, orm};
 
 /// A located failure that never includes patient/order payloads in its display.
 #[derive(Debug, Error, PartialEq, Eq)]

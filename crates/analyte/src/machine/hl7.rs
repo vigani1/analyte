@@ -46,8 +46,7 @@ pub(super) async fn session(
         .machine()
         .orders
         .as_ref()
-        .and_then(|o| o.hl7.as_ref())
-        .is_some();
+        .is_some_and(|o| o.hl7.is_some() || o.hl7_send.is_some());
     let mut queries = if enabled {
         Some(crate::orders::hl7::Connection::new(options)?)
     } else {
@@ -213,6 +212,7 @@ pub(super) async fn session(
             }
             if let Some(query) = &mut queries {
                 query.consumed();
+                tokio::select! {biased; ()=super::stopping(&mut stop)=>break,result=query.idle(store,machine,conn)=>result?,}
             }
         }
         // Disconnect exposes any partial block as protected rejection evidence.

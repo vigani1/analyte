@@ -3,6 +3,8 @@
 mod autolyser_cases;
 #[path = "orders/hl7.rs"]
 mod hl7_order_cases;
+#[path = "orders/hl7_send.rs"]
+mod hl7_send_cases;
 #[path = "orders/cases.rs"]
 mod order_cases;
 mod support;

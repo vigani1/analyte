@@ -1,6 +1,7 @@
 //! Host-owned order lookup, command reservation and operator reconciliation.
 pub(crate) mod astm;
 pub(crate) mod hl7;
+mod hl7_send;
 mod operator;
 pub(crate) mod sending;
 use crate::{Error, config::Machine};

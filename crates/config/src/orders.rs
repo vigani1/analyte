@@ -125,6 +125,32 @@ pub struct Hl7OrderQuery {
     pub acknowledgment_ms: u32,
 }
 
+/// Explicit unsolicited HL7 order interface; edition selects ORM or OML.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Hl7Send {
+    /// Outgoing MSH-3.
+    pub application: Identifier,
+    /// Outgoing MSH-5.
+    pub peer_application: Identifier,
+    /// Outgoing MSH-4, empty if absent.
+    pub facility: Option<Identifier>,
+    /// Outgoing MSH-6, empty if absent.
+    pub peer_facility: Option<Identifier>,
+    /// Explicit MSH-11 P, T or D.
+    pub processing: Identifier,
+    /// Application response deadline, also used for cancellation.
+    pub response_ms: u32,
+    /// ORM specimen placement: OBR-18 or OBR-19; OML uses SPM-2.
+    pub sample_field: u16,
+    /// Optional other placer-owned field for the supplied slot (ORM only).
+    pub position_field: Option<u16>,
+    /// Coding system for mapped specimen types, never inferred from a test.
+    pub specimen_system: Option<Identifier>,
+    /// Explicit coding-system version where required by SPM-4 CWE.
+    pub specimen_version: Option<Identifier>,
+}
+
 /// Opt-in outbound order capability. Nothing is sent by its absence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -148,11 +174,17 @@ pub struct Orders {
     pub astm: Option<AstmOrderFields>,
     /// Explicit legacy HL7 query layout and acknowledgment deadline.
     pub hl7: Option<Hl7OrderQuery>,
+    /// Required EI.2 for per-test HL7 identities.
+    pub placer_namespace: Option<Identifier>,
+    /// Explicit send-ahead and cancellation interface.
+    pub hl7_send: Option<Hl7Send>,
 }
 
 impl Orders {
     fn validate_stack(&self, machine: &Machine, path: &str) -> Result<(), Error> {
-        if machine.syntax.kind != SyntaxKind::Hl7V2 && self.hl7.is_some() {
+        if machine.syntax.kind != SyntaxKind::Hl7V2
+            && (self.hl7.is_some() || self.hl7_send.is_some() || self.placer_namespace.is_some())
+        {
             return Err(invalid(
                 path,
                 "orders.hl7",
@@ -239,6 +271,86 @@ impl Orders {
     }
 
     fn validate_hl7(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+        if self.astm.is_some()
+            || self.clone.is_some()
+            || self.send_ahead != self.hl7_send.is_some()
+            || self.query.is_some() != self.hl7.is_some()
+        {
+            return Err(invalid(
+                path,
+                "orders",
+                "declare each HL7 capability and its own layout explicitly",
+            ));
+        }
+        if let Some(send) = &self.hl7_send {
+            let plain = |value: &Identifier| {
+                value.as_str().is_ascii()
+                    && value
+                        .as_str()
+                        .bytes()
+                        .all(|b| !b.is_ascii_control() && !b"|^~\\&".contains(&b))
+            };
+            if self
+                .placer_namespace
+                .as_ref()
+                .is_none_or(|namespace| !plain(namespace) || namespace.as_str().len() > 18)
+            {
+                return Err(invalid(
+                    path,
+                    "orders.placer_namespace",
+                    "HL7 send-ahead requires a plain EI namespace fitting the 22-byte identity",
+                ));
+            }
+            if ![&send.application, &send.peer_application]
+                .into_iter()
+                .all(|value| plain(value) && value.as_str().len() <= 20)
+                || [&send.facility, &send.peer_facility]
+                    .into_iter()
+                    .flatten()
+                    .any(|value| !plain(value) || value.as_str().len() > 20)
+                || !matches!(send.processing.as_str(), "P" | "T" | "D")
+                || !(1..=60_000).contains(&send.response_ms)
+            {
+                return Err(invalid(
+                    path,
+                    "orders.hl7_send",
+                    "supply explicit bounded headers, processing and response deadline",
+                ));
+            }
+            if !matches!(send.sample_field, 18 | 19)
+                || send.position_field.is_some_and(|field| {
+                    !matches!(field, 18 | 19)
+                        || field == send.sample_field
+                        || machine.syntax.edition != Some(crate::Edition::V231)
+                })
+            {
+                return Err(invalid(
+                    path,
+                    "orders.hl7_send.position_field",
+                    "ORM position must use the other placer field; OML position is not supported",
+                ));
+            }
+            if self.tests.iter().any(|test| {
+                test.machine_components.len() != 3
+                    || test.machine_components.first().is_none_or(String::is_empty)
+                    || test.machine_components.get(2).is_none_or(String::is_empty)
+            }) {
+                return Err(invalid(
+                    path,
+                    "orders.tests",
+                    "HL7 orders require explicit code, text and coding system components",
+                ));
+            }
+        } else if self.placer_namespace.is_some() {
+            return Err(invalid(
+                path,
+                "orders.placer_namespace",
+                "a placer namespace belongs to HL7 send-ahead",
+            ));
+        }
+        if self.query.is_none() {
+            return Ok(());
+        }
         let layout = self.hl7.as_ref().ok_or_else(|| {
             invalid(
                 path,
@@ -246,7 +358,7 @@ impl Orders {
                 "supply explicit HL7 query selectors, DSP layout and ACK deadline",
             )
         })?;
-        if self.send_ahead || self.query.is_none() || self.astm.is_some() || self.clone.is_some() {
+        if self.query.is_none() || self.astm.is_some() || self.clone.is_some() {
             return Err(invalid(
                 path,
                 "orders",
@@ -365,7 +477,7 @@ impl Orders {
             return Err(invalid(path,"orders.hl7.lines","supply 1 to 128 plain DSP lines including sample_id and test_code"));
         }
         if layout.lines.iter().any(|l| matches!(l, DsrLine::PatientId))
-            != self.patient_namespace.is_some()
+            && self.patient_namespace.is_none()
         {
             return Err(invalid(
                 path,
@@ -373,7 +485,11 @@ impl Orders {
                 "supply a namespace exactly when patient_id is mapped",
             ));
         }
-        if self.tests.iter().any(|t| t.machine_components.len() != 1) {
+        if self
+            .tests
+            .iter()
+            .any(|t| t.machine_components.len() != if self.send_ahead { 3 } else { 1 })
+        {
             return Err(invalid(
                 path,
                 "orders.tests",
