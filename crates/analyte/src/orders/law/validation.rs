@@ -94,7 +94,7 @@ pub(crate) async fn check(
                 if let Some(mismatch) = compare_retained(
                     &original,
                     item.placer.as_str(),
-                    ReturnedWork {
+                    &ReturnedWork {
                         specimen,
                         container,
                         segment,
@@ -125,10 +125,10 @@ struct ReturnedWork<'a> {
 fn compare_retained(
     original: &Message,
     placer: &str,
-    returned: ReturnedWork<'_>,
+    returned: &ReturnedWork<'_>,
     unknown: Mismatch,
 ) -> Option<Mismatch> {
-    let ReturnedWork {
+    let &ReturnedWork {
         specimen,
         container,
         segment,
