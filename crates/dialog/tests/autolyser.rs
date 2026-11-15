@@ -1,10 +1,8 @@
 //! Synthetic Rev18 protocol and safety regressions.
-use analyte_autolyser::{
-    dialog::{
-        Action, Config, Dialog, Error as DialogError, Event, InsertionError, Reception, Recovery,
-        Request,
-    },
-    records::*,
+use analyte_autolyser::records::*;
+use analyte_dialog::autolyser::{
+    Action, Config, Dialog, Error as DialogError, Event, InsertionError, Reception, Recovery,
+    Request,
 };
 use proptest::prelude::*;
 use std::time::Duration;

@@ -1,10 +1,10 @@
 //! VIDAS upload custody, with installed checksum, suffix and timer policy.
 use super::vendor::{self, Input, ms};
 use crate::{Error, evidence, invalid};
+use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_vidas::{
-    dialog::{Action, Dialog, Event, Policy, Timer},
     framing::{Config, Decoder},
     syntax::Message,
 };
@@ -278,7 +278,8 @@ async fn process_inline(
                             evidence::vendor_reading(store, machine, id, reading).await?;
                         }
                         Err(error) => {
-                            evidence::failed_reading(store, 
+                            evidence::failed_reading(
+                                store,
                                 machine,
                                 id,
                                 &format!("VIDAS interpretation: {error}"),

@@ -107,7 +107,7 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-store`     | Local storage (SQLite), outbox, audit                        |
 | `analyte-transport` | Serial, TCP, folder                                          |
 | `analyte-framing`   | ASTM frames, MLLP, start/end + checksum, lines               |
-| `analyte-dialog`    | Conversation state machines                                  |
+| `analyte-dialog`    | ASTM, HL7, LAW, POCT, VIDAS and Autolyser conversations                                  |
 | `analyte-astm`      | ASTM record syntax                                           |
 | `analyte-hl7`       | HL7 v2 syntax, acknowledgments, LAW transactions             |
 | `analyte-config`    | Machine config files (TOML), validation, versions            |
@@ -121,7 +121,7 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-receiver`  | Reference receiver: a small app that implements the contract |
 | `analyte`           | The program: service, CLI, admin page                        |
 
-Vendor formats and POCT1-A have their own crates, so a new vendor format is a
+Vendor syntax and POCT1-A have their own crates, so a new vendor format is a
 new crate rather than a change to a shared one.
 
 ## 6. Common model

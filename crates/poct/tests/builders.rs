@@ -58,7 +58,14 @@ fn poct01_project_builder_limits_and_explicit_offset() -> Result<(), MessageErro
     limits.message_bytes = 10;
     assert!(build(&header, &Outbound::RequestObservations, limits).is_err());
     header.created = Timestamp::parse("2026-06-09T08:00:00")?;
-    assert!(build(&header, &Outbound::RequestObservations, peer_messages::limits()).is_err());
+    assert!(
+        build(
+            &header,
+            &Outbound::RequestObservations,
+            peer_messages::limits()
+        )
+        .is_err()
+    );
     // Exercise the shared peer fixtures in each integration-test module, so the
     // compiler can also check their declarations without dead-code exceptions.
     for raw in [
@@ -77,7 +84,11 @@ fn poct01_b_5_7_builder_honors_exact_device_receive_size() -> Result<(), Message
         control_id: ControlId::new("synthetic-&-id")?,
         created: Timestamp::parse("2026-03-12T09:41:02+01:00")?,
     };
-    let built = build(&header, &Outbound::RequestObservations, peer_messages::limits())?;
+    let built = build(
+        &header,
+        &Outbound::RequestObservations,
+        peer_messages::limits(),
+    )?;
     let mut limits = peer_messages::limits();
     limits.message_bytes = built.document().raw().len();
     assert_eq!(

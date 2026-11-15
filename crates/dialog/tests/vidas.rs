@@ -1,6 +1,6 @@
 //! Synthetic tests traced to the vendor research notes, not vendor captures.
+use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_vidas::{
-    dialog::{Action, Dialog, Event, Policy, Timer},
     framing::{Checksum, Config, Decoder, Mode},
     syntax::{Message, SampleLimit},
 };

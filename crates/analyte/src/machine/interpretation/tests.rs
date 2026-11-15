@@ -195,7 +195,7 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     Ok(())
 }
 
-#[path = "../../../../poct/tests/common/mod.rs"]
+#[path = "../../../../poct/tests/peer_messages.rs"]
 mod poct_peer;
 
 #[tokio::test]

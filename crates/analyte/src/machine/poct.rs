@@ -1,11 +1,9 @@
 //! POCT01-A2 DML reviewer with durable custody before every acceptance.
 use super::vendor::{self, Input, ms};
 use crate::{Error, evidence, invalid};
+use analyte_dialog::poct::{CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent};
 use analyte_model::ReceiptId;
-use analyte_poct::{
-    Body, CommitOutcome, ControlId, Dialog, DialogAction, DialogConfig, DialogEvent, Header,
-    Message, Timestamp,
-};
+use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
 use std::{
     collections::VecDeque,
@@ -247,7 +245,8 @@ async fn process(
                                     evidence::vendor_reading(store, machine, id, reading).await?;
                                 }
                                 Err(error) => {
-                                    evidence::failed_reading(store, 
+                                    evidence::failed_reading(
+                                        store,
                                         machine,
                                         id,
                                         &format!("POCT interpretation: {error}"),

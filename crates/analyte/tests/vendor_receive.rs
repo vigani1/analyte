@@ -1,7 +1,7 @@
 //! Synthetic program-to-peer custody tests, ADR 0003 and documented vendor scopes.
 #[path = "support/guard.rs"]
 mod guard;
-#[path = "../../poct/tests/common/mod.rs"]
+#[path = "../../poct/tests/peer_messages.rs"]
 mod poct_peer;
 use analyte::{Error, config::Program, service};
 use analyte_store::FreeSpace;

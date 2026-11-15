@@ -203,4 +203,7 @@ raise the documented evidence level or close the unchecked conformance gates.
 Common-model observation conversion and configured code/identity mapping now live
 in `analyte-mapping` (`poct::map_observations` and `map_poct`). The mapping tests
 are in `crates/mapping/tests/poct.rs`, with their original assertions unchanged.
-This crate retains POCT syntax, dialogs and source-evidence duplicate comparison.
+This crate retains POCT syntax and source-evidence duplicate comparison.
+
+Conversation state and deadline policy live in `analyte-dialog`, in `src/poct.rs`.
+Conversation tests live in `crates/dialog/tests/poct.rs`.

@@ -99,3 +99,6 @@ response clears it; corrupt input keeps it through L recovery. An empty L does
 not clear it. Disconnect or restart with an open guard blocks further R requests
 until an operator reconciles and resolves that guard. This prevents a new session
 from silently advancing a cursor whose previous outcome is uncertain.
+
+Conversation state and deadline policy live in `analyte-dialog`, in `src/autolyser.rs`.
+Conversation tests live in `crates/dialog/tests/autolyser.rs`.

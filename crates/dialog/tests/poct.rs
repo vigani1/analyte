@@ -1,9 +1,10 @@
 //! Appendix B sections 3, 4 and 9 deterministic reviewer conversation tests.
-mod peer_messages;
-use analyte_poct::{
-    ApplicationError, CommitId, CommitOutcome, ControlId, Dialog, DialogAction, DialogConfig,
-    DialogError, DialogEvent, Message, Outbound,
+use analyte_dialog::poct::{
+    CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogError, DialogEvent,
 };
+#[path = "../../poct/tests/peer_messages.rs"]
+mod peer_messages;
+use analyte_poct::{ApplicationError, ControlId, Message, Outbound};
 use std::time::Duration;
 
 fn dialog(capacity: usize) -> Result<Dialog, DialogError> {
@@ -111,7 +112,10 @@ fn poct01_b_4_1_2_startup_and_rejection_in_sequence() -> Result<(), DialogError>
             .any(|a| matches!(a, DialogAction::Close { normal: false, .. }))
     );
     let mut early_status = dialog(2)?;
-    let actions = step(&mut early_status, received(&peer_messages::status("s", "0"))?)?;
+    let actions = step(
+        &mut early_status,
+        received(&peer_messages::status("s", "0"))?,
+    )?;
     assert!(matches!(
         sends(&actions).as_slice(),
         [Outbound::Escape { .. }, Outbound::Terminate(_)]
@@ -270,7 +274,10 @@ fn poct01_b_4_1_11_remote_end_waits_for_prior_custody() -> Result<(), DialogErro
     let end = peer_messages::message(
         "END.R01",
         "end",
-        &format!("<TRM>{}</TRM>", peer_messages::field("TRM.reason_cd", "USR")),
+        &format!(
+            "<TRM>{}</TRM>",
+            peer_messages::field("TRM.reason_cd", "USR")
+        ),
     );
     let end = ticket(&step(&mut dialog, received(&end)?)?)?;
     assert!(sends(&complete(&mut dialog, end, CommitOutcome::Stored)?).is_empty());

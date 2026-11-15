@@ -35,7 +35,8 @@ fn key(run: &str, revision: u64) -> Result<ObservationKey, analyte_model::TextEr
 }
 
 fn evidence(id: &str, value: &str) -> Result<ObservationEvidence, Box<dyn std::error::Error>> {
-    let raw = peer_messages::observation(id, true, &format!("<OBS.value V=\"{value}\" U=\"unit\"/>"));
+    let raw =
+        peer_messages::observation(id, true, &format!("<OBS.value V=\"{value}\" U=\"unit\"/>"));
     let message = Message::parse(raw.as_bytes(), peer_messages::limits())?;
     observation_evidence(&message)?
         .into_iter()
@@ -160,7 +161,10 @@ fn poct01_b_3_2_resend_reason_and_attribute_order_are_not_new_results() -> TestR
         );
     assert_eq!(
         observation_evidence(&Message::parse(raw.as_bytes(), peer_messages::limits())?)?,
-        observation_evidence(&Message::parse(retransmitted.as_bytes(), peer_messages::limits())?)?
+        observation_evidence(&Message::parse(
+            retransmitted.as_bytes(),
+            peer_messages::limits()
+        )?)?
     );
     Ok(())
 }

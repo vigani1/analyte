@@ -1,5 +1,5 @@
 //! Per-connection reviewer dialog: events in, ordered host actions out, no I/O.
-use crate::{
+use analyte_poct::{
     AckKind, ApplicationError, Body, Capabilities, ControlId, EscapeReason, Message, Nullable,
     Outbound, TerminationReason,
 };
@@ -42,7 +42,7 @@ pub enum DialogError {
     State,
     /// Session ID is invalid.
     #[error(transparent)]
-    Identity(#[from] crate::MessageError),
+    Identity(#[from] analyte_poct::MessageError),
 }
 
 /// A store-operation identity scoped by the host's session identity.
@@ -497,16 +497,16 @@ impl Dialog {
                             supported = false;
                         }
                     }
-                    Nullable::Null(crate::Null::PositiveInfinity) => {}
+                    Nullable::Null(analyte_poct::Null::PositiveInfinity) => {}
                     Nullable::Null(
-                        crate::Null::NoInformation
-                        | crate::Null::NotApplicable
-                        | crate::Null::Unknown
-                        | crate::Null::NotAsked
-                        | crate::Null::AskedUnknown
-                        | crate::Null::NotAvailable
-                        | crate::Null::Other
-                        | crate::Null::NegativeInfinity,
+                        analyte_poct::Null::NoInformation
+                        | analyte_poct::Null::NotApplicable
+                        | analyte_poct::Null::Unknown
+                        | analyte_poct::Null::NotAsked
+                        | analyte_poct::Null::AskedUnknown
+                        | analyte_poct::Null::NotAvailable
+                        | analyte_poct::Null::Other
+                        | analyte_poct::Null::NegativeInfinity,
                     ) => supported = false,
                 }
             }

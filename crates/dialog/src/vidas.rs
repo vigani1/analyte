@@ -2,8 +2,8 @@
 //! Host owns byte journaling, storage, timer generations and cancellation.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
-use crate::framing::{Config, Mode, Packet};
-use crate::syntax::{Kind, Message};
+use analyte_vidas::framing::{Config, Mode, Packet};
+use analyte_vidas::syntax::{Kind, Message};
 use std::time::Duration;
 
 /// Required site timing/retry evidence; no ASTM constants or defaults.
@@ -93,7 +93,7 @@ pub enum Error {
     Request,
     /// Packet encoding failed.
     #[error(transparent)]
-    Framing(#[from] crate::framing::Error),
+    Framing(#[from] analyte_vidas::framing::Error),
 }
 
 /// Deterministic state machine; one transfer identity per instance.

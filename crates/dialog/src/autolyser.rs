@@ -1,5 +1,5 @@
 //! Pure host-driven conversation (Rev18 pp.175–179); host owns I/O and deadlines.
-use crate::records::{self, Report, Worklist};
+use analyte_autolyser::records::{self, Report, Worklist};
 use std::time::Duration;
 use thiserror::Error;
 

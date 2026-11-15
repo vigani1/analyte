@@ -3,6 +3,5 @@
 //! Hosts must journal every incoming byte before decoding, including rejected input.
 #![forbid(unsafe_code)]
 
-pub mod dialog;
 pub mod framing;
 pub mod syntax;
