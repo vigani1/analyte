@@ -4,7 +4,7 @@ use crate::{
     startup::{Startup, StartupStep},
 };
 use rusqlite::Connection;
-use std::{path::Path, time::Duration};
+use std::path::Path;
 
 impl Store {
     /// Opens, checks integrity, and applies forward-only migrations before accepting writes.
@@ -37,13 +37,7 @@ impl Store {
         startup: &Startup,
     ) -> Result<Self, Error> {
         startup.check()?;
-        if limits.record_bytes == 0
-            || limits.page_rows == 0
-            || limits.busy_timeout.is_zero()
-            || limits.busy_timeout > Duration::from_secs(30)
-        {
-            return Err(Error::InvalidInput);
-        }
+        limits.validate()?;
         let lock = Self::lock(path, false)?;
         if path.with_extension("restore-pending").exists() {
             return Err(Error::Conflict);
