@@ -157,14 +157,7 @@ fn law_observation(
     } else {
         namespace.or_else(|| {
             if field == 2 {
-                match &config
-                    .effective()
-                    .machine()
-                    .mappings
-                    .as_ref()?
-                    .identity
-                    .order_namespace
-                {
+                match &crate::field_mappings(config).ok()?.identity.order_namespace {
                     OrderNamespace::Fixed { fixed } => Some(fixed.as_str().to_owned()),
                     OrderNamespace::Field { .. } => None,
                 }

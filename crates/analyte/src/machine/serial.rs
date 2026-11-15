@@ -43,12 +43,13 @@ impl Owner {
 pub(super) async fn run(
     machine: &Machine,
     store: &Handle,
-    serial: &analyte_config::Serial,
+    link: super::settings::SerialLink<'_>,
     limits: Limits,
     stop: watch::Receiver<bool>,
     mut closing: super::Closing,
     capture: Option<&crate::capture::Capture>,
 ) -> Result<(), Error> {
+    let serial = link.settings;
     let parity = match serial.parity {
         analyte_config::Parity::None => serialport::Parity::None,
         analyte_config::Parity::Odd => serialport::Parity::Odd,
@@ -89,7 +90,7 @@ pub(super) async fn run(
         thread: Some(thread),
     };
     let result = loop {
-        let result = super::session(machine, store, &mut conn, stop.clone()).await;
+        let result = super::session(machine, link.session, store, &mut conn, stop.clone()).await;
         if result.is_err() || *stop.borrow() {
             break result;
         }

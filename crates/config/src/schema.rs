@@ -503,7 +503,7 @@ pub struct Evidence {
 /// Shipped definition contains protocol and mapping rules only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Machine {
+pub(crate) struct MachineDocument {
     /// Required only for the LAW Analyzer Manager stack.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub law: Option<crate::Law>,
@@ -710,28 +710,6 @@ pub struct Autolyser {
     pub recover_last_on_poll: bool,
     /// Permit explicit worklist downloads.
     pub download: bool,
-}
-
-impl Machine {
-    /// Returns the single configured test table, for either mapping family.
-    #[must_use]
-    pub fn tests(&self) -> &[TestMapping] {
-        match (&self.mappings, &self.codes) {
-            (Some(mapping), None) => &mapping.tests,
-            (None, Some(codes)) => &codes.tests,
-            (None, None) | (Some(_), Some(_)) => &[],
-        }
-    }
-
-    /// Returns the single configured unit table, for either mapping family.
-    #[must_use]
-    pub fn units(&self) -> &[UnitMapping] {
-        match (&self.mappings, &self.codes) {
-            (Some(mapping), None) => &mapping.units,
-            (None, Some(codes)) => &codes.units,
-            (None, None) | (Some(_), Some(_)) => &[],
-        }
-    }
 }
 
 /// Exact source codes for dilution application; all other values stay unknown.

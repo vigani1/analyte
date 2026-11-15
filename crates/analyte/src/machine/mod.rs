@@ -18,7 +18,7 @@ use crate::{Error, config::Machine, invalid};
 use analyte_config::TcpRole;
 use analyte_store::Handle;
 use analyte_transport::{Backoff, Limits, connection};
-use settings::Link;
+use settings::{Link, Session};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 
@@ -52,6 +52,7 @@ pub(crate) async fn run(
     match link {
         Link::Tcp {
             role: TcpRole::Server,
+            session,
             ..
         } => {
             let listener = match machine.listener.take() {
@@ -70,7 +71,7 @@ pub(crate) async fn run(
                     None => side,
                 };
                 let cancel = conn.cancellation();
-                let processing = drive(&machine, &store, conn, stop.clone(), &mut closing);
+                let processing = drive(&machine, session, &store, conn, stop.clone(), &mut closing);
                 let transport = analyte_transport::tcp::pump(accepted.0, side);
                 // Drain ordered received/closed events even if the I/O owner finishes first.
                 let (result, transport) = tokio::join!(processing, transport);
@@ -86,6 +87,7 @@ pub(crate) async fn run(
         }
         Link::Tcp {
             role: TcpRole::Client,
+            session,
             ..
         } => loop {
             let (conn, side) = connection(limits);
@@ -96,7 +98,7 @@ pub(crate) async fn run(
             let cancel = conn.cancellation();
             let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
             let (result, transport) = tokio::join!(
-                drive(&machine, &store, conn, stop.clone(), &mut closing),
+                drive(&machine, session, &store, conn, stop.clone(), &mut closing),
                 transport
             );
             // drive cancels the I/O owner and drops its consumer after session cleanup.
@@ -119,11 +121,11 @@ pub(crate) async fn run(
                 () = tokio::time::sleep(Duration::from_millis(100)) => {}
             }
         },
-        Link::Serial { settings, .. } => {
+        Link::Serial(link) => {
             serial::run(
                 &machine,
                 &store,
-                settings,
+                link,
                 limits,
                 stop,
                 closing,
@@ -156,33 +158,21 @@ fn retry() -> Result<Backoff, Error> {
 
 async fn session(
     machine: &Machine,
+    selected: Session<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     let context = crate::evidence::Connection::new(machine)?;
     let machine = &context;
-    match machine.snapshot.effective().stack() {
-        analyte_config::Stack::Astm(settings) => {
-            astm::session(machine, settings, store, conn, stop).await
-        }
-        analyte_config::Stack::Hl7(settings) => {
-            hl7::session(machine, settings, store, conn, stop).await
-        }
-        analyte_config::Stack::Law(settings) => {
-            law::session(machine, settings, store, conn, stop).await
-        }
-        analyte_config::Stack::Poct(settings) => {
-            poct::session(machine, settings, store, conn, stop).await
-        }
-        analyte_config::Stack::VidasLiteral(settings) => {
-            vidas::session(machine, settings, store, conn, stop).await
-        }
-        analyte_config::Stack::Autolyser(settings) => {
+    match selected {
+        Session::Astm(settings) => astm::session(machine, settings, store, conn, stop).await,
+        Session::Hl7(settings) => hl7::session(machine, settings, store, conn, stop).await,
+        Session::Law(settings) => law::session(machine, settings, store, conn, stop).await,
+        Session::Poct(settings) => poct::session(machine, settings, store, conn, stop).await,
+        Session::Vidas(settings) => vidas::session(machine, settings, store, conn, stop).await,
+        Session::Autolyser(settings) => {
             autolyser::session(machine, settings, store, conn, stop).await
-        }
-        analyte_config::Stack::FileAstm(_) | analyte_config::Stack::FileHl7(_) => {
-            Err(invalid("file pickup dialog is not wired"))
         }
     }
 }
@@ -196,12 +186,13 @@ pub(crate) async fn stopping(stop: &mut watch::Receiver<bool>) {
 
 async fn drive(
     machine: &Machine,
+    selected: Session<'_>,
     store: &Handle,
     mut conn: analyte_transport::Connection,
     stop: watch::Receiver<bool>,
     closing: &mut Closing,
 ) -> Result<(), Error> {
-    let result = session(machine, store, &mut conn, stop.clone()).await;
+    let result = session(machine, selected, store, &mut conn, stop.clone()).await;
     if *stop.borrow() {
         closing.after_commits().await?;
     }

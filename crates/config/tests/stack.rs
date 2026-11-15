@@ -74,26 +74,20 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
         let validated = load(&machine, &site, "schema_version=1")?;
         assert_eq!(variant(validated.effective().stack()), expected, "{name}");
         let raw = validated.effective().machine();
-        // The parallel runtime representation must not alter protected config bytes.
-        let old_layout = toml::Value::Table(toml::Table::from_iter([
-            ("schema_version".into(), toml::Value::Integer(1)),
-            ("machine".into(), toml::Value::try_from(raw)?),
-            (
-                "site".into(),
-                toml::Value::try_from(validated.effective().site())?,
-            ),
-        ]));
-        assert!(
-            toml::Value::try_from(validated.effective())?
-                .get("stack")
-                .is_none()
-        );
         let canonical: toml::Value = toml::from_str(validated.canonical())?;
-        assert_eq!(canonical.get("machine"), Some(&toml::Value::try_from(raw)?));
-        assert_eq!(toml::to_string(&old_layout)?, validated.canonical());
+        assert!(canonical.get("stack").is_none());
+        assert_eq!(toml::Value::try_from(validated.effective())?, canonical);
+        let original: toml::Value = toml::from_str(&machine)?;
         match validated.effective().stack() {
             Stack::Astm(stack) => {
-                assert_eq!(stack.frame_limit, raw.framing.limit);
+                assert_eq!(
+                    Some(stack.frame_limit),
+                    original
+                        .get("framing")
+                        .and_then(|f| f.get("limit"))
+                        .and_then(toml::Value::as_integer)
+                        .and_then(|n| usize::try_from(n).ok())
+                );
                 assert_eq!(stack.mappings.tests.len(), raw.tests().len());
                 assert!(matches!(stack.transport, StreamTransport::Serial { .. }));
                 assert_eq!(stack.orders.is_some(), name == "orders.toml");

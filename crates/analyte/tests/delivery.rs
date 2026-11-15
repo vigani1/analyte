@@ -599,7 +599,8 @@ async fn lis01_hl7_251_adr0003_recordings_deliver_once_and_store_before_ack() ->
             .ok_or("machine absent")?
             .snapshot()
             .effective();
-        let deadline = Duration::from_millis(u64::from(settings.machine().dialog.send_timeout_ms));
+        let deadline =
+            Duration::from_millis(u64::from(settings.stack().timeouts().send_timeout_ms));
         let mut peer = connect(&path, name).await?;
         if name == "astm" {
             analyte_sim::replay(
@@ -667,7 +668,7 @@ fn recording_deadline(path: &Path) -> Result<Duration, Error> {
         .snapshot()
         .effective();
     Ok(Duration::from_millis(u64::from(
-        settings.machine().dialog.send_timeout_ms,
+        settings.stack().timeouts().send_timeout_ms,
     )))
 }
 

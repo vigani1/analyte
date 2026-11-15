@@ -1,5 +1,5 @@
 //! Explicit outbound settings, independent of result mappings.
-use crate::{Error, Field, Group, Machine, SyntaxKind, invalid};
+use crate::{Error, Field, Group, MachineDocument, SyntaxKind, invalid};
 use analyte_model::{Identifier, NamespacedId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -243,8 +243,8 @@ pub struct Orders {
 }
 
 impl Orders {
-    fn validate_stack(&self, machine: &Machine, path: &str) -> Result<(), Error> {
-        if machine.law.is_some() {
+    fn validate_stack(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
+        if machine.dialog.kind == crate::DialogKind::LawManager {
             return crate::law::validate_orders(machine, path, self);
         }
         if machine.syntax.kind != SyntaxKind::Hl7V2
@@ -335,7 +335,7 @@ impl Orders {
         Ok(())
     }
 
-    fn validate_hl7(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+    fn validate_hl7(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
         if self.astm.is_some()
             || self.clone.is_some()
             || self.send_ahead != self.hl7_send.is_some()
@@ -564,7 +564,7 @@ impl Orders {
     }
 
     /// Refuses ambiguous tables, unbounded queries and invalid field ownership.
-    pub(crate) fn validate(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+    pub(crate) fn validate(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
         let fail = || {
             invalid(
                 path,
@@ -726,7 +726,7 @@ impl Orders {
     }
 }
 
-fn order_field(field: &Field, number: u16, machine: &Machine) -> bool {
+fn order_field(field: &Field, number: u16, machine: &MachineDocument) -> bool {
     matches!(field.group, Group::Order)
         && field.record.as_str() == "O"
         && field.field == number

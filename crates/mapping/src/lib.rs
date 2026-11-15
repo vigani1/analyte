@@ -45,10 +45,51 @@ impl TryFrom<SyntaxKind> for FieldSyntax {
 fn field_mappings(config: &Validated) -> Result<&analyte_config::Mappings, Error> {
     config
         .effective()
-        .machine()
-        .mappings
-        .as_ref()
+        .stack()
+        .field_mappings()
         .ok_or(Error::Syntax)
+}
+
+fn is_law(config: &Validated) -> bool {
+    use analyte_config::Stack;
+    match config.effective().stack() {
+        Stack::Law(_) => true,
+        Stack::Astm(_)
+        | Stack::FileAstm(_)
+        | Stack::Hl7(_)
+        | Stack::FileHl7(_)
+        | Stack::Poct(_)
+        | Stack::VidasLiteral(_)
+        | Stack::Autolyser(_) => false,
+    }
+}
+
+fn astm_syntax(config: &Validated) -> Result<&analyte_config::AstmSyntax, Error> {
+    use analyte_config::Stack;
+    match config.effective().stack() {
+        Stack::Astm(s) => Ok(&s.syntax),
+        Stack::FileAstm(s) => Ok(&s.syntax),
+        Stack::Hl7(_)
+        | Stack::FileHl7(_)
+        | Stack::Law(_)
+        | Stack::Poct(_)
+        | Stack::VidasLiteral(_)
+        | Stack::Autolyser(_) => Err(Error::Syntax),
+    }
+}
+
+fn hl7_edition(config: &Validated) -> Result<analyte_config::Edition, Error> {
+    use analyte_config::Stack;
+    match config.effective().stack() {
+        Stack::Hl7(s) => Ok(s.syntax.edition),
+        Stack::FileHl7(s) => Ok(s.syntax.edition),
+        Stack::Law(_) => Ok(analyte_config::Edition::V251),
+        Stack::Astm(_)
+        | Stack::FileAstm(_)
+        | Stack::Poct(_)
+        | Stack::VidasLiteral(_)
+        | Stack::Autolyser(_) => Err(Error::Syntax),
+    }
 }
 
 /// Finds one exact test translation; ambiguous or absent matches remain unknown.
@@ -263,12 +304,8 @@ pub fn map_astm(
     config: &Validated,
     input: Input,
 ) -> Result<Output, Error> {
-    if FieldSyntax::try_from(config.effective().machine().syntax.kind).map_err(|_| Error::Syntax)?
-        != FieldSyntax::AstmLis02
-    {
-        return Err(Error::Syntax);
-    }
-    let settings = &config.effective().machine().syntax;
+    let syntax = astm_syntax(config)?;
+    let settings = config.effective().stack().limits();
     if message.records().len() > settings.records {
         return Err(Error::Limit {
             position: Position {
@@ -301,7 +338,7 @@ pub fn map_astm(
         }
     }
     let mut source = source::astm(message);
-    source.charset = match settings.encoding {
+    source.charset = match syntax.encoding {
         analyte_config::Encoding::Ascii => analyte_hl7::Charset::Ascii,
         analyte_config::Encoding::Latin1 => analyte_hl7::Charset::Latin1,
         analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
@@ -318,7 +355,7 @@ pub fn map_hl7(
     config: &Validated,
     input: Input,
 ) -> Result<Output, Error> {
-    if config.effective().machine().law.is_some() {
+    if is_law(config) {
         return Err(Error::Syntax);
     }
     check_hl7(message, config)?;
@@ -334,7 +371,7 @@ pub fn map_law(
     config: &Validated,
     input: Input,
 ) -> Result<Output, Error> {
-    if config.effective().machine().law.is_none() {
+    if !is_law(config) {
         return Err(Error::Syntax);
     }
     check_hl7(results.message(), config)?;
@@ -344,11 +381,6 @@ pub fn map_law(
 }
 
 fn check_hl7(message: &analyte_hl7::Message, config: &Validated) -> Result<(), Error> {
-    if FieldSyntax::try_from(config.effective().machine().syntax.kind).map_err(|_| Error::Syntax)?
-        != FieldSyntax::Hl7V2
-    {
-        return Err(Error::Syntax);
-    }
     if config
         .effective()
         .hl7_options()
@@ -356,7 +388,7 @@ fn check_hl7(message: &analyte_hl7::Message, config: &Validated) -> Result<(), E
     {
         return Err(Error::Syntax);
     }
-    let settings = &config.effective().machine().syntax;
+    let settings = config.effective().stack().limits();
     if message.raw().len() > settings.bytes || message.segments().count() > settings.records {
         return Err(Error::Limit {
             position: Position {
@@ -374,7 +406,7 @@ fn map_hl7_checked(
     config: &Validated,
     input: Input,
 ) -> Result<Output, Error> {
-    let settings = &config.effective().machine().syntax;
+    let edition = hl7_edition(config)?;
     let mut source = source::hl7(message)?;
     let version = analyte_hl7::Msh::new(message)
         .map_err(|source| Error::Hl7 {
@@ -386,14 +418,9 @@ fn map_hl7_checked(
         })?
         .version();
     if !matches!(
-        (settings.edition, version),
-        (
-            Some(analyte_config::Edition::V231),
-            analyte_hl7::Version::V231
-        ) | (
-            Some(analyte_config::Edition::V251),
-            analyte_hl7::Version::V251
-        )
+        (edition, version),
+        (analyte_config::Edition::V231, analyte_hl7::Version::V231)
+            | (analyte_config::Edition::V251, analyte_hl7::Version::V251)
     ) {
         return Err(Error::Structure {
             position: Position {

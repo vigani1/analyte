@@ -379,7 +379,7 @@ impl Stack {
         clippy::expect_used,
         reason = "private conversion runs only after validate_machine proves required sections and options"
     )]
-    pub(crate) fn from_validated(machine: &Machine) -> Self {
+    pub(crate) fn from_validated(machine: &MachineDocument) -> Self {
         let timeouts = DialogTimeouts {
             receive_timeout_ms: machine.dialog.receive_timeout_ms,
             send_timeout_ms: machine.dialog.send_timeout_ms,
@@ -779,6 +779,98 @@ impl Stack {
             Self::Poct(s) => (&s.codes.tests, &s.codes.units),
             Self::VidasLiteral(s) => (&s.codes.tests, &s.codes.units),
             Self::Autolyser(s) => (&s.codes.tests, &s.codes.units),
+        }
+    }
+}
+
+impl Stack {
+    /// Returns the selected physical transport kind for binding and evidence metadata.
+    #[must_use]
+    pub fn transport_kind(&self) -> TransportKind {
+        match self {
+            Self::Astm(s) => stream_kind(&s.transport),
+            Self::VidasLiteral(s) => stream_kind(&s.transport),
+            Self::Autolyser(s) => stream_kind(&s.transport),
+            Self::Hl7(s) => tcp_kind(s.transport.role),
+            Self::Law(s) => tcp_kind(s.transport.role),
+            Self::Poct(s) => tcp_kind(s.transport.role),
+            Self::FileAstm(_) | Self::FileHl7(_) => TransportKind::WatchedFolder,
+        }
+    }
+
+    /// Returns the configured external-operation deadline for the selected transport.
+    #[must_use]
+    pub fn operation_timeout_ms(&self) -> u32 {
+        match self {
+            Self::Astm(s) => stream_timeout(&s.transport),
+            Self::VidasLiteral(s) => stream_timeout(&s.transport),
+            Self::Autolyser(s) => stream_timeout(&s.transport),
+            Self::Hl7(s) => s.transport.operation_timeout_ms,
+            Self::Law(s) => s.transport.operation_timeout_ms,
+            Self::Poct(s) => s.transport.operation_timeout_ms,
+            Self::FileAstm(s) => s.operation_timeout_ms,
+            Self::FileHl7(s) => s.operation_timeout_ms,
+        }
+    }
+
+    /// Returns stable layer names for recording headers; never selects runtime behavior.
+    #[must_use]
+    pub fn layer_names(&self) -> [&'static str; 4] {
+        let transport = match self.transport_kind() {
+            TransportKind::Serial => "serial",
+            TransportKind::TcpClient => "tcp_client",
+            TransportKind::TcpServer => "tcp_server",
+            TransportKind::WatchedFolder => "watched_folder",
+        };
+        match self {
+            Self::Astm(_) => [transport, "astm_lis01", "astm_link", "astm_lis02"],
+            Self::Hl7(_) => [transport, "mllp", "hl7_receiver", "hl7_v2"],
+            Self::Law(_) => [transport, "mllp", "law_manager", "hl7_v2"],
+            Self::Poct(_) => [transport, "poct", "poct", "poct"],
+            Self::VidasLiteral(_) => [transport, "vidas_literal", "vidas_literal", "vidas_literal"],
+            Self::Autolyser(_) => [transport, "autolyser", "autolyser", "autolyser"],
+            Self::FileAstm(_) => [transport, "none", "file_pickup", "astm_lis02"],
+            Self::FileHl7(_) => [transport, "none", "file_pickup", "hl7_v2"],
+        }
+    }
+}
+
+fn tcp_kind(role: TcpRole) -> TransportKind {
+    match role {
+        TcpRole::Client => TransportKind::TcpClient,
+        TcpRole::Server => TransportKind::TcpServer,
+    }
+}
+fn stream_kind(transport: &StreamTransport) -> TransportKind {
+    match transport {
+        StreamTransport::Serial { .. } => TransportKind::Serial,
+        StreamTransport::Tcp { role, .. } => tcp_kind(*role),
+    }
+}
+fn stream_timeout(transport: &StreamTransport) -> u32 {
+    match transport {
+        StreamTransport::Serial {
+            operation_timeout_ms,
+            ..
+        }
+        | StreamTransport::Tcp {
+            operation_timeout_ms,
+            ..
+        } => *operation_timeout_ms,
+    }
+}
+
+impl Stack {
+    /// Returns field selectors only for record-based stacks; vendor code tables have no selectors.
+    #[must_use]
+    pub fn field_mappings(&self) -> Option<&Mappings> {
+        match self {
+            Self::Astm(s) => Some(&s.mappings),
+            Self::FileAstm(s) => Some(&s.mappings),
+            Self::Hl7(s) => Some(&s.mappings),
+            Self::FileHl7(s) => Some(&s.mappings),
+            Self::Law(s) => Some(&s.mappings),
+            Self::Poct(_) | Self::VidasLiteral(_) | Self::Autolyser(_) => None,
         }
     }
 }
