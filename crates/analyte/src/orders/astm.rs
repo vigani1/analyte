@@ -160,6 +160,7 @@ async fn answer(
     samples: Vec<SampleId>,
     until: Instant,
 ) -> Result<Option<Reply>, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
     let mut records = Vec::new();
     let mut candidates = Vec::new();
     let mut bytes = 0usize;
@@ -201,7 +202,7 @@ async fn answer(
                                             identity: &identity,
                                             version,
                                             now: jiff::Timestamp::now().as_second(),
-                                            freshness: super::FRESHNESS_SECONDS,
+                                            freshness,
                                         },
                                         reason,
                                         super::event,

@@ -10,8 +10,23 @@ async fn setup(
     edition: &str,
     ack_ms: u32,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_with_freshness(edition, ack_ms, 30).await
+}
+async fn setup_with_freshness(
+    edition: &str,
+    ack_ms: u32,
+    freshness: u64,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
+    let site = temp.path().join("hl7-site.toml");
+    std::fs::write(
+        &site,
+        format!(
+            "{}\nfreshness_seconds = {freshness}\n",
+            std::fs::read_to_string(&site)?
+        ),
+    )?;
     let file = temp.path().join("hl7.toml");
     let definition = std::fs::read_to_string(&file)?
         .replace(r#"edition = "v251""#, &format!(r#"edition = "{edition}""#));
@@ -156,11 +171,14 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
     let (_temp, path, reference, service, mut peer) = setup("v251", 3000).await?;
     send(&mut peer, &query("absent", "2.5.1")).await?;
     assert!(text(&packet(&mut peer).await?)?.contains("QAK||NF\r"));
+    reference.close().await?;
     for update in [
-        "UPDATE feed SET trusted=0",
-        "UPDATE feed SET trusted=1,polled=0",
+        "UPDATE feed SET complete=0",
+        "UPDATE feed SET complete=1,trusted=1,polled=0",
+        "DELETE FROM orders; DELETE FROM feed",
+        "INSERT INTO feed(destination,cursor,complete,trusted,polled) VALUES ('demo','c',1,1,unixepoch()); INSERT INTO audit(evidence) VALUES ('{\"action\":\"store-restore\"}')",
     ] {
-        database(&path)?.execute(update, [])?;
+        database(&path)?.execute_batch(update)?;
         send(&mut peer, &query("absent", "2.5.1")).await?;
         assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
     }
@@ -178,7 +196,6 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
         0
     );
     service.stop().await?;
-    reference.close().await?;
     Ok(())
 }
 
@@ -319,5 +336,23 @@ async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result
     }
     service.stop().await?;
     reference.close().await?;
+    Ok(())
+}
+
+// ADR 0004 / rule 9 / HL7 2.5.1 section 5.10: the configured age decides NF versus AE.
+#[tokio::test]
+async fn rule9_hl7_query_freshness_follows_destination_config() -> Result<(), Error> {
+    for (freshness, expected) in [(10, "QAK||AE\r"), (120, "QAK||NF\r")] {
+        let (_temp, path, reference, service, mut peer) =
+            setup_with_freshness("v251", 3000, freshness).await?;
+        reference.close().await?;
+        database(&path)?.execute(
+            "UPDATE feed SET polled=?1",
+            [jiff::Timestamp::now().as_second() - 50],
+        )?;
+        send(&mut peer, &query("absent", "2.5.1")).await?;
+        assert!(text(&packet(&mut peer).await?)?.contains(expected));
+        service.stop().await?;
+    }
     Ok(())
 }

@@ -791,7 +791,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
     assert_eq!(claim.earlier_attempts, 0);
     store.attempted(claim.id, &Attempt::RetryAt(20), 12)?;
     assert_eq!(store.claim(12)?.ok_or(Error::Corruption)?.id, other.id);
-    let health = store.health(&destination, 15)?;
+    let health = store.health(&destination, 15, 30)?;
     assert_eq!(
         (
             health.pending_count,
@@ -809,7 +809,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
         polled: 15,
         orders: vec![],
     })?;
-    let health = store.health(&destination, 15)?;
+    let health = store.health(&destination, 15, 30)?;
     assert_eq!(health.last_successful_poll, Some(15));
     assert!(!health.snapshot_complete);
     assert!(!health.cache_trusted);
@@ -820,9 +820,9 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
         polled: 16,
         orders: vec![],
     })?;
-    assert!(store.health(&destination, 16)?.cache_trusted);
+    assert!(store.health(&destination, 16, 30)?.cache_trusted);
     store.reset_orders(&destination)?;
-    assert!(!store.health(&destination, 16)?.cache_trusted);
+    assert!(!store.health(&destination, 16, 30)?.cache_trusted);
 
     drop(store);
     let mut store = open(&path)?;
@@ -830,7 +830,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
     assert_eq!(retry.id, event.id);
     assert_eq!(retry.earlier_attempts, 1);
     store.attempted(retry.id, &Attempt::Paused(Reason::new("credentials")?), 20)?;
-    assert!(store.health(&destination, 21)?.paused);
+    assert!(store.health(&destination, 21, 30)?.paused);
     assert!(store.claim(21)?.is_none());
     // CHECK constraints reject both kinds carrying the other's provenance.
     assert!(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','order_event','receipt',1,'o','app','o',x'00',x'00',1,'pending',0)",[]).is_err());

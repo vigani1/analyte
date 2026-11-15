@@ -15,7 +15,16 @@ pub(crate) async fn reserve_query(
     until: std::time::Instant,
     active: &mut Vec<MachineOrder>,
 ) -> Result<Option<Vec<Vec<u8>>>, Error> {
-    if !reserve_candidates(store, reply.candidates, until, active, None).await? {
+    if !reserve_candidates(
+        store,
+        reply.candidates,
+        until,
+        active,
+        None,
+        machine.destination_limits.freshness.as_secs(),
+    )
+    .await?
+    {
         return Ok(super::astm::failure(machine).map(|reply| reply.records));
     }
     Ok(Some(reply.records))
@@ -28,6 +37,7 @@ pub(crate) async fn reserve_candidates(
     until: std::time::Instant,
     active: &mut Vec<MachineOrder>,
     owner: Option<analyte_model::Identifier>,
+    freshness: u64,
 ) -> Result<bool, Error> {
     for candidate in candidates {
         let owner = owner.clone();
@@ -39,7 +49,7 @@ pub(crate) async fn reserve_candidates(
                             identity: &candidate.identity,
                             version: candidate.version,
                             now: jiff::Timestamp::now().as_second(),
-                            freshness: super::FRESHNESS_SECONDS,
+                            freshness,
                         },
                         &owner,
                     )
@@ -48,7 +58,7 @@ pub(crate) async fn reserve_candidates(
                         &candidate.identity,
                         candidate.version,
                         jiff::Timestamp::now().as_second(),
-                        super::FRESHNESS_SECONDS,
+                        freshness,
                     )
                 }
             })
@@ -87,6 +97,7 @@ pub(crate) async fn next(
     machine: &Machine,
     after: &mut String,
 ) -> Result<Option<Reserved>, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
     if !machine
         .snapshot
         .effective()
@@ -124,7 +135,7 @@ pub(crate) async fn next(
                                 identity: &identity,
                                 version,
                                 now: jiff::Timestamp::now().as_second(),
-                                freshness: super::FRESHNESS_SECONDS,
+                                freshness,
                             },
                             reason,
                             super::event,
@@ -143,7 +154,7 @@ pub(crate) async fn next(
                     &identity,
                     version,
                     jiff::Timestamp::now().as_second(),
-                    super::FRESHNESS_SECONDS,
+                    freshness,
                 )
             })
             .await?;
@@ -163,12 +174,25 @@ pub(crate) async fn candidate_page(
     machine: &Machine,
     after: &mut String,
 ) -> Result<Vec<analyte_store::CachedOrder>, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
     let destination = super::destination(machine);
     let machine_id = machine.id.clone();
     let cursor = after.clone();
     let candidates = store
         .request(deadline(), move |store| {
-            store.order_candidates(&destination, &machine_id, &cursor)
+            if !store
+                .order_trust(&destination, jiff::Timestamp::now().as_second(), freshness)?
+                .is_trusted()
+            {
+                return Ok(Vec::new());
+            }
+            store.order_candidates(
+                &destination,
+                &machine_id,
+                &cursor,
+                jiff::Timestamp::now().as_second(),
+                freshness,
+            )
         })
         .await?;
     if candidates.is_empty() {

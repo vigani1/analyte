@@ -106,7 +106,8 @@ stop, transports close and join (5 seconds), and the store drains and closes
 Delivery/store failures stop the service visibly. Individual machine failures
 remain isolated. HTTP requests have a 3-second deadline, local delivery storage
 operations 2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
-and order polls run every 5 seconds with a 30-second freshness policy.
+and order polls run every 5 seconds. Site destination `freshness_seconds`
+(default 30, nonzero) sets `Limits.freshness` for lookups, reservations and alerts.
 An uninterruptible operating-system flush cannot be cancelled within a worker;
 owner destructors join rather than detach. The process watchdog enforces the
 overall stop deadline even when such a join blocks; see Running as a service.
@@ -477,6 +478,17 @@ The program receives results, answers supported queries and sends/cancels work
 on one persistent TCP link in either configured direction. Evidence remains
 **documented**. The [LAW checklist](../../docs/protocols/ihe-law.md) owns the
 current test matrix and remaining actor/simulator qualification gates.
+
+Folder and serial worker shutdown reports worker errors and panics separately,
+without including error text or panic payloads in ordinary logs.
+
+Receipt and interpretation config versions are the lowercase SHA-256 digest of
+the canonical effective config. Each host connection has a fresh UUID, shared by
+its receipts and parked evidence; a watched-folder session has its own UUID.
+
+VIDAS, Autolyser and POCT disconnect and storage-failure dialog effects are
+processed before the host returns. Parking retains the reason with the existing
+transport evidence; a failed parking write is reported alongside its original error.
 
 ## Capturing conversations
 

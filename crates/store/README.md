@@ -86,7 +86,7 @@ Tokio runtime; the crate enables only `sync` and `time` features.
 
 Order events have disjoint CHECK-constrained provenance and per-order ordering.
 Claims expose durable earlier attempt counts. Health queries expose unresolved
-count, bytes, oldest age, pause and feed status. Hosts also check freshness.
+count, bytes, oldest age, pause and feed status. Hosts supply the destination freshness to the shared typed trust decision.
 
 ## Observation history (ADR 0003)
 
@@ -173,3 +173,14 @@ Tests `law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_neve
 and `law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust`
 cover paging, targeting, prior reservations, expiry/tombstones, future/stale clocks,
 reset generations and restore pause. No schema or contract change is involved.
+
+Orders and items use the model's single lifecycle transition function, including
+audited operator reconciliation. Cancellation refusal restores the retained
+per-item `cancel_from` states rather than searching historical aggregate JSON.
+Correlated HL7/LAW replies may accept or reject a reserved Sending exchange.
+
+`Store::order_trust` distinguishes Trusted, Stale, Incomplete, RestorePaused and
+Unknown. Lookups, candidate reads, transaction admission and cache alerts use
+that rule; only Trusted can establish no orders. Cached state is typed and
+shares the model eligibility function with the host. Cancellation scans filter
+typed states in bounded pages rather than comparing state text in SQL.

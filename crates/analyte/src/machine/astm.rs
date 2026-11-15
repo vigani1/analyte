@@ -1,6 +1,6 @@
 //! ASTM journaling precedes every data ACK (ADR 0003).
 use crate::orders::astm::{Pending, Request};
-use crate::{Error, config::Machine, deadline, evidence, invalid};
+use crate::{Error, deadline, evidence, invalid};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
@@ -11,7 +11,7 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,

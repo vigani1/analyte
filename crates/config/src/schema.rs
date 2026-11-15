@@ -542,6 +542,9 @@ pub struct Machine {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Destination {
+    /// Maximum trusted order-cache age in seconds, shared by every host path.
+    #[serde(default = "default_order_freshness")]
+    pub freshness_seconds: u64,
     /// Destination identity.
     pub name: Identifier,
     /// HTTPS base URL without user info, query or fragment.
@@ -723,4 +726,8 @@ pub enum ValueKind {
     /// Preserve existing protocol interpretation.
     #[default]
     Either,
+}
+
+fn default_order_freshness() -> u64 {
+    30
 }

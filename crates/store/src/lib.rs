@@ -719,7 +719,7 @@ impl Store {
         now: i64,
         freshness: u64,
     ) -> Result<Lookup, Error> {
-        if !self.trusted_order_lookup(destination, now, freshness)? {
+        if !self.order_trust(destination, now, freshness)?.is_trusted() {
             return Ok(Lookup::NotTrusted);
         }
         let mut stmt=self.db.prepare("SELECT evidence FROM orders WHERE destination=?1 AND sample=?2 AND tombstone=0 AND expiry>?3 AND generation=(SELECT generation FROM feed WHERE destination=?1) LIMIT ?4")?;
@@ -753,13 +753,52 @@ impl Store {
         }
     }
 
-    fn trusted_order_lookup(
+    /// Evaluates the destination cache without conflating unavailable data with no orders.
+    /// The transaction helper uses exactly this rule for atomic reservation checks.
+    /// # Errors
+    /// Reports database failures; never substitutes an empty lookup.
+    pub fn order_trust(
         &self,
         destination: &Identifier,
         now: i64,
         freshness: u64,
-    ) -> Result<bool, Error> {
-        Ok(!self.restore_unreconciled()? && trusted_feed(&self.db, destination, now, freshness)?)
+    ) -> Result<OrderTrust, Error> {
+        Self::order_trust_on(&self.db, destination, now, freshness)
+    }
+
+    fn order_trust_on(
+        db: &Connection,
+        destination: &Identifier,
+        now: i64,
+        freshness: u64,
+    ) -> Result<OrderTrust, Error> {
+        if Self::restore_paused(db)? {
+            return Ok(OrderTrust::RestorePaused);
+        }
+        let feed: Option<(i64, bool, bool)> = db
+            .query_row(
+                "SELECT polled,complete,trusted FROM feed WHERE destination=?1",
+                [destination.as_str()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        let Some((polled, complete, trusted)) = feed else {
+            return Ok(OrderTrust::Unknown);
+        };
+        if !complete || !trusted {
+            return Ok(OrderTrust::Incomplete);
+        }
+        let Some(age) = now
+            .checked_sub(polled)
+            .and_then(|age| u64::try_from(age).ok())
+        else {
+            return Ok(OrderTrust::Unknown);
+        };
+        if age >= freshness {
+            Ok(OrderTrust::Stale { age })
+        } else {
+            Ok(OrderTrust::Trusted { age })
+        }
     }
 
     /// Uses SQLite online backup, then checks the restored copy before reporting success.
@@ -848,5 +887,33 @@ impl Store {
         evidence
             .map(|e| serde_json::from_str(&e).map_err(Error::from))
             .transpose()
+    }
+}
+
+/// Authoritative cache availability, kept distinct from an authoritative empty answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderTrust {
+    /// Complete current snapshot inside the configured age limit.
+    Trusted {
+        /// Seconds since the last successful poll.
+        age: u64,
+    },
+    /// Complete snapshot whose age reaches or exceeds the configured limit.
+    Stale {
+        /// Seconds since the last successful poll.
+        age: u64,
+    },
+    /// Snapshot is unfinished or invalidated by a feed reset.
+    Incomplete,
+    /// Restored history requires operator reconciliation.
+    RestorePaused,
+    /// No feed exists or clock evidence cannot establish its age.
+    Unknown,
+}
+impl OrderTrust {
+    /// Only a complete, fresh, unpaused snapshot can establish an empty answer.
+    #[must_use]
+    pub fn is_trusted(self) -> bool {
+        matches!(self, Self::Trusted { .. })
     }
 }

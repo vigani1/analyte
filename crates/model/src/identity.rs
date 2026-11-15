@@ -89,7 +89,7 @@ pub struct ReceiptMetadata {
     pub id: ReceiptId,
     /// Digest of the original raw bytes.
     pub raw_digest: Digest,
-    /// Configured connection identifier.
+    /// Host connection identity, distinct from the configured machine identity.
     pub connection: Identifier,
     /// Configured machine identifier.
     pub machine: Identifier,
