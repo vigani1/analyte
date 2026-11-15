@@ -184,7 +184,9 @@ async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadline
     )?;
     let (first, rest) = request.split_at(12);
     peer.write_all(first).await?;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // The deadline runs from the first byte the program reads. A gap far beyond
+    // the 50 ms budget stays late even if a slow runner reads the first part late.
+    tokio::time::sleep(Duration::from_secs(2)).await;
     peer.write_all(rest).await?;
     let rsp = packet(&mut peer).await?;
     assert_eq!(field(&rsp, b"MSA", 1)?, b"AE");
