@@ -150,9 +150,9 @@ pub(super) async fn session(
                             if let Some(transfer_id) = transfer.take() {
                                 if end == End::Normal {
                                     let id = ReceiptId::new();
-                                    let time = evidence::receive(store, machine, id, std::mem::take(&mut raw)).await?;
+                                    evidence::receive(store, machine, id, std::mem::take(&mut raw)).await?;
                                     match crate::orders::astm::request(machine,&payload)? {
-                                        None => { evidence::interpret(store, machine, id, time, &payload).await?; },
+                                        None => { evidence::interpret(store, machine, id).await?; },
                                         Some(Request::Cancel) => { pending = None; response = None; response_deadline = None; },
                                         Some(Request::Unsupported) => { pending = None; response = crate::orders::astm::failure(machine); response_deadline = None; },
                                         Some(Request::Orders(samples)) => {
