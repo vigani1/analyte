@@ -2,8 +2,7 @@
 use super::invalid;
 use crate::{Component, Error, Repetition, Segment, Version};
 
-mod datatypes;
-use datatypes::{coded, decimal, quantity, scalar, timestamp, timing, xcn};
+use crate::datatypes::{coded, decimal, quantity, scalar, timestamp, timing, xcn};
 
 fn check(
     segment: Segment<'_>,

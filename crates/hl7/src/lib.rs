@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod ack;
+mod datatypes;
 mod syntax;
 mod views;
 pub use ack::*;
@@ -13,3 +14,6 @@ pub mod law;
 
 /// Legacy deferred display query views.
 pub mod query;
+
+/// Pure legacy laboratory order builders and correlated responses.
+pub mod order;

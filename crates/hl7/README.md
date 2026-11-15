@@ -126,6 +126,45 @@ meaning. These pure functions do not store, schedule, transmit, retry or change
 order states. Passing these tests does not establish whole-HL7 conformance or
 raise the documented evidence level.
 
-ORM/O01, ORR/O02, non-LAW OML/O21 and ORL/O22 are not implemented by this change.
-Checklist G remains outstanding.
+## Legacy order implementation status
+
+The `order` module builds ORM/O01 and reads correlated ORR/O02 in both editions
+(231 sections 4.2.1–2 and 4.3.1; 251 sections 4.4.1–2 and 4.5.1). Evidence remains
+documented. It supports NW/CA requests and OK/UA/CR/UC responses. Unknown controls,
+notifications, request codes in replies and wrong request/reply pairs are located
+errors. Message acceptance and each order decision remain separate. A missing
+decision is `NotReported`, including for MSA AA; it never authorizes resending.
+
+Caller-supplied data includes namespaced placer/filler IDs, coded tests/batteries,
+specimen source, sample identity, priority, a non-repeating time window and explicit
+patient/nonpatient context. One ORM represents one patient context and multiple
+orders, each with its own identity and one test/battery. Cancellation has no
+invented test, specimen or patient details. Repeating schedules, parent/group
+relationships and other order controls are outside this API's current scope.
+
+ORM has no standard barcode field. The caller must explicitly select an agreed
+OBR-18 or OBR-19 placer-field mapping in machine configuration (231 sections
+7.3.1.18–19; 251 sections 7.4.1.18–19). Neither field is given an implicit sample
+meaning here. Literal sample bytes are escaped, retain leading zeros and case,
+and are never substituted for order identities. Namespace metadata, including
+universal IDs where supplied, is preserved. Duplicate local or universal order
+identities are rejected before returning an outgoing message.
+
+ORR parsing checks MSA-2 against the sent ORM and correlates each returned order,
+including ORC/OBR identity agreement, filler IDs and duplicate replies. Optional
+OBR, order notes and coded rejection reasons are retained with their order;
+original error/patient/header context remains in the complete borrowed message.
+Order status is retained as the peer's snapshot without changing the request's
+outcome or any host lifecycle. Unsupported response segment families are rejected,
+not flattened. This is a declared laboratory subset, not a complete ORR profile
+validator or support for other dietary/pharmacy/supply order details.
+
+Source-named synthetic tests cover both editions, positive and negative outcomes,
+missing decisions, malformed/cross-order identities, unknown controls, byte-exact
+sample identities, output bounds and replay purity. There is no storage, transport,
+automatic retry or lifecycle machinery in these APIs. No simulator/real-machine
+evidence is claimed. The host must retain uncertain delivery and prior acceptance.
+
+Non-LAW OML/O21 and ORL/O22 remain unimplemented; checklist G is not yet claimed
+complete. Work on those transactions is separate from this ORM/ORR change.
 

@@ -117,7 +117,7 @@ fn date_time(value: &[u8]) -> Option<usize> {
     Some(whole.len())
 }
 
-fn ts(parts: &[&[u8]]) -> bool {
+pub(crate) fn ts(parts: &[&[u8]]) -> bool {
     if parts.is_empty() || parts.len() > 2 || at(parts, 1).len() > 24 {
         return false;
     }
@@ -186,7 +186,7 @@ fn simple_parts(parts: &[&[u8]], maximum: usize) -> bool {
     parts.len() <= maximum && parts.iter().all(|v| *v != b"\"\"")
 }
 
-fn uid(value: &[u8], version: Version) -> bool {
+pub(crate) fn uid(value: &[u8], version: Version) -> bool {
     (version != Version::V231 || value != b"URI")
         && choice(
             value,
