@@ -334,7 +334,7 @@ impl Message {
     }
     /// Serializes exactly the accepted bytes; no normalization or loss occurs.
     #[must_use]
-    pub fn serialize(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Vec<u8> {
         self.raw.clone()
     }
     /// Borrows the original wire bytes.

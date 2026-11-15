@@ -38,7 +38,7 @@ fn hl7_251_2_7_6_formatting_command_grammar() -> Result<(), Error> {
             "",
             &format!("OBX|1|FT|SYN||\\{command}\\\r"),
         );
-        assert_eq!(parse(&raw)?.serialize(), raw);
+        assert_eq!(parse(&raw)?.encode(), raw);
     }
     for command in [
         ".unknown", ".br2", ".ce x", ".sp0", ".sp-2", ".sp1.5", ".in", ".ti+", ".in2x", ".sk",
@@ -96,7 +96,7 @@ fn hl7_251_2_5_4_alternate_delimiters_and_msh_indexing() -> Result<(), Error> {
         f.repetitions().next().map(|r| r.components().count()),
         Some(3)
     );
-    assert_eq!(m.serialize(), raw);
+    assert_eq!(m.encode(), raw);
     Ok(())
 }
 #[test]
@@ -147,7 +147,7 @@ fn hl7_251_2_7_escape_sequences_in_text_fields() -> Result<(), Error> {
                 ..Options::default()
             },
         )?;
-        assert_eq!(m.serialize(), raw);
+        assert_eq!(m.encode(), raw);
     }
     Ok(())
 }
@@ -167,7 +167,7 @@ fn hl7_251_2_5_4_terminators_require_explicit_policy() -> Result<(), Error> {
             },
         )?;
         assert_eq!(m.segments().count(), 2);
-        assert_eq!(m.serialize(), altered);
+        assert_eq!(m.encode(), altered);
     }
     let empty_segment = wire("2.5.1", "", "", "", "\r");
     assert!(parse(&empty_segment).is_err());
@@ -376,15 +376,15 @@ fn hl7_251_2_6_configured_limits_reject_without_truncation() {
 }
 proptest! {
     #[test]
-    fn hl7_251_2_6_serialize_parse_identity(value in "[a-zA-Z0-9 ^&~]{0,300}") {
+    fn hl7_251_2_6_encode_parse_identity(value in "[a-zA-Z0-9 ^&~]{0,300}") {
         let raw = wire("2.5.1", "", "", "", &format!("NTE|1||{value}|\r"));
         let first = parse(&raw)?;
-        prop_assert_eq!(first.serialize(), raw);
-        prop_assert_eq!(parse(&first.serialize())?, first);
+        prop_assert_eq!(first.encode(), raw);
+        prop_assert_eq!(parse(&first.encode())?, first);
     }
     #[test]
     fn hl7_251_2_6_arbitrary_bytes_never_panic(bytes in proptest::collection::vec(any::<u8>(), 0..4096)) {
-        if let Ok(message) = parse(&bytes) { prop_assert_eq!(parse(&message.serialize())?, message); }
+        if let Ok(message) = parse(&bytes) { prop_assert_eq!(parse(&message.encode())?, message); }
     }
 }
 
@@ -532,7 +532,7 @@ fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Resu
                     "{version}: {stamp}"
                 );
             }
-            assert_eq!(m.serialize(), raw);
+            assert_eq!(m.encode(), raw);
         }
         for stamp in [
             "2026",
@@ -547,7 +547,7 @@ fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Resu
                 .into_bytes();
             let m = parse(&raw)?;
             assert!(Msh::new(&m).is_ok(), "{version}: {stamp}");
-            assert_eq!(m.serialize(), raw);
+            assert_eq!(m.encode(), raw);
         }
     }
     Ok(())
@@ -577,7 +577,7 @@ fn hl7_251_2_a_44_and_231_2_24_1_9_message_type_components() -> Result<(), Error
             .into_bytes();
         let message = parse(&raw)?;
         assert_eq!(Msh::new(&message).is_ok(), valid, "{version}: {kind}");
-        assert_eq!(message.serialize(), raw);
+        assert_eq!(message.encode(), raw);
     }
     Ok(())
 }
@@ -602,15 +602,15 @@ fn hl7_231_2_24_1_18_and_251_2_15_9_18_charset_is_edition_specific() -> Result<(
                 ..options
             }
         )?
-        .serialize(),
+        .encode(),
         legacy
     );
     let modern = wire("2.5.1", "", "", "UNICODE UTF-8", "");
-    assert_eq!(Message::parse(&modern, options)?.serialize(), modern);
+    assert_eq!(Message::parse(&modern, options)?.encode(), modern);
     for version in ["2.3.1", "2.5.1"] {
         for charset in ["", "ASCII"] {
             let raw = wire(version, "", "", charset, "");
-            assert_eq!(parse(&raw)?.serialize(), raw);
+            assert_eq!(parse(&raw)?.encode(), raw);
         }
         let raw = wire(version, "", "", "8859/1", "");
         assert_eq!(
@@ -621,7 +621,7 @@ fn hl7_231_2_24_1_18_and_251_2_15_9_18_charset_is_edition_specific() -> Result<(
                     ..Options::default()
                 }
             )?
-            .serialize(),
+            .encode(),
             raw
         );
     }
