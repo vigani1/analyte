@@ -7,6 +7,12 @@ use clap::{Subcommand, ValueEnum};
 /// Protected operator operations; every invocation records its actor and reason.
 #[derive(Subcommand)]
 pub enum Command {
+    /// Releases the restore pause after machines and app have been reconciled.
+    ResumeAfterRestore {
+        /// Evidence for the operator decision.
+        #[arg(long)]
+        reason: String,
+    },
     /// Lists one bounded page of machine-order lifecycle snapshots.
     List {
         /// Continue after this local machine-order ID.
@@ -55,6 +61,11 @@ impl Outcome {
 /// Reports invalid reasons, unknown orders, illegal reconciliation and I/O failures.
 pub async fn run(program: &Program, actor: Identifier, command: Command) -> Result<(), Error> {
     let (action, targets, reason) = match &command {
+        Command::ResumeAfterRestore { reason } => (
+            "orders-resume-after-restore",
+            Vec::new(),
+            Reason::new(reason)?,
+        ),
         Command::List { .. } => (
             "orders-list",
             Vec::new(),
@@ -74,8 +85,20 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         reason,
     };
     let mut store = crate::open_system_store(program).await?;
+    let paused = store
+        .request(deadline(), |store| store.restore_unreconciled())
+        .await?;
+    if paused {
+        crate::output::line(
+            "ORDER SENDING PAUSED: restored store requires machine/app reconciliation.",
+        )?;
+    }
     let result = store
         .request(deadline(), move |store| match command {
+            Command::ResumeAfterRestore { .. } => {
+                store.resume_after_restore(&audit)?;
+                Ok(Vec::new())
+            }
             Command::List { after, machine } => {
                 store.audit(&audit)?;
                 store.machine_orders(&MachineOrderFilter {

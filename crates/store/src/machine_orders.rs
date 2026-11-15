@@ -38,6 +38,9 @@ pub struct MachineOrder {
 /// Specific refusal, separate from storage failures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum SendRefusal {
+    /// Restored history cannot establish which commands reached machines.
+    #[error("order sending paused after restore; operator reconciliation required")]
+    RestoreUnreconciled,
     /// The app no longer supplies this order.
     #[error("order is absent from the current cache generation")]
     Missing,
@@ -179,6 +182,9 @@ impl Store {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if Self::restore_paused(&tx)? {
+            return Ok(Err(SendRefusal::RestoreUnreconciled));
+        }
         let existing = tx
             .query_row(
                 "SELECT id FROM machine_orders WHERE destination=?1 AND order_id=?2 AND machine=?3",

@@ -874,3 +874,93 @@ async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_reta
     reference.close().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> Result<(), Error> {
+    let directory = tempfile::tempdir()?;
+    let path = config(directory.path(), false)?;
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let address = listener.local_addr()?;
+    let url = format!("http://{address}");
+    let service = Running::start(&path, &url, "synthetic-api")?;
+    let mut peer = connect(&path, "hl7").await?;
+    assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
+    service.stop().await?;
+    let receiver_path = directory.path().join("reference.db");
+    let mut reference = Reference::start(&receiver_path, listener, true).await?;
+    let program = program(&path, &url)?;
+    let mut store = service::open_store(&program, Box::new(Space)).await?;
+    let backup = directory.path().join("backup.db");
+    let target = backup.clone();
+    store
+        .request(
+            std::time::Instant::now() + Duration::from_secs(5),
+            move |store| store.backup(&target, std::time::Instant::now() + Duration::from_secs(5)),
+        )
+        .await?;
+    let secrets = secrets(&program, "synthetic-api")?;
+    let destinations = [analyte_sink::Destination::for_loopback_test(
+        analyte_model::Identifier::new("demo")?,
+        &url,
+        analyte_model::Identifier::new("demo")?,
+        analyte_sink::Limits {
+            request_timeout: Duration::from_secs(30),
+            store_timeout: Duration::from_secs(2),
+            backoff_min: Duration::from_secs(1),
+            backoff_max: Duration::from_secs(3),
+            freshness: Duration::from_secs(30),
+            poll_interval: Duration::from_secs(1),
+            page_size: 100,
+            max_pages: 100,
+        },
+    )?];
+    // A prior refusal may have scheduled a future retry. Wait under a deadline
+    // until the real worker claims it; cancel only after the receiver commits.
+    let original = tokio::time::timeout(Duration::from_secs(6), async {
+        let worker = analyte_sink::Worker::new(&store, &destinations, &secrets);
+        loop {
+            let attempt = worker.deliver_once();
+            tokio::pin!(attempt);
+            tokio::select! {
+                event = reference.event() => return event,
+                outcome = &mut attempt => {
+                    if outcome? != analyte_sink::DeliveryOutcome::Idle { return Err("attempt unexpectedly completed".into()); }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }).await??;
+    assert!(original.outcome.contains("accepted"));
+    assert_eq!(receiver_count(&receiver_path)?, 1);
+    wait_state(&path, "in_flight", 1).await?;
+    // Dropping the attempt above models an interrupted owner, not a completed HTTP retry.
+    store
+        .shutdown(
+            std::time::Instant::now()
+                .checked_add(Duration::from_secs(5))
+                .ok_or("deadline")?,
+        )
+        .await?;
+    service::restore(
+        program,
+        backup,
+        analyte_store::Audit {
+            actor: analyte_model::Identifier::new("operator")?,
+            action: analyte_model::Identifier::new("store-restore")?,
+            targets: vec![],
+            time: 0,
+            reason: analyte_model::Reason::new("synthetic recovery")?,
+        },
+    )
+    .await?;
+    let restarted = Running::start(&path, &url, "synthetic-api")?;
+    let duplicate = reference.event().await?;
+    assert!(duplicate.outcome.contains("duplicate"));
+    assert_eq!(duplicate.id, original.id);
+    assert_eq!(duplicate.bytes, original.bytes);
+    wait_state(&path, "done", 1).await?;
+    assert_eq!(receiver_count(&receiver_path)?, 1);
+    restarted.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

@@ -76,6 +76,13 @@ async fn serve_with(
     let destinations = crate::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
     let store = Arc::new(open_store(&program, space).await?);
+    let paused = store
+        .request(deadline(), |store| store.restore_unreconciled())
+        .await?;
+    tracing::info!(
+        order_sending_paused_after_restore = paused,
+        "store restore reconciliation status"
+    );
     crate::delivery::recover(&store).await?;
     let (delivery_stop, delivery_stopped) = watch::channel(false);
     let mut delivery_owners = JoinSet::new();
@@ -226,4 +233,33 @@ fn create_data_directory(path: &std::path::Path) -> Result<(), Error> {
     #[cfg(windows)]
     std::fs::create_dir_all(path)?;
     Ok(())
+}
+
+/// Restores offline on a blocking owner, keeping the displaced store.
+/// # Errors
+/// Refuses active owners, invalid backups and storage failures.
+pub async fn restore(
+    program: Program,
+    source: std::path::PathBuf,
+    audit: analyte_store::Audit,
+) -> Result<std::path::PathBuf, Error> {
+    Ok(tokio::task::spawn_blocking(move || {
+        analyte_store::Store::restore(
+            &program.data_directory.join("analyte.db"),
+            &source,
+            analyte_store::Limits {
+                reserve_bytes: program.store_limits.reserve_bytes,
+                database_bytes: program.store_limits.database_bytes,
+                record_bytes: program.store_limits.record_bytes,
+                page_rows: program.store_limits.page_rows,
+                busy_timeout: program.store_limits.busy_timeout,
+            },
+            Box::new(Volume),
+            &audit,
+            Instant::now()
+                .checked_add(Duration::from_secs(30))
+                .unwrap_or(Instant::now()),
+        )
+    })
+    .await??)
 }
