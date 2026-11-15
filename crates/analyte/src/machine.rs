@@ -7,6 +7,7 @@ mod hl7;
 pub(crate) mod interpretation;
 mod poll_custody;
 pub use interpretation::reprocess;
+mod connection_input;
 mod custody;
 mod law;
 mod poct;

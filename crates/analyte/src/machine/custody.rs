@@ -5,13 +5,7 @@ use analyte_store::Handle;
 use std::time::Duration;
 use tokio::sync::watch;
 
-pub(super) enum Input {
-    Opened,
-    Bytes(Vec<u8>),
-    Tick,
-    End,
-}
-
+pub(super) use super::connection_input::Input;
 /// Every transport chunk is durably journaled before a dialog sees any byte.
 /// Dropping this wait cannot cancel an already queued store request.
 pub(super) async fn input(
@@ -23,22 +17,16 @@ pub(super) async fn input(
 ) -> Result<Input, Error> {
     let event = tokio::select! {
         biased;
-        () = super::stopping(stop) => return Ok(Input::End),
+        () = super::stopping(stop) => return Ok(Input::Closed(None)),
         () = tokio::time::sleep(wait) => return Ok(Input::Tick),
-        event = conn.receive() => event,
+        event = super::connection_input::receive(conn) => event,
     };
     match event {
-        Ok(Some(analyte_transport::Event::Opened { .. })) => Ok(Input::Opened),
-        Ok(Some(analyte_transport::Event::Received { bytes, .. })) => {
+        Ok(Input::Bytes { bytes }) => {
             evidence::receive(store, machine, ReceiptId::new(), bytes.clone()).await?;
-            Ok(Input::Bytes(bytes))
+            Ok(Input::Bytes { bytes })
         }
-        Ok(Some(
-            analyte_transport::Event::Closed(_)
-            | analyte_transport::Event::Failed(_)
-            | analyte_transport::Event::RecordingFailed(_),
-        ))
-        | Ok(None) => Ok(Input::End),
+        Ok(event) => Ok(event),
         Err(analyte_transport::Error::Deadline(_)) => Ok(Input::Tick),
         Err(error) => Err(error.into()),
     }

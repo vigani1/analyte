@@ -120,7 +120,7 @@ pub(super) async fn session(
             .await?;
             state.end_code = "VIDAS-transfer-error";
             match input {
-                Input::Opened => state.opened = true,
+                Input::Opened { .. } => state.opened = true,
                 Input::Tick => {
                     for timer in [
                         Timer::Session,
@@ -146,7 +146,7 @@ pub(super) async fn session(
                         }
                     }
                 }
-                Input::End => {
+                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
                     state.end_code = if *stop.borrow() {
                         "VIDAS-transfer-cancelled"
                     } else {
@@ -156,7 +156,7 @@ pub(super) async fn session(
                     process_inline(&mut state, machine, store, conn, installed).await?;
                     return Ok(());
                 }
-                Input::Bytes(bytes) => {
+                Input::Bytes { bytes } => {
                     state.idle = false;
                     for byte in bytes {
                         if let Some(deadline) = state.timers.get_mut(timer_index(Timer::Interbyte))

@@ -69,9 +69,12 @@ pub(super) async fn session(
                 state.wake.saturating_sub(state.start.elapsed()),
             )
             .await?;
-            let ended = matches!(input, Input::End);
+            let ended = matches!(
+                input,
+                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_)
+            );
             state.end_code = match &input {
-                Input::End => {
+                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
                     if *stop.borrow() {
                         "Autolyser-transfer-cancelled"
                     } else {
@@ -79,14 +82,14 @@ pub(super) async fn session(
                     }
                 }
                 Input::Tick => "Autolyser-transfer-timeout",
-                Input::Opened | Input::Bytes(_) => "Autolyser-transfer-error",
+                Input::Opened { .. } | Input::Bytes { .. } => "Autolyser-transfer-error",
             };
             let events = match input {
-                Input::Opened => {
+                Input::Opened { .. } => {
                     state.ready = false;
                     vec![Event::Poll(Request::Next)]
                 }
-                Input::Bytes(bytes) => bytes.into_iter().map(Event::Byte).collect(),
+                Input::Bytes { bytes } => bytes.into_iter().map(Event::Byte).collect(),
                 Input::Tick => {
                     let actions = state.dialog.step(state.start.elapsed(), Event::Tick);
                     // Tick alone can initiate L recovery. Never interleave R with it.
@@ -121,7 +124,9 @@ pub(super) async fn session(
                         Vec::new()
                     }
                 }
-                Input::End => vec![Event::Disconnect],
+                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+                    vec![Event::Disconnect]
+                }
             };
             for event in events {
                 if matches!(event, Event::Poll(Request::Next)) {

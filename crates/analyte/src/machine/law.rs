@@ -1,4 +1,5 @@
 //! Host services for LAW dialogs; protocol state and ACK policy live in analyte-dialog.
+use super::connection_input::{self, Input};
 pub(super) mod independent;
 use crate::orders::law::{Connection, Reply};
 use crate::{Error, evidence, invalid};
@@ -428,25 +429,28 @@ impl<'a, 'm> Host<'a, 'm> {
                     }
                     continue;
                 },
-                event = self.conn.receive() => match event {
-                    Ok(Some(event)) => event, Ok(None) => break,
+                event = connection_input::receive(self.conn) => match event {
+                    Ok(event) => event,
                     Err(analyte_transport::Error::Deadline(_)) => continue,
                     Err(error) => return Err(error.into()),
                 },
             };
             match event {
-                analyte_transport::Event::Received { bytes, .. } => {
+                Input::Bytes { bytes } => {
                     self.input(bytes).await?;
                     if self.stopped {
                         return Ok(());
                     }
                 }
-                analyte_transport::Event::Opened { .. } => opened = true,
-                analyte_transport::Event::Closed(_) => break,
-                analyte_transport::Event::Failed(reason) => {
+                Input::Opened { .. } => opened = true,
+                Input::Closed(_) => break,
+                Input::Failed(reason) => {
                     tracing::warn!(machine=self.machine.id.as_str(),error_kind=?reason,"LAW transport attempt failed");
                 }
-                analyte_transport::Event::RecordingFailed(_) => {}
+                Input::RecordingFailed(failure) => {
+                    let _failure = failure;
+                }
+                Input::Tick => {}
             }
         }
         Ok(())
@@ -457,17 +461,17 @@ impl<'a, 'm> Host<'a, 'm> {
             let event = tokio::select! {
                 biased;
                 () = super::stopping(&mut self.stop) => return Ok(()),
-                event = tokio::time::timeout_at(until.into(), self.conn.receive()) => event.map_err(|_| invalid("LAW independent transaction deadline"))??,
-            }.ok_or("LAW independent peer closed before ORL")?;
+                event = tokio::time::timeout_at(until.into(), connection_input::receive(self.conn)) => event.map_err(|_| invalid("LAW independent transaction deadline"))??,
+            };
             match event {
-                analyte_transport::Event::Opened { .. } => {
+                Input::Opened { .. } => {
                     self.drive(Event::Send(
                         message,
                         until.saturating_duration_since(self.clock),
                     ))
                     .await?;
                 }
-                analyte_transport::Event::Received { bytes, .. } => {
+                Input::Bytes { bytes } => {
                     self.input(bytes).await?;
                     if self.stopped {
                         return Ok(());
@@ -476,15 +480,18 @@ impl<'a, 'm> Host<'a, 'm> {
                         return Ok(());
                     }
                 }
-                analyte_transport::Event::Closed(_) => {
+                Input::Closed(_) => {
                     return Err(invalid("LAW independent peer disconnected"));
                 }
-                analyte_transport::Event::Failed(reason) => {
+                Input::Failed(reason) => {
                     return Err(invalid(&format!(
                         "LAW independent transport failed: {reason:?}"
                     )));
                 }
-                analyte_transport::Event::RecordingFailed(_) => {}
+                Input::RecordingFailed(failure) => {
+                    let _failure = failure;
+                }
+                Input::Tick => {}
             }
         }
     }

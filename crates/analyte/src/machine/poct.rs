@@ -41,19 +41,19 @@ pub(super) async fn session(
             break;
         }
         match input {
-            Input::Opened => {}
+            Input::Opened { .. } => {}
             Input::Tick => {
                 let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
                 if process(actions, &mut dialog, start, machine, store, conn, settings).await? {
                     break;
                 }
             }
-            Input::End => {
+            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
                 let actions = dialog.step(start.elapsed(), DialogEvent::Disconnected)?;
                 process(actions, &mut dialog, start, machine, store, conn, settings).await?;
                 break;
             }
-            Input::Bytes(bytes) => {
+            Input::Bytes { bytes } => {
                 for byte in bytes {
                     if raw.len() >= limits.message_bytes {
                         evidence::park_bytes(
