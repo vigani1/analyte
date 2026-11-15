@@ -123,6 +123,17 @@ async fn serve_with(
     shutdown_bound: Duration,
     watchdog: Option<Arc<crate::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
+    #[cfg(feature = "test-hooks")]
+    let shutdown_bound = if program.stall_store_on_shutdown {
+        if !loopback || watchdog.is_some() {
+            return Err(invalid(
+                "stuck shutdown hook requires the loopback test service",
+            ));
+        }
+        Duration::from_millis(500)
+    } else {
+        shutdown_bound
+    };
     let watchdog = match watchdog {
         Some(watchdog) => watchdog,
         None => Arc::new(crate::shutdown::Watchdog::new(shutdown_bound, None)?),
@@ -213,6 +224,18 @@ async fn serve_with(
         }
     };
     watchdog.arm();
+    #[cfg(feature = "test-hooks")]
+    if program.stall_store_on_shutdown {
+        // Deliberately emulate a stuck OS flush without changing the store worker.
+        // Only child-process tests enable this; no protocol or storage bytes change.
+        store
+            .request::<()>(deadline(), |_| {
+                loop {
+                    std::thread::park();
+                }
+            })
+            .await?;
+    }
     shutdown.send_replace(true);
     let until = tokio::time::Instant::now()
         .checked_add(Duration::from_secs(15))

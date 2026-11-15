@@ -3,6 +3,9 @@
 mod autolyser_cases;
 #[path = "orders/cases.rs"]
 mod order_cases;
+#[cfg(feature = "test-hooks")]
+#[path = "service/recovery.rs"]
+mod service_recovery;
 mod support;
 #[path = "orders/vendor_support.rs"]
 mod vendor_support;

@@ -21,6 +21,8 @@ pub struct Machine {
 
 /// Validated program settings. Paths are resolved relative to the program file.
 pub struct Program {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) stall_store_on_shutdown: bool,
     pub(crate) loopback_destinations: std::collections::BTreeMap<String, String>,
     pub(crate) signing_rotation: std::collections::BTreeMap<String, Vec<analyte_model::Identifier>>,
     /// Protected directory containing the database and journals.
@@ -73,6 +75,26 @@ fn read(path: &Path) -> Result<String, Error> {
 }
 
 impl Program {
+    /// Stalls the store at shutdown with a 500 ms process deadline, for child-process tests only.
+    /// This deliberately never returns from a storage operation; the watchdog must exit 3.
+    /// # Errors
+    /// Requires injected loopback listeners for every machine; production entry points refuse it.
+    #[cfg(feature = "test-hooks")]
+    pub fn stall_store_on_shutdown_for_test(&mut self) -> Result<(), Error> {
+        if self.machines.is_empty()
+            || self
+                .machines
+                .iter()
+                .any(|machine| machine.listener.is_none())
+        {
+            return Err(invalid(
+                "stuck shutdown hook requires injected loopback listeners",
+            ));
+        }
+        self.stall_store_on_shutdown = true;
+        Ok(())
+    }
+
     /// Installs a one-shot ASTM durable-frame/pre-ACK pause for a loopback test machine.
     /// # Errors
     /// Rejects unknown machines, non-ASTM stacks, or machines without an injected loopback listener.
@@ -223,6 +245,8 @@ impl Program {
             }
         }
         Ok(Self {
+            #[cfg(feature = "test-hooks")]
+            stall_store_on_shutdown: false,
             loopback_destinations: std::collections::BTreeMap::new(),
             signing_rotation: file.signing_rotation,
             data_directory: base.join(file.data_directory),
