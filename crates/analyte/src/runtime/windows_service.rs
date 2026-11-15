@@ -54,34 +54,7 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
                 return Ok(());
             }
             let startup = runtime_watchdog.component("startup".into());
-            let result = (|| {
-                let runtime = tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()?;
-                runtime.block_on(async {
-                    let program = Program::load(&config)?;
-                    // Install scripts restrict this directory before starting the service.
-                    let log = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(program.data_directory.join("analyte.log"))?;
-                    tracing_subscriber::fmt()
-                        .with_ansi(false)
-                        .with_writer(log)
-                        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-                        .try_init()?;
-                    let secrets = crate::installation::secrets::Environment::load(&program)?;
-                    drop(startup);
-                    service::serve_bounded(
-                        program,
-                        async { stopped.await.map_err(|_| invalid("SCM stop sender closed")) },
-                        secrets,
-                        bound,
-                        Some(runtime_watchdog),
-                    )
-                    .await
-                })
-            })();
+            let result = run_host(config, bound, stopped, runtime_watchdog, startup);
             if !stopping.load(Ordering::Acquire) {
                 if let Err(error) = &result {
                     tracing::error!(%error, "service failed before an SCM stop request");
@@ -168,4 +141,39 @@ mod tests {
         assert!(report.try_recv().is_err());
         Ok(())
     }
+}
+
+fn run_host(
+    config: PathBuf,
+    bound: Duration,
+    stopped: tokio::sync::oneshot::Receiver<()>,
+    runtime_watchdog: Arc<crate::runtime::shutdown::Watchdog>,
+    startup: crate::runtime::shutdown::Component,
+) -> Result<(), Error> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(async {
+        let program = Program::load(&config)?;
+        // Install scripts restrict this directory before starting the service.
+        let log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(program.data_directory.join("analyte.log"))?;
+        tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(log)
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init()?;
+        let secrets = crate::installation::secrets::Environment::load(&program)?;
+        drop(startup);
+        service::serve_bounded(
+            program,
+            async { stopped.await.map_err(|_| invalid("SCM stop sender closed")) },
+            secrets,
+            bound,
+            Some(runtime_watchdog),
+        )
+        .await
+    })
 }

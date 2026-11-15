@@ -138,6 +138,7 @@ mod tests {
                 child.wait()?;
                 return Err("shutdown watchdog failed to exit within five seconds".into());
             }
+            // std::process has no timed wait; keep the five-second kill bound for a broken child.
             thread::sleep(Duration::from_millis(10));
         }
         let child = child.wait_with_output()?;

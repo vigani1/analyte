@@ -231,6 +231,7 @@ mod tests {
     impl Read for Echo {
         fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
             if self.0.is_empty() {
+                // Synthetic serial Read models a timed-out port; the transport owns cancellation.
                 thread::sleep(Duration::from_millis(1));
                 return Err(io::ErrorKind::TimedOut.into());
             }

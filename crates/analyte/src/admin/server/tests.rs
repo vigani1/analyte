@@ -128,6 +128,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
             if tokio::net::TcpStream::connect(&host).await.is_ok() {
                 break;
             }
+            // This externally started listener has no readiness channel; the enclosing timeout bounds probes.
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })

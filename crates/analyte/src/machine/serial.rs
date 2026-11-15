@@ -1,14 +1,12 @@
 //! Dedicated serial owner with explicit join, including on cancellation.
 use super::{Error, Handle, Limits, Machine, invalid};
 use analyte_transport::{Cancellation, serial::Settings};
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
+use std::{thread, time::Duration};
 use tokio::sync::watch;
 
 struct Owner {
     cancellation: Cancellation,
+    finished: tokio::sync::oneshot::Receiver<()>,
     thread: Option<thread::JoinHandle<Result<(), analyte_transport::Error>>>,
 }
 
@@ -24,12 +22,13 @@ impl Drop for Owner {
 impl Owner {
     async fn close(mut self) -> Result<(), Error> {
         self.cancellation.cancel();
-        let deadline = crate::deadline();
-        while self.thread.as_ref().is_some_and(|t| !t.is_finished()) {
-            if Instant::now() >= deadline {
-                return Err(invalid("serial owner shutdown timed out"));
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
+        // Completion also wakes on panic; the retained join below reports its cause.
+        // On timeout or cancellation Drop still owns and joins the worker.
+        if tokio::time::timeout_at(crate::deadline().into(), &mut self.finished)
+            .await
+            .is_err()
+        {
+            return Err(invalid("serial owner shutdown timed out"));
         }
         if let Some(thread) = self.thread.take() {
             thread
@@ -82,11 +81,17 @@ pub(super) async fn run(
     };
     let cancellation = conn.cancellation();
     let retry = super::retry()?;
+    let (finished, completion) = tokio::sync::oneshot::channel();
     let thread = thread::Builder::new()
         .name("analyte-serial".into())
-        .spawn(move || analyte_transport::serial::run_system(&settings, side, retry))?;
+        .spawn(move || {
+            let result = analyte_transport::serial::run_system(&settings, side, retry);
+            let _ = finished.send(());
+            result
+        })?;
     let owner = Owner {
         cancellation,
+        finished: completion,
         thread: Some(thread),
     };
     let result = loop {
@@ -120,6 +125,7 @@ mod tests {
             let output = super::super::worker::tests::capture(|| {
                 drop(Owner {
                     cancellation: Cancellation::default(),
+                    finished: tokio::sync::oneshot::channel().1,
                     thread: Some(worker),
                 });
             });

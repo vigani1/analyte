@@ -126,6 +126,7 @@ pub(crate) async fn run(
             if *stop.borrow() {
                 return Ok(());
             }
+            // Reconnect backoff is cancellable; this is not polling for completion.
             tokio::select! {
                 () = stopping(&mut stop) => return Ok(()),
                 () = tokio::time::sleep(Duration::from_millis(100)) => {}
