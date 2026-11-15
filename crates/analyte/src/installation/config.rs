@@ -249,64 +249,7 @@ impl Program {
             if machines.iter().any(|m| m.id == entry.id) {
                 return Err(invalid("duplicate machine identity"));
             }
-            let definition = base.join(entry.definition);
-            let site = base.join(entry.site);
-            let overrides = entry.overrides.map(|p| base.join(p));
-            let replacement = match &overrides {
-                Some(p) => read(p)?,
-                None => "schema_version = 1".into(),
-            };
-            let snapshot = Draft::load(
-                (&definition.display().to_string(), &read(&definition)?),
-                (&site.display().to_string(), &read(&site)?),
-                ("overrides", &replacement),
-            )?
-            .validate()?;
-            if matches!(
-                snapshot.effective().stack(),
-                analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
-            ) {
-                return Err(invalid(
-                    "ASTM receive dialog currently supports strict checksum hex only",
-                ));
-            }
-            if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
-                return Err(invalid(
-                    "receive transport operation timeout cannot exceed 60000 ms",
-                ));
-            }
-            if snapshot.canonical().len() > file.store.record_bytes
-                || snapshot.effective().stack().limits().bytes() > file.store.record_bytes
-            {
-                return Err(invalid(
-                    "store record limit is smaller than machine message or effective config",
-                ));
-            }
-            if entry.capture
-                && (!entry
-                    .id
-                    .as_str()
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-                    || matches!(entry.id.as_str(), "." | ".."))
-            {
-                return Err(invalid(
-                    "capture machine ID must be one directory component",
-                ));
-            }
-            machines.push(Machine {
-                capture: entry.capture,
-                #[cfg(feature = "test-hooks")]
-                law_committed: None,
-                #[cfg(feature = "test-hooks")]
-                astm_committed: None,
-                destination_limits: crate::runtime::delivery::limits(
-                    snapshot.effective().site().destination.freshness_seconds,
-                ),
-                id: entry.id,
-                snapshot,
-                listener: None,
-            });
+            machines.push(load_machine(entry, base, file.store.record_bytes)?);
         }
         if file.signing_rotation.len() > 128
             || file.signing_rotation.values().any(|names| names.len() > 7)
@@ -575,4 +518,65 @@ mod startup_tests {
         }
         Ok(())
     }
+}
+
+fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machine, Error> {
+    let definition = base.join(entry.definition);
+    let site = base.join(entry.site);
+    let overrides = entry.overrides.map(|p| base.join(p));
+    let replacement = match &overrides {
+        Some(p) => read(p)?,
+        None => "schema_version = 1".into(),
+    };
+    let snapshot = Draft::load(
+        (&definition.display().to_string(), &read(&definition)?),
+        (&site.display().to_string(), &read(&site)?),
+        ("overrides", &replacement),
+    )?
+    .validate()?;
+    if matches!(
+        snapshot.effective().stack(),
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
+    ) {
+        return Err(invalid(
+            "ASTM receive dialog currently supports strict checksum hex only",
+        ));
+    }
+    if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
+        return Err(invalid(
+            "receive transport operation timeout cannot exceed 60000 ms",
+        ));
+    }
+    if snapshot.canonical().len() > record_bytes
+        || snapshot.effective().stack().limits().bytes() > record_bytes
+    {
+        return Err(invalid(
+            "store record limit is smaller than machine message or effective config",
+        ));
+    }
+    if entry.capture
+        && (!entry
+            .id
+            .as_str()
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+            || matches!(entry.id.as_str(), "." | ".."))
+    {
+        return Err(invalid(
+            "capture machine ID must be one directory component",
+        ));
+    }
+    Ok(Machine {
+        capture: entry.capture,
+        #[cfg(feature = "test-hooks")]
+        law_committed: None,
+        #[cfg(feature = "test-hooks")]
+        astm_committed: None,
+        destination_limits: crate::runtime::delivery::limits(
+            snapshot.effective().site().destination.freshness_seconds,
+        ),
+        id: entry.id,
+        snapshot,
+        listener: None,
+    })
 }

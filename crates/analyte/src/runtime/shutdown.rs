@@ -99,6 +99,14 @@ impl Drop for Watchdog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct Stuck;
+    impl Drop for Stuck {
+        fn drop(&mut self) {
+            loop {
+                thread::park();
+            }
+        }
+    }
     #[test]
     fn plan11_agents_concurrency_stuck_component_exits_three() -> Result<(), Error> {
         const CHILD: &str = "ANALYTE_WATCHDOG_CHILD";
@@ -108,14 +116,6 @@ mod tests {
                 .init();
             let watchdog = Watchdog::new(Duration::from_millis(100), None)?;
             let _component = watchdog.component("synthetic-stuck-owner".into());
-            struct Stuck;
-            impl Drop for Stuck {
-                fn drop(&mut self) {
-                    loop {
-                        thread::park();
-                    }
-                }
-            }
             watchdog.arm();
             watchdog.arm(); // Repeated stop requests must not restart or shorten the deadline.
             drop(Stuck);
