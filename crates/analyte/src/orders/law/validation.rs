@@ -1,5 +1,5 @@
 //! TF-2b Rev 11 B.3.1 (pp.63-64), B.7.6 (p.82): compare against retained work.
-use crate::{Error, config::Machine, deadline};
+use crate::{Error, deadline, installation::config::Machine};
 use analyte_hl7::{Message, Options, Segment, law};
 use analyte_store::Handle;
 

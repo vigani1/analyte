@@ -3,7 +3,7 @@ use super::{
     Connection, Exchange,
     work::{Command, render},
 };
-use crate::{Error, config::Machine, invalid};
+use crate::{Error, installation::config::Machine, invalid};
 use analyte_hl7::{Message, Options, law};
 use analyte_model::SourceText;
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderItems, OrderReservation};

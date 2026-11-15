@@ -1,6 +1,6 @@
 //! Plan Â§11, ADR 0003 rules 2â€“4 and 8: the same stored bytes take the live mapping path.
 use super::*;
-use crate::config::Program;
+use crate::installation::config::Program;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Attempt, Audit, FreeSpace, RevisionOutcome};
 use std::path::Path;
@@ -73,7 +73,7 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let endpoint = receiver.local_addr()?.to_string();
     let missing = definition.replace("tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]", "tests = []");
     let old = program(temp.path(), &missing, &endpoint)?;
-    let mut store = crate::service::open_store(&old, Box::new(Space)).await?;
+    let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
     evidence::receive(
@@ -243,7 +243,7 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
             None => vidas_config(machine)?
                 .encode(b"mtrsl|pi|si|ci00012a|rtSYN|tt|td|qlpositive|qn<0.1|y3mg/L|qd1:10|")?,
         };
-        let mut store = crate::service::open_store(&current, Box::new(Space)).await?;
+        let mut store = crate::runtime::service::open_store(&current, Box::new(Space)).await?;
         let id = ReceiptId::new();
         evidence::receive(
             &store,
@@ -322,7 +322,7 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
     let definition =
         include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
     let old = program(temp.path(), &definition, "127.0.0.1:5600")?;
-    let mut store = crate::service::open_store(&old, Box::new(Space)).await?;
+    let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let original = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
     let connection = evidence::Connection::new(original)?;

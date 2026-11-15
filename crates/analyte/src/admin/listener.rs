@@ -54,6 +54,7 @@ impl axum::serve::Listener for Listener {
                 }
                 Err(error) => {
                     tracing::warn!(error_kind = ?error.kind(), "admin listener accept failed");
+                    // Back off after an OS accept error; socket readiness cannot resolve that error.
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }

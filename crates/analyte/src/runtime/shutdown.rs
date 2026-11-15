@@ -99,6 +99,14 @@ impl Drop for Watchdog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct Stuck;
+    impl Drop for Stuck {
+        fn drop(&mut self) {
+            loop {
+                thread::park();
+            }
+        }
+    }
     #[test]
     fn plan11_agents_concurrency_stuck_component_exits_three() -> Result<(), Error> {
         const CHILD: &str = "ANALYTE_WATCHDOG_CHILD";
@@ -108,14 +116,6 @@ mod tests {
                 .init();
             let watchdog = Watchdog::new(Duration::from_millis(100), None)?;
             let _component = watchdog.component("synthetic-stuck-owner".into());
-            struct Stuck;
-            impl Drop for Stuck {
-                fn drop(&mut self) {
-                    loop {
-                        thread::park();
-                    }
-                }
-            }
             watchdog.arm();
             watchdog.arm(); // Repeated stop requests must not restart or shorten the deadline.
             drop(Stuck);
@@ -125,7 +125,7 @@ mod tests {
         let mut child = std::process::Command::new(std::env::current_exe()?)
             .args([
                 "--exact",
-                "shutdown::tests::plan11_agents_concurrency_stuck_component_exits_three",
+                "runtime::shutdown::tests::plan11_agents_concurrency_stuck_component_exits_three",
                 "--nocapture",
             ])
             .env(CHILD, "1")
@@ -138,6 +138,7 @@ mod tests {
                 child.wait()?;
                 return Err("shutdown watchdog failed to exit within five seconds".into());
             }
+            // std::process has no timed wait; keep the five-second kill bound for a broken child.
             thread::sleep(Duration::from_millis(10));
         }
         let child = child.wait_with_output()?;

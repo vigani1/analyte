@@ -1,6 +1,6 @@
 //! Foreground service and protected operator command line.
 #![forbid(unsafe_code)]
-use analyte::{Error, config::Program, service};
+use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_model::{Identifier, Reason};
 use analyte_store::Audit;
 use clap::{Parser, Subcommand};
@@ -160,16 +160,17 @@ fn required_actor(actor: Option<Identifier>) -> Result<Identifier, Error> {
 async fn recover(
     config: &std::path::Path,
     actor: Identifier,
-    target: analyte::recovery::ReprocessTarget,
+    target: analyte::operator::recovery::ReprocessTarget,
     reason: String,
 ) -> Result<(), Error> {
     let reason = Reason::new(&reason)?;
     let program = Program::load(config)?;
     let mut store = analyte::open_system_store(&program).await?;
-    let result = analyte::recovery::reprocess(&store, &program, target, actor, reason).await;
+    let result =
+        analyte::operator::recovery::reprocess(&store, &program, target, actor, reason).await;
     store.shutdown(until()).await?;
     let commit = result?;
-    analyte::output::line(&format!(
+    analyte::operator::output::line(&format!(
         "Interpretation {} recorded; decisions: {:?}. Inspect parked items for failures.",
         commit.version, commit.outcomes
     ))?;
@@ -190,7 +191,7 @@ fn main() -> Result<(), Error> {
         },
     } = &cli.command
     {
-        return analyte::windows_service::run(
+        return analyte::runtime::windows_service::run(
             cli.config,
             Duration::from_secs(*shutdown_timeout_secs),
         );
@@ -219,7 +220,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             let token =
                 tokio::task::spawn_blocking(move || analyte::admin::rotate_token(&directory))
                     .await??;
-            analyte::output::line(&token)?;
+            analyte::operator::output::line(&token)?;
             Ok(())
         }
         #[cfg(windows)]
@@ -248,7 +249,10 @@ async fn execute(cli: Cli) -> Result<(), Error> {
                     analyte_config::EvidenceLevel::Simulated => "simulated",
                     analyte_config::EvidenceLevel::Proven => "proven",
                 };
-                analyte::output::line(&format!("{} {digest} {level}", machine.id().as_str()))?;
+                analyte::operator::output::line(&format!(
+                    "{} {digest} {level}",
+                    machine.id().as_str()
+                ))?;
             }
             Ok(())
         }
@@ -262,14 +266,14 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             )
             .await
         }
-        Command::Status { file } => analyte::status::print(&Program::load(&file)?).await,
+        Command::Status { file } => analyte::operator::status::print(&Program::load(&file)?).await,
         Command::Parked {
             command: Parked::Reprocess { id, reason },
         } => {
             recover(
                 &cli.config,
                 required_actor(cli.actor)?,
-                analyte::recovery::ReprocessTarget::Parked(id),
+                analyte::operator::recovery::ReprocessTarget::Parked(id),
                 reason,
             )
             .await
@@ -281,7 +285,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             recover(
                 &cli.config,
                 required_actor(cli.actor)?,
-                analyte::recovery::ReprocessTarget::Receipt(id),
+                analyte::operator::recovery::ReprocessTarget::Receipt(id),
                 reason,
             )
             .await
@@ -308,7 +312,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
                             })
                             .await?;
                         for row in rows {
-                            analyte::output::line(&format!(
+                            analyte::operator::output::line(&format!(
                                 "{} {} {} {:?}",
                                 row.sequence,
                                 uuid::Uuid::from(row.id),
@@ -319,9 +323,17 @@ async fn execute(cli: Cli) -> Result<(), Error> {
                         Ok::<_, Error>(())
                     }
                     Deliveries::Resend { id, reason } => {
-                        analyte::recovery::resend(&store, id, true, actor, Reason::new(&reason)?)
-                            .await?;
-                        analyte::output::line("Delivery queued with its original ID and bytes.")?;
+                        analyte::operator::recovery::resend(
+                            &store,
+                            id,
+                            true,
+                            actor,
+                            Reason::new(&reason)?,
+                        )
+                        .await?;
+                        analyte::operator::output::line(
+                            "Delivery queued with its original ID and bytes.",
+                        )?;
                         Ok(())
                     }
                 }
@@ -340,7 +352,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
                 reason: Reason::new(&reason)?,
             };
             let kept = service::restore(program, from, audit).await?;
-            analyte::output::line(&format!(
+            analyte::operator::output::line(&format!(
                 "Restored; order sending paused pending reconciliation. Previous store: {}",
                 kept.display()
             ))?;
@@ -372,7 +384,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
                 )
                 .await?;
             result?;
-            analyte::output::line("Backup verified.")?;
+            analyte::operator::output::line("Backup verified.")?;
             Ok(())
         }
     }
@@ -446,7 +458,7 @@ async fn operator(
             )
             .await?;
         for row in rows {
-            analyte::output::line(&format!(
+            analyte::operator::output::line(&format!(
                 "{} {} resolution={:?}",
                 row.id, row.evidence, row.resolution
             ))?;

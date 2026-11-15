@@ -16,9 +16,9 @@ pub struct Machine {
     pub(crate) capture: bool,
     pub(crate) destination_limits: analyte_sink::Limits,
     #[cfg(feature = "test-hooks")]
-    pub(crate) law_committed: Option<std::sync::Arc<crate::test_hooks::Committed>>,
+    pub(crate) law_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     #[cfg(feature = "test-hooks")]
-    pub(crate) astm_committed: Option<std::sync::Arc<crate::test_hooks::AstmCommitted>>,
+    pub(crate) astm_committed: Option<std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>>,
     /// Unique installation identity, independent of the shipped definition name.
     pub(crate) id: analyte_model::Identifier,
     /// Exact reproducible machine configuration.
@@ -138,7 +138,7 @@ impl Program {
     pub fn pause_law_committed_for_test(
         &mut self,
         id: &str,
-        hook: std::sync::Arc<crate::test_hooks::Committed>,
+        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
     ) -> Result<(), Error> {
         let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none()
@@ -181,7 +181,7 @@ impl Program {
     pub fn pause_astm_committed_for_test(
         &mut self,
         id: &str,
-        hook: std::sync::Arc<crate::test_hooks::AstmCommitted>,
+        hook: std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>,
     ) -> Result<(), Error> {
         let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none()
@@ -249,64 +249,7 @@ impl Program {
             if machines.iter().any(|m| m.id == entry.id) {
                 return Err(invalid("duplicate machine identity"));
             }
-            let definition = base.join(entry.definition);
-            let site = base.join(entry.site);
-            let overrides = entry.overrides.map(|p| base.join(p));
-            let replacement = match &overrides {
-                Some(p) => read(p)?,
-                None => "schema_version = 1".into(),
-            };
-            let snapshot = Draft::load(
-                (&definition.display().to_string(), &read(&definition)?),
-                (&site.display().to_string(), &read(&site)?),
-                ("overrides", &replacement),
-            )?
-            .validate()?;
-            if matches!(
-                snapshot.effective().stack(),
-                analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
-            ) {
-                return Err(invalid(
-                    "ASTM receive dialog currently supports strict checksum hex only",
-                ));
-            }
-            if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
-                return Err(invalid(
-                    "receive transport operation timeout cannot exceed 60000 ms",
-                ));
-            }
-            if snapshot.canonical().len() > file.store.record_bytes
-                || snapshot.effective().stack().limits().bytes() > file.store.record_bytes
-            {
-                return Err(invalid(
-                    "store record limit is smaller than machine message or effective config",
-                ));
-            }
-            if entry.capture
-                && (!entry
-                    .id
-                    .as_str()
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-                    || matches!(entry.id.as_str(), "." | ".."))
-            {
-                return Err(invalid(
-                    "capture machine ID must be one directory component",
-                ));
-            }
-            machines.push(Machine {
-                capture: entry.capture,
-                #[cfg(feature = "test-hooks")]
-                law_committed: None,
-                #[cfg(feature = "test-hooks")]
-                astm_committed: None,
-                destination_limits: crate::delivery::limits(
-                    snapshot.effective().site().destination.freshness_seconds,
-                ),
-                id: entry.id,
-                snapshot,
-                listener: None,
-            });
+            machines.push(load_machine(entry, base, file.store.record_bytes)?);
         }
         if file.signing_rotation.len() > 128
             || file.signing_rotation.values().any(|names| names.len() > 7)
@@ -477,7 +420,7 @@ mod admin_tests {
     // Plan section 11: existing installations have no admin listener by default.
     #[test]
     fn plan11_admin_is_absent_by_default() -> Result<(), Error> {
-        let file: File = toml::from_str(include_str!("../examples/analyte.toml"))?;
+        let file: File = toml::from_str(include_str!("../../examples/analyte.toml"))?;
         assert!(file.admin.is_none());
         assert!(file.alerts.is_empty());
         assert_eq!(file.alert_interval_seconds, 30);
@@ -495,7 +438,7 @@ mod alert_program_tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let definition = root.join("../config/examples/hl7.toml").canonicalize()?;
         let site = root.join("../config/examples/site.toml").canonicalize()?;
-        let original = include_str!("../examples/analyte.toml")
+        let original = include_str!("../../examples/analyte.toml")
             .replace(
                 "../../config/examples/hl7.toml",
                 &definition.to_string_lossy().replace('\\', "/"),
@@ -575,4 +518,65 @@ mod startup_tests {
         }
         Ok(())
     }
+}
+
+fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machine, Error> {
+    let definition = base.join(entry.definition);
+    let site = base.join(entry.site);
+    let overrides = entry.overrides.map(|p| base.join(p));
+    let replacement = match &overrides {
+        Some(p) => read(p)?,
+        None => "schema_version = 1".into(),
+    };
+    let snapshot = Draft::load(
+        (&definition.display().to_string(), &read(&definition)?),
+        (&site.display().to_string(), &read(&site)?),
+        ("overrides", &replacement),
+    )?
+    .validate()?;
+    if matches!(
+        snapshot.effective().stack(),
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
+    ) {
+        return Err(invalid(
+            "ASTM receive dialog currently supports strict checksum hex only",
+        ));
+    }
+    if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
+        return Err(invalid(
+            "receive transport operation timeout cannot exceed 60000 ms",
+        ));
+    }
+    if snapshot.canonical().len() > record_bytes
+        || snapshot.effective().stack().limits().bytes() > record_bytes
+    {
+        return Err(invalid(
+            "store record limit is smaller than machine message or effective config",
+        ));
+    }
+    if entry.capture
+        && (!entry
+            .id
+            .as_str()
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+            || matches!(entry.id.as_str(), "." | ".."))
+    {
+        return Err(invalid(
+            "capture machine ID must be one directory component",
+        ));
+    }
+    Ok(Machine {
+        capture: entry.capture,
+        #[cfg(feature = "test-hooks")]
+        law_committed: None,
+        #[cfg(feature = "test-hooks")]
+        astm_committed: None,
+        destination_limits: crate::runtime::delivery::limits(
+            snapshot.effective().site().destination.freshness_seconds,
+        ),
+        id: entry.id,
+        snapshot,
+        listener: None,
+    })
 }

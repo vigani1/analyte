@@ -1,3 +1,4 @@
+//! Read-only operator summaries belong at the admin presentation boundary.
 use super::{escape, server::Context};
 use crate::{Error, deadline};
 use analyte_model::OrderState;
@@ -52,28 +53,7 @@ async fn render(state: &Context) -> Result<String, Error> {
     html.push_str(super::pages::NAV);
     html.push_str("<dl>");
     let now = jiff::Timestamp::now().as_second();
-    let alerts = crate::alerts::active(&state.store).await?;
-    row(&mut html, "Active alerts", &alerts.len().to_string());
-    for alert in alerts {
-        let (kind, machine) = crate::alerts::signal(&alert.key);
-        row(&mut html, "Alert", kind);
-        if let Some(machine) = machine {
-            row(&mut html, "Alert machine", machine);
-        }
-        row(&mut html, "Responder", &alert.responder);
-        row(
-            &mut html,
-            "Raised age (seconds)",
-            &crate::alerts::age(&alert, now),
-        );
-        row(
-            &mut html,
-            "Last alert value",
-            &alert
-                .value
-                .map_or_else(|| "unknown".into(), |value| value.to_string()),
-        );
-    }
+    render_alerts(state, &mut html, now).await?;
     row(
         &mut html,
         "Order sending paused after restore",
@@ -90,6 +70,44 @@ async fn render(state: &Context) -> Result<String, Error> {
             "reserve reached: receiving refused"
         },
     );
+    render_uncertain_orders(state, &mut html, until).await?;
+    render_destinations(state, &mut html, now).await?;
+    render_machines(state, &mut html, until).await?;
+    html.push_str("</dl></html>");
+    Ok(html)
+}
+
+async fn render_alerts(state: &Context, html: &mut String, now: i64) -> Result<(), Error> {
+    let alerts = crate::operator::alerts::active(&state.store).await?;
+    row(html, "Active alerts", &alerts.len().to_string());
+    for alert in alerts {
+        let (kind, machine) = crate::operator::alerts::signal(&alert.key);
+        row(html, "Alert", kind);
+        if let Some(machine) = machine {
+            row(html, "Alert machine", machine);
+        }
+        row(html, "Responder", &alert.responder);
+        row(
+            html,
+            "Raised age (seconds)",
+            &crate::operator::alerts::age(&alert, now),
+        );
+        row(
+            html,
+            "Last alert value",
+            &alert
+                .value
+                .map_or_else(|| "unknown".into(), |value| value.to_string()),
+        );
+    }
+    Ok(())
+}
+
+async fn render_uncertain_orders(
+    state: &Context,
+    html: &mut String,
+    until: std::time::Instant,
+) -> Result<(), Error> {
     let mut after = 0;
     let mut uncertain = 0u64;
     loop {
@@ -111,7 +129,11 @@ async fn render(state: &Context) -> Result<String, Error> {
             .checked_add(u64::try_from(page.len())?)
             .ok_or_else(|| crate::invalid("uncertain order count overflow"))?;
     }
-    row(&mut html, "Uncertain orders", &uncertain.to_string());
+    row(html, "Uncertain orders", &uncertain.to_string());
+    Ok(())
+}
+
+async fn render_destinations(state: &Context, html: &mut String, now: i64) -> Result<(), Error> {
     let mut oldest = None;
     let mut pending = false;
     let mut unknown_age = false;
@@ -120,26 +142,22 @@ async fn render(state: &Context) -> Result<String, Error> {
         pending |= health.pending_count > 0;
         unknown_age |= health.pending_count > 0 && health.oldest_pending_age.is_none();
         oldest = oldest.max(health.oldest_pending_age);
-        row(&mut html, "Destination", destination.id().as_str());
+        row(html, "Destination", destination.id().as_str());
+        row(html, "Pending items", &health.pending_count.to_string());
         row(
-            &mut html,
-            "Pending items",
-            &health.pending_count.to_string(),
-        );
-        row(
-            &mut html,
+            html,
             "Cache last successful poll (Unix seconds)",
             &health
                 .last_successful_poll
                 .map_or_else(|| "unknown".into(), |v| v.to_string()),
         );
         row(
-            &mut html,
+            html,
             "Cache fresh and trusted",
             &health.cache_trusted.to_string(),
         );
         row(
-            &mut html,
+            html,
             "Cache age (seconds)",
             &health
                 .last_successful_poll
@@ -147,10 +165,10 @@ async fn render(state: &Context) -> Result<String, Error> {
                 .filter(|age| *age >= 0)
                 .map_or_else(|| "unknown".into(), |age| age.to_string()),
         );
-        row(&mut html, "Delivery paused", &health.paused.to_string());
+        row(html, "Delivery paused", &health.paused.to_string());
     }
     row(
-        &mut html,
+        html,
         "Oldest undelivered age (seconds)",
         &if !pending {
             "none".into()
@@ -160,6 +178,14 @@ async fn render(state: &Context) -> Result<String, Error> {
             oldest.map_or_else(|| "unknown".into(), |v| v.to_string())
         },
     );
+    Ok(())
+}
+
+async fn render_machines(
+    state: &Context,
+    html: &mut String,
+    until: std::time::Instant,
+) -> Result<(), Error> {
     let mut last_activity = BTreeMap::new();
     let mut cursor = String::new();
     loop {
@@ -183,9 +209,9 @@ async fn render(state: &Context) -> Result<String, Error> {
         }
     }
     for machine in &state.machines {
-        row(&mut html, "Machine", machine.id.as_str());
+        row(html, "Machine", machine.id.as_str());
         row(
-            &mut html,
+            html,
             "Machine owner",
             if machine.running.load(Ordering::Acquire) {
                 "running"
@@ -194,18 +220,17 @@ async fn render(state: &Context) -> Result<String, Error> {
             },
         );
         row(
-            &mut html,
+            html,
             "Connection state",
             "unknown (not inferred from receipt age)",
         );
         row(
-            &mut html,
+            html,
             "Last received activity",
             &last_activity
                 .get(machine.id.as_str())
                 .map_or_else(|| "unknown".into(), ToString::to_string),
         );
     }
-    html.push_str("</dl></html>");
-    Ok(html)
+    Ok(())
 }
