@@ -60,6 +60,7 @@ impl Store {
         if version < 1 {
             return Err(Error::Corruption);
         }
+        Self::restore_capacity(&source_db, path, &limits, &*space)?;
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
