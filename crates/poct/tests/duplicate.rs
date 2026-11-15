@@ -22,7 +22,8 @@ fn key(run: &str, revision: u64) -> Result<ObservationKey, analyte_model::TextEr
                     namespace: Identifier::new("synthetic-system")?,
                     value: Identifier::new("synthetic-analyte")?,
                 },
-                sub_id: SourceText::new(run)?,
+                sub_id: SourceText::new("")?,
+                run: SourceText::new(run)?,
                 order: NamespacedId {
                     namespace: Identifier::new("synthetic-orders")?,
                     value: Identifier::new("trusted-order")?,
@@ -82,12 +83,20 @@ fn poct01_b_3_2_correction_rerun_and_unresolved_are_distinct() -> TestResult {
         key: original.clone(),
         evidence: evidence.clone(),
     })?;
-    for different in [key("trusted-run-A", 1)?, key("trusted-run-B", 0)?] {
+    // A corrected revision is supplied by the store after it has established
+    // correction evidence and changed content; a rerun has its own run key.
+    for (different, content) in [
+        (
+            key("trusted-run-A", 1)?,
+            crate::evidence("corrected-receipt", "2.50")?,
+        ),
+        (key("trusted-run-B", 0)?, evidence.clone()),
+    ] {
         assert_eq!(
             index.check(
                 &different.device,
                 &IdentityStatus::Resolved(different.result),
-                &evidence
+                &content
             ),
             DuplicateStatus::New
         );

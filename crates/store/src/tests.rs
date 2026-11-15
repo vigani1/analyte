@@ -73,6 +73,17 @@ fn adr0003_frame_committed_before_ack_survives_restart() -> TestResult {
 }
 
 #[test]
+fn adr0003_admission_check_matches_the_write_guard_without_writing() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let full = Store::open(&temp.path().join("full.db"), limits(), Box::new(Space(0)))?;
+    assert!(matches!(full.admission(1), Err(Error::Capacity)));
+    let roomy = open(&temp.path().join("roomy.db"))?;
+    roomy.admission(1)?;
+    assert_eq!(roomy.incomplete("")?, Vec::<String>::new());
+    Ok(())
+}
+
+#[test]
 fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = Store::open(&temp.path().join("store.db"), limits(), Box::new(Space(0)))?;
@@ -98,7 +109,7 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        1
+        2
     );
     assert_eq!(
         store
@@ -118,9 +129,9 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
             .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    store.db.execute_batch("PRAGMA user_version=2")?;
+    store.db.execute_batch("PRAGMA user_version=3")?;
     drop(store);
-    assert!(matches!(open(&path), Err(Error::SchemaTooNew(2))));
+    assert!(matches!(open(&path), Err(Error::SchemaTooNew(3))));
     Ok(())
 }
 
@@ -389,6 +400,7 @@ fn production_result(
             observation: ObservationIdentity {
                 code: name.clone(),
                 sub_id: SourceText::new("1")?,
+                run: SourceText::new("")?,
                 order: name.clone(),
             },
             revision: Revision(0),
@@ -610,5 +622,217 @@ fn plan11_corruption_and_database_size_limit_refuse_visibly() -> TestResult {
         store.receive(&receipt(b"raw")?, b"raw", b"config"),
         Err(Error::Capacity)
     ));
+    Ok(())
+}
+
+#[test]
+fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("v1.db");
+    // Exercise the original v1 schema and APIs before opening through migration.
+    let db = Connection::open(&path)?;
+    db.execute_batch(include_str!("schema.sql"))?;
+    for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
+        db.execute_batch(&format!("CREATE TRIGGER immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
+    }
+    let mut v1 = Store {
+        db,
+        path: path.clone(),
+        limits: limits(),
+        space: Box::new(Space(u64::MAX)),
+    };
+    let metadata = receipt(b"raw")?;
+    v1.receive(&metadata, b"raw", b"config")?;
+    v1.interpret(metadata.id, &interpretation()?, &[])?;
+    let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
+    seed_delivery(&v1, metadata.id, id, "key")?;
+    v1.db.execute("UPDATE outbox SET state='in_flight'", [])?;
+    v1.attempted(id, &Attempt::RetryAt(10), 0)?;
+    v1.frame(&Identifier::new("transfer")?, 1, b"frame")?;
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("test")?,
+        targets: vec![],
+        time: 1,
+        reason: Reason::new("synthetic")?,
+    };
+    v1.audit(&audit)?;
+    v1.park(&Parked {
+        kind: Identifier::new("test")?,
+        reason: Reason::new("synthetic")?,
+        targets: vec![],
+    })?;
+    v1.order_page(&OrderPage {
+        destination: Identifier::new("app")?,
+        cursor: Identifier::new("cursor")?,
+        complete: true,
+        polled: 1,
+        orders: vec![CachedOrder {
+            id: Identifier::new("order")?,
+            sample: SampleId::new("001")?,
+            document: "synthetic".into(),
+            tombstone: false,
+            expiry: 100,
+        }],
+    })?;
+    let tables = [
+        "receipts",
+        "transfers",
+        "frames",
+        "interpretations",
+        "outbox",
+        "attempts",
+        "parked",
+        "audit",
+        "feed",
+        "orders",
+    ];
+    let rows = tables
+        .iter()
+        .map(|table| {
+            v1.db
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| {
+                    r.get::<_, i64>(0)
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let triggers: Vec<String> = v1
+        .db
+        .prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    drop(v1);
+    let mut migrated = open(&path)?;
+    for (table, count) in tables.iter().zip(rows) {
+        assert_eq!(
+            migrated
+                .db
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))?,
+            count
+        );
+    }
+    assert_eq!(migrated.raw(metadata.id)?, Some(b"raw".to_vec()));
+    assert_eq!(migrated.frames(&Identifier::new("transfer")?, 0)?.len(), 1);
+    assert!(migrated.interpretation(metadata.id, 1)?.is_some());
+    let claim = migrated.claim(10)?.ok_or(Error::Corruption)?;
+    assert_eq!(claim.id, id);
+    assert_eq!(claim.payload, vec![0, 17, 34]);
+    assert_eq!(claim.earlier_attempts, 1);
+    let backfilled: bool =
+        migrated
+            .db
+            .query_row("SELECT enqueue_time_backfilled FROM outbox", [], |r| {
+                r.get(0)
+            })?;
+    assert!(backfilled);
+    for trigger in triggers {
+        assert!(
+            migrated.db.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name=?1",
+                [trigger],
+                |r| r.get::<_, i64>(0)
+            )? == 1
+        );
+    }
+    for table in [
+        "receipts",
+        "frames",
+        "interpretations",
+        "attempts",
+        "audit",
+        "outbox",
+    ] {
+        assert!(
+            migrated
+                .db
+                .execute(&format!("DELETE FROM {table}"), [])
+                .is_err()
+        );
+    }
+    assert!(
+        migrated
+            .db
+            .execute("UPDATE outbox SET payload=x'00'", [])
+            .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("events.db");
+    let mut store = open(&path)?;
+    let destination = Identifier::new("app")?;
+    let event = OrderEventDelivery {
+        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        destination: destination.clone(),
+        order_id: Identifier::new("order-a")?,
+        payload: b"event".to_vec(),
+        contract_version: 1,
+    };
+    store.enqueue_order_event(&event, 10)?;
+    assert!(store.enqueue_order_event(&event, 10).is_err());
+    let second = OrderEventDelivery {
+        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        ..event
+    };
+    store.enqueue_order_event(&second, 11)?;
+    let other = OrderEventDelivery {
+        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        order_id: Identifier::new("order-b")?,
+        ..second
+    };
+    store.enqueue_order_event(&other, 12)?;
+    let claim = store.claim(12)?.ok_or(Error::Corruption)?;
+    assert_eq!(claim.kind, DeliveryKind::OrderEvent);
+    assert_eq!(claim.earlier_attempts, 0);
+    store.attempted(claim.id, &Attempt::RetryAt(20), 12)?;
+    assert_eq!(store.claim(12)?.ok_or(Error::Corruption)?.id, other.id);
+    let health = store.health(&destination, 15)?;
+    assert_eq!(
+        (
+            health.pending_count,
+            health.pending_bytes,
+            health.oldest_pending_age
+        ),
+        (3, 15, Some(5))
+    );
+    assert!(!health.paused);
+    assert!(!health.cache_trusted);
+    store.order_page(&OrderPage {
+        destination: destination.clone(),
+        cursor: Identifier::new("cursor")?,
+        complete: false,
+        polled: 15,
+        orders: vec![],
+    })?;
+    let health = store.health(&destination, 15)?;
+    assert_eq!(health.last_successful_poll, Some(15));
+    assert!(!health.snapshot_complete);
+    assert!(!health.cache_trusted);
+    store.order_page(&OrderPage {
+        destination: destination.clone(),
+        cursor: Identifier::new("next")?,
+        complete: true,
+        polled: 16,
+        orders: vec![],
+    })?;
+    assert!(store.health(&destination, 16)?.cache_trusted);
+    store.reset_orders(&destination)?;
+    assert!(!store.health(&destination, 16)?.cache_trusted);
+
+    drop(store);
+    let mut store = open(&path)?;
+    let retry = store.claim(20)?.ok_or(Error::Corruption)?;
+    assert_eq!(retry.id, event.id);
+    assert_eq!(retry.earlier_attempts, 1);
+    store.attempted(retry.id, &Attempt::Paused(Reason::new("credentials")?), 20)?;
+    assert!(store.health(&destination, 21)?.paused);
+    assert!(store.claim(21)?.is_none());
+    // CHECK constraints reject both kinds carrying the other's provenance.
+    assert!(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','order_event','receipt',1,'o','app','o',x'00',x'00',1,'pending',0)",[]).is_err());
+    assert!(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','result',NULL,NULL,'o','app','o',x'00',x'00',1,'pending',0)",[]).is_err());
     Ok(())
 }

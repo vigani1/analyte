@@ -116,3 +116,39 @@ fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn poct01_b_6_10_source_paths_keep_distinct_real_element_positions() -> TestResult {
+    let raw = common::observation("o", true, "<OBS.value V=\"1.00\" U=\"unit\"/>");
+    let (_, service) = raw.split_once("<SVC>").ok_or("missing synthetic service")?;
+    let service = service
+        .strip_suffix("</OBS.R01>")
+        .ok_or("missing synthetic root close")?;
+    let repeated = raw.replace("</OBS.R01>", &format!("<SVC>{service}</OBS.R01>"));
+    let message = Message::parse(repeated.as_bytes(), common::limits())?;
+    let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
+    assert_eq!(mapped.len(), 2);
+    let mut observed_positions = Vec::new();
+    for result in mapped {
+        for node in result.part.source_path.as_slice() {
+            let index = node
+                .occurrence
+                .checked_sub(1)
+                .ok_or("zero source position")?;
+            assert_eq!(
+                message
+                    .document()
+                    .elements()
+                    .get(index)
+                    .ok_or("invalid source position")?
+                    .name(),
+                node.kind.as_str()
+            );
+            if node.kind.as_str() == "OBS" {
+                observed_positions.push(node.occurrence);
+            }
+        }
+    }
+    assert_ne!(observed_positions.first(), observed_positions.get(1));
+    Ok(())
+}

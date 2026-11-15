@@ -47,7 +47,9 @@ A POCT analyte code identifies the test, not its individual run. Service sequenc
 numbers can wrap. The mapper therefore returns **unresolved** identity rather than
 inventing a key from a patient, timestamp, ordinal, value or receipt ID. Host
 reconciliation must supply sufficient trusted source evidence for the common
-model's observation identity and revision before result recording/delivery.
+model's observation identity before result recording/delivery. The store assigns
+revisions atomically from retained identity/content history under ADR 0003; this
+crate never derives a revision from a source status or service sequence.
 
 `DuplicateIndex` keys on configured device plus trusted observation identity and
 revision. Comparison evidence omits message headers, retransmission reason and
@@ -64,7 +66,9 @@ a protected-store identity lookup, not silently forgetting records. The pure
 index itself does not authorize an ACK or provide durable storage.
 
 Mapping preserves original numbers, codes, code systems/versions, units, flags
-and source times. Patient ID is separate from specimen ID. Patient, liquid QC,
+and source times. Source paths retain one-based XML element positions, including
+distinct positions for repeated services and observations; these are provenance,
+never run identity. Patient ID is separate from specimen ID. Patient, liquid QC,
 electronic QC, calibration, calibration verification, proficiency and unknown
 roles remain explicit. Common-model summaries are conservative: POCT acceptance
 is not clinical finality; an unknown role stays unknown; dilution application is

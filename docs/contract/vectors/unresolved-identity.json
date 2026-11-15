@@ -69,6 +69,7 @@
           "status": "final",
           "source_path": [
             {
+              "occurrence": 1,
               "kind": "OBX",
               "sequence": "1",
               "status": "F"

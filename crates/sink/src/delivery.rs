@@ -1,0 +1,290 @@
+use crate::{Destination, Error, SecretsSource, body, cancelled, deadline};
+use analyte_contract::{ResponseAction, classify_response};
+use analyte_model::{DeliveryId, Identifier, IdentityStatus, ReceiptMetadata, ResultContent};
+use analyte_store::{Attempt, DeliveryKind, Handle};
+use std::time::Duration;
+use tokio::sync::watch;
+
+/// Builds immutable production bytes and creates their delivery ID exactly once.
+/// The caller commits this with its interpretation using `Store::interpret`.
+/// # Errors
+/// Refuses non-production modes, parked evidence, receipt mismatch and wire errors.
+pub fn build_delivery(
+    result: &ResultContent,
+    receipt: &ReceiptMetadata,
+    destination: Identifier,
+    created_at: jiff::Timestamp,
+) -> Result<analyte_store::Delivery, Error> {
+    if !result.processing.may_deliver_to_production() {
+        return Err(Error::ProcessingMode);
+    }
+    if result.requires_parking() {
+        return Err(Error::RequiresParking);
+    }
+    let IdentityStatus::Resolved(identity) = &result.identity else {
+        return Err(Error::RequiresParking);
+    };
+    let id = DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| Error::Configuration)?;
+    let document = analyte_contract::Delivery::from_result(result, receipt, id, created_at)?;
+    Ok(analyte_store::Delivery {
+        id,
+        destination,
+        ordering_key: analyte_store::OrderingKey {
+            machine: receipt.machine.clone(),
+            observation: identity.observation.clone(),
+        },
+        payload: serde_json::to_vec(&document)?,
+        contract_version: 1,
+    })
+}
+
+/// Freezes a validated order event for atomic enqueue. Its supplied ID is retained.
+/// # Errors
+/// Refuses oversized bytes or an order identity outside the store's identifier bounds.
+pub fn build_order_event(
+    event: &analyte_contract::OrderEvent,
+    destination: Identifier,
+) -> Result<analyte_store::OrderEventDelivery, Error> {
+    let payload = serde_json::to_vec(event)?;
+    if payload.len() > analyte_contract::MAX_DOCUMENT_BYTES {
+        return Err(Error::ResponseTooLarge);
+    }
+    let fields = event.fields();
+    let id = uuid::Uuid::parse_str(fields.delivery_id.as_str())
+        .ok()
+        .and_then(|id| DeliveryId::try_from(id).ok())
+        .ok_or(Error::Configuration)?;
+    let order_id = Identifier::new(fields.order_id.as_str()).map_err(|_| Error::Configuration)?;
+    Ok(analyte_store::OrderEventDelivery {
+        id,
+        destination,
+        order_id,
+        payload,
+        contract_version: 1,
+    })
+}
+
+/// Outcome durably recorded before returning to the host.
+#[derive(Debug, PartialEq, Eq)]
+pub enum DeliveryOutcome {
+    /// No eligible delivery is currently due.
+    Idle,
+    /// Accepted or deduplicated by the app.
+    Done(analyte_contract::DeliveryStatus),
+    /// Preserved for operator reconciliation.
+    Parked,
+    /// Destination paused until an audited operator release.
+    Paused,
+    /// Same immutable delivery scheduled for a later attempt.
+    RetryAt(i64),
+}
+
+/// One owner claims globally across configured destinations; no tasks are spawned.
+/// Run only one owner per store to avoid making destination configuration ambiguous.
+pub struct Worker<'a> {
+    store: &'a Handle,
+    destinations: &'a [Destination],
+    secrets: &'a dyn SecretsSource,
+}
+
+impl<'a> Worker<'a> {
+    /// Borrows the store and host configuration for the worker's entire lifetime.
+    #[must_use]
+    pub fn new(
+        store: &'a Handle,
+        destinations: &'a [Destination],
+        secrets: &'a dyn SecretsSource,
+    ) -> Self {
+        Self {
+            store,
+            destinations,
+            secrets,
+        }
+    }
+
+    /// Claims, sends and records one attempt. Cancellation can leave it in flight;
+    /// the host must reconcile and explicitly release that same ID after restart.
+    /// # Errors
+    /// Returns store/configuration failures; an uncertain write is never assumed undone.
+    pub async fn deliver_once(&self) -> Result<DeliveryOutcome, Error> {
+        let now = jiff::Timestamp::now().as_second();
+        let claim = self
+            .store
+            .request(deadline(Duration::from_secs(5))?, move |s| s.claim(now))
+            .await?;
+        let Some(claim) = claim else {
+            return Ok(DeliveryOutcome::Idle);
+        };
+        let destination = self
+            .destinations
+            .iter()
+            .find(|d| d.id == claim.destination)
+            .ok_or(Error::UnknownDestination)?;
+        let (action, conflict_detail) = match tokio::time::timeout(
+            destination.limits.request_timeout,
+            self.send(destination, &claim),
+        )
+        .await
+        {
+            Ok(Ok(action)) => action,
+            Ok(Err(Error::Secrets | Error::Signature(_))) => (ResponseAction::PauseForSetup, None),
+            Ok(Err(Error::Http(_) | Error::ResponseTooLarge | Error::Timeout)) | Err(_) => {
+                (ResponseAction::Retry { after: None }, None)
+            }
+            Ok(Err(error)) => return Err(error),
+        };
+        let now = jiff::Timestamp::now().as_second();
+        let (attempt, outcome) = match action {
+            ResponseAction::Done(status) => (Attempt::Done, DeliveryOutcome::Done(status)),
+            ResponseAction::Conflict => (
+                Attempt::Conflict(reason(
+                    conflict_detail
+                        .as_deref()
+                        .unwrap_or("app reported delivery identity conflict"),
+                )?),
+                DeliveryOutcome::Parked,
+            ),
+            ResponseAction::Parked { reason: detail } => {
+                (Attempt::Parked(reason(&detail)?), DeliveryOutcome::Parked)
+            }
+            ResponseAction::PauseForSetup => (
+                Attempt::Paused(reason("destination credentials require operator repair")?),
+                DeliveryOutcome::Paused,
+            ),
+            ResponseAction::Retry { after } => {
+                let delay = backoff(destination, claim.earlier_attempts, after);
+                let next = now
+                    .checked_add(i64::try_from(delay).map_err(|_| Error::Configuration)?)
+                    .ok_or(Error::Configuration)?;
+                (Attempt::RetryAt(next), DeliveryOutcome::RetryAt(next))
+            }
+        };
+        let id = claim.id;
+        self.store
+            .request(deadline(destination.limits.request_timeout)?, move |s| {
+                s.attempted(id, &attempt, now)
+            })
+            .await?;
+        tracing::debug!(delivery_id=%uuid::Uuid::from(id),destination=%destination.id.as_str(),"delivery attempt recorded");
+        Ok(outcome)
+    }
+
+    async fn send(
+        &self,
+        destination: &Destination,
+        claim: &analyte_store::Claim,
+    ) -> Result<(ResponseAction, Option<String>), Error> {
+        if claim.contract_version != 1 {
+            return Ok((
+                ResponseAction::Parked {
+                    reason: "unsupported stored contract version".into(),
+                },
+                None,
+            ));
+        }
+        let credentials = destination.credentials(self.secrets)?;
+        let id = uuid::Uuid::from(claim.id).to_string();
+        let timestamp = jiff::Timestamp::now().as_second().to_string();
+        let signatures = credentials
+            .signing_secrets
+            .iter()
+            .map(|key| key.sign(&id, &timestamp, &claim.payload))
+            .collect::<Result<Vec<_>, _>>()?
+            .join(" ");
+        let path = match claim.kind {
+            DeliveryKind::Result => "results",
+            DeliveryKind::OrderEvent => "order-events",
+        };
+        let response = destination
+            .client
+            .post(destination.url(path)?)
+            .bearer_auth(&credentials.api_key)
+            .header("content-type", "application/json")
+            .header("webhook-id", id)
+            .header("webhook-timestamp", timestamp)
+            .header("webhook-signature", signatures)
+            .body(claim.payload.clone())
+            .send()
+            .await?;
+        let status = response.status().as_u16();
+        let retry = response
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .filter(|s| s.len() <= 64)
+            .map(str::to_owned);
+        // These actions need no body. In particular, a stalled error body must
+        // not discard Retry-After or delay a credential pause.
+        if matches!(status, 401 | 403 | 408 | 429 | 500..=599) {
+            return Ok((classify_response(status, &[], retry.as_deref()), None));
+        }
+        let bytes = match body(response).await {
+            Ok(bytes) => bytes,
+            Err(Error::ResponseTooLarge) => {
+                return Ok((classify_response(status, &[], retry.as_deref()), None));
+            }
+            Err(error) => return Err(error),
+        };
+        let detail = if status == 409 {
+            analyte_contract::decode::<analyte_contract::ErrorBody>(&bytes)
+                .ok()
+                .filter(|body| body.contract_version == 1)
+                .map(|body| body.detail.as_str().to_owned())
+        } else {
+            None
+        };
+        Ok((classify_response(status, &bytes, retry.as_deref()), detail))
+    }
+
+    /// Runs until cancellation or a specific storage/configuration error.
+    /// Dropping this future has the same uncertain-claim semantics as `deliver_once`.
+    /// # Errors
+    /// Stops visibly on errors requiring host intervention.
+    pub async fn run(&self, mut stop: watch::Receiver<bool>) -> Result<(), Error> {
+        loop {
+            let outcome = tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), result=self.deliver_once()=>result?};
+            if outcome == DeliveryOutcome::Idle {
+                tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), ()=tokio::time::sleep(Duration::from_millis(100))=>{}}
+            }
+        }
+    }
+}
+
+fn reason(text: &str) -> Result<analyte_model::Reason, Error> {
+    analyte_model::Reason::new(text)
+        .map_err(|_| Error::Document(analyte_contract::DocumentError::Field("response reason")))
+}
+
+fn backoff(destination: &Destination, attempts: u64, after: Option<u64>) -> u64 {
+    let min = destination.limits.backoff_min.as_secs();
+    let cap = destination.limits.backoff_max.as_secs();
+    let exponent = u32::try_from(attempts.min(63)).unwrap_or(63);
+    let base = min
+        .saturating_mul(1_u64.checked_shl(exponent).unwrap_or(u64::MAX))
+        .min(cap);
+    // UUID randomness provides independent scheduling jitter without a global RNG.
+    let random = uuid::Uuid::now_v7().as_bytes().iter().fold(0_u64, |n, b| {
+        n.wrapping_mul(257).wrapping_add(u64::from(*b))
+    });
+    base.saturating_add(random.checked_rem(base.max(1)).unwrap_or(0))
+        .max(after.unwrap_or(0))
+        .min(cap)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn adr0008_backoff_is_capped_and_honours_retry_after(attempts in any::<u64>(), after in any::<u64>()) {
+            let limits=crate::Limits {request_timeout:Duration::from_secs(2),backoff_min:Duration::from_secs(2),backoff_max:Duration::from_secs(60),freshness:Duration::from_secs(30),poll_interval:Duration::from_secs(1),page_size:100,max_pages:100};
+            let destination=Destination::new(Identifier::new("app")?,"https://example.invalid/",Identifier::new("secret")?,limits)?;
+            let delay=backoff(&destination,attempts,Some(after));
+            prop_assert!((2..=60).contains(&delay));
+            prop_assert!(delay>=after.min(60));
+            if attempts>=5 { prop_assert_eq!(delay,60); }
+        }
+    }
+}

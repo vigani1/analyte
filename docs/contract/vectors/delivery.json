@@ -38,6 +38,7 @@
               "value": "TEST"
             },
             "sub_id": "",
+            "run": "",
             "order": {
               "namespace": "synthetic",
               "value": "order-1"
@@ -82,6 +83,7 @@
           "status": "final",
           "source_path": [
             {
+              "occurrence": 1,
               "kind": "OBX",
               "sequence": "1",
               "status": "F"

@@ -165,6 +165,7 @@ fn map_one(
         status: model::ResultStatus::Unknown,
         source_path: model::EvidenceList::new(vec![
             model::SourceNode {
+                occurrence: 1,
                 kind: model::Identifier::new(
                     document
                         .elements()
@@ -176,6 +177,7 @@ fn map_one(
                 status: None,
             },
             model::SourceNode {
+                occurrence: source_occurrence(service.source_index)?,
                 kind: model::Identifier::new("SVC")?,
                 sequence: optional_literal(document, service.source_index, "SVC.sequence_nbr")
                     .map(|s| model::SourceText::new(&s))
@@ -185,6 +187,7 @@ fn map_one(
                     .transpose()?,
             },
             model::SourceNode {
+                occurrence: source_occurrence(parent)?,
                 kind: model::Identifier::new(
                     document
                         .elements()
@@ -196,6 +199,7 @@ fn map_one(
                 status: None,
             },
             model::SourceNode {
+                occurrence: source_occurrence(observation.source_index)?,
                 kind: model::Identifier::new("OBS")?,
                 sequence: None,
                 status: None,
@@ -349,4 +353,10 @@ fn map_time(time: &Timestamp) -> Result<model::SourceTime, MappingError> {
             .transpose()?,
         precision,
     })
+}
+
+fn source_occurrence(index: usize) -> Result<usize, MappingError> {
+    index
+        .checked_add(1)
+        .ok_or_else(|| crate::MessageError::Structure.into())
 }

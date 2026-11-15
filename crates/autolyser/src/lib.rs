@@ -1,3 +1,5 @@
-//! Dialab Autolyser vendor format: host-polled framing and the fixed-width record layouts.
-
+//! Dialab Autolyser Rev18 chapter 23, internal protocol. Evidence: documented.
 #![forbid(unsafe_code)]
+
+pub mod dialog;
+pub mod records;

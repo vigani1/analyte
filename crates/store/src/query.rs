@@ -150,3 +150,45 @@ impl Store {
             .optional()?)
     }
 }
+
+impl Store {
+    /// Enqueues an order event atomically without creating result evidence.
+    /// # Errors
+    /// Refuses bounds, capacity failures, duplicate IDs and database errors.
+    pub fn enqueue_order_event(
+        &mut self,
+        event: &crate::OrderEventDelivery,
+        now: i64,
+    ) -> Result<(), Error> {
+        self.bound(&event.payload)?;
+        self.capacity(event.payload.len())?;
+        self.db.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,'order_event',?2,?3,?2,?4,?5,?6,'pending',0,?7)", params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,crate::digest(&event.payload).0.as_slice(),event.contract_version,now])?;
+        Ok(())
+    }
+
+    /// Reads one consistent destination snapshot without exposing clinical bytes.
+    /// # Errors
+    /// Returns database or aggregate overflow failures.
+    pub fn health(&self, destination: &Identifier, now: i64) -> Result<crate::Health, Error> {
+        let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state='paused'),0) FROM outbox WHERE destination=?1 AND state!='done'",[destination.as_str()], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
+        let feed: Option<(i64, bool, bool)> = self
+            .db
+            .query_row(
+                "SELECT polled,complete,trusted FROM feed WHERE destination=?1",
+                [destination.as_str()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        Ok(crate::Health {
+            pending_count: u64::try_from(count).map_err(|_| Error::Corruption)?,
+            pending_bytes: u64::try_from(bytes).map_err(|_| Error::Corruption)?,
+            oldest_pending_age: oldest
+                .and_then(|time| now.checked_sub(time))
+                .and_then(|age| u64::try_from(age).ok()),
+            paused,
+            last_successful_poll: feed.map(|f| f.0),
+            snapshot_complete: feed.is_some_and(|f| f.1),
+            cache_trusted: feed.is_some_and(|f| f.1 && f.2),
+        })
+    }
+}

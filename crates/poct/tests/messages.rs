@@ -222,3 +222,16 @@ fn poct01_b_12_probability_is_checked_without_binary_rounding() {
     );
     assert!(Message::parse(raw.as_bytes(), limits()).is_err());
 }
+
+#[test]
+fn poct01_b_12_probability_accepts_signed_zero_and_endpoints() -> Result<(), MessageError> {
+    for probability in ["-0.00", "+0", "+1.00", "0.999999999999999999999999"] {
+        let raw = observation(
+            "o",
+            true,
+            &format!("<OBS.value V=\"1.230\" U=\"unit\" PROB=\"{probability}\"/>"),
+        );
+        Message::parse(raw.as_bytes(), limits())?;
+    }
+    Ok(())
+}

@@ -383,13 +383,17 @@ fn validate_attributes(element: &Element, kind: Kind) -> Result<(), DataError> {
     }
     if let Some(prob) = attr(element, "PROB") {
         number(prob, false)?;
-        let (whole, fraction) = prob
-            .strip_prefix('+')
-            .unwrap_or(prob)
-            .split_once('.')
-            .unwrap_or((prob, ""));
+        let negative = prob.starts_with('-');
+        let unsigned = prob.strip_prefix(['+', '-']).unwrap_or(prob);
+        let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, ""));
         let whole = whole.trim_start_matches('0');
-        if !whole.is_empty() && !(whole == "1" && fraction.bytes().all(|b| b == b'0')) {
+        let fractional_zero = fraction.bytes().all(|b| b == b'0');
+        let valid = if negative {
+            whole.is_empty() && fractional_zero
+        } else {
+            whole.is_empty() || (whole == "1" && fractional_zero)
+        };
+        if !valid {
             return Err(DataError::Number);
         }
     }
@@ -429,7 +433,10 @@ fn validate_attributes(element: &Element, kind: Kind) -> Result<(), DataError> {
             return Err(DataError::Attribute);
         }
     }
-    if kind == Kind::Code && attr(element, "S").is_some() && attr(element, "SN").is_none() {
+    if kind == Kind::Code
+        && (attr(element, "S").is_some() || attr(element, "SV").is_some())
+        && attr(element, "SN").is_none()
+    {
         return Err(DataError::Code);
     }
     if let Some(encoding) = attr(element, "ENC")

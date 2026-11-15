@@ -7,8 +7,9 @@ and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 1 is
-created transactionally from an empty database; newer versions are refused.
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 2 is
+created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
+Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
 SQLite to sync each committed WAL transaction before success is returned.
 Foreign keys are enabled on every connection; lock waits have a configured
@@ -63,11 +64,11 @@ Backup uses SQLite's online backup API in bounded page steps with a deadline,
 then checks the target integrity. Existing targets are refused. A failed backup
 may leave a partial target; it must never be used as a successful backup.
 Restoring an older backup still requires host-level delivery/order reconciliation
-before machine commands are enabled (plan ง11).
+before machine commands are enabled (plan ยง11).
 
 ## Evidence and exclusions
 
-Tests cite ADR 0002/0003/0004/0008, AGENTS clinical rules and plan ง11. They use
+Tests cite ADR 0002/0003/0004/0008, AGENTS clinical rules and plan ยง11. They use
 synthetic data and temporary directories, including restart-before-transfer-end,
 full disk, immutable receipt bytes, atomic enqueue rollback, per-key head blocking,
 reset/stale cache behavior and restore. A property test reopens the database
@@ -78,3 +79,7 @@ interpretation, native volume probing, credentials, retention, machine order
 transmission or pilot hardware flush/latency certification. Those are host or
 other-crate responsibilities. The worker's Tokio timer paths require the host's
 Tokio runtime; the crate enables only `sync` and `time` features.
+
+Order events have disjoint CHECK-constrained provenance and per-order ordering.
+Claims expose durable earlier attempt counts. Health queries expose unresolved
+count, bytes, oldest age, pause and feed status. Hosts also check freshness.
