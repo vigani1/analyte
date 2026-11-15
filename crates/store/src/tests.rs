@@ -73,6 +73,17 @@ fn adr0003_frame_committed_before_ack_survives_restart() -> TestResult {
 }
 
 #[test]
+fn adr0003_admission_check_matches_the_write_guard_without_writing() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let full = Store::open(&temp.path().join("full.db"), limits(), Box::new(Space(0)))?;
+    assert!(matches!(full.admission(1), Err(Error::Capacity)));
+    let roomy = open(&temp.path().join("roomy.db"))?;
+    roomy.admission(1)?;
+    assert_eq!(roomy.incomplete("")?, Vec::<String>::new());
+    Ok(())
+}
+
+#[test]
 fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = Store::open(&temp.path().join("store.db"), limits(), Box::new(Space(0)))?;
