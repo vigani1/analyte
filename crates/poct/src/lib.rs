@@ -24,3 +24,9 @@ mod dialog;
 pub use dialog::{
     CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogError, DialogEvent,
 };
+
+mod duplicate;
+pub use duplicate::{
+    DuplicateError, DuplicateIndex, DuplicateStatus, ObservationEvidence, ObservationKey,
+    RecordedObservation, observation_evidence,
+};
