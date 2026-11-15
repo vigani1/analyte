@@ -252,3 +252,20 @@ fn adr0002_law_overrides_replace_policy_and_change_protected_provenance() -> Res
     );
     Ok(())
 }
+
+#[test]
+fn law_tf2b_b6_declared_single_persistent_link_accepts_both_roles_and_rejects_independent_links()
+-> Result<(), Error> {
+    for role in ["tcp_server", "tcp_client"] {
+        load(&LAW.replace("kind = \"tcp_server\"", &format!("kind = \"{role}\"")))?;
+    }
+    let unsupported = LAW.replace(
+        "connection_mode = \"persistent\"",
+        "connection_mode = \"independent_per_transaction\"",
+    );
+    assert!(
+        matches!(load(&unsupported), Err(Error::Invalid { key, reason, .. }) if key=="law.connection_mode" && reason.contains("independent per-transaction LAW links are not supported"))
+    );
+    assert!(load(&LAW.replace("connection_mode = \"persistent\"", "")).is_err());
+    Ok(())
+}

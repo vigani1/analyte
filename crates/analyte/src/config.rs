@@ -251,14 +251,6 @@ impl Program {
                 ("overrides", &replacement),
             )?
             .validate()?;
-            if snapshot.effective().machine().dialog.kind == analyte_config::DialogKind::LawManager
-                && snapshot.effective().machine().transport.kind
-                    != analyte_config::TransportKind::TcpServer
-            {
-                return Err(invalid(
-                    "LAW result-only runtime requires an analyzer-initiated TCP server link",
-                ));
-            }
             if matches!(
                 snapshot.effective().machine().framing.checksum_hex,
                 Some(analyte_config::ChecksumHex::AcceptLowercase)

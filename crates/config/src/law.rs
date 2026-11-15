@@ -48,10 +48,22 @@ impl LawPeer {
     }
 }
 
+/// Declared LAW link topology. The host currently supports one persistent link only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LawConnectionMode {
+    /// One configured TCP client or server link carries LAB-27, LAB-28 and LAB-29.
+    Persistent,
+    /// Independent transaction links (TF-2b B.6); explicitly rejected until implemented.
+    IndependentPerTransaction,
+}
+
 /// Analyzer Manager policy, separate from generic HL7 and legacy display queries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Law {
+    /// Explicit single-link scope; direction comes from the transport configuration.
+    pub connection_mode: LawConnectionMode,
     /// Explicit work layout; absence leaves query execution and work sending disabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work: Option<LawWork>,
@@ -151,6 +163,17 @@ pub(crate) fn validate(machine: &Machine, path: &str) -> Result<(), Error> {
     let Some(law) = &machine.law else {
         return Ok(());
     };
+    match law.connection_mode {
+        LawConnectionMode::Persistent => {}
+        LawConnectionMode::IndependentPerTransaction => {
+            return Err(invalid(
+                path,
+                "law.connection_mode",
+                "independent per-transaction LAW links are not supported; configure one persistent link carrying LAB-27, LAB-28 and LAB-29",
+            ));
+        }
+    }
+
     if let Some(work) = &law.work
         && (machine.orders.is_none()
             || work.specimen_role.as_str() != "P"

@@ -59,6 +59,7 @@ platform = "untested"
 evidence_files = []
 
 [law]
+connection_mode = "persistent"
 query_forms = ["container", "all_pending"]
 query_deadline_ms = 1500
 response_ms = 1500

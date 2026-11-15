@@ -6,7 +6,7 @@ fn definition() -> String {
     include_str!("../../../config/examples/law.toml").to_owned()
 }
 
-fn result(id: &str, awos: &str, filler: &str, value: &str, status: &str) -> String {
+pub(super) fn result(id: &str, awos: &str, filler: &str, value: &str, status: &str) -> String {
     let mut fields = vec![""; 29];
     for (index, value) in [
         (0, "1"),

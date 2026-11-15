@@ -38,7 +38,8 @@ fn config(temp: &Path, astm: bool) -> Result<std::path::PathBuf, Error> {
 }
 
 #[test]
-fn law_tf2b_3_29_manager_selects_dedicated_receiver_without_startup_io() -> Result<(), Error> {
+fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io()
+-> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     std::fs::write(
@@ -64,14 +65,20 @@ fn law_tf2b_3_29_manager_selects_dedicated_receiver_without_startup_io() -> Resu
         include_str!("../../config/examples/law.toml")
             .replace("kind = \"tcp_server\"", "kind = \"tcp_client\""),
     )?;
-    let error = Program::load(&path)
-        .err()
-        .ok_or("LAW result-only client link was enabled")?;
-    assert!(
-        error
-            .to_string()
-            .contains("analyzer-initiated TCP server link")
+    let loaded = Program::load(&path)?;
+    assert_eq!(
+        loaded
+            .machines()
+            .first()
+            .ok_or("LAW machine absent")?
+            .snapshot()
+            .effective()
+            .machine()
+            .transport
+            .kind,
+        analyte_config::TransportKind::TcpClient
     );
+    assert!(!temp.path().join("data").exists());
     Ok(())
 }
 
