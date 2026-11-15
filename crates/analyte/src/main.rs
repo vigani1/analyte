@@ -41,6 +41,12 @@ enum Command {
         #[command(subcommand)]
         command: Parked,
     },
+    Restore {
+        #[arg(long)]
+        from: PathBuf,
+        #[arg(long)]
+        reason: String,
+    },
     Backup {
         target: PathBuf,
     },
@@ -95,6 +101,22 @@ async fn main() -> Result<(), Error> {
         Command::Run { file } => service::run(Program::load(&file)?).await,
         Command::Status { file } => analyte::status::print(&Program::load(&file)?).await,
         Command::Parked { command } => operator(&cli.config, cli.actor, command).await,
+        Command::Restore { from, reason } => {
+            let program = Program::load(&cli.config)?;
+            let audit = Audit {
+                actor: cli.actor,
+                action: Identifier::new("store-restore")?,
+                targets: Vec::new(),
+                time: jiff::Timestamp::now().as_second(),
+                reason: Reason::new(&reason)?,
+            };
+            let kept = service::restore(program, from, audit).await?;
+            analyte::output::line(&format!(
+                "Restored; order sending paused pending reconciliation. Previous store: {}",
+                kept.display()
+            ))?;
+            Ok(())
+        }
         Command::Backup { target } => {
             let program = Program::load(&cli.config)?;
             let mut store = analyte::open_system_store(&program).await?;

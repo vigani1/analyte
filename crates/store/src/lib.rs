@@ -3,6 +3,7 @@
 
 mod machine_orders;
 mod migration;
+mod restore;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
@@ -27,6 +28,9 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Another owner prevents exclusive restore access.
+    #[error("store is in use; stop the service before restoring")]
+    InUse,
     /// The configured storage reserve was reached.
     #[error("storage capacity reserve reached")]
     Capacity,
@@ -115,6 +119,7 @@ pub struct Limits {
 
 /// One connection, owned by a dedicated worker when used from async code.
 pub struct Store {
+    _lock: std::fs::File,
     db: Connection,
     path: PathBuf,
     limits: Limits,
@@ -170,6 +175,19 @@ impl Store {
         {
             return Err(Error::InvalidInput);
         }
+        let lock = Self::lock(path, false)?;
+        if path.with_extension("restore-pending").exists() {
+            return Err(Error::Conflict);
+        }
+        Self::open_locked(path, limits, space, lock)
+    }
+
+    fn open_locked(
+        path: &Path,
+        limits: Limits,
+        space: Box<dyn FreeSpace>,
+        lock: std::fs::File,
+    ) -> Result<Self, Error> {
         let mut db = Connection::open(path)?;
         db.busy_timeout(limits.busy_timeout)?;
         let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
@@ -201,6 +219,7 @@ impl Store {
             db.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER IF NOT EXISTS immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
         }
         Ok(Self {
+            _lock: lock,
             db,
             path: path.into(),
             limits,

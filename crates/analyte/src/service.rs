@@ -227,3 +227,30 @@ fn create_data_directory(path: &std::path::Path) -> Result<(), Error> {
     std::fs::create_dir_all(path)?;
     Ok(())
 }
+
+/// Restores offline on a blocking owner, keeping the displaced store.
+/// # Errors
+/// Refuses active owners, invalid backups and storage failures.
+pub async fn restore(
+    program: Program,
+    source: std::path::PathBuf,
+    audit: analyte_store::Audit,
+) -> Result<std::path::PathBuf, Error> {
+    Ok(tokio::task::spawn_blocking(move || {
+        analyte_store::Store::restore(
+            &program.data_directory.join("analyte.db"),
+            &source,
+            analyte_store::Limits {
+                reserve_bytes: program.store_limits.reserve_bytes,
+                database_bytes: program.store_limits.database_bytes,
+                record_bytes: program.store_limits.record_bytes,
+                page_rows: program.store_limits.page_rows,
+                busy_timeout: program.store_limits.busy_timeout,
+            },
+            Box::new(Volume),
+            &audit,
+            Instant::now() + Duration::from_secs(30),
+        )
+    })
+    .await??)
+}
