@@ -765,3 +765,46 @@ fn adr0003_v9_missing_custody_machine_refuses_migration_without_guessing_or_drop
     assert_eq!(snapshot(&db)?, before);
     Ok(())
 }
+
+#[test]
+fn mutation_adr0003_migration_canonical_parking_limit_is_inclusive_and_refusal_rolls_back()
+-> TestResult {
+    for delta in [0, 1] {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("canonical-bound.db");
+        let mut db = legacy(&path)?;
+        let original = r#"["incomplete_transfer","synthetic-transfer","exact retained reason"]"#;
+        db.execute("INSERT INTO parked(evidence) VALUES (?1)", [original])?;
+        let expected = serde_json::json!({"kind":"incomplete_transfer","reason":"exact retained reason","targets":["synthetic-transfer"],"context":null});
+        let limit = expected
+            .to_string()
+            .len()
+            .checked_sub(delta)
+            .ok_or("limit")?;
+        assert!(original.len() < limit);
+        let before = snapshot(&db)?;
+        let result = Store::migrate_v7(&mut db, limit);
+        if delta == 0 {
+            result?;
+            let (canonical, retained): (String, String) =
+                db.query_row("SELECT evidence,original_evidence FROM parked", [], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })?;
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&canonical)?,
+                expected
+            );
+            assert_eq!(retained, original);
+        } else {
+            assert!(
+                matches!(result,Err(Error::MigrationEvidence{table:"parked",row:1,cause}) if matches!(*cause,Error::InvalidInput))
+            );
+            assert_eq!(
+                db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+                6
+            );
+            assert_eq!(snapshot(&db)?, before);
+        }
+    }
+    Ok(())
+}
