@@ -33,11 +33,8 @@ impl Command {
 }
 struct WireAwos {
     id: String,
-    specimen: String,
     container: String,
-    specimen_type: String,
-    test: String,
-    priority: Option<String>,
+    fields: law::WorkFields,
 }
 
 fn plain(value: &str) -> Result<&str, Error> {
@@ -80,19 +77,16 @@ pub(super) fn render(
                 analyte_mapping::AppOrderPriority::Urgent => "urgent",
                 analyte_mapping::AppOrderPriority::Stat => "stat",
             };
-            Some(format!(
-                "{}^^HL70485",
-                plain(
-                    command
-                        .settings
-                        .priorities
-                        .iter()
-                        .find(|p| p.app.as_str() == app)
-                        .ok_or("LAW priority unmapped")?
-                        .machine
-                        .as_str()
-                )?
-            ))
+            Some(plain(
+                command
+                    .settings
+                    .priorities
+                    .iter()
+                    .find(|p| p.app.as_str() == app)
+                    .ok_or("LAW priority unmapped")?
+                    .machine
+                    .as_str(),
+            )?)
         } else {
             None
         };
@@ -113,37 +107,35 @@ pub(super) fn render(
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store
                 // still retains the explicit logical namespace beside this identity.
                 id: item.placer.clone(),
-                specimen: format!(
-                    "{sample}&{}",
-                    command.settings.work.specimen_namespace.as_str()
-                ),
                 container: sample.to_owned(),
-                specimen_type: format!(
-                    "{}^^{}",
-                    plain(mapped.machine.as_str())?,
-                    command.settings.work.specimen_system.as_str()
-                ),
-                test: mapped_test.machine_components.join("^"),
-                priority: priority.clone(),
+                fields: {
+                    let [code, text, system] = mapped_test.machine_components.as_slice() else {
+                        return Err(invalid("LAW test components"));
+                    };
+                    law::WorkFields::new(
+                        sample,
+                        command.settings.work.specimen_namespace.as_str(),
+                        law::WorkCode {
+                            code: plain(mapped.machine.as_str())?,
+                            text: "",
+                            system: command.settings.work.specimen_system.as_str(),
+                        },
+                        law::WorkCode { code, text, system },
+                        priority,
+                    )?
+                },
             });
         }
     }
     let awos = wire
         .iter()
         .map(|item| {
-            Ok(law::Awos::new(
+            Ok(item.fields.awos(
                 item.id.as_bytes(),
-                item.specimen.as_bytes(),
-                item.specimen_type.as_bytes(),
                 first.settings.work.specimen_role.as_str().as_bytes(),
                 item.container.as_bytes(),
-                item.test.as_bytes(),
                 action,
-            )?
-            .with_instructions(law::Instructions {
-                priority: item.priority.as_ref().map(String::as_bytes),
-                ..law::Instructions::default()
-            }))
+            )?)
         })
         .collect::<Result<Vec<_>, Error>>()?;
     let capabilities = law::Capabilities {

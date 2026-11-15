@@ -243,15 +243,7 @@ async fn process(
             });
         }
     };
-    let kind: Vec<_> = message
-        .segments()
-        .next()
-        .and_then(|s| s.field(9))
-        .map(analyte_hl7::Field::raw)
-        .unwrap_or_default()
-        .split(|b| Some(b) == message.delimiters().bytes().get(1))
-        .take(4)
-        .collect();
+    let kind: Vec<_> = law::message_type(&message).take(4).collect();
     if kind == [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
         return orders
             .answer(store, machine, &message, id, started, options)

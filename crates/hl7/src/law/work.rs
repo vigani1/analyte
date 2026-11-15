@@ -55,6 +55,97 @@ pub struct Instructions<'a> {
     pub priority: Option<&'a [u8]>,
 }
 
+/// Unencoded code, display text and coding system for a LAW coded field.
+#[derive(Debug, Clone, Copy)]
+pub struct WorkCode<'a> {
+    /// Code as supplied by the mapping.
+    pub code: &'a str,
+    /// Optional display text, including an explicitly empty value.
+    pub text: &'a str,
+    /// Explicit coding system.
+    pub system: &'a str,
+}
+
+/// Encoded required LAW composites, owned independently of the source mapping.
+#[derive(Debug)]
+pub struct WorkFields {
+    specimen: String,
+    specimen_type: String,
+    test: String,
+    priority: Option<String>,
+}
+
+impl WorkFields {
+    /// Encodes an EIP specimen identity and coded specimen/test/priority fields.
+    /// # Errors
+    /// Rejects separator injection or fields beyond LAW's existing wire bounds.
+    pub fn new(
+        specimen: &str,
+        namespace: &str,
+        specimen_type: WorkCode<'_>,
+        test: WorkCode<'_>,
+        priority: Option<&str>,
+    ) -> Result<Self, Error> {
+        fn join(parts: &[&str], separator: &str, max: usize) -> Result<String, Error> {
+            let mut length = 0usize;
+            for (index, part) in parts.iter().enumerate() {
+                if !part.is_ascii()
+                    || part
+                        .bytes()
+                        .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
+                {
+                    return Err(content("OBR", 4));
+                }
+                length = length
+                    .checked_add(part.len())
+                    .and_then(|n| n.checked_add(if index == 0 { 0 } else { separator.len() }))
+                    .ok_or(content("OBR", 4))?;
+                if length > max {
+                    return Err(content("OBR", 4));
+                }
+            }
+            Ok(parts.join(separator))
+        }
+        Ok(Self {
+            specimen: join(&[specimen, namespace], "&", 427)?,
+            specimen_type: join(
+                &[specimen_type.code, specimen_type.text, specimen_type.system],
+                "^",
+                250,
+            )?,
+            test: join(&[test.code, test.text, test.system], "^", 250)?,
+            priority: priority
+                .map(|code| join(&[code, "", "HL70485"], "^", 250))
+                .transpose()?,
+        })
+    }
+
+    /// Borrows these composites for an AWOS, applying the existing required-field checks.
+    /// # Errors
+    /// Returns the same required identifier, specimen and test errors as [`Awos::new`].
+    pub fn awos<'a>(
+        &'a self,
+        id: &'a [u8],
+        role: &'a [u8],
+        container: &'a [u8],
+        action: WorkAction,
+    ) -> Result<Awos<'a>, Error> {
+        Ok(Awos::new(
+            id,
+            self.specimen.as_bytes(),
+            self.specimen_type.as_bytes(),
+            role,
+            container,
+            self.test.as_bytes(),
+            action,
+        )?
+        .with_instructions(Instructions {
+            priority: self.priority.as_deref().map(str::as_bytes),
+            ..Instructions::default()
+        }))
+    }
+}
+
 /// One app-authorized battery/test under one unique AWOS ID.
 #[derive(Debug, Clone, Copy)]
 pub struct Awos<'a> {

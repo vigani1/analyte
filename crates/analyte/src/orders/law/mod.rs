@@ -223,18 +223,12 @@ impl Connection {
         );
         let sample = match query.scope() {
             law::Scope::Container(id) => {
-                let mut parts = id.raw().split(|byte| *byte == b'^');
-                let value = parts.next().ok_or("LAW container ID missing")?;
-                let namespace = parts.next().unwrap_or_default();
-                if (!namespace.is_empty()
-                    && namespace != work.container_namespace.as_str().as_bytes())
-                    || parts.any(|part| !part.is_empty())
-                {
+                if !id.is_local_to(work.container_namespace.as_str().as_bytes()) {
                     return Err(invalid(
                         "LAW container assigning authority outside configured SampleId binding",
                     ));
                 }
-                Some(SampleId::new(std::str::from_utf8(value)?)?)
+                Some(SampleId::new(std::str::from_utf8(id.value())?)?)
             }
             law::Scope::AllPending => None,
             law::Scope::Rack { .. }
