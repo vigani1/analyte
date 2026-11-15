@@ -1,0 +1,7 @@
+{
+  "id": "019ab000-0000-7000-8000-000000000001",
+  "timestamp": "1794744000",
+  "body": "{\"contract_version\":1,\"delivery_id\":\"019ab000-0000-7000-8000-000000000001\",\"created_at\":\"2026-11-15T12:00:00Z\",\"source\":{\"analyzer\":\"synthetic-1\",\"connection\":\"bench-1\"},\"receipt\":{\"id\":\"receipt-1\",\"received_at\":\"2026-11-15T11:59:59Z\",\"raw_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"sample\":{\"id\":\"000Ab12\",\"id_source\":\"barcode\",\"position\":{\"rack\":\"A\",\"slot\":\"03\"}},\"results\":[{\"identity\":{\"status\":\"resolved\",\"namespace\":\"synthetic\",\"id\":\"observation-1\",\"revision\":1},\"test\":\"TEST\",\"source_status\":\"F\",\"summary_status\":\"final\",\"value\":{\"text\":\"<0.10\",\"decimal\":{\"number\":\"0.10\",\"comparator\":\"lt\"}},\"original_unit\":\"mg/L\",\"ucum_unit\":\"mg/L\",\"dilution\":{\"factor\":\"1\",\"applied\":\"unknown\"},\"flags\":[],\"reference_range\":\"0-1\",\"qc_class\":\"patient\",\"processing_mode\":\"production\",\"measured_at\":{\"text\":\"202611151159\",\"parsed\":\"2026-11-15T11:59:00Z\"},\"comments\":[]}]}",
+  "signature": "v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  "expected": "reject"
+}
