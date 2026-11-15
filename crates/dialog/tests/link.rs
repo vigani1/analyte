@@ -1,0 +1,436 @@
+//! Synthetic LIS01-A2 link behavior and ADR 0003 safety cases.
+use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Error, Event, Role, Timers};
+use analyte_framing::astm::{self, ACK, ENQ, EOT, FrameNumber, Limit, NAK};
+use proptest::prelude::*;
+use std::time::Duration;
+
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+#[expect(
+    clippy::expect_used,
+    reason = "unexpected host time error must fail the test"
+)]
+fn step(d: &mut Dialog, t: u64, e: Event) -> Vec<Action> {
+    d.step(Duration::from_secs(t), e)
+        .expect("valid synthetic monotonic time")
+}
+
+fn feed(d: &mut Dialog, t: u64, bytes: &[u8]) -> Vec<Action> {
+    bytes
+        .iter()
+        .flat_map(|b| step(d, t, Event::Byte(*b)))
+        .collect()
+}
+
+fn receiver() -> Dialog {
+    let mut d = Dialog::new(Config::default(), Epoch(1));
+    step(&mut d, 0, Event::Capacity(true));
+    step(&mut d, 0, Event::Byte(ENQ));
+    d
+}
+
+fn wire(text: &[u8], number: FrameNumber, limit: Limit) -> Result<Vec<Vec<u8>>, astm::Error> {
+    Ok(astm::encode(text, number, limit)?.collect())
+}
+
+fn commit(d: &mut Dialog, actions: &[Action], ok: bool) -> Vec<Action> {
+    actions
+        .iter()
+        .filter_map(|a| {
+            if let Action::Commit(id, _) = a {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .flat_map(|id| {
+            step(
+                d,
+                0,
+                if ok {
+                    Event::Committed(id)
+                } else {
+                    Event::CommitFailed(id)
+                },
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn lis01_6_2_1_to_7_neutral_readiness_and_busy() {
+    let mut d = Dialog::new(Config::default(), Epoch(1));
+    assert!(!feed(&mut d, 0, b"garbage").contains(&Action::Write(vec![ACK])));
+    assert!(feed(&mut d, 0, &[ENQ]).contains(&Action::Write(vec![NAK])));
+    step(&mut d, 0, Event::Capacity(true));
+    assert!(feed(&mut d, 0, &[ENQ]).contains(&Action::Write(vec![ACK])));
+}
+
+#[test]
+fn adr0003_lis01_6_3_2_6_5_1_commit_duplicate_and_conflict() -> TestResult {
+    let mut d = receiver();
+    let frames = wire(b"R|synthetic\r", FrameNumber::FIRST, Limit::default())?;
+    let frame = frames.first().ok_or("missing frame")?;
+    let a = feed(&mut d, 0, frame);
+    assert!(!a.contains(&Action::Write(vec![ACK])));
+    let committed = commit(&mut d, &a, true);
+    assert!(committed.contains(&Action::Write(vec![ACK])));
+    assert!(committed.contains(&Action::Record(b"R|synthetic\r".to_vec())));
+    let duplicate = feed(&mut d, 0, frame);
+    assert!(duplicate.contains(&Action::Write(vec![ACK])));
+    assert!(
+        !duplicate
+            .iter()
+            .any(|a| matches!(a, Action::Commit(..) | Action::Record(..)))
+    );
+    let other = wire(b"different\r", FrameNumber::FIRST, Limit::default())?;
+    let conflict = feed(&mut d, 0, other.first().ok_or("missing frame")?);
+    assert!(conflict.iter().any(|a| matches!(a, Action::Conflict(..))));
+    assert!(conflict.contains(&Action::Write(vec![NAK])));
+    Ok(())
+}
+
+#[test]
+fn adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack() -> TestResult {
+    for success in [false, true] {
+        let mut d = receiver();
+        let frames = wire(b"X\r", FrameNumber::FIRST, Limit::default())?;
+        let a = feed(&mut d, 0, frames.first().ok_or("missing frame")?);
+        let reply = if success {
+            step(&mut d, 15, Event::Tick)
+        } else {
+            commit(&mut d, &a, false)
+        };
+        assert!(reply.contains(&Action::Write(vec![NAK])));
+        assert!(!reply.contains(&Action::Write(vec![ACK])));
+        assert!(reply.iter().any(|a| matches!(a, Action::CommitFailed(_))));
+    }
+    Ok(())
+}
+
+#[test]
+fn lis01_6_3_1_2_6_5_2_4_etb_timeout_and_split_merge() -> TestResult {
+    let frames = wire(b"ABCDEF\r", FrameNumber::FIRST, Limit::new(10)?)?;
+    let mut d = receiver();
+    let first = feed(&mut d, 0, frames.first().ok_or("missing frame")?);
+    assert!(
+        !commit(&mut d, &first, true)
+            .iter()
+            .any(|a| matches!(a, Action::Record(_)))
+    );
+    feed(&mut d, 29, b"garbage");
+    assert!(step(&mut d, 30, Event::Tick).contains(&Action::Ended(End::Timeout)));
+    let all: Vec<u8> = frames.concat();
+    for boundary in 0..=all.len() {
+        let mut d = receiver();
+        let (left, right) = all.split_at(boundary);
+        let mut outputs = feed(&mut d, 0, left);
+        outputs.extend(feed(&mut d, 0, right));
+        // Without stop-and-wait commits, only the first frame requests storage.
+        assert_eq!(
+            outputs
+                .iter()
+                .filter(|a| matches!(a, Action::Commit(..)))
+                .count(),
+            1
+        );
+    }
+    let mut d = receiver();
+    let mut records = Vec::new();
+    for frame in frames {
+        let a = feed(&mut d, 0, &frame);
+        records.extend(commit(&mut d, &a, true));
+    }
+    assert!(records.contains(&Action::Record(b"ABCDEF\r".to_vec())));
+    Ok(())
+}
+
+#[test]
+fn lis01_6_3_4_6_4_6_5_1_2_sender_six_failures_and_eot() {
+    let mut d = Dialog::new(Config::default(), Epoch(1));
+    assert!(
+        step(&mut d, 0, Event::Send(vec![b"O\r".to_vec()])).contains(&Action::Write(vec![ENQ]))
+    );
+    let first = feed(&mut d, 0, &[ACK]);
+    for _ in 0..5 {
+        assert_eq!(feed(&mut d, 0, &[NAK]), first);
+    }
+    let end = feed(&mut d, 0, b"?");
+    assert!(end.contains(&Action::Sent(End::Abort)));
+    assert!(end.contains(&Action::Write(vec![EOT])));
+    step(&mut d, 0, Event::Send(vec![b"O\r".to_vec()]));
+    feed(&mut d, 0, &[ACK]);
+    assert!(feed(&mut d, 0, &[ACK]).contains(&Action::Sent(End::Normal)));
+}
+
+#[test]
+fn lis01_6_2_6_6_5_2_1_3_busy_and_reply_timeouts() {
+    let mut d = Dialog::new(Config::default(), Epoch(1));
+    step(&mut d, 0, Event::Send(vec![b"O\r".to_vec()]));
+    feed(&mut d, 0, &[NAK]);
+    assert!(!step(&mut d, 9, Event::Tick).contains(&Action::Write(vec![ENQ])));
+    assert!(step(&mut d, 10, Event::Tick).contains(&Action::Write(vec![ENQ])));
+    feed(&mut d, 24, b"ignored");
+    assert!(step(&mut d, 25, Event::Tick).contains(&Action::Sent(End::Timeout)));
+    step(&mut d, 25, Event::Send(vec![b"O\r".to_vec()]));
+    feed(&mut d, 25, &[ACK]);
+    assert!(step(&mut d, 40, Event::Tick).contains(&Action::Sent(End::Timeout)));
+}
+
+#[test]
+fn lis01_6_2_7_1_6_5_2_2_contention_both_roles() -> TestResult {
+    for role in [Role::Computer, Role::Instrument] {
+        let config = Config::new(Limit::default(), Timers::default(), role, 1024, 32, true)?;
+        let mut d = Dialog::new(config, Epoch(1));
+        step(&mut d, 0, Event::Send(vec![b"O\r".to_vec()]));
+        feed(&mut d, 0, &[ENQ]);
+        match role {
+            Role::Computer => {
+                assert!(step(&mut d, 20, Event::Tick).contains(&Action::Ended(End::Timeout)));
+            }
+            Role::Instrument => {
+                assert!(step(&mut d, 1, Event::Tick).contains(&Action::Write(vec![ENQ])));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn lis01_6_3_5_interrupt_honor_ignore_and_issue() -> TestResult {
+    for honor in [true, false] {
+        let config = Config::new(
+            Limit::default(),
+            Timers::default(),
+            Role::Computer,
+            1024,
+            32,
+            honor,
+        )?;
+        let mut d = Dialog::new(config, Epoch(1));
+        step(
+            &mut d,
+            0,
+            Event::Send(vec![b"O\r".to_vec(), b"L\r".to_vec()]),
+        );
+        feed(&mut d, 0, &[ACK]);
+        let a = feed(&mut d, 0, &[EOT]);
+        assert_eq!(a.contains(&Action::Sent(End::Interrupt)), honor);
+        if honor {
+            assert!(
+                step(&mut d, 14, Event::Send(vec![vec![]])).contains(&Action::Refused(Error::Busy))
+            );
+            assert!(
+                step(&mut d, 15, Event::Send(vec![b"O\r".to_vec()]))
+                    .contains(&Action::Write(vec![ENQ]))
+            );
+        }
+    }
+    let mut d = receiver();
+    step(&mut d, 0, Event::Interrupt(true));
+    let frames = wire(b"X\r", FrameNumber::FIRST, Limit::default())?;
+    let a = feed(&mut d, 0, frames.first().ok_or("missing frame")?);
+    assert!(commit(&mut d, &a, true).contains(&Action::Write(vec![EOT])));
+    Ok(())
+}
+
+#[test]
+fn lis01_6_3_3_6_5_1_6_6_reject_checksum_sequence_and_controls() -> TestResult {
+    let mut d = receiver();
+    assert!(feed(&mut d, 0, b"\x021X\x0300\r\n").contains(&Action::Write(vec![NAK])));
+    let frames = wire(b"X\r", FrameNumber::FIRST.next(), Limit::default())?;
+    assert!(
+        feed(&mut d, 0, frames.first().ok_or("missing frame")?).contains(&Action::Write(vec![NAK]))
+    );
+    assert!(
+        d.step(Duration::ZERO, Event::Byte(EOT))?
+            .contains(&Action::Ended(End::Normal))
+    );
+    assert!(
+        step(&mut d, 0, Event::Send(vec![vec![10]]))
+            .iter()
+            .any(|a| matches!(a, Action::Refused(Error::Framing(_))))
+    );
+    Ok(())
+}
+
+proptest! {
+    #[test]
+    fn adr0003_random_bytes_and_tick_orders_never_ack_uncommitted(events in prop::collection::vec((any::<u8>(), 0u64..100), 0..1000)) {
+        let mut d = Dialog::new(Config::default(), Epoch(42));
+        // Capacity stays false: no establishment or data ACK is authorized.
+        for (byte, t) in events {
+            if let Ok(a) = d.step(Duration::from_secs(t), Event::Byte(byte)) {
+                prop_assert!(!a.contains(&Action::Write(vec![ACK])));
+            }
+            if let Ok(a) = d.step(Duration::from_secs(t), Event::Tick) {
+                prop_assert!(!a.contains(&Action::Write(vec![ACK])));
+            }
+        }
+    }
+}
+
+#[test]
+fn lis01_6_3_1_6_3_2_6_3_3_6_6_large_records_rollover_separate_records() -> TestResult {
+    let config = Config::new(
+        Limit::new(10)?,
+        Timers::default(),
+        Role::Computer,
+        1000,
+        100,
+        true,
+    )?;
+    let mut d = Dialog::new(config, Epoch(7));
+    step(
+        &mut d,
+        0,
+        Event::Send(vec![vec![b'X'; 27], b"Y\r".to_vec()]),
+    );
+    let mut frames = Vec::new();
+    for _ in 0..10 {
+        for action in feed(&mut d, 0, &[ACK]) {
+            if let Action::Write(raw) = action {
+                frames.push(raw);
+            }
+        }
+    }
+    let expected = wire(&[b'X'; 27], FrameNumber::FIRST, Limit::new(10)?)?;
+    assert_eq!(frames.get(..9), Some(expected.as_slice()));
+    assert!(frames.iter().all(|raw| raw.len() <= 10));
+    assert_eq!(frames.get(7).and_then(|f| f.get(1)), Some(&b'0'));
+    assert_eq!(frames.get(8).and_then(|f| f.get(1)), Some(&b'1'));
+    assert_eq!(frames.get(9).and_then(|f| f.get(1)), Some(&b'2'));
+    let max = wire(&vec![b'X'; 63_994], FrameNumber::FIRST, Limit::default())?;
+    assert_eq!(max.first().map(Vec::len), Some(64_000));
+    assert_eq!(max.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn adr0003_late_commit_and_failed_retry_have_distinct_identity() -> TestResult {
+    let mut d = receiver();
+    let frames = wire(b"X\r", FrameNumber::FIRST, Limit::default())?;
+    let frame = frames.first().ok_or("missing frame")?;
+    let a = feed(&mut d, 0, frame);
+    let old = a
+        .iter()
+        .find_map(|a| {
+            if let Action::Commit(id, _) = a {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .ok_or("no commit")?;
+    commit(&mut d, &a, false);
+    let b = feed(&mut d, 0, frame);
+    assert!(!b.contains(&Action::Commit(old, frame.clone())));
+    assert!(step(&mut d, 0, Event::Committed(old)).contains(&Action::Refused(Error::StaleCommit)));
+    let id = b
+        .iter()
+        .find_map(|a| {
+            if let Action::Commit(id, _) = a {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .ok_or("no retry commit")?;
+    let late = step(&mut d, 15, Event::Committed(id));
+    assert!(late.contains(&Action::CommitFailed(id)));
+    assert!(late.contains(&Action::Write(vec![NAK])));
+    assert!(late.contains(&Action::Refused(Error::StaleCommit)));
+    assert!(!late.contains(&Action::Write(vec![ACK])));
+    Ok(())
+}
+
+#[test]
+fn lis01_6_5_2_6_one_message_buffer_and_validated_vendor_values() -> TestResult {
+    assert!(
+        Config::new(
+            Limit::default(),
+            Timers::default(),
+            Role::Computer,
+            0,
+            1,
+            true
+        )
+        .is_err()
+    );
+    let timers = Timers {
+        receive: Duration::from_secs(15),
+        ..Timers::default()
+    };
+    let mut d = Dialog::new(
+        Config::new(Limit::new(240)?, timers, Role::Computer, 100, 10, true)?,
+        Epoch(1),
+    );
+    step(&mut d, 0, Event::Capacity(true));
+    feed(&mut d, 0, &[ENQ]);
+    assert!(step(&mut d, 15, Event::Tick).contains(&Action::Ended(End::Timeout)));
+    step(&mut d, 15, Event::Send(vec![b"O\r".to_vec()]));
+    assert!(
+        step(&mut d, 15, Event::Send(vec![b"L\r".to_vec()]))
+            .contains(&Action::Refused(Error::Busy))
+    );
+    Ok(())
+}
+
+proptest! {
+    #[test]
+    fn adr0003_active_receiver_arbitrary_ticks_bytes_without_commits_never_ack(events in prop::collection::vec((any::<u8>(), 0u64..100), 0..500)) {
+        let mut d = receiver();
+        step(&mut d, 0, Event::Capacity(false));
+        // A synthetic valid frame ensures this exercises the pending-commit state.
+        feed(&mut d, 0, b"\x021X\x038C\r\n");
+        for (byte, t) in events {
+            if let Ok(a) = d.step(Duration::from_secs(t), Event::Byte(byte)) {
+                prop_assert!(!a.contains(&Action::Write(vec![ACK])));
+            }
+            if let Ok(a) = d.step(Duration::from_secs(t), Event::Tick) {
+                prop_assert!(!a.contains(&Action::Write(vec![ACK])));
+            }
+        }
+    }
+}
+
+#[test]
+fn lis01_6_4_eot_before_final_frame_ends_incomplete() -> TestResult {
+    let mut d = receiver();
+    let frames = wire(&[b'A'; 40], FrameNumber::FIRST, Limit::new(17)?)?;
+    let first = frames.first().ok_or("missing frame")?;
+    let a = feed(&mut d, 0, first);
+    let acked = commit(&mut d, &a, true);
+    assert!(acked.contains(&Action::Write(vec![ACK])));
+    let ended = feed(&mut d, 1, &[EOT]);
+    assert!(ended.contains(&Action::Ended(End::Incomplete)));
+    assert!(!ended.iter().any(|a| matches!(a, Action::Record(_))));
+    Ok(())
+}
+
+#[test]
+fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult {
+    let mut d = receiver();
+    let frames = wire(b"X\r", FrameNumber::FIRST, Limit::default())?;
+    let frame = frames.first().ok_or("missing frame")?;
+    let _ = feed(&mut d, 0, frame);
+    let timeout = step(&mut d, 15, Event::Tick);
+    assert!(timeout.contains(&Action::Write(vec![NAK])));
+    assert!(!timeout.iter().any(|a| matches!(a, Action::Ended(_))));
+    // The sender retransmits the same frame; it is committed again and ACKed.
+    let again = feed(&mut d, 16, frame);
+    assert!(again.iter().any(|a| matches!(a, Action::Commit(..))));
+    let id = again
+        .iter()
+        .find_map(|a| {
+            if let Action::Commit(id, _) = a {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .ok_or("missing commit")?;
+    let acked = step(&mut d, 16, Event::Committed(id));
+    assert!(acked.contains(&Action::Write(vec![ACK])));
+    Ok(())
+}

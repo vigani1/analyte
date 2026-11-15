@@ -37,6 +37,11 @@ dependencies = [
 [[package]]
 name = "analyte-dialog"
 version = "0.1.0"
+dependencies = [
+ "analyte-framing",
+ "proptest",
+ "thiserror",
+]
 
 [[package]]
 name = "analyte-framing"
