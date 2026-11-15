@@ -30,10 +30,12 @@ macro_rules! uuid_id {
         }
     };
 }
+
 uuid_id!(
     ReceiptId,
     "A host-created `UUIDv7` identifying one receipt, retained on reprocessing."
 );
+
 uuid_id!(
     DeliveryId,
     "A host-created `UUIDv7` identifying immutable delivery bytes, retained on retries."
@@ -47,6 +49,7 @@ pub struct NamespacedId {
     /// Value assigned by that system.
     pub value: Identifier,
 }
+
 /// A trusted observation and its source revision; reruns use a new observation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ResultIdentity {
@@ -55,6 +58,7 @@ pub struct ResultIdentity {
     /// Revision assigned by Analyte, independently of source action/status.
     pub revision: Revision,
 }
+
 /// Resolution evidence; missing evidence never becomes a guessed result key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IdentityStatus {
@@ -63,6 +67,7 @@ pub enum IdentityStatus {
     /// Operator reconciliation is required.
     Unresolved(Reason),
 }
+
 /// SHA-256 digest bytes; hashing and protecting raw bytes belong to the host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Digest(pub [u8; 32]);
@@ -76,6 +81,7 @@ pub struct IdentityConflict {
     /// Conflicting receipt to park for an operator.
     pub incoming: ReceiptId,
 }
+
 /// Provenance required to reproduce an interpretation (ADR 0002 and 0003).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReceiptMetadata {
@@ -108,6 +114,7 @@ impl Revision {
         self.0.checked_add(1).map(Self).ok_or(RevisionExhausted)
     }
 }
+
 /// Revision counter cannot advance without overflow.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[error("revision counter exhausted")]

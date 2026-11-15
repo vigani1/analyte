@@ -12,6 +12,7 @@ pub enum ProcessingMode {
     /// Quality control evidence only.
     QualityControl,
 }
+
 impl ProcessingMode {
     /// Only production mode is eligible for production delivery.
     #[must_use]
@@ -19,6 +20,7 @@ impl ProcessingMode {
         self == Self::Production
     }
 }
+
 /// Order progress; persistence and machine commands remain the host's responsibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OrderState {
@@ -39,6 +41,7 @@ pub enum OrderState {
     /// Send outcome unknown; reconciliation required, never automatic resend.
     Uncertain,
 }
+
 /// An attempted state change is not supported by lifecycle evidence.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[error("illegal order transition from {from:?} to {to:?}")]
@@ -48,6 +51,7 @@ pub struct TransitionError {
     /// Attempted next state.
     pub to: OrderState,
 }
+
 impl OrderState {
     /// Checks a state change without performing I/O or resending an order.
     /// Terminal states have no outgoing transitions. Uncertain outcomes can only
@@ -86,6 +90,7 @@ impl OrderState {
         }
     }
 }
+
 /// A lifecycle event keeps its source and time rather than only a summary state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrderEvent {

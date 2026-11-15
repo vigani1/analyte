@@ -1,4 +1,7 @@
-use crate::{Dilution, Identifier, IdentityStatus, ResultValue, SampleId, SourceText, Units};
+use crate::{
+    Dilution, Identifier, IdentityStatus, ProcessingMode, ReceiptId, ResultValue, SampleId,
+    SourceText, Units,
+};
 use serde::{Deserialize, Serialize};
 
 /// How a sample identifier reached the analyzer; unknown remains explicit.
@@ -15,6 +18,7 @@ pub enum SampleSource {
     /// Not established by source evidence.
     Unknown,
 }
+
 /// Carrier category; position never substitutes for sample identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CarrierKind {
@@ -27,6 +31,7 @@ pub enum CarrierKind {
     /// Another explicitly named carrier.
     Other(Identifier),
 }
+
 /// Source-reported carrier and slot, including nonnumeric labels.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SamplePosition {
@@ -37,6 +42,7 @@ pub struct SamplePosition {
     /// Slot as sent, preserving leading zeros.
     pub slot: Identifier,
 }
+
 /// Sample identity with provenance and optional physical position.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SampleIdentity {
@@ -47,6 +53,7 @@ pub struct SampleIdentity {
     /// Physical position when reported.
     pub position: Option<SamplePosition>,
 }
+
 /// Source classification only; no QC decision is made here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QcClass {
@@ -59,20 +66,28 @@ pub enum QcClass {
     /// Not classified by the source.
     Unknown,
 }
-/// Analyte summary, retained beside the source's own code.
+
+/// Analyte summary, retained beside the source's own code. The summary never
+/// replaces the source status; it only groups source codes with one meaning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ResultStatus {
+    /// Not yet available, for example in process on the instrument.
+    Pending,
     /// Preliminary observation.
     Preliminary,
     /// Final observation.
     Final,
-    /// Corrected revision.
+    /// Corrected revision of an earlier result.
     Corrected,
-    /// Cancelled revision.
-    Cancelled,
-    /// Unmapped source status.
+    /// An earlier result is withdrawn and must no longer be used (for example
+    /// HL7 OBX-11 D or W); the raw history is kept.
+    Withdrawn,
+    /// The test could not be performed (for example HL7 X, ASTM X).
+    NotPerformed,
+    /// Source status not mapped to a summary.
     Unknown,
 }
+
 /// Written time precision; the original text retains fractional digits exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimePrecision {
@@ -93,6 +108,7 @@ pub enum TimePrecision {
     /// Precision could not be established.
     Unknown,
 }
+
 /// Source time evidence without inventing a timezone for a partial/local time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceTime {
@@ -105,6 +121,7 @@ pub struct SourceTime {
     /// Written precision.
     pub precision: TimePrecision,
 }
+
 /// A bounded sequence, capped at 256 entries including during deserialization.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
@@ -123,12 +140,14 @@ impl<T> EvidenceList<T> {
         }
         Ok(Self(entries))
     }
+
     /// Borrows entries without permitting unbounded mutation.
     #[must_use]
     pub fn as_slice(&self) -> &[T] {
         &self.0
     }
 }
+
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for EvidenceList<T> {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         struct Visitor<T>(std::marker::PhantomData<T>);
@@ -154,6 +173,7 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for EvidenceList<T> {
         d.deserialize_seq(Visitor(std::marker::PhantomData))
     }
 }
+
 /// One source hierarchy node; the flat path avoids recursive untrusted trees.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceNode {
@@ -164,6 +184,7 @@ pub struct SourceNode {
     /// Source status at this level when supplied.
     pub status: Option<SourceText>,
 }
+
 /// A result retains source evidence beside summaries, without clinical decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResultPart {
@@ -194,6 +215,7 @@ pub struct ResultPart {
     /// Host receive instant, independent of machine clock.
     pub received_at: jiff::Timestamp,
 }
+
 /// A time with its source-defined role.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NamedSourceTime {
@@ -218,6 +240,7 @@ impl TryFrom<i32> for UtcOffset {
         Ok(Self(seconds))
     }
 }
+
 impl From<UtcOffset> for i32 {
     fn from(offset: UtcOffset) -> Self {
         offset.0
@@ -227,6 +250,12 @@ impl From<UtcOffset> for i32 {
 /// One replacement unit can contain several source segments and repeated values.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResultContent {
+    /// The receipt whose raw bytes this result was read from.
+    pub receipt: ReceiptId,
+    /// The sample the machine reported; absence requires operator parking.
+    pub sample: Option<SampleIdentity>,
+    /// Processing mode of the source message; only production may be delivered.
+    pub processing: ProcessingMode,
     /// Identity may resolve even if a correction arrives before its original.
     pub identity: IdentityStatus,
     /// Source parts in their original order; no scalar flattening or deduplication.
@@ -251,12 +280,14 @@ impl<T> NonEmptyEvidenceList<T> {
         }
         Ok(Self(entries))
     }
+
     /// Returns source parts in order, retaining repeated content.
     #[must_use]
     pub fn as_slice(&self) -> &[T] {
         self.0.as_slice()
     }
 }
+
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for NonEmptyEvidenceList<T> {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         Self::new(EvidenceList::deserialize(d)?).map_err(serde::de::Error::custom)
@@ -264,8 +295,8 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for NonEmptyEvidenceList<T> {
 }
 
 impl ResultContent {
-    /// Unresolved identities or unsupported values require operator parking.
-    /// This is a minimum safety check, not clinical acceptance or delivery approval.
+    /// Unresolved identities, a missing sample or unsupported values require
+    /// operator parking. This is a minimum safety check, not clinical acceptance.
     #[must_use]
     pub fn requires_parking(&self) -> bool {
         let unresolved = match &self.identity {
@@ -273,11 +304,19 @@ impl ResultContent {
             IdentityStatus::Unresolved(_) => true,
         };
         unresolved
+            || self.sample.is_none()
             || self.parts.as_slice().iter().any(|part| {
                 part.values
                     .as_slice()
                     .iter()
                     .any(|value| value.parsed.is_unsupported())
             })
+    }
+
+    /// Whether this result may go to a production delivery: production mode and
+    /// nothing that requires parking. Training and debug results never qualify.
+    #[must_use]
+    pub fn may_deliver_to_production(&self) -> bool {
+        self.processing.may_deliver_to_production() && !self.requires_parking()
     }
 }

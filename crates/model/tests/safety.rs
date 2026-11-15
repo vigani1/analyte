@@ -265,6 +265,27 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
             })
         })
         .collect::<Result<Vec<_>, TextError>>()?;
+    let supported_part = ResultPart {
+        test: named.clone(),
+        values: EvidenceList::new(vec![ResultValue {
+            original: SourceText::new("<0.10")?,
+            parsed: ValueInterpretation::Numeric(NumericValue {
+                number: Decimal::new("0.10")?,
+                comparator: Some(Comparator::Less),
+            }),
+        }])?,
+        units: None,
+        dilution: None,
+        flags: EvidenceList::new(vec![])?,
+        reference_range: None,
+        comments: EvidenceList::new(vec![])?,
+        qc_class: QcClass::Patient,
+        source_status: SourceText::new("F")?,
+        status: ResultStatus::Final,
+        source_path: EvidenceList::new(vec![])?,
+        times: EvidenceList::new(vec![])?,
+        received_at: jiff::Timestamp::UNIX_EPOCH,
+    };
     let part = ResultPart {
         test: named.clone(),
         values: EvidenceList::new(values)?,
@@ -284,6 +305,13 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
         received_at: jiff::Timestamp::UNIX_EPOCH,
     };
     let result = ResultContent {
+        receipt: ReceiptId::try_from(uuid::Uuid::now_v7())?,
+        sample: Some(SampleIdentity {
+            id: SampleId::new("000123")?,
+            source: SampleSource::ScannedByMachine,
+            position: None,
+        }),
+        processing: ProcessingMode::Production,
         identity: IdentityStatus::Resolved(ResultIdentity {
             observation: ObservationIdentity {
                 code: named.clone(),
@@ -296,6 +324,25 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
     };
     assert_eq!(result.parts.as_slice().len(), 2);
     assert!(result.requires_parking());
+    assert!(!result.may_deliver_to_production());
+
+    // Without its unsupported part, the same result could be delivered, but only
+    // in production mode and only with a sample identity.
+    let supported = ResultContent {
+        parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![supported_part.clone()])?)?,
+        ..result.clone()
+    };
+    assert!(supported.may_deliver_to_production());
+    let training = ResultContent {
+        processing: ProcessingMode::Training,
+        ..supported.clone()
+    };
+    assert!(!training.may_deliver_to_production());
+    let no_sample = ResultContent {
+        sample: None,
+        ..supported
+    };
+    assert!(no_sample.requires_parking());
     assert_eq!(
         result
             .parts

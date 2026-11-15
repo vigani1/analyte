@@ -76,6 +76,7 @@ macro_rules! text_type {
         }
     };
 }
+
 text_type!(
     SampleId,
     256,
@@ -83,6 +84,7 @@ text_type!(
     false,
     "A sample ID retaining leading zeros and case; at most 256 UTF-8 bytes."
 );
+
 text_type!(
     Identifier,
     256,
@@ -90,6 +92,7 @@ text_type!(
     false,
     "An identifier or assigning system, nonempty and at most 256 UTF-8 bytes."
 );
+
 text_type!(
     SourceText,
     16384,
@@ -97,6 +100,7 @@ text_type!(
     true,
     "Unmodified source text, including controls, bounded to 16 KiB."
 );
+
 text_type!(
     Reason,
     1024,

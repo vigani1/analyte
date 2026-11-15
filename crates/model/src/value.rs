@@ -30,28 +30,33 @@ impl Decimal {
         }
         Ok(Self(text.to_owned()))
     }
+
     /// Returns all digits and punctuation exactly as supplied.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
     /// Returns the number of written fractional digits, including trailing zeros.
     #[must_use]
     pub fn scale(&self) -> usize {
         self.0.split_once('.').map_or(0, |(_, f)| f.len())
     }
 }
+
 impl TryFrom<String> for Decimal {
     type Error = DecimalError;
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::new(&value)
     }
 }
+
 impl From<Decimal> for String {
     fn from(value: Decimal) -> Self {
         value.0
     }
 }
+
 /// A source comparator; no clinical interpretation is made.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Comparator {
@@ -64,6 +69,7 @@ pub enum Comparator {
     /// Inclusive lower bound.
     GreaterOrEqual,
 }
+
 /// An explicitly parsed number, with precision retained in its decimal text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NumericValue {
@@ -72,6 +78,7 @@ pub struct NumericValue {
     /// Bound supplied by the source, if present.
     pub comparator: Option<Comparator>,
 }
+
 /// Source value text always survives, even when parsing is unavailable or fails.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResultValue {
@@ -80,6 +87,7 @@ pub struct ResultValue {
     /// Explicit interpretation by the mapping layer; never inferred here.
     pub parsed: ValueInterpretation,
 }
+
 /// An explicit source-to-UCUM mapping, not a claim of terminology validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitMapping {
@@ -88,6 +96,7 @@ pub struct UnitMapping {
     /// UCUM expression chosen in configuration.
     pub target: crate::Identifier,
 }
+
 /// Unit evidence; mapped units can only be constructed using a matching mapping.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "UnitWire", into = "UnitWire")]
@@ -95,11 +104,13 @@ pub struct Units {
     original: SourceText,
     mapping: Option<UnitMapping>,
 }
+
 #[derive(Serialize, Deserialize)]
 struct UnitWire {
     original: SourceText,
     mapping: Option<UnitMapping>,
 }
+
 /// Mapping source does not match the value's original unit.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[error("unit mapping source does not match original unit")]
@@ -113,6 +124,7 @@ impl Units {
             mapping: None,
         }
     }
+
     /// Applies only an explicitly supplied mapping with an exact source match.
     /// # Errors
     /// Rejects a mapping for another source unit.
@@ -125,17 +137,20 @@ impl Units {
             mapping: Some(mapping),
         })
     }
+
     /// Returns the original unit without normalization.
     #[must_use]
     pub fn original_text(&self) -> &SourceText {
         &self.original
     }
+
     /// Returns mapping evidence, when explicitly applied.
     #[must_use]
     pub fn mapping(&self) -> Option<&UnitMapping> {
         self.mapping.as_ref()
     }
 }
+
 impl TryFrom<UnitWire> for Units {
     type Error = UnitMappingError;
     fn try_from(w: UnitWire) -> Result<Self, Self::Error> {
@@ -145,6 +160,7 @@ impl TryFrom<UnitWire> for Units {
         }
     }
 }
+
 impl From<Units> for UnitWire {
     fn from(u: Units) -> Self {
         Self {
@@ -153,6 +169,7 @@ impl From<Units> for UnitWire {
         }
     }
 }
+
 /// Whether the source already multiplied its value by the dilution factor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DilutionApplied {
@@ -163,6 +180,7 @@ pub enum DilutionApplied {
     /// Source evidence does not establish this.
     Unknown,
 }
+
 /// Dilution evidence; no multiplication is performed by the model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dilution {
@@ -193,6 +211,7 @@ pub enum ValueInterpretation {
         reason: crate::Reason,
     },
 }
+
 /// Source code and display label are independent; labels are never identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodedValue {
@@ -201,6 +220,7 @@ pub struct CodedValue {
     /// Display text exactly as reported.
     pub text: SourceText,
 }
+
 /// Structured numeric components, preserving the source separator without guessing meaning.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StructuredNumeric {
@@ -213,6 +233,7 @@ pub struct StructuredNumeric {
     /// Second exact number when supplied.
     pub second: Option<Decimal>,
 }
+
 /// Bounded encoded attachment evidence; hosts retain raw bytes separately.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Attachment {
