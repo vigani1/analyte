@@ -2,28 +2,17 @@
 use crate::{Error, config::Machine, deadline, evidence, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
-use analyte_transport::folder::Watcher;
+use analyte_transport::folder::{Disposition, Item, Watch};
 use std::{
     path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc,
     },
     thread,
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
-
-#[derive(Clone, Copy)]
-enum Disposition {
-    Archive,
-    Quarantine,
-}
-struct Item {
-    connection: analyte_transport::Connection,
-    completed: mpsc::SyncSender<Disposition>,
-}
 
 struct Owner {
     stop: Arc<AtomicBool>,
@@ -44,7 +33,7 @@ impl Owner {
         incoming: PathBuf,
         root: PathBuf,
         limit: u64,
-        mut recorder: Option<Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>>,
+        recorder: Option<Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>>,
     ) -> Result<(Self, tokio::sync::mpsc::Receiver<Item>), Error> {
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
@@ -52,97 +41,15 @@ impl Owner {
         let thread = thread::Builder::new()
             .name("analyte-files".into())
             .spawn(move || {
-                let claimed = root.join("claimed");
-                std::fs::create_dir_all(&claimed)?;
-                std::fs::create_dir_all(root.join("archive"))?;
-                std::fs::create_dir_all(root.join("quarantine"))?;
-                // Completion is producer rename into incoming, never a guessed stable size.
-                let mut watcher = Watcher::new(incoming, claimed, None, limit)?;
-                let mut claims = watcher.recover()?;
-                while !cancelled.load(Ordering::Acquire) {
-                    if claims.is_empty() {
-                        claims = watcher.scan()?;
-                    }
-                    for claim in claims.drain(..) {
-                        if cancelled.load(Ordering::Acquire) {
-                            return Ok(());
-                        }
-                        let (connection, mut side) = analyte_transport::connection(
-                            analyte_transport::Limits::new(1, Duration::from_secs(5))?,
-                        );
-                        if let Some(tap) = recorder.as_mut().and_then(|factory| factory()) {
-                            side = side.with_recording(tap);
-                        }
-                        let cancellation = connection.cancellation();
-                        let (reply, response) = mpsc::sync_channel(1);
-                        let mut item = Item {
-                            connection,
-                            completed: reply,
-                        };
-                        let until = deadline();
-                        loop {
-                            match sender.try_send(item) {
-                                Ok(()) => break,
-                                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                                    return Ok(());
-                                }
-                                Err(tokio::sync::mpsc::error::TrySendError::Full(returned)) => {
-                                    item = returned;
-                                }
-                            }
-                            if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
-                                return Ok(());
-                            }
-                            thread::sleep(Duration::from_millis(5));
-                        }
-                        if let Err(error) = claim.deliver(side) {
-                            let interrupted = match &error {
-                                analyte_transport::folder::Error::Io { source, .. } => source
-                                    .get_ref()
-                                    .and_then(|source| {
-                                        source.downcast_ref::<analyte_transport::Error>()
-                                    })
-                                    .is_some_and(|source| {
-                                        matches!(
-                                            source,
-                                            analyte_transport::Error::ConsumerClosed
-                                                | analyte_transport::Error::Deadline(_)
-                                        )
-                                    }),
-                                analyte_transport::folder::Error::Oversized(_)
-                                | analyte_transport::folder::Error::Invalid(_) => false,
-                            };
-                            if interrupted
-                                && (cancelled.load(Ordering::Acquire)
-                                    || cancellation.is_cancelled())
-                            {
-                                return Ok(());
-                            }
-                            return Err(error.into());
-                        }
-                        // A lost reply leaves the source claimed; a restart reprocesses it safely.
-                        let until = deadline();
-                        let disposition = loop {
-                            match response.recv_timeout(Duration::from_millis(10)) {
-                                Ok(disposition) => break disposition,
-                                Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
-                                Err(mpsc::RecvTimeoutError::Timeout) => {
-                                    if cancelled.load(Ordering::Acquire) || Instant::now() >= until
-                                    {
-                                        return Ok(());
-                                    }
-                                }
-                            }
-                        };
-                        let area = match disposition {
-                            Disposition::Archive => "archive",
-                            Disposition::Quarantine => "quarantine",
-                        };
-                        claim.finish(&root.join(area).join(uuid::Uuid::now_v7().to_string()))?;
-                    }
-                    thread::sleep(Duration::from_millis(100));
+                Watch {
+                    incoming,
+                    root,
+                    limit,
                 }
-                Ok(())
+                .run(&cancelled, &sender, recorder, || {
+                    uuid::Uuid::now_v7().to_string()
+                })
+                .map_err(Error::from)
             })?;
         Ok((
             Self {
@@ -430,7 +337,12 @@ mod tests {
             ));
             assert_eq!(std::fs::read_dir(root.join("archive"))?.count(), 0);
             assert_eq!(std::fs::read_dir(root.join("quarantine"))?.count(), 0);
-            let watcher = Watcher::new(incoming, root.join("claimed"), None, 65536)?;
+            let watcher = analyte_transport::folder::Watcher::new(
+                incoming,
+                root.join("claimed"),
+                None,
+                65536,
+            )?;
             let recovered = watcher.recover()?;
             assert_eq!(recovered.len(), 1);
             assert_eq!(
