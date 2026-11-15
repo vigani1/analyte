@@ -5,6 +5,8 @@ use analyte_hl7::{
 };
 use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
+mod orders;
+use orders::Orders;
 
 /// Connection-scoped host request identity. The host must supply a unique epoch after restart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +141,39 @@ pub enum Action {
     Sent(Vec<u8>, Outcome),
     /// Unsolicited or mismatched acknowledgment retained for investigation.
     Unmatched(Vec<u8>),
+    /// A late routed receipt was retained after its exchange had already timed out.
+    ReceiptRetained(ReceiptId),
+    /// Durable query ready for host cache lookup; `started` is the first-byte time.
+    Query {
+        /// Committed receipt correlation.
+        receipt: ReceiptId,
+        /// Parsed message preserving original bytes.
+        message: Message,
+        /// First-byte time relative to this connection clock.
+        started: Duration,
+        /// Whether the query matches the configured edition.
+        edition_matches: bool,
+    },
+    /// Durable unsolicited-order response ready for retained-work reconciliation.
+    OrderResponse {
+        /// Committed receipt correlation.
+        receipt: ReceiptId,
+        /// Parsed message preserving original bytes.
+        message: Message,
+    },
+    /// The unsolicited-order response deadline expired; never resend implicitly.
+    OrderResponseTimeout,
+    /// DSR application ACK decision, made only after its raw receipt was committed.
+    DisplayOutcome {
+        /// Committed ACK receipt, absent for timeout.
+        receipt: Option<ReceiptId>,
+        /// True only for a correlated application AA.
+        accepted: bool,
+        /// Stable nonclinical outcome reason.
+        code: &'static str,
+        /// Validation diagnostic without raw payload.
+        detail: Option<String>,
+    },
     /// Next absolute wake-up time.
     Deadline(Option<Duration>),
 }
@@ -251,12 +286,14 @@ pub struct Dialog {
     decoder: mllp::Decoder,
     pending: Option<Pending>,
     malformed: Option<(ReceiptId, Vec<u8>, Error)>,
-    queue: VecDeque<Vec<u8>>,
+    queue: VecDeque<(Vec<u8>, Duration)>,
     sending: Option<Sending>,
     error: Option<OwnedError>,
     now: Duration,
     deadline: Option<Duration>,
     closed: bool,
+    orders: Option<Orders>,
+    frame_started: Option<Duration>,
 }
 impl Dialog {
     /// Starts an idle connection with a host-selected unique incarnation.
@@ -275,6 +312,8 @@ impl Dialog {
             now: Duration::ZERO,
             deadline: None,
             closed: false,
+            orders: None,
+            frame_started: None,
         }
     }
 
@@ -288,6 +327,9 @@ impl Dialog {
         let end = now.checked_add(self.config.wait).ok_or(Error::Exhausted)?;
         self.now = now;
         let mut out = Vec::new();
+        if let Some(orders) = &mut self.orders {
+            orders.expire(now, &mut out);
+        }
         if self.deadline.is_some_and(|d| now >= d) {
             self.expire(&mut out);
         }
@@ -297,10 +339,13 @@ impl Dialog {
         if self.pending.is_none()
             && self.malformed.is_none()
             && self.sending.is_none()
+            && !self.orders.as_ref().is_some_and(Orders::committing)
             && !self.closed
-            && let Some(raw) = self.queue.pop_front()
+            && let Some((raw, started)) = self.queue.pop_front()
         {
+            self.frame_started = Some(started);
             self.receive(raw, &mut out);
+            self.frame_started = None;
         }
         if self.deadline.is_none()
             && ((self.pending.is_some() || self.malformed.is_some())
@@ -309,7 +354,7 @@ impl Dialog {
         {
             self.deadline = Some(end);
         }
-        out.push(Action::Deadline(self.deadline));
+        out.push(Action::Deadline(self.next_deadline()));
         Ok(out)
     }
 
@@ -320,8 +365,10 @@ impl Dialog {
         match event {
             Event::Tick => {}
             Event::Byte(byte) => {
+                self.frame_started.get_or_insert(self.now);
                 if let Some(event) = self.decoder.push(byte) {
                     self.wire(event, out);
+                    self.frame_started = None;
                 }
             }
             Event::Send(raw) => {
@@ -360,6 +407,9 @@ impl Dialog {
                 }
             }
             Event::Committed(id) => {
+                if self.complete_order_commit(id, out)? {
+                    return Ok(());
+                }
                 if self.complete_malformed(id, out)? {
                     return Ok(());
                 }
@@ -379,6 +429,16 @@ impl Dialog {
                 self.deadline = None;
             }
             Event::CommitFailed(id) => {
+                if self
+                    .orders
+                    .as_mut()
+                    .is_some_and(|orders| orders.failed_commit(id))
+                {
+                    out.push(Action::Refused(Error::Syntax(
+                        analyte_hl7::Error::NotStored,
+                    )));
+                    return Ok(());
+                }
                 if !self.complete_malformed(id, out)? {
                     if !self
                         .pending
@@ -496,9 +556,13 @@ impl Dialog {
             mllp::Event::Block(raw) => {
                 if self.sending.is_some() {
                     self.ack(&raw, out);
-                } else if self.pending.is_some() || self.malformed.is_some() {
+                } else if self.pending.is_some()
+                    || self.malformed.is_some()
+                    || self.orders.as_ref().is_some_and(Orders::committing)
+                {
                     if self.queue.len() < self.config.queued {
-                        self.queue.push_back(raw);
+                        self.queue
+                            .push_back((raw, self.frame_started.unwrap_or(self.now)));
                     } else {
                         out.push(Action::QueueFull(raw));
                     }
@@ -519,6 +583,9 @@ impl Dialog {
             Ok(message)
         }) {
             Ok(message) => {
+                if self.route_order(&raw, &message, out) {
+                    return;
+                }
                 if message.segments().any(|s| s.id() == b"MSA") {
                     out.push(Action::Unmatched(raw));
                     return;
@@ -629,6 +696,7 @@ impl Dialog {
         if let Some(event) = self.decoder.finish() {
             self.wire(event, out);
         }
+        self.frame_started = None;
     }
 }
 

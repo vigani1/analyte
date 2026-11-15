@@ -1,75 +1,50 @@
-//! Host-owned legacy display-query state; HL7 2.3.1 section 2.18 / 2.5.1 section 5.10.
+//! Host-owned cache lookups, reservations and delivery outcomes; HL7 2.3.1 section 2.18 / 2.5.1 section 5.10.
 use crate::{Error, config::Machine, deadline, evidence, invalid};
 use analyte_framing::mllp;
 use analyte_hl7::{
-    AckCode, Message, Msh, Options,
+    Message, Options,
     query::{self, CacheAnswer},
 };
 use analyte_model::{ReceiptId, SampleId};
 use analyte_store::{Handle, Lookup, MachineOrder};
 use std::time::{Duration, Instant};
 
-/// Owns partial input, the immutable query budget and at most one pending DSR.
+/// Owns order reservations; framing, DSR correlation and reply waits belong to the dialog.
 /// Cancellation leaves reservations owned here for disconnect cleanup; restart
 /// recovery owns any store call whose completion was lost during cancellation.
 pub(crate) struct Connection {
-    decoder: mllp::Decoder,
     options: Options,
-    started: Option<Instant>,
-    awaiting: Option<(String, Instant)>,
     active: Vec<MachineOrder>,
     reserving: Vec<analyte_store::MachineOrderKey>,
-    input_evidence: Vec<u8>,
     owner: analyte_model::Identifier,
-    exchange: Option<(super::hl7_send::Exchange, Instant)>,
+    exchange: Option<super::hl7_send::Exchange>,
     cursor: String,
+}
+pub(crate) struct Request<'a> {
+    pub(crate) message: &'a Message,
+    pub(crate) started: Instant,
+    pub(crate) receipt: ReceiptId,
 }
 impl Connection {
     pub(crate) fn new(options: Options) -> Result<Self, Error> {
         Ok(Self {
-            decoder: mllp::Decoder::new(mllp::Limit::new(options.limits.message_bytes)?),
             options,
-            started: None,
-            awaiting: None,
             active: Vec::new(),
             reserving: Vec::new(),
-            input_evidence: Vec::new(),
             owner: analyte_model::Identifier::new(&uuid::Uuid::now_v7().to_string())?,
             exchange: None,
             cursor: String::new(),
         })
-    }
-    pub(crate) fn wake(&self, machine: &Machine) -> Option<Instant> {
-        let partial = self.started.and_then(|start| {
-            start.checked_add(Duration::from_millis(u64::from(
-                machine
-                    .snapshot
-                    .effective()
-                    .stack()
-                    .timeouts()
-                    .receive_timeout_ms,
-            )))
-        });
-        let outbound = self.exchange.as_ref().map(|(_, until)| *until);
-        let waiting = match (self.awaiting.as_ref().map(|(_, until)| *until), outbound) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, None) => a,
-            (None, b) => b,
-        };
-        match (waiting, partial) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, None) => a,
-            (None, b) => b,
-        }
     }
     pub(crate) async fn idle(
         &mut self,
         store: &Handle,
         machine: &evidence::Connection<'_>,
         conn: &mut analyte_transport::Connection,
+        dialog: &mut analyte_dialog::hl7::Dialog,
+        clock: Instant,
     ) -> Result<(), Error> {
-        if self.awaiting.is_some() || self.exchange.is_some() || !self.decoder.pending().is_empty()
-        {
+        if dialog.orders_busy() {
             return Ok(());
         }
         if let Some(exchange) = super::hl7_send::next(
@@ -91,64 +66,34 @@ impl Connection {
             let until = Instant::now()
                 .checked_add(Duration::from_millis(u64::from(wait)))
                 .ok_or("HL7 response deadline overflow")?;
-            self.exchange = Some((exchange, until));
+            self.exchange = Some(exchange);
+            dialog.await_order_response(clock.elapsed(), Duration::from_millis(u64::from(wait)))?;
             self.reserving.clear();
             let message = self
                 .exchange
                 .as_ref()
                 .ok_or("exchange absent")?
-                .0
                 .message
                 .message();
             write(conn, message.raw(), self.options, until).await?;
         }
         Ok(())
     }
-    pub(crate) fn consumed(&mut self) {
-        self.input_evidence.clear();
-    }
-    pub(crate) async fn tick(
+    pub(crate) async fn order_response(
         &mut self,
         store: &Handle,
-        machine: &evidence::Connection<'_>,
+        message: Option<&Message>,
     ) -> Result<(), Error> {
-        if self
-            .exchange
-            .as_ref()
-            .is_some_and(|(_, until)| Instant::now() >= *until)
-        {
-            if let Some((exchange, _)) = &self.exchange {
-                super::hl7_send::finish(store, exchange, None, "HL7-order-response-timeout")
-                    .await?;
-            }
-            self.exchange = None;
+        if let Some(exchange) = &self.exchange {
+            super::hl7_send::finish(store, exchange, message, "HL7-order-response-timeout").await?;
         }
-        if self
-            .awaiting
-            .as_ref()
-            .is_some_and(|(_, until)| Instant::now() >= *until)
-        {
-            self.outcome(store, "HL7-DSR-ACK-timeout", false).await?;
-        }
-        if self.started.is_some_and(|start| {
-            start.elapsed()
-                >= Duration::from_millis(u64::from(
-                    machine
-                        .snapshot
-                        .effective()
-                        .stack()
-                        .timeouts()
-                        .receive_timeout_ms,
-                ))
-        }) {
-            self.partial(store, machine).await?;
-        }
+        self.exchange = None;
         Ok(())
     }
     pub(crate) async fn close(
         &mut self,
         store: &Handle,
-        machine: &evidence::Connection<'_>,
+        _machine: &evidence::Connection<'_>,
         code: &str,
     ) -> Result<(), Error> {
         for identity in self.reserving.drain(..) {
@@ -161,7 +106,7 @@ impl Connection {
                 self.active.push(order);
             }
         }
-        if let Some((exchange, _)) = &self.exchange {
+        if let Some(exchange) = &self.exchange {
             super::hl7_send::finish(
                 store,
                 exchange,
@@ -176,29 +121,14 @@ impl Connection {
         }
         self.exchange = None;
         self.outcome(store, code, false).await?;
-        if !self.input_evidence.is_empty() {
-            evidence::park_bytes(
-                store,
-                machine,
-                std::mem::take(&mut self.input_evidence),
-                "HL7 input processing interrupted",
-            )
-            .await?;
-        }
-        self.partial(store, machine).await
-    }
-    async fn partial(
-        &mut self,
-        store: &Handle,
-        machine: &evidence::Connection<'_>,
-    ) -> Result<(), Error> {
-        if let Some(mllp::Event::Rejected { raw, error }) = self.decoder.finish() {
-            evidence::park_bytes(store, machine, raw, &error.to_string()).await?;
-        }
-        self.started = None;
         Ok(())
     }
-    async fn outcome(&mut self, store: &Handle, code: &str, sent: bool) -> Result<(), Error> {
+    pub(crate) async fn outcome(
+        &mut self,
+        store: &Handle,
+        code: &str,
+        sent: bool,
+    ) -> Result<(), Error> {
         while let Some(order) = self.active.first() {
             let identity = order.key.clone();
             let code = analyte_model::SourceText::new(code)?;
@@ -244,147 +174,22 @@ impl Connection {
             self.active.remove(0);
         }
         self.active.clear();
-        self.awaiting = None;
         Ok(())
     }
-    /// Demultiplexes complete blocks; result blocks still use the existing dialog.
-    pub(crate) async fn input(
-        &mut self,
-        store: &Handle,
-        machine: &evidence::Connection<'_>,
-        conn: &mut analyte_transport::Connection,
-        bytes: Vec<u8>,
-    ) -> Result<Vec<u8>, Error> {
-        self.input_evidence = bytes.clone();
-        let mut results = Vec::new();
-        for byte in bytes {
-            if self.started.is_none() {
-                self.started = Some(Instant::now());
-            }
-            if let Some(event) = self.decoder.push(byte) {
-                let started = self.started.take().unwrap_or_else(Instant::now);
-                match event {
-                    mllp::Event::Rejected { raw, error } => {
-                        evidence::park_bytes(store, machine, raw, &error.to_string()).await?;
-                    }
-                    mllp::Event::Block(raw) => {
-                        let payload =
-                            mllp::payload(&raw).ok_or_else(|| invalid("HL7 block boundary"))?;
-                        let parsed = Message::parse(payload, self.options);
-                        if let Ok(message) = parsed
-                            && let Ok(header) = Msh::new(&message)
-                        {
-                            let kind = header.message_type().next();
-                            if matches!(kind, Some(b"ORR" | b"ORL")) && self.exchange.is_some() {
-                                evidence::receive(store, machine, ReceiptId::new(), raw.clone())
-                                    .await?;
-                                let (exchange, until) =
-                                    self.exchange.as_ref().ok_or("HL7 order exchange absent")?;
-                                super::hl7_send::finish(
-                                    store,
-                                    exchange,
-                                    if Instant::now() < *until {
-                                        Some(&message)
-                                    } else {
-                                        None
-                                    },
-                                    "HL7-order-response-timeout",
-                                )
-                                .await?;
-                                self.exchange = None;
-                                continue;
-                            }
-                            if kind == Some(b"QRY") {
-                                let receipt = ReceiptId::new();
-                                evidence::receive(store, machine, receipt, raw.clone()).await?;
-                                if !edition_matches(machine, header.version()) {
-                                    evidence::failed_reading(
-                                        store,
-                                        machine,
-                                        receipt,
-                                        "HL7 query edition differs from configured edition",
-                                    )
-                                    .await?;
-                                    continue;
-                                }
-                                self.answer(store, machine, conn, &message, started, receipt)
-                                    .await?;
-                                continue;
-                            }
-                            if kind == Some(b"ACK") && self.awaiting.is_some() {
-                                let receipt = ReceiptId::new();
-                                evidence::receive(store, machine, receipt, raw.clone()).await?;
-                                let (id, until) = self
-                                    .awaiting
-                                    .as_ref()
-                                    .ok_or_else(|| invalid("DSR correlation absent"))?;
-                                if Instant::now() >= *until {
-                                    self.outcome(store, "HL7-DSR-ACK-timeout", false).await?;
-                                } else {
-                                    if !edition_matches(machine, header.version()) {
-                                        evidence::failed_reading(
-                                            store,
-                                            machine,
-                                            receipt,
-                                            "HL7 DSR ACK edition differs from configured edition",
-                                        )
-                                        .await?;
-                                        self.outcome(store, "HL7-DSR-ACK-invalid-edition", false)
-                                            .await?;
-                                        continue;
-                                    }
-                                    match query::DisplayAck::new(
-                                        &message,
-                                        analyte_hl7::ControlId::new(id.as_bytes())?,
-                                    ) {
-                                        Ok(ack) => match ack.code() {
-                                            AckCode::Aa => {
-                                                self.outcome(store, "HL7-DSR-ACK-AA", true).await?;
-                                            }
-                                            AckCode::Ae => {
-                                                self.outcome(store, "HL7-DSR-ACK-AE", false)
-                                                    .await?;
-                                            }
-                                            AckCode::Ar => {
-                                                self.outcome(store, "HL7-DSR-ACK-AR", false)
-                                                    .await?;
-                                            }
-                                            AckCode::Ca | AckCode::Ce | AckCode::Cr => {
-                                                return Err(invalid("invalid DSR application ACK"));
-                                            }
-                                        },
-                                        Err(error) => {
-                                            evidence::failed_reading(
-                                                store,
-                                                machine,
-                                                receipt,
-                                                &error.to_string(),
-                                            )
-                                            .await?;
-                                            self.outcome(store, "HL7-DSR-ACK-invalid", false)
-                                                .await?;
-                                        }
-                                    }
-                                }
-                                continue;
-                            }
-                        }
-                        results.extend_from_slice(&raw);
-                    }
-                }
-            }
-        }
-        Ok(results)
-    }
-    async fn answer(
+    pub(crate) async fn answer(
         &mut self,
         store: &Handle,
         machine: &Machine,
         conn: &mut analyte_transport::Connection,
-        message: &Message,
-        started: Instant,
-        receipt: ReceiptId,
+        request: Request<'_>,
+        dialog: &mut analyte_dialog::hl7::Dialog,
+        clock: Instant,
     ) -> Result<(), Error> {
+        let Request {
+            message,
+            started,
+            receipt,
+        } = request;
         let freshness = machine.destination_limits.freshness.as_secs();
         let request = match query::Request::new(message) {
             Ok(request) => request,
@@ -425,8 +230,7 @@ impl Connection {
                 None
             }
         };
-        if self.awaiting.is_none()
-            && self.exchange.is_none()
+        if !dialog.orders_busy()
             && Instant::now() < until
             && let Some(sample) = selected
         {
@@ -576,12 +380,11 @@ impl Connection {
                     .await?;
                 return Ok(());
             }
-            self.awaiting = Some((
-                std::str::from_utf8(dsr_metadata.response()?.control_id.raw())?.to_owned(),
-                Instant::now()
-                    .checked_add(Duration::from_millis(u64::from(layout.acknowledgment_ms)))
-                    .ok_or_else(|| invalid("DSR ACK deadline overflow"))?,
-            ));
+            dialog.await_display(
+                clock.elapsed(),
+                dsr_metadata.response()?.control_id,
+                Duration::from_millis(u64::from(layout.acknowledgment_ms)),
+            )?;
             if let Err(error) = write(conn, dsr.raw(), self.options, until).await {
                 self.outcome(store, "HL7-DSR-write-failed", false).await?;
                 return Err(error);
@@ -644,11 +447,6 @@ async fn write(
     conn.write_all(&wire, Some(tokio::time::Instant::from_std(until)))
         .await?;
     Ok(())
-}
-
-fn edition_matches(machine: &Machine, version: analyte_hl7::Version) -> bool {
-    super::settings::hl7(machine)
-        .is_some_and(|settings| analyte_hl7::Version::from(settings.syntax.edition) == version)
 }
 
 #[cfg(test)]
