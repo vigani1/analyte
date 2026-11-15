@@ -239,7 +239,7 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
     ] {
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
             .arg("--config")
-            .arg(&path)
+            .arg(path.as_os_str())
             .arg("--actor")
             .arg("synthetic-operator")
             .args(arguments)

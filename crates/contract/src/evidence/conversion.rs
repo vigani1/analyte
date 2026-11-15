@@ -83,6 +83,7 @@ impl From<&analyte_model::UnitMapping> for UnitMapping {
 impl From<&analyte_model::Dilution> for Dilution {
     fn from(v: &analyte_model::Dilution) -> Self {
         Self {
+            original: v.original.as_ref().map(Into::into),
             factor: v.factor.as_ref().map(Into::into),
             applied: (&v.applied).into(),
         }
@@ -310,6 +311,7 @@ impl From<&analyte_model::TimePrecision> for TimePrecision {
 impl From<&analyte_model::ProcessingMode> for ProcessingMode {
     fn from(v: &analyte_model::ProcessingMode) -> Self {
         match v {
+            analyte_model::ProcessingMode::Unknown => Self::Unknown,
             analyte_model::ProcessingMode::Production => Self::Production,
             analyte_model::ProcessingMode::Training => Self::Training,
             analyte_model::ProcessingMode::Debug => Self::Debug,

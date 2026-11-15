@@ -109,6 +109,7 @@ fn rule8_lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result
 fn plan6_only_production_delivers() {
     assert!(ProcessingMode::Production.may_deliver_to_production());
     for mode in [
+        ProcessingMode::Unknown,
         ProcessingMode::Debug,
         ProcessingMode::Training,
         ProcessingMode::QualityControl,
@@ -294,6 +295,7 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
         values: EvidenceList::new(values)?,
         units: None,
         dilution: Some(Dilution {
+            original: Some(SourceText::new("10")?),
             factor: Some(Decimal::new("10")?),
             applied: DilutionApplied::Unknown,
         }),

@@ -8,6 +8,9 @@ pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
         namespace: Identifier::new(match machine.snapshot.effective().machine().syntax.kind {
             analyte_config::SyntaxKind::AstmLis02 => "analyte-astm",
             analyte_config::SyntaxKind::Hl7V2 => "analyte-hl7",
+            analyte_config::SyntaxKind::Poct => "analyte-poct",
+            analyte_config::SyntaxKind::VidasLiteral => "analyte-vidas",
+            analyte_config::SyntaxKind::Autolyser => "analyte-autolyser",
         })?,
         value: Identifier::new(env!("CARGO_PKG_VERSION"))?,
     })
@@ -52,6 +55,11 @@ fn mapped(
         revision: Revision(0),
     };
     match effective.machine().syntax.kind {
+        analyte_config::SyntaxKind::Poct
+        | analyte_config::SyntaxKind::VidasLiteral
+        | analyte_config::SyntaxKind::Autolyser => {
+            Err(invalid("vendor syntax bypasses field mapping"))
+        }
         analyte_config::SyntaxKind::AstmLis02 => {
             let limits = effective
                 .astm_limits()
@@ -104,16 +112,30 @@ pub(crate) async fn interpret(
     time: jiff::Timestamp,
     payload: &[u8],
 ) -> Result<bool, Error> {
-    let mapping = mapped(machine, id, time, payload);
+    persist_mapping(store, machine, id, mapped(machine, id, time, payload)).await
+}
+
+async fn persist_mapping(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    mapping: Result<analyte_mapping::Output, Error>,
+) -> Result<bool, Error> {
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
         Ok(output) => {
             accepted = !output.requires_parking();
-            let findings = output
+            let mut findings = output
                 .findings
                 .iter()
                 .map(|f| format!("{:?}: {:?}", f.position, f.problem))
                 .collect::<Vec<_>>();
+            for result in &output.results {
+                if let analyte_model::IdentityStatus::Unresolved(reason) = &result.content.identity
+                {
+                    findings.push(reason.as_str().to_owned());
+                }
+            }
             let corrections = output
                 .results
                 .iter()
@@ -234,5 +256,27 @@ pub(crate) async fn park_bytes(
             s.interpret_reconciled(id, evidence, &[], &[], |_, _| Ok(Vec::new()))
         })
         .await?;
+    Ok(())
+}
+
+/// Saves vendor model evidence through the same revision and delivery transaction.
+/// Cancellation may leave a committed interpretation; never infer failure from timeout.
+pub(crate) async fn vendor_reading(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    output: analyte_mapping::Output,
+) -> Result<(), Error> {
+    persist_mapping(store, machine, id, Ok(output)).await?;
+    Ok(())
+}
+
+pub(crate) async fn failed_reading(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    reason: &str,
+) -> Result<(), Error> {
+    persist_mapping(store, machine, id, Err(invalid(reason))).await?;
     Ok(())
 }

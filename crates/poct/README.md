@@ -132,3 +132,24 @@ On Windows, the four required workspace checks pass with the pinned Rust 1.100
 compiler. Workspace tests also pass with the declared Rust 1.95 minimum. Linux
 and fuzz-target execution have not been run locally. No dependencies beyond the
 approved quick-xml, thiserror, analyte-model, jiff and test-only proptest are used.
+
+
+## Program receive integration
+
+The `analyte` program drives this crate over configured connections. Incoming
+bytes are journaled with driver/config versions before the dialog sees them;
+complete receipts and interpretations are then stored through the protected store.
+Unresolved result identities remain unresolved, are parked with their reason,
+and create no app delivery. Inspect them with `analyte parked list`.
+The program never derives a run identity from sample, value, timestamp or receipt.
+
+Worklist download is **not wired into the program yet**. VIDAS and Autolyser
+send-ahead will follow the phase 6 machine-order store API (`reserve_send`,
+lifecycle history and operator reconciliation) after `feat/program-orders`
+merges. The vendor config download permission does not schedule an operation.
+POCT optional order/list extensions remain outside the supported profile.
+
+Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
+parking, operator visibility, zero reference-receiver deliveries and storage
+failure. They do not raise the documented evidence level. No current vendor
+crate path supplies a resolved result identity for a delivery test.

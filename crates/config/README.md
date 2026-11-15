@@ -50,3 +50,11 @@ literal `"none"`; only that declaration deliberately supplies an empty sub-ID.
 revision numbers. The former retransmission/correction/rerun lists are rejected
 as unknown keys. Missing required order settings have a positioned configuration
 error; selected evidence missing from a message remains unresolved in mapping.
+
+
+Vendor receive examples are `examples/poct.toml`, `examples/vidas_literal.toml`
+and `examples/autolyser.toml`. They require explicit installed policies and use
+`[codes]` for exact test/unit translations instead of field-position `[mappings]`.
+Incompatible stacks and vendor field mappings have distinct typed errors.
+All three examples remain synthetic and documented. Worklist download is not
+wired into the program yet; the download permission does not schedule sends.

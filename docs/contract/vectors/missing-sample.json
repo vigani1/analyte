@@ -64,6 +64,7 @@
             }
           },
           "dilution": {
+            "original": "1",
             "factor": "1",
             "applied": "unknown"
           },

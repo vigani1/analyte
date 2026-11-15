@@ -14,6 +14,73 @@ pub use orders::*;
 use analyte_config::{SyntaxKind, Validated};
 use analyte_model::*;
 
+/// Record syntaxes supported by field-position mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldSyntax {
+    /// ASTM LIS02 records.
+    AstmLis02,
+    /// HL7 segments.
+    Hl7V2,
+}
+
+/// Vendor syntax must use its own parser and model mapping.
+#[derive(Debug, thiserror::Error)]
+#[error("{0:?} is not a field-position syntax")]
+pub struct UnsupportedFieldSyntax(pub SyntaxKind);
+
+impl TryFrom<SyntaxKind> for FieldSyntax {
+    type Error = UnsupportedFieldSyntax;
+
+    fn try_from(syntax: SyntaxKind) -> Result<Self, Self::Error> {
+        match syntax {
+            SyntaxKind::AstmLis02 => Ok(Self::AstmLis02),
+            SyntaxKind::Hl7V2 => Ok(Self::Hl7V2),
+            SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
+                Err(UnsupportedFieldSyntax(syntax))
+            }
+        }
+    }
+}
+
+fn field_mappings(config: &Validated) -> Result<&analyte_config::Mappings, Error> {
+    config
+        .effective()
+        .machine()
+        .mappings
+        .as_ref()
+        .ok_or(Error::Syntax)
+}
+
+/// Finds one exact test translation; ambiguous or absent matches remain unknown.
+#[must_use]
+pub fn test_translation<'a>(
+    tables: &'a [analyte_config::TestMapping],
+    codes: &[&str],
+    system: Option<&str>,
+) -> Option<&'a analyte_config::TestMapping> {
+    let mut matches = tables.iter().filter(|entry| {
+        codes.contains(&entry.machine_code.as_str())
+            && system.is_none_or(|s| s == entry.machine_system.as_str())
+    });
+    let first = matches.next();
+    if matches.next().is_some() {
+        None
+    } else {
+        first
+    }
+}
+
+/// Finds an exact original-unit translation; no spelling normalization occurs.
+#[must_use]
+pub fn unit_translation<'a>(
+    tables: &'a [analyte_config::UnitMapping],
+    original: &str,
+) -> Option<&'a analyte_config::UnitMapping> {
+    tables
+        .iter()
+        .find(|entry| entry.original.as_str() == original)
+}
+
 /// One-based source record/segment and field; field zero denotes the record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
@@ -143,7 +210,7 @@ pub struct SourceComment {
 }
 
 /// All mapped and unrepresentable observations, together with every discovered issue.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Output {
     /// Replacement units, in first-occurrence order.
     pub results: Vec<MappedResult>,
@@ -157,6 +224,20 @@ pub struct Output {
 }
 
 impl Output {
+    /// Retains an unknown test as unmapped evidence, with the common parking reason.
+    /// No result or test namespace is invented for this observation.
+    /// # Errors
+    /// Refuses more findings than the mapping evidence bound permits.
+    pub fn unmapped_test(
+        &mut self,
+        position: Position,
+        values: EvidenceList<ResultValue>,
+    ) -> Result<(), Error> {
+        finding(self, position, Problem::UnknownTest)?;
+        self.unmapped.push(UnmappedObservation { position, values });
+        Ok(())
+    }
+
     /// True when the host must park this receipt; callers must check this before delivery.
     #[must_use]
     pub fn requires_parking(&self) -> bool {
@@ -174,7 +255,9 @@ pub fn map_astm(
     config: &Validated,
     input: Input,
 ) -> Result<Output, Error> {
-    if config.effective().machine().syntax.kind != SyntaxKind::AstmLis02 {
+    if FieldSyntax::try_from(config.effective().machine().syntax.kind).map_err(|_| Error::Syntax)?
+        != FieldSyntax::AstmLis02
+    {
         return Err(Error::Syntax);
     }
     let settings = &config.effective().machine().syntax;
@@ -227,7 +310,9 @@ pub fn map_hl7(
     config: &Validated,
     input: Input,
 ) -> Result<Output, Error> {
-    if config.effective().machine().syntax.kind != SyntaxKind::Hl7V2 {
+    if FieldSyntax::try_from(config.effective().machine().syntax.kind).map_err(|_| Error::Syntax)?
+        != FieldSyntax::Hl7V2
+    {
         return Err(Error::Syntax);
     }
     if config

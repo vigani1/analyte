@@ -288,7 +288,7 @@ async fn plan13_adr0008_astm_and_hl7_deliver_once_retransmission_and_correction(
     );
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
         .arg("status")
-        .arg(&path)
+        .arg(&*path)
         .output()?;
     assert!(output.status.success());
     let status = String::from_utf8(output.stdout)?;
@@ -317,7 +317,6 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
     let path = config(directory.path(), false)?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
-    drop(listener);
     let service = Running::start(&path, &format!("http://{address}"), "synthetic-api")?;
     let mut peer = connect(&path, "hl7").await?;
     assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
@@ -326,12 +325,8 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
             Ok((r.get(0)?, r.get(1)?))
         })?;
     wait_state(&path, "pending", 1).await?;
-    let mut reference = Reference::start(
-        &directory.path().join("reference.db"),
-        TcpListener::bind(address).await?,
-        false,
-    )
-    .await?;
+    let mut reference =
+        Reference::start(&directory.path().join("reference.db"), listener, false).await?;
     let event = reference.event().await?;
     assert_eq!(format!("\"{}\"", event.id), id);
     assert_eq!(event.bytes, bytes);
@@ -359,7 +354,7 @@ async fn adr0008_wrong_api_key_pauses_destination_and_status_reports_it() -> Res
     wait_state(&path, "paused", 1).await?;
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
         .arg("status")
-        .arg(&path)
+        .arg(&*path)
         .output()?;
     assert!(output.status.success());
     let status = String::from_utf8(output.stdout)?;
@@ -379,15 +374,13 @@ async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_du
     let path = config(directory.path(), false)?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = listener.local_addr()?;
-    drop(listener);
     let url = format!("http://{address}");
     let service = Running::start(&path, &url, "synthetic-api")?;
     let mut peer = connect(&path, "hl7").await?;
     assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
     service.stop().await?;
     let receiver_path = directory.path().join("reference.db");
-    let mut reference =
-        Reference::start(&receiver_path, TcpListener::bind(address).await?, true).await?;
+    let mut reference = Reference::start(&receiver_path, listener, true).await?;
     let program = program(&path, &url)?;
     let mut store = service::open_store(&program, Box::new(Space)).await?;
     let secrets = secrets(&program, "synthetic-api")?;

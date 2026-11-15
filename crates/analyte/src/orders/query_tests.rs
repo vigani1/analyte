@@ -26,6 +26,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     Ok(Machine {
         id: analyte_model::Identifier::new("synthetic")?,
         snapshot,
+        listener: None,
     })
 }
 
