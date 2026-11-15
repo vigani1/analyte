@@ -72,6 +72,15 @@ dependencies = [
 [[package]]
 name = "analyte-mapping"
 version = "0.1.0"
+dependencies = [
+ "analyte-astm",
+ "analyte-config",
+ "analyte-hl7",
+ "analyte-model",
+ "jiff",
+ "proptest",
+ "thiserror",
+]
 
 [[package]]
 name = "analyte-model"

@@ -126,6 +126,24 @@ pub struct ObservationIdentity {
     pub code: NamespacedId,
     /// Source sub-ID; empty is distinct from unavailable identity evidence.
     pub sub_id: crate::SourceText,
+    /// Ordered source run evidence, empty only when none is declared. Without
+    /// run evidence a rerun cannot be distinguished from a retransmission:
+    /// different content under the same identity is a conflict to park, never guess.
+    pub run: crate::SourceText,
     /// Namespaced order identity; missing context requires unresolved status.
     pub order: NamespacedId,
+}
+
+impl ReceiptId {
+    /// Creates a host receipt identity once, before retaining the incoming bytes.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::now_v7())
+    }
+}
+
+impl Default for ReceiptId {
+    fn default() -> Self {
+        Self::new()
+    }
 }
