@@ -1065,9 +1065,7 @@ fn law_tf2b_c1_error_codes_severity_and_available_fields() -> Result<(), Box<dyn
     ] {
         assert!(validate_profile_body(body).is_err(), "{body}");
     }
-    assert!(
-        validate_profile_body(&format!("ERR|||100^^HL70357|E||||{}", "x".repeat(251))).is_err()
-    );
+    validate_profile_body(&format!("ERR|||100^^HL70357|E||||{}", "x".repeat(251)))?;
     Ok(())
 }
 

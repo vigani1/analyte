@@ -135,7 +135,10 @@ impl<'a> Query<'a> {
         }
         let header = msh.segment();
         let d = message.delimiters();
-        let components: Vec<_> = raw(header, 9).split(|b| *b == d.component).collect();
+        let components: Vec<_> = raw(header, 9)
+            .split(|b| *b == d.component)
+            .take(3)
+            .collect();
         if components != [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
             return Err(content("MSH", 9));
         }
@@ -150,6 +153,7 @@ impl<'a> Query<'a> {
             .unwrap_or_default();
         if !profile
             .split(|b| *b == d.component)
+            .take(2)
             .eq([b"LAB-27".as_slice(), b"IHE"])
         {
             return Err(content("MSH", 21));
@@ -304,19 +308,36 @@ pub use results::{
     result_acknowledgment,
 };
 
+mod control;
+
+pub use control::{ControlDirection, parse_message, validate_control};
+
 mod profile;
 
 pub use profile::{FieldRule, Usage, validate_segment};
 
-fn msh(message: &Message) -> Result<Msh<'_>, crate::Error> {
-    Msh::with_control_limit(message, 50)
+fn msh(message: &Message) -> Result<Msh<'_>, Error> {
+    let segment = message.segments().next().ok_or(content("MSH", 0))?;
+    control::validate_segment(segment, ControlDirection::Receive)?;
+    let kind = raw(segment, 9)
+        .split(|b| *b == b'^')
+        .next()
+        .unwrap_or_default();
+    Ok(Msh::from_law(
+        segment,
+        matches!(kind, b"QBP" | b"OML" | b"OUL"),
+    ))
 }
 
-/// Validates the LAW-extended message ID length (TF-2b C.4, at most 50 bytes).
+/// Validates a LAW ST message identity (TF-2b C.4, at most 50 characters).
 /// # Errors
-/// Rejects empty, null, oversized or non-graphic IDs; rendering checks delimiters.
+/// Rejects empty, null, oversized or control-containing IDs and unescaped delimiters.
 pub fn control_id(raw: &[u8]) -> Result<crate::ControlId<'_>, crate::Error> {
-    crate::ControlId::with_limit(raw, 50)
+    control::identity(raw).map_err(|_| crate::Error::Control {
+        segment: "MSH",
+        field: 10,
+    })?;
+    Ok(crate::ControlId::from_profile(raw))
 }
 
 mod failure;

@@ -244,7 +244,7 @@ fn header(
             safe(value, "MSH", field, 227)?;
         }
     }
-    safe(response.control_id.raw(), "MSH", 10, 50)?;
+    super::control_id(response.control_id.raw())?;
     safe(response.timestamp, "MSH", 7, 26)?;
     if !response
         .timestamp
@@ -529,6 +529,7 @@ pub fn work_order(
         }
     }
     let message = Message::parse(&wire.bytes, options)?;
+    super::validate_control(&message, super::ControlDirection::Send)?;
     for segment in message.segments() {
         super::profile::validate_segment(segment)?;
     }
@@ -593,6 +594,7 @@ pub fn negative_work(
         ],
     )?;
     let message = Message::parse(&wire.bytes, options)?;
+    super::validate_control(&message, super::ControlDirection::Send)?;
     for segment in message.segments() {
         super::profile::validate_segment(segment)?;
     }
@@ -641,6 +643,7 @@ impl<'a> WorkResponse<'a> {
         let d = message.delimiters();
         if !super::raw(msh.segment(), 9)
             .split(|b| *b == d.component)
+            .take(3)
             .eq([b"ORL".as_slice(), b"O34", b"ORL_O42"])
         {
             return Err(content("MSH", 9));
@@ -650,7 +653,7 @@ impl<'a> WorkResponse<'a> {
             .next()
             .filter(|s| s.id() == b"MSA")
             .ok_or(content("MSA", 0))?;
-        let msa = Msa::with_control_limit(msa_segment, 50)?;
+        let msa = Msa::from_law(msa_segment)?;
         if msa.control_id() != super::msh(sent)?.control_id() {
             return Err(content("MSA", 2));
         }
@@ -702,9 +705,9 @@ impl<'a> WorkResponse<'a> {
         let mut response_container = b"".as_slice();
         let mut error_count = 0usize;
         let mut seen = BTreeSet::new();
-        super::profile::validate_segment(msa_segment)?;
+        super::control::received_segment(msa_segment)?;
         for s in segments {
-            super::profile::validate_segment(s)?;
+            super::control::received_segment(s)?;
             match s.id() {
                 b"ERR" => {
                     if has_specimen {

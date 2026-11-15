@@ -167,6 +167,15 @@ impl Message {
     /// # Errors
     /// Rejects invalid headers, delimiters, limits, escapes, versions and character encodings.
     pub fn parse(raw: &[u8], options: Options) -> Result<Self, Error> {
+        Self::parse_with_profile(raw, options, false)
+    }
+
+    /// Applies LAW version compatibility while retaining the shared bounded syntax checks.
+    pub(crate) fn parse_law(raw: &[u8], options: Options) -> Result<Self, Error> {
+        Self::parse_with_profile(raw, options, true)
+    }
+
+    fn parse_with_profile(raw: &[u8], options: Options, law: bool) -> Result<Self, Error> {
         if raw.len() > options.limits.message_bytes {
             return Err(Error::Limit {
                 kind: "message bytes",
@@ -279,10 +288,12 @@ impl Message {
             segment: "MSH",
             field: 12,
         })?;
-        if !matches!(
-            version.raw.split(|b| *b == delimiters.component).next(),
-            Some(b"2.3.1" | b"2.5.1")
-        ) {
+        let version_id = version
+            .raw
+            .split(|b| *b == delimiters.component)
+            .next()
+            .unwrap_or_default();
+        if !(matches!(version_id, b"2.3.1" | b"2.5.1") || (law && version_id.starts_with(b"2.5"))) {
             return Err(Error::Control {
                 segment: "MSH",
                 field: 12,
@@ -297,7 +308,7 @@ impl Message {
         if charset != options.charset {
             return Err(Error::CharsetMismatch);
         }
-        if msh.field(20).is_some_and(|f| !f.raw.is_empty()) {
+        if !law && msh.field(20).is_some_and(|f| !f.raw.is_empty()) {
             return Err(Error::UnsupportedCharset);
         }
         match charset {
@@ -503,7 +514,13 @@ impl<'a> Iterator for Parts<'a> {
         Some(raw)
     }
 }
-fn validate_escapes(raw: &[u8], d: Delimiters, segment: usize, field: usize) -> Result<(), Error> {
+/// Checks bounded escape grammar without decoding or executing escapes.
+pub(crate) fn validate_escapes(
+    raw: &[u8],
+    d: Delimiters,
+    segment: usize,
+    field: usize,
+) -> Result<(), Error> {
     let mut parts = raw.split(|b| *b == d.escape);
     let mut offset = parts.next().map_or(0, <[u8]>::len);
     while let Some(code) = parts.next() {

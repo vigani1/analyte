@@ -359,11 +359,11 @@ impl<'a> Results<'a> {
         super::profile::header(message, b"LAB-29", true)?;
         let msh = super::msh(message)?;
         let d = message.delimiters();
-        if !raw(msh.segment(), 9).split(|b| *b == d.component).eq([
-            b"OUL".as_slice(),
-            b"R22",
-            b"OUL_R22",
-        ]) {
+        if !raw(msh.segment(), 9)
+            .split(|b| *b == d.component)
+            .take(3)
+            .eq([b"OUL".as_slice(), b"R22", b"OUL_R22"])
+        {
             return Err(content("MSH", 9));
         }
         let mut specimen = None;
@@ -383,7 +383,7 @@ impl<'a> Results<'a> {
         let mut has_visit = false;
         let mut has_timing = false;
         for (ordinal, segment) in message.segments().enumerate().skip(1) {
-            super::profile::validate_segment(segment)?;
+            super::control::received_segment(segment)?;
             match segment.id() {
                 b"PID" => {
                     if has_patient || specimen.is_some() {
@@ -687,20 +687,20 @@ pub fn result_acknowledgment(
     if (code == AckCode::Aa) == error.is_some() {
         return Err(content("ERR", 0));
     }
-    let Some(ack) = crate::ack::acknowledgment_with_limit(
-        message,
+    let Some(ack) = crate::ack::acknowledgment_with_msh(
+        super::msh(message)?,
         response,
         code,
         responsibility,
         error,
         options,
-        50,
+        crate::ack::AckProfile::Law,
     )?
     else {
         return Ok(None);
     };
     let mut wire = Wire::new(options.limits.message_bytes, message.delimiters().field);
-    let msh = super::msh(&ack)?.segment();
+    let msh = ack.segments().next().ok_or(content("MSH", 0))?;
     wire.append(b"MSH")?;
     let mut profile = b"LAB-29".to_vec();
     profile.push(message.delimiters().component);
@@ -709,16 +709,18 @@ pub fn result_acknowledgment(
         wire.field(if field == 21 {
             &profile
         } else {
-            raw(msh, field)
+            super::control::reply_field(msh, field)
         })?;
     }
     wire.append(b"\r")?;
     super::responses::append_ack_segments(&mut wire, &ack)?;
-    Ok(Some(Message::parse(
+    let output = super::parse_message(
         &wire.bytes,
         Options {
             terminator: crate::Terminator::Cr,
             ..options
         },
-    )?))
+    )?;
+    super::validate_control(&output, super::ControlDirection::Send)?;
+    Ok(Some(output))
 }

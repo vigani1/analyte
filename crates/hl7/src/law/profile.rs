@@ -1,4 +1,4 @@
-//! LAW field and component constraints, from TF-2b Appendix C and ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§2.2.
+//! LAW field and component constraints, from TF-2b Appendix C and section 2.2.
 use super::{Error, content, raw};
 use crate::{Message, Segment};
 
@@ -127,124 +127,17 @@ fn coded(
     Ok(())
 }
 
-// A component is checked while borrowing its original bytes; validation never rewrites it.
-fn component<'a>(
-    segment: &'static str,
-    field: usize,
-    position: usize,
-    value: &'a [u8],
-    required: bool,
-    maximum: usize,
-) -> Result<&'a [u8], Error> {
-    if value.len() > maximum || (required && (value.is_empty() || value == b"\"\"")) {
-        return Err(Error::Component {
-            segment,
-            field,
-            component: position,
-        });
-    }
-    Ok(value)
-}
-
-fn error_code(segment: Segment<'_>, field: usize) -> Result<(), Error> {
-    let mut parts = raw(segment, field).split(|byte| *byte == segment.delimiters.component);
-    let identifier = component("ERR", field, 1, parts.next().unwrap_or_default(), true, 20)?;
-    component(
-        "ERR",
-        field,
-        2,
-        parts.next().unwrap_or_default(),
-        false,
-        199,
-    )?;
-    let system = component(
-        "ERR",
-        field,
-        3,
-        parts.next().unwrap_or_default(),
-        true,
-        if field == 3 { 7 } else { 12 },
-    )?;
-    if field == 3 {
-        if !matches!(
-            identifier,
-            b"100" | b"101" | b"102" | b"103" | b"200" | b"201" | b"202" | b"203" | b"207"
-        ) {
-            return Err(Error::Component {
-                segment: "ERR",
-                field,
-                component: 1,
-            });
-        }
-        if system != b"HL70357" {
-            return Err(Error::Component {
-                segment: "ERR",
-                field,
-                component: 3,
-            });
-        }
-    } else if system.len() != 5
-        || !system.starts_with(b"99")
-        || !system
-            .get(2..)
-            .is_some_and(|suffix| suffix.iter().all(u8::is_ascii_alphanumeric))
-    {
-        return Err(Error::Component {
-            segment: "ERR",
-            field,
-            component: 3,
-        });
-    }
-    Ok(())
-}
-
-fn error_location(segment: Segment<'_>) -> Result<(), Error> {
-    if let Some(field) = segment.field(2) {
-        for repetition in field.repetitions() {
-            let mut parts = repetition.components();
-            for position in 1..=6 {
-                let value = parts.next().map_or(b"".as_slice(), |part| part.raw());
-                component(
-                    "ERR",
-                    2,
-                    position,
-                    value,
-                    position <= 2,
-                    if position == 1 { 3 } else { 2 },
-                )?;
-                if position > 1
-                    && !value.is_empty()
-                    && (!value.iter().all(u8::is_ascii_digit)
-                        || value.iter().all(|byte| *byte == b'0'))
-                {
-                    return Err(Error::Component {
-                        segment: "ERR",
-                        field: 2,
-                        component: position,
-                    });
-                }
-            }
-            if parts.any(|part| !part.raw().is_empty()) {
-                return Err(Error::Component {
-                    segment: "ERR",
-                    field: 2,
-                    component: 7,
-                });
-            }
-        }
-    }
-    Ok(())
-}
-
 /// Checks shared LAW segment constraints without interpreting clinical content.
-/// This entry point checks the Appendix C fields independently of message grouping.
+/// This entry point checks Appendix C fields independently of message grouping.
+/// Control segments use the strict send policy; use `validate_control` for
+/// directional control validation and cross-segment predicates.
 /// # Errors
 /// Returns a segment/field location for missing fields, excess repetitions or invalid codes.
 pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
+    if matches!(segment.id(), b"MSH" | b"MSA" | b"ERR") {
+        return super::control::validate_segment(segment, super::ControlDirection::Send);
+    }
     let (name, allowed): (&str, &[usize]) = match segment.id() {
-        b"MSH" => ("MSH", &[1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 15, 16, 18, 21]),
-        b"MSA" => ("MSA", &[1, 2]),
-        b"ERR" => ("ERR", &[2, 3, 4, 5, 8]),
         b"NTE" => ("NTE", &[1, 2, 3, 4]),
         b"INV" => ("INV", &[1, 2, 3, 4, 12, 16]),
         b"OBR" => ("OBR", &[2, 3, 4, 11, 16, 17, 49]),
@@ -270,69 +163,6 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
         }
     }
     match segment.id() {
-        b"MSH" => {
-            if raw(segment, 1) != b"|" || raw(segment, 2) != b"^~\\&" {
-                return Err(content("MSH", 2));
-            }
-            for field in [3, 4, 5, 6] {
-                check(segment, "MSH", field, false, 227, 1)?;
-                let value = raw(segment, field);
-                if !value.is_empty() {
-                    let namespace = value
-                        .split(|byte| *byte == segment.delimiters.component)
-                        .next()
-                        .unwrap_or_default();
-                    component("MSH", field, 1, namespace, field != 6, 20)?;
-                }
-            }
-            for (field, length) in [(7, 26), (9, 15), (10, 50), (11, 3), (12, 60), (18, 16)] {
-                check(segment, "MSH", field, true, length, 1)?;
-            }
-            if !timestamp(raw(segment, 7), true) {
-                return Err(content("MSH", 7));
-            }
-            if raw(segment, 12) != b"2.5.1" {
-                return Err(content("MSH", 12));
-            }
-            if raw(segment, 11) != b"P" {
-                return Err(content("MSH", 11));
-            }
-            if raw(segment, 18) != b"UNICODE UTF-8" {
-                return Err(content("MSH", 18));
-            }
-            check(segment, "MSH", 21, true, 427, 1024)?;
-            for repetition in segment.field(21).ok_or(content("MSH", 21))?.repetitions() {
-                let mut components = repetition.components();
-                for (position, maximum) in [(1, 50), (2, 20)] {
-                    let value = components.next().map_or(b"".as_slice(), |part| part.raw());
-                    component("MSH", 21, position, value, true, maximum)?;
-                }
-            }
-        }
-        b"MSA" => {
-            check(segment, "MSA", 1, true, 2, 1)?;
-            check(segment, "MSA", 2, true, 50, 1)?;
-            if !matches!(raw(segment, 1), b"AA" | b"AE" | b"AR") {
-                return Err(content("MSA", 1));
-            }
-        }
-        b"ERR" => {
-            check(segment, "ERR", 2, false, 18, 1024)?;
-            if !raw(segment, 2).is_empty() {
-                error_location(segment)?;
-            }
-            check(segment, "ERR", 3, true, 705, 1)?;
-            check(segment, "ERR", 4, true, 2, 1)?;
-            check(segment, "ERR", 5, false, 705, 1)?;
-            check(segment, "ERR", 8, false, 250, 1)?;
-            error_code(segment, 3)?;
-            if !raw(segment, 5).is_empty() {
-                error_code(segment, 5)?;
-            }
-            if raw(segment, 4) != b"E" {
-                return Err(content("ERR", 4));
-            }
-        }
         b"NTE" => {
             positive_integer(raw(segment, 1), "NTE", 1)?;
             for (field, length) in [(1, 4), (2, 1), (3, 65536)] {
@@ -568,23 +398,24 @@ fn positive_integer(value: &[u8], segment: &'static str, field: usize) -> Result
 }
 
 pub(super) fn header(message: &Message, transaction: &[u8], triggered: bool) -> Result<(), Error> {
+    super::validate_control(message, super::ControlDirection::Receive)?;
     let msh = message.segments().next().ok_or(content("MSH", 0))?;
-    validate_segment(msh)?;
-    let d = message.delimiters();
     let first = raw(msh, 21)
-        .split(|b| *b == d.repetition)
+        .split(|b| *b == message.delimiters().repetition)
         .next()
         .unwrap_or_default();
-    if !first.split(|b| *b == d.component).eq([transaction, b"IHE"]) {
+    let mut components = first.split(|b| *b == message.delimiters().component);
+    if components.next() != Some(transaction) || components.next() != Some(b"IHE".as_slice()) {
         return Err(content("MSH", 21));
     }
-    for (field, wanted) in [
-        (15, if triggered { b"NE".as_slice() } else { b"" }),
-        (16, if triggered { b"AL".as_slice() } else { b"" }),
-    ] {
-        if raw(msh, field) != wanted {
-            return Err(content("MSH", field));
-        }
+    let actual_trigger = matches!(
+        raw(msh, 9)
+            .split(|b| *b == message.delimiters().component)
+            .next(),
+        Some(b"QBP" | b"OML" | b"OUL")
+    );
+    if actual_trigger != triggered {
+        return Err(content("MSH", 9));
     }
     Ok(())
 }

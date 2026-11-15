@@ -64,21 +64,17 @@ Covered by source-named synthetic tests and a query property test:
   profile headers, timestamp precision/timezone, numeric units, status/datatype
   subsets, equipment multiplicity, SPM/OBX sequencing and repeated-value rules.
   LAW's extended control-ID limit is scoped; base HL7 limits remain unchanged.
-- Additional Appendix C control checks: MSH delimiters, application/facility
-  namespace length and cardinality, repeated profile identifier required components;
-  ERR error-code subset and coding system, severity E, location components and
-  available application-code/user-message bounds. Component failures have a
-  distinct error carrying the segment, field and component position.
+- Complete group-1 control field validation in receive and send directions; exact
+  MSH/MSA/ERR coverage is listed below. Component failures carry the segment,
+  field and component position.
 - Recovery classes for malformed triggers, content rejection, invalid ACK,
   inconsistent ORL and host query rejection. Failed responses do not start ACK
   loops. Unnamespaced local diagnostics remain text rather than invented codes.
 
 Not yet complete:
 
-- Completion of the MSH/MSA/ERR segment group (including all composite datatype
-  rules and cross-segment predicates), and the PID/PV1, SPM/SAC,
-  ORC/OBR/TQ1/TCD and OBX/NTE/INV groups.
-- Every Appendix C field/component and option predicate and its individual test.
+- Completion of groups 2-5: PID/PV1, SPM/SAC, ORC/OBR/TQ1/TCD and OBX/NTE/INV.
+- Every remaining Appendix C field/component and option predicate and its individual test.
   The shared validator is not a complete LAW conformance validator.
 - Complete typed validation of all value composites and enhanced-content
   relationships and every message-group predicate. Specimen-level observations
@@ -91,6 +87,56 @@ Not yet complete:
 Do not interpret a successful view construction or passing local tests as full
 LAW conformance. Tests do not establish the clinical reconciliation/lifecycle
 policy. The host must preserve uncertain prior acceptance and stable identities.
+
+## LAW control fields covered (group 1)
+
+`law::parse_message` shares the bounded syntax parser and additionally accepts
+LAW's compatible version declarations beginning with `2.5`. The general
+`Message::parse` edition policy is unchanged. `law::validate_control` applies
+Appendix C.1/C.3/C.4 and section 2.2 with an explicit `ControlDirection`:
+receivers ignore X content while retaining its bytes; senders must omit it.
+`validate_segment` checks an individual segment using the send policy; it
+cannot establish cross-segment predicates. Transaction receive APIs and all
+LAW builders apply the matching direction automatically.
+
+The exact covered field positions are:
+
+- **MSH:** 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 15, 16, 18 and 21.
+  Separators are fixed by LAW. Fields 3-6 are RE singletons with HD.1
+  namespace limits; HD.1 is R in 3-5 and RE in 6. Field 7 checks TS.1's
+  calendar, seconds precision and timezone. Field 9 checks all three required
+  MSG components and the LAW code/event/structure combinations. Field 10
+  checks a non-null ST identity up to 50 characters. Fields 11 and 12 check
+  PT.1 (production) and VID.1 (compatible version). Fields 15/16 resolve to
+  mandatory NE/AL on QBP, OML and OUL triggers, and X on RSP, ORL and ACK
+  responses. Field 18 is one UTF-8 declaration. Every repetition of 21
+  checks required EI.1/EI.2 and their limits, with the transaction/IHE pair
+  first. Other MSH fields and unlisted composite components are X.
+- **MSA:** 1 and 2. Both are mandatory singletons: the application outcome
+  is AA/AE/AR, and the correlation ST is non-null and at most 50 characters.
+  Receive transaction APIs compare MSA-2 with the sent MSH-10; builders echo
+  the original ID. Other MSA fields are X.
+- **ERR:** 2, 3, 4, 5 and 8. Field 2 is RE and repeatable: ERL.1 and ERL.2
+  are required, ERL.3-6 are RE; segment names, positive occurrence/position
+  numbers and component limits are checked. Field 3 is a mandatory singleton
+  CWE: required supported error identifier, RE description, required HL70357
+  namespace. Field 4 is a mandatory singleton restricted to E. Field 5 is
+  an RE singleton CWE with required identifier/vendor namespace and optional
+  description. Field 8 is RE singleton TX; its 250# conformance length allows
+  retaining longer text, so it is preserved in full within the parser's
+  configured message bound. Other ERR fields and CWE components are X.
+
+These rules include datatype shape, empty/null handling, character lengths,
+cardinality and supported component usages. Composite field length ceilings
+are checked on output (including empty trailing positions); tighter supported
+component limits apply on input, with ignored X components excluded. RE availability belongs to the caller:
+missing means unavailable, supplied content is validated without guessing a
+replacement. Messages require one MSH; response messages require one MSA;
+ERR belongs only to AE/AR responses, which require error detail. Reply headers
+reverse supported address components and do not retransmit ignored content.
+Source-named tests in `tests/law_control.rs` provide positive and negative
+cases for each listed rule, plus receive/build integration cases. The evidence
+level remains documented; this completes group 1, not the entire LAW profile.
 
 ## Recording a Gazelle run
 
