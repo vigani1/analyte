@@ -123,16 +123,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
         None,
     ));
     let host = address.to_string();
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if tokio::net::TcpStream::connect(&host).await.is_ok() {
-                break;
-            }
-            // This externally started listener has no readiness channel; the enclosing timeout bounds probes.
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await?;
+    wait_for_service_listener(&host).await?;
     let response = request(
         &host,
         "/",
@@ -526,5 +517,19 @@ async fn plan11_admin_drain_waits_for_router_state_release() -> Result<(), Error
     );
     drop(release);
     drain.await?;
+    Ok(())
+}
+
+async fn wait_for_service_listener(host: &str) -> Result<(), Error> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if tokio::net::TcpStream::connect(&host).await.is_ok() {
+                break;
+            }
+            // This externally started listener has no readiness channel; the enclosing timeout bounds probes.
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await?;
     Ok(())
 }
