@@ -132,12 +132,7 @@ pub(super) async fn next(
             .request(deadline(), move |store| {
                 let mut message = None;
                 let record = store.reserve_send(
-                    &OrderReservation {
-                        identity: &identity,
-                        version,
-                        now: jiff::Timestamp::now().as_second(),
-                        freshness,
-                    },
+                    &super::reservation::candidate(&identity, version, freshness),
                     analyte_store::ReserveOptions {
                         items: OrderItems::Groups {
                             groups: &groups,

@@ -291,20 +291,10 @@ impl Connection {
                                 let reason = analyte_model::SourceText::new(&format!(
                                     "HL7-display-mapping: {error}"
                                 ))?;
-                                let rejected = store
-                                    .request(until, move |store| {
-                                        store.reject_unsent(
-                                            &analyte_store::OrderReservation {
-                                                identity: &identity,
-                                                version,
-                                                now: jiff::Timestamp::now().as_second(),
-                                                freshness,
-                                            },
-                                            reason,
-                                            super::event,
-                                        )
-                                    })
-                                    .await?;
+                                let rejected = super::reservation::reject(
+                                    store, until, identity, version, freshness, reason,
+                                )
+                                .await?;
                                 if let Err(refusal) = rejected {
                                     tracing::info!(reason=%refusal,"HL7 mapping rejection superseded");
                                 }

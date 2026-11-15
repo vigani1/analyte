@@ -4,6 +4,7 @@ pub(crate) mod hl7;
 mod hl7_send;
 pub(crate) mod law;
 mod operator;
+mod reservation;
 pub(crate) mod sending;
 mod settings;
 use crate::{Error, config::Machine};
