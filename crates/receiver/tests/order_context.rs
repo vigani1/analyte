@@ -27,13 +27,14 @@ async fn adr0008_seeded_patient_specimen_and_position_survive_the_feed()
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()?;
-    let page: serde_json::Value = client
+    let response = client
         .get(url)
         .bearer_auth("synthetic-api")
         .send()
         .await?
-        .json()
+        .bytes()
         .await?;
+    let page: serde_json::Value = serde_json::from_slice(&response)?;
     assert_eq!(
         page.pointer("/orders/0"),
         Some(&serde_json::from_slice::<serde_json::Value>(bytes)?)
