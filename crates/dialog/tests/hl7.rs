@@ -162,7 +162,7 @@ fn hl7_251_2_9_deadline_precedes_late_commit() -> TestResult {
     let out = d.step(Duration::from_secs(5), Event::Committed(id))?;
     assert!(
         out.iter()
-            .any(|a| matches!(a, Action::ResponseNeeded(_, AckCode::Cr)))
+            .any(|a| matches!(a, Action::ResponseNeeded(_, AckCode::Ce)))
     );
     assert!(out.iter().any(|a| matches!(a, Action::Refused(_))));
     Ok(())
@@ -285,7 +285,7 @@ fn hl7_251_2_9_3_negative_suppression_and_interpret_timeout() -> TestResult {
         let id = receipt(&feed(&mut d, &message(mode))?)?;
         d.step(Duration::ZERO, Event::CommitFailed(id))?;
         assert_eq!(
-            has_code(&respond(&mut d, id, b"reject1")?, b"MSA|CR|"),
+            has_code(&respond(&mut d, id, b"reject1")?, b"MSA|CE|"),
             matches!(mode, "AL|AL" | "ER|ER")
         );
     }

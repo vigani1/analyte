@@ -349,9 +349,13 @@ impl Dialog {
             return Err(Error::Stale);
         }
         let code = if matches!(pending.phase, Phase::Commit) {
+            // A storage failure is unrelated to the message content: AR in
+            // original mode, a commit error (CE) in enhanced mode. CR is reserved
+            // for unacceptable message type, version or processing ID
+            // (HL7 2.5.1 §2.9.3).
             match Msh::new(&pending.message)?.mode() {
                 AckMode::Original => AckCode::Ar,
-                AckMode::Enhanced { .. } => AckCode::Cr,
+                AckMode::Enhanced { .. } => AckCode::Ce,
             }
         } else if success {
             pending.responsibility = Responsibility::StoredAndInterpreted;
