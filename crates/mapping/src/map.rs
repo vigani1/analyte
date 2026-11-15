@@ -107,11 +107,14 @@ pub(crate) fn message(
                 continue;
             }
             standard_code = split
-                .get(usize::from(parts.code - 1))
+                .get(usize::from(parts.code.saturating_sub(1)))
                 .map(|s| (*s).to_owned())
                 .filter(|s| !s.is_empty());
             manufacturer_code = None;
-            if let Some(part) = parts.dilution.and_then(|i| split.get(usize::from(i - 1))) {
+            if let Some(part) = parts
+                .dilution
+                .and_then(|i| split.get(usize::from(i.saturating_sub(1))))
+            {
                 let mut applied = DilutionApplied::Unknown;
                 if let Some(setting) = &parts.applied {
                     let reported = source.selected(index, &setting.field)?;

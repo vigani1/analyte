@@ -792,3 +792,27 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn rule6_application_comes_only_from_configured_source_evidence() -> TestResult {
+    for (yes, no, expected) in [
+        ("F", "N", DilutionApplied::Yes),
+        ("Y", "F", DilutionApplied::No),
+        ("Y", "N", DilutionApplied::Unknown),
+    ] {
+        let definition = format!(
+            "{}applied = {{field={{group='observation', record='R', field=9, component=1, repetition=1}}, yes='{yes}', no='{no}'}}\n",
+            parts_config()
+        );
+        let output = with_parts("SYN/1:10", &definition)?;
+        assert_eq!(
+            first(&output)?
+                .dilution
+                .as_ref()
+                .ok_or("missing dilution")?
+                .applied,
+            expected
+        );
+    }
+    Ok(())
+}
