@@ -791,6 +791,10 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         let mut store = store(&path).await?;
         let mut destination = destination(&proxy.url)?;
         destination.limits.request_timeout = Duration::from_millis(150);
+        // Timestamps have whole-second resolution; a 1 s backoff can already be due
+        // on a slow runner before the "not yet due" check below.
+        destination.limits.backoff_min = Duration::from_secs(5);
+        destination.limits.backoff_max = Duration::from_secs(5);
         let destinations = [destination];
         let secrets = Secrets("key");
         let worker = Worker::new(&store, &destinations, &secrets);
@@ -978,15 +982,20 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
                 let body = r#"{"contract_version":1,"status":"accepted"}"#;
                 stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await?;
             } else {
-                tokio::time::sleep(Duration::from_millis(150)).await;
+                // Hold the request far past the grace period so the drain must give up.
+                tokio::time::sleep(Duration::from_secs(2)).await;
             }
             Ok::<_, std::io::Error>(())
         };
-        let (outcome, peer) = tokio::time::timeout(Duration::from_secs(1), async {
-            tokio::join!(
-                worker.run_draining(stopped, Duration::from_millis(75)),
-                peer
-            )
+        // A completing attempt gets a grace period a slow CI runner can meet; an
+        // abandoned one gets a short grace that the peer outlasts by far.
+        let grace = if complete {
+            Duration::from_secs(5)
+        } else {
+            Duration::from_millis(75)
+        };
+        let (outcome, peer) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(worker.run_draining(stopped, grace), peer)
         })
         .await?;
         peer?;
