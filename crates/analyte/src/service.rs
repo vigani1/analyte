@@ -24,6 +24,16 @@ impl Drop for AdminOwner {
 /// # Errors
 /// Reports directory, migration, integrity or worker failures.
 pub async fn open_store(program: &Program, space: Box<dyn FreeSpace>) -> Result<Handle, Error> {
+    open_store_with_deadline(program, space, deadline()).await
+}
+
+// Fixture setup may migrate many tables on a slow filesystem. Its hang guard is
+// independent of the unchanged production startup policy in open_store.
+pub(crate) async fn open_store_with_deadline(
+    program: &Program,
+    space: Box<dyn FreeSpace>,
+    until: Instant,
+) -> Result<Handle, Error> {
     create_data_directory(&program.data_directory)?;
     let limits = analyte_store::Limits {
         reserve_bytes: program.store_limits.reserve_bytes,
@@ -37,7 +47,7 @@ pub async fn open_store(program: &Program, space: Box<dyn FreeSpace>) -> Result<
         limits,
         space,
         32,
-        deadline(),
+        until,
     )
     .await?)
 }
