@@ -89,14 +89,19 @@ impl<'a> Awos<'a> {
         for (value, segment, field, maximum) in [
             (id, "OBR", 2, 50),
             (specimen, "SPM", 2, 427),
-            (specimen_type, "SPM", 4, 250),
             (container, "SAC", 3, 80),
             (test, "OBR", 4, 250),
         ] {
             safe(value, segment, field, maximum)?;
         }
-        if !matches!(role, b"P" | b"Q") {
-            return Err(content("SPM", 11));
+        match role {
+            b"P" => safe(specimen_type, "SPM", 4, 250)?,
+            b"Q" => {
+                if specimen_type != b"\"\"" {
+                    return Err(content("SPM", 4));
+                }
+            }
+            _ => return Err(content("SPM", 11)),
         }
         Ok(Self {
             notes: None,
@@ -365,7 +370,14 @@ pub fn work_order(
             (1, Some(sequence.as_bytes())),
             (2, Some(awos.specimen)),
             (4, Some(awos.specimen_type)),
-            (11, Some(awos.role)),
+            (
+                11,
+                Some(match awos.role {
+                    b"P" => b"P^^HL70369".as_slice(),
+                    b"Q" => b"Q^^HL70369",
+                    _ => return Err(content("SPM", 11)),
+                }),
+            ),
         ] {
             set_field(&mut specimen, position, value, "SPM")?;
         }
@@ -538,7 +550,19 @@ pub fn negative_work(
     segment(
         &mut wire,
         b"SPM",
-        &[b"1", b"", b"", b"\"\"", b"", b"", b"", b"", b"", b"", b"U"],
+        &[
+            b"1",
+            b"",
+            b"",
+            b"\"\"",
+            b"",
+            b"",
+            b"",
+            b"",
+            b"",
+            b"",
+            b"U^^IHELAW",
+        ],
     )?;
     // These are borrowed encoded fields; only identical delimiters can be echoed.
     if query.message().delimiters().bytes() != *b"|^~\\&" {

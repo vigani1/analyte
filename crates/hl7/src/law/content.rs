@@ -56,7 +56,7 @@ pub struct SpecimenDetails<'a> {
     pub source_modifier: Option<&'a [u8]>,
     /// SPM-16 risk code.
     pub risk: Option<&'a [u8]>,
-    /// SPM-17 collection date/time range.
+    /// SPM-17 collection start timestamp; LAW excludes the range-end component.
     pub collection_time: Option<&'a [u8]>,
     /// SPM-18 receipt timestamp.
     pub receipt_time: Option<&'a [u8]>,

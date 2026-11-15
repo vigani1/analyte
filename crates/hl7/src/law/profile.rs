@@ -117,7 +117,7 @@ fn coded(
     let delimiter = segment.delimiters.component;
     for repetition in value.split(|b| *b == segment.delimiters.repetition) {
         let parts: Vec<_> = repetition.split(|b| *b == delimiter).collect();
-        for (index, maximum) in [(0, 20), (1, 199), (2, 20)] {
+        for (index, maximum) in [(0, 20), (1, 199), (2, 12)] {
             let component = parts.get(index).copied().unwrap_or_default();
             if component.len() > maximum || ((index != 1 || description) && component.is_empty()) {
                 return Err(content(id, field));
@@ -195,6 +195,7 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             }
         }
         b"NTE" => {
+            positive_integer(raw(segment, 1), "NTE", 1)?;
             for (field, length) in [(1, 4), (2, 1), (3, 65536)] {
                 check(
                     segment,
@@ -213,7 +214,7 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
         b"INV" => {
             for field in [1, 2, 3] {
                 check(segment, "INV", field, true, 250, 1)?;
-                coded(segment, "INV", field, true)?;
+                coded(segment, "INV", field, false)?;
             }
         }
         b"OBR" => {
@@ -222,6 +223,7 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             coded(segment, "OBR", 4, true)?;
         }
         b"OBX" => {
+            positive_integer(raw(segment, 1), "OBX", 1)?;
             for (field, length, maximum) in [
                 (1, 4, 1),
                 (3, 250, 1),
@@ -359,6 +361,30 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             }
         }
         b"SPM" => {
+            positive_integer(raw(segment, 1), "SPM", 1)?;
+            for field in [4, 7, 8, 9, 16, 27] {
+                check(
+                    segment,
+                    "SPM",
+                    field,
+                    field == 4,
+                    250,
+                    if matches!(field, 9 | 16) { 1024 } else { 1 },
+                )?;
+                coded(segment, "SPM", field, false)?;
+            }
+            coded(segment, "SPM", 11, false)?;
+            for field in [17, 18] {
+                if !raw(segment, field).is_empty() && !timestamp(raw(segment, field), false) {
+                    return Err(content("SPM", field));
+                }
+            }
+            let role = raw(segment, 11)
+                .split(|b| *b == segment.delimiters.component)
+                .next();
+            if matches!(role, Some(b"Q" | b"U")) && raw(segment, 4) != b"\"\"" {
+                return Err(content("SPM", 4));
+            }
             check(segment, "SPM", 1, true, 4, 1)?;
             let specimen_id = raw(segment, 2);
             if !specimen_id.is_empty() && specimen_id != b"\"\"" {
@@ -379,14 +405,6 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
             }
             check(segment, "SPM", 4, true, 250, 1)?;
             check(segment, "SPM", 11, true, 250, 1)?;
-            if !matches!(
-                raw(segment, 11)
-                    .split(|b| *b == segment.delimiters.component)
-                    .next(),
-                Some(b"P" | b"Q" | b"L" | b"U")
-            ) {
-                return Err(content("SPM", 11));
-            }
         }
         b"TCD" => {
             check(segment, "TCD", 1, true, 250, 1)?;
@@ -398,6 +416,14 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
         }
         b"QPD" | b"RCP" | b"QAK" => {}
         _ => return Err(content("LAW", 0)),
+    }
+    Ok(())
+}
+
+fn positive_integer(value: &[u8], segment: &'static str, field: usize) -> Result<(), Error> {
+    if value.is_empty() || !value.iter().all(u8::is_ascii_digit) || value.iter().all(|b| *b == b'0')
+    {
+        return Err(content(segment, field));
     }
     Ok(())
 }

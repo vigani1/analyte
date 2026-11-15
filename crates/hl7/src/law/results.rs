@@ -143,8 +143,30 @@ fn values(segment: Segment<'_>) -> Result<Vec<Value<'_>>, Error> {
             }
             b"CE" | b"CWE" => Value::Coded(value),
             b"EI" => Value::Identity(value),
-            b"ED" => Value::Encapsulated(value),
-            b"RP" => Value::Reference(value),
+            b"ED" => {
+                let parts: Vec<_> = value
+                    .split(|b| *b == segment.delimiters.component)
+                    .collect();
+                if parts.len() != 5
+                    || parts.get(1).is_none_or(|p| p.is_empty() || p.len() > 9)
+                    || parts
+                        .get(3)
+                        .is_none_or(|p| !matches!(*p, b"A" | b"Hex" | b"Base64"))
+                    || parts.get(4).is_none_or(|p| p.is_empty())
+                {
+                    return Err(content("OBX", 5));
+                }
+                Value::Encapsulated(value)
+            }
+            b"RP" => {
+                let parts: Vec<_> = value
+                    .split(|b| *b == segment.delimiters.component)
+                    .collect();
+                if parts.len() > 4 || parts.first().is_none_or(|p| p.is_empty() || p.len() > 999) {
+                    return Err(content("OBX", 5));
+                }
+                Value::Reference(value)
+            }
             b"NA" => {
                 for (index, axis) in value
                     .split(|b| *b == segment.delimiters.component)

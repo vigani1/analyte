@@ -353,7 +353,7 @@ fn law_tf2b_3_28_4_negative_lab28_for_genuine_no_work() -> Result<(), Box<dyn st
         );
         let spm = result.segments().find(|s| s.id() == b"SPM").ok_or("SPM")?;
         assert_eq!(spm.field(4).map(Field::raw), Some(b"\"\"".as_slice()));
-        assert_eq!(spm.field(11).map(Field::raw), Some(b"U".as_slice()));
+        assert_eq!(spm.field(11).map(Field::raw), Some(b"U^^IHELAW".as_slice()));
         let sac = result.segments().find(|s| s.id() == b"SAC").ok_or("SAC")?;
         assert_eq!(sac.field(3).map(Field::raw), Some(container));
         let orc = result.segments().find(|s| s.id() == b"ORC").ok_or("ORC")?;
@@ -414,7 +414,7 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
         ("UC", "IP", AwosOutcome::UnableToCancel),
     ] {
         let incoming = format!(
-            "MSH|^~\\&|A|AF|M|MF|20260101120000+0000||ORL^O34^ORL_O42|orl1|P|2.5.1||||||UNICODE UTF-8|||LAB-28^IHE\rMSA|AA|rsp-1\rSPM|1|||SER|||||||P\rSAC|||tube\rORC|{control}|awos-1|||{status}\r"
+            "MSH|^~\\&|A|AF|M|MF|20260101120000+0000||ORL^O34^ORL_O42|orl1|P|2.5.1||||||UNICODE UTF-8|||LAB-28^IHE\rMSA|AA|rsp-1\rSPM|1|||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||tube\rORC|{control}|awos-1|||{status}\r"
         );
         let message = Message::parse(incoming.as_bytes(), utf8_options())?;
         let request = if matches!(control, "CR" | "UC") {
@@ -441,7 +441,7 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
 }
 
 fn results_message(awos: &str, extra: &str) -> Result<Message, analyte_hl7::Error> {
-    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101120000+0000||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01&99LAB||SER^Serum^HL70487|||||||P\rSAC|||000tube\rOBR||{awos}||test^Test^99LAB\rORC|SC||||CM\r{extra}").as_bytes(), utf8_options())
+    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101120000+0000||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01&99LAB||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||000tube\rOBR||{awos}||test^Test^99LAB\rORC|SC||||CM\r{extra}").as_bytes(), utf8_options())
 }
 
 fn observation(code: &str, sub_id: &str, kind: &str, value: &str, status: &str) -> String {
@@ -830,7 +830,7 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
     let specimen = SpecimenDetails {
         parents: Some(b"parent&99LAB"),
         risk: Some(b"RISK^Synthetic risk^99LAB"),
-        collection_time: Some(b"20260101100000^20260101100100"),
+        collection_time: Some(b"20260101100000"),
         receipt_time: Some(b"20260101110000"),
         ..SpecimenDetails::default()
     };
@@ -947,7 +947,7 @@ fn law_tf2b_3_29_4_specimen_observations_keep_scope_and_reject_orphan_groups()
             .and_then(|o| o.values().first()),
         Some(Value::Text(b"synthetic condition"))
     ));
-    let orphan = format!("{source}SPM|2|||SER^Serum^HL70487|||||||P\rSAC|||orphan\r");
+    let orphan = format!("{source}SPM|2|||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||orphan\r");
     let message = Message::parse(orphan.as_bytes(), utf8_options())?;
     assert!(Results::new(&message).is_err());
     Ok(())
@@ -970,5 +970,50 @@ fn law_tf2b_c7_repetition_predicate_and_structured_numeric_validation()
         let message = results_message("awos-1", &observation(code, "1", kind, value, "F"))?;
         assert_eq!(Results::new(&message).is_ok(), valid, "{kind}: {value}");
     }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c12_control_specimen_uses_explicit_null_type() -> Result<(), Box<dyn std::error::Error>>
+{
+    use analyte_hl7::{
+        Field,
+        law::{Awos, WorkAction, work_order},
+    };
+    assert!(
+        Awos::new(
+            b"qc-awos",
+            b"control&99LAB",
+            b"SER^Serum^HL70487",
+            b"Q",
+            b"qc-tube",
+            b"test^Test^99LAB",
+            WorkAction::New
+        )
+        .is_err()
+    );
+    let awos = Awos::new(
+        b"qc-awos",
+        b"control&99LAB",
+        b"\"\"",
+        b"Q",
+        b"qc-tube",
+        b"test^Test^99LAB",
+        WorkAction::New,
+    )?;
+    let message = work_order(
+        &[awos],
+        None,
+        address(),
+        response_metadata()?,
+        work_capabilities(),
+        utf8_options(),
+    )?;
+    let spm = message.segments().find(|s| s.id() == b"SPM").ok_or("SPM")?;
+    assert_eq!(spm.field(4).map(Field::raw), Some(b"\"\"".as_slice()));
+    assert_eq!(
+        spm.field(11).map(Field::raw),
+        Some(b"Q^^HL70369".as_slice())
+    );
     Ok(())
 }
