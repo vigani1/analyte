@@ -769,14 +769,17 @@ mod tests {
                     }],
                 })?;
                 store
-                    .reserve_send_owned(
+                    .reserve_send(
                         &analyte_store::OrderReservation {
                             identity: &identity,
                             version: std::num::NonZeroU64::MIN,
                             now,
                             freshness: 30,
                         },
-                        &original_owner,
+                        analyte_store::ReserveOptions {
+                            owner: Some(&original_owner),
+                            ..Default::default()
+                        },
                     )?
                     .map_err(|_| analyte_store::Error::Conflict)
             })

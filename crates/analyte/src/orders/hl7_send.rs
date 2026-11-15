@@ -354,24 +354,37 @@ pub(super) async fn next(
         reserving.push(key.clone());
         let reserved = store
             .request(deadline(), move |store| {
-                store.reserve_send_items_with(
+                let mut message = None;
+                let record = store.reserve_send(
                     &OrderReservation {
                         identity: &identity,
                         version,
                         now: jiff::Timestamp::now().as_second(),
                         freshness,
                     },
-                    OrderItems::PerTest {
-                        namespace: &namespace,
-                        identity_bytes: 22,
+                    analyte_store::ReserveOptions {
+                        items: OrderItems::PerTest {
+                            namespace: &namespace,
+                            identity_bytes: 22,
+                        },
+                        owner: Some(&owner),
+                        prepare: Some(&mut |record| {
+                            message = Some(
+                                command
+                                    .build(record, false)
+                                    .map_err(analyte_store::Error::DeliveryBuild)?,
+                            );
+                            Ok(())
+                        }),
                     },
-                    &owner,
-                    |record| {
-                        command
-                            .build(record, false)
-                            .map_err(analyte_store::Error::DeliveryBuild)
-                    },
-                )
+                )?;
+                match record {
+                    Ok(record) => Ok(Ok((
+                        record,
+                        message.ok_or(analyte_store::Error::InvalidInput)?,
+                    ))),
+                    Err(refusal) => Ok(Err(refusal)),
+                }
             })
             .await;
         match reserved {

@@ -194,24 +194,28 @@ impl Connection {
             self.reserving.push(key);
             let reserved = store
                 .request(until, move |store| {
-                    store.reserve_send_items_with(
-                        &OrderReservation {
-                            identity: &identity,
-                            version,
-                            now: jiff::Timestamp::now().as_second(),
-                            freshness,
-                        },
-                        OrderItems::PerTest {
-                            namespace: &namespace,
-                            identity_bytes: 50,
-                        },
-                        &owner,
-                        |record| {
-                            render(&[(&command, record)], law::WorkAction::New, options)
-                                .map_err(analyte_store::Error::DeliveryBuild)?;
-                            Ok(command)
-                        },
-                    )
+                    store
+                        .reserve_send(
+                            &OrderReservation {
+                                identity: &identity,
+                                version,
+                                now: jiff::Timestamp::now().as_second(),
+                                freshness,
+                            },
+                            analyte_store::ReserveOptions {
+                                items: OrderItems::PerTest {
+                                    namespace: &namespace,
+                                    identity_bytes: 50,
+                                },
+                                owner: Some(&owner),
+                                prepare: Some(&mut |record| {
+                                    render(&[(&command, record)], law::WorkAction::New, options)
+                                        .map_err(analyte_store::Error::DeliveryBuild)?;
+                                    Ok(())
+                                }),
+                            },
+                        )
+                        .map(|reserved| reserved.map(|record| (record, command)))
                 })
                 .await?
                 .map_err(std::io::Error::other)?;

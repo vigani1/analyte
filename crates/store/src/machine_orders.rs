@@ -197,7 +197,29 @@ struct CachedFields {
     tests: Vec<NamespacedId>,
 }
 
-type Preflight<'a> = &'a mut dyn FnMut(&MachineOrder) -> Result<(), Error>;
+/// Options for one atomic command reservation.
+/// Preflight runs after identity assignment and before commit; it must perform no I/O.
+pub struct ReserveOptions<'a> {
+    /// Connection retaining ownership when an interrupted request needs reconciliation.
+    pub owner: Option<&'a Identifier>,
+    /// Command grouping and identity limits selected by the caller.
+    pub items: OrderItems<'a>,
+    /// Optional pure check of exact assigned identities; failure rolls back all writes.
+    pub prepare: Option<ReservationPreflight<'a>>,
+}
+
+impl Default for ReserveOptions<'_> {
+    fn default() -> Self {
+        Self {
+            owner: None,
+            items: OrderItems::Together,
+            prepare: None,
+        }
+    }
+}
+
+/// Pure reservation preflight; failure prevents the transaction from committing.
+pub type ReservationPreflight<'a> = &'a mut dyn FnMut(&MachineOrder) -> Result<(), Error>;
 #[derive(Clone, Copy)]
 enum ChangeEvidence<'a> {
     Machine,

@@ -10,97 +10,21 @@ impl Store {
     /// Returns storage failures; expected eligibility refusals are values.
     pub fn reserve_send(
         &mut self,
-        identity: &MachineOrderKey,
-        version: NonZeroU64,
-        now: i64,
-        freshness: u64,
-    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        let code = SourceText::new("host-reserved").map_err(|_| Error::InvalidInput)?;
-        self.start_order(
-            &OrderReservation {
-                identity,
-                version,
-                now,
-                freshness,
-            },
-            OrderState::Sending,
-            code,
-            OrderItems::Together,
-            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            None,
-        )
-    }
-
-    /// Reserves query work with a retained connection owner for cancelled-wait recovery.
-    /// Only the matching owner may treat an interrupted request as its own reservation.
-    /// # Errors
-    /// Reports storage failures; expected eligibility refusals remain explicit values.
-    pub fn reserve_send_owned(
-        &mut self,
         candidate: &OrderReservation<'_>,
-        owner: &Identifier,
+        options: ReserveOptions<'_>,
     ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        let code = SourceText::new(&format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()))
-            .map_err(|_| Error::InvalidInput)?;
-        self.start_order(
-            candidate,
-            OrderState::Sending,
-            code,
-            OrderItems::Together,
-            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            None,
-        )
-    }
-
-    /// Reserves per-test HL7 items atomically with the parent, without an app event.
-    /// # Errors
-    /// Refuses oversized identities, missing/oversized test coverage and I/O failures.
-    pub fn reserve_send_items(
-        &mut self,
-        candidate: &OrderReservation<'_>,
-        items: OrderItems<'_>,
-    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-        self.start_order(
-            candidate,
-            OrderState::Sending,
-            SourceText::new("host-reserved").map_err(|_| Error::InvalidInput)?,
-            items,
-            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            None,
-        )
-    }
-
-    /// Atomically preflights exact store-assigned item identities before committing Sending.
-    /// The pure builder must perform no I/O. Failure rolls back parent, items and history.
-    /// # Errors
-    /// Reports preflight, identity, storage and eligibility failures without issuing bytes.
-    pub fn reserve_send_items_with<T>(
-        &mut self,
-        candidate: &OrderReservation<'_>,
-        items: OrderItems<'_>,
-        owner: &Identifier,
-        prepare: impl FnOnce(&MachineOrder) -> Result<T, Error>,
-    ) -> Result<Result<(MachineOrder, T), SendRefusal>, Error> {
-        let code = SourceText::new(&format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()))
-            .map_err(|_| Error::InvalidInput)?;
-        let mut builder = Some(prepare);
-        let mut payload = None;
-        let mut preflight = |record: &MachineOrder| {
-            payload = Some(builder.take().ok_or(Error::InvalidInput)?(record)?);
-            Ok(())
+        let code = match options.owner {
+            Some(owner) => format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()),
+            None => "host-reserved".to_owned(),
         };
-        let reserved = self.start_order(
+        self.start_order(
             candidate,
             OrderState::Sending,
-            code,
-            items,
+            SourceText::new(&code).map_err(|_| Error::InvalidInput)?,
+            options.items,
             None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            Some(&mut preflight),
-        )?;
-        match reserved {
-            Ok(order) => Ok(Ok((order, payload.ok_or(Error::InvalidInput)?))),
-            Err(refusal) => Ok(Err(refusal)),
-        }
+            options.prepare,
+        )
     }
 
     /// Records a mapping rejection and app event without claiming anything was sent.
@@ -129,7 +53,7 @@ impl Store {
         code: SourceText,
         items: OrderItems<'_>,
         build: Option<impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-        prepare: Option<Preflight<'_>>,
+        prepare: Option<ReservationPreflight<'_>>,
     ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
         let OrderReservation {
             identity,

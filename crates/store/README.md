@@ -126,7 +126,7 @@ Schema v5 is a forward-only migration; v4 and its histories are unchanged.
 Each new reservation creates retained command items and append-only item history
 in the same transaction, without an app event. ASTM/vendor records and query
 displays use one item covering all app tests. HL7 send-ahead uses one item per
-test through `reserve_send_items`. EI.1 is `<machine-order-id>-<item-index>`;
+test through `reserve_send` with `ReserveOptions`. EI.1 is `<machine-order-id>-<item-index>`;
 SQLite's retained AUTOINCREMENT parent ID and the one-based index own uniqueness.
 The host supplies the required configured EI.2 namespace; it is retained with
 the item so configuration changes cannot alter a later cancellation identity. Encoded identity
@@ -199,3 +199,9 @@ shared lifecycle types and transaction helpers so state changes and history
 writes still have one implementation. These boundaries do not change the
 schema, public API, transaction boundaries or evidence formats. Existing store
 test filenames remain stable for mutation-coverage work.
+
+`reserve_send(candidate, options)` is the single reservation entry point.
+`ReserveOptions` selects connection ownership, item grouping and an optional pure
+preflight callback. Defaults reserve one unowned item covering all tests. Preflight
+sees assigned identities inside the transaction; an error rolls back reservation,
+items and history. Callers retain any prepared payload locally until commit succeeds.
