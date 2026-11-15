@@ -1,0 +1,6 @@
+{"version":1,"stack":["tcp_server","astm_lis01","astm_link","astm_lis02"],"machine":"synthetic","software":null,"evidence":"synthetic","de_identification":"Synthetic; no patient data","source":"Analyte synthetic receive fixture; LIS01/LIS02 or HL7 2.5.1 acknowledgment"}
+{"direction":"machine_to_host","time_ms":0,"bytes":"BQ=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjFIfFxeJnx8fHx8fHx8fHxQfExJUzItQTJ8MjAyNjExMTUxMjAwMDANUHwxDU98MXwwMDAxMkENUnwxfF5eXlNZTnwxMi4zMHxtZy9MfHxOfHxGDUx8MXxODQM2Mg0K"}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"BA=="}

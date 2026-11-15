@@ -52,7 +52,7 @@ async fn client(
     let (peer, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
         .await
         .map_err(|e| format!("reconnect after disconnect: {e}"))??;
-    ready(&path).await?;
+    wait_feed(&path).await?;
     Ok((temp, path, reference, running, peer, listener))
 }
 
@@ -168,8 +168,8 @@ async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadline
 -> Result<(), Error> {
     let settings = definition()
         .replace("send_ahead = false", "send_ahead = true")
-        .replace("response_ms = 1500", "response_ms = 150")
-        .replace("query_deadline_ms = 1500", "query_deadline_ms = 50");
+        .replace("response_ms = 30000", "response_ms = 150")
+        .replace("query_deadline_ms = 30000", "query_deadline_ms = 50");
     let (_temp, path, reference, running, mut peer, _listener) = client(&settings).await?;
     packet(&mut peer).await?;
     // A missing ORL uses response_ms, not the much longer transport timeout.

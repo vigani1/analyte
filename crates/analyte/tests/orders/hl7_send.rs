@@ -8,12 +8,13 @@ use tokio::{
 async fn setup(
     edition: &str,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
-    setup_with_id(edition, "order-1", false).await
+    setup_with_id(edition, "order-1", false, 30000).await
 }
 async fn setup_with_id(
     edition: &str,
     id: &str,
     paused: bool,
+    response_ms: u32,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
@@ -23,7 +24,10 @@ async fn setup_with_id(
         temp.path().join("hl7.toml"),
         format!(
             "{definition}\n{}",
-            include_str!("../../../config/examples/hl7_send.toml")
+            include_str!("../../../config/examples/hl7_send.toml").replace(
+                "response_ms = 1500",
+                &format!("response_ms = {response_ms}")
+            )
         ),
     )?;
     let reference = Reference::start(
@@ -204,7 +208,13 @@ async fn hl7_231_251_send_ahead_accepted_rejected_and_mixed_items() -> Result<()
 #[tokio::test]
 async fn hl7_251_no_reply_disconnect_and_restart_never_resend() -> Result<(), Error> {
     for disconnect in [false, true] {
-        let (_temp, path, reference, service, mut peer) = setup("v251").await?;
+        let (_temp, path, reference, service, mut peer) = setup_with_id(
+            "v251",
+            "order-1",
+            false,
+            if disconnect { 30000 } else { 250 },
+        )
+        .await?;
         packet(&mut peer).await?;
         if disconnect {
             drop(peer);
@@ -281,7 +291,6 @@ async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> R
             .await?;
             wait_state(&path, "done", 3).await?;
             assert_eq!(receiver_count(&_temp.path().join("receiver.db"))?, 3);
-            tokio::time::sleep(Duration::from_millis(150)).await;
             assert_eq!(database(&path)?.query_row("SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.source_code') LIKE 'app-cancel:%'",[],|r|r.get::<_,i64>(0))?,1);
             if refused {
                 let code: String = database(&path)?.query_row(
@@ -301,7 +310,7 @@ async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> R
 #[tokio::test]
 async fn hl7_231_orc4_overlong_group_is_rejected_before_any_reservation() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) =
-        setup_with_id("v231", "app-order-identifier-too-long", false).await?;
+        setup_with_id("v231", "app-order-identifier-too-long", false, 30000).await?;
     outcome(&path, "Rejected").await?;
     let code: String =
         database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |row| {
@@ -399,8 +408,14 @@ async fn hl7_ei_actual_store_id_overflow_rejects_before_sending_reservation() ->
 #[tokio::test]
 async fn plan11_hl7_send_ahead_reserves_nothing_while_restore_paused() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) =
-        setup_with_id("v251", "order-1", true).await?;
-    tokio::time::sleep(Duration::from_millis(1200)).await;
+        setup_with_id("v251", "order-1", true, 30000).await?;
+    // A completed feed proves orders are available; shutdown joins the machine
+    // before inspecting its final durable reservations and buffered wire output.
+    wait_feed(&path).await?;
+    service.stop().await?;
+    let mut wire = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), peer.read_to_end(&mut wire)).await??;
+    assert!(wire.is_empty(), "paused machine emitted work");
     for table in [
         "machine_orders",
         "machine_order_items",
@@ -414,12 +429,7 @@ async fn plan11_hl7_send_ahead_reserves_nothing_while_restore_paused() -> Result
             0
         );
     }
-    assert!(
-        tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
-            .await
-            .is_err()
-    );
-    service.stop().await?;
+
     reference.close().await?;
     Ok(())
 }

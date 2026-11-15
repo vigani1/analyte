@@ -22,7 +22,11 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
         "schema_version=1\ndata_directory='data'\n[[machines]]\nid='synthetic'\ndefinition='machine.toml'\nsite='site.toml'\n[store]\nreserve_bytes=1\ndatabase_bytes=100000000\nrecord_bytes=2097152\npage_rows=100\nbusy_timeout_ms=100\n",
     )?;
     let program = Program::load(&config_path)?;
-    let store = Arc::new(crate::service::open_store(&program, Box::new(Space)).await?);
+    let store = Arc::new(
+        crate::service::open_store_with_deadline(&program, Box::new(Space), fixture_deadline()?)
+            .await
+            .map_err(|error| format!("admin action fixture migration: {error}"))?,
+    );
     let machine = program.machines().first().ok_or("machine missing")?;
     let receipt = analyte_model::ReceiptId::new();
     let raw = analyte_framing::mllp::encode(b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r", analyte_framing::mllp::Limit::new(1048576)?)?;
@@ -35,7 +39,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
     .await?;
     assert!(!crate::evidence::interpret(&store, machine, receipt).await?);
     let parked = store
-        .request(crate::deadline(), |s| {
+        .request(fixture_deadline()?, |s| {
             Ok(s.parked(0)?
                 .first()
                 .ok_or(analyte_store::Error::Corruption)?
@@ -46,6 +50,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
     let bearer = super::super::super::rotate_token(program.data_directory())?;
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
+    let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
         config_path: config_path.clone(),
         token: Token::load(program.data_directory())?,
@@ -57,6 +62,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
         destinations: Vec::new(),
         directory: program.data_directory().to_owned(),
         reserve: 1,
+        _released: released,
     });
     let server = Server {
         listener: Listener {
@@ -64,6 +70,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        released: release,
         owners: BTreeMap::new(),
     };
     let (stop, stopped) = watch::channel(false);
@@ -110,7 +117,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             .starts_with("HTTP/1.1 409")
     );
     store
-        .request(crate::deadline(), move |s| {
+        .request(fixture_deadline()?, move |s| {
             assert!(s.interpretation(receipt, 2)?.is_none());
             assert!(
                 s.parked_item(parked)?
@@ -132,7 +139,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             .starts_with("HTTP/1.1 409")
     );
     let delivery = store
-        .request(crate::deadline(), move |s| {
+        .request(fixture_deadline()?, move |s| {
             assert!(
                 s.parked_item(parked)?
                     .ok_or(analyte_store::Error::Corruption)?
@@ -166,7 +173,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             .starts_with("HTTP/1.1 409")
     );
     store
-        .request(crate::deadline(), move |s| {
+        .request(fixture_deadline()?, move |s| {
             assert_eq!(
                 s.delivery(delivery)?
                     .ok_or(analyte_store::Error::UnknownDelivery)?
@@ -184,7 +191,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             .starts_with("HTTP/1.1 200")
     );
     store
-        .request(crate::deadline(), move |s| {
+        .request(fixture_deadline()?, move |s| {
             assert_eq!(
                 s.delivery(delivery)?
                     .ok_or(analyte_store::Error::UnknownDelivery)?
@@ -213,10 +220,10 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             Ok(())
         })
         .await?;
+    drop(state);
     stop.send_replace(true);
     tokio::time::timeout(Duration::from_secs(5), owner).await???;
-    drop(state);
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retains store")?;
-    store.shutdown(crate::deadline()).await?;
+    store.shutdown(fixture_deadline()?).await?;
     Ok(())
 }

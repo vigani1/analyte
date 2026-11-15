@@ -9,12 +9,14 @@ use tokio::{
 async fn setup(
     edition: &str,
     ack_ms: u32,
+    query_ms: u32,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
-    setup_with_freshness(edition, ack_ms, 30).await
+    setup_with_freshness(edition, ack_ms, query_ms, 30).await
 }
 async fn setup_with_freshness(
     edition: &str,
     ack_ms: u32,
+    query_ms: u32,
     freshness: u64,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
@@ -35,10 +37,12 @@ async fn setup_with_freshness(
         format!(
             "{definition}
 {}",
-            include_str!("../../../config/examples/hl7_orders.toml").replace(
-                "acknowledgment_ms = 500",
-                &format!("acknowledgment_ms = {ack_ms}")
-            )
+            include_str!("../../../config/examples/hl7_orders.toml")
+                .replace(
+                    "acknowledgment_ms = 500",
+                    &format!("acknowledgment_ms = {ack_ms}")
+                )
+                .replace("deadline_ms = 1000", &format!("deadline_ms = {query_ms}"))
         ),
     )?;
     let reference = Reference::start(
@@ -120,7 +124,7 @@ fn text(bytes: &[u8]) -> Result<&str, Error> {
 #[tokio::test]
 async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Result<(), Error> {
     for (edition, version) in [("v231", "2.3.1"), ("v251", "2.5.1")] {
-        let (_temp, path, reference, service, mut peer) = setup(edition, 3000).await?;
+        let (_temp, path, reference, service, mut peer) = setup(edition, 30000, 30000).await?;
         let qry = query("000Ab12", version);
         send(&mut peer, &qry).await?;
         let qck = packet(&mut peer).await?;
@@ -168,7 +172,7 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
 
 #[tokio::test]
 async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() -> Result<(), Error> {
-    let (_temp, path, reference, service, mut peer) = setup("v251", 3000).await?;
+    let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     send(&mut peer, &query("absent", "2.5.1")).await?;
     assert!(text(&packet(&mut peer).await?)?.contains("QAK||NF\r"));
     reference.close().await?;
@@ -207,7 +211,8 @@ async fn hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain() -> R
         ("lost", "HL7-DSR-ACK-timeout"),
         ("disconnect", "HL7-DSR-disconnect"),
     ] {
-        let (_temp, path, reference, service, mut peer) = setup("v251", 500).await?;
+        let (_temp, path, reference, service, mut peer) =
+            setup("v251", if code == "lost" { 500 } else { 30000 }, 30000).await?;
         send(&mut peer, &query("000Ab12", "2.5.1")).await?;
         packet(&mut peer).await?;
         let dsr = packet(&mut peer).await?;
@@ -233,7 +238,7 @@ async fn hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain() -> R
 #[tokio::test]
 async fn hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time()
 -> Result<(), Error> {
-    let (_temp, path, reference, service, mut peer) = setup("v251", 3000).await?;
+    let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 1000).await?;
     let wire = analyte_framing::mllp::encode(
         &query("000Ab12", "2.5.1"),
         analyte_framing::mllp::Limit::new(1048576)?,
@@ -266,7 +271,7 @@ fn hl7_231_251_synthetic_query_obeys_section_2_18_and_5_10() -> Result<(), Error
 
 #[tokio::test]
 async fn hl7_251_dsr_mismatched_application_ack_is_retained_and_uncertain() -> Result<(), Error> {
-    let (temp, path, reference, service, mut peer) = setup("v251", 3000).await?;
+    let (temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
     packet(&mut peer).await?;
     packet(&mut peer).await?;
@@ -289,7 +294,7 @@ async fn hl7_251_dsr_mismatched_application_ack_is_retained_and_uncertain() -> R
 
 #[tokio::test]
 async fn hl7_251_order_query_connection_still_delivers_oru_results() -> Result<(), Error> {
-    let (_temp, path, reference, service, mut peer) = setup("v251", 3000).await?;
+    let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     let reply = hl7(&mut peer, ORU).await?;
     assert!(reply.contains("MSA|AA|message1"));
     wait_state(&path, "done", 1).await?;
@@ -301,7 +306,7 @@ async fn hl7_251_order_query_connection_still_delivers_oru_results() -> Result<(
 #[tokio::test]
 async fn hl7_251_section5_10_quantity_limit_refuses_partial_dsr_before_reservation()
 -> Result<(), Error> {
-    let (_temp, path, reference, service, mut peer) = setup("v251", 3000).await?;
+    let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     let bytes = String::from_utf8(query("000Ab12", "2.5.1"))?.replace("100^LI", "1^LI");
     send(&mut peer, bytes.as_bytes()).await?;
     assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
@@ -318,7 +323,7 @@ async fn hl7_251_section5_10_quantity_limit_refuses_partial_dsr_before_reservati
 
 #[tokio::test]
 async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result<(), Error> {
-    let (_temp, path, reference, service, mut peer) = setup("v251", 3000).await?;
+    let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     database(&path)?.execute("INSERT INTO audit(evidence) VALUES (?1)",[serde_json::json!({"actor":"operator","action":"store-restore","targets":[],"time":jiff::Timestamp::now().as_second(),"reason":"synthetic restore"}).to_string()])?;
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
     assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
@@ -344,7 +349,7 @@ async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result
 async fn rule9_hl7_query_freshness_follows_destination_config() -> Result<(), Error> {
     for (freshness, expected) in [(10, "QAK||AE\r"), (120, "QAK||NF\r")] {
         let (_temp, path, reference, service, mut peer) =
-            setup_with_freshness("v251", 3000, freshness).await?;
+            setup_with_freshness("v251", 30000, 30000, freshness).await?;
         reference.close().await?;
         database(&path)?.execute(
             "UPDATE feed SET polled=?1",

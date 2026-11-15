@@ -28,9 +28,9 @@ jobs:
       - run: rustup show active-toolchain
       - run: cargo fmt --all --check
       - name: Text files are UTF-8 without BOM and use LF
-        # Binary files are skipped (-I); a BOM or a carriage return fails the job.
+        # Fuzz corpora contain deliberate wire CR bytes. Binary files are skipped (-I); a BOM or a carriage return fails the job.
         run: |
-          bad=$(git ls-files -z | LC_ALL=C xargs -0 grep -IlUP '\r|\A\xEF\xBB\xBF' || true)
+          bad=$(git ls-files -z -- . ':!fuzz/corpus/**' | LC_ALL=C xargs -0 grep -IlUP '\r|\A\xEF\xBB\xBF' || true)
           if [ -n "$bad" ]; then echo "$bad"; echo 'These files contain a BOM or CR line endings'; exit 1; fi
 
   clippy:
@@ -79,3 +79,18 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
+
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [lis01, mllp, lis02, hl7, law, poct, vidas, autolyser, recording, contract]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly-2026-10-31 --profile minimal
+      - run: cargo +nightly-2026-10-31 install cargo-fuzz --locked --version 0.13.2
+      - run: cargo +nightly-2026-10-31 fuzz run ${{ matrix.target }} -- -max_total_time=60 -timeout=10 -rss_limit_mb=1024 -max_len=2097152
