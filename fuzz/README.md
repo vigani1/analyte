@@ -1,9 +1,9 @@
 # Byte-reader fuzzing
 
-Run on Linux with cargo-fuzz 0.13.2 and nightly-2026-11-14:
+Run on Linux with cargo-fuzz 0.13.2 and nightly-2026-10-31:
 
 ```sh
-cargo +nightly-2026-11-14 fuzz run lis01 -- -max_total_time=60 -timeout=10 -rss_limit_mb=1024 -max_len=2097152
+cargo +nightly-2026-10-31 fuzz run lis01 -- -max_total_time=60 -timeout=10 -rss_limit_mb=1024 -max_len=2097152
 ```
 
 CI runs every target independently. Time and RSS limits detect hangs and excessive
@@ -12,7 +12,7 @@ Targets use API defaults where available. MLLP and POCT require explicit limits:
 1 MiB messages, POCT depth 32, 16384 elements and 4096 attribute bytes. VIDAS
 uses Literal mode, 80-byte chunks, 1920-byte messages, no suffix, checksum excluding
 STX/suffix and accepting either hex case. Autolyser exercises framing through its
-dialog with a fixed clock and 64000-byte response bound; it has no separate framer.
+dialog with a fixed clock and 11038-byte response bound; it has no separate framer.
 
 Successful lossless parses assert exact source retention. Recordings round-trip
 typed events (JSON whitespace is not retained). Contract decoding validates typed

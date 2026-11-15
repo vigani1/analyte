@@ -91,6 +91,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: rustup toolchain install nightly-2026-11-14 --profile minimal
-      - run: cargo +nightly-2026-11-14 install cargo-fuzz --locked --version 0.13.2
-      - run: cargo +nightly-2026-11-14 fuzz run ${{ matrix.target }} -- -max_total_time=60 -timeout=10 -rss_limit_mb=1024 -max_len=2097152
+      - run: rustup toolchain install nightly-2026-10-31 --profile minimal
+      - run: cargo +nightly-2026-10-31 install cargo-fuzz --locked --version 0.13.2
+      - run: cargo +nightly-2026-10-31 fuzz run ${{ matrix.target }} -- -max_total_time=60 -timeout=10 -rss_limit_mb=1024 -max_len=2097152

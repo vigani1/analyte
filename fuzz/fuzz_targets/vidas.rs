@@ -6,7 +6,7 @@ fuzz_target!(|data: &[u8]| {
         framing::*,
         syntax::{Message, SampleLimit},
     };
-    let config = Config::new(
+    let Ok(config) = Config::new(
         Mode::Literal,
         80,
         1920,
@@ -17,8 +17,10 @@ fuzz_target!(|data: &[u8]| {
             uppercase: true,
             accept_either_case: true,
         },
-    )
-    .unwrap();
+    ) else {
+        // Nonzero 80-byte chunks, <=1920-byte messages, and an allowed empty suffix.
+        unreachable!("fuzz target bug: constant VIDAS configuration is invalid");
+    };
     let mut decoder = Decoder::new(config);
     for (index, &byte) in data.iter().enumerate() {
         if let Ok(Some(packet)) = decoder.push(byte) {
