@@ -45,7 +45,7 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
         orders: vec![analyte_store::CachedOrder {
             id: completed_key.order.clone(),
             sample: SampleId::new("000Ab12")?,
-            document: include_str!("../../../../docs/contract/vectors/order.json").to_owned(),
+            document: include_str!("../../../../../docs/contract/vectors/order.json").to_owned(),
             tombstone: false,
             expiry: 200,
         }],

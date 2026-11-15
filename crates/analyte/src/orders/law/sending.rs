@@ -211,12 +211,7 @@ impl Connection {
                 .request(until, move |store| {
                     store
                         .reserve_send(
-                            &OrderReservation {
-                                identity: &identity,
-                                version,
-                                now: jiff::Timestamp::now().as_second(),
-                                freshness,
-                            },
+                            &super::super::reservation::candidate(&identity, version, freshness),
                             analyte_store::ReserveOptions {
                                 items: OrderItems::Groups {
                                     groups: &groups,
