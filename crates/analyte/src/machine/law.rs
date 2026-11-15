@@ -231,7 +231,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     self.receipt(token)?,
                 )
                 .await?;
-                let detail = super::hl7_error::build(location.as_ref(), b"", b"");
+                let detail = super::error_location::build(location.as_ref(), b"", b"");
                 let location = location.as_ref().map(|_| protocol::Location {
                     segment: detail.segment,
                     occurrence: detail.occurrence,

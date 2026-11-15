@@ -3,7 +3,6 @@ use crate::{Error, config::Machine, deadline};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};
 #[cfg(test)]
-#[path = "sending_tests.rs"]
 mod tests;
 
 /// Reserves query orders immediately before link transmission, with no app event.

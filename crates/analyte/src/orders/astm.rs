@@ -6,7 +6,6 @@ use analyte_model::SampleId;
 use analyte_store::{Handle, Lookup};
 use std::{future::Future, pin::Pin, time::Instant};
 #[cfg(test)]
-#[path = "query_tests.rs"]
 mod tests;
 
 type LookupFuture<'a> = Pin<Box<dyn Future<Output = Result<Option<Reply>, Error>> + Send + 'a>>;

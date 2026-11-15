@@ -1,5 +1,5 @@
 //! VIDAS upload custody, with installed checksum, suffix and timer policy.
-use super::vendor::{self, Input, ms};
+use super::custody::{self, Input, ms};
 use crate::{Error, evidence, invalid};
 use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_framing::vidas::{Config, Decoder};
@@ -110,7 +110,7 @@ pub(super) async fn session(
                 );
             }
             state.end_code = "VIDAS-input-failed";
-            let input = vendor::input(
+            let input = custody::input(
                 machine,
                 store,
                 conn,
@@ -263,7 +263,7 @@ async fn process_inline(
         match action {
             Action::Send(bytes) => {
                 state.end_code = "VIDAS-write-failed";
-                vendor::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
+                custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
                 state.end_code = "VIDAS-transfer-error";
             }
             Action::Store(packet) => {
@@ -322,7 +322,7 @@ async fn process_inline(
                 }
                 let parked = evidence::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
                 if let Err(error) = parked {
-                    return Err(vendor::effect_failure(failure, error));
+                    return Err(custody::effect_failure(failure, error));
                 }
                 if failure.is_none() {
                     failure = Some(invalid("VIDAS transfer parked; reconcile before reconnect"));

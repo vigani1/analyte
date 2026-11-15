@@ -1,5 +1,5 @@
 //! POCT01-A2 DML reviewer with durable custody before every acceptance.
-use super::vendor::{self, Input, ms};
+use super::custody::{self, Input, ms};
 use crate::{Error, evidence, invalid};
 use analyte_dialog::poct::{CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent};
 use analyte_model::ReceiptId;
@@ -34,7 +34,7 @@ pub(super) async fn session(
     let mut framer = analyte_framing::poct::Decoder::new(limits.message_bytes, policy.depth);
     loop {
         let input =
-            vendor::input(machine, store, conn, &mut stop, Duration::from_millis(10)).await?;
+            custody::input(machine, store, conn, &mut stop, Duration::from_millis(10)).await?;
         // Incoming fragments must not postpone the absolute dialog deadline.
         let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
         if process(actions, &mut dialog, start, machine, store, conn, settings).await? {
@@ -264,7 +264,7 @@ async fn process(
                     &body,
                     limits,
                 )?;
-                vendor::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
+                custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
             }
             DialogAction::ReadEnabled(_) => {}
             DialogAction::Deferred(message) => {

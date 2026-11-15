@@ -148,7 +148,7 @@ pub(super) async fn session(
                             } else {
                                 Event::NotInterpretable(
                                     token,
-                                    super::hl7_error::build(location.as_ref(), b"207", b"operator-review"),
+                                    super::error_location::build(location.as_ref(), b"207", b"operator-review"),
                                     false,
                                 )
                             };
