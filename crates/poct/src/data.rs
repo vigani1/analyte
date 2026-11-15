@@ -54,6 +54,21 @@ pub enum Null {
 }
 
 impl Null {
+    /// Returns the source-defined XML null code without changing its meaning.
+    #[must_use]
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::NoInformation => "NI",
+            Self::NotApplicable => "NA",
+            Self::Unknown => "UNK",
+            Self::NotAsked => "NASK",
+            Self::AskedUnknown => "ASKU",
+            Self::NotAvailable => "NAV",
+            Self::Other => "OTH",
+            Self::PositiveInfinity => "PINF",
+            Self::NegativeInfinity => "NINF",
+        }
+    }
     pub(crate) fn parse(value: &str) -> Result<Self, DataError> {
         match value {
             "NI" => Ok(Self::NoInformation),

@@ -30,3 +30,6 @@ pub use duplicate::{
     DuplicateError, DuplicateIndex, DuplicateStatus, ObservationEvidence, ObservationKey,
     RecordedObservation, observation_evidence,
 };
+
+mod mapping;
+pub use mapping::{MappedObservation, MappingError, map_observations};

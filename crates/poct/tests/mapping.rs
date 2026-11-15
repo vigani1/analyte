@@ -1,0 +1,118 @@
+//! Appendix B sections 5.15, 5.21 and 8 faithful common-model mapping tests.
+mod common;
+use analyte_model::{Comparator, IdentityStatus, QcClass, ResultStatus, ValueInterpretation};
+use analyte_poct::{Message, Nullable, Role, Value, map_observations};
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+#[test]
+fn poct01_b_5_15_mapping_keeps_written_values_codes_units_and_comparators() -> TestResult {
+    let raw = common::observation("o", true, "<OBS.value V=\"001.2300\" U=\"OriginalUnit\"/>");
+    let message = Message::parse(raw.as_bytes(), common::limits())?;
+    let received = "2026-03-12T09:50:00Z".parse()?;
+    let mapped = map_observations(&message, received)?;
+    let item = mapped.first().ok_or("missing mapped result")?;
+    let value = item
+        .part
+        .values
+        .as_slice()
+        .first()
+        .ok_or("missing result value")?;
+    assert_eq!(value.original.as_str(), "001.2300");
+    assert!(
+        matches!(&value.parsed,ValueInterpretation::Numeric(n) if n.number.as_str() == "001.2300" && n.comparator == Some(Comparator::Less))
+    );
+    assert_eq!(
+        item.part
+            .units
+            .as_ref()
+            .ok_or("missing units")?
+            .original_text()
+            .as_str(),
+        "OriginalUnit"
+    );
+    assert_eq!(
+        item.source_code.system_name.as_deref(),
+        Some("synthetic-system")
+    );
+    assert_eq!(
+        item.part
+            .flags
+            .as_slice()
+            .first()
+            .ok_or("missing flag")?
+            .as_str(),
+        "<"
+    );
+    assert_eq!(item.part.status, ResultStatus::Unknown);
+    assert_eq!(item.part.qc_class, QcClass::Patient);
+    assert_eq!(
+        item.patient_id.as_ref().ok_or("missing patient")?.as_str(),
+        "000xyz"
+    );
+    assert!(item.sample.is_none());
+    assert!(matches!(item.identity, IdentityStatus::Unresolved(_)));
+    let source_time = &item
+        .part
+        .times
+        .as_slice()
+        .first()
+        .ok_or("missing time")?
+        .time;
+    assert_eq!(source_time.original.as_str(), "2026-03-12T09:35:00+01:00");
+    assert_eq!(source_time.offset.map(i32::from), Some(3600));
+    assert_eq!(item.part.received_at, received);
+    Ok(())
+}
+
+#[test]
+fn poct01_b_6_10_nonpatient_qc_and_null_are_never_patient_or_zero() -> TestResult {
+    let raw = common::observation("o", false, "<OBS.value NULL=\"UNK\"/>");
+    let message = Message::parse(raw.as_bytes(), common::limits())?;
+    let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
+    let item = mapped.first().ok_or("missing mapped result")?;
+    assert_eq!(item.role, Role::LiquidControl);
+    assert_eq!(item.part.qc_class, QcClass::Control);
+    assert!(item.patient_id.is_none());
+    assert!(matches!(
+        item.source_value,
+        Value::Quantity(Nullable::Null(_))
+    ));
+    assert!(
+        item.part
+            .values
+            .as_slice()
+            .first()
+            .ok_or("missing value")?
+            .parsed
+            .is_unsupported()
+    );
+    Ok(())
+}
+
+#[test]
+fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
+    let raw = common::observation("o",true,"<OBS.qualitative_value V=\"positive\" SN=\"source-system\" SV=\"v2\" DN=\"Source label\"/>").replace("</SVC>","<SPC><SPC.specimen_id V=\"000AbC\" SN=\"tube-system\"/><SPC.specimen_dttm V=\"2026-03-12T09:30:00+01:00\"/></SPC></SVC>");
+    let message = Message::parse(raw.as_bytes(), common::limits())?;
+    let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
+    let item = mapped.first().ok_or("missing mapped result")?;
+    assert_eq!(
+        item.sample.as_ref().ok_or("missing sample")?.id.as_str(),
+        "000AbC"
+    );
+    assert!(
+        matches!(&item.source_value,Value::Code(Nullable::Value(c)) if c.version.as_deref() == Some("v2") && c.display.as_deref() == Some("Source label"))
+    );
+    assert!(
+        matches!(&item.part.values.as_slice().first().ok_or("missing value")?.parsed,ValueInterpretation::Coded(c) if c.code.namespace.as_str() == "source-system" && c.code.value.as_str() == "positive")
+    );
+    for raw in [common::hello("h"), common::status("s", "0")] {
+        assert!(
+            map_observations(
+                &Message::parse(raw.as_bytes(), common::limits())?,
+                "2026-03-12T09:50:00Z".parse()?
+            )
+            .is_err()
+        );
+    }
+    Ok(())
+}
