@@ -61,7 +61,7 @@ same four files:
 | File | Holds |
 | --- | --- |
 | `README.md` | What the protocol is, Analyte's role in it, source document names and editions, scope, evidence level |
-| `decisions.md` | Each design choice: what Analyte does, why, the source section that requires or allows it, and the test that guards it |
+| `decisions.md` | Each choice the standard leaves open or Analyte adds on top of it (role, strictness, supported options, readings of ambiguous text, defaults, safety-driven departures): what Analyte does, why, the source section or ADR behind it, and the test that guards it. Plain requirements live only in `checklist.md` |
 | `checklist.md` | The conformance checklist, one or more tests per row |
 | `versions.md` | Supported versions, the difference table with sources, and the compatibility rule for unlisted versions |
 
