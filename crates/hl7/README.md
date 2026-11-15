@@ -190,8 +190,8 @@ The positive/negative source cases are in `tests/law_patient.rs`.
   parent, carrier and tray identities use EI.1 with its non-truncatable
   50-character limit. Container or parent must be supplied; a parent-only
   manager send also needs a carrier/tray location. Analyzer container ID
-  may be explicit null when unavailable. Manager carrier/tray IDs require
-  their corresponding NA position; absent IDs make those position fields X.
+  may be explicit null when unavailable. Manager carrier/tray IDs are supported only with SAC-3 absent and SAC-4
+  present, and require their corresponding NA position; absent IDs make those position fields X.
   NA validates its required integer first axis, optional numeric axes, each
   16-character primitive and the 80-character total. Location is a repeatable
   CE with required identifier/vendor system and available description;

@@ -366,6 +366,9 @@ fn law_tf2b_c11_sac_3_4_conditional_ei_component_lengths_nulls_and_cardinality()
     both("SAC", &[(4, "parent")], true)?;
     for field in [3, 4, 10, 13] {
         let mut changes = vec![(field, "id")];
+        if matches!(field, 10 | 13) {
+            changes.extend([(3, ""), (4, "parent")]);
+        }
         if field == 10 {
             changes.push((11, "1"));
         }
@@ -428,30 +431,63 @@ fn law_tf2b_c11_sac_3_4_conditional_ei_component_lengths_nulls_and_cardinality()
 fn law_tf2b_c11_sac_10_11_13_14_carrier_tray_predicates_na_axes_and_limits() -> TestResult {
     for (identity, position) in [(10, 11), (13, 14)] {
         for value in ["1", "0001", "+1", "0", "1^2.5^3", "1^^3"] {
-            both("SAC", &[(identity, "rack"), (position, value)], true)?;
+            both(
+                "SAC",
+                &[
+                    (3, ""),
+                    (4, "parent"),
+                    (identity, "rack"),
+                    (position, value),
+                ],
+                true,
+            )?;
         }
         for value in ["\"\"", "1.5", "x", "1~2", "1&2", "1^x", "1^\"\""] {
-            both("SAC", &[(identity, "rack"), (position, value)], false)?;
+            both(
+                "SAC",
+                &[
+                    (3, ""),
+                    (4, "parent"),
+                    (identity, "rack"),
+                    (position, value),
+                ],
+                false,
+            )?;
         }
         both(
             "SAC",
-            &[(identity, "rack"), (position, "1234567890123456")],
+            &[
+                (3, ""),
+                (4, "parent"),
+                (identity, "rack"),
+                (position, "1234567890123456"),
+            ],
             true,
         )?;
         both(
             "SAC",
-            &[(identity, "rack"), (position, "12345678901234567")],
+            &[
+                (3, ""),
+                (4, "parent"),
+                (identity, "rack"),
+                (position, "12345678901234567"),
+            ],
             false,
         )?;
         both(
             "SAC",
-            &[(identity, "rack"), (position, "1^12345678901234567")],
+            &[
+                (3, ""),
+                (4, "parent"),
+                (identity, "rack"),
+                (position, "1^12345678901234567"),
+            ],
             false,
         )?;
         assert!(
             check(
                 "SAC",
-                &[(identity, "rack")],
+                &[(3, ""), (4, "parent"), (identity, "rack")],
                 Profile::receive(),
                 ControlDirection::Send
             )
@@ -459,7 +495,7 @@ fn law_tf2b_c11_sac_10_11_13_14_carrier_tray_predicates_na_axes_and_limits() -> 
         );
         check(
             "SAC",
-            &[(identity, "rack")],
+            &[(3, ""), (4, "parent"), (identity, "rack")],
             Profile::receive(),
             ControlDirection::Receive,
         )?;
@@ -486,10 +522,24 @@ fn law_tf2b_c11_sac_10_11_13_14_carrier_tray_predicates_na_axes_and_limits() -> 
             "4".repeat(16),
             "5".repeat(12)
         );
-        both("SAC", &[(identity, "rack"), (position, &exact)], true)?;
         both(
             "SAC",
-            &[(identity, "rack"), (position, &format!("{exact}1"))],
+            &[
+                (3, ""),
+                (4, "parent"),
+                (identity, "rack"),
+                (position, &exact),
+            ],
+            true,
+        )?;
+        both(
+            "SAC",
+            &[
+                (3, ""),
+                (4, "parent"),
+                (identity, "rack"),
+                (position, &format!("{exact}1")),
+            ],
             false,
         )?;
     }
@@ -501,6 +551,8 @@ fn law_tf2b_c11_sac_15_conditional_re_location_cwe_repetitions() -> TestResult {
     both(
         "SAC",
         &[
+            (3, ""),
+            (4, "parent"),
             (10, "rack"),
             (11, "1"),
             (15, "location^^99LAB~other^Text^99LAB"),
@@ -516,7 +568,11 @@ fn law_tf2b_c11_sac_15_conditional_re_location_cwe_repetitions() -> TestResult {
         "id^^99LAB~",
         "id&bad^^99LAB",
     ] {
-        both("SAC", &[(10, "rack"), (11, "1"), (15, value)], false)?;
+        both(
+            "SAC",
+            &[(3, ""), (4, "parent"), (10, "rack"), (11, "1"), (15, value)],
+            false,
+        )?;
     }
     assert!(
         check(
@@ -536,6 +592,8 @@ fn law_tf2b_c11_sac_15_conditional_re_location_cwe_repetitions() -> TestResult {
     both(
         "SAC",
         &[
+            (3, ""),
+            (4, "parent"),
             (10, "rack"),
             (11, "1"),
             (
@@ -548,6 +606,8 @@ fn law_tf2b_c11_sac_15_conditional_re_location_cwe_repetitions() -> TestResult {
     both(
         "SAC",
         &[
+            (3, ""),
+            (4, "parent"),
             (10, "rack"),
             (11, "1"),
             (15, &format!("{}^^99LAB", "x".repeat(21))),
@@ -557,6 +617,8 @@ fn law_tf2b_c11_sac_15_conditional_re_location_cwe_repetitions() -> TestResult {
     both(
         "SAC",
         &[
+            (3, ""),
+            (4, "parent"),
             (10, "rack"),
             (11, "1"),
             (15, &format!("id^{}^99LAB", "x".repeat(200))),
@@ -826,7 +888,7 @@ fn law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields()
         b"sample&99LAB",
         b"SER^^HL70487",
         b"P",
-        b"tube",
+        b"",
         b"test^Synthetic^99LAB",
         WorkAction::New,
     )?;
@@ -845,6 +907,33 @@ fn law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields()
         container: true,
         ..Capabilities::default()
     };
+    // C.11: fail before a caller can reserve work using this render result.
+    assert!(matches!(
+        law::work_order(&[awos], None, address, response, capabilities, options()),
+        Err(law::Error::Content {
+            segment: "SAC",
+            field: 4
+        })
+    ));
+    let no_parent = ContainerDetails {
+        carrier: Some(b"rack"),
+        carrier_position: Some(b"1"),
+        ..ContainerDetails::default()
+    };
+    assert!(matches!(
+        law::work_order(
+            &[awos.with_container_details(&no_parent)],
+            None,
+            address,
+            response,
+            capabilities,
+            options()
+        ),
+        Err(law::Error::Content {
+            segment: "SAC",
+            field: 4
+        })
+    ));
     let specimen = SpecimenDetails {
         parents: Some(b"parent&Local"),
         collection_method: Some(b"id^^HL70488"),
@@ -1045,11 +1134,12 @@ fn law_tf2b_c11_c12_remaining_location_lengths_and_pool_receive_predicates() -> 
         (15, "location^^99LAB", 250, 11),
     ] {
         let exact = format!("{value}{}", "^".repeat(size - value.len()));
-        let changes = if field == 15 {
+        let mut changes = if field == 15 {
             vec![(10, "rack"), (11, "1"), (field, exact.as_str())]
         } else {
             vec![(field, exact.as_str()), (position, "1")]
         };
+        changes.extend([(3, ""), (4, "parent")]);
         check("SAC", &changes, Profile::receive(), ControlDirection::Send)?;
         let oversized = format!("{exact}^");
         let mut invalid = changes.clone();
@@ -1155,5 +1245,39 @@ fn law_tf2b_c11_c12_explicit_profile_cannot_enlarge_peer_send_capabilities() -> 
         options(),
         Profile::receive(),
     )?;
+    Ok(())
+}
+#[test]
+fn law_tf2b_c11_am_carrier_tray_only_without_sac3_with_sac4() -> TestResult {
+    // Original failing synthetic SAC bytes from the Gazelle export, C.11 M/X.
+    let failing = law::parse_message(b"MSH|^~\\&|ANALYTE|ANALYTE-TEST|SYN-ANALYZER|ANALYTE-TEST|20260101120000+0000||OML^O33^OML_O33|SYN-OML1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-28^IHE~LAW_SPECIMEN^IHE\rSPM|1|SYN-0001&ANALYTE-TEST||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||SYN-0001|||||||SYN-RACK1|1||||||||||||||||||\rORC|NW||||||||20260101120000||||||||||||\rOBR||SYN-AWOS1||SYN-TEST^Synthetic test^99SYN|||||||||||||||||||||||||||||||||||||||||||||\r", options())?;
+    assert_eq!(
+        Profile::for_peer(Capabilities {
+            specimen: true,
+            ..Capabilities::default()
+        })
+        .validate_message(&failing, ControlDirection::Send),
+        Err(law::Error::Content {
+            segment: "SAC",
+            field: 10
+        })
+    );
+    for (identity, position) in [(10, 11), (13, 14)] {
+        send_only("SAC", &[(identity, "rack"), (position, "1")], false)?;
+        both(
+            "SAC",
+            &[(3, ""), (4, "parent"), (identity, "rack"), (position, "1")],
+            true,
+        )?;
+        assert!(
+            check(
+                "SAC",
+                &[(3, ""), (identity, "rack"), (position, "1")],
+                Profile::receive(),
+                ControlDirection::Send
+            )
+            .is_err()
+        );
+    }
     Ok(())
 }

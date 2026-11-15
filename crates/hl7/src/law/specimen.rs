@@ -341,6 +341,16 @@ fn container(
         &[3, 4, 9, 10, 11, 13, 14, 15, 21, 22, 24, 29],
         direction,
     )?;
+    // C.11: manager position identification is available only through a parent.
+    // Restricted DC replies have separate query-echo predicates.
+    if direction == ControlDirection::Send
+        && !profile.negative_query
+        && (!raw(segment, 3).is_empty() || raw(segment, 4).is_empty())
+    {
+        for number in [10, 11, 13, 14] {
+            excluded(raw(segment, number), direction, content("SAC", number))?;
+        }
+    }
     for number in [3, 4, 10, 13] {
         let value = raw(segment, number);
         if number == 3
