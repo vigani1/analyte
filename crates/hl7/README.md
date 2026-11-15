@@ -371,7 +371,7 @@ related-observation work builder. The 28 source-named positive/negative tests in
 corrections, composite boundaries, inventory ownership and actual note building.
 No earlier test fixture or expectation was changed in this round.
 
-The [LAW checklist](../../docs/protocols/ihe-law.md) distinguishes implemented
+The [LAW checklist](../../docs/protocols/law/README.md) distinguishes implemented
 field evidence from partial or planned workflow tests. Still absent are a
 qualified Gazelle run, complete option/profile negotiation, related-observation
 sending/reference resolution, full pooling workflows, external-pointer retention
@@ -495,12 +495,12 @@ associated observation groups are rejected explicitly. Additional returned field
 are preserved as raw views for host interpretation, not claimed as fully validated
 clinical content. The APIs do not store, resend or change lifecycle state.
 Checklist G is not fully complete; its audited scope and remaining work are in
-[the HL7 checklist](../../docs/protocols/hl7.md#g-orders-and-lifecycle).
+[the HL7 checklist](../../docs/protocols/hl7/checklist.md#g-orders-and-lifecycle).
 
 
 ## Order/query checklist audit
 
-The G/H rows in [the protocol notes](../../docs/protocols/hl7.md) now identify
+The G/H rows in [the protocol notes](../../docs/protocols/hl7/README.md) now identify
 passing tests for checked declarations and list the remainder for unchecked rows.
 Conditional checks cover only selected capabilities. The generic order API is
 new/cancel work, one specimen/test per order and one timing window; LAW's broader
@@ -542,5 +542,5 @@ These APIs remain pure and do not reserve, transmit, cancel or infer acceptance.
 
 The program receives results, answers supported queries and sends/cancels work
 on one persistent TCP link in either configured direction. Evidence remains
-**documented**. The [LAW checklist](../../docs/protocols/ihe-law.md) owns the
+**documented**. The [LAW checklist](../../docs/protocols/law/README.md) owns the
 current test matrix and remaining actor/simulator qualification gates.
