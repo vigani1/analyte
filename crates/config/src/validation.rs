@@ -329,15 +329,11 @@ fn validate_mappings(m: &Machine, path: &str) -> Result<(), Error> {
         ("mappings.tests", mapping.tests.len()),
         ("mappings.units", mapping.units.len()),
         ("mappings.qc", mapping.qc.len()),
+        ("mappings.identity.run", mapping.identity.run.len()),
         (
-            "mappings.identity.retransmission",
-            mapping.identity.retransmission.len(),
+            "mappings.identity.correction_status_codes",
+            mapping.identity.correction_status_codes.len(),
         ),
-        (
-            "mappings.identity.correction",
-            mapping.identity.correction.len(),
-        ),
-        ("mappings.identity.rerun", mapping.identity.rerun.len()),
     ] {
         if len > 4096 {
             return Err(invalid(
@@ -356,13 +352,37 @@ fn validate_mappings(m: &Machine, path: &str) -> Result<(), Error> {
     for rule in &mapping.qc {
         field(&rule.field, m.syntax.kind, path, "mappings.qc.field")?;
     }
-    for (key, fields) in [
-        ("retransmission", &mapping.identity.retransmission),
-        ("correction", &mapping.identity.correction),
-        ("rerun", &mapping.identity.rerun),
-    ] {
-        for f in fields {
-            field(f, m.syntax.kind, path, &format!("mappings.identity.{key}"))?;
+    let identity = &mapping.identity;
+    field(
+        &identity.order_id,
+        m.syntax.kind,
+        path,
+        "mappings.identity.order_id",
+    )?;
+    match &identity.order_namespace {
+        OrderNamespace::Fixed { fixed: _ } => {}
+        OrderNamespace::Field { field: selected } => field(
+            selected,
+            m.syntax.kind,
+            path,
+            "mappings.identity.order_namespace.field",
+        )?,
+    }
+    match &identity.sub_id {
+        SubId::Field(selected) => field(selected, m.syntax.kind, path, "mappings.identity.sub_id")?,
+        SubId::None(NoSubId::None) => {}
+    }
+    for selected in &identity.run {
+        field(selected, m.syntax.kind, path, "mappings.identity.run")?;
+    }
+    let mut codes = std::collections::HashSet::new();
+    for code in &identity.correction_status_codes {
+        if !codes.insert(code) {
+            return Err(invalid(
+                path,
+                "mappings.identity.correction_status_codes",
+                "remove duplicate correction codes",
+            ));
         }
     }
     let mut tests = std::collections::HashSet::new();

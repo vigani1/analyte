@@ -14,6 +14,14 @@ pub const MAX_FILE_BYTES: usize = 1_048_576;
 /// A config failure names its source file and actionable key.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Required identity configuration is absent; no mapping default is invented.
+    #[error("{path}: mappings.identity.{setting}: required setting is missing")]
+    MissingIdentitySetting {
+        /// Source TOML layer.
+        path: String,
+        /// Missing identity setting.
+        setting: &'static str,
+    },
     /// Input exceeds the file budget.
     #[error("{path}: file exceeds 1048576 bytes; split or reduce the configuration")]
     FileSize {
@@ -69,6 +77,16 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
             "schema_version",
             "use supported schema_version = 1",
         ));
+    }
+    if let Some(identity) = value.get("mappings").and_then(|v| v.get("identity")) {
+        for setting in ["order_id", "order_namespace"] {
+            if identity.get(setting).is_none() {
+                return Err(Error::MissingIdentitySetting {
+                    path: path.into(),
+                    setting,
+                });
+            }
+        }
     }
     toml::from_str(text).map_err(|source| Error::Schema {
         path: path.into(),

@@ -125,6 +125,7 @@ fn plan6_analyte_revision_is_independent_of_source_action() -> Result<(), Box<dy
             value: Identifier::new("TEST")?,
         },
         sub_id: SourceText::new("1")?,
+        run: SourceText::new("")?,
         order: NamespacedId {
             namespace: Identifier::new("synthetic-app")?,
             value: Identifier::new("order-001")?,
@@ -214,6 +215,7 @@ fn adr0002_receipt_provenance_and_adr0003_conflicts_keep_both_receipts()
             observation: ObservationIdentity {
                 code: named.clone(),
                 sub_id: SourceText::new("1")?,
+                run: SourceText::new("")?,
                 order: named,
             },
             revision: Revision(0),
@@ -316,6 +318,7 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
             observation: ObservationIdentity {
                 code: named.clone(),
                 sub_id: SourceText::new("1")?,
+                run: SourceText::new("")?,
                 order: named,
             },
             revision: Revision(0),
@@ -351,5 +354,31 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
             .map(|p| p.source_status.as_str()),
         Some("C")
     );
+    Ok(())
+}
+
+#[test]
+fn adr0003_run_evidence_distinguishes_reruns_without_using_source_status()
+-> Result<(), Box<dyn std::error::Error>> {
+    let code = NamespacedId {
+        namespace: Identifier::new("synthetic")?,
+        value: Identifier::new("TEST")?,
+    };
+    let no_run = ObservationIdentity {
+        code: code.clone(),
+        order: code,
+        sub_id: SourceText::new("")?,
+        run: SourceText::new("")?,
+    };
+    assert_eq!(no_run, no_run.clone());
+    let first_run = ObservationIdentity {
+        run: SourceText::new("1:1")?,
+        ..no_run.clone()
+    };
+    let second_run = ObservationIdentity {
+        run: SourceText::new("1:2")?,
+        ..no_run
+    };
+    assert_ne!(first_run, second_run);
     Ok(())
 }

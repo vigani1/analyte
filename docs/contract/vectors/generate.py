@@ -3,11 +3,11 @@ from pathlib import Path
 root=Path('docs/contract/vectors')
 def code(value): return dict(namespace='synthetic',value=value)
 receipt_id='019ab000-0000-7000-8000-000000000010'
-part=dict(test=code('TEST'),values=[dict(original='<0.10',parsed=dict(numeric=dict(number='0.10',comparator='less')))],units=dict(original='mg/L',mapping=dict(source='mg/L',target='mg/L')),dilution=dict(factor='1',applied='unknown'),flags=[],reference_range='0-1',comments=[],qc_class='patient',source_status='F',status='final',source_path=[dict(kind='OBX',sequence='1',status='F')],times=[dict(role='analysis',time=dict(original='202611151159',parsed='2026-11-15T11:59:00',offset=None,precision='minute'))],received_at='2026-11-15T11:59:59Z')
-result=dict(receipt=receipt_id,sample=dict(id='000Ab12',source='scanned_by_machine',position=dict(kind='rack',carrier='A',slot='03')),processing='production',identity=dict(resolved=dict(observation=dict(code=code('TEST'),sub_id='',order=code('order-1')),revision=0)),parts=[part])
+part=dict(test=code('TEST'),values=[dict(original='<0.10',parsed=dict(numeric=dict(number='0.10',comparator='less')))],units=dict(original='mg/L',mapping=dict(source='mg/L',target='mg/L')),dilution=dict(factor='1',applied='unknown'),flags=[],reference_range='0-1',comments=[],qc_class='patient',source_status='F',status='final',source_path=[dict(occurrence=1,kind='OBX',sequence='1',status='F')],times=[dict(role='analysis',time=dict(original='202611151159',parsed='2026-11-15T11:59:00',offset=None,precision='minute'))],received_at='2026-11-15T11:59:59Z')
+result=dict(receipt=receipt_id,sample=dict(id='000Ab12',source='scanned_by_machine',position=dict(kind='rack',carrier='A',slot='03')),processing='production',identity=dict(resolved=dict(observation=dict(code=code('TEST'),sub_id='',run='',order=code('order-1')),revision=0)),parts=[part])
 delivery=dict(contract_version=1,delivery_id='019ab000-0000-7000-8000-000000000001',created_at='2026-11-15T12:00:00Z',source=dict(analyzer='synthetic-1',connection='bench-1'),receipt=dict(id=receipt_id,received_at='2026-11-15T11:59:59Z',raw_sha256='00'*32,driver=code('1'),config_version='1',config_sha256='01'*32),results=[result])
 
-def write(name,obj): (root/name).write_text(json.dumps(obj,indent=2)+'\n')
+def write(name,obj): (root/name).write_text(json.dumps(obj,indent=2)+'\n',newline='\n')
 write('delivery.json',delivery)
 import copy
 for name in ['unresolved-identity','missing-sample','multi-part-coded','withdrawn']:

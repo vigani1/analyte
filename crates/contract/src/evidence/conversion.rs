@@ -153,6 +153,9 @@ impl From<&analyte_model::SourceTime> for SourceTime {
 impl From<&analyte_model::SourceNode> for SourceNode {
     fn from(v: &analyte_model::SourceNode) -> Self {
         Self {
+            // usize always fits in u64 on supported targets; saturate rather
+            // than wrap if a future platform ever disagrees.
+            occurrence: u64::try_from(v.occurrence).unwrap_or(u64::MAX),
             kind: (&v.kind).into(),
             sequence: v.sequence.as_ref().map(Into::into),
             status: v.status.as_ref().map(Into::into),
@@ -226,6 +229,7 @@ impl From<&analyte_model::ObservationIdentity> for ObservationIdentity {
         Self {
             code: (&v.code).into(),
             sub_id: (&v.sub_id).into(),
+            run: (&v.run).into(),
             order: (&v.order).into(),
         }
     }

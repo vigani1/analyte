@@ -551,6 +551,8 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for EvidenceList<T> {
 /// One source hierarchy node; the flat path avoids recursive untrusted trees.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceNode {
+    /// One-based record or segment position in the source message.
+    pub occurrence: u64,
     /// Source record/segment category, unchanged.
     pub kind: Identifier,
     /// Source sequence identifier when supplied.
@@ -745,6 +747,10 @@ pub struct ObservationIdentity {
     pub code: NamespacedId,
     /// Source sub-ID; empty is distinct from unavailable identity evidence.
     pub sub_id: SourceText,
+    /// Source run evidence (for example a completion time or run counter);
+    /// empty when the machine gives none, in which case a rerun cannot be told
+    /// from a retransmission and differing content is parked as a conflict.
+    pub run: SourceText,
     /// Namespaced order identity; missing context requires unresolved status.
     pub order: NamespacedId,
 }
