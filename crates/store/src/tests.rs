@@ -1364,3 +1364,150 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
     assert_eq!(store.audits(0)?.len(), 1);
     Ok(())
 }
+
+#[test]
+fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("reprocess.db"))?;
+    let metadata = receipt(b"original")?;
+    store.receive(&metadata, b"original", b"config")?;
+    let mut original = interpretation()?;
+    original.outcome = Reading::Failed(Reason::new("test mapping missing")?);
+    store.interpret(metadata.id, &original, &[])?;
+    let before: String = store
+        .db
+        .query_row("SELECT evidence FROM interpretations", [], |r| r.get(0))?;
+    let parked = store.parked(0)?.first().ok_or("missing parked")?.id;
+    let mut current = interpretation()?;
+    current.config_version = Identifier::new("current-config")?;
+    current.driver.value = Identifier::new("current-driver")?;
+    current.config = b"current mapping".to_vec();
+    current.outcome = Reading::Results(vec![production_result(metadata.id)?]);
+    let action = Reprocess {
+        receipt: metadata.id,
+        parked: Some(parked),
+        audit: Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("receipt-reprocess")?,
+            targets: vec![],
+            time: 42,
+            reason: Reason::new("test mapping repaired")?,
+        },
+    };
+    store.db.execute_batch("CREATE TRIGGER fail_reprocess_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
+    assert!(
+        store
+            .reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![]))
+            .is_err()
+    );
+    assert!(store.interpretation(metadata.id, 2)?.is_none());
+    assert!(
+        store
+            .parked_item(parked)?
+            .ok_or("missing parked")?
+            .resolution
+            .is_none()
+    );
+    assert!(store.audits(0)?.is_empty());
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        0
+    );
+    store
+        .db
+        .execute_batch("DROP TRIGGER fail_reprocess_audit;")?;
+    let commit =
+        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![]))?;
+    assert_eq!(commit.version, 2);
+    assert!(matches!(
+        commit.outcomes.as_slice(),
+        [RevisionOutcome::New(_)]
+    ));
+    let retained = store
+        .interpretation(metadata.id, 2)?
+        .ok_or("missing version")?;
+    assert_eq!(retained.driver, current.driver);
+    assert_eq!(retained.config_version, current.config_version);
+    assert_eq!(retained.config, current.config);
+    let wire: serde_json::Value = serde_json::from_str(&store.db.query_row(
+        "SELECT evidence FROM interpretations WHERE version=2",
+        [],
+        |r| r.get::<_, String>(0),
+    )?)?;
+    assert_eq!(
+        wire["config_digest"],
+        serde_json::to_value(digest(&current.config))?
+    );
+    let after: String = store.db.query_row(
+        "SELECT evidence FROM interpretations WHERE version=1",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(before, after);
+    assert_eq!(
+        store.receipt(metadata.id)?.ok_or("missing receipt")?.raw,
+        b"original"
+    );
+    assert_eq!(store.audits(0)?.len(), 1);
+    let resolution: Audit = serde_json::from_str(
+        &store
+            .parked_item(parked)?
+            .ok_or("missing parked")?
+            .resolution
+            .ok_or("not resolved")?,
+    )?;
+    assert_eq!(
+        resolution.targets,
+        store.audits(0)?.first().ok_or("missing audit")?.1.targets
+    );
+    assert!(
+        resolution
+            .targets
+            .iter()
+            .any(|t| t.as_str().ends_with(":2"))
+    );
+    assert!(matches!(
+        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![])),
+        Err(Error::ReprocessParked)
+    ));
+    let other = store.park(&Parked {
+        kind: Identifier::new("unrelated")?,
+        reason: Reason::new("other receipt")?,
+        targets: vec![],
+    })?;
+    let mut action = action;
+    action.parked = Some(other);
+    assert!(matches!(
+        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![])),
+        Err(Error::ReprocessParked)
+    ));
+    action.parked = None;
+    current.outcome = Reading::Results(vec![]);
+    store.reprocess_reconciled(&action, current, &[], &[], |_, _| Ok(vec![]))?;
+    assert!(
+        store
+            .parked(0)?
+            .iter()
+            .any(|p| p.evidence.contains("reprocessing produced no results"))
+    );
+    assert_eq!(store.audits(0)?.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn rule3_interpretation_digest_verified_legacy_evidence_still_reads() -> TestResult {
+    let evidence = interpretation()?;
+    let mut encoded = serde_json::to_value(&evidence)?;
+    encoded["config_digest"] = serde_json::to_value(digest(b"different"))?;
+    assert!(serde_json::from_value::<Interpretation>(encoded.clone()).is_err());
+    encoded
+        .as_object_mut()
+        .ok_or("not object")?
+        .remove("config_digest");
+    let legacy: Interpretation = serde_json::from_value(encoded)?;
+    assert_eq!(legacy.config, evidence.config);
+    Ok(())
+}

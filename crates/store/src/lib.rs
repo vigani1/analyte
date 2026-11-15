@@ -5,6 +5,8 @@ mod alerts;
 pub use alerts::*;
 mod machine_orders;
 mod migration;
+mod reprocess;
+pub use reprocess::Reprocess;
 mod resend;
 mod restore;
 pub use resend::{DeliveryState, StoredDelivery};
@@ -35,6 +37,13 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Requested receipt has never been stored.
+    #[error("receipt does not exist")]
+    UnknownReceipt,
+    /// Parked item does not exist, is already resolved or belongs to other evidence.
+    #[error("parked item is missing, resolved or unrelated to this receipt")]
+    ReprocessParked,
+
     /// No delivery exists with the requested identity.
     #[error("delivery does not exist")]
     UnknownDelivery,

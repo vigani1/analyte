@@ -99,7 +99,9 @@ impl Store {
         }
         let encoded = self.encode(audit)?;
         self.capacity(encoded.len())?;
-        let tx = self.db.transaction()?;
+        let tx = self
+            .db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let id_key = key(&id)?;
         type ResendRow = (String, String, String, Option<String>, Option<i64>);
         let row: Option<ResendRow> = tx
