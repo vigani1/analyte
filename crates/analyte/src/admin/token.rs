@@ -30,6 +30,17 @@ pub enum TokenError {
 pub struct Token(String);
 
 impl Token {
+    pub(super) fn session() -> Result<Self, TokenError> {
+        generate(getrandom::fill).map(Self)
+    }
+
+    pub(super) fn cookie(&self, https: bool) -> String {
+        format!(
+            "analyte_session={}; Path=/; HttpOnly; SameSite=Strict{}",
+            self.0,
+            if https { "; Secure" } else { "" }
+        )
+    }
     /// Reads at most 45 bytes and refuses missing, malformed or unprotected files.
     /// # Errors
     /// Reports missing credentials, invalid format, permissions and OS read failures.

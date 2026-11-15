@@ -77,7 +77,7 @@ output. Paths are passed as data, never interpolated into executable scripts.
 Missing utilities, permission errors and invalid output refuse admission.
 Installing a faster native probe later does not change the storage boundary.
 
-The admin webpage, retention and real machine validation
+The remaining admin pages, retention and real machine validation
 remain outside this work. Serial hardware and Linux runtime
 verification remain CI/lab work; localhost integration tests run on Windows here.
 
@@ -182,12 +182,13 @@ The marker is the latest restore/resume action in the append-only audit trail;
 no schema migration or driver-specific exception is needed. Evidence remains
 **documented**, based on synthetic tests, without real-machine qualification.
 
-## Admin page credentials (in progress)
+## Admin page
 
 The optional `[admin]` configuration accepts `port` and defaults `address` to
 `127.0.0.1`. Other addresses and port zero are refused. Omitting the section
-disables administration. The HTTP server and read-only pages are not implemented
-yet; configuring a port does not currently start a listener.
+disables administration. For example, add `[admin]` with `port = 8080`, provision
+the token below, then start the program and open `http://127.0.0.1:8080/`.
+An enabled endpoint refuses startup if its token file is missing or invalid.
 
 Provision or rotate the host credential with
 `analyte --config analyte.toml admin token --rotate`. The command writes a
@@ -197,11 +198,40 @@ Entropy comes only from the operating system; failure refuses rotation with
 a specific error. No weaker fallback exists.
 
 Unix staging files are created with mode 0600 within the protected directory.
-On Windows, files inherit the directory ACL; restrict it to the service account
-and authorized operators as described in the installation guide. Rotation
+On Windows, the token file's protection comes from the data directory ACL set by
+[`packaging/windows/install.ps1`](../../packaging/windows/install.ps1). Files
+inherit that ACL; it grants access to the service account, SYSTEM and administrators.
+For manual installations, apply the same protected directory ACL. Rotation
 flushes the new file before replacing the old one. A failed or interrupted
 rotation may leave `admin-token.pending`; preserve it securely and investigate
 before retrying. Never move a partial file into place as a credential.
+
+Supply `Authorization: Bearer <token>` to read the overview, or use its login
+form. Missing or wrong credentials receive HTTP 401 without credential values
+in logs. Login issues a separate random session cookie: HttpOnly, SameSite=Strict,
+host-only and without a persistent expiry. All sessions share the administrator
+credential's authority; there is no password database or per-person login.
+Restart after token rotation: the server loads the bearer token at startup,
+and restart also invalidates all session cookies.
+
+The listener serves HTTP on IPv4 loopback only; its cookies therefore omit
+Secure. Any future HTTPS transport must set Secure. Forwarded headers do not
+enable HTTPS or change the trusted host/origin. The form and overview use no
+inline scripts or external assets. Every application response carries CSP,
+frame denial, no-referrer and no-store headers. Values pass through one HTML
+escaping helper. Requests are limited to two seconds, connections to two seconds
+and 32 concurrent connections, and form bodies to 1 KiB. Service shutdown stops
+admission and joins the admin owner within five seconds. Cancelled reads may
+finish on the storage worker; they do not change machine orders.
+
+The read-only overview shows machine owner state and last received activity,
+oldest undelivered age, destination order-cache age and trust, Uncertain order
+count, restore pause, and free disk bytes against the configured reserve.
+Connection state is explicitly unknown; running an owner does not establish a
+machine connection. Reads use bounded store pages and deadlines. If a complete
+snapshot cannot be read in time, the page reports failure rather than displaying
+an incomplete count as a total. Raw payloads and sample IDs are not shown.
+The other pages (machines, parked items/details, and orders) remain unfinished.
 
 Actions such as resolving, reconciling and retrying remain CLI-only.
 
