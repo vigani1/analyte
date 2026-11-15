@@ -1,0 +1,17 @@
+[
+  {
+    "contract_version": 1,
+    "delivery_id": "01a1df33-d0b6-70de-b861-b455559b8981",
+    "created_at": "2026-11-15T12:34:37Z",
+    "source": {
+      "analyzer": "gazelle-law",
+      "connection": "gazelle-law"
+    },
+    "order_id": "SYN-ORDER-0001",
+    "order_version": 1,
+    "state": "uncertain",
+    "occurred_at": "2026-11-15T12:34:37Z",
+    "source_status": "item-outcomes: 1=Uncertain:LAW-invalid-ORL",
+    "reason": null
+  }
+]

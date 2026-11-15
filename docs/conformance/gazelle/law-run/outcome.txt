@@ -1,0 +1,6 @@
+date=2026-11-15T12:34:37.5823633Z
+endpoint=151.80.220.161:10112
+outcome=Err("retained per-item outcomes: [\"Uncertain\", \"Sending\"]")
+failed_connection_attempts=0
+shutdown=Ok(Ok(Ok(())))
+diagnostic=None

@@ -3,6 +3,8 @@
 mod autolyser_cases;
 #[path = "service/capture.rs"]
 mod capture_cases;
+#[path = "service/gazelle.rs"]
+mod gazelle_cases;
 #[path = "orders/hl7.rs"]
 mod hl7_order_cases;
 #[path = "orders/hl7_send.rs"]

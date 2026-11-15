@@ -1,0 +1,24 @@
+[
+  {
+    "id": "SYN-ORDER-0002",
+    "version": 2,
+    "state": "cancel_requested",
+    "sample_id": "SYN-0002",
+    "tests": [
+      {
+        "namespace": "synthetic",
+        "value": "TEST"
+      }
+    ],
+    "priority": "routine",
+    "target_analyzers": [
+      "gazelle-law"
+    ],
+    "expires_at": null,
+    "tombstone": false,
+    "specimen_type": {
+      "namespace": "types",
+      "value": "SERUM"
+    }
+  }
+]
