@@ -1,4 +1,5 @@
 [package]
+autotests = false
 name = "analyte-mapping"
 description = "Mapping from parsed ASTM and HL7 messages to the common model, driven by machine config."
 version.workspace = true
@@ -26,3 +27,31 @@ proptest.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "field_syntax"
+path = "tests/field_syntax.rs"
+
+[[test]]
+name = "mapping"
+path = "tests/mapping.rs"
+
+[[test]]
+name = "orders"
+path = "tests/orders.rs"
+
+[[test]]
+name = "outbound_lookup"
+path = "tests/outbound_lookup.rs"
+
+[[test]]
+name = "poct"
+path = "tests/poct.rs"
+
+[[test]]
+name = "vendor_mapping"
+path = "tests/vendor_mapping.rs"
+
+[[test]]
+name = "vidas"
+path = "tests/vidas.rs"
