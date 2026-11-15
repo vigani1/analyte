@@ -1,0 +1,1891 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<gvr:validationReport xmlns:gvr="http://validationreport.gazelle.ihe.net/" result="PASSED" uuid="2f47d330-7820-4565-87de-068061cabbf2">
+    <gvr:validationOverview validationDateTime="2026-11-15T10:52:02.270Z" validationOverallResult="PASSED">
+        <gvr:disclaimer>The Gazelle HL7v2 validation service is an experimental system. IHE International assumes no responsibility whatsoever 
+for its use by other parties, and makes no guarantees, expressed or implied, about its quality, reliability, or any other characteristic.</gvr:disclaimer>
+        <gvr:validationServiceName>HL7v2 Validation Service</gvr:validationServiceName>
+        <gvr:validationServiceVersion>4.0.3</gvr:validationServiceVersion>
+        <gvr:validatorID>1.3.6.1.4.12559.11.1.1.181</gvr:validatorID>
+        <gvr:validatorName>ORL^O34^ORL_O42  / HL7v2.5.1 / ANALYZER / LAB-28 / PaLM</gvr:validatorName>
+        <gvr:validatorVersion>2.5.1</gvr:validatorVersion>
+        <gvr:additionalMetadata name="LENGTH_IS_AN_ERROR">ERROR</gvr:additionalMetadata>
+        <gvr:additionalMetadata name="VALUE_IS_AN_ERROR">WARNING</gvr:additionalMetadata>
+        <gvr:additionalMetadata name="Context">ORL^O34^ORL_O42 / PaLM / LAB-28</gvr:additionalMetadata>
+        <gvr:additionalMetadata name="Resource name">1.3.6.1.4.12559.11.1.3.1.6</gvr:additionalMetadata>
+        <gvr:additionalMetadata name="Resource name">1.3.6.1.4.12559.11.1.3.1.2</gvr:additionalMetadata>
+    </gvr:validationOverview>
+    <gvr:counters failedWithInfoNumber="0" numberOfConstraints="374" numberOfErrors="0" numberOfWarnings="19"/>
+    <gvr:subReport name="HL7V2 validation report" subReportResult="PASSED">
+        <gvr:subCounters failedWithInfoNumber="0" numberOfConstraints="374" numberOfErrors="0" numberOfWarnings="19"/>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>Code ORL_O42 not found in table HL70354. Possible values are ACK, ADR_A19, ADT_A01, ADT_A02, ADT_A03, ADT_A05, ADT_A06, ADT_A09, ADT_A15, ADT_A16, ADT_A17, ADT_A18, ADT_A20, ADT_A21, ADT_A24, ADT_A30, ADT_A37, ADT_A38, ADT_A39, ADT_A43, ADT_A45, ADT_A50, ADT_A52, ADT_A54, ADT_A60, ADT_A61, BAR_P01, BAR_P02, BAR_P05, BAR_P06, BAR_P10, BAR_P12, BPS_O29, BRP_030, BRT_O32, BTS_O31, CRM_C01, CSU_C09, DFT_P03, DFT_P11, DOC_T12, DSR_P04, DSR_Q01, DSR_Q03, EAC_U07, EAN_U09, EAR_U08, EDR_R07, EQQ_Q04, ERP_R09, ESR_U02, ESU_U01, INR_U06, INU_U05, LSU_U12, MDM_T01, MDM_T02, MFD_MFA, MFK_M01, MFN_M01, MFN_M02, MFN_M03, MFN_M04, MFN_M05, MFN_M06, MFN_M07, MFN_M08, MFN_M09, MFN_M10, MFN_M11, MFN_M12, MFN_M13, MFN_M15, MFQ_M01, MFR_M01, NMD_N02, NMQ_N01, NMR_N01, OMB_O27, OMD_O03, OMG_O19, OMI_O23, OML_O21, OML_O33, OML_O35, OMN_O07, OMP_O09, OMS_O05, ORB_O28, ORD_O04, ORF_R04, ORG_O20, ORI_O24, ORL_O22, ORL_O34, ORL_O36, ORM_O01, ORN_O08, ORP_O10, ORR_O02, ORS_O06, ORU_R01, ORU_R30, ORU_R31, ORU_R32, ORU_W01, OSQ_Q06, OSR_Q06, OUL_R21, OUL_R22, OUL_R23, OUL_R24, PEX_P07, PGL_PC6, PMU_B01, PMU_B03, PMU_B04, PMU_B07, PMU_B08, PPG_PCG, PPP_PCB, PPR_PC1, PPT_PCL, PPV_PCA, PRR_PC5, PTR_PCF, QBP_Q11, QBP_Q13, QBP_Q15, QBP_Q21, QCK_Q02, QCN_J01, QRF_W02, QRY_A19, QRY_P04, QRY_PC4, QRY_Q01, QRY_Q02, QRY_R02, QRY_T12, QSB_Q16, QVR_Q17, RAR_RAR, RAS_O17, RCI_I05, RCL_I06, RDE_O01, RDE_O11, RDR_RDR, RDS_O13, RDY_K15, REF_I12, RER_RER, RGR_RGR, RGV_O15, ROR_ROR, RPA_I08, RPI_I01, RPL_I02, RPR_I03, RQA_I08, RQC_I05, RQI_I01, RQP_I04, RQQ_Q09, RRA_O02, RRA_O18, RRD_O14, RRE_O12, RRG_O16, RRI_I12, RSP_K11, RSP_K21, RSP_K22, RSP_K23, RTB_K13, SIU_S12, SPQ_Q08, SQM_S25, SQR_S25, SRM_S01, SRR_S01, SSR_U04, SSU_U03, SUR_P09, TBR_R08, TBR_R09, TCU_U10, UDM_Q05, VQQ_Q07, VXQ_V01, VXR_V03, VXU_V04, VXX_V02</gvr:constraintDescription>
+            <gvr:constraintType>Table value not found</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-3(message structure)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/PATIENT</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-3(Specimen Parent IDs)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>Code HL70487 not found in table HL70396. Possible values are L, L, ACR, ANS+, ART, AS4, AS4E, ATC, C4, C5, CAS, CD2, CDCA, CDCM, CDS, CE, CLP, CPTM, CST, CVX, DCM, E, E5, E6, E7, ENZC, FDDC, FDDX, FDK, HB, HCPCS, HCPT, HHC, HI, HL7nnnn, HOT, HPC, I10, I10P, I9, I9C, IBT, IBTnnnn, IC2, ICD10AM, ICD10CA, ICDO, ICS, ICSD, ISO+, ISOnnnn, IUPC, IUPP, JC10, JC8, JJ1017, LB, LN, MCD, MCR, MDDX, MEDC, MEDR, MEDX, MGPI, MVX, NDA, NDC, NIC, NPI, NUBC, OHA, POS, RC, SDM, SNM, SNM3, SNT, UC, UMD, UML, UPC, UPIN, USPS, W1, W2, W4, WC, NABM, 99IHE, 99zzz</gvr:constraintDescription>
+            <gvr:constraintType>Table value not found</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>Code HL70369 not found in table HL70396. Possible values are L, L, ACR, ANS+, ART, AS4, AS4E, ATC, C4, C5, CAS, CD2, CDCA, CDCM, CDS, CE, CLP, CPTM, CST, CVX, DCM, E, E5, E6, E7, ENZC, FDDC, FDDX, FDK, HB, HCPCS, HCPT, HHC, HI, HL7nnnn, HOT, HPC, I10, I10P, I9, I9C, IBT, IBTnnnn, IC2, ICD10AM, ICD10CA, ICDO, ICS, ICSD, ISO+, ISOnnnn, IUPC, IUPP, JC10, JC8, JJ1017, LB, LN, MCD, MCR, MDDX, MEDC, MEDR, MEDX, MGPI, MVX, NDA, NDC, NIC, NPI, NUBC, OHA, POS, RC, SDM, SNM, SNM3, SNT, UC, UMD, UML, UPC, UPIN, USPS, W1, W2, W4, WC, NABM, 99IHE, 99zzz</gvr:constraintDescription>
+            <gvr:constraintType>Table value not found</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-13(Grouped Specimen Count)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-20(Specimen Availability)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="RECOMMENDED" severity="WARNING" testResult="FAILED">
+            <gvr:constraintDescription>The optionality of this element is set as 'conditional' and no rule has been defined, refer to the specification to check the optionality which applies in the context of this message</gvr:constraintDescription>
+            <gvr:constraintType>Conditional</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-21(Specimen Reject Reason)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>MSH shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>MSH is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>MSH is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Field Separator shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-1(Field Separator)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Field Separator is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-1(Field Separator)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Field Separator is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-1(Field Separator)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Field Separator shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-1(Field Separator)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-1(Field Separator)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (1)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-1(Field Separator)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>The constant value defined in the message profile (|) is used</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-1(Field Separator)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-1(Field Separator)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Encoding Characters shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-2(Encoding Characters)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Encoding Characters is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-2(Encoding Characters)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Encoding Characters is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-2(Encoding Characters)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Encoding Characters shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-2(Encoding Characters)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-2(Encoding Characters)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (4)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-2(Encoding Characters)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-2(Encoding Characters)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Sending Application is repeated at least 0 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Sending Application is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype HD is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (227)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>namespace ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype IS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (6)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-3(Sending Application)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Sending Facility is repeated at least 0 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Sending Facility is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype HD is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (227)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>namespace ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype IS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (6)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-4(Sending Facility)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Receiving Application is repeated at least 0 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Receiving Application is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype HD is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (227)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>namespace ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype IS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (6)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-5(Receiving Application)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Receiving Facility is repeated at least 0 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Receiving Facility is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype HD is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (227)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>namespace ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype IS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-1(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-2(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (6)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-6(Receiving Facility)[0]/HD-3(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Date/Time Of Message shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Date/Time Of Message is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Date/Time Of Message is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Date/Time Of Message shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype TS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (26)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>time shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)[0]/TS-1(time)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype DTM is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)[0]/TS-1(time)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (24)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)[0]/TS-1(time)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be empty or a HL7 datetime string' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)[0]/TS-1(time)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>degree of precision shall not be present</gvr:constraintDescription>
+            <gvr:constraintType>Forbidden element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-7(Date/Time Of Message)[0]/TS-2(degree of precision)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Type shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Type is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Type is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Type shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype MSG is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (15)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>message code shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-1(message code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-1(message code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (3)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-1(message code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-1(message code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>ORL is present in table HL70076</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-1(message code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>trigger event shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-2(trigger event)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-2(trigger event)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (3)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-2(trigger event)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-2(trigger event)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>O34 is present in table HL70003</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-2(trigger event)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>message structure shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-3(message structure)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-3(message structure)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (7)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-3(message structure)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-9(Message Type)[0]/MSG-3(message structure)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Control ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-10(Message Control ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Control ID is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-10(Message Control ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Control ID is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-10(Message Control ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Control ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-10(Message Control ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-10(Message Control ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (50)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-10(Message Control ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-10(Message Control ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Processing ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Processing ID is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Processing ID is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Processing ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype PT is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (3)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>processing ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]/PT-1(processing ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]/PT-1(processing ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (1)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]/PT-1(processing ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]/PT-1(processing ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>P is present in table HL70103</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]/PT-1(processing ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]/PT-2(processing mode)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (1)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]/PT-2(processing mode)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-11(Processing ID)[0]/PT-2(processing mode)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Version ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Version ID is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Version ID is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Version ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype VID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (971)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>version ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-1(version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-1(version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (5)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-1(version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-1(version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>2.5.1 is present in table HL70104</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-1(version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype CE is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-2(internationalization code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (483)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-2(internationalization code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype CE is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-3(international version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (483)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-12(Version ID)[0]/VID-3(international version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Character Set shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-18(Character Set)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Character Set is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-18(Character Set)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Character Set is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-18(Character Set)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Character Set shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-18(Character Set)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-18(Character Set)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (16)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-18(Character Set)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-18(Character Set)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>UNICODE UTF-8 is present in table HL70211</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-18(Character Set)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Profile Identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Profile Identifier is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Profile Identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype EI is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (427)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>entity identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (50)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>namespace ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype IS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (6)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSH[0]/MSH-21(Message Profile Identifier)[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>MSA shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>MSA is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>MSA is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Acknowledgment Code shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-1(Acknowledgment Code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Acknowledgment Code is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-1(Acknowledgment Code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Acknowledgment Code is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-1(Acknowledgment Code)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Acknowledgment Code shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-1(Acknowledgment Code)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-1(Acknowledgment Code)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (2)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-1(Acknowledgment Code)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-1(Acknowledgment Code)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>AA is present in table HL70008</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-1(Acknowledgment Code)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Control ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-2(Message Control ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Control ID is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-2(Message Control ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Control ID is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-2(Message Control ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Message Control ID shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-2(Message Control ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-2(Message Control ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (50)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-2(Message Control ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/MSA[0]/MSA-2(Message Control ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>RESPONSE is repeated at least 0 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>RESPONSE is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SPECIMEN shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SPECIMEN is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SPM shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SPM is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SPM is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Set ID _ SPM shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-1(Set ID _ SPM)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Set ID _ SPM is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-1(Set ID _ SPM)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Set ID _ SPM is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-1(Set ID _ SPM)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Set ID _ SPM shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-1(Set ID _ SPM)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype SI is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-1(Set ID _ SPM)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (4)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-1(Set ID _ SPM)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be empty or a non-negative integer (0,1,2,...)' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-1(Set ID _ SPM)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen ID is repeated at least 0 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen ID is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype EIP is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (80)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>placer assigned identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype EI is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (278)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>entity identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Conditional usage OK</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype IS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Conditional usage OK</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Conditional usage OK</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (6)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-1(placer assigned identifier)/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype EI is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-2(filler assigned identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (427)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-2(Specimen ID)[0]/EIP-2(filler assigned identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen Type shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen Type is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen Type is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen Type shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype CWE is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (250)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-1(identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-1(identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-1(identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-1(identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-2(text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-2(text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-2(text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (7)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-4(alternate identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-4(alternate identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-4(alternate identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-5(alternate text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-5(alternate text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-5(alternate text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-6(name of alternate coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-6(name of alternate coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-6(name of alternate coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-7(coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (10)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-7(coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-7(coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-8(alternate coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (10)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-8(alternate coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-8(alternate coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-9(original text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-9(original text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-4(Specimen Type)[0]/CWE-9(original text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen Role shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen Role is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen Role is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Specimen Role shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype CWE is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (250)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-1(identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-1(identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-1(identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-1(identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-2(text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-2(text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-2(text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>name of coding system shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (7)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-3(name of coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-4(alternate identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-4(alternate identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-4(alternate identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-5(alternate text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-5(alternate text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-5(alternate text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-6(name of alternate coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-6(name of alternate coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-6(name of alternate coding system)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-7(coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (10)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-7(coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-7(coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-8(alternate coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (10)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-8(alternate coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-8(alternate coding system version ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-9(original text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-9(original text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SPM[0]/SPM-11(Specimen Role)[0]/CWE-9(original text)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SAC shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SAC is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SAC is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Container Identifier is repeated at least 0 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Container Identifier is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Conditional usage OK</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype EI is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (80)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>entity identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype IS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (6)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/SAC[0]/SAC-3(Container Identifier)[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>ORDER shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>ORDER is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>ORC shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>ORC is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>ORC is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Order Control shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-1(Order Control)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Order Control is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-1(Order Control)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Order Control is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-1(Order Control)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Order Control shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-1(Order Control)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-1(Order Control)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (2)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-1(Order Control)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-1(Order Control)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>OK is present in table HL70119</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-1(Order Control)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Placer Order Number (AWOS ID) shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Placer Order Number (AWOS ID) is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Placer Order Number (AWOS ID) is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Placer Order Number (AWOS ID) shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype EI is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (424)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>entity identifier shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (50)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-1(entity identifier)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype IS is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (20)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-2(namespace ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ST is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (199)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be anything' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-3(universal ID)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (6)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-2(Placer Order Number (AWOS ID))[0]/EI-4(universal ID type)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Order Status shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-5(Order Status)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Order Status is repeated at least 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-5(Order Status)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Order Status is repeated at most 1 time(s)</gvr:constraintDescription>
+            <gvr:constraintType>Cardinality</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-5(Order Status)</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Order Status shall be present</gvr:constraintDescription>
+            <gvr:constraintType>Required element</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-5(Order Status)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Datatype ID is used</gvr:constraintDescription>
+            <gvr:constraintType>Datatype</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-5(Order Status)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Length of the element does not exceed the length defined in the message profile (2)</gvr:constraintDescription>
+            <gvr:constraintType>Length</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-5(Order Status)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>Rule 'Primitive value '%s' requires to be shorter than 200 characters' is fulfilled</gvr:constraintDescription>
+            <gvr:constraintType>Format</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-5(Order Status)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+        <gvr:constraint priority="MANDATORY" severity="INFO" testResult="PASSED">
+            <gvr:constraintDescription>SC is present in table HL70038</gvr:constraintDescription>
+            <gvr:constraintType>Value</gvr:constraintType>
+            <gvr:locationInValidatedObject>hl7fullpath:ORL_O42/RESPONSE[0]/SPECIMEN[0]/ORDER[0]/ORC[0]/ORC-5(Order Status)[0]</gvr:locationInValidatedObject>
+        </gvr:constraint>
+    </gvr:subReport>
+</gvr:validationReport>

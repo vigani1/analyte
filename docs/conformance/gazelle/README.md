@@ -43,16 +43,33 @@ Retain failures and their diagnostics as well as successes. No Gazelle run or
 conformance claim is included in this change; passing local parsers is not full
 LAW conformance or simulator evidence.
 
-## Owner-reported Gazelle run
+## Recorded Gazelle run (2026-11-15)
 
-The owner submitted the original eleven exports to the HL7v2 Validation service.
-Both RSP, both ACK, restricted OML DC and ORL passed. OML NW/CA failed because
-Analyte emitted SAC-3 with SAC-10/11. Appendix C.11 permits manager carrier/tray
-identification only when SAC-3 is absent and SAC-4 is present. The validator and
-builder now implement this predicate; the new parent/carrier export exercises
-its permitted branch. Revalidation and reports are pending from the owner.
+Service: IHE Catalyst EVS 10.0.2, "HL7v2 Validation service" 4.0.3, submitted
+by `check.py` from the exports of commit 24350ca. Reports and `summary.json`
+are in `results/`.
 
-Two service-side issues were reported; the exports retain their values:
+| File | Sent by | Profile | Result |
+| --- | --- | --- | --- |
+| rsp_k11_found, rsp_k11_empty | Analyzer Manager | ...177 | PASSED, 0 errors |
+| oml_o33_new, oml_o33_cancel, oml_o33_new_parent_carrier | Analyzer Manager | ...178 | PASSED, 0 errors |
+| oml_o33_negative | Analyzer Manager | ...215 | PASSED, 0 errors |
+| ack_r22_aa, ack_r22_ae | Analyzer Manager | ...179 | PASSED, 0 errors |
+| orl_o34_accept | Analyzer (synthetic) | ...181 | PASSED, 0 errors |
+| qbp_q11_specimen, qbp_q11_all_pending | Analyzer (synthetic) | ...180 | FAILED, Gazelle profile conflict (below) |
+| oul_r22 | Analyzer (synthetic) | ...182 | UNDEFINED, validator exception (below) |
+
+Every message Analyte sends as Analyzer Manager passes with no errors. The
+first run found one real defect: OML NW/CA carried SAC-3 together with
+SAC-10/11, which Appendix C.11 forbids for the manager (carrier/tray only when
+SAC-3 is absent and SAC-4 is present). It was fixed in this change and the
+parent/carrier export exercises the permitted form.
+
+Remaining warnings are advisory: conditional elements for which the profile
+defines no rule, and coding-system names such as `IHELAW` that the LAW profile
+itself requires.
+
+Two service-side issues; the exports keep their values:
 
 - QBP profile 1.3.6.1.4.12559.11.1.1.180 limits MSH-21 EI-1 to five characters.
   Rev 11 section 2.2.2 and Table C.4-14 allow length 50 and require `LAB-27`,
@@ -62,5 +79,8 @@ Two service-side issues were reported; the exports retain their values:
   at OBX-4 and returned UNDEFINED. This is a validator failure, not an
   Analyte validation result or defect.
 
-Reports will be committed by the owner in `results/`. These reported outcomes
-alone do not raise the whole LAW implementation's evidence level.
+This is message-level validation only. It does not raise the evidence level of
+the LAW implementation; that needs a recorded simulator conversation.
+
+To repeat: generate the exports, then `python -I docs/conformance/gazelle/check.py
+<exports dir> docs/conformance/gazelle/results`. Submit synthetic messages only.
