@@ -576,7 +576,7 @@ async fn lis02_section8_o_record_send_ahead_and_query_forward_configured_positio
             send,
             true,
             Some("SERUM"),
-            b"H|\\^&|||Analyte|||||||P|1\rP|1\rO|1|000Ab12|^03|^^^SEND|R||||||N||||SER\rL|1|N\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12|^03|^^^SEND|R||||||N||||SER\rL|1|N\r",
             None,
         )
         .await?;
@@ -591,7 +591,7 @@ async fn lis02_section8_o_record_no_destinations_leave_context_empty_even_when_s
             send,
             false,
             Some("UNKNOWN"),
-            b"H|\\^&|||Analyte|||||||P|1\rP|1\rO|1|000Ab12||^^^SEND|R||||||N\rL|1|N\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12||^^^SEND|R||||||N\rL|1|N\r",
             None,
         )
         .await?;
@@ -606,7 +606,7 @@ async fn lis02_section8_o_record_unmapped_specimen_rejects_send_ahead_and_query_
             send,
             true,
             Some("UNKNOWN"),
-            b"H|\\^&|||Analyte|||||||P|1\rL|1|Q\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rL|1|Q\r",
             Some("rejected: unmapped-specimen-type"),
         )
         .await?;
@@ -621,7 +621,7 @@ async fn lis02_section8_o_record_missing_required_specimen_rejects_without_guess
             send,
             true,
             None,
-            b"H|\\^&|||Analyte|||||||P|1\rL|1|Q\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rL|1|Q\r",
             Some("rejected: missing-specimen-type"),
         )
         .await?;
@@ -753,9 +753,9 @@ async fn lis02_6_12_p12_nonproduction_queries_never_reserve_or_send() -> Result<
             database(&path)?.query_row(
                 "SELECT count(*) FROM receipts WHERE length(raw)>0",
                 [],
-                |r| r.get::<_, usize>(0)
+                |r| r.get::<_, i64>(0)
             )?,
-            index + 1
+            i64::try_from(index)? + 1
         );
         assert_eq!(
             database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r

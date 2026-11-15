@@ -262,7 +262,7 @@ pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
 
 /// Wraps mapped orders with independent patient groups and explicit termination.
 pub(crate) fn envelope(mut orders: Vec<Vec<u8>>, termination: u8) -> Vec<Vec<u8>> {
-    let mut records = vec![b"H|\\^&|||Analyte|||||||P|1\r".to_vec()];
+    let mut records = vec![b"H|\\^&|||Analyte|||||||P|LIS2-A2\r".to_vec()];
     for (index, order) in orders.drain(..).enumerate() {
         records.push(format!("P|{}\r", index.saturating_add(1)).into_bytes());
         records.push(order);

@@ -83,6 +83,11 @@ async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never
 fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orders()
 -> Result<(), Error> {
     let machine = machine("error")?;
+    // LIS02-A2 ?6.13 p.13: the edition is LIS2-A2, not a legacy numeric version.
+    assert_eq!(
+        envelope(Vec::new(), b'Q')[0],
+        b"H|\\^&|||Analyte|||||||P|LIS2-A2\r"
+    );
     assert!(matches!(
         request(
             &machine,
