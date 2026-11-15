@@ -317,3 +317,25 @@ fn adr0002_vendor_policy_bounds_and_transports_are_specific() -> Result<(), Erro
     }
     Ok(())
 }
+
+#[test]
+fn adr0002_component_parts_invalid_declarations_have_specific_errors() -> Result<(), Error> {
+    for (declaration, expected) in [
+        ("separator='^'\ncount=2\ncode=1\ndilution=2", 0),
+        ("separator='/'\ncount=2\ncode=3\ndilution=2", 1),
+        ("separator='/'\ncount=2\ncode=1\ndilution=1", 2),
+    ] {
+        let definition =
+            format!("{ASTM}\n[mappings.component_parts]\ncomponent=4\n{declaration}\n");
+        let error = draft(&definition, OVERRIDES)?
+            .validate()
+            .expect_err("invalid parts");
+        assert!(matches!(
+            (expected, error),
+            (0, Error::PartSeparator { .. })
+                | (1, Error::PartIndex { .. })
+                | (2, Error::PartOverlap { .. })
+        ));
+    }
+    Ok(())
+}

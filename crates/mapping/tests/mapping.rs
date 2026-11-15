@@ -670,3 +670,149 @@ fn lis02_6_12_hl7_251_msh11_unknown_processing_still_refused() -> TestResult {
     }
     Ok(())
 }
+
+fn with_parts(component: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error>> {
+    let config = config(definition)?;
+    let raw = format!(
+        "H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|000AbC\rR|1|^^^{component}|0.10|||||F\rL|1|N\r"
+    );
+    let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
+    Ok(map_astm(
+        messages.first().ok_or("missing message")?,
+        &config,
+        input(),
+    )?)
+}
+
+fn parts_config() -> String {
+    format!(
+        "{ASTM_CONFIG}\n[mappings.component_parts]\ncomponent=4\nseparator='/'\ncount=2\ncode=1\ndilution=2\n"
+    )
+}
+
+#[test]
+fn lis02_5_6_1_component_parts_and_rule6_exact_dilution() -> TestResult {
+    for original in ["02.00", "1:10", "", " 2", "not"] {
+        let output = with_parts(&format!("SYN/{original}"), &parts_config())?;
+        assert!(!output.requires_parking());
+        let dilution = first(&output)?
+            .dilution
+            .as_ref()
+            .ok_or("missing dilution")?;
+        assert_eq!(
+            dilution.original.as_ref().map(SourceText::as_str),
+            Some(original)
+        );
+        assert_eq!(
+            dilution.factor.as_ref().map(Decimal::as_str),
+            if original == "02.00" {
+                Some(original)
+            } else {
+                None
+            }
+        );
+        assert_eq!(dilution.applied, DilutionApplied::Unknown);
+    }
+    for original in ["SYN", "SYN/2/extra"] {
+        let output = with_parts(original, &parts_config())?;
+        assert!(output.requires_parking());
+        assert!(
+            output
+                .findings
+                .iter()
+                .any(|f| f.position.field == 3 && f.problem == Problem::ComponentParts)
+        );
+        assert_eq!(output.unmapped.len(), 1);
+    }
+    Ok(())
+}
+
+#[test]
+fn lis02_9_4_and_hl7_7_4_2_value_expectations_preserve_originals() -> TestResult {
+    for (kind, raw, mismatch) in [
+        ("numeric", "positive", true),
+        ("numeric", "<0.10", false),
+        ("coded", "positive", false),
+        ("coded", "12", true),
+        ("either", "12", false),
+    ] {
+        for (definition, astm_source) in [(ASTM_CONFIG, true), (HL7_CONFIG, false)] {
+            let definition = definition.replace(
+                "machine_code=",
+                &format!("value_kind='{kind}', machine_code="),
+            );
+            let output = if astm_source {
+                let config = config(&definition)?;
+                let message = format!(
+                    "H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|000AbC\rR|1|^^^SYN|{raw}|||||F\rL|1|N\r"
+                );
+                let messages =
+                    analyte_astm::parse(message.as_bytes(), analyte_astm::Limits::default())?;
+                map_astm(messages.first().ok_or("missing message")?, &config, input())?
+            } else {
+                hl7(
+                    &format!("OBR|1||000AbC\rOBX|1|NM|SYN^Name^synthetic||{raw}||||||F\r"),
+                    &definition,
+                )?
+            };
+            // HL7 NM does not accept comparator prefixes as plain decimals.
+            let expected = mismatch || (!astm_source && kind == "numeric" && raw == "<0.10");
+            assert_eq!(output.requires_parking(), expected);
+            assert_eq!(
+                first(&output)?
+                    .values
+                    .as_slice()
+                    .first()
+                    .ok_or("missing value")?
+                    .original
+                    .as_str(),
+                raw
+            );
+            assert_eq!(
+                output
+                    .findings
+                    .iter()
+                    .any(|f| matches!(f.problem, Problem::ValueKindMismatch { .. })),
+                expected
+            );
+        }
+    }
+    Ok(())
+}
+
+proptest! {
+    #[test]
+    fn lis02_5_6_1_arbitrary_component_preserves_dilution(original in "[a-zA-Z0-9/: .+-]{0,100}") {
+        let output = with_parts(&format!("SYN/{original}"), &parts_config()).expect("bounded synthetic input");
+        if original.contains('/') {
+            prop_assert!(output.requires_parking());
+        } else {
+            let part = first(&output).expect("mapped test");
+            prop_assert_eq!(part.dilution.as_ref().and_then(|d| d.original.as_ref()).map(SourceText::as_str), Some(original.as_str()));
+        }
+    }
+}
+
+#[test]
+fn rule6_application_comes_only_from_configured_source_evidence() -> TestResult {
+    for (yes, no, expected) in [
+        ("F", "N", DilutionApplied::Yes),
+        ("Y", "F", DilutionApplied::No),
+        ("Y", "N", DilutionApplied::Unknown),
+    ] {
+        let definition = format!(
+            "{}applied = {{field={{group='observation', record='R', field=9, component=1, repetition=1}}, yes='{yes}', no='{no}'}}\n",
+            parts_config()
+        );
+        let output = with_parts("SYN/1:10", &definition)?;
+        assert_eq!(
+            first(&output)?
+                .dilution
+                .as_ref()
+                .ok_or("missing dilution")?
+                .applied,
+            expected
+        );
+    }
+    Ok(())
+}

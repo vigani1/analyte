@@ -345,6 +345,45 @@ fn validate_mappings(m: &Machine, path: &str) -> Result<(), Error> {
     let Some(mapping) = &m.mappings else {
         return validate_tables(m.tests(), m.units(), path);
     };
+    if let Some(parts) = &mapping.component_parts {
+        if m.syntax.kind != SyntaxKind::AstmLis02 {
+            return Err(invalid(
+                path,
+                "mappings.component_parts",
+                "requires ASTM LIS02",
+            ));
+        }
+        if parts.separator.is_control() || "|\\^&".contains(parts.separator) {
+            return Err(Error::PartSeparator { path: path.into() });
+        }
+        if !(1..=1024).contains(&parts.component)
+            || !(1..=1024).contains(&parts.count)
+            || !(1..=parts.count).contains(&parts.code)
+            || parts
+                .dilution
+                .is_some_and(|i| !(1..=parts.count).contains(&i))
+        {
+            return Err(Error::PartIndex { path: path.into() });
+        }
+        if let Some(applied) = &parts.applied {
+            field(
+                &applied.field,
+                m.syntax.kind,
+                path,
+                "mappings.component_parts.applied.field",
+            )?;
+            if applied.yes == applied.no || parts.dilution.is_none() {
+                return Err(invalid(
+                    path,
+                    "mappings.component_parts.applied",
+                    "requires dilution and distinct yes/no codes",
+                ));
+            }
+        }
+        if parts.dilution == Some(parts.code) {
+            return Err(Error::PartOverlap { path: path.into() });
+        }
+    }
     for (key, len) in [
         ("mappings.tests", mapping.tests.len()),
         ("mappings.units", mapping.units.len()),
