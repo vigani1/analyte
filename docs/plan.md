@@ -20,16 +20,17 @@ hardware test bed for the drivers.
 
 Existing options were researched before this plan:
 
-- The OpenELIS Analyzer Bridge (Java) only reads ASTM, HL7 and files. It
-  cannot poll a machine, send orders over a serial cable or answer host
-  queries with real orders, and it drops the sample position.
+- The OpenELIS Analyzer Bridge (Java) receives ASTM, HL7 and files and can
+  send orders over TCP, but it cannot poll a machine, send orders over a
+  serial cable or answer host queries with real orders, and it drops the
+  sample position.
 - General integration engines (Mirth and its forks, Iguana, Rhapsody, IRIS)
   route messages well, but leave every analyzer conversation to custom
   scripts.
 - Lab middleware (Data Innovations and vendor products) is closed and costly.
 - Open projects (BLIS interface client, SENAITE ASTM, several small ASTM and
-  HL7 libraries) each cover one app, one protocol or one machine. No Rust
-  implementation of clinical ASTM exists.
+  HL7 libraries) each cover one app, one protocol or one machine. No
+  maintained Rust implementation of clinical ASTM was found (November 2026).
 
 ## 3. Scope
 
@@ -58,7 +59,9 @@ evidence; the app decides.
 7. Standards first, machines after. Each standard is implemented completely
    from its official documents and tested against official examples or
    simulators, independent of any machine. Machines are then added as configs
-   on top, by us or the community.
+   on top, by us or the community. "Complete" means a written scope: the
+   versions, actor roles, message types, options, acknowledgment modes and
+   limits supported, with explicit exclusions.
 
 ## 5. Architecture
 
@@ -77,6 +80,11 @@ Transport: serial · TCP client/server · watched folder
 - Dialogs are state machines owned by one connection, with their own
   deadlines. They may call the syntax layer to decide a reply.
 - Not every combination is valid; config validation rejects impossible ones.
+- The diagram shows how data flows, not how crates depend on each other.
+  Crate dependencies form an acyclic graph of ownership: shared model types
+  are used by protocol and storage crates, and the program wires dialogs to
+  host services. A dialog may acknowledge data only after the host reports
+  that it is durably stored.
 - Planned workspace crates (one reason to change each):
 
 | Crate               | Owns                                                         |
@@ -105,29 +113,59 @@ are built.
   3. the result: a stable observation identity plus a revision (final,
      corrected, cancelled), so corrections and reruns are never confused with
      duplicates.
+- **Source structure kept:** the protocol's own hierarchy (for ASTM: message,
+  patient, order, result, comment), sequence numbers and every source status
+  code are kept as sent, next to Analyte's own summary; they are never
+  flattened into final/corrected/cancelled. Training and debug messages
+  never reach production delivery.
+- **Identity evidence:** IDs keep their namespace (which system assigned
+  them). Each machine config declares how a retransmission, a correction and
+  a new run are told apart. When the machine does not send enough to tell,
+  the receipt is kept with its identity marked unresolved and shown to an
+  operator; Analyte never invents a result key from sample, test, value or
+  time. Different content under the same trusted identity is an error, never
+  a silent replacement.
 - **Sample identity:** ID as a string with its source, plus position (rack or
   disk, slot) when the machine reports one.
 - **Values:** original text, parsed number with comparator and precision when
   it parses, original unit, mapped UCUM unit when mapped, dilution and whether
   it was applied.
-- **Flags, ranges, comments, QC class (patient, control, calibration),
-  machine times and receive time.**
+- **Flags, ranges, comments, QC class (patient, control, calibration or
+  unknown), machine times and receive time.** Times keep their original text,
+  precision and offset; protocol deadlines use a monotonic clock.
 - **Order lifecycle:** requested → sent → accepted by machine → done, or
-  cancelled / rejected, each with its time and source.
+  cancelled / rejected, each with its time and source. "Cancel requested"
+  and "cancel confirmed" are separate states. A timeout after sending an
+  order is an uncertain outcome to reconcile, never a reason to resend.
 
 ## 7. Contract with lab apps
 
-- **Results:** Analyte sends JSON over HTTPS, signed, with a delivery ID. The
-  app stores before answering 2xx and treats a repeated delivery ID as already
-  done. Retries back off; parked deliveries stay visible.
-- **Orders:** Analyte polls the app for "changes since" every few seconds and
-  keeps a local order cache, so machine queries are answered within their
-  deadline (cobas e 411: about 15 seconds). If the cache cannot be trusted, it
-  never answers "no orders".
+- **Results:** before sending, Analyte stores the exact payload bytes, their
+  digest, the contract version, the destination and the delivery ID. Retries
+  and resends reuse the same bytes and ID. The app stores the ID together
+  with its effects before answering; a repeated identical request gets the
+  original answer, and the same ID with different content is a conflict.
+  Each answer is classed as done, retry later (backoff, honouring
+  Retry-After), fix the setup (for example a rejected credential) or parked
+  with the app's reason. A correction is never delivered before the result it
+  corrects.
+- **Authentication:** an existing, documented signing scheme (no home-made
+  cryptography), with key IDs and rotation. The exact scheme is the phase 1
+  contract ADR.
+- **Orders:** the app gives a full initial snapshot, then a versioned feed of
+  changes since an opaque cursor, including deletions, expiry and a reset.
+  Analyte polls it every few seconds and commits each cache update together
+  with its cursor, so machine queries are answered within their deadline
+  (cobas e 411: about 15 seconds). A query is answered only when the cache is
+  complete and fresh for that sample under the deployment's offline policy;
+  otherwise Analyte never answers "no orders". Before sending an order to a
+  machine, it rechecks the order's current version and cancellation.
 - **Versioned and documented** so any app can implement it.
 - **Reference receiver:** a small server in this repository implements the
   whole contract. Tests run against it, and it is the worked example for app
-  developers. Packages for other languages come later.
+  developers. Because it is ours, it cannot prove interoperability on its
+  own: the contract also publishes test vectors, including invalid cases,
+  that any app can run. Packages for other languages come later.
 - FHIR output is an option for later, not the base format.
 
 ## 8. Protocol support
@@ -136,11 +174,16 @@ are built.
 | ----------------- | ------------------------------------------------------- | ------------------------------------- |
 | ASTM              | CLSI LIS01-A2 + LIS02-A2, vendor manuals                | Examples in the standards, then vendor traces |
 | HL7 v2 + MLLP     | HL7 v2.5.1 and v2.3.1, MLLP Release 1                    | Examples in the standard, HL7 tools, then vendor traces |
-| IHE LAW           | IHE PaLM Technical Framework Vol. 1 and 2b, Rev 11.0     | IHE Gazelle simulator                 |
-| POCT1-A           | CLSI POCT1-A2                                           | Documents only at first               |
+| IHE LAW           | IHE PaLM Technical Framework Vol. 1, 2b and 2x (§2.2.4), Rev 11.0; IHE General Introduction Appendix E; HL7 v2.5.1 | IHE Gazelle simulator |
+| POCT1-A           | CLSI POCT01-A2 (Device Messaging Layer)                  | Documents only at first               |
 | Vendor formats    | Each vendor's interface manual                          | Vendor examples, recordings           |
 
 Reference terminologies: LOINC (test codes) and UCUM (units).
+
+The scope Analyte supports in each standard, and its conformance checklist,
+are in [protocols/](protocols/README.md). Analyte's role: in IHE LAW it is the
+Analyzer Manager; in POCT01-A2 it is the DML Observation Reviewer. The other
+side of each standard exists only in the test peer.
 
 Machine documents used for the first machines:
 
@@ -157,7 +200,8 @@ Machine documents used for the first machines:
 
 These six machines from one lab are the hardware test bed: the first real
 machines to reach the proven level. They are added as configs (or vendor
-format pieces) after the standards they use are complete.
+format pieces) after the standards they use are complete. Recordings from
+them can be collected at any time and kept as test data.
 
 | Machine                | Protocol                          | Direction                         | Evidence today | Missing                                          |
 | ---------------------- | --------------------------------- | --------------------------------- | -------------- | ------------------------------------------------ |
@@ -175,7 +219,11 @@ format pieces) after the standards they use are complete.
   machine's own trace log, a sniffer on the lab PC or a hardware tap.
 - **Failure paths:** broken checksums, lost acknowledgments, split and merged
   reads, timeouts, disconnects, restart between storing and acknowledging,
-  disk full, corrected and repeated results, late query replies.
+  disk full, corrected and repeated results, late query replies; a crash
+  just before and just after every positive acknowledgment; the app's answer
+  lost after it stored a delivery; same-ID conflicts; an incomplete order
+  feed; cancellation races; restore from backup; clock jumps; character sets
+  and escape rules; file handoff.
 - **Property tests** for framers and parsers; **fuzzing** on Linux CI.
 - **Validation pack for labs:** the cases a lab must check before go-live and
   after changes, all the way to the screen the doctor sees (CAP and ISO 15189
@@ -190,14 +238,28 @@ format pieces) after the standards they use are complete.
 - Alerts on oldest undelivered item, stalled machines and disk space.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM
   port changes are handled.
-- Backups of the store; a tested restore.
+- Backups of the store; a tested restore. Restoring an older store
+  reconciles deliveries and orders before any machine gets a command.
+- **Machine configs:** the shipped definition, the site settings and local
+  overrides are kept apart. Every interpretation stores the exact effective
+  config and its digest. A config goes draft → validated → active and
+  switches only between conversations; activation never changes queued
+  deliveries or resends an order. Store and config formats are versioned,
+  with rehearsed migrations.
+- **Monitoring:** pending bytes and oldest item age, storage commit time,
+  order cache freshness and uncertain orders, each alert with a named
+  responder.
+- **Before a pilot:** the supported outage length, disk capacity and reserve,
+  retention, and backup and restore targets are written down.
 
 ## 12. Security, privacy and regulation
 
 - Analyzer ports listen only on the lab network; outbound HTTPS with verified
   certificates and rotated credentials.
 - Health data stays in the protected store; logs carry IDs, not payloads.
-- GDPR roles and retention are decided per deployment.
+- GDPR roles and retention are decided per deployment. Nothing is deleted
+  silently; if a deployment needs data to expire, that is a separate audited
+  policy.
 - EU: software that only moves data is often not a medical device, but sending
   work lists to analyzers needs an intended-purpose statement and an
   assessment under MDCG 2019-11 before any claim is made.
@@ -207,26 +269,27 @@ format pieces) after the standards they use are complete.
 | #   | Work                                                                                | Done when                                  |
 | --- | ----------------------------------------------------------------------------------- | ------------------------------------------ |
 | 0   | Name, license, repo, this plan, first ADRs                                          | Plan approved                              |
-| 1   | Core: workspace, common model, store, outbox, delivery, fake machine, first reference receiver, CI | A fake result reaches the reference receiver, failure paths included |
-| 2   | ASTM complete: serial and TCP transport, LIS01 framing, LIS02 records, all dialogs (machine pushes, machine asks, host sends ahead) | Conforms to LIS01-A2 and LIS02-A2, tested with their examples (documented) |
-| 3   | HL7 v2 complete: 2.3.1 and 2.5.1 syntax, acknowledgments, MLLP              | Conforms to HL7 v2 and MLLP Release 1, tested with official examples and HL7 tools (documented) |
-| 4   | IHE LAW: LAB-27 query, LAB-28 work order, LAB-29 results                     | Passes the IHE Gazelle simulator (simulated) |
-| 5   | POCT1-A                                                                      | Conforms to POCT1-A2, tested with its examples (documented) |
-| 6   | Orders and query answers, generic: order cache, "changes since" polling, deadlines; full reference receiver and published contract with conformance tests | Contract conformance tests pass end to end; query answers meet configured deadlines |
+| 1   | Core: workspace, common model, store, outbox, delivery, order contract and order cache ("changes since" polling, freshness, deadlines), fake machine, first reference receiver, protected command-line view of parked items, CI | A fake result reaches the reference receiver and a fake query is answered from the cache, failure paths included |
+| 2   | ASTM complete within [its scope](protocols/astm.md): serial and TCP transport, LIS01 framing, LIS02 records, all dialogs (machine pushes, machine asks, host sends ahead) | Every checklist row has passing tests (documented) |
+| 3   | HL7 v2 complete within [its scope](protocols/hl7.md): 2.3.1 and 2.5.1 syntax, acknowledgments, MLLP | Every checklist row has passing tests, plus official examples and HL7 tools (documented) |
+| 4   | IHE LAW as Analyzer Manager within [its scope](protocols/ihe-law.md): LAB-27 query, LAB-28 work order, LAB-29 results, selected options | Every checklist row has passing tests and a recorded Gazelle run (simulated) |
+| 5   | POCT01-A2 as DML Observation Reviewer within [its scope](protocols/poct1-a.md) | Every checklist row has passing tests (documented) |
+| 6   | Published contract: full reference receiver, contract docs and test vectors any app can run | The test vectors pass against the reference receiver end to end |
 | 7   | Machine configs: cobas e 411, Biolyte 2000, iFlash 1200, Swelab Lumi        | Each config passes its vendor traces (simulated) |
 | 8   | Vendor formats: VIDAS Literal, Autolyser (start/end framing, tags, fixed width, polling dialog) | Each piece passes its vendor examples (documented or simulated) |
-| 9   | Real-lab pilot with the six machines, admin page, installers, release process, docs for adding a machine | The six machines reach proven at the lab; another lab can install it |
-| 10  | Plugin interface once three formats prove it                                 | Contributors add machines                  |
+| 9   | Real-lab pilot with the six machines, admin page, installers, restore rehearsal, alerts with named responders, release process, docs for adding a machine | The six machines reach proven at the lab; another lab can install it |
+| 10  | Plugin interface, only if a real outside driver needs one                    | Contributors add machines                  |
 
-A standard is done when it conforms to its official documents, at the
-documented or simulated level, never when one machine happens to pass. The
-proven level comes only from real machines in phase 9.
+Each standard's phase starts by writing its scope (see principle 7). A
+standard is done when it conforms to its official documents within that
+scope, at the documented or simulated level, never when one machine happens
+to pass. The proven level comes only from real machines in phase 9.
 
 ## 14. Open decisions
 
 1. Exact JSON contract and signing scheme for any lab app (phase 1 ADR).
-2. Plugin mechanism (WASM components or out-of-process), decided only after
-   the vendor formats (phase 8).
+2. Plugin mechanism (WASM components or out-of-process), decided only when a
+   real outside driver needs one.
 
 ## 15. Research behind this plan
 

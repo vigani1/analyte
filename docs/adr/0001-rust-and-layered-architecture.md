@@ -20,7 +20,11 @@ changes across the code.
   transport → framing → dialog → syntax → mapping → one common model.
 - A dialog is a state machine owned by one connection, with its own
   deadlines. It is not a step in a message pipeline.
-- Crates follow the layers and depend only on layers below them.
+- Crate dependencies form an acyclic graph of ownership, not the runtime data
+  flow: shared model types can be used by protocol and storage crates, and the
+  program wires dialogs to host services. A dialog may acknowledge data only
+  after the host reports that it is durably stored. A separate crate or public
+  API is split out only when the boundary has proven real.
 
 ## Consequences
 

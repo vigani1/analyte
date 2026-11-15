@@ -17,7 +17,12 @@ express everything, it turns into a hidden programming language.
 - When config cannot express a behavior (a vendor framing, a polling dialog,
   an irregular record layout), it becomes a small code piece in the right
   layer, never a special case inside a shared one.
-- Each receipt stores the exact config and driver version that read it.
+- Each receipt stores the exact effective config (shipped definition plus
+  site settings and overrides, without secrets) and its digest, together with
+  the driver version that read it.
+- A config goes draft → validated → active and switches only between
+  conversations. Activation never changes queued deliveries or resends an
+  order.
 
 ## Consequences
 
