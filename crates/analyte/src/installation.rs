@@ -1,3 +1,3 @@
-//! Installation ownership groups the program operations that share this role.
+//! Validated installation settings and host credentials configure program admission.
 pub mod config;
 pub mod secrets;

@@ -477,7 +477,7 @@ mod admin_tests {
     // Plan section 11: existing installations have no admin listener by default.
     #[test]
     fn plan11_admin_is_absent_by_default() -> Result<(), Error> {
-        let file: File = toml::from_str(include_str!("../examples/analyte.toml"))?;
+        let file: File = toml::from_str(include_str!("../../examples/analyte.toml"))?;
         assert!(file.admin.is_none());
         assert!(file.alerts.is_empty());
         assert_eq!(file.alert_interval_seconds, 30);
@@ -495,7 +495,7 @@ mod alert_program_tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let definition = root.join("../config/examples/hl7.toml").canonicalize()?;
         let site = root.join("../config/examples/site.toml").canonicalize()?;
-        let original = include_str!("../examples/analyte.toml")
+        let original = include_str!("../../examples/analyte.toml")
             .replace(
                 "../../config/examples/hl7.toml",
                 &definition.to_string_lossy().replace('\\', "/"),

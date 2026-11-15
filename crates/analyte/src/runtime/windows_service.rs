@@ -70,7 +70,7 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
                         .with_writer(log)
                         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
                         .try_init()?;
-                    let secrets = crate::installation::secrets::EnvironmentSecrets::load(&program)?;
+                    let secrets = crate::installation::secrets::Environment::load(&program)?;
                     drop(startup);
                     service::serve_bounded(
                         program,

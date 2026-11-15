@@ -376,6 +376,7 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     Ok(())
 }
 
+#[cfg(feature = "test-hooks")]
 async fn read_reply(peer: &mut tokio::net::TcpStream) -> Result<String, Error> {
     tokio::time::timeout(HANG_GUARD, async {
         let mut bytes = Vec::new();

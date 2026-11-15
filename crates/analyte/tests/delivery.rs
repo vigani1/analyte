@@ -599,7 +599,7 @@ fn adr0008_host_rotation_loads_each_named_key_and_missing_rotation_key_is_specif
             .len(),
         2
     );
-    let error = analyte::installation::secrets::EnvironmentSecrets::load_with(&program, |name| {
+    let error = analyte::installation::secrets::Environment::load_with(&program, |name| {
         if name == "ANALYTE_SECRET_NEXT_SIGNING" {
             None
         } else {

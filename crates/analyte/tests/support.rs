@@ -91,12 +91,11 @@ pub(super) fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
 pub(super) fn secrets(
     program: &Program,
     api: &str,
-) -> Result<analyte::installation::secrets::EnvironmentSecrets, Error> {
-    Ok(
-        analyte::installation::secrets::EnvironmentSecrets::load_with(program, |name| {
-            Some(if name.ends_with("API") { api } else { SECRET }.into())
-        })?,
-    )
+) -> Result<analyte::installation::secrets::Environment, Error> {
+    Ok(analyte::installation::secrets::Environment::load_with(
+        program,
+        |name| Some(if name.ends_with("API") { api } else { SECRET }.into()),
+    )?)
 }
 
 pub(super) struct Running {

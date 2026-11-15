@@ -16,7 +16,7 @@ pub enum SecretError {
 }
 
 /// Preloaded host credentials. Deliberately has no Debug implementation.
-pub struct EnvironmentSecrets(BTreeMap<String, Credentials>);
+pub struct Environment(BTreeMap<String, Credentials>);
 
 /// Returns the environment variable for a configured credential name.
 #[must_use]
@@ -34,7 +34,7 @@ pub fn variable(name: &str) -> String {
     format!("ANALYTE_SECRET_{suffix}")
 }
 
-impl EnvironmentSecrets {
+impl Environment {
     /// Loads every destination before admission, retaining no values in errors.
     /// # Errors
     /// Names a missing, empty or malformed credential.
@@ -86,7 +86,7 @@ impl EnvironmentSecrets {
     }
 }
 
-impl SecretsSource for EnvironmentSecrets {
+impl SecretsSource for Environment {
     fn credentials(&self, name: &Identifier) -> Result<Credentials, analyte_sink::Error> {
         let stored = self
             .0
@@ -106,12 +106,12 @@ mod tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml");
         let program = crate::installation::config::Program::load(&path)?;
         for value in [None, Some(String::new())] {
-            let error = super::EnvironmentSecrets::load_with(&program, |_| value.clone())
+            let error = super::Environment::load_with(&program, |_| value.clone())
                 .err()
                 .ok_or("missing error")?;
             assert_eq!(error.to_string(), "credential demo-api is missing or empty");
         }
-        let error = super::EnvironmentSecrets::load_with(&program, |name| {
+        let error = super::Environment::load_with(&program, |name| {
             Some(
                 if name.ends_with("API") {
                     "synthetic-api"
@@ -124,7 +124,7 @@ mod tests {
         .err()
         .ok_or("missing error")?;
         assert_eq!(error.to_string(), "credential demo-signing is invalid");
-        let source = super::EnvironmentSecrets::load_with(&program, |name| {
+        let source = super::Environment::load_with(&program, |name| {
             Some(
                 if name.ends_with("API") {
                     "synthetic-api"

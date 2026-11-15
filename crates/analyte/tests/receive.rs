@@ -637,17 +637,16 @@ async fn serve(
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
 ) -> Result<(), Error> {
-    let secrets =
-        analyte::installation::secrets::EnvironmentSecrets::load_with(&program, |name| {
-            Some(
-                if name.ends_with("API") {
-                    "synthetic-api"
-                } else {
-                    "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
-                }
-                .into(),
-            )
-        })?;
+    let secrets = analyte::installation::secrets::Environment::load_with(&program, |name| {
+        Some(
+            if name.ends_with("API") {
+                "synthetic-api"
+            } else {
+                "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+            }
+            .into(),
+        )
+    })?;
     service::serve_loopback_test(program, space, stop, secrets, None).await
 }
 

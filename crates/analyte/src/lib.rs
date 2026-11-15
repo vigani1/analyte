@@ -25,6 +25,8 @@ pub(crate) fn deadline() -> std::time::Instant {
 /// Opens the store using the operating system volume probe.
 /// # Errors
 /// Reports directory, migration, integrity or worker errors.
-pub async fn open_system_store(program: &installation::config::Program) -> Result<analyte_store::Handle, Error> {
+pub async fn open_system_store(
+    program: &installation::config::Program,
+) -> Result<analyte_store::Handle, Error> {
     runtime::service::open_store(program, Box::new(runtime::space::Volume)).await
 }

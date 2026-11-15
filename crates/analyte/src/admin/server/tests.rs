@@ -1,3 +1,4 @@
+//! Admin HTTP tests exercise authentication and audited operator actions.
 use super::*;
 use analyte_model::{OrderState, Reason};
 use std::{io::Write, sync::Mutex};
@@ -68,7 +69,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
         Ok(program)
     };
     let secrets = |program: &Program| {
-        crate::installation::secrets::EnvironmentSecrets::load_with(program, |name| {
+        crate::installation::secrets::Environment::load_with(program, |name| {
             Some(if name.ends_with("SIGNING") {
                 "whsec_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into()
             } else {

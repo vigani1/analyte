@@ -1,4 +1,4 @@
-//! Runtime ownership groups the program operations that share this role.
+//! Service startup, delivery workers and shutdown own the running host lifecycle.
 pub(crate) mod delivery;
 pub mod service;
 pub(crate) mod shutdown;

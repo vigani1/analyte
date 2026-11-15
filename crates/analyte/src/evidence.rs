@@ -3,6 +3,7 @@ pub(crate) mod capture;
 use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
+use std::fmt::Write;
 
 /// Binds all evidence from one host connection to its immutable configuration.
 pub(crate) struct Connection<'a> {
@@ -29,7 +30,6 @@ impl std::ops::Deref for Connection<'_> {
 fn config_version(machine: &Machine) -> Result<Identifier, Error> {
     let digest = machine.snapshot.digest();
     let mut version = String::with_capacity(64);
-    use std::fmt::Write;
     for byte in digest {
         write!(&mut version, "{byte:02x}")?;
     }
