@@ -1,0 +1,16 @@
+[package]
+name = "analyte-config"
+description = "Machine config files (TOML): loading, validation, effective config and versions."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true

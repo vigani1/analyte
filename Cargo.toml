@@ -1,0 +1,99 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+repository = "https://github.com/vigani1/analyte"
+publish = false
+
+# One place for every shared version. Crates opt in with `name = { workspace = true }`
+# and add only the features they need. Adding an entry here is a reviewed change.
+[workspace.dependencies]
+# Analyte crates
+analyte-model = { path = "crates/model", version = "0.1.0" }
+analyte-store = { path = "crates/store", version = "0.1.0" }
+analyte-transport = { path = "crates/transport", version = "0.1.0" }
+analyte-framing = { path = "crates/framing", version = "0.1.0" }
+analyte-dialog = { path = "crates/dialog", version = "0.1.0" }
+analyte-astm = { path = "crates/astm", version = "0.1.0" }
+analyte-hl7 = { path = "crates/hl7", version = "0.1.0" }
+analyte-config = { path = "crates/config", version = "0.1.0" }
+analyte-contract = { path = "crates/contract", version = "0.1.0" }
+analyte-sink = { path = "crates/sink", version = "0.1.0" }
+analyte-sim = { path = "crates/sim", version = "0.1.0" }
+analyte-receiver = { path = "crates/receiver", version = "0.1.0" }
+
+# Runtime, errors, logging
+tokio = { version = "1.54", default-features = false }
+thiserror = "2.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "env-filter", "std"] }
+
+# Data formats
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = "1.2"
+uuid = { version = "1.29", features = ["v7"] }
+jiff = "0.2.45"
+
+# Storage and I/O
+rusqlite = { version = "0.42", features = ["bundled"] }
+serialport = { version = "4.10", default-features = false }
+
+# HTTP and signing (ADR 0008)
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "query"] }
+hmac = "0.13"
+sha2 = "0.11"
+base64 = "0.23"
+subtle = "2.6"
+
+# Command line
+clap = { version = "4.6", features = ["derive"] }
+
+# Tests only
+proptest = "1.12"
+tempfile = "3.27"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+unused_must_use = "deny"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+# Selected pedantic lints (AGENTS.md: no blanket groups).
+cast_lossless = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+cast_sign_loss = "warn"
+checked_conversions = "warn"
+doc_markdown = "warn"
+explicit_iter_loop = "warn"
+manual_let_else = "warn"
+match_same_arms = "warn"
+match_wildcard_for_single_variants = "warn"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+must_use_candidate = "warn"
+needless_pass_by_value = "warn"
+redundant_closure_for_method_calls = "warn"
+semicolon_if_nothing_returned = "warn"
+wildcard_enum_match_arm = "warn"
+# Untrusted bytes: no unchecked arithmetic or indexing, no panics.
+arithmetic_side_effects = "warn"
+indexing_slicing = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+allow_attributes_without_reason = "warn"

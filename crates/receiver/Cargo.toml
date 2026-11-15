@@ -1,0 +1,16 @@
+[package]
+name = "analyte-receiver"
+description = "Reference receiver: a small app that implements the whole app contract and is used by the tests."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true

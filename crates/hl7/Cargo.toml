@@ -1,0 +1,16 @@
+[package]
+name = "analyte-hl7"
+description = "HL7 v2 syntax (2.3.1 and 2.5.1), acknowledgments and IHE LAW transactions."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true
