@@ -13,6 +13,8 @@ mod hl7_send_cases;
 mod law_queries;
 #[path = "law/results.rs"]
 mod law_results;
+#[path = "service/machines.rs"]
+mod machine_definitions;
 #[path = "orders/cases.rs"]
 mod order_cases;
 #[cfg(feature = "test-hooks")]
