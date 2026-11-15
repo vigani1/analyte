@@ -133,7 +133,8 @@ pub(super) async fn session(
                             if raw.len().checked_add(bytes.len()).is_none_or(|n| n > settings.syntax.limits.bytes) { return Err(invalid("ASTM transfer wire-byte bound exceeded")); }
                             raw.extend_from_slice(&bytes);
                             let provenance = analyte_store::FrameProvenance { machine: machine.id.clone(), driver: evidence::driver(machine)?, config: machine.snapshot.canonical().as_bytes().to_vec() };
-                            let committed = store.request(deadline(), move |s| s.journal_frame(&transfer_id, number, &bytes, &provenance)).await;
+                            let sequence = analyte_store::FrameSequence::new(number, analyte_framing::astm::FrameNumber::MAX.value())?;
+                            let committed = store.request(deadline(), move |s| s.journal_frame(&transfer_id, sequence, &bytes, &provenance)).await;
                             if let Err(error) = &committed { tracing::error!(machine = machine.id.as_str(), error_kind = %error, "ASTM frame commit refused"); }
                             #[cfg(feature = "test-hooks")]
                             if committed.is_ok() && let Some(hook) = &machine.astm_committed {
@@ -163,9 +164,9 @@ pub(super) async fn session(
                                             }
                                         },
                                     }
-                                    store.request(deadline(), move |s| s.finish_transfer(&transfer_id, Some(id))).await?;
+                                    store.request(deadline(), move |s| s.finish_transfer(&transfer_id, analyte_store::TransferOutcome::Complete(id))).await?;
                                 } else {
-                                    store.request(deadline(), move |s| s.finish_transfer(&transfer_id, None)).await?;
+                                    finish_incomplete(store, transfer_id).await?;
                                 }
                             }
                             raw.clear(); payload.clear(); query_started = None;
@@ -199,9 +200,7 @@ pub(super) async fn session(
         .await?;
     }
     if let Some(transfer) = transfer {
-        store
-            .request(deadline(), move |s| s.finish_transfer(&transfer, None))
-            .await?;
+        finish_incomplete(store, transfer).await?;
     }
     if !partial.is_empty() {
         evidence::park_bytes(
@@ -213,4 +212,18 @@ pub(super) async fn session(
         .await?;
     }
     result
+}
+
+async fn finish_incomplete(store: &Handle, transfer: Identifier) -> Result<(), Error> {
+    let reason =
+        analyte_model::Reason::new("ASTM transfer ended before a complete receipt was retained")?;
+    store
+        .request(deadline(), move |store| {
+            store.finish_transfer(
+                &transfer,
+                analyte_store::TransferOutcome::Incomplete(reason),
+            )
+        })
+        .await?;
+    Ok(())
 }

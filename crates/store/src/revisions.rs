@@ -141,7 +141,12 @@ impl Store {
         }
         let findings = findings
             .iter()
-            .map(|finding| self.encode(finding))
+            .map(|finding| {
+                self.encode(&crate::parked::ParkingEvidence {
+                    details: finding.clone(),
+                    context: None,
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let limit = self.limits.record_bytes;
         let receipt_key = key(&receipt)?;
@@ -334,30 +339,30 @@ impl Store {
             {
                 return Err(Error::InvalidInput);
             }
-            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'pending',0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version])?;
+            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version,crate::DeliveryState::Pending])?;
         }
         match &evidence.outcome {
             Reading::Failed(reason) => {
                 tx.execute(
                     "INSERT INTO parked(evidence) VALUES (?1)",
-                    [key(&(
+                    [crate::parked::evidence(
                         "interpretation_failure",
-                        &receipt_key,
-                        reason,
-                        version,
-                    ))?],
+                        &serde_json::from_str::<String>(&receipt_key)?,
+                        reason.as_str(),
+                        Some(crate::parked::ParkingContext::Interpretation { version }),
+                    )?],
                 )?;
             }
             Reading::Results(results) => {
                 if action.is_some() && results.is_empty() && findings_empty {
                     tx.execute(
                         "INSERT INTO parked(evidence) VALUES (?1)",
-                        [key(&(
+                        [crate::parked::evidence(
                             "interpretation_failure",
-                            &receipt_key,
+                            &serde_json::from_str::<String>(&receipt_key)?,
                             "reprocessing produced no results",
-                            version,
-                        ))?],
+                            Some(crate::parked::ParkingContext::Interpretation { version }),
+                        )?],
                     )?;
                 }
                 for (index, (result, outcome)) in results.iter().zip(&outcomes).enumerate() {
@@ -369,13 +374,15 @@ impl Store {
                     {
                         tx.execute(
                             "INSERT INTO parked(evidence) VALUES (?1)",
-                            [key(&(
+                            [crate::parked::evidence(
                                 "result_reconciliation",
-                                &receipt_key,
-                                index,
-                                format!("{outcome:?}"),
-                                version,
-                            ))?],
+                                &serde_json::from_str::<String>(&receipt_key)?,
+                                &format!("result reconciliation: {outcome:?}"),
+                                Some(crate::parked::ParkingContext::Result {
+                                    version: Some(version),
+                                    index,
+                                }),
+                            )?],
                         )?;
                     }
                 }
