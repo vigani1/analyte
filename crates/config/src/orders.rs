@@ -34,6 +34,16 @@ pub struct OutboundTest {
     pub machine_components: Vec<String>,
 }
 
+/// Explicit app specimen type to protocol sample-medium code.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutboundSpecimen {
+    /// Exact app code system and value.
+    pub app: NamespacedId,
+    /// Exact protocol code; ASTM uses explicit text, Autolyser supports S and U.
+    pub machine: Identifier,
+}
+
 /// Priority translations are independent of inbound tables.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -52,6 +62,8 @@ pub struct AstmOrderFields {
     pub specimen: Field,
     /// Instrument specimen ID or position; presence requires supplied app data.
     pub position: Option<Field>,
+    /// LIS02 section 8.4.16.1 specimen type: O field 16, component 1.
+    pub specimen_type: Option<Field>,
     /// First component of each repeated universal test ID.
     pub test: Field,
     /// Priority destination.
@@ -72,13 +84,96 @@ pub struct Orders {
     pub send_ahead: bool,
     /// Outbound app-to-machine translations.
     pub tests: Vec<OutboundTest>,
+    /// Optional explicit specimen-type translations; absence maps no values.
+    pub specimen_types: Option<Vec<OutboundSpecimen>>,
     /// Explicit priority translations.
     pub priorities: Vec<OrderPriority>,
-    /// ASTM record layout.
-    pub astm: AstmOrderFields,
+    /// Accepted assigning system for the unqualified vendor patient field.
+    /// Required for VIDAS and Autolyser outbound orders; never inferred.
+    pub patient_namespace: Option<Identifier>,
+    /// Explicit Autolyser clone behavior, including an explicit false.
+    pub clone: Option<bool>,
+    /// ASTM record layout, required only by the ASTM stack.
+    pub astm: Option<AstmOrderFields>,
 }
 
 impl Orders {
+    fn validate_stack(&self, machine: &Machine, path: &str) -> Result<(), Error> {
+        let vendor_download = match machine.syntax.kind {
+            SyntaxKind::AstmLis02 => {
+                if self.astm.is_none() {
+                    return Err(invalid(
+                        path,
+                        "orders.astm",
+                        "ASTM orders require explicit O-record destinations",
+                    ));
+                }
+                None
+            }
+            SyntaxKind::VidasLiteral => Some(machine.vidas.as_ref().is_some_and(|v| v.download)),
+            SyntaxKind::Autolyser => Some(machine.autolyser.as_ref().is_some_and(|a| a.download)),
+            SyntaxKind::Hl7V2 | SyntaxKind::Poct => {
+                return Err(invalid(
+                    path,
+                    "orders",
+                    "outbound orders are unsupported for this stack",
+                ));
+            }
+        };
+        if let Some(download) = vendor_download {
+            if self.patient_namespace.is_none() {
+                return Err(invalid(
+                    path,
+                    "orders.patient_namespace",
+                    "supply the explicit assigning system for the vendor patient field",
+                ));
+            }
+            if self.astm.is_some() {
+                return Err(invalid(
+                    path,
+                    "orders.astm",
+                    "ASTM destinations do not apply to vendor orders",
+                ));
+            }
+            if self.query.is_some() {
+                return Err(invalid(
+                    path,
+                    "orders.query",
+                    "vendor work lists do not support ASTM queries",
+                ));
+            }
+            if self.send_ahead && !download {
+                return Err(invalid(
+                    path,
+                    "orders.send_ahead",
+                    "vendor send-ahead also requires explicit download permission",
+                ));
+            }
+        } else if self.patient_namespace.is_some() {
+            return Err(invalid(
+                path,
+                "orders.patient_namespace",
+                "this outbound layout has no patient field",
+            ));
+        }
+        if machine.syntax.kind == SyntaxKind::Autolyser {
+            if self.clone.is_none() {
+                return Err(invalid(
+                    path,
+                    "orders.clone",
+                    "supply explicit Autolyser clone behavior (true or false)",
+                ));
+            }
+        } else if self.clone.is_some() {
+            return Err(invalid(
+                path,
+                "orders.clone",
+                "clone behavior applies only to Autolyser orders",
+            ));
+        }
+        Ok(())
+    }
+
     /// Refuses ambiguous tables, unbounded queries and invalid field ownership.
     pub(crate) fn validate(&self, machine: &Machine, path: &str) -> Result<(), Error> {
         let fail = || {
@@ -88,8 +183,8 @@ impl Orders {
                 "use bounded, unique outbound mappings and standard O-record destinations",
             )
         };
-        if machine.syntax.kind != SyntaxKind::AstmLis02
-            || self.tests.is_empty()
+        self.validate_stack(machine, path)?;
+        if self.tests.is_empty()
             || self.tests.len() > 4096
             || self.priorities.is_empty()
             || self.priorities.len() > 3
@@ -113,6 +208,72 @@ impl Orders {
                 return Err(fail());
             }
         }
+        if machine.syntax.kind == SyntaxKind::VidasLiteral
+            && self.tests.iter().any(|test| {
+                let [code] = test.machine_components.as_slice() else {
+                    return true;
+                };
+                code.is_empty()
+                    || code.len() > 4
+                    || code.bytes().any(|b| !(32..=126).contains(&b) || b == b'|')
+            })
+        {
+            return Err(invalid(
+                path,
+                "orders.tests",
+                "VIDAS requires one printable assay code of 1 to 4 bytes without a pipe",
+            ));
+        }
+        if let Some(types) = &self.specimen_types {
+            let mut seen = HashSet::new();
+            if types.is_empty()
+                || types.len() > 4096
+                || types.iter().any(|t| {
+                    !seen.insert((&t.app.namespace, &t.app.value))
+                        || match machine.syntax.kind {
+                            SyntaxKind::Autolyser => !matches!(t.machine.as_str(), "S" | "U"),
+                            SyntaxKind::AstmLis02 => t
+                                .machine
+                                .as_str()
+                                .bytes()
+                                .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b)),
+                            SyntaxKind::VidasLiteral | SyntaxKind::Hl7V2 | SyntaxKind::Poct => true,
+                        }
+                })
+            {
+                return Err(invalid(
+                    path,
+                    "orders.specimen_types",
+                    "use unique explicit specimen mappings valid for the selected protocol",
+                ));
+            }
+        }
+        if machine.syntax.kind == SyntaxKind::Autolyser
+            && self.tests.iter().any(|test| {
+                let [code] = test.machine_components.as_slice() else {
+                    return true;
+                };
+                code.len() != 4 || !code.bytes().all(|b| (32..=126).contains(&b))
+            })
+        {
+            return Err(invalid(
+                path,
+                "orders.tests",
+                "Autolyser requires one exact four-byte printable analysis code",
+            ));
+        }
+        if machine.syntax.kind == SyntaxKind::Autolyser
+            && self
+                .priorities
+                .iter()
+                .any(|p| !matches!(p.machine.as_str(), "T" | "R"))
+        {
+            return Err(invalid(
+                path,
+                "orders.priorities",
+                "Autolyser list codes are T (routine) and R (STAT)",
+            ));
+        }
         let mut priorities = HashSet::new();
         for priority in &self.priorities {
             if !matches!(priority.app.as_str(), "routine" | "urgent" | "stat")
@@ -121,23 +282,36 @@ impl Orders {
                 return Err(fail());
             }
         }
+        let Some(astm) = &self.astm else {
+            return Ok(());
+        };
         for (field, number) in [
-            (&self.astm.specimen, 3),
-            (&self.astm.test, 5),
-            (&self.astm.priority, 6),
-            (&self.astm.action, 12),
+            (&astm.specimen, 3),
+            (&astm.test, 5),
+            (&astm.priority, 6),
+            (&astm.action, 12),
         ] {
             if !order_field(field, number, machine) {
                 return Err(fail());
             }
         }
-        if self
-            .astm
+        if astm
             .position
             .as_ref()
             .is_some_and(|f| !order_field(f, 4, machine))
         {
             return Err(fail());
+        }
+        if astm
+            .specimen_type
+            .as_ref()
+            .is_some_and(|f| !order_field(f, 16, machine) || f.component != 1)
+        {
+            return Err(invalid(
+                path,
+                "orders.astm.specimen_type",
+                "LIS02 specimen type uses O field 16, component 1 only",
+            ));
         }
         Ok(())
     }
@@ -147,6 +321,7 @@ fn order_field(field: &Field, number: u16, machine: &Machine) -> bool {
     matches!(field.group, Group::Order)
         && field.record.as_str() == "O"
         && field.field == number
+        && usize::from(field.field) <= machine.syntax.fields
         && field.component > 0
         && usize::from(field.component) <= machine.syntax.components
         && field.repetition == 1

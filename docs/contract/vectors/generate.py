@@ -38,3 +38,8 @@ write('invalid-version.json',bad)
 write('invalid-signature.json',dict(id=delivery['delivery_id'],timestamp=timestamp,body=body,signature='v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',expected='reject'))
 write('accepted.json',dict(contract_version=1,status='accepted'))
 write('duplicate.json',dict(contract_version=1,status='duplicate'))
+
+# Optional general app-order context; keep the minimal order vector unchanged.
+context_order=json.loads((root/'order.json').read_text())
+context_order.update(position=dict(kind='tray',carrier='A',slot='03'),specimen_type=code('SERUM'),patient=dict(id=code('000PatA')))
+write('order-context.json',context_order)

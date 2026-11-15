@@ -1,7 +1,13 @@
 //! Phase 1 synthetic program-to-reference-receiver tests (ADR 0008, plan 13).
+#[path = "orders/autolyser.rs"]
+mod autolyser_cases;
 #[path = "orders/cases.rs"]
 mod order_cases;
 mod support;
+#[path = "orders/vendor_support.rs"]
+mod vendor_support;
+#[path = "orders/vidas.rs"]
+mod vidas_cases;
 use analyte::{Error, config::Program, service};
 use axum::{
     body::{Body, to_bytes},

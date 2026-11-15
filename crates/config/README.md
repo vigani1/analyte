@@ -56,5 +56,41 @@ Vendor receive examples are `examples/poct.toml`, `examples/vidas_literal.toml`
 and `examples/autolyser.toml`. They require explicit installed policies and use
 `[codes]` for exact test/unit translations instead of field-position `[mappings]`.
 Incompatible stacks and vendor field mappings have distinct typed errors.
-All three examples remain synthetic and documented. Worklist download is not
-wired into the program yet; the download permission does not schedule sends.
+All three examples remain synthetic and documented. VIDAS work-list sending
+requires both download permission and an explicit outbound order table; see
+`../analyte/ORDERS.md`. Autolyser host-initiated insertion follows its existing dialog after a completed
+host poll and idle interval.
+
+
+For outbound VIDAS or Autolyser work lists, `[orders]` requires an explicit
+`patient_namespace = "assigning-system"`. It names the only assigning system
+allowed in the vendor's unqualified patient field. Autolyser also requires
+`clone = true` or `clone = false`; omission never means false. These settings
+are not needed by receive-only machines without `[orders]`. Namespace mismatch
+and missing patient data are rejected by the shared outbound patient boundary;
+configuration alone does not send an order.
+
+Vendor order tables omit `[orders.astm]`, which remains required for ASTM.
+Vendor tables cannot enable ASTM queries or carry ASTM destinations. Send-ahead
+also requires the vendor's explicit `download = true` permission. A clone
+setting on another stack, or a patient namespace on the current ASTM layout
+(which has no patient field), is rejected with the setting's qualified key.
+
+VIDAS outbound test mappings require one printable 1-4 byte assay code, without
+pipes. The stack has no specimen-type tag; supplied specimen types are rejected
+rather than misusing the origin or specimen-start tags. App patient IDs must
+match `patient_namespace` exactly before their values enter the vendor field.
+
+Autolyser `[orders] specimen_types` maps exact app namespace/value pairs to
+`S` (serum) or `U` (urine); absent tables map no values. Duplicate pairs, unknown
+medium codes and empty supplied tables are rejected. Autolyser analysis codes
+must occupy exactly four printable bytes; list mappings use only `T` or `R`.
+Missing patient, specimen medium or cup position in an app order produces a
+specific rejection before reservation or transmission. Cup zero is never inferred.
+
+ASTM can also use `specimen_types` with explicit printable machine codes. Its
+optional `[orders.astm] specimen_type` selector is limited to O field 16,
+component 1 (LIS02 section 8.4.16.1). The optional position selector stays in
+O field 4 and sends the exact slot. No selector means that context stays off the
+wire. A configured selector requires its context; unknown specimen codes cause
+specific order rejection. See `../analyte/ORDERS.md` for selectors and examples.
