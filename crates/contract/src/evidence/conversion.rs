@@ -65,6 +65,7 @@ impl From<&analyte_model::NumericValue> for NumericValue {
 impl From<&analyte_model::ResultValue> for ResultValue {
     fn from(v: &analyte_model::ResultValue) -> Self {
         Self {
+            decoded_text: v.decoded_text.as_ref().map(Into::into),
             original: (&v.original).into(),
             parsed: (&v.parsed).into(),
         }

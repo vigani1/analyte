@@ -54,6 +54,7 @@ pub(crate) fn values(
             finding(output, position, Problem::UnsupportedValue)?;
         }
         values.push(ResultValue {
+            decoded_text: None,
             original: text(&original, position)?,
             parsed,
         });
