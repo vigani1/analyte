@@ -8,6 +8,17 @@ use std::{
 };
 use tokio::{sync::watch, task::JoinSet};
 
+// Dropping the task also marks it stopped on panic or cancellation.
+struct AdminOwner(Option<Arc<std::sync::atomic::AtomicBool>>);
+
+impl Drop for AdminOwner {
+    fn drop(&mut self) {
+        if let Some(state) = &self.0 {
+            state.store(false, std::sync::atomic::Ordering::Release);
+        }
+    }
+}
+
 /// Opens the protected store on its dedicated owner thread.
 /// The installation must restrict access to the data directory and backups.
 /// # Errors
@@ -150,6 +161,20 @@ async fn serve_with(
         "store restore reconciliation status"
     );
     crate::delivery::recover(&store).await?;
+    let admin = crate::admin::prepare(&program, store.clone(), loopback).await?;
+    let admin_states = admin
+        .as_ref()
+        .map(|server| server.owners.clone())
+        .unwrap_or_default();
+    let (admin_stop, admin_stopped) = watch::channel(false);
+    let mut admin_owners = JoinSet::new();
+    if let Some(admin) = admin {
+        let component = watchdog.component("admin-server".into());
+        admin_owners.spawn(async move {
+            let _component = component;
+            admin.run(admin_stopped).await
+        });
+    }
     let (delivery_stop, delivery_stopped) = watch::channel(false);
     let mut delivery_owners = JoinSet::new();
     for destination in &destinations {
@@ -181,6 +206,7 @@ async fn serve_with(
     let mut ready_to_close = Vec::new();
     let (close_transports, transports_closing) = watch::channel(false);
     for machine in program.machines {
+        let admin_state = AdminOwner(admin_states.get(machine.id.as_str()).cloned());
         let store = store.clone();
         let stop = stopping.clone();
         let file_root = program.data_directory.join("files").join(
@@ -197,6 +223,7 @@ async fn serve_with(
         };
         let component = watchdog.component(format!("machine:{}", machine.id.as_str()));
         owners.spawn(async move {
+            let _admin_state = admin_state;
             let _component = component;
             let id = machine.id.clone();
             if let Err(error) = machine::run(machine, store, stop, file_root, closing).await {
@@ -209,6 +236,13 @@ async fn serve_with(
     let result = loop {
         tokio::select! {
             result = &mut stop => break result,
+            owner = admin_owners.join_next(), if !admin_owners.is_empty() => {
+                break match owner {
+                    Some(Ok(Err(error))) => Err(error),
+                    Some(Err(error)) => Err(error.into()),
+                    Some(Ok(Ok(()))) | None => Err(invalid("admin owner stopped unexpectedly")),
+                };
+            }
             owner = delivery_owners.join_next(), if !delivery_owners.is_empty() => {
                 break match owner {
                     Some(Ok(Err(error))) => Err(error.into()),
@@ -224,6 +258,7 @@ async fn serve_with(
         }
     };
     watchdog.arm();
+    admin_stop.send_replace(true);
     #[cfg(feature = "test-hooks")]
     if program.stall_store_on_shutdown {
         // Deliberately emulate a stuck OS flush without changing the store worker.
@@ -240,12 +275,25 @@ async fn serve_with(
     let until = tokio::time::Instant::now()
         .checked_add(Duration::from_secs(15))
         .unwrap_or(tokio::time::Instant::now());
-    let commits_drained = tokio::time::timeout_at(until, async {
-        for ready in &mut ready_to_close {
-            machine::stopping(ready).await;
-        }
-    })
-    .await;
+    // Admin reads drain alongside machine commits, without adding a new stage
+    // to the process shutdown budget or delaying machine admission shutdown.
+    let (admin_drained, commits_drained) = tokio::join!(
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(owner) = admin_owners.join_next().await {
+                owner??;
+            }
+            Ok::<_, Error>(())
+        }),
+        tokio::time::timeout_at(until, async {
+            for ready in &mut ready_to_close {
+                machine::stopping(ready).await;
+            }
+        })
+    );
+    if !matches!(admin_drained, Ok(Ok(()))) {
+        admin_owners.abort_all();
+        while admin_owners.join_next().await.is_some() {}
+    }
     delivery_stop.send_replace(true);
     let delivery_drained = tokio::time::timeout(crate::delivery::SHUTDOWN_BUDGET, async {
         while let Some(owner) = delivery_owners.join_next().await {
@@ -281,6 +329,7 @@ async fn serve_with(
         .await?;
     drop(store);
     drop(store_component);
+    admin_drained.map_err(|_| invalid("admin shutdown exceeded 5 seconds"))??;
     commits_drained.map_err(|_| invalid("receive commits exceeded 15 seconds"))?;
     drained.map_err(|_| invalid("transport shutdown exceeded 5 seconds"))??;
     delivery_drained.map_err(|_| {
@@ -310,7 +359,7 @@ async fn termination() -> Result<(), Error> {
     Ok(())
 }
 
-fn create_data_directory(path: &std::path::Path) -> Result<(), Error> {
+pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Error> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::{DirBuilderExt, PermissionsExt};

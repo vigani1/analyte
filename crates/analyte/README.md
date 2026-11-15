@@ -78,7 +78,7 @@ output. Paths are passed as data, never interpolated into executable scripts.
 Missing utilities, permission errors and invalid output refuse admission.
 Installing a faster native probe later does not change the storage boundary.
 
-The admin webpage, retention and real machine validation
+Admin actions, retention and real machine validation
 remain outside this work. Serial hardware and Linux runtime
 verification remain CI/lab work; localhost integration tests run on Windows here.
 
@@ -189,6 +189,92 @@ and cancellation require the separate explicit `[orders.hl7_send]` capability. S
 The marker is the latest restore/resume action in the append-only audit trail;
 no schema migration or driver-specific exception is needed. Evidence remains
 **documented**, based on synthetic tests, without real-machine qualification.
+
+## Admin page
+
+The optional `[admin]` configuration accepts `port` and defaults `address` to
+`127.0.0.1`. Other addresses and port zero are refused. Omitting the section
+disables administration. For example, add `[admin]` with `port = 8080`, provision
+the token below, then start the program and open `http://127.0.0.1:8080/`.
+An enabled endpoint refuses startup if its token file is missing or invalid.
+
+Provision or rotate the host credential with
+`analyte --config analyte.toml admin token --rotate`. The command writes a
+base64-encoded 256-bit token to `<data_directory>/admin-token` and prints it
+once to stdout. Treat stdout as a secret; do not send it to ordinary logs.
+Entropy comes only from the operating system; failure refuses rotation with
+a specific error. No weaker fallback exists.
+
+Unix staging files are created with mode 0600 within the protected directory.
+On Windows, the token file's protection comes from the data directory ACL set by
+[`packaging/windows/install.ps1`](../../packaging/windows/install.ps1). Files
+inherit that ACL; it grants access to the service account, SYSTEM and administrators.
+For manual installations, apply the same protected directory ACL. Rotation
+flushes the new file before replacing the old one. A failed or interrupted
+rotation may leave `admin-token.pending`; preserve it securely and investigate
+before retrying. Never move a partial file into place as a credential.
+
+Supply `Authorization: Bearer <token>` to read the pages, or use the login
+form. Missing or wrong credentials receive HTTP 401 without credential values
+in logs. Open `/login` to obtain a five-minute challenge cookie and CSRF form
+token, then POST the form. Every POST, including login and raw disclosure,
+requires that session's CSRF token, compared in constant time. Login replaces
+the challenge with a separate random session cookie: HttpOnly, SameSite=Strict,
+host-only and without a persistent cookie expiry. Authenticated sessions expire
+on the server after one hour. At most 128 sessions are retained; new challenges
+can evict older unauthenticated challenges, never an authenticated session.
+All sessions share the administrator credential's authority; there is no
+password database or per-person login. Each login gets a separate audit actor
+(`admin-session-<UUID>`), which identifies that session rather than a person.
+Restart after token rotation: the server loads the bearer token at startup,
+and restart also invalidates all session cookies.
+
+The listener serves HTTP on IPv4 loopback only; its cookies therefore omit
+Secure. Any future HTTPS transport must set Secure. Forwarded headers do not
+enable HTTPS or change the trusted host/origin. The form and overview use no
+inline scripts or external assets. Every application response carries CSP,
+frame denial, no-referrer and no-store headers. Values pass through one HTML
+escaping helper. Requests are limited to two seconds, connections to two seconds
+and 32 concurrent connections, and form bodies to 1 KiB. Service shutdown stops
+admission and joins the admin owner within five seconds. Cancelled reads may
+finish on the storage worker; they do not change machine orders. Cancellation
+after submitting a raw-view audit may leave a durable audit without a completed
+HTTP response. Retrying creates another audit, never a machine command.
+
+The read-only overview shows machine owner state and last received activity,
+oldest undelivered age, destination order-cache age and trust, Uncertain order
+count, restore pause, and free disk bytes against the configured reserve.
+Connection state is explicitly unknown; running an owner does not establish a
+machine connection. Reads use bounded store pages and deadlines. If a complete
+snapshot cannot be read in time, the page reports failure rather than displaying
+an incomplete count as a total. Raw payloads and sample IDs are not shown on
+the overview.
+
+Use the navigation links for machines, parked items, and machine orders. Lists
+show at most 50 entries and may show fewer under the configured store page bound.
+Follow Next page to continue. Cursors are nonnegative and bounded; unknown
+query fields are refused. Parked lists show category, reason, linked identities
+and receipt times without loading payloads. The store does not record a parking
+timestamp, so the page labels receipt time and explicitly reports missing times.
+Parked details paginate targets in groups of 50 and keep raw bytes hidden.
+
+Log in with a browser session before using **Show raw (audited)**. It is a POST
+with a session-specific CSRF token; GET never reveals raw bytes. Choose the
+linked receipt or transfer-frame source and optionally enter a reason. Each
+4 KiB page renders exact hex alongside escaped ASCII text (dots for nonprinting
+or non-ASCII bytes). A durable audit records the session actor, parked item,
+source identity, cursor, time and reason before any bytes are returned. Audit
+failure prevents disclosure. Raw pages retain POST forms for further pages;
+no credentials or raw bytes are placed in URLs or ordinary logs.
+
+Machine orders show the recorded lifecycle state, including Uncertain, and the
+global restore pause. Durable machine items show their individual states, placer
+identities and exact retained test coverage. Legacy coverage is explicitly unknown.
+The separate retained-cache panel shows sample IDs, items and its version. A
+different cache version is explicitly labelled as current cache items rather than
+the historical machine items; missing or invalid documents never cause guessed items.
+
+Actions such as resolving, reconciling and retrying remain CLI-only.
 
 ## Running as a service
 

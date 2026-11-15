@@ -33,6 +33,78 @@ pub struct ParkedItem {
 }
 
 impl Store {
+    /// Reads receipt metadata without loading raw payload or configuration bytes.
+    /// # Errors
+    /// Reports database failures or corrupt retained metadata.
+    pub fn receipt_metadata(&self, id: ReceiptId) -> Result<Option<ReceiptMetadata>, Error> {
+        let encoded: Option<String> = self
+            .db
+            .query_row(
+                "SELECT metadata FROM receipts WHERE id=?1",
+                [key(&id)?],
+                |row| row.get(0),
+            )
+            .optional()?;
+        encoded
+            .map(|text| {
+                let metadata: ReceiptMetadata = serde_json::from_str(&text)?;
+                if metadata.id != id {
+                    return Err(Error::Corruption);
+                }
+                Ok(metadata)
+            })
+            .transpose()
+    }
+
+    /// Reads one parked item by its exact identity without scanning another page.
+    /// # Errors
+    /// Reports database failures; an unknown identity returns absence.
+    pub fn parked_item(&self, id: i64) -> Result<Option<ParkedItem>, Error> {
+        Ok(self
+            .db
+            .query_row(
+                "SELECT id,evidence,resolution FROM parked WHERE id=?1",
+                [id],
+                |row| {
+                    Ok(ParkedItem {
+                        id: row.get(0)?,
+                        evidence: row.get(1)?,
+                        resolution: row.get(2)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// Reads the retained cache entry for operator inspection, including stale work.
+    /// This is not permission to send: check its version against the lifecycle
+    /// record and use the normal reservation APIs before any machine I/O.
+    /// # Errors
+    /// Reports database failures or invalid retained cache evidence.
+    pub fn cached_order(
+        &self,
+        destination: &Identifier,
+        id: &Identifier,
+    ) -> Result<Option<crate::CachedOrder>, Error> {
+        let encoded: Option<String> = self
+            .db
+            .query_row(
+                "SELECT evidence FROM orders WHERE destination=?1 AND id=?2",
+                params![destination.as_str(), id.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        encoded
+            .map(|text| {
+                let order: crate::CachedOrder = serde_json::from_str(&text)?;
+                if order.id != *id {
+                    return Err(Error::Corruption);
+                }
+                Ok(order)
+            })
+            .transpose()
+    }
+
     /// Reads complete receipt evidence without altering its interpretation.
     /// # Errors
     /// Reports corrupt metadata, digest mismatches or database failures.
@@ -235,5 +307,83 @@ impl Store {
             Ok((sequence, serde_json::from_str(&evidence)?))
         })
         .collect()
+    }
+}
+
+#[cfg(test)]
+mod operator_read_tests {
+    use super::*;
+    use crate::tests::{TestResult, open};
+    use analyte_model::{Digest, NamespacedId, Reason, SampleId};
+
+    // Plan section 11: exact metadata reads do not expose receipt bytes, and
+    // stale cache inspection is distinct from permission to send machine work.
+    #[test]
+    fn plan11_operator_reads_preserve_identity_absence_and_stale_evidence() -> TestResult {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("store.db"))?;
+        let id = ReceiptId::try_from(uuid::Uuid::now_v7())?;
+        assert!(store.receipt_metadata(id)?.is_none());
+        assert!(store.parked_item(1)?.is_none());
+        let destination = Identifier::new("app")?;
+        let order = Identifier::new("order")?;
+        assert!(store.cached_order(&destination, &order)?.is_none());
+        let raw = b"protected payload";
+        let config = b"config";
+        let metadata = ReceiptMetadata {
+            id,
+            raw_digest: Digest(crate::digest(raw).0),
+            connection: Identifier::new("connection")?,
+            machine: Identifier::new("machine")?,
+            driver: NamespacedId {
+                namespace: Identifier::new("test")?,
+                value: Identifier::new("1")?,
+            },
+            config_version: Identifier::new("1")?,
+            config_digest: Digest(crate::digest(config).0),
+            received_at: jiff::Timestamp::UNIX_EPOCH,
+        };
+        store.receive(&metadata, raw, config)?;
+        assert_eq!(store.receipt_metadata(id)?.ok_or("metadata absent")?.id, id);
+        let parked = store.park(&crate::Parked {
+            kind: Identifier::new("parse")?,
+            reason: Reason::new("<script>reason</script>")?,
+            targets: vec![Identifier::new(&uuid::Uuid::from(id).to_string())?],
+        })?;
+        let item = store.parked_item(parked)?.ok_or("parked absent")?;
+        let evidence: crate::Parked = serde_json::from_str(&item.evidence)?;
+        assert_eq!(evidence.reason.as_str(), "<script>reason</script>");
+        assert!(
+            store
+                .parked_item(parked.checked_add(1).ok_or("overflow")?)?
+                .is_none()
+        );
+        store.order_page(&crate::OrderPage {
+            destination: destination.clone(),
+            cursor: Identifier::new("cursor")?,
+            complete: true,
+            polled: 100,
+            orders: vec![crate::CachedOrder {
+                id: order.clone(),
+                sample: SampleId::new("001<script>")?,
+                document: "retained document".into(),
+                tombstone: true,
+                expiry: 200,
+            }],
+        })?;
+        store.reset_orders(&destination)?;
+        let retained = store
+            .cached_order(&destination, &order)?
+            .ok_or("cache absent")?;
+        assert_eq!(retained.sample.as_str(), "001<script>");
+        assert!(retained.tombstone);
+        assert_eq!(retained.document, "retained document");
+        assert!(
+            store
+                .cached_order(&Identifier::new("different-app")?, &order)?
+                .is_none()
+        );
+        assert_eq!(store.raw(id)?.ok_or("raw absent")?, raw);
+        Ok(())
     }
 }
