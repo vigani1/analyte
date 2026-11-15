@@ -1,0 +1,36 @@
+[Unit]
+Description=Analyte clinical analyzer bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=analyte
+Group=analyte
+SupplementaryGroups=dialout
+WorkingDirectory=/var/lib/analyte
+StateDirectory=analyte
+StateDirectoryMode=0700
+EnvironmentFile=-/etc/analyte/environment
+ExecStart=/usr/local/bin/analyte run --config /etc/analyte/analyte.toml --shutdown-timeout-secs 30
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=35s
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/analyte
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=analyte
+
+[Install]
+WantedBy=multi-user.target

@@ -87,7 +87,10 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
                 }
                 std::process::exit(1);
             }
-            let _ = events.send(Event::Finished);
+            if events.send(Event::Finished).is_err() {
+                // The dispatcher can close its receiver before the runtime owner exits.
+                tracing::debug!("SCM completion receiver closed after dispatcher stopped");
+            }
             result
         });
         let mut start = Some(start);

@@ -272,7 +272,12 @@ async fn termination() -> Result<(), Error> {
     #[cfg(unix)]
     {
         let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-        tokio::select! { result = tokio::signal::ctrl_c() => result?, _ = term.recv() => {} }
+        let mut interrupt =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+        tokio::select! {
+            signal = interrupt.recv() => signal.ok_or_else(|| invalid("SIGINT signal stream closed"))?,
+            signal = term.recv() => signal.ok_or_else(|| invalid("SIGTERM signal stream closed"))?,
+        }
     }
     #[cfg(windows)]
     {
