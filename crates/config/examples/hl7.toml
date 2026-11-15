@@ -40,9 +40,11 @@ field = 3
 component = 1
 repetition = 1
 [mappings.identity]
-retransmission = []
-correction = []
-rerun = []
+order_id = {group="order",record="OBR",field=3,component=1,repetition=1}
+order_namespace = {fixed="synthetic-orders"}
+sub_id = "none"
+run = []
+correction_status_codes = ["C"]
 [evidence]
 level = "documented"
 [[evidence.capabilities]]

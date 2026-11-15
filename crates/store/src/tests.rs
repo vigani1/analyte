@@ -389,6 +389,7 @@ fn production_result(
             observation: ObservationIdentity {
                 code: name.clone(),
                 sub_id: SourceText::new("1")?,
+                run: SourceText::new("")?,
                 order: name.clone(),
             },
             revision: Revision(0),

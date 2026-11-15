@@ -177,6 +177,8 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for EvidenceList<T> {
 /// One source hierarchy node; the flat path avoids recursive untrusted trees.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceNode {
+    /// One-based record or segment position in the source message.
+    pub occurrence: usize,
     /// Source record/segment category, unchanged.
     pub kind: Identifier,
     /// Source sequence identifier when supplied.
