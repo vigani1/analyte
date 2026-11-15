@@ -527,15 +527,10 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
     let work = result("work1", "\"\"", "awos-1^LAB", "12.30", "F")
         .replace("OUL^R22^OUL_R22", "OML^O33^OML_O33")
         .replace("LAB-29", "LAB-28");
-    peer.write_all(&analyte_framing::mllp::encode(
-        work.as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
-    )?)
-    .await?;
-    assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut [0; 1])).await??,
-        0
-    );
+    // B.7.2 pp.80-81: unsupported trigger is rejected with correlated AR.
+    let rejected = hl7(&mut peer, work.as_bytes()).await?;
+    assert!(rejected.contains("MSA|AR|work1"), "{rejected}");
+    assert!(!rejected.contains("MSA|AA|"));
     assert_eq!(count(&path, "machine_orders")?, 0);
     assert_eq!(count(&path, "receipts")?, 2);
     assert_eq!(count(&path, "outbox")?, 0);
