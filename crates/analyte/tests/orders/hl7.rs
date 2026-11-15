@@ -76,7 +76,7 @@ async fn setup_with_freshness(
     Ok((temp, path, reference, service, peer))
 }
 fn query(sample: &str, edition: &str) -> Vec<u8> {
-    format!("MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||QRY^Q02|query1|P|{edition}\rQRD|20261115|D|D|tag|||100^LI|{sample}^^^^^^^LCL|ORD|TEST\r").into_bytes()
+    format!("MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||QRY^Q02^QRY_Q02|query1|P|{edition}\rQRD|20261115|D|D|tag|||100^LI|{sample}^^^^^^^LCL|ORD|TEST\r").into_bytes()
 }
 async fn send(peer: &mut TcpStream, payload: &[u8]) -> Result<(), Error> {
     peer.write_all(&analyte_framing::mllp::encode(
@@ -111,7 +111,7 @@ async fn ack(peer: &mut TcpStream, dsr: &[u8], code: &str, edition: &str) -> Res
     send(
         peer,
         format!(
-            "MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ACK^Q03|reply1|P|{edition}\rMSA|{code}|{id}\r"
+            "MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ACK^Q03^ACK|reply1|P|{edition}\rMSA|{code}|{id}\r"
         )
         .as_bytes(),
     )
@@ -275,7 +275,7 @@ async fn hl7_251_dsr_mismatched_application_ack_is_retained_and_uncertain() -> R
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
     packet(&mut peer).await?;
     packet(&mut peer).await?;
-    send(&mut peer,b"MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ACK^Q03|reply1|P|2.5.1\rMSA|AA|wrong-control-id\r").await?;
+    send(&mut peer,b"MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ACK^Q03^ACK|reply1|P|2.5.1\rMSA|AA|wrong-control-id\r").await?;
     event(
         &path,
         &temp.path().join("receiver.db"),

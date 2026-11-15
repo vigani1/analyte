@@ -48,7 +48,8 @@ fn fixture(
         .and_then(|n| fields.get_mut(n))
         .ok_or(Error::Encoding)?;
     *slot = value.to_vec();
-    let mut raw = format!("MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|m1|P|{version}\rQRD").into_bytes();
+    let mut raw =
+        format!("MSH|^~\\&|A|B|C|D|20261115||QRY^Q02^QRY_Q02|m1|P|{version}\rQRD").into_bytes();
     for item in qrd {
         raw.push(b'|');
         raw.extend_from_slice(&item);

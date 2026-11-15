@@ -374,10 +374,17 @@ fn hl7_251_4_4_6_7_rejects_wrong_version_and_transaction_family() -> Result<(), 
             raw.replace("ORL^O22^ORL_O22", kind).as_bytes(),
             Options::default(),
         )?;
-        assert!(matches!(
-            OrderResponse::new(&message, &sent),
-            Err(Error::Content { field: 9, .. })
-        ));
+        if kind == "ORL^O22" {
+            assert!(matches!(
+                OrderResponse::new(&message, &sent),
+                Err(Error::Syntax(analyte_hl7::Error::Control { field: 9, .. }))
+            ));
+        } else {
+            assert!(matches!(
+                OrderResponse::new(&message, &sent),
+                Err(Error::Content { field: 9, .. })
+            ));
+        }
     }
     let orm = order::orm(
         &[new_order(b"000aB", source)?],

@@ -149,7 +149,8 @@ new crate rather than a change to a shared one.
   history, in the same transaction as the interpretation (rules in ADR 0003).
 - **Sample identity:** ID as a string with its source, plus position (rack or
   disk, slot) when the machine reports one.
-- **Values:** original text, parsed number with comparator and precision when
+- **Values:** original text, optional fully decoded protocol-neutral text (absent
+  for unsupported escapes or formatting, which require parking), parsed number with comparator and precision when
   it parses, original unit, mapped UCUM unit when mapped, dilution and whether
   it was applied.
 - **Flags, ranges, comments, QC class (patient, control, calibration or

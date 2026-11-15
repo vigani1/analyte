@@ -24,6 +24,18 @@ for name in ['unresolved-identity','missing-sample','multi-part-coded','withdraw
         r['parts'][0]['source_status']='D'
     write(name+'.json',doc)
 
+# Protocol-neutral decoded text beside unchanged synthetic source spelling.
+for name, original, decoded, parsed in [
+    ("decoded-text", r"A\F\B", "A|B", "text"),
+    ("unsupported-formatting", r"before\H\marked\N\after", None,
+     dict(unsupported=dict(source_type="TX", reason="Highlighting is not interpreted"))),
+]:
+    doc=copy.deepcopy(delivery)
+    value=dict(original=original,parsed=parsed)
+    if decoded is not None: value["decoded_text"]=decoded
+    doc["results"][0]["parts"][0]["values"]=[value]
+    write(name+".json",doc)
+
 event=dict(contract_version=1,delivery_id='019ab000-0000-7000-8000-000000000002',created_at='2026-11-15T12:00:00Z',source=delivery['source'],order_id='order-1',order_version=1,state='uncertain',occurred_at='2026-11-15T11:59:59Z',source_status='timeout',reason='No answer')
 write('event.json',event)
 write('order.json',dict(id='order-1',version=1,state='requested',sample_id='000Ab12',tests=[code('TEST')],priority='routine',target_analyzers=None,expires_at=None,tombstone=False))

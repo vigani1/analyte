@@ -217,12 +217,11 @@ async fn process(
                     AckCode::Ar,
                     u16::try_from(*field)
                         .ok()
-                        .map(|field| self::error(b"MSH", field, b"102", b"LAW-control")),
+                        .map(|field| header_error(field, b"102", b"LAW-control")),
                 ),
-                analyte_hl7::Error::UnsupportedCharset | analyte_hl7::Error::CharsetMismatch => (
-                    AckCode::Ar,
-                    Some(self::error(b"MSH", 18, b"102", b"LAW-control")),
-                ),
+                analyte_hl7::Error::UnsupportedCharset | analyte_hl7::Error::CharsetMismatch => {
+                    (AckCode::Ar, Some(header_error(18, b"102", b"LAW-control")))
+                }
                 analyte_hl7::Error::Limit { .. }
                 | analyte_hl7::Error::Encoding
                 | analyte_hl7::Error::Truncation
@@ -279,16 +278,19 @@ async fn process(
                 payload,
                 response,
                 AckCode::Ar,
-                error(b"MSH", 9, b"200", b"LAW-unsupported-trigger"),
+                header_error(9, b"200", b"LAW-unsupported-trigger"),
                 options,
             )?
             .map(Reply::Response))
         });
     }
+    let error_location;
     let (code, responsibility, location) = match law::receive_results(&message) {
         Ok(_) => {
             // TF-2b Rev 11 B.7.6 (p.82): inconsistent content rejects the whole batch.
-            match evidence::interpret_outcome(store, machine, id).await? {
+            let (outcome, location) = evidence::interpret_with_location(store, machine, id).await?;
+            error_location = location;
+            match outcome {
                 evidence::InterpretationOutcome::Accepted => {
                     (AckCode::Aa, Responsibility::StoredAndInterpreted, None)
                 }
@@ -311,7 +313,11 @@ async fn process(
                 evidence::InterpretationOutcome::Failed => (
                     AckCode::Ae,
                     Responsibility::Stored,
-                    Some(AckError::unlocated(b"207", b"operator-review")),
+                    Some(super::hl7_error::build(
+                        error_location.as_ref(),
+                        b"207",
+                        b"operator-review",
+                    )),
                 ),
             }
         }
@@ -356,14 +362,10 @@ async fn process(
     })
 }
 
-fn error<'a>(
-    segment: &'a [u8],
-    field: u16,
-    code: &'a [u8],
-    application_code: &'a [u8],
-) -> AckError<'a> {
+// Correlation recovery still identifies the original first MSH when its control fields fail.
+fn header_error<'a>(field: u16, code: &'a [u8], application_code: &'a [u8]) -> AckError<'a> {
     AckError {
-        segment,
+        segment: b"MSH",
         occurrence: 1,
         field,
         code,

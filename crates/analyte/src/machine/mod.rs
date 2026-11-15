@@ -4,6 +4,7 @@ mod autolyser;
 mod autolyser_custody;
 mod folder;
 mod hl7;
+pub(crate) mod hl7_error;
 pub(crate) mod interpretation;
 pub use interpretation::reprocess;
 mod law;

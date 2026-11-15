@@ -718,17 +718,21 @@ fn law_tf2b_c1_unknown_error_location_is_omitted_never_invented()
         err.field(3).map(analyte_hl7::Field::raw),
         Some(b"207^^HL70357".as_slice())
     );
-    assert!(
-        analyte_hl7::acknowledgment(
-            &message,
-            response_metadata()?,
-            AckCode::Ae,
-            Responsibility::Stored,
-            Some(unknown),
-            utf8_options()
-        )
-        .is_err()
-    );
+    // HL7 2.5.1 section 2.15.5.2 also permits an unvalued generic ERR-2.
+    let generic = analyte_hl7::acknowledgment(
+        &message,
+        response_metadata()?,
+        AckCode::Ae,
+        Responsibility::Stored,
+        Some(unknown),
+        utf8_options(),
+    )?
+    .ok_or("generic ACK missing")?;
+    let err = generic
+        .segments()
+        .find(|s| s.id() == b"ERR")
+        .ok_or("ERR missing")?;
+    assert!(err.field(2).is_none_or(|f| f.raw().is_empty()));
     let inconsistent = AckError {
         occurrence: 1,
         ..unknown
