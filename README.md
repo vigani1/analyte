@@ -17,4 +17,6 @@ to a lab app over HTTPS in one common format.
 
 See [Adding a machine](docs/adding-a-machine.md) for configuration and qualification.
 
+[Testing](docs/testing/quality.md): coverage, mutation testing and repeatable commands.
+
 Licensed under the [Apache License 2.0](LICENSE).
