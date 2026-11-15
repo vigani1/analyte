@@ -106,10 +106,20 @@ The workspace enables `too_many_lines` (100), `cognitive_complexity` (25),
 production file over about 600 lines needs a stated reason in review.
 Several related yes/no flags become one enum of named states.
 
-### 8. Every crate says what it owns
+### 8. Every crate and every file says what it holds
 
 Each crate's `lib.rs` starts with its layer, what it owns and what it must
-not do. Domain terms (receipt, delivery, revision, custody, parked item and so
+not do. Every other source file starts with a one-line `//!` header saying
+what it holds and why it belongs where it is; a check in CI refuses a file
+without one.
+
+### 9. Large folders group files by role
+
+A source folder holding more than about ten files groups them into role
+folders named for what they hold (for example `intake/`, `delivery/`,
+`upkeep/` in the store), so a reader can tell from the folder why a file is
+there. Per-protocol files (`astm.rs`, `hl7.rs`, ...) stay side by side, since
+the protocol key already explains them. Small folders stay flat. Domain terms (receipt, delivery, revision, custody, parked item and so
 on) are defined once in `docs/glossary.md`.
 
 ## Consequences
