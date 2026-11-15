@@ -54,10 +54,9 @@ fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_start
             .ok_or("LAW machine absent")?
             .snapshot()
             .effective()
-            .machine()
-            .dialog
-            .kind,
-        analyte_config::DialogKind::LawManager
+            .stack()
+            .layer_names()[2],
+        "law_manager"
     );
     assert!(!temp.path().join("data").exists());
     std::fs::write(
@@ -73,9 +72,8 @@ fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_start
             .ok_or("LAW machine absent")?
             .snapshot()
             .effective()
-            .machine()
-            .transport
-            .kind,
+            .stack()
+            .transport_kind(),
         analyte_config::TransportKind::TcpClient
     );
     assert!(!temp.path().join("data").exists());

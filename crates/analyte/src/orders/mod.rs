@@ -5,6 +5,7 @@ mod hl7_send;
 pub(crate) mod law;
 mod operator;
 pub(crate) mod sending;
+mod settings;
 use crate::{Error, config::Machine};
 use analyte_contract::{EventFields, OrderEvent, Source, Text};
 use analyte_model::{Identifier, NamespacedId, SampleId};

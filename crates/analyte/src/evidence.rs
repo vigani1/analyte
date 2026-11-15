@@ -37,12 +37,14 @@ fn config_version(machine: &Machine) -> Result<Identifier, Error> {
 
 pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
     Ok(NamespacedId {
-        namespace: Identifier::new(match machine.snapshot.effective().machine().syntax.kind {
-            analyte_config::SyntaxKind::AstmLis02 => "analyte-astm",
-            analyte_config::SyntaxKind::Hl7V2 => "analyte-hl7",
-            analyte_config::SyntaxKind::Poct => "analyte-poct",
-            analyte_config::SyntaxKind::VidasLiteral => "analyte-vidas",
-            analyte_config::SyntaxKind::Autolyser => "analyte-autolyser",
+        namespace: Identifier::new(match machine.snapshot.effective().stack() {
+            analyte_config::Stack::Astm(_) | analyte_config::Stack::FileAstm(_) => "analyte-astm",
+            analyte_config::Stack::Hl7(_)
+            | analyte_config::Stack::FileHl7(_)
+            | analyte_config::Stack::Law(_) => "analyte-hl7",
+            analyte_config::Stack::Poct(_) => "analyte-poct",
+            analyte_config::Stack::VidasLiteral(_) => "analyte-vidas",
+            analyte_config::Stack::Autolyser(_) => "analyte-autolyser",
         })?,
         value: Identifier::new(env!("CARGO_PKG_VERSION"))?,
     })
@@ -100,7 +102,16 @@ pub(crate) async fn persist_mapping(
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(bool, analyte_store::InterpretationCommit), Error> {
-    let atomic = machine.snapshot.effective().machine().law.is_some();
+    let atomic = match machine.snapshot.effective().stack() {
+        analyte_config::Stack::Law(_) => true,
+        analyte_config::Stack::Astm(_)
+        | analyte_config::Stack::Hl7(_)
+        | analyte_config::Stack::FileAstm(_)
+        | analyte_config::Stack::FileHl7(_)
+        | analyte_config::Stack::Poct(_)
+        | analyte_config::Stack::VidasLiteral(_)
+        | analyte_config::Stack::Autolyser(_) => false,
+    };
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
         Ok(output) => {

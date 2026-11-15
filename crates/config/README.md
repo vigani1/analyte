@@ -28,6 +28,31 @@ identity evidence explicitly leaves reconciliation unresolved; no identity is
 invented. Unit tables translate exact spelling only and never change numbers.
 QC equality rules carry classification evidence, not acceptance decisions.
 
+After validation, `Effective::stack()` is the single runtime protocol selection.
+`Stack` has `Astm`, `Hl7`, `Law`, `Poct`, `VidasLiteral`, `Autolyser`,
+`FileAstm` and `FileHl7` variants. Each carries only its supported transport,
+framing/dialog/syntax settings and required mapping tables or vendor policy.
+Serial transport carries installed serial settings; TCP-only stacks cannot select
+serial or file transport. Folder stacks cannot enter a stream dialog.
+
+The public validated `Machine` contains identity, deviations and evidence;
+protocol sections are accessed through `Stack`, not optional sibling fields.
+`tests()` and `units()` return that stack's required tables without an absent-table
+fallback. Optional order capabilities remain legitimate: omission disables the
+capability; an enabled capability carries its required layout and namespace.
+HL7 processing IDs, fixed priority codes and VIDAS sample limits are typed.
+Custom ASTM priority spelling remains configurable.
+
+The existing TOML layout is unchanged. Its document type is private to loading
+and validation. Original and overridden documents are checked before building the
+runtime stack, so an override cannot conceal an invalid definition. The resolved
+TOML value is retained only for canonical serialization/provenance, never for
+runtime protocol dispatch. Runtime objects cannot be deserialized or activated
+by constructing a stack directly. Example tests cover every file (order fragments
+with their documented bases), both file syntax variants and transport overrides;
+private document tests compare every example's canonical bytes with the legacy
+layout.
+
 Validated snapshots expose immutable settings, canonical TOML and its SHA-256.
 Schema 1 canonicalization serializes a sorted TOML value tree with the pinned
 TOML serializer, UTF-8 and LF endings; list order is significant. Persist the

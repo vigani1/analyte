@@ -29,7 +29,7 @@ impl Capture {
         if !machine.capture {
             return None;
         }
-        let config = machine.snapshot.effective().machine();
+        let stack = machine.snapshot.effective().stack();
         Some(Self {
             state: Arc::new(Mutex::new(State {
                 threads: Vec::new(),
@@ -38,12 +38,7 @@ impl Capture {
             reserve,
             header: Header {
                 version: 1,
-                stack: [
-                    name(&config.transport.kind),
-                    name(&config.framing.kind),
-                    name(&config.dialog.kind),
-                    name(&config.syntax.kind),
-                ],
+                stack: stack.layer_names().map(str::to_owned),
                 machine: Some(machine.id.as_str().to_owned()),
                 software: None,
                 evidence: Evidence::Machine,
@@ -145,18 +140,6 @@ impl Capture {
             }
         }
     }
-}
-
-#[expect(
-    clippy::expect_used,
-    reason = "internal config enums serialize to their declared string names"
-)]
-fn name(value: &impl serde::Serialize) -> String {
-    serde_json::to_value(value)
-        .expect("config enums serialize")
-        .as_str()
-        .expect("config enum names are strings")
-        .to_owned()
 }
 
 fn prepare(directory: &Path) -> io::Result<()> {

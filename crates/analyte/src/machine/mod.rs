@@ -9,14 +9,16 @@ pub use interpretation::reprocess;
 mod law;
 mod poct;
 mod serial;
+mod settings;
 mod vendor;
 mod vendor_model;
 mod vidas;
 mod worker;
 use crate::{Error, config::Machine, invalid};
-use analyte_config::TransportKind;
+use analyte_config::TcpRole;
 use analyte_store::Handle;
 use analyte_transport::{Backoff, Limits, connection};
+use settings::{Link, Session};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 
@@ -44,20 +46,15 @@ pub(crate) async fn run(
     mut closing: Closing,
     capture: Option<crate::capture::Capture>,
 ) -> Result<(), Error> {
-    let limits = Limits::new(
-        16,
-        Duration::from_millis(u64::from(
-            machine
-                .snapshot
-                .effective()
-                .machine()
-                .transport
-                .operation_timeout_ms,
-        )),
-    )?;
+    let link = settings::transport(machine.snapshot.effective().stack());
+    let limits = Limits::new(16, Duration::from_millis(u64::from(link.timeout_ms())))?;
     let endpoint = &machine.snapshot.effective().site().endpoint;
-    match machine.snapshot.effective().machine().transport.kind {
-        TransportKind::TcpServer => {
+    match link {
+        Link::Tcp {
+            role: TcpRole::Server,
+            session,
+            ..
+        } => {
             let listener = match machine.listener.take() {
                 Some(listener) => tokio::net::TcpListener::from_std(listener)?,
                 None => analyte_transport::tcp::bind(endpoint.parse()?).await?,
@@ -74,7 +71,7 @@ pub(crate) async fn run(
                     None => side,
                 };
                 let cancel = conn.cancellation();
-                let processing = drive(&machine, &store, conn, stop.clone(), &mut closing);
+                let processing = drive(&machine, session, &store, conn, stop.clone(), &mut closing);
                 let transport = analyte_transport::tcp::pump(accepted.0, side);
                 // Drain ordered received/closed events even if the I/O owner finishes first.
                 let (result, transport) = tokio::join!(processing, transport);
@@ -88,7 +85,11 @@ pub(crate) async fn run(
                 }
             }
         }
-        TransportKind::TcpClient => loop {
+        Link::Tcp {
+            role: TcpRole::Client,
+            session,
+            ..
+        } => loop {
             let (conn, side) = connection(limits);
             let side = match &capture {
                 Some(capture) => capture.attach(side),
@@ -97,7 +98,7 @@ pub(crate) async fn run(
             let cancel = conn.cancellation();
             let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
             let (result, transport) = tokio::join!(
-                drive(&machine, &store, conn, stop.clone(), &mut closing),
+                drive(&machine, session, &store, conn, stop.clone(), &mut closing),
                 transport
             );
             // drive cancels the I/O owner and drops its consumer after session cleanup.
@@ -120,11 +121,29 @@ pub(crate) async fn run(
                 () = tokio::time::sleep(Duration::from_millis(100)) => {}
             }
         },
-        TransportKind::Serial => {
-            serial::run(&machine, &store, limits, stop, closing, capture.as_ref()).await
+        Link::Serial(link) => {
+            serial::run(
+                &machine,
+                &store,
+                link,
+                limits,
+                stop,
+                closing,
+                capture.as_ref(),
+            )
+            .await
         }
-        TransportKind::WatchedFolder => {
-            folder::session(&machine, &store, file_root, stop, closing, capture.as_ref()).await
+        Link::Folder { bytes, .. } => {
+            folder::session(
+                &machine,
+                &store,
+                bytes,
+                file_root,
+                stop,
+                closing,
+                capture.as_ref(),
+            )
+            .await
         }
     }
 }
@@ -139,24 +158,22 @@ fn retry() -> Result<Backoff, Error> {
 
 async fn session(
     machine: &Machine,
+    selected: Session<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     let context = crate::evidence::Connection::new(machine)?;
     let machine = &context;
-    match machine.snapshot.effective().machine().dialog.kind {
-        analyte_config::DialogKind::AstmLink => astm::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::Hl7Receiver => hl7::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::LawManager => law::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::Poct => poct::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::VidasLiteral => {
-            vidas::session(machine, store, conn, stop).await
+    match selected {
+        Session::Astm(settings) => astm::session(machine, settings, store, conn, stop).await,
+        Session::Hl7(settings) => hl7::session(machine, settings, store, conn, stop).await,
+        Session::Law(settings) => law::session(machine, settings, store, conn, stop).await,
+        Session::Poct(settings) => poct::session(machine, settings, store, conn, stop).await,
+        Session::Vidas(settings) => vidas::session(machine, settings, store, conn, stop).await,
+        Session::Autolyser(settings) => {
+            autolyser::session(machine, settings, store, conn, stop).await
         }
-        analyte_config::DialogKind::Autolyser => {
-            autolyser::session(machine, store, conn, stop).await
-        }
-        analyte_config::DialogKind::FilePickup => Err(invalid("file pickup dialog is not wired")),
     }
 }
 
@@ -169,12 +186,13 @@ pub(crate) async fn stopping(stop: &mut watch::Receiver<bool>) {
 
 async fn drive(
     machine: &Machine,
+    selected: Session<'_>,
     store: &Handle,
     mut conn: analyte_transport::Connection,
     stop: watch::Receiver<bool>,
     closing: &mut Closing,
 ) -> Result<(), Error> {
-    let result = session(machine, store, &mut conn, stop.clone()).await;
+    let result = session(machine, selected, store, &mut conn, stop.clone()).await;
     if *stop.borrow() {
         closing.after_commits().await?;
     }

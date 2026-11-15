@@ -116,16 +116,41 @@ pub enum OrderMappingError {
 /// # Errors
 /// Refuses disabled capability, unmapped values, missing required context and wire bounds.
 pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, OrderMappingError> {
-    let machine = config.effective().machine();
-    let settings = machine.orders.as_ref().ok_or(OrderMappingError::Disabled)?;
-    if machine.syntax.kind == analyte_config::SyntaxKind::VidasLiteral {
-        return vidas(order, machine, settings);
+    use analyte_config::Stack;
+    match config.effective().stack() {
+        Stack::Astm(s) => astm(
+            order,
+            &s.syntax.limits,
+            s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
+        ),
+        Stack::FileAstm(s) => astm(
+            order,
+            &s.syntax.limits,
+            s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
+        ),
+        Stack::VidasLiteral(s) => vidas(
+            order,
+            s,
+            s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
+        ),
+        Stack::Autolyser(s) => autolyser(
+            order,
+            s,
+            s.orders.as_ref().ok_or(OrderMappingError::Disabled)?,
+        ),
+        Stack::Hl7(_) | Stack::FileHl7(_) | Stack::Law(_) | Stack::Poct(_) => {
+            Err(OrderMappingError::Disabled)
+        }
     }
-    if machine.syntax.kind == analyte_config::SyntaxKind::Autolyser {
-        return autolyser(order, machine, settings);
-    }
-    let astm = settings.astm.as_ref().ok_or(OrderMappingError::Disabled)?;
-    let limits = &machine.syntax;
+}
+
+fn astm(
+    order: &AppOrder,
+    limits: &analyte_config::SyntaxLimits,
+    settings: &analyte_config::AstmOrders,
+) -> Result<MachineOrder, OrderMappingError> {
+    let astm = &settings.layout;
+    let settings = &settings.tables;
     if order.tests.is_empty() || order.tests.len() > limits.repetitions {
         return Err(OrderMappingError::Representation);
     }
@@ -250,13 +275,13 @@ fn wire_text(value: &str) -> Result<(), OrderMappingError> {
 // One shared patient boundary for all outbound stacks with an unqualified field.
 fn patient<'a>(
     order: &'a AppOrder,
-    settings: &analyte_config::Orders,
+    namespace: &analyte_model::Identifier,
 ) -> Result<&'a str, OrderMappingError> {
     let patient = order
         .patient
         .as_ref()
         .ok_or(OrderMappingError::MissingPatient)?;
-    if settings.patient_namespace.as_ref() != Some(&patient.namespace) {
+    if namespace != &patient.namespace {
         return Err(OrderMappingError::PatientNamespace);
     }
     Ok(patient.value.as_str())
@@ -264,18 +289,18 @@ fn patient<'a>(
 
 fn vidas(
     order: &AppOrder,
-    machine: &analyte_config::Machine,
-    settings: &analyte_config::Orders,
+    machine: &analyte_config::VidasStack,
+    settings: &analyte_config::VidasOrders,
 ) -> Result<MachineOrder, OrderMappingError> {
-    let installed = machine.vidas.as_ref().ok_or(OrderMappingError::Disabled)?;
+    let installed = &machine.policy;
     if !installed.download {
         return Err(OrderMappingError::Disabled);
     }
-    let patient = patient(order, settings)?;
+    let patient = patient(order, &settings.patient_namespace)?;
     if patient.len() > 17 {
         return Err(OrderMappingError::Overlong("patient-id"));
     }
-    if order.sample.as_str().len() > usize::from(installed.sample_limit) {
+    if order.sample.as_str().len() > usize::from(u8::from(installed.sample_limit)) {
         return Err(OrderMappingError::Overlong("sample-id"));
     }
     // BCI A section 4 has no specimen-type destination; so is origin and si is empty.
@@ -284,8 +309,8 @@ fn vidas(
     }
     if order.tests.is_empty()
         || order.tests.len() > 100
-        || order.tests.len() > machine.syntax.records
-        || order.tests.len() > machine.syntax.repetitions
+        || order.tests.len() > machine.limits.records
+        || order.tests.len() > machine.limits.repetitions
     {
         return Err(OrderMappingError::Representation);
     }
@@ -296,10 +321,11 @@ fn vidas(
     {
         return Err(OrderMappingError::UnmappedPriority);
     }
-    let limit = if installed.sample_limit == 12 {
-        analyte_vidas::syntax::SampleLimit::Twelve
-    } else {
-        analyte_vidas::syntax::SampleLimit::Seventeen
+    let limit = match installed.sample_limit {
+        analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
+        analyte_config::VidasSampleLimit::Seventeen => {
+            analyte_vidas::syntax::SampleLimit::Seventeen
+        }
     };
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
@@ -322,13 +348,13 @@ fn vidas(
             ],
             limit,
         )?;
-        if request.text().len() > machine.framing.limit {
+        if request.text().len() > machine.frame_limit {
             return Err(OrderMappingError::Representation);
         }
         total_bytes = total_bytes
             .checked_add(request.text().len())
             .ok_or(OrderMappingError::Representation)?;
-        if total_bytes > machine.syntax.bytes {
+        if total_bytes > machine.limits.bytes {
             return Err(OrderMappingError::Representation);
         }
         requests.push(request);
@@ -338,14 +364,16 @@ fn vidas(
 
 fn autolyser(
     order: &AppOrder,
-    machine: &analyte_config::Machine,
-    settings: &analyte_config::Orders,
+    machine: &analyte_config::AutolyserStack,
+    settings: &analyte_config::AutolyserOrders,
 ) -> Result<MachineOrder, OrderMappingError> {
     use analyte_autolyser::records::{Field, List, PatientCode, Sample, Worklist};
-    if !machine.autolyser.as_ref().is_some_and(|a| a.download) {
+    if !machine.policy.download {
         return Err(OrderMappingError::Disabled);
     }
-    let patient = patient(order, settings)?;
+    let patient = patient(order, &settings.patient_namespace)?;
+    let clone = settings.clone;
+    let settings = &settings.tables;
     if patient.len() > 15 {
         return Err(OrderMappingError::Overlong("patient-id"));
     }
@@ -365,10 +393,19 @@ fn autolyser(
         .iter()
         .find(|p| p.app.as_str() == order.priority.code())
         .ok_or(OrderMappingError::UnmappedPriority)?;
-    let list = match priority.machine.as_str() {
-        "T" => List::Routine,
-        "R" => List::Stat,
-        _ => return Err(OrderMappingError::UnmappedPriority),
+    let list = match &priority.machine {
+        analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => List::Routine,
+        analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => List::Stat,
+        analyte_config::MachinePriority::Code(
+            analyte_config::PriorityCode::S
+            | analyte_config::PriorityCode::A
+            | analyte_config::PriorityCode::P
+            | analyte_config::PriorityCode::C
+            | analyte_config::PriorityCode::Prn,
+        )
+        | analyte_config::MachinePriority::Custom(_) => {
+            return Err(OrderMappingError::UnmappedPriority);
+        }
     };
     let position = order
         .position
@@ -386,7 +423,7 @@ fn autolyser(
     }
     if order.tests.is_empty()
         || order.tests.len() > 99
-        || order.tests.len() > machine.syntax.repetitions
+        || order.tests.len() > machine.limits.repetitions
     {
         return Err(OrderMappingError::Representation);
     }
@@ -402,9 +439,8 @@ fn autolyser(
         };
         tests.push(Field::<4>::new(code.as_bytes())?);
     }
-    let clone = settings.clone.ok_or(OrderMappingError::Disabled)?;
     let worklist = Worklist::new(patient, list, sample, clone, position, tests)?;
-    if worklist.encode().len() > machine.syntax.bytes {
+    if worklist.encode().len() > machine.limits.bytes {
         return Err(OrderMappingError::Representation);
     }
     Ok(MachineOrder::Autolyser(worklist))
@@ -412,7 +448,7 @@ fn autolyser(
 
 fn specimen_type<'a>(
     order: &AppOrder,
-    settings: &'a analyte_config::Orders,
+    settings: &'a analyte_config::OrderTables,
 ) -> Result<&'a str, OrderMappingError> {
     let requested = order
         .specimen_type

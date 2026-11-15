@@ -96,7 +96,7 @@ fn field(field: &Field, syntax: SyntaxKind, path: &str, key: &str) -> Result<(),
     Ok(())
 }
 
-pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
+pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Error> {
     crate::law::validate(m, path)?;
     if let Some(orders) = &m.orders {
         orders.validate(m, path)?;
@@ -350,9 +350,13 @@ pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn validate_mappings(m: &Machine, path: &str) -> Result<(), Error> {
+fn validate_mappings(m: &MachineDocument, path: &str) -> Result<(), Error> {
     let Some(mapping) = &m.mappings else {
-        return validate_tables(m.tests(), m.units(), path);
+        let codes = m
+            .codes
+            .as_ref()
+            .ok_or_else(|| invalid(path, "codes", "vendor syntax requires code tables"))?;
+        return validate_tables(&codes.tests, &codes.units, path);
     };
     if let Some(parts) = &mapping.component_parts {
         if m.syntax.kind != SyntaxKind::AstmLis02 {
@@ -453,7 +457,7 @@ fn validate_mappings(m: &Machine, path: &str) -> Result<(), Error> {
             ));
         }
     }
-    validate_tables(m.tests(), m.units(), path)
+    validate_tables(&mapping.tests, &mapping.units, path)
 }
 
 fn validate_tables(tests: &[TestMapping], units: &[UnitMapping], path: &str) -> Result<(), Error> {
@@ -487,34 +491,74 @@ fn validate_tables(tests: &[TestMapping], units: &[UnitMapping], path: &str) -> 
     Ok(())
 }
 
-fn validate_protocol(m: &Machine, path: &str) -> Result<(), Error> {
-    let vendor = match m.syntax.kind {
-        SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 => false,
-        SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => true,
-    };
-    if vendor && (m.mappings.is_some() || m.codes.is_none()) {
-        return Err(Error::VendorFieldMappings { path: path.into() });
-    }
-    if !vendor && (m.mappings.is_none() || m.codes.is_some()) {
-        return Err(invalid(
-            path,
-            "mappings",
-            "record syntax requires field mappings only",
-        ));
+fn validate_protocol(m: &MachineDocument, path: &str) -> Result<(), Error> {
+    // The permissive TOML document becomes exactly one table family at this boundary.
+    match (&m.mappings, &m.codes, m.syntax.kind) {
+        (Some(_), None, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
+        | (None, Some(_), SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser) => {}
+        (
+            Some(_),
+            Some(_) | None,
+            SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser,
+        )
+        | (None, None, SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser) => {
+            return Err(Error::VendorFieldMappings { path: path.into() });
+        }
+        (None, Some(_) | None, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
+        | (Some(_), Some(_), SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2) => {
+            return Err(invalid(
+                path,
+                "mappings",
+                "record syntax requires field mappings only",
+            ));
+        }
     }
     let valid_ms = |value| (1..=300_000).contains(&value);
     let bad = |protocol| Error::ProtocolSettings {
         path: path.into(),
         protocol,
     };
-    if (m.syntax.kind == SyntaxKind::Poct) != m.poct.is_some() {
-        return Err(bad("poct"));
+    match (m.syntax.kind, &m.poct) {
+        (SyntaxKind::Poct, Some(_))
+        | (
+            SyntaxKind::AstmLis02
+            | SyntaxKind::Hl7V2
+            | SyntaxKind::VidasLiteral
+            | SyntaxKind::Autolyser,
+            None,
+        ) => {}
+        (SyntaxKind::Poct, None)
+        | (
+            SyntaxKind::AstmLis02
+            | SyntaxKind::Hl7V2
+            | SyntaxKind::VidasLiteral
+            | SyntaxKind::Autolyser,
+            Some(_),
+        ) => return Err(bad("poct")),
     }
-    if (m.syntax.kind == SyntaxKind::VidasLiteral) != m.vidas.is_some() {
-        return Err(bad("vidas"));
+    match (m.syntax.kind, &m.vidas) {
+        (SyntaxKind::VidasLiteral, Some(_))
+        | (
+            SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 | SyntaxKind::Poct | SyntaxKind::Autolyser,
+            None,
+        ) => {}
+        (SyntaxKind::VidasLiteral, None)
+        | (
+            SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 | SyntaxKind::Poct | SyntaxKind::Autolyser,
+            Some(_),
+        ) => return Err(bad("vidas")),
     }
-    if (m.syntax.kind == SyntaxKind::Autolyser) != m.autolyser.is_some() {
-        return Err(bad("autolyser"));
+    match (m.syntax.kind, &m.autolyser) {
+        (SyntaxKind::Autolyser, Some(_))
+        | (
+            SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 | SyntaxKind::Poct | SyntaxKind::VidasLiteral,
+            None,
+        ) => {}
+        (SyntaxKind::Autolyser, None)
+        | (
+            SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 | SyntaxKind::Poct | SyntaxKind::VidasLiteral,
+            Some(_),
+        ) => return Err(bad("autolyser")),
     }
     if let Some(p) = &m.poct
         && (!(1..=128).contains(&p.pending_messages)
@@ -531,7 +575,6 @@ fn validate_protocol(m: &Machine, path: &str) -> Result<(), Error> {
         && (!(1..=80).contains(&v.chunk)
             || m.framing.limit > 1920
             || !matches!(v.suffix.as_slice(), [] | [13] | [10] | [13, 10])
-            || !matches!(v.sample_limit, 12 | 17)
             || ![
                 v.acknowledgment_ms,
                 v.interbyte_ms,

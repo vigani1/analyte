@@ -4,7 +4,7 @@ use crate::{Error, evidence, invalid};
 use analyte_model::ReceiptId;
 use analyte_poct::{
     Body, CommitOutcome, ControlId, Dialog, DialogAction, DialogConfig, DialogEvent, Header,
-    Limits, Message, Timestamp,
+    Message, Timestamp,
 };
 use analyte_store::Handle;
 use std::{
@@ -58,16 +58,13 @@ fn frame_length(raw: &[u8], maximum_depth: usize) -> Result<Option<usize>, Error
 
 pub(super) async fn session(
     machine: &evidence::Connection<'_>,
+    settings: &analyte_config::PoctStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let settings = machine.snapshot.effective().machine();
-    let policy = settings
-        .poct
-        .as_ref()
-        .ok_or_else(|| invalid("POCT policy missing"))?;
-    let limits = super::interpretation::poct_limits(machine)?;
+    let policy = &settings.policy;
+    let limits = super::interpretation::poct_limits(settings);
     let mut dialog = Dialog::new(
         DialogConfig {
             pending_messages: policy.pending_messages,
@@ -84,20 +81,20 @@ pub(super) async fn session(
             vendor::input(machine, store, conn, &mut stop, Duration::from_millis(10)).await?;
         // Incoming fragments must not postpone the absolute dialog deadline.
         let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
-        if process(actions, &mut dialog, start, machine, store, conn, limits).await? {
+        if process(actions, &mut dialog, start, machine, store, conn, settings).await? {
             break;
         }
         match input {
             Input::Opened => {}
             Input::Tick => {
                 let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
-                if process(actions, &mut dialog, start, machine, store, conn, limits).await? {
+                if process(actions, &mut dialog, start, machine, store, conn, settings).await? {
                     break;
                 }
             }
             Input::End => {
                 let actions = dialog.step(start.elapsed(), DialogEvent::Disconnected)?;
-                process(actions, &mut dialog, start, machine, store, conn, limits).await?;
+                process(actions, &mut dialog, start, machine, store, conn, settings).await?;
                 break;
             }
             Input::Bytes(bytes) => {
@@ -127,7 +124,7 @@ pub(super) async fn session(
                         continue;
                     }
                     let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
-                    if process(actions, &mut dialog, start, machine, store, conn, limits).await? {
+                    if process(actions, &mut dialog, start, machine, store, conn, settings).await? {
                         evidence::park_bytes(
                             store,
                             machine,
@@ -171,7 +168,7 @@ pub(super) async fn session(
                     };
                     let actions =
                         dialog.step(start.elapsed(), DialogEvent::Received(Box::new(message)))?;
-                    if process(actions, &mut dialog, start, machine, store, conn, limits).await? {
+                    if process(actions, &mut dialog, start, machine, store, conn, settings).await? {
                         return Ok(());
                     }
                 }
@@ -197,8 +194,10 @@ async fn process(
     machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
-    limits: Limits,
+    settings: &analyte_config::PoctStack,
 ) -> Result<bool, Error> {
+    let limits = super::interpretation::poct_limits(settings);
+    let send_timeout_ms = settings.timeouts.send_timeout_ms;
     let mut actions: VecDeque<_> = actions.into();
     while let Some(action) = actions.pop_front() {
         match action {
@@ -273,17 +272,7 @@ async fn process(
                     &body,
                     limits,
                 )?;
-                vendor::write(
-                    conn,
-                    message.document().raw(),
-                    ms(machine
-                        .snapshot
-                        .effective()
-                        .machine()
-                        .dialog
-                        .send_timeout_ms),
-                )
-                .await?;
+                vendor::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
             }
             DialogAction::ReadEnabled(_) => {}
             DialogAction::Deferred(message) => {

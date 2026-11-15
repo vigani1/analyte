@@ -26,11 +26,10 @@ fn part(
 }
 
 fn translate_units(machine: &Machine, part: &mut ResultPart) -> Result<(), Error> {
-    let settings = machine.snapshot.effective().machine();
+    let (_, units) = machine.snapshot.effective().stack().code_tables();
     if let Some(unit) = &part.units {
         let original = unit.original_text().clone();
-        if let Some(entry) = analyte_mapping::unit_translation(settings.units(), original.as_str())
-        {
+        if let Some(entry) = analyte_mapping::unit_translation(units, original.as_str()) {
             part.units = Some(Units::mapped(
                 original.clone(),
                 UnitMapping {
@@ -60,7 +59,7 @@ fn result(
 
 fn translated_test(machine: &Machine, code: &str, system: Option<&str>) -> Option<NamespacedId> {
     analyte_mapping::test_translation(
-        machine.snapshot.effective().machine().tests(),
+        machine.snapshot.effective().stack().code_tables().0,
         &[code],
         system,
     )

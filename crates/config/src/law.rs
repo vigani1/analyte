@@ -1,5 +1,5 @@
 //! Explicit LAW profile selection; TF-1 section 5.2 and TF-2b sections 2.2/3.27.
-use crate::{DialogKind, Edition, Encoding, Error, Escapes, Machine, Terminator, invalid};
+use crate::{DialogKind, Edition, Encoding, Error, Escapes, MachineDocument, Terminator, invalid};
 use serde::{Deserialize, Serialize};
 
 /// Supported host lookup scopes. Other LAW scopes must receive an error response.
@@ -109,7 +109,7 @@ fn plain(value: &str, max: usize) -> bool {
 }
 
 pub(crate) fn validate_orders(
-    machine: &Machine,
+    machine: &MachineDocument,
     path: &str,
     orders: &crate::Orders,
 ) -> Result<(), Error> {
@@ -152,13 +152,34 @@ pub(crate) fn validate_orders(
     Ok(())
 }
 
-pub(crate) fn validate(machine: &Machine, path: &str) -> Result<(), Error> {
-    if (machine.dialog.kind == DialogKind::LawManager) != machine.law.is_some() {
-        return Err(invalid(
-            path,
-            "law",
-            "supply LAW settings only for the law_manager dialog",
-        ));
+pub(crate) fn validate(machine: &MachineDocument, path: &str) -> Result<(), Error> {
+    match (machine.dialog.kind, &machine.law) {
+        (DialogKind::LawManager, Some(_))
+        | (
+            DialogKind::AstmLink
+            | DialogKind::Hl7Receiver
+            | DialogKind::FilePickup
+            | DialogKind::Poct
+            | DialogKind::VidasLiteral
+            | DialogKind::Autolyser,
+            None,
+        ) => {}
+        (DialogKind::LawManager, None)
+        | (
+            DialogKind::AstmLink
+            | DialogKind::Hl7Receiver
+            | DialogKind::FilePickup
+            | DialogKind::Poct
+            | DialogKind::VidasLiteral
+            | DialogKind::Autolyser,
+            Some(_),
+        ) => {
+            return Err(invalid(
+                path,
+                "law",
+                "supply LAW settings only for the law_manager dialog",
+            ));
+        }
     }
     let Some(law) = &machine.law else {
         return Ok(());

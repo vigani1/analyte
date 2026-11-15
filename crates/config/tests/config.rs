@@ -90,8 +90,8 @@ fn adr_0003_identity_remains_unresolved_without_evidence() -> Result<(), Error> 
     assert!(
         config
             .effective()
-            .machine()
-            .mappings
+            .stack()
+            .field_mappings()
             .as_ref()
             .ok_or_else(|| Error::FileSize {
                 path: "fixture".into()
@@ -103,8 +103,8 @@ fn adr_0003_identity_remains_unresolved_without_evidence() -> Result<(), Error> 
     assert!(
         config
             .effective()
-            .machine()
-            .mappings
+            .stack()
+            .field_mappings()
             .as_ref()
             .ok_or_else(|| Error::FileSize {
                 path: "fixture".into()
@@ -156,12 +156,7 @@ fn adr_0007_vendor_departures_need_named_reasons() -> Result<(), Error> {
     assert!(draft(&smaller, OVERRIDES)?.validate().is_err());
     let declared = smaller.replace("deviations = []", "deviations = [{name='small-frame',key='framing.limit',reason='Synthetic vendor requires 247 bytes'}]");
     assert_eq!(
-        draft(&declared, OVERRIDES)?
-            .validate()?
-            .effective()
-            .machine()
-            .framing
-            .limit,
+        astm_frame_limit(&draft(&declared, OVERRIDES)?.validate()?)?,
         247
     );
     Ok(())
@@ -237,7 +232,7 @@ fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() 
         include_str!("../examples/autolyser.toml"),
     ] {
         let config = draft(example, OVERRIDES)?.validate()?;
-        assert!(config.effective().machine().mappings.is_none());
+        assert!(config.effective().stack().field_mappings().is_none());
         assert_eq!(
             config.effective().machine().evidence.level,
             EvidenceLevel::Documented
@@ -256,12 +251,15 @@ fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() 
         let bad = example.replacen(
             &format!(
                 "kind = \"{}\"",
-                match config.effective().machine().syntax.kind {
-                    analyte_config::SyntaxKind::Poct => "poct",
-                    analyte_config::SyntaxKind::VidasLiteral => "vidas_literal",
-                    analyte_config::SyntaxKind::Autolyser => "autolyser",
-                    analyte_config::SyntaxKind::AstmLis02 => "astm_lis02",
-                    analyte_config::SyntaxKind::Hl7V2 => "hl7_v2",
+                match config.effective().stack() {
+                    analyte_config::Stack::Poct(_) => "poct",
+                    analyte_config::Stack::VidasLiteral(_) => "vidas_literal",
+                    analyte_config::Stack::Autolyser(_) => "autolyser",
+                    analyte_config::Stack::Astm(_) | analyte_config::Stack::FileAstm(_) =>
+                        "astm_lis02",
+                    analyte_config::Stack::Hl7(_)
+                    | analyte_config::Stack::Law(_)
+                    | analyte_config::Stack::FileHl7(_) => "hl7_v2",
                 }
             ),
             "kind = \"mllp\"",
@@ -338,4 +336,49 @@ fn adr0002_component_parts_invalid_declarations_have_specific_errors() -> Result
         ));
     }
     Ok(())
+}
+
+#[test]
+fn adr_0002_vidas_installed_sample_limit_preserves_numeric_toml() -> Result<(), Error> {
+    use analyte_config::VidasSampleLimit;
+    let definition = include_str!("../examples/vidas_literal.toml");
+    for (number, expected) in [
+        (12, VidasSampleLimit::Twelve),
+        (17, VidasSampleLimit::Seventeen),
+    ] {
+        let definition =
+            definition.replace("sample_limit = 12", &format!("sample_limit = {number}"));
+        let valid = draft(&definition, OVERRIDES)?.validate()?;
+        assert_eq!(vidas(&valid)?.sample_limit, expected);
+        assert!(
+            valid
+                .canonical()
+                .contains(&format!("sample_limit = {number}"))
+        );
+    }
+    for number in [0, 11, 13, 16, 18, 255] {
+        let definition =
+            definition.replace("sample_limit = 12", &format!("sample_limit = {number}"));
+        assert!(draft(&definition, OVERRIDES).is_err());
+    }
+    Ok(())
+}
+
+fn vidas(config: &analyte_config::Validated) -> Result<&analyte_config::Vidas, Error> {
+    let analyte_config::Stack::VidasLiteral(stack) = config.effective().stack() else {
+        return Err(Error::ProtocolSettings {
+            path: "fixture".into(),
+            protocol: "vidas",
+        });
+    };
+    Ok(&stack.policy)
+}
+fn astm_frame_limit(config: &analyte_config::Validated) -> Result<usize, Error> {
+    let analyte_config::Stack::Astm(stack) = config.effective().stack() else {
+        return Err(Error::ProtocolSettings {
+            path: "fixture".into(),
+            protocol: "astm",
+        });
+    };
+    Ok(stack.frame_limit)
 }

@@ -10,13 +10,24 @@ pub fn map_display(
     order_id: &str,
     config: &Validated,
 ) -> Result<Vec<Vec<u8>>, OrderMappingError> {
-    let settings = config
-        .effective()
-        .machine()
-        .orders
+    use analyte_config::Stack;
+    let orders = match config.effective().stack() {
+        Stack::Hl7(s) => s.orders.as_ref(),
+        Stack::FileHl7(s) => s.orders.as_ref(),
+        Stack::Astm(_)
+        | Stack::FileAstm(_)
+        | Stack::Law(_)
+        | Stack::Poct(_)
+        | Stack::VidasLiteral(_)
+        | Stack::Autolyser(_) => None,
+    }
+    .ok_or(OrderMappingError::Disabled)?;
+    let layout = &orders
+        .query
         .as_ref()
-        .ok_or(OrderMappingError::Disabled)?;
-    let layout = settings.hl7.as_ref().ok_or(OrderMappingError::Disabled)?;
+        .ok_or(OrderMappingError::Disabled)?
+        .layout;
+    let settings = &orders.tables;
     let mut lines = Vec::new();
     for test in &order.tests {
         let mapped = settings
@@ -43,7 +54,7 @@ pub fn map_display(
                 DsrLine::PatientId => match &order.patient {
                     None => "",
                     Some(patient)
-                        if settings.patient_namespace.as_ref() == Some(&patient.namespace) =>
+                        if orders.patient_namespace.as_ref() == Some(&patient.namespace) =>
                     {
                         patient.value.as_str()
                     }
@@ -66,7 +77,7 @@ pub fn map_display(
                 || value
                     .bytes()
                     .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
-                || lines.len() >= config.effective().machine().syntax.records
+                || lines.len() >= config.effective().stack().limits().records
             {
                 return Err(OrderMappingError::Representation);
             }

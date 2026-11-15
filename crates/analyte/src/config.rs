@@ -132,8 +132,10 @@ impl Program {
             .find(|m| m.id.as_str() == id)
             .ok_or_else(|| invalid("unknown test machine"))?;
         if machine.listener.is_none()
-            || machine.snapshot.effective().machine().dialog.kind
-                != analyte_config::DialogKind::LawManager
+            || !matches!(
+                machine.snapshot.effective().stack(),
+                analyte_config::Stack::Law(_)
+            )
         {
             return Err(invalid(
                 "commit hook requires injected LAW loopback listener",
@@ -177,8 +179,10 @@ impl Program {
             .find(|m| m.id.as_str() == id)
             .ok_or_else(|| invalid("unknown test machine"))?;
         if machine.listener.is_none()
-            || machine.snapshot.effective().machine().dialog.kind
-                != analyte_config::DialogKind::AstmLink
+            || !matches!(
+                machine.snapshot.effective().stack(),
+                analyte_config::Stack::Astm(_)
+            )
         {
             return Err(invalid(
                 "commit hook requires injected ASTM loopback listener",
@@ -203,7 +207,7 @@ impl Program {
             .find(|m| m.id.as_str() == id)
             .ok_or_else(|| invalid("unknown test machine"))?;
         if !listener.local_addr()?.ip().is_loopback()
-            || machine.snapshot.effective().machine().transport.kind
+            || machine.snapshot.effective().stack().transport_kind()
                 != analyte_config::TransportKind::TcpServer
             || listener.local_addr()?.to_string() != machine.snapshot.effective().site().endpoint
         {
@@ -257,26 +261,20 @@ impl Program {
             )?
             .validate()?;
             if matches!(
-                snapshot.effective().machine().framing.checksum_hex,
-                Some(analyte_config::ChecksumHex::AcceptLowercase)
+                snapshot.effective().stack(),
+                analyte_config::Stack::Astm(settings) if settings.checksum_hex == analyte_config::ChecksumHex::AcceptLowercase
             ) {
                 return Err(invalid(
                     "ASTM receive dialog currently supports strict checksum hex only",
                 ));
             }
-            if snapshot
-                .effective()
-                .machine()
-                .transport
-                .operation_timeout_ms
-                > 60_000
-            {
+            if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
                 return Err(invalid(
                     "receive transport operation timeout cannot exceed 60000 ms",
                 ));
             }
             if snapshot.canonical().len() > file.store.record_bytes
-                || snapshot.effective().machine().syntax.bytes > file.store.record_bytes
+                || snapshot.effective().stack().limits().bytes > file.store.record_bytes
             {
                 return Err(invalid(
                     "store record limit is smaller than machine message or effective config",

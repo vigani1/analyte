@@ -112,13 +112,8 @@ impl Connection {
                 return Err(error.into());
             }
         };
-        let settings = machine
-            .snapshot
-            .effective()
-            .machine()
-            .law
-            .as_ref()
-            .ok_or("LAW policy absent")?;
+        let stack = super::settings::law(machine)?;
+        let settings = &stack.policy;
         let supported = match query.scope() {
             law::Scope::Container(_) => settings
                 .query_forms
@@ -145,7 +140,7 @@ impl Connection {
                 options,
             );
         }
-        if settings.work.is_none() {
+        if stack.orders.is_none() {
             evidence::failed_reading(store, machine, receipt, "LAW query work layout is disabled")
                 .await?;
             return reply(
@@ -204,12 +199,12 @@ impl Connection {
         options: Options,
     ) -> Result<Reply, Error> {
         let freshness = machine.destination_limits.freshness.as_secs();
-        let cfg = machine.snapshot.effective().machine();
+        let cfg = super::settings::law(machine)?;
         let work = Arc::new(
-            cfg.law
+            cfg.orders
                 .as_ref()
-                .and_then(|law| law.work.as_ref())
                 .ok_or("LAW work layout absent")?
+                .work
                 .clone(),
         );
         let sample = match query.scope() {

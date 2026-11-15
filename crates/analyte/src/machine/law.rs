@@ -12,21 +12,18 @@ use tokio::sync::watch;
 /// The first-byte deadline includes raw commit, interpretation and response issuance.
 pub(super) async fn session(
     machine: &evidence::Connection<'_>,
+    settings: &analyte_config::LawStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let config = machine.snapshot.effective().machine();
-    let mut options = machine
-        .snapshot
-        .effective()
-        .hl7_options()
-        .ok_or("LAW syntax absent")?;
-    options.limits.message_bytes = options.limits.message_bytes.min(config.framing.limit);
+    let config = settings;
+    let mut options = settings.options();
+    options.limits.message_bytes = options.limits.message_bytes.min(config.frame_limit);
     let limit = mllp::Limit::new(options.limits.message_bytes)?;
     let mut decoder = mllp::Decoder::new(limit);
-    let receive = Duration::from_millis(u64::from(config.dialog.receive_timeout_ms));
-    let send = Duration::from_millis(u64::from(config.dialog.send_timeout_ms));
+    let receive = Duration::from_millis(u64::from(config.timeouts.receive_timeout_ms));
+    let send = Duration::from_millis(u64::from(config.timeouts.send_timeout_ms));
     let mut until = None;
     let mut orders = Connection::new()?;
     let mut opened = false;
@@ -65,7 +62,7 @@ pub(super) async fn session(
                                 () = super::stopping(&mut stop) => break,
                                 result = write(conn, &message, limit, end.into()) => result?,
                             }
-                            orders.issued(Duration::from_millis(u64::from(config.law.as_ref().ok_or("LAW options absent")?.response_ms)))?;
+                            orders.issued(Duration::from_millis(u64::from(config.policy.response_ms)))?;
                         }
                     }
                     continue;
@@ -104,7 +101,7 @@ pub(super) async fn session(
                                     result = write(conn, &message, limit, write_end.min(send_until)) => result?,
                                 }
                             }
-                            if has_followup { orders.issued(Duration::from_millis(u64::from(config.law.as_ref().ok_or("LAW options absent")?.response_ms)))?; }
+                            if has_followup { orders.issued(Duration::from_millis(u64::from(config.policy.response_ms)))?; }
                             until = if decoder.pending().is_empty() { None } else { Some(end) };
                         }
                     }

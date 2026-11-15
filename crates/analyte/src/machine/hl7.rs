@@ -11,42 +11,26 @@ use tokio::sync::watch;
 
 pub(super) async fn session(
     machine: &evidence::Connection<'_>,
+    settings: &analyte_config::Hl7Stack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let mut options = machine
-        .snapshot
-        .effective()
-        .hl7_options()
-        .ok_or_else(|| invalid("HL7 options absent"))?;
-    options.limits.message_bytes = options
-        .limits
-        .message_bytes
-        .min(machine.snapshot.effective().machine().framing.limit);
+    let mut options = settings.syntax.options();
+    options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit);
     let config = Config::new(
         options,
-        Duration::from_millis(u64::from(
-            machine
-                .snapshot
-                .effective()
-                .machine()
-                .dialog
-                .receive_timeout_ms,
-        )),
+        Duration::from_millis(u64::from(settings.timeouts.receive_timeout_ms)),
         1,
     )?;
     let mut dialog = Dialog::new(config, 0);
     let start = Instant::now();
     let mut wake = None;
     let mut pending = BTreeMap::new();
-    let enabled = machine
-        .snapshot
-        .effective()
-        .machine()
+    let enabled = settings
         .orders
         .as_ref()
-        .is_some_and(|o| o.hl7.is_some() || o.hl7_send.is_some());
+        .is_some_and(|o| o.query.is_some() || o.send.is_some());
     let mut queries = if enabled {
         Some(crate::orders::hl7::Connection::new(options)?)
     } else {

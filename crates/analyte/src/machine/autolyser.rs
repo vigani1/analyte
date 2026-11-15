@@ -23,23 +23,20 @@ struct ConnectionState {
 
 pub(super) async fn session(
     machine: &evidence::Connection<'_>,
+    settings: &analyte_config::AutolyserStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     super::autolyser_custody::ensure_reconciled(store, machine).await?;
-    let settings = machine.snapshot.effective().machine();
-    let policy = settings
-        .autolyser
-        .as_ref()
-        .ok_or_else(|| invalid("Autolyser policy missing"))?;
+    let policy = &settings.policy;
     let dialog = Dialog::new(Config {
         poll: ms(policy.poll_ms),
         ack: ms(policy.acknowledgment_ms),
         response: ms(policy.response_ms),
         inter_byte: ms(policy.interbyte_ms),
         storage: ms(policy.storage_ms),
-        max_bytes: settings.framing.limit,
+        max_bytes: settings.frame_limit,
         controls: policy.controls,
         recovery: if policy.recover_last_on_poll {
             Recovery::LastOnPoll
@@ -107,7 +104,7 @@ pub(super) async fn session(
                             let actions = state
                                 .dialog
                                 .step(state.start.elapsed(), Event::Download(&worklist));
-                            if process(actions, &mut state, machine, store, conn).await? {
+                            if process(actions, &mut state, machine, store, conn, policy).await? {
                                 return Ok(());
                             }
                             Vec::new()
@@ -115,7 +112,7 @@ pub(super) async fn session(
                             vec![Event::Poll(Request::Next)]
                         }
                     } else {
-                        if process(actions, &mut state, machine, store, conn).await? {
+                        if process(actions, &mut state, machine, store, conn, policy).await? {
                             return Ok(());
                         }
                         if state.wake <= state.start.elapsed() {
@@ -131,7 +128,7 @@ pub(super) async fn session(
                     state.guard = Some(super::autolyser_custody::reserve(store, machine).await?);
                 }
                 let actions = state.dialog.step(state.start.elapsed(), event);
-                if process(actions, &mut state, machine, store, conn).await? {
+                if process(actions, &mut state, machine, store, conn, policy).await? {
                     return Ok(());
                 }
             }
@@ -153,6 +150,7 @@ async fn process(
     machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
+    policy: &analyte_config::Autolyser,
 ) -> Result<bool, Error> {
     let ConnectionState {
         dialog,
@@ -166,13 +164,6 @@ async fn process(
         end_code,
         ..
     } = state;
-    let policy = machine
-        .snapshot
-        .effective()
-        .machine()
-        .autolyser
-        .as_ref()
-        .ok_or_else(|| invalid("Autolyser policy missing"))?;
     let mut actions: VecDeque<_> = actions.into();
     let mut close = false;
     let mut failure = None;

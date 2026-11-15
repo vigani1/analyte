@@ -279,7 +279,7 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
                 Ok(())
             })
             .await?;
-        if machine.snapshot.effective().machine().syntax.kind == analyte_config::SyntaxKind::Poct {
+        if matches!(machine.snapshot.effective().stack(), Stack::Poct(_)) {
             // Control receipts are retained too; reprocessing them never becomes a
             // machine query or an invented empty result success (rule 9).
             for control in [poct_peer::hello("hello"), poct_peer::status("status", "1")] {
