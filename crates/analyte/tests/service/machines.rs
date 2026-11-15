@@ -194,7 +194,7 @@ async fn replay_machine(
     )
     .await?;
     program.set_loopback_destination_for_test("demo", reference.url.clone())?;
-    let running = Running::start_program(program, "synthetic-api")?;
+    let running = Running::start_program(program, "synthetic-api").await?;
     let replayed = async {
         if folder {
             replay_file(&path, &incoming, events).await?;
