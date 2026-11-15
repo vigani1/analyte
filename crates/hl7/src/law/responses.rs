@@ -1,5 +1,5 @@
 use super::{Error, Query, content, raw};
-use crate::{AckCode, AckError, Message, Msh, Options, Response, Responsibility};
+use crate::{AckCode, AckError, Message, Options, Response, Responsibility};
 
 /// Host's authoritative cache outcome; unavailable is never an empty answer.
 #[derive(Debug, Clone, Copy)]
@@ -48,7 +48,7 @@ impl QueryResponse {
     }
 }
 
-/// Builds RSP with MSA/QAK correlation and an exact QPD echo (TF-2b §3.27.4).
+/// Builds RSP with MSA/QAK correlation and an exact QPD echo (TF-2b Ã‚Â§3.27.4).
 ///
 /// The caller must establish durable responsibility before positive acceptance.
 /// An unavailable lookup uses QAK AE and has no negative-work followup.
@@ -74,16 +74,17 @@ pub fn query_response(
     };
     // Reuse the core's responsibility, metadata, and ERR validation rather than
     // acquiring a second interpretation of when a positive acknowledgment is safe.
-    let ack = crate::acknowledgment(
+    let ack = crate::ack::acknowledgment_with_limit(
         query.message(),
         response,
         code,
         responsibility,
         error,
         options,
+        50,
     )?
     .ok_or(content("MSH", 16))?;
-    let msh = Msh::new(&ack)?;
+    let msh = super::msh(&ack)?;
     let source = msh.segment();
     let delimiters = ack.delimiters();
     let component = delimiters.component;

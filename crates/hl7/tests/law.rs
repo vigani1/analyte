@@ -6,7 +6,7 @@ use analyte_hl7::{
 use proptest::prelude::*;
 
 fn query(body: &str) -> Result<Message, analyte_hl7::Error> {
-    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101||QBP^Q11^QBP_Q11|q1|P|2.5.1|||NE|AL|||||LAB-27^IHE\r{body}\rRCP|I||R^Real Time^HL70394\r").as_bytes(), Options::default())
+    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101||QBP^Q11^QBP_Q11|q1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\r{body}\rRCP|I||R^Real Time^HL70394\r").as_bytes(), utf8_options())
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup()
             answer,
             response_metadata()?,
             Responsibility::StoredAndInterpreted,
-            Options::default(),
+            utf8_options(),
         )?;
         assert_eq!(result.followup(), expected);
         let segments: Vec<_> = result.message().segments().collect();
@@ -197,12 +197,12 @@ fn law_tf2b_b5_rsp_requires_storage_and_bounds_output() -> Result<(), Box<dyn st
                 CacheAnswer::WorkExists,
                 response_metadata()?,
                 responsibility,
-                Options::default()
+                utf8_options()
             ),
             Err(Error::Syntax(analyte_hl7::Error::NotStored))
         ));
     }
-    let mut options = Options::default();
+    let mut options = utf8_options();
     options.limits.message_bytes = 64;
     assert!(matches!(
         query_response(
@@ -392,9 +392,9 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
         ("UC", "IP", AwosOutcome::UnableToCancel),
     ] {
         let incoming = format!(
-            "MSH|^~\\&|A|AF|M|MF|20260101||ORL^O34^ORL_O42|orl1|P|2.5.1|||||||||LAB-28^IHE\rMSA|AA|rsp-1\rSPM||||SER\rSAC|||tube\rORC|{control}|awos-1|||{status}\r"
+            "MSH|^~\\&|A|AF|M|MF|20260101||ORL^O34^ORL_O42|orl1|P|2.5.1||||||UNICODE UTF-8|||LAB-28^IHE\rMSA|AA|rsp-1\rSPM|1|||SER|||||||P\rSAC|||tube\rORC|{control}|awos-1|||{status}\r"
         );
-        let message = Message::parse(incoming.as_bytes(), Options::default())?;
+        let message = Message::parse(incoming.as_bytes(), utf8_options())?;
         let parsed = WorkResponse::new(&message, &sent)?;
         assert_eq!(parsed.acceptance(), AckCode::Aa);
         assert_eq!(
@@ -411,7 +411,7 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
 }
 
 fn results_message(awos: &str, extra: &str) -> Result<Message, analyte_hl7::Error> {
-    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL|||||LAB-29^IHE\rSPM||sample-01||SER^Serum^HL70487|||||||P\rSAC|||000tube\rOBR||{awos}||test^Test^99LAB\rORC|SC||||CM\r{extra}").as_bytes(), Options::default())
+    Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01||SER^Serum^HL70487|||||||P\rSAC|||000tube\rOBR||{awos}||test^Test^99LAB\rORC|SC||||CM\r{extra}").as_bytes(), utf8_options())
 }
 
 fn observation(code: &str, sub_id: &str, kind: &str, value: &str, status: &str) -> String {
@@ -422,7 +422,14 @@ fn observation(code: &str, sub_id: &str, kind: &str, value: &str, status: &str) 
         (2, code),
         (3, sub_id),
         (4, value),
-        (5, "mg/L^mg/L^UCUM"),
+        (
+            5,
+            if matches!(kind, "NM" | "SN") {
+                "mg/L^mg/L^UCUM"
+            } else {
+                ""
+            },
+        ),
         (6, "0-2"),
         (7, "N"),
         (10, status),
@@ -543,7 +550,7 @@ fn law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability()
             AckCode::Aa,
             Responsibility::Stored,
             None,
-            Options::default()
+            utf8_options()
         )
         .is_err()
     );
@@ -553,7 +560,7 @@ fn law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability()
         AckCode::Aa,
         Responsibility::StoredAndInterpreted,
         None,
-        Options::default(),
+        utf8_options(),
     )?
     .ok_or("missing ACK")?;
     let msh = ack.segments().next().ok_or("missing MSH")?;
@@ -571,6 +578,118 @@ fn law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability()
             .and_then(|s| s.field(2))
             .map(Field::raw),
         Some(b"result-1".as_slice())
+    );
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_2_2_usage_cardinality_length_and_null_rules() -> Result<(), Box<dyn std::error::Error>>
+{
+    use analyte_hl7::law::{FieldRule, Usage};
+    let message = results_message(
+        "awos-1",
+        &observation("test^Test^99LAB", "1", "NM", "1.20", "F"),
+    )?;
+    let obx = message.segments().find(|s| s.id() == b"OBX").ok_or("OBX")?;
+    for usage in [
+        Usage::Mandatory,
+        Usage::Required,
+        Usage::RequiredIfAvailable,
+        Usage::RequiredFromAnalyzer,
+    ] {
+        FieldRule {
+            segment: "OBX",
+            field: 5,
+            usage,
+            minimum: 1,
+            maximum: 1,
+            length: 4,
+        }
+        .check(obx)?;
+    }
+    for (usage, maximum, length) in [
+        (Usage::Excluded, 1, 4),
+        (Usage::Conditional, 1, 4),
+        (Usage::Mandatory, 0, 4),
+        (Usage::Mandatory, 1, 3),
+    ] {
+        assert!(
+            FieldRule {
+                segment: "OBX",
+                field: 5,
+                usage,
+                minimum: 1,
+                maximum,
+                length
+            }
+            .check(obx)
+            .is_err()
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_appendix_c_result_field_predicates_and_required_fields()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::law::Results;
+    let good = results_message(
+        "awos-1",
+        &observation("test^Test^99LAB", "1", "NM", "1.20", "F"),
+    )?;
+    for (needle, replacement) in [
+        ("|UNICODE UTF-8|", "||"),
+        ("|LAB-29^IHE", "|LAB-28^IHE"),
+        ("SPM|1|", "SPM||"),
+        ("|1.20|mg/L^mg/L^UCUM|", "|1.20||"),
+        ("mg/L^mg/L^UCUM", "mg/L^mg/L^99LAB"),
+        ("|F|", "|D|"),
+        ("|RSLT\r", "|OTHER\r"),
+        ("ORC|SC||||CM\r", ""),
+    ] {
+        let original = std::str::from_utf8(good.raw())?;
+        assert!(original.contains(needle));
+        let options = if needle == "|UNICODE UTF-8|" {
+            Options::default()
+        } else {
+            utf8_options()
+        };
+        let altered = Message::parse(original.replace(needle, replacement).as_bytes(), options)?;
+        assert!(
+            Results::new(&altered).is_err(),
+            "accepted alteration {needle}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c4_extended_control_id_is_scoped_to_law() -> Result<(), Box<dyn std::error::Error>> {
+    use analyte_hl7::{
+        Response, Responsibility,
+        law::{CacheAnswer, control_id, query_response},
+    };
+    let long = b"01234567890123456789012345678901234567890123456789";
+    assert!(analyte_hl7::ControlId::new(long).is_err());
+    let source = query("QPD|WOS^Work Order Step^IHELAW|tag|000Ab")?;
+    let response = query_response(
+        Query::new(&source)?,
+        CacheAnswer::WorkExists,
+        Response {
+            control_id: control_id(long)?,
+            timestamp: b"202601011200",
+        },
+        Responsibility::StoredAndInterpreted,
+        utf8_options(),
+    )?;
+    assert_eq!(
+        response
+            .message()
+            .segments()
+            .next()
+            .and_then(|s| s.field(10))
+            .map(analyte_hl7::Field::raw),
+        Some(long.as_slice())
     );
     Ok(())
 }

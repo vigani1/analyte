@@ -1,6 +1,6 @@
 use super::responses::Wire;
 use super::{Error, Identity, content, raw};
-use crate::{AckCode, AckError, Field, Message, Msh, Options, Response, Responsibility, Segment};
+use crate::{AckCode, AckError, Field, Message, Options, Response, Responsibility, Segment};
 
 /// Source observation state; revisions remain a host responsibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +55,8 @@ fn status(value: &[u8]) -> Result<ResultStatus, Error> {
 pub enum Value<'a> {
     /// Explicit null value, distinct from an absent value.
     Null,
+    /// Reference to a source observation identity.
+    Identity(&'a [u8]),
     /// Plain decimal NM.
     Number(&'a [u8]),
     /// Structured numeric SN, including comparator/ratio.
@@ -114,6 +116,7 @@ fn values(segment: Segment<'_>) -> Result<Vec<Value<'_>>, Error> {
             b"SN" => Value::StructuredNumber(value),
             b"ST" | b"TX" | b"FT" => Value::Text(value),
             b"CE" | b"CWE" => Value::Coded(value),
+            b"EI" => Value::Identity(value),
             b"ED" => Value::Encapsulated(value),
             b"RP" => Value::Reference(value),
             b"NA" => Value::Array(value),
@@ -254,7 +257,8 @@ impl<'a> Results<'a> {
     /// Rejects missing context, unsupported types/statuses and inconsistent TCD identity.
     /// The input remains owned by the host even when no view can be returned.
     pub fn new(message: &'a Message) -> Result<Self, Error> {
-        let msh = Msh::new(message)?;
+        super::profile::header(message, b"LAB-29", true)?;
+        let msh = super::msh(message)?;
         let d = message.delimiters();
         if !raw(msh.segment(), 9).split(|b| *b == d.component).eq([
             b"OUL".as_slice(),
@@ -272,12 +276,25 @@ impl<'a> Results<'a> {
         let mut order_status = None;
         let mut order_count = 0usize;
         let mut observation_count = 0usize;
+        let mut has_patient = false;
+        let mut has_visit = false;
+        let mut has_timing = false;
+        let mut has_tcd = false;
         for (ordinal, segment) in message.segments().enumerate().skip(1) {
+            super::profile::validate_segment(segment)?;
             match segment.id() {
                 b"PID" => {
+                    if has_patient || specimen.is_some() {
+                        return Err(content("PID", 0));
+                    }
+                    has_patient = true;
                     parent = Some(Parent::Patient(ordinal));
                 }
                 b"PV1" => {
+                    if !has_patient || has_visit || specimen.is_some() {
+                        return Err(content("PV1", 0));
+                    }
+                    has_visit = true;
                     attached.push(Attached {
                         parent: parent.ok_or(content("PV1", 0))?,
                         segment,
@@ -285,6 +302,9 @@ impl<'a> Results<'a> {
                 }
                 b"SPM" => {
                     check_complete(order_status, observation_count)?;
+                    if order.is_some() && order_status.is_none() {
+                        return Err(content("ORC", 0));
+                    }
                     specimen = Some(segment);
                     container = None;
                     order = None;
@@ -292,7 +312,7 @@ impl<'a> Results<'a> {
                     parent = Some(Parent::Specimen(ordinal));
                 }
                 b"SAC" => {
-                    if specimen.is_none() {
+                    if specimen.is_none() || container.is_some() {
                         return Err(content("SAC", 0));
                     }
                     container = Some(segment);
@@ -301,6 +321,9 @@ impl<'a> Results<'a> {
                 }
                 b"OBR" => {
                     check_complete(order_status, observation_count)?;
+                    if order.is_some() && order_status.is_none() {
+                        return Err(content("ORC", 0));
+                    }
                     if container.is_none() {
                         return Err(content("OBR", 0));
                     }
@@ -312,12 +335,19 @@ impl<'a> Results<'a> {
                     order = Some(segment);
                     order_status = None;
                     observation_count = 0;
+                    has_timing = false;
                     order_count = order_count.checked_add(1).ok_or(content("OBR", 0))?;
                     parent = Some(Parent::Order(ordinal));
                 }
                 b"ORC" => {
                     if order.is_none() || raw(segment, 1) != b"SC" || order_status.is_some() {
                         return Err(content("ORC", 1));
+                    }
+                    if !matches!(raw(segment, 5), b"SC" | b"IP" | b"CM" | b"CA")
+                        || !raw(segment, 2).is_empty()
+                        || !raw(segment, 9).is_empty()
+                    {
+                        return Err(content("ORC", 5));
                     }
                     order_status = Some(raw(segment, 5));
                     attached.push(Attached {
@@ -326,12 +356,17 @@ impl<'a> Results<'a> {
                     });
                 }
                 b"TQ1" => {
+                    if order_status.is_none() || has_timing || observation_count != 0 {
+                        return Err(content("TQ1", 0));
+                    }
+                    has_timing = true;
                     attached.push(Attached {
                         parent: parent.ok_or(content("TQ1", 0))?,
                         segment,
                     });
                 }
                 b"OBX" => {
+                    has_tcd = false;
                     if !matches!(order_status, Some(b"IP" | b"CM")) {
                         return Err(content("OBX", 0));
                     }
@@ -354,6 +389,10 @@ impl<'a> Results<'a> {
                     parent = Some(Parent::Observation(ordinal));
                 }
                 b"TCD" => {
+                    if has_tcd {
+                        return Err(content("TCD", 0));
+                    }
+                    has_tcd = true;
                     if !matches!(parent, Some(Parent::Observation(_))) {
                         return Err(content("TCD", 0));
                     }
@@ -376,6 +415,9 @@ impl<'a> Results<'a> {
             }
         }
         check_complete(order_status, observation_count)?;
+        if order.is_some() && order_status.is_none() {
+            return Err(content("ORC", 0));
+        }
         if order_count == 0 {
             return Err(content("OBR", 0));
         }
@@ -429,12 +471,20 @@ pub fn result_acknowledgment(
     if (code == AckCode::Aa) == error.is_some() {
         return Err(content("ERR", 0));
     }
-    let Some(ack) = crate::acknowledgment(message, response, code, responsibility, error, options)?
+    let Some(ack) = crate::ack::acknowledgment_with_limit(
+        message,
+        response,
+        code,
+        responsibility,
+        error,
+        options,
+        50,
+    )?
     else {
         return Ok(None);
     };
     let mut wire = Wire::new(options.limits.message_bytes, message.delimiters().field);
-    let msh = Msh::new(&ack)?.segment();
+    let msh = super::msh(&ack)?.segment();
     wire.append(b"MSH")?;
     let mut profile = b"LAB-29".to_vec();
     profile.push(message.delimiters().component);

@@ -1,6 +1,6 @@
 use super::responses::Wire;
 use super::{Error, Identity, Query, Scope, content};
-use crate::{Message, Msa, Msh, Options, Response};
+use crate::{Message, Msa, Options, Response};
 use std::collections::BTreeSet;
 
 /// Negotiated outgoing options. Absence never authorizes clinical decisions.
@@ -232,7 +232,7 @@ pub fn work_order(
             &mut wire,
             b"SPM",
             &[
-                b"",
+                b"1",
                 awos.specimen,
                 b"",
                 awos.specimen_type,
@@ -320,7 +320,11 @@ pub fn work_order(
             )?;
         }
     }
-    Ok(Message::parse(&wire.bytes, options)?)
+    let message = Message::parse(&wire.bytes, options)?;
+    for segment in message.segments() {
+        super::profile::validate_segment(segment)?;
+    }
+    Ok(message)
 }
 
 /// Builds the restricted negative LAB-28 only from a validated query scope.
@@ -338,7 +342,7 @@ pub fn negative_work(
     segment(
         &mut wire,
         b"SPM",
-        &[b"", b"", b"", b"\"\"", b"", b"", b"", b"", b"", b"", b"U"],
+        &[b"1", b"", b"", b"\"\"", b"", b"", b"", b"", b"", b"", b"U"],
     )?;
     // These are borrowed encoded fields; only identical delimiters can be echoed.
     if query.message().delimiters().bytes() != *b"|^~\\&" {
@@ -358,7 +362,11 @@ pub fn negative_work(
         b"ORC",
         &[b"DC", b"", b"", b"", b"", b"", b"", b"", response.timestamp],
     )?;
-    Ok(Message::parse(&wire.bytes, options)?)
+    let message = Message::parse(&wire.bytes, options)?;
+    for segment in message.segments() {
+        super::profile::validate_segment(segment)?;
+    }
+    Ok(message)
 }
 
 /// Analyzer's per-request AWOS decision; never a message acknowledgment.
@@ -398,7 +406,8 @@ impl<'a> WorkResponse<'a> {
     /// # Errors
     /// Rejects inconsistent/missing/duplicate/unknown AWOS or mismatched control/status pairs.
     pub fn new(message: &'a Message, sent: &'a Message) -> Result<Self, Error> {
-        let msh = Msh::new(message)?;
+        super::profile::header(message, b"LAB-28", false)?;
+        let msh = super::msh(message)?;
         let d = message.delimiters();
         if !super::raw(msh.segment(), 9)
             .split(|b| *b == d.component)
@@ -411,8 +420,8 @@ impl<'a> WorkResponse<'a> {
             .next()
             .filter(|s| s.id() == b"MSA")
             .ok_or(content("MSA", 0))?;
-        let msa = Msa::new(msa_segment)?;
-        if msa.control_id() != Msh::new(sent)?.control_id() {
+        let msa = Msa::with_control_limit(msa_segment, 50)?;
+        if msa.control_id() != super::msh(sent)?.control_id() {
             return Err(content("MSA", 2));
         }
         let expected: Vec<_> = sent
@@ -421,11 +430,44 @@ impl<'a> WorkResponse<'a> {
             .map(|s| super::raw(s, 2))
             .collect();
         let mut decisions = Vec::new();
+        let mut has_specimen = false;
+        let mut error_count = 0usize;
         let mut seen = BTreeSet::new();
+        super::profile::validate_segment(msa_segment)?;
         for s in segments {
-            if s.id() != b"ORC" {
-                continue;
+            super::profile::validate_segment(s)?;
+            match s.id() {
+                b"ERR" => {
+                    if has_specimen {
+                        return Err(content("ERR", 0));
+                    }
+                    error_count = error_count.checked_add(1).ok_or(content("ERR", 0))?;
+                    continue;
+                }
+                b"PID" => {
+                    if has_specimen || !seen.is_empty() {
+                        return Err(content("PID", 0));
+                    }
+                    continue;
+                }
+                b"SPM" => {
+                    has_specimen = true;
+                    continue;
+                }
+                b"SAC" => {
+                    if !has_specimen {
+                        return Err(content("SAC", 0));
+                    }
+                    continue;
+                }
+                b"ORC" => {
+                    if !has_specimen || error_count != 0 {
+                        return Err(content("ORC", 0));
+                    }
+                }
+                _ => return Err(content("ORL", 0)),
             }
+
             let id = super::raw(s, 2);
             if !expected.contains(&id) || !seen.insert(id) {
                 return Err(content("ORC", 2));
@@ -443,6 +485,9 @@ impl<'a> WorkResponse<'a> {
                 outcome,
                 status,
             });
+        }
+        if (msa.code() == crate::AckCode::Aa) == (error_count != 0) {
+            return Err(content("ERR", 0));
         }
         if msa.code() == crate::AckCode::Aa && seen.len() != expected.len() {
             return Err(content("ORC", 0));

@@ -1,4 +1,4 @@
-//! LAW query views. Evidence: documented, PaLM TF-2b Rev 11 §3.27.4.
+﻿//! LAW query views. Evidence: documented, PaLM TF-2b Rev 11 Ã‚Â§3.27.4.
 //!
 //! These views borrow the original message. A validation error never consumes it.
 //! Work downloads and results are not yet implemented by this module.
@@ -108,7 +108,8 @@ impl<'a> Query<'a> {
     /// Returns a located content error or the underlying HL7 control error.
     /// This is not a complete LAW profile validator (see the crate README).
     pub fn new(message: &'a Message) -> Result<Self, Error> {
-        let msh = Msh::new(message)?;
+        profile::header(message, b"LAB-27", true)?;
+        let msh = msh(message)?;
         if msh.version() != Version::V251 {
             return Err(content("MSH", 12));
         }
@@ -281,3 +282,18 @@ mod results;
 pub use results::{
     Attached, Observation, Parent, ResultStatus, Results, Value, result_acknowledgment,
 };
+
+mod profile;
+
+pub use profile::{FieldRule, Usage, validate_segment};
+
+fn msh(message: &Message) -> Result<Msh<'_>, crate::Error> {
+    Msh::with_control_limit(message, 50)
+}
+
+/// Validates the LAW-extended message ID length (TF-2b C.4, at most 50 bytes).
+/// # Errors
+/// Rejects empty, null, oversized or non-graphic IDs; rendering checks delimiters.
+pub fn control_id(raw: &[u8]) -> Result<crate::ControlId<'_>, crate::Error> {
+    crate::ControlId::with_limit(raw, 50)
+}

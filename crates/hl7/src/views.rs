@@ -9,9 +9,12 @@ impl<'a> ControlId<'a> {
     /// # Errors
     /// Rejects empty, null, oversized or non-graphic identities.
     pub fn new(raw: &'a [u8]) -> Result<Self, Error> {
+        Self::with_limit(raw, 20)
+    }
+    pub(crate) fn with_limit(raw: &'a [u8], maximum: usize) -> Result<Self, Error> {
         if raw.is_empty()
             || raw == b"\"\""
-            || raw.len() > 20
+            || raw.len() > maximum
             || !raw.iter().all(u8::is_ascii_graphic)
         {
             return Err(Error::Control {
@@ -133,8 +136,11 @@ impl<'a> Msh<'a> {
     /// # Errors
     /// Returns the exact MSH field that is absent or invalid.
     pub fn new(message: &'a Message) -> Result<Self, Error> {
+        Self::with_control_limit(message, 20)
+    }
+    pub(crate) fn with_control_limit(message: &'a Message, maximum: usize) -> Result<Self, Error> {
         let segment = message.segments().next().ok_or(Error::Encoding)?;
-        for (number, maximum) in [(9, 15), (10, 20), (11, 3), (12, 60)] {
+        for (number, maximum) in [(9, 15), (10, maximum), (11, 3), (12, 60)] {
             let value = required(segment, number)?;
             if value.raw().len() > maximum {
                 return Err(Error::Control {
@@ -297,6 +303,9 @@ impl<'a> Msa<'a> {
     /// # Errors
     /// Rejects a different segment, missing correlation or unknown code.
     pub fn new(segment: Segment<'a>) -> Result<Self, Error> {
+        Self::with_control_limit(segment, 20)
+    }
+    pub(crate) fn with_control_limit(segment: Segment<'a>, maximum: usize) -> Result<Self, Error> {
         if segment.id() != b"MSA" {
             return Err(Error::Control {
                 segment: "MSA",
@@ -306,7 +315,7 @@ impl<'a> Msa<'a> {
         let code = AckCode::parse(segment.field(1).map_or(&[], Field::raw))?;
         if segment
             .field(2)
-            .is_none_or(|f| f.raw().is_empty() || f.is_null() || f.raw().len() > 20)
+            .is_none_or(|f| f.raw().is_empty() || f.is_null() || f.raw().len() > maximum)
         {
             return Err(Error::Control {
                 segment: "MSA",

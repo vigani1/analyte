@@ -104,3 +104,16 @@ rejects the complete message; the borrowed input remains untouched. ACK/R22
 rendering calls the existing acknowledgment function, checks successful whole
 interpretation before AA, and adds the LAB-29 profile. Full profile predicates
 and additional datatype component checks remain for step 4.
+
+### Step 4: field validation progress
+
+Shared field rules now represent M/R/RE/RE.AN/X and require conditional usage to
+be resolved explicitly. Typed input boundaries check LAW header profile,
+triggered versus response acknowledgment fields and UTF-8 declaration. Shared
+segment checks cover required fields, bounded repetitions, supported field
+positions, coded identities, result datatype/status subsets, numeric-unit
+predicates, observation type, equipment multiplicity and specimen/container
+identity. Result grouping rejects missing/duplicate ORC, misplaced patient/visit,
+repeated container, duplicate TCD and incomplete completed orders. Outgoing work
+is checked against the same segment rules. This remains incomplete: every
+Appendix C component/option predicate is not yet represented or tested.
