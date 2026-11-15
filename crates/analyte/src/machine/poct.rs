@@ -42,6 +42,8 @@ fn frame_length(raw: &[u8], maximum_depth: usize) -> Result<Option<usize>, Error
             Ok(quick_xml::events::Event::Empty(_)) if depth == 0 => {
                 return Ok(Some(usize::try_from(reader.buffer_position())?));
             }
+            // The external XML reader can reject a partial token. Keep its bytes
+            // until the bounded message/deadline gate; never discard that evidence.
             Ok(quick_xml::events::Event::Eof) | Err(_) => return Ok(None),
             Ok(
                 quick_xml::events::Event::Empty(_)
@@ -88,6 +90,11 @@ pub(super) async fn session(
     loop {
         let input =
             vendor::input(machine, store, conn, &mut stop, Duration::from_millis(10)).await?;
+        // Incoming fragments must not postpone the absolute dialog deadline.
+        let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
+        if process(actions, &mut dialog, start, machine, store, conn, limits).await? {
+            break;
+        }
         match input {
             Input::Opened => {}
             Input::Tick => {
@@ -113,11 +120,43 @@ pub(super) async fn session(
                         return Err(invalid("POCT message limit exceeded"));
                     }
                     raw.push(byte);
+                    if *stop.borrow() {
+                        evidence::park_bytes(
+                            store,
+                            machine,
+                            std::mem::take(&mut raw),
+                            "POCT partial XML on cancellation",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
                     if byte != b'>' {
                         continue;
                     }
-                    let Some(length) = frame_length(&raw, policy.depth)? else {
-                        continue;
+                    let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
+                    if process(actions, &mut dialog, start, machine, store, conn, limits).await? {
+                        evidence::park_bytes(
+                            store,
+                            machine,
+                            std::mem::take(&mut raw),
+                            "POCT partial XML exceeded dialog deadline",
+                        )
+                        .await?;
+                        return Ok(());
+                    }
+                    let length = match frame_length(&raw, policy.depth) {
+                        Ok(Some(length)) => length,
+                        Ok(None) => continue,
+                        Err(error) => {
+                            evidence::park_bytes(
+                                store,
+                                machine,
+                                std::mem::take(&mut raw),
+                                &error.to_string(),
+                            )
+                            .await?;
+                            return Err(error);
+                        }
                     };
                     let wire = raw
                         .get(..length)
@@ -227,7 +266,11 @@ async fn process(
                 let message = analyte_poct::build(
                     &Header {
                         control_id,
-                        created: Timestamp::parse(&jiff::Timestamp::now().to_string())?,
+                        created: Timestamp::parse(
+                            &jiff::Timestamp::now()
+                                .strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                                .to_string(),
+                        )?,
                     },
                     &body,
                     limits,

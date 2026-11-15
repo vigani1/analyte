@@ -59,3 +59,30 @@ installed software behavior and serial/TCP settings need vendor clarification
 and real captures. Variable-protocol scripting/compiler support is a later
 option. Transport, storage, mapping, order lifecycle, clinical decisions and
 production qualification belong to the host and are deliberately not included.
+
+
+## Program receive integration
+
+The `analyte` program drives this crate over configured connections. Incoming
+bytes are journaled with driver/config versions before the dialog sees them;
+complete receipts and interpretations are then stored through the protected store.
+Unresolved result identities remain unresolved, are parked with their reason,
+and create no app delivery. Inspect them with `analyte parked list`.
+The program never derives a run identity from sample, value, timestamp or receipt.
+
+Worklist download is **not wired into the program yet**. VIDAS and Autolyser
+send-ahead will follow the phase 6 machine-order store API (`reserve_send`,
+lifecycle history and operator reconciliation) after `feat/program-orders`
+merges. The vendor config download permission does not schedule an operation.
+POCT optional order/list extensions remain outside the supported profile.
+
+Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
+parking, operator visibility, zero reference-receiver deliveries and storage
+failure. They do not raise the documented evidence level. No current vendor
+crate path supplies a resolved result identity for a delivery test.
+
+Before R, the program stores a poll-custody guard. A complete durably stored
+response clears it; corrupt input keeps it through L recovery. An empty L does
+not clear it. Disconnect or restart with an open guard blocks further R requests
+until an operator reconciles and resolves that guard. This prevents a new session
+from silently advancing a cursor whose previous outcome is uncertain.

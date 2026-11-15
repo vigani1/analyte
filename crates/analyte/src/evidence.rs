@@ -269,6 +269,32 @@ pub(crate) async fn vendor_reading(
             }
         }
     }
+    let mut unknown_test = false;
+    if let Reading::Results(results) = &reading {
+        for result in results {
+            for part in result.parts.as_slice() {
+                if !machine
+                    .snapshot
+                    .effective()
+                    .machine()
+                    .tests()
+                    .iter()
+                    .any(|entry| {
+                        entry.app_system == part.test.namespace && entry.app_code == part.test.value
+                    })
+                {
+                    unknown_test = true;
+                }
+            }
+        }
+    }
+    if unknown_test {
+        findings.push(analyte_store::Parked {
+            kind: Identifier::new("unknown_vendor_test")?,
+            reason: analyte_model::Reason::new("vendor test has no unique configured translation")?,
+            targets: vec![Identifier::new(&uuid::Uuid::from(id).to_string())?],
+        });
+    }
     let interpretation = Interpretation {
         driver: driver(machine)?,
         config_version: Identifier::new("1")?,
@@ -287,7 +313,12 @@ pub(crate) async fn vendor_reading(
                 interpretation,
                 &corrections,
                 &findings,
-                |assigned, outcomes| build_deliveries(assigned, outcomes, &receipt, &destination),
+                |assigned, outcomes| {
+                    if unknown_test {
+                        return Ok(Vec::new());
+                    }
+                    build_deliveries(assigned, outcomes, &receipt, &destination)
+                },
             )
         })
         .await?;

@@ -16,6 +16,8 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
+    super::autolyser_custody::ensure_reconciled(store, machine).await?;
+    let mut guard = None;
     let settings = machine.snapshot.effective().machine();
     let policy = settings
         .autolyser
@@ -74,6 +76,7 @@ pub(super) async fn session(
                         &mut receipt,
                         &mut ready,
                         &mut recovering,
+                        &mut guard,
                     )
                     .await?
                     {
@@ -88,6 +91,9 @@ pub(super) async fn session(
             Input::End => vec![Event::Disconnect],
         };
         for event in events {
+            if matches!(event, Event::Poll(Request::Next)) {
+                guard = Some(super::autolyser_custody::reserve(store, machine).await?);
+            }
             let actions = dialog.step(start.elapsed(), event);
             if process(
                 actions,
@@ -100,6 +106,7 @@ pub(super) async fn session(
                 &mut receipt,
                 &mut ready,
                 &mut recovering,
+                &mut guard,
             )
             .await?
             {
@@ -127,6 +134,7 @@ async fn process(
     receipt: &mut Option<(ReceiptId, jiff::Timestamp)>,
     ready: &mut bool,
     recovering: &mut bool,
+    guard: &mut Option<i64>,
 ) -> Result<bool, Error> {
     let policy = machine
         .snapshot
@@ -169,10 +177,21 @@ async fn process(
                 let (id, time) = receipt
                     .take()
                     .ok_or_else(|| invalid("Autolyser report receipt missing"))?;
-                let reading = vendor_model::autolyser(machine, id, &report, time)?;
-                evidence::vendor_reading(store, machine, id, reading).await?;
+                match vendor_model::autolyser(machine, id, &report, time) {
+                    Ok(reading) => evidence::vendor_reading(store, machine, id, reading).await?,
+                    Err(error) => {
+                        vendor::failed(
+                            machine,
+                            store,
+                            id,
+                            &format!("Autolyser interpretation: {error}"),
+                        )
+                        .await?;
+                    }
+                }
                 *ready = true;
                 *recovering = false;
+                super::autolyser_custody::complete(store, guard, machine).await?;
             }
             Action::Park(error) => {
                 *ready = false;
@@ -184,6 +203,9 @@ async fn process(
             Action::Empty => {
                 receipt.take();
                 *ready = !*recovering;
+                if !*recovering {
+                    super::autolyser_custody::complete(store, guard, machine).await?;
+                }
             }
             Action::Insertion(_) => return Err(invalid("unexpected Autolyser insertion outcome")),
             Action::Uncertain => {

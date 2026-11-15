@@ -274,3 +274,46 @@ fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() 
     }
     Ok(())
 }
+
+#[test]
+fn adr0002_vendor_policy_bounds_and_transports_are_specific() -> Result<(), Error> {
+    for (example, key, protocol) in [
+        (
+            include_str!("../examples/poct.toml"),
+            "response_ms = 30000",
+            "poct",
+        ),
+        (
+            include_str!("../examples/vidas_literal.toml"),
+            "chunk = 80",
+            "vidas",
+        ),
+        (
+            include_str!("../examples/autolyser.toml"),
+            "poll_ms = 1000",
+            "autolyser",
+        ),
+    ] {
+        let invalid = example.replace(
+            key,
+            &format!(
+                "{} = 0",
+                key.split_once(" = ").map_or(key, |(name, _)| name)
+            ),
+        );
+        assert!(
+            matches!(draft(&invalid, OVERRIDES)?.validate(), Err(Error::ProtocolSettings { protocol: found, .. }) if found == protocol)
+        );
+        let missing = example.replace(key, "");
+        assert!(matches!(
+            draft(&missing, OVERRIDES),
+            Err(Error::Schema { .. })
+        ));
+        let folder = example.replace("kind = \"tcp_server\"", "kind = \"watched_folder\"");
+        assert!(matches!(
+            draft(&folder, OVERRIDES)?.validate(),
+            Err(Error::IncompatibleStack { .. })
+        ));
+    }
+    Ok(())
+}

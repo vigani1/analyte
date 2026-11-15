@@ -158,7 +158,9 @@ pub(super) fn validate_machine(m: &Machine, path: &str) -> Result<(), Error> {
                 && s.kind == SyntaxKind::Autolyser
         }
         DialogKind::FilePickup => {
-            t.kind == TransportKind::WatchedFolder && f.kind == FramingKind::None
+            t.kind == TransportKind::WatchedFolder
+                && f.kind == FramingKind::None
+                && matches!(s.kind, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
         }
     };
     if !compatible {

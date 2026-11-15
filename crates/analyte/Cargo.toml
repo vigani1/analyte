@@ -13,6 +13,7 @@ analyte-poct = { workspace = true }
 analyte-vidas = { workspace = true }
 analyte-autolyser = { workspace = true }
 quick-xml = { workspace = true }
+serde_json = { workspace = true }
 analyte-sink = { workspace = true }
 thiserror = { workspace = true }
 serialport = { workspace = true }
@@ -40,7 +41,6 @@ uuid = { workspace = true }
 analyte-receiver = { workspace = true }
 axum = { workspace = true }
 rusqlite = { workspace = true }
-serde_json = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

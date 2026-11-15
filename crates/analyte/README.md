@@ -104,3 +104,22 @@ shutdown and audited interrupted-attempt recovery. When an interrupted attempt
 had already arrived, restart sends identical bytes and ID and receives duplicate;
 the receiver retains one record. These are documented tests, not real-machine
 or external-app qualification.
+
+
+## Documented vendor receive stacks
+
+Machine definitions in `crates/config/examples/poct.toml`, `vidas_literal.toml`
+and `autolyser.toml` are synthetic examples, not installed settings. Every vendor
+policy is explicit. POCT uses TCP; VIDAS Literal and Autolyser use TCP or serial.
+Field-position mappings are rejected for these syntaxes; `[codes]` uses the same
+exact test and unit translations as the record mapper.
+
+Vendor input is durably journaled before the dialog sees it. Complete receipts
+and interpretations keep driver/config versions. Unresolved identity is preserved
+and parked, never replaced with a generated run ID. `parked list` exposes its
+specific reason. No current vendor crate yields a resolved result identity, so
+vendor integration tests assert no reference-receiver delivery.
+
+Worklist downloads are not wired yet. The configured download permission never
+schedules an order. VIDAS/Autolyser send-ahead will build on phase 6's durable
+`reserve_send` and lifecycle/reconciliation APIs after `feat/program-orders`.
