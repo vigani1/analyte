@@ -32,21 +32,31 @@ pub enum TcpRole {
 
 /// Transport for a stack supporting either serial or TCP, never a watched folder.
 #[derive(Debug, Clone)]
-pub enum StreamTransport {
-    /// Serial transport always has installed serial settings.
-    Serial {
-        /// Installed serial parameters.
-        settings: Serial,
-        /// Deadline for external operations.
-        operation_timeout_ms: u32,
-    },
-    /// TCP transport has a direction and no serial parameters.
-    Tcp {
-        /// Connection direction.
-        role: TcpRole,
-        /// Deadline for external operations.
-        operation_timeout_ms: u32,
-    },
+pub struct StreamTransport {
+    kind: StreamKind,
+    operation_timeout_ms: u32,
+}
+
+/// Read-only physical stream selection; the owning transport validates its settings.
+#[derive(Debug, Clone)]
+pub enum StreamKind {
+    /// Installed serial settings.
+    Serial(Serial),
+    /// TCP connection direction.
+    Tcp(TcpRole),
+}
+
+impl StreamTransport {
+    /// Borrows the installed physical stream selection.
+    #[must_use]
+    pub fn kind(&self) -> &StreamKind {
+        &self.kind
+    }
+    /// Returns the validated, nonzero external-operation deadline.
+    #[must_use]
+    pub fn operation_timeout_ms(&self) -> u32 {
+        self.operation_timeout_ms
+    }
 }
 
 /// Validated TCP settings without serial or folder alternatives.
@@ -59,6 +69,13 @@ pub struct TcpTransport {
 }
 
 /// Receive and send deadlines shared by the host dialogs.
+/// Cloning validated settings never grants write access.
+/// ```compile_fail
+/// fn invalidate(settings: &analyte_config::DialogTimeouts) {
+///     let mut settings = settings.clone();
+///     settings.receive_timeout_ms = 0;
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct DialogTimeouts {
     /// Receive deadline.
@@ -68,6 +85,12 @@ pub struct DialogTimeouts {
 }
 
 /// Explicit syntax resource ceilings retained from the config.
+/// ```compile_fail
+/// fn invalidate(limits: &analyte_config::SyntaxLimits) {
+///     let mut limits = limits.clone();
+///     limits.bytes = 0;
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct SyntaxLimits {
     /// Total message bytes.
@@ -585,24 +608,21 @@ fn tcp(transport: &Transport) -> TcpTransport {
     reason = "private conversion runs only after validate_machine proves required sections and options"
 )]
 fn stream(transport: &Transport) -> StreamTransport {
-    match transport.kind {
-        TransportKind::Serial => StreamTransport::Serial {
-            settings: transport
+    let kind = match transport.kind {
+        TransportKind::Serial => StreamKind::Serial(
+            transport
                 .serial
                 .clone()
                 .expect("validated serial transport requires settings"),
-            operation_timeout_ms: transport.operation_timeout_ms,
-        },
-        TransportKind::TcpClient | TransportKind::TcpServer => {
-            let settings = tcp(transport);
-            StreamTransport::Tcp {
-                role: settings.role,
-                operation_timeout_ms: settings.operation_timeout_ms,
-            }
-        }
+        ),
+        TransportKind::TcpClient | TransportKind::TcpServer => StreamKind::Tcp(tcp(transport).role),
         TransportKind::WatchedFolder => {
             unreachable!("validated stream stack excludes watched folders")
         }
+    };
+    StreamTransport {
+        kind,
+        operation_timeout_ms: transport.operation_timeout_ms,
     }
 }
 
@@ -875,22 +895,13 @@ fn tcp_kind(role: TcpRole) -> TransportKind {
     }
 }
 fn stream_kind(transport: &StreamTransport) -> TransportKind {
-    match transport {
-        StreamTransport::Serial { .. } => TransportKind::Serial,
-        StreamTransport::Tcp { role, .. } => tcp_kind(*role),
+    match transport.kind() {
+        StreamKind::Serial(_) => TransportKind::Serial,
+        StreamKind::Tcp(role) => tcp_kind(*role),
     }
 }
 fn stream_timeout(transport: &StreamTransport) -> u32 {
-    match transport {
-        StreamTransport::Serial {
-            operation_timeout_ms,
-            ..
-        }
-        | StreamTransport::Tcp {
-            operation_timeout_ms,
-            ..
-        } => *operation_timeout_ms,
-    }
+    transport.operation_timeout_ms()
 }
 
 impl Stack {

@@ -1,5 +1,5 @@
 //! Transport admission from supported stacks; serial settings cannot be absent.
-use analyte_config::{Serial, Stack, StreamTransport, TcpRole};
+use analyte_config::{Serial, Stack, StreamKind, StreamTransport, TcpRole};
 
 #[derive(Clone, Copy)]
 pub(super) enum Session<'a> {
@@ -73,22 +73,16 @@ pub(super) fn transport(stack: &Stack) -> Link<'_> {
 }
 
 fn stream<'a>(transport: &'a StreamTransport, session: Session<'a>) -> Link<'a> {
-    match transport {
-        StreamTransport::Serial {
-            settings,
-            operation_timeout_ms,
-        } => Link::Serial(SerialLink {
+    match transport.kind() {
+        StreamKind::Serial(settings) => Link::Serial(SerialLink {
             settings,
             session,
-            timeout_ms: *operation_timeout_ms,
+            timeout_ms: transport.operation_timeout_ms(),
         }),
-        StreamTransport::Tcp {
-            role,
-            operation_timeout_ms,
-        } => Link::Tcp {
+        StreamKind::Tcp(role) => Link::Tcp {
             session,
             role: *role,
-            timeout_ms: *operation_timeout_ms,
+            timeout_ms: transport.operation_timeout_ms(),
         },
     }
 }

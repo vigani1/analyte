@@ -1,5 +1,5 @@
 //! ADR 0001/0002: validated stacks preserve the existing layered TOML interface.
-use analyte_config::{Draft, Stack, StreamTransport, TcpRole};
+use analyte_config::{Draft, Stack, StreamKind, TcpRole};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const SITE: &str = include_str!("../examples/site.toml");
@@ -89,7 +89,7 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
                         .and_then(|n| usize::try_from(n).ok())
                 );
                 assert_eq!(stack.mappings().tests.len(), raw.tests().len());
-                assert!(matches!(stack.transport(), StreamTransport::Serial { .. }));
+                assert!(matches!(stack.transport().kind(), StreamKind::Serial(_)));
                 assert_eq!(stack.orders().is_some(), name == "orders.toml");
                 if let Some(orders) = &stack.orders() {
                     assert!(orders.query().is_some());
@@ -150,15 +150,12 @@ fn adr0002_stack_is_built_after_overrides_and_keeps_serial_settings() -> TestRes
     else {
         panic!("ASTM stack")
     };
-    let StreamTransport::Serial {
-        settings,
-        operation_timeout_ms,
-    } = &stack.transport()
-    else {
+    let StreamKind::Serial(settings) = stack.transport().kind() else {
         panic!("serial transport")
     };
+    let operation_timeout_ms = stack.transport().operation_timeout_ms();
     assert_eq!(settings.baud, 9600);
-    assert_eq!(*operation_timeout_ms, 10000);
+    assert_eq!(operation_timeout_ms, 10000);
     let overridden = load(
         ASTM,
         SITE,
@@ -173,13 +170,10 @@ operation_timeout_ms=1234
     else {
         panic!("ASTM stack")
     };
-    assert!(matches!(
-        stack.transport(),
-        StreamTransport::Tcp {
-            role: TcpRole::Client,
-            operation_timeout_ms: 1234
-        }
-    ));
+    assert!(
+        matches!(stack.transport().kind(), StreamKind::Tcp(TcpRole::Client))
+            && stack.transport().operation_timeout_ms() == 1234
+    );
     Ok(())
 }
 
