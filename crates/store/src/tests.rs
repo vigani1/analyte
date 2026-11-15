@@ -3607,3 +3607,436 @@ fn mutation_rule8_query_cached_order_checks_identity_without_authorizing_resend(
     ));
     Ok(())
 }
+
+#[test]
+fn mutation_adr0003_query_pages_preserve_evidence_and_resume_after_the_cursor() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let first = receipt(b"first")?;
+    let second = receipt(b"second")?;
+    store.receive(&first, b"first", b"config")?;
+    store.receive(&second, b"second", b"config")?;
+    let transfer = Identifier::new("transfer")?;
+    store.frame(&transfer, FrameSequence::new(1, 7)?, b"frame one")?;
+    store.frame(&transfer, FrameSequence::new(2, 7)?, b"frame two")?;
+    let a = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("review")?,
+        targets: vec![],
+        time: 1,
+        reason: Reason::new("first review")?,
+    };
+    store.audit(&a)?;
+    let b = Audit {
+        time: 2,
+        reason: Reason::new("second review")?,
+        ..a
+    };
+    store.audit(&b)?;
+    for reason in ["first parked", "second parked"] {
+        store.park(&Parked {
+            kind: Identifier::new("synthetic")?,
+            reason: Reason::new(reason)?,
+            targets: vec![],
+        })?;
+    }
+    let evidence = interpretation()?;
+    store.db.execute(
+        "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
+        params![key(&first.id)?, key(&evidence)?],
+    )?;
+    assert_eq!(
+        key(&store
+            .interpretation(first.id, 1)?
+            .ok_or("missing interpretation")?)?,
+        key(&evidence)?
+    );
+    assert!(store.interpretation(first.id, 2)?.is_none());
+    store.limits.page_rows = 1;
+    let frames = store.frames(&transfer, 0)?;
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0].number, 1);
+    assert_eq!(frames[0].raw, b"frame one");
+    let frames = store.frames(&transfer, frames[0].sequence)?;
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0].number, 2);
+    assert_eq!(frames[0].raw, b"frame two");
+    assert!(store.frames(&transfer, frames[0].sequence)?.is_empty());
+    let rows = store.receipts("")?;
+    assert_eq!(rows.len(), 1);
+    let next = store.receipts(&key(&rows[0].id)?)?;
+    assert_eq!(next.len(), 1);
+    assert_ne!(next[0].id, rows[0].id);
+    assert!([first.id, second.id].contains(&rows[0].id));
+    assert!([first.id, second.id].contains(&next[0].id));
+    assert!(store.receipts(&key(&next[0].id)?)?.is_empty());
+    let rows = store.parked(0)?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].details()?.reason.as_str(), "first parked");
+    let next = store.parked(rows[0].id)?;
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].details()?.reason.as_str(), "second parked");
+    assert!(store.parked(next[0].id)?.is_empty());
+    let rows = store.audits(0)?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].1.reason.as_str(), "first review");
+    let next = store.audits(rows[0].0)?;
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].1.reason.as_str(), "second review");
+    assert!(store.audits(next[0].0)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn mutation_rule8_query_order_events_are_deliveries_and_reset_invalidates_only_the_cursor()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let app = Identifier::new("app")?;
+    assert!(store.cursor(&app)?.is_none());
+    store.order_page(&OrderPage {
+        destination: app.clone(),
+        cursor: Identifier::new("actual-cursor")?,
+        complete: true,
+        polled: 1,
+        orders: vec![],
+    })?;
+    assert_eq!(store.cursor(&app)?.as_deref(), Some("actual-cursor"));
+    let event = OrderEventDelivery {
+        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        destination: app.clone(),
+        order_id: Identifier::new("order")?,
+        payload: b"original event".to_vec(),
+        contract_version: 1,
+    };
+    store.enqueue_order_event(&event, 2)?;
+    let delivery = store.claim(2)?.ok_or("event was not queued")?;
+    assert_eq!(delivery.id, event.id);
+    assert_eq!(delivery.payload, b"original event");
+    assert_eq!(delivery.kind, DeliveryKind::OrderEvent);
+    let count: i64 = store
+        .db
+        .query_row("SELECT count(*) FROM interpretations", [], |r| r.get(0))?;
+    assert_eq!(count, 0);
+    store.reset_orders(&app)?;
+    assert!(store.cursor(&app)?.is_none());
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule7_capacity_checks_reserve_and_database_bound_independently() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    store.limits.record_bytes = 2;
+    store.bound(b"")?;
+    store.bound(b"ab")?;
+    assert!(matches!(store.bound(b"abc"), Err(Error::InvalidInput)));
+    let pages: u64 = store.db.query_row("PRAGMA page_count", [], |r| {
+        r.get::<_, u32>(0).map(u64::from)
+    })?;
+    let page: u64 = store.db.query_row("PRAGMA page_size", [], |r| {
+        r.get::<_, u32>(0).map(u64::from)
+    })?;
+    let size = pages.checked_mul(page).ok_or("size overflow")?;
+    for input in [0usize, 17] {
+        let input_bytes = u64::try_from(input)?;
+        let needed = 1024u64.checked_add(input_bytes).ok_or("reserve overflow")?;
+        let final_size = size.checked_add(input_bytes).ok_or("size overflow")?;
+        for (available, free_ok) in [(needed - 1, false), (needed, false), (needed + 1, true)] {
+            for (maximum, size_ok) in [
+                (final_size - 1, false),
+                (final_size, false),
+                (final_size + 1, true),
+            ] {
+                store.space = Box::new(Space(available));
+                store.limits.database_bytes = maximum;
+                let admitted = store.admission(input);
+                if free_ok && size_ok {
+                    admitted?;
+                } else {
+                    assert!(matches!(admitted, Err(Error::Capacity)));
+                }
+            }
+        }
+    }
+    store.limits.reserve_bytes = u64::MAX;
+    store.limits.database_bytes = u64::MAX;
+    store.space = Box::new(Space(u64::MAX));
+    assert!(matches!(store.admission(1), Err(Error::Capacity)));
+    struct FailedProbe;
+    impl FreeSpace for FailedProbe {
+        fn available(&self, _: &Path) -> std::io::Result<u64> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "synthetic probe failure",
+            ))
+        }
+    }
+    store.limits.reserve_bytes = 0;
+    store.space = Box::new(FailedProbe);
+    assert!(
+        matches!(store.admission(0),Err(Error::Io(error)) if error.kind()==std::io::ErrorKind::PermissionDenied)
+    );
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_rule7_restore_capacity_includes_the_copy_and_refuses_equality() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("source.db");
+    let store = open(&path)?;
+    let pages: u64 = store.db.query_row("PRAGMA page_count", [], |r| {
+        r.get::<_, u32>(0).map(u64::from)
+    })?;
+    let page: u64 = store.db.query_row("PRAGMA page_size", [], |r| {
+        r.get::<_, u32>(0).map(u64::from)
+    })?;
+    let size = pages.checked_mul(page).ok_or("copy size overflow")?;
+    let needed = 1024u64.checked_add(size).ok_or("reserve overflow")?;
+    for (available, free_ok) in [(needed - 1, false), (needed, false), (needed + 1, true)] {
+        for (maximum, size_ok) in [(size - 1, false), (size, false), (size + 1, true)] {
+            let mut bounds = limits();
+            bounds.database_bytes = maximum;
+            let result = Store::restore_capacity(&store.db, &path, &bounds, &Space(available));
+            if free_ok && size_ok {
+                result?;
+            } else {
+                assert!(matches!(result, Err(Error::Capacity)));
+            }
+        }
+    }
+    let mut bounds = limits();
+    bounds.reserve_bytes = u64::MAX;
+    assert!(matches!(
+        Store::restore_capacity(&store.db, &path, &bounds, &Space(u64::MAX)),
+        Err(Error::Capacity)
+    ));
+    Ok(())
+}
+
+#[test]
+fn mutation_rule7_lib_limits_validate_each_field_and_include_thirty_seconds() -> TestResult {
+    for (rows, record, busy, valid) in [
+        (1, 1, Duration::from_secs(30), true),
+        (0, 1, Duration::from_secs(1), false),
+        (1, 0, Duration::from_secs(1), false),
+        (1, 1, Duration::ZERO, false),
+        (1, 1, Duration::from_secs(31), false),
+    ] {
+        let mut bounds = limits();
+        bounds.page_rows = rows;
+        bounds.record_bytes = record;
+        bounds.busy_timeout = busy;
+        let result = bounds.validate();
+        if valid {
+            result?;
+        } else {
+            assert!(matches!(result, Err(Error::InvalidInput)));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule1_lib_sqlite_errors_keep_specific_recovery_actions() -> TestResult {
+    use rusqlite::ffi;
+    for code in [
+        ffi::SQLITE_FULL,
+        ffi::SQLITE_CORRUPT,
+        ffi::SQLITE_NOTADB,
+        ffi::SQLITE_CONSTRAINT,
+        ffi::SQLITE_BUSY,
+        ffi::SQLITE_LOCKED,
+        ffi::SQLITE_IOERR,
+    ] {
+        let error = Error::from(rusqlite::Error::SqliteFailure(
+            ffi::Error::new(code),
+            Some("synthetic failure".into()),
+        ));
+        assert!(match code {
+            ffi::SQLITE_FULL => matches!(error, Error::DiskFull),
+            ffi::SQLITE_CORRUPT | ffi::SQLITE_NOTADB => matches!(error, Error::Corruption),
+            ffi::SQLITE_CONSTRAINT => matches!(error, Error::Conflict),
+            ffi::SQLITE_BUSY | ffi::SQLITE_LOCKED => matches!(error, Error::Timeout),
+            ffi::SQLITE_IOERR =>
+                matches!(error,Error::Sqlite(rusqlite::Error::SqliteFailure(cause,Some(message))) if cause.extended_code==code && message=="synthetic failure"),
+            _ => unreachable!(),
+        });
+    }
+    assert!(matches!(
+        Error::from(rusqlite::Error::QueryReturnedNoRows),
+        Error::Sqlite(rusqlite::Error::QueryReturnedNoRows)
+    ));
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_alerts_validate_responders_and_destination_count_at_the_boundary() -> TestResult
+{
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let identity = AlertKey::DiskReserve;
+    for responder in ["x".repeat(256), "?".repeat(128)] {
+        store.evaluate_alert(&identity, &responder, true, Some(1), 10)?;
+        assert_eq!(
+            store
+                .alert_state(&identity)?
+                .ok_or("missing alert")?
+                .responder,
+            responder
+        );
+    }
+    let before = store.alert_state(&identity)?.ok_or("missing alert")?;
+    let history = store.alert_history(0)?.len();
+    for responder in [
+        String::new(),
+        "   ".into(),
+        "x".repeat(257),
+        "has\ncontrol".into(),
+        "has\u{7f}control".into(),
+    ] {
+        assert!(matches!(
+            store.evaluate_alert(&identity, &responder, false, Some(0), 20),
+            Err(Error::InvalidInput)
+        ));
+        let after = store.alert_state(&identity)?.ok_or("alert lost")?;
+        assert_eq!(after.responder, before.responder);
+        assert_eq!(after.active, before.active);
+        assert_eq!(after.evaluated_at, before.evaluated_at);
+        assert_eq!(store.alert_history(0)?.len(), history);
+    }
+    let destinations = vec![(Identifier::new("app")?, 1); 128];
+    assert_eq!(
+        store.alert_value(&identity, 1, &destinations)?,
+        Some(u64::MAX)
+    );
+    let destinations = vec![(Identifier::new("app")?, 1); 129];
+    assert!(matches!(
+        store.alert_value(&identity, 1, &destinations),
+        Err(Error::InvalidInput)
+    ));
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_alerts_pages_and_history_keep_raise_and_clear_times_distinct() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    for identity in [AlertKey::DiskReserve, AlertKey::RestorePaused] {
+        store.evaluate_alert(&identity, "first responder", true, Some(42), 10)?;
+    }
+    store.limits.page_rows = 1;
+    let page = store.active_alerts("")?;
+    let first = page.first().ok_or("missing active page")?;
+    assert_eq!(page.len(), 1);
+    assert_eq!(first.raised_at, Some(10));
+    assert_eq!(first.cleared_at, None);
+    assert_eq!(first.value, Some(42));
+    let next = store.active_alerts(&key(&first.key)?)?;
+    assert_eq!(next.len(), 1);
+    let second = next.first().ok_or("missing next active page")?;
+    assert_ne!(second.key, first.key);
+    assert!(store.active_alerts(&key(&second.key)?)?.is_empty());
+    store.evaluate_alert(
+        &AlertKey::DiskReserve,
+        "second responder",
+        false,
+        Some(0),
+        20,
+    )?;
+    store.limits.page_rows = 100;
+    let history = store.alert_history(0)?;
+    assert_eq!(history.len(), 3);
+    for entry in &history {
+        if entry.state.active {
+            assert_eq!(entry.state.raised_at, Some(10));
+            assert_eq!(entry.state.cleared_at, None);
+            assert_eq!(entry.state.responder, "first responder");
+        } else {
+            assert_eq!(entry.state.raised_at, None);
+            assert_eq!(entry.state.cleared_at, Some(20));
+            assert_eq!(entry.state.responder, "second responder");
+        }
+    }
+    let clear = history.last().ok_or("missing clear")?;
+    assert!(store.alert_history(clear.sequence)?.is_empty());
+    let active = store.active_alerts("")?;
+    assert_eq!(active.len(), 1);
+    assert_eq!(
+        active.first().ok_or("missing active alert")?.key,
+        AlertKey::RestorePaused
+    );
+    Ok(())
+}
+
+#[test]
+fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestResult {
+    use std::io::Write;
+    assert_eq!(
+        key(&serde_json::json!({"sample":"001"}))?,
+        r#"{"sample":"001"}"#
+    );
+    assert_eq!(
+        digest(b"abc").0,
+        [
+            0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae,
+            0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61,
+            0xf2, 0x00, 0x15, 0xad
+        ]
+    );
+    let mut writer = BoundedJson {
+        bytes: vec![],
+        limit: 3,
+    };
+    assert_eq!(writer.write(b"ab")?, 2);
+    assert_eq!(writer.write(b"c")?, 1);
+    assert!(writer.write(b"d").is_err());
+    assert_eq!(writer.bytes, b"abc");
+    writer.flush()?;
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    store.limits.record_bytes = 5;
+    assert_eq!(store.encode(&"001")?, r#""001""#);
+    store.limits.record_bytes = 4;
+    assert!(store.encode(&"001").is_err());
+    assert!(OrderTrust::Trusted { age: 0 }.is_trusted());
+    for trust in [
+        OrderTrust::Stale { age: 1 },
+        OrderTrust::Incomplete,
+        OrderTrust::RestorePaused,
+        OrderTrust::Unknown,
+    ] {
+        assert!(!trust.is_trusted());
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_alerts_oldest_delivery_age_includes_zero_and_keeps_future_unknown() -> TestResult
+{
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    store.enqueue_order_event(
+        &OrderEventDelivery {
+            id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+            destination: Identifier::new("app")?,
+            order_id: Identifier::new("order")?,
+            payload: b"event".to_vec(),
+            contract_version: 1,
+        },
+        100,
+    )?;
+    assert_eq!(
+        store.alert_value(&AlertKey::OldestUndelivered, 100, &[])?,
+        Some(0)
+    );
+    assert_eq!(
+        store.alert_value(&AlertKey::OldestUndelivered, 101, &[])?,
+        Some(1)
+    );
+    assert_eq!(
+        store.alert_value(&AlertKey::OldestUndelivered, 99, &[])?,
+        None
+    );
+    Ok(())
+}
