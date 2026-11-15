@@ -62,7 +62,7 @@ These policies provide at-least-once transport with idempotent effects, not univ
 
 **Verdict: replace byte-hash-only suppression with layered identities.** Exact bytes remain useful evidence; they are not a universal result identifier.
 
-**Verified:** HL7 MSH-10 identifies a message and MSA-2 correlates its acknowledgment. It is not an observation identifier. [HL7 chapter 2](https://hl7.eu/HL7v2x/v282/std282/ch02.html). OBX-21 is persistent between messages when supported; the chapter cautions about use outside its established context. OBX-3/4 identify observation/sub-ID context; OBX-11 distinguishes final, correction and deletion, among other states. [HL7 chapter 7, OBX definitions](https://hl7.eu/HL7v2x/v282/std282/ch07.html).
+**Verified:** HL7 MSH-10 identifies a message and MSA-2 correlates its acknowledgment. It is not an observation identifier. [HL7 chapter 2](https://hl7.eu/HL7v2x/v282/std282/ch02.html). In v2.8.2, OBX-21 is persistent between messages when supported; the chapter cautions about use outside its established context. It is not available in Analyte's target editions: v2.3.1 has no OBX-21 and v2.5.1 reserves it (v2.5.1 ch.7 §7.4.2.21). OBX-3/4 identify observation/sub-ID context; OBX-11 distinguishes final, correction and deletion, among other states. [HL7 chapter 7, OBX definitions](https://hl7.eu/HL7v2x/v282/std282/ch07.html).
 
 **Verified counterexample:** Iguana's published duplicate filter compares message hashes in a bounded lookback and permits a transform to remove trivial variation such as an MSH timestamp. Its documentation explicitly limits identical-message matching. This is a practical heuristic, not clinical reconciliation. [Iguana duplicate filter](https://help.interfaceware.com/v6/duplicate-filter).
 

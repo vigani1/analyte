@@ -111,9 +111,12 @@ are built.
 - **Three identities:**
   1. the receipt: what arrived from the machine, with its raw bytes;
   2. the delivery: one ID per delivery to the app, unchanged across retries;
-  3. the result: a stable observation identity plus a revision (final,
-     corrected, cancelled), so corrections and reruns are never confused with
-     duplicates.
+  3. the result: a stable observation identity plus a revision number that
+     Analyte assigns, so corrections and reruns are never confused with
+     duplicates. The source's own status or action (for example final,
+     corrected, deleted) is kept as sent next to it and is never used as the
+     revision itself: a correction can arrive without the original, and one
+     result can span several source segments.
 - **Source structure kept:** the protocol's own hierarchy (for ASTM: message,
   patient, order, result, comment), sequence numbers and every source status
   code are kept as sent, next to Analyte's own summary; they are never
@@ -192,7 +195,7 @@ Machine documents used for the first machines:
 | -------------------- | ----------------------------------------------------------------------------------- |
 | Roche cobas e 411    | Host Interface Manual v2.3 (v2.2 also read); Operator's Manual v3.3.1               |
 | YHLO iFlash 1200     | YHLO LIS Protocol Manual V1.1 (iFlash family); iFlash 1200 Operation Manual V3.0    |
-| Boule Swelab Lumi    | Lumi User Manual 1504529; Boule's LIS protocol description for the Lumi             |
+| Boule Swelab Lumi    | Lumi User Manual 1504529; Boule's LIS protocol description for the Lumi (still needed) |
 | BioCARE Biolyte 2000 | Service Manual 4.2A, Appendix VI                                                    |
 | bioMérieux VIDAS     | BCI LINK LIS Interface Driver Development Guide 161150-486 C; VIDAS PC User Manual F |
 | Dialab Autolyser     | Autolyser / Autolyser ISE Operator's Manual Rev18; Service Manual Rev01             |
@@ -207,7 +210,7 @@ them can be collected at any time and kept as test data.
 | Machine                | Protocol                          | Direction                         | Evidence today | Missing                                          |
 | ---------------------- | --------------------------------- | --------------------------------- | -------------- | ------------------------------------------------ |
 | Roche cobas e 411      | ASTM over serial                  | Results, host query, orders       | documented     | Lab's host code table, trace log copy            |
-| YHLO iFlash 1200       | HL7 2.3.1 over MLLP (TCP)         | Results, query (QRY/QCK/DSR)      | documented     | Protocol confirmed for the 1200, port            |
+| YHLO iFlash 1200       | HL7 2.3.1 over MLLP (TCP), from the iFlash family manual | Results, query (QRY/QCK/DSR)      | documented     | Protocol confirmed for the 1200, port            |
 | Boule Swelab Lumi      | HL7 over TCP                      | Results, sample lookup            | documented     | Sample ID field, lookup message type             |
 | BioCARE Biolyte 2000   | ASTM over serial                  | Results only                      | documented     | One real recording                               |
 | bioMérieux VIDAS (PC)  | Vendor "Literal" over serial      | Results, work list download       | documented     | VIDAS PC version (sample ID length 12 or 17)     |
