@@ -99,6 +99,14 @@ then becomes the test list, one or more tests per row.
 
   **Evidence:** [control.rs](../../crates/hl7/tests/control.rs): `hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence` checks missing/null, invalid dates, repetition/composite misuse, valid reduced precision and unchanged source bytes.
 
+Delimiter escapes are decoded after selecting fields/repetitions/components, never
+before structural extraction. `original` retains its wire spelling, and decoded
+plain text is separate. `hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals`
+and `hl7_251_2_7_4_decoding_uses_message_delimiters_and_is_not_recursive`
+(mapping tests) cover identifiers, coded/text values, repeats, alternate delimiters,
+non-recursive decoding and byte-for-byte source retention. Source: 2.5.1 section
+2.7.4, p.2-18. No hexadecimal/local/repertoire agreement is inferred.
+
 Formatting/highlighting in result values is retained and parked, with no clean decoded
 text. `hl7_251_2_7_3_2_7_6_formatting_is_unsupported_evidence_not_clean_text`
 (mapping tests) checks ST/TX/FT, original spelling, absent decoded text and the

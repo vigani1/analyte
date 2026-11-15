@@ -66,7 +66,14 @@ pub(crate) fn values(
             )?;
         }
         values.push(ResultValue {
-            decoded_text: None,
+            decoded_text: if matches!(parsed, ValueInterpretation::Text) {
+                source
+                    .decoded_repetition(index, field, ordinal)?
+                    .map(|value| text(&value, position))
+                    .transpose()?
+            } else {
+                None
+            },
             original: text(&original, position)?,
             parsed,
         });

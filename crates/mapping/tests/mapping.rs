@@ -6,6 +6,113 @@ use proptest::prelude::*;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+// HL7 2.5.1 sections 2.7.4, 2.15.9.18: decode characters once, then delimiter escapes.
+#[test]
+fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
+    for (charset, encoding, bytes) in [
+        ("8859/1", "latin1", b"caf\xe9\\F\\end".as_slice()),
+        ("UNICODE UTF-8", "utf8", "caf\u{e9}\\F\\end".as_bytes()),
+    ] {
+        let definition = HL7_CONFIG.replace(
+            "encoding = \"ascii\"",
+            &format!("encoding = \"{encoding}\""),
+        );
+        let config = config(&definition)?;
+        let mut raw = format!("MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1||||||{charset}\rOBR|1||001\rOBX|1|TX|SYN^Synthetic^synthetic||").into_bytes();
+        raw.extend_from_slice(bytes);
+        raw.extend_from_slice(b"||||||F\r");
+        let message =
+            analyte_hl7::Message::parse(&raw, config.effective().hl7_options().ok_or("options")?)?;
+        let output = map_hl7(&message, &config, input())?;
+        let value = first(&output)?.values.as_slice().first().ok_or("value")?;
+        assert_eq!(value.original.as_str(), "caf\u{e9}\\F\\end");
+        assert_eq!(
+            value.decoded_text.as_ref().map(SourceText::as_str),
+            Some("caf\u{e9}|end")
+        );
+        assert_eq!(message.serialize(), raw);
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 section 2.7.4 p.2-18: extract structure before decoding delimiters.
+#[test]
+fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() -> TestResult {
+    let definition = HL7_CONFIG.replace("machine_code=\"SYN\"", r"machine_code='A|B^C~D&E\F'");
+    let config = config(&definition)?;
+    let escaped = r"A\F\B\S\C\R\D\T\E\E\F";
+    let raw = format!(
+        "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||{escaped}\rOBX|1|TX|{escaped}^Label^synthetic||{escaped}~other||||||F\rOBX|2|CE|{escaped}^Label^synthetic||{escaped}^{escaped}^synthetic||||||F\r"
+    );
+    let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
+    let output = map_hl7(&message, &config, input())?;
+    assert!(!output.requires_parking());
+    let result = output.results.first().ok_or("result")?;
+    assert_eq!(
+        result.content.sample.as_ref().ok_or("sample")?.id.as_str(),
+        r"A|B^C~D&E\F"
+    );
+    let part = first(&output)?;
+    assert_eq!(part.test.value.as_str(), "DEMO");
+    assert_eq!(part.values.as_slice().len(), 2);
+    let value = part.values.as_slice().first().ok_or("value")?;
+    assert_eq!(value.original.as_str(), escaped);
+    assert_eq!(
+        value.decoded_text.as_ref().map(SourceText::as_str),
+        Some(r"A|B^C~D&E\F")
+    );
+    let coded = result
+        .content
+        .parts
+        .as_slice()
+        .get(1)
+        .ok_or("coded part")?
+        .values
+        .as_slice()
+        .first()
+        .ok_or("coded value")?;
+    assert_eq!(
+        coded.original.as_str(),
+        format!("{escaped}^{escaped}^synthetic")
+    );
+    assert!(
+        matches!(&coded.parsed, ValueInterpretation::Coded(code) if code.code.value.as_str() == r"A|B^C~D&E\F" && code.text.as_str() == r"A|B^C~D&E\F")
+    );
+    assert_eq!(message.serialize(), raw.as_bytes());
+    Ok(())
+}
+
+// HL7 2.5.1 sections 2.5.4, 2.7.4: use the actual escape and separator characters.
+#[test]
+fn hl7_251_2_7_4_decoding_uses_message_delimiters_and_is_not_recursive() -> TestResult {
+    let config = config(HL7_CONFIG)?;
+    let raw = b"MSH*$%!@*SYN****202611151200**ORU$R01$ORU_R01*MSG*P*2.5.1\rOBR*1**000!F!Ab\rOBX*1*ST*SYN$Label$synthetic**!F!!S!!R!!T!!E!%literal!E!H!E!******F\r";
+    let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
+    let output = map_hl7(&message, &config, input())?;
+    let values = first(&output)?.values.as_slice();
+    assert_eq!(values.len(), 2);
+    assert_eq!(
+        values
+            .first()
+            .and_then(|v| v.decoded_text.as_ref())
+            .map(SourceText::as_str),
+        Some("*$%@!")
+    );
+    assert_eq!(
+        values
+            .get(1)
+            .and_then(|v| v.decoded_text.as_ref())
+            .map(SourceText::as_str),
+        Some("literal!H!")
+    );
+    assert_eq!(
+        values.first().map(|v| v.original.as_str()),
+        Some("!F!!S!!R!!T!!E!")
+    );
+    assert_eq!(message.serialize(), raw);
+    Ok(())
+}
+
 // HL7 2.5.1 sections 2.7.3, 2.7.6 pp.2-18-20.
 #[test]
 fn hl7_251_2_7_3_2_7_6_formatting_is_unsupported_evidence_not_clean_text() -> TestResult {
