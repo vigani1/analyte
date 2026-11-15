@@ -4,7 +4,7 @@
 mod machine_orders;
 mod migration;
 mod restore;
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
@@ -36,7 +36,7 @@ pub enum Error {
     #[error("storage capacity reserve reached")]
     Capacity,
     /// The database belongs to a newer implementation.
-    #[error("schema version {0} is newer than supported version 4")]
+    #[error("schema version {0} is newer than supported version 5")]
     SchemaTooNew(i64),
     /// SQLite or stored evidence failed an integrity check.
     #[error("stored evidence is corrupt")]
@@ -56,6 +56,9 @@ pub enum Error {
     /// The dedicated worker stopped.
     #[error("storage worker stopped")]
     Closed,
+    /// The store-assigned placer plus configured namespace cannot fit the edition's EI.
+    #[error("HL7 placer identity exceeds edition limit or has no namespace")]
+    ItemIdentityTooLong,
     /// Input exceeds a configured bound or violates its declared provenance.
     #[error("invalid or oversized storage input")]
     InvalidInput,
@@ -213,6 +216,11 @@ impl Store {
         if version <= 3 {
             let tx = db.transaction()?;
             tx.execute_batch(include_str!("migration_v4.sql"))?;
+            tx.commit()?;
+        }
+        if version <= 4 {
+            let tx = db.transaction()?;
+            tx.execute_batch(include_str!("migration_v5.sql"))?;
             tx.commit()?;
         }
         // SQL constraints also protect evidence from accidental maintenance updates.

@@ -1,0 +1,14 @@
+# Synthetic legacy query interface; not a vendor or clinical configuration.
+[orders]
+send_ahead = false
+tests = [{app={namespace="synthetic",value="TEST"},machine_components=["SEND"]}]
+priorities = [{app="routine",machine="R"}]
+[orders.query]
+deadline_ms = 1000
+when_untrusted = "error"
+[orders.hl7]
+sample_field = 8
+sample_suffix = "^^^^^^^LCL"
+filters = [{field=9,value="ORD"},{field=10,value="TEST"}]
+acknowledgment_ms = 500
+lines = [{source="sample_id"},{source="test_code"},{source="priority"},{source="literal",value=""},{source="order_id"},{source="position"}]

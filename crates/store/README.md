@@ -7,7 +7,7 @@ and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 3 is
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 5 is
 created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
 Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
@@ -120,6 +120,39 @@ it never permits an ACK. Incomplete transfers are parked when closed. Read APIs
 provide bounded receipt and audit pages for the protected operator interface.
 
 
+## Machine order items (ADR 0003 rules 4/8; ADR 0004/0008)
+
+Schema v5 is a forward-only migration; v4 and its histories are unchanged.
+Each new reservation creates retained command items and append-only item history
+in the same transaction, without an app event. ASTM/vendor records and query
+displays use one item covering all app tests. HL7 send-ahead uses one item per
+test through `reserve_send_items`. EI.1 is `<machine-order-id>-<item-index>`;
+SQLite's retained AUTOINCREMENT parent ID and the one-based index own uniqueness.
+The host supplies the required configured EI.2 namespace; it is retained with
+the item so configuration changes cannot alter a later cancellation identity. Encoded identity
+limits refuse the transaction; no truncation or partial reservation is possible.
+
+V4 did not retain original test coverage. Its migrated orders get one item with
+`coverage_known=false`, empty coverage, and `migration-v5-coverage-unavailable`
+in history. A newer cache cannot reconstruct that evidence. Existing reservation
+identities still block resending, including after a cache version change.
+
+`finish_order_items` applies an entire exchange atomically. All accepted yields
+Accepted; all rejected yields Rejected; all transfer-confirmed yields Sent;
+all cancellations confirmed yields CancelConfirmed. Every mixed, uncertain or
+missing outcome yields Uncertain and an operator summary of per-item reasons.
+A refused cancellation restores the previous parent state, retaining confirmed
+item cancellations and a CancelRefused reason and event. Any missing answer
+still makes the outcome Uncertain. No outcome permits another reservation.
+Illegal/duplicate/unknown item outcomes or an event-builder failure roll back
+items, parent, history and outbox together. Recovery marks Sending items uncertain.
+Reconciliation remains per order with an audit and updates its items together.
+
+Whole-order transitions cannot bypass multi-item aggregation, except for a
+cancellation request, recovery to Uncertain or audited operator reconciliation.
+The protected operator listing includes each item's coverage, placer, state and
+reason. These details do not change contract v1 or enter ordinary logs.
+
 ## Restore and reconciliation (plan ?11, ADR 0003 rules 2, 4, 8)
 
 1. Stop the service. Keep the backup and data directory protected as clinical data.
@@ -147,3 +180,18 @@ provide bounded receipt and audit pages for the protected operator interface.
 The marker is the latest restore/resume action in the append-only audit trail;
 no schema migration or driver-specific exception is needed. Evidence remains
 **documented**, based on synthetic tests, without real-machine qualification.
+
+
+`reserve_send_items_with` runs a pure message preflight with the actual assigned
+IDs before committing Sending. A failed preflight rolls back every item and
+history row. The shared `start_order` transaction checks `restore_paused` for
+all reservation variants, including per-test sends and owned DSR responses.
+App cancellation admission rechecks the feed's trust/version and restore pause
+in its write transaction. The admitted app version and connection owner are
+retained in append-only history; a refused cancellation cannot cause another
+automatic cancel for that same version. Original reservations always block
+resending new work, independently of subsequent app versions.
+
+Aggregate source summaries list item states and bounded diagnostic names; full
+machine reasons stay unchanged on every item. A long collection of reasons
+cannot overflow the aggregate text field and roll back otherwise valid evidence.

@@ -277,3 +277,134 @@ fn lis02_section8_4_16_1_specimen_destination_and_code_table_preserve_field_owne
     invalid_key(config(&duplicated), "orders.specimen_types");
     Ok(())
 }
+
+#[test]
+fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> TestResult {
+    let definition = include_str!("../examples/hl7.toml");
+    let section = include_str!("../examples/hl7_orders.toml");
+    let valid = vendor_config(definition, section)?;
+    assert!(
+        valid
+            .effective()
+            .machine()
+            .orders
+            .as_ref()
+            .and_then(|o| o.hl7.as_ref())
+            .is_some()
+    );
+    for (invalid, key) in [
+        (
+            section.replace("acknowledgment_ms = 500", "acknowledgment_ms = 0"),
+            "orders.hl7.acknowledgment_ms",
+        ),
+        (
+            section.replace("sample_field = 8", "sample_field = 9"),
+            "orders.hl7.sample_field",
+        ),
+        (
+            section.replace("{field=9,value=\"ORD\"},", ""),
+            "orders.hl7.filters",
+        ),
+        (
+            section.replace("{source=\"sample_id\"},", ""),
+            "orders.hl7.lines",
+        ),
+        (
+            section.replace("{source=\"test_code\"},", ""),
+            "orders.hl7.lines",
+        ),
+        (
+            section.replace("send_ahead = false", "send_ahead = true"),
+            "orders",
+        ),
+        (
+            section.replace(
+                "value=\"TEST\"}]",
+                "value=\"TEST\"},{field=9,value=\"OTHER\"}]",
+            ),
+            "orders.hl7.filters",
+        ),
+    ] {
+        invalid_key(vendor_config(definition, &invalid), key);
+    }
+    assert!(
+        vendor_config(
+            definition,
+            &section.replace("deadline_ms = 1000", "deadline_ms = 60001")
+        )
+        .is_err()
+    );
+    assert!(
+        vendor_config(
+            definition,
+            &section.replace("source=\"test_code\"", "source=\"guessed\"")
+        )
+        .is_err()
+    );
+    assert!(
+        vendor_config(
+            definition,
+            &section.replace("value=\"\"", "value=\"injected|field\"")
+        )
+        .is_err()
+    );
+    invalid_key(
+        vendor_config(
+            definition,
+            &section.replace(
+                r#"when_untrusted = "error""#,
+                r#"when_untrusted = "no_answer""#,
+            ),
+        ),
+        "orders.query.when_untrusted",
+    );
+    assert!(
+        vendor_config(
+            definition,
+            &section.replace(r#"sample_suffix = "^^^^^^^LCL""#, r#"sample_suffix = """#)
+        )
+        .is_err()
+    );
+    assert!(config(section).is_err());
+    Ok(())
+}
+
+#[test]
+fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -> TestResult {
+    let definition = include_str!("../examples/hl7.toml");
+    let section = include_str!("../examples/hl7_send.toml");
+    vendor_config(definition, section)?;
+    for (invalid, key) in [
+        (
+            section.replace(r#"placer_namespace = "LAB""#, ""),
+            "orders.placer_namespace",
+        ),
+        (
+            section.replace("response_ms = 1500", "response_ms = 0"),
+            "orders.hl7_send",
+        ),
+        (
+            section.replace(r#"processing = "T""#, r#"processing = "unknown""#),
+            "orders.hl7_send",
+        ),
+        (
+            section.replace("sample_field = 18", "sample_field = 17"),
+            "orders.hl7_send.position_field",
+        ),
+        (
+            section.replace(
+                "sample_field = 18",
+                "sample_field = 18\nposition_field = 18",
+            ),
+            "orders.hl7_send.position_field",
+        ),
+        (
+            section.replace(r#"["SYN","","L"]"#, r#"["SYN"]"#),
+            "orders.tests",
+        ),
+    ] {
+        invalid_key(vendor_config(definition, &invalid), key);
+    }
+    assert!(config(section).is_err());
+    Ok(())
+}

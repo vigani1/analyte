@@ -1,0 +1,15 @@
+# Synthetic interface only; not qualified against a machine.
+[orders]
+send_ahead = true
+placer_namespace = "LAB"
+tests = [{app={namespace="synthetic",value="TEST"},machine_components=["SYN","","L"]}]
+priorities = [{app="routine",machine="R"}]
+specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
+[orders.hl7_send]
+application = "HOST"
+peer_application = "SYN"
+processing = "T"
+response_ms = 1500
+sample_field = 18
+specimen_system = "L"
+specimen_version = "1"

@@ -229,7 +229,7 @@ pub struct Specimen<'a> {
     /// ORM-only placer-field mapping. OML uses its standard SPM-2 identifier.
     pub field: SampleField,
     /// Source/type code from the caller, not inferred from a test.
-    pub source: Code<'a>,
+    pub source: Option<Code<'a>>,
 }
 
 /// One caller-authorized new order or cancellation request.
@@ -277,6 +277,15 @@ pub enum Subject<'a> {
     Patient(Patient<'a>),
     /// Explicitly nonpatient work; no PID is synthesized.
     NonPatient,
+    /// Patient context was not supplied; this does not assert nonpatient work.
+    Unspecified,
+    /// Only the supplied identifier is known; no patient name is synthesized.
+    Identifier {
+        /// Literal patient ID.
+        identifier: &'a [u8],
+        /// Explicit assigning system.
+        namespace: &'a [u8],
+    },
 }
 
 /// MSH-11 processing environment, explicitly selected by the host.

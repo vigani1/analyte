@@ -1,4 +1,7 @@
 //! Outbound mapping never searches or reverses the incoming result table.
+mod display;
+pub use display::map_display;
+
 use analyte_config::Validated;
 use analyte_model::{NamespacedId, SampleId, SamplePosition};
 

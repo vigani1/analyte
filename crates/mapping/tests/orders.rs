@@ -135,3 +135,112 @@ fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> 
     ));
     Ok(())
 }
+
+#[test]
+fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> TestResult {
+    let section = include_str!("../../config/examples/hl7_orders.toml").replace(
+        "namespace=\"synthetic\",value=\"TEST\"",
+        "namespace=\"demo\",value=\"DEMO\"",
+    );
+    let definition = format!(
+        "{}\n{section}",
+        include_str!("../../config/examples/hl7.toml")
+    );
+    let settings = Draft::load(
+        ("machine", &definition),
+        ("site", include_str!("../../config/examples/site.toml")),
+        ("overrides", "schema_version=1"),
+    )?
+    .validate()?;
+    let input = order()?;
+    assert_eq!(
+        analyte_mapping::map_display(&input, "order-a", &settings)?,
+        vec![
+            b"001a".to_vec(),
+            b"SEND".to_vec(),
+            b"R".to_vec(),
+            Vec::new(),
+            b"order-a".to_vec(),
+            Vec::new()
+        ]
+    );
+    let mut wrong = order()?;
+    wrong.sample = SampleId::new("bad|delimiter")?;
+    assert!(matches!(
+        analyte_mapping::map_display(&wrong, "order-a", &settings),
+        Err(OrderMappingError::Representation)
+    ));
+    wrong = order()?;
+    wrong.tests.first_mut().ok_or("test")?.namespace = Identifier::new("unmapped-system")?;
+    assert!(matches!(
+        analyte_mapping::map_display(&wrong, "order-a", &settings),
+        Err(OrderMappingError::UnmappedTest(_))
+    ));
+    wrong = order()?;
+    wrong.priority = AppOrderPriority::Stat;
+    assert!(matches!(
+        analyte_mapping::map_display(&wrong, "order-a", &settings),
+        Err(OrderMappingError::UnmappedPriority)
+    ));
+    Ok(())
+}
+
+#[test]
+fn hl7_251_section5_10_optional_patient_specimen_and_slot_use_only_explicit_sources() -> TestResult
+{
+    let section = include_str!("../../config/examples/hl7_orders.toml")
+        .replace(
+            "namespace=\"synthetic\",value=\"TEST\"",
+            "namespace=\"demo\",value=\"DEMO\"",
+        )
+        .replace(
+            "[orders.query]",
+            r#"patient_namespace = "patients"
+specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
+[orders.query]"#,
+        )
+        .replace(
+            r#"{source="position"}"#,
+            r#"{source="position"},{source="specimen_type"},{source="patient_id"}"#,
+        );
+    let definition = format!(
+        "{}\n{section}",
+        include_str!("../../config/examples/hl7.toml")
+    );
+    let settings = Draft::load(
+        ("machine", &definition),
+        ("site", include_str!("../../config/examples/site.toml")),
+        ("overrides", "schema_version=1"),
+    )?
+    .validate()?;
+    let mut input = order()?;
+    let empty = analyte_mapping::map_display(&input, "order-a", &settings)?;
+    assert_eq!(
+        empty.get(5..),
+        Some([Vec::new(), Vec::new(), Vec::new()].as_slice())
+    );
+    input.position = Some(analyte_model::SamplePosition {
+        kind: analyte_model::CarrierKind::Rack,
+        carrier: Some(Identifier::new("rack-a")?),
+        slot: Identifier::new("007b")?,
+    });
+    input.specimen_type = Some(NamespacedId {
+        namespace: Identifier::new("types")?,
+        value: Identifier::new("SERUM")?,
+    });
+    input.patient = Some(NamespacedId {
+        namespace: Identifier::new("patients")?,
+        value: Identifier::new("000Patient")?,
+    });
+    let mapped = analyte_mapping::map_display(&input, "order-a", &settings)?;
+    assert_eq!(
+        mapped.get(5..),
+        Some([b"007b".to_vec(), b"SER".to_vec(), b"000Patient".to_vec()].as_slice())
+    );
+    input.patient.as_mut().ok_or("patient")?.namespace = Identifier::new("wrong-namespace")?;
+    assert!(matches!(
+        analyte_mapping::map_display(&input, "order-a", &settings),
+        Err(OrderMappingError::PatientNamespace)
+    ));
+    Ok(())
+}

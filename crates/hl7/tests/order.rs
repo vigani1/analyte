@@ -26,7 +26,7 @@ fn new_order(sample: &[u8], field: SampleField) -> Result<Order<'_>, Error> {
         specimen: Specimen {
             sample: SampleId::new(sample)?,
             field,
-            source: Code::new(b"SER", b"Serum", b"L")?,
+            source: Some(Code::new(b"SER", b"Serum", b"L")?),
         },
         priority: Priority::Stat,
         timing: Timing {
@@ -970,5 +970,76 @@ fn hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors() -
     ] {
         assert!(matches!(Control::parse(code), Err(Error::Control)));
     }
+    Ok(())
+}
+
+#[test]
+fn hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context() -> Result<(), Error> {
+    let mut request = new_order(b"000aB", SampleField::Placer1)?;
+    if let Order::New { specimen, .. } = &mut request {
+        specimen.source = None;
+    }
+    let built = order::orm(
+        &[request],
+        Subject::Identifier {
+            identifier: b"000Patient",
+            namespace: b"LAB",
+        },
+        header(Version::V231)?,
+        Options::default(),
+    )?;
+    let enriched = order::context(
+        &built,
+        b"app-order",
+        Some((SampleField::Placer2, b"007b")),
+        Options::default(),
+    )?;
+    let common = enriched
+        .message()
+        .segments()
+        .find(|s| s.id() == b"ORC")
+        .ok_or(Error::Limit)?;
+    assert_eq!(common.field(4).ok_or(Error::Limit)?.raw(), b"app-order");
+    let detail = enriched
+        .message()
+        .segments()
+        .find(|s| s.id() == b"OBR")
+        .ok_or(Error::Limit)?;
+    assert_eq!(detail.field(15).ok_or(Error::Limit)?.raw(), b"");
+    assert_eq!(detail.field(18).ok_or(Error::Limit)?.raw(), b"000aB");
+    assert_eq!(detail.field(19).ok_or(Error::Limit)?.raw(), b"007b");
+    assert!(
+        enriched
+            .message()
+            .segments()
+            .any(|s| s.raw() == b"PID|1||000Patient^^^LAB")
+    );
+    assert!(
+        order::context(
+            &built,
+            b"app-order",
+            Some((SampleField::Placer1, b"overwrite")),
+            Options::default()
+        )
+        .is_err()
+    );
+    assert!(
+        order::context(
+            &built,
+            b"app-order-identifier-too-long",
+            None,
+            Options::default()
+        )
+        .is_err()
+    );
+    assert!(
+        order::oml(
+            &[request],
+            Subject::Unspecified,
+            header(Version::V251)?,
+            Options::default()
+        )
+        .is_err()
+    );
     Ok(())
 }
