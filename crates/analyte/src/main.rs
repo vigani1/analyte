@@ -32,7 +32,15 @@ enum Command {
         file: PathBuf,
     },
     Run {
-        file: PathBuf,
+        file: Option<PathBuf>,
+        /// Hard process deadline after shutdown begins.
+        #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(30..=300))]
+        shutdown_timeout_secs: u64,
+    },
+    #[cfg(windows)]
+    Service {
+        #[command(subcommand)]
+        command: ServiceCommand,
     },
     Status {
         file: PathBuf,
@@ -49,6 +57,15 @@ enum Command {
     },
     Backup {
         target: PathBuf,
+    },
+}
+
+#[cfg(windows)]
+#[derive(Subcommand)]
+enum ServiceCommand {
+    Run {
+        #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(30..=300))]
+        shutdown_timeout_secs: u64,
     },
 }
 
@@ -69,14 +86,41 @@ enum Parked {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
+fn main() -> Result<(), Error> {
+    let cli = Cli::parse();
+    #[cfg(windows)]
+    if let Command::Service {
+        command: ServiceCommand::Run {
+            shutdown_timeout_secs,
+        },
+    } = &cli.command
+    {
+        return analyte::windows_service::run(
+            cli.config,
+            Duration::from_secs(*shutdown_timeout_secs),
+        );
+    }
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init()?;
-    let cli = Cli::parse();
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(execute(cli))
+}
+
+async fn execute(cli: Cli) -> Result<(), Error> {
     match cli.command {
+        #[cfg(windows)]
+        Command::Service {
+            command: ServiceCommand::Run {
+                shutdown_timeout_secs,
+            },
+        } => Err(std::io::Error::other(format!(
+            "SCM dispatch was not selected ({shutdown_timeout_secs})"
+        ))
+        .into()),
         Command::Orders { command } => {
             analyte::orders::run(&Program::load(&cli.config)?, cli.actor, command).await
         }
@@ -98,7 +142,16 @@ async fn main() -> Result<(), Error> {
             }
             Ok(())
         }
-        Command::Run { file } => service::run(Program::load(&file)?).await,
+        Command::Run {
+            file,
+            shutdown_timeout_secs,
+        } => {
+            service::run_bounded(
+                Program::load(&file.unwrap_or(cli.config))?,
+                Duration::from_secs(shutdown_timeout_secs),
+            )
+            .await
+        }
         Command::Status { file } => analyte::status::print(&Program::load(&file)?).await,
         Command::Parked { command } => operator(&cli.config, cli.actor, command).await,
         Command::Restore { from, reason } => {

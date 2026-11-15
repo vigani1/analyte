@@ -38,6 +38,36 @@ pub async fn run(program: Program) -> Result<(), Error> {
     serve(program, Box::new(Volume), termination()).await
 }
 
+/// Runs with an explicit process shutdown deadline (30 through 300 seconds).
+/// # Errors
+/// Reports invalid bounds, startup, signal and graceful shutdown failures.
+pub async fn run_bounded(program: Program, bound: Duration) -> Result<(), Error> {
+    let secrets = crate::secrets::EnvironmentSecrets::load(&program)?;
+    serve_bounded(program, termination(), secrets, bound, None).await
+}
+
+pub(crate) async fn serve_bounded(
+    program: Program,
+    stop: impl Future<Output = Result<(), Error>>,
+    secrets: crate::secrets::EnvironmentSecrets,
+    bound: Duration,
+    watchdog: Option<Arc<crate::shutdown::Watchdog>>,
+) -> Result<(), Error> {
+    if !(Duration::from_secs(30)..=Duration::from_secs(300)).contains(&bound) {
+        return Err(invalid("shutdown bound must be 30 through 300 seconds"));
+    }
+    serve_with(
+        program,
+        Box::new(Volume),
+        stop,
+        secrets,
+        false,
+        bound,
+        watchdog,
+    )
+    .await
+}
+
 /// Runs the receive service with an injectable disk probe and shutdown signal.
 /// Machine failures are reported independently; they never cancel another machine.
 /// Shutdown stops admission, lets submitted commits finish, closes transports, then
@@ -50,7 +80,16 @@ pub async fn serve(
     stop: impl Future<Output = Result<(), Error>>,
 ) -> Result<(), Error> {
     let secrets = crate::secrets::EnvironmentSecrets::load(&program)?;
-    serve_with(program, space, stop, secrets, false).await
+    serve_with(
+        program,
+        space,
+        stop,
+        secrets,
+        false,
+        Duration::from_secs(30),
+        None,
+    )
+    .await
 }
 
 /// Runs synthetic localhost tests with injected host credentials and explicit URL overrides.
@@ -63,7 +102,16 @@ pub async fn serve_loopback_test(
     stop: impl Future<Output = Result<(), Error>>,
     secrets: crate::secrets::EnvironmentSecrets,
 ) -> Result<(), Error> {
-    serve_with(program, space, stop, secrets, true).await
+    serve_with(
+        program,
+        space,
+        stop,
+        secrets,
+        true,
+        Duration::from_secs(30),
+        None,
+    )
+    .await
 }
 
 async fn serve_with(
@@ -72,7 +120,14 @@ async fn serve_with(
     stop: impl Future<Output = Result<(), Error>>,
     secrets: crate::secrets::EnvironmentSecrets,
     loopback: bool,
+    shutdown_bound: Duration,
+    watchdog: Option<Arc<crate::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
+    let watchdog = match watchdog {
+        Some(watchdog) => watchdog,
+        None => Arc::new(crate::shutdown::Watchdog::new(shutdown_bound, None)?),
+    };
+    let store_component = watchdog.component("store".into());
     let destinations = crate::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
     let store = Arc::new(open_store(&program, space).await?);
@@ -91,7 +146,9 @@ async fn serve_with(
         let store = store.clone();
         let secrets = secrets.clone();
         let stop = delivery_stopped.clone();
+        let component = watchdog.component(format!("order-poller:{}", destination.id().as_str()));
         delivery_owners.spawn(async move {
+            let _component = component;
             analyte_sink::Poller::new(&store, &destination, secrets.as_ref())
                 .run(stop)
                 .await
@@ -100,7 +157,9 @@ async fn serve_with(
     {
         let store = store.clone();
         let secrets = secrets.clone();
+        let component = watchdog.component("delivery-worker".into());
         delivery_owners.spawn(async move {
+            let _component = component;
             analyte_sink::Worker::new(&store, &destinations, secrets.as_ref())
                 .run_draining(delivery_stopped, crate::delivery::SHUTDOWN_BUDGET)
                 .await
@@ -125,7 +184,9 @@ async fn serve_with(
             ready: ready.clone(),
             close: transports_closing.clone(),
         };
+        let component = watchdog.component(format!("machine:{}", machine.id.as_str()));
         owners.spawn(async move {
+            let _component = component;
             let id = machine.id.clone();
             if let Err(error) = machine::run(machine, store, stop, file_root, closing).await {
                 tracing::error!(machine = id.as_str(), error_kind = %error, "machine owner stopped");
@@ -151,6 +212,7 @@ async fn serve_with(
             }
         }
     };
+    watchdog.arm();
     shutdown.send_replace(true);
     let until = tokio::time::Instant::now()
         .checked_add(Duration::from_secs(15))
@@ -194,6 +256,8 @@ async fn serve_with(
                 .unwrap_or(Instant::now()),
         )
         .await?;
+    drop(store);
+    drop(store_component);
     commits_drained.map_err(|_| invalid("receive commits exceeded 15 seconds"))?;
     drained.map_err(|_| invalid("transport shutdown exceeded 5 seconds"))??;
     delivery_drained.map_err(|_| {

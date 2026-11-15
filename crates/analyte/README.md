@@ -168,3 +168,27 @@ Exercise its restart test with
 The marker is the latest restore/resume action in the append-only audit trail;
 no schema migration or driver-specific exception is needed. Evidence remains
 **documented**, based on synthetic tests, without real-machine qualification.
+
+## Running as a service
+
+Windows uses `analyte service run --config C:\ProgramData\Analyte\analyte.toml`.
+The pre-created data directory must be restricted to the service account and
+administrators. Service logs append to `<data_directory>/analyte.log`; they
+contain component IDs and diagnostics, never clinical payloads. Protect and rotate
+this log operationally. This entry point requires the Service Control Manager; use `analyte run --config
+<path>` in a terminal. Service installation is separate from the Rust entry point.
+
+Both commands accept `--shutdown-timeout-secs` (30 through 300, default 30).
+Stop requests first run the staged drain described above. A dedicated OS thread
+enforces the overall deadline even if a blocking owner destructor cannot finish.
+At expiry, Analyte logs one error with the IDs of remaining components and exits
+with code **3**, bypassing destructors. This follows ADR 0003 crash recovery:
+unacknowledged/uncommitted input can be retried, committed receipts survive,
+deliveries retain their IDs, and interrupted Sending orders become Uncertain.
+A successful graceful stop exits 0; other failures exit nonzero.
+
+During a requested Windows stop, Analyte reports Stopped through the crate's
+public API before exiting on deadline. The SCM therefore shows a normal stop;
+the deadline reason is in the Analyte log and process exit code, not an SCM
+service-specific exit code. Linux systemd records exit code 3 as a failure.
+Keep the service stop timeout above the configured Analyte deadline.
