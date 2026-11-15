@@ -1,4 +1,4 @@
-# HL7 syntax crate
+﻿# HL7 syntax crate
 
 Evidence: **documented**, using HL7 2.3.1 chapter 2 and HL7 2.5.1 chapter 2
 and the control datatypes in chapter 2A. Fixtures are original synthetic data.
@@ -96,3 +96,24 @@ inconsistent result rejection, selected enhanced content, lost ACK, disconnect,
 restart and storage failure. Record validation-profile changes between runs.
 Network exchanges belong to host/dialog integration. No Gazelle run has been
 performed and the evidence level has not been raised.
+
+## Legacy deferred query implementation status
+
+The `query` module is an initial, documented-only implementation, not complete
+coverage of checklist H. It accepts a single deferred display QRY/Q02 in either
+edition, preserves QRD/QRF filters, renders QCK status, renders bounded complete
+DSR display lines, and reads correlated application ACK/Q03 replies. QAK-1 is
+empty for original-style queries. Lookup failure produces AE, never NF.
+
+Outstanding before integration: complete QRD/QRF datatype, table and predicate
+validation; typed filter interpretation; continuation and scheduling contracts;
+additional quantity units and escaped/non-ASCII display text; comprehensive
+negative fixtures. The constructor checks the supported envelope and selected
+required fields, not full HL7 conformance. The host must interpret every filter
+under the agreed interface before declaring its cache answer trusted. Display
+rows have no built-in laboratory meaning. These pure functions do not store,
+schedule, transmit, retry or change order states.
+
+ORM/O01, ORR/O02, non-LAW OML/O21 and ORL/O22 are not implemented by this change.
+Checklist G and full required-field validation remain outstanding.
+

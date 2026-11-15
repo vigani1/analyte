@@ -1,0 +1,141 @@
+//! Synthetic legacy query regressions; no vendor fixtures.
+use analyte_hl7::{ControlId, Message, Options, Response, query};
+
+fn request(version: &str) -> Result<Message, analyte_hl7::Error> {
+    Message::parse(format!("MSH|^~\\&|A|B|C|D|202611150900||QRY^Q02|q1|P|{version}\rQRD|20261115|D|D|tag|||5^LI|0001|ORD|TEST\rQRF|LAB\r").as_bytes(), Options::default())
+}
+
+#[test]
+fn hl7_231_2_18_qck_answers_deferred_query() -> Result<(), analyte_hl7::Error> {
+    for version in ["2.3.1", "2.5.1"] {
+        let message = request(version)?;
+        let request = query::Request::new(&message)?;
+        assert_eq!(request.query_id(), b"tag");
+        for (answer, expected) in [
+            (query::CacheAnswer::Found, b"QAK||OK\r".as_slice()),
+            (query::CacheAnswer::Empty, b"QAK||NF\r"),
+            (query::CacheAnswer::Unavailable, b"QAK||AE\r"),
+        ] {
+            let response = query::acknowledgment(
+                request,
+                Response {
+                    control_id: ControlId::new(b"qck1")?,
+                    timestamp: b"202611150901",
+                },
+                answer,
+                Options::default(),
+            )?;
+            assert!(response.raw().ends_with(expected));
+            assert!(
+                response
+                    .raw()
+                    .windows(9)
+                    .any(|v| v == b"QCK^Q02|q" || v == b"QCK^Q02^Q")
+            );
+            if answer == query::CacheAnswer::Unavailable {
+                assert!(response.raw().windows(10).any(|v| v == b"MSA|AE|q1\r"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr() -> Result<(), analyte_hl7::Error> {
+    let message = request("2.3.1")?;
+    let request = query::Request::new(&message)?;
+    let dsr = query::display(
+        request,
+        Response {
+            control_id: ControlId::new(b"dsr1")?,
+            timestamp: b"202611150902",
+        },
+        ControlId::new(b"qck1")?,
+        &[b"Synthetic line"],
+        Options::default(),
+    )?;
+    assert!(dsr.raw().ends_with(b"QRF|LAB\rDSP|1||Synthetic line\r"));
+    let ack = Message::parse(
+        b"MSH|^~\\&|A|B|C|D|20261115||ACK^Q03|a1|P|2.3.1\rMSA|AA|dsr1\r",
+        Options::default(),
+    )?;
+    assert!(query::DisplayAck::new(&ack, ControlId::new(b"dsr1")?).is_ok());
+    assert!(query::DisplayAck::new(&ack, ControlId::new(b"q1")?).is_err());
+    Ok(())
+}
+
+proptest::proptest! {
+    #[test]
+    fn hl7_231_2_24_4_query_id_is_preserved(id in "[A-Za-z0-9]{1,10}") {
+        let bytes = format!("MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|q1|P|2.3.1\rQRD|20261115|D|D|{id}|||5^LI|0001|ORD|TEST\r");
+        let parsed = Message::parse(bytes.as_bytes(), Options::default());
+        proptest::prop_assert!(parsed.is_ok());
+        if let Ok(message) = parsed {
+            let request = query::Request::new(&message);
+            proptest::prop_assert!(request.is_ok());
+            if let Ok(request) = request {
+                proptest::prop_assert_eq!(request.query_id(), id.as_bytes());
+            }
+        }
+    }
+}
+
+#[test]
+fn hl7_231_2_24_4_rejects_vendor_quantity_and_missing_department() -> Result<(), analyte_hl7::Error>
+{
+    for definition in [
+        b"QRD|20261115|D|D|tag|||RD|0001|ORD|TEST\r".as_slice(),
+        b"QRD|20261115|D|D|tag|||5^LI|0001|ORD\r",
+    ] {
+        let mut bytes = b"MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|q1|P|2.3.1\r".to_vec();
+        bytes.extend_from_slice(definition);
+        let message = Message::parse(&bytes, Options::default())?;
+        assert!(query::Request::new(&message).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn hl7_231_2_18_dsr_requires_data_and_distinct_response_ids() -> Result<(), analyte_hl7::Error> {
+    let message = request("2.3.1")?;
+    let request = query::Request::new(&message)?;
+    let response = Response {
+        control_id: ControlId::new(b"dsr1")?,
+        timestamp: b"202611150902",
+    };
+    for lines in [&[][..], &[b"injected|field".as_slice()][..]] {
+        assert!(
+            query::display(
+                request,
+                response,
+                ControlId::new(b"qck1")?,
+                lines,
+                Options::default()
+            )
+            .is_err()
+        );
+    }
+    assert!(
+        query::display(
+            request,
+            response,
+            ControlId::new(b"dsr1")?,
+            &[b"line"],
+            Options::default()
+        )
+        .is_err()
+    );
+    assert!(
+        query::acknowledgment(
+            request,
+            Response {
+                control_id: ControlId::new(b"q1")?,
+                timestamp: b"202611150902"
+            },
+            query::CacheAnswer::Found,
+            Options::default()
+        )
+        .is_err()
+    );
+    Ok(())
+}
