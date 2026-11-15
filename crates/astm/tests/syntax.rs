@@ -210,13 +210,13 @@ fn lis02_9_9_all_result_codes_remain_distinct() {
 fn lis02_5_4_serialize_selected_delimiters() -> Result<(), Error> {
     let messages = parse(b"H|\\^&|\rP|1|a;b&F&c^d\\e\rL|1\r", Limits::default())?;
     let target = Delimiters::new(b';', b'~', b':', b'!')?;
-    let encoded = messages
+    let serialized = messages
         .first()
         .map(|m| m.encode_with(target))
         .transpose()?
         .unwrap_or_default();
-    assert_eq!(encoded, b"H;~:!;\rP;1;a!F!b|c:d~e\rL;1\r");
-    let reparsed = parse(&encoded, Limits::default())?;
+    assert_eq!(serialized, b"H;~:!;\rP;1;a!F!b|c:d~e\rL;1\r");
+    let reparsed = parse(&serialized, Limits::default())?;
     assert_eq!(
         reparsed
             .first()
@@ -234,9 +234,9 @@ proptest! {
         let parsed = parse(wire.as_bytes(), Limits::default());
         prop_assert!(parsed.is_ok());
         if let Ok(messages) = parsed {
-            let encoded: Vec<u8> = messages.iter().flat_map(analyte_astm::Message::encode).collect();
-            prop_assert_eq!(&encoded, wire.as_bytes());
-            prop_assert_eq!(parse(&encoded, Limits::default()), Ok(messages));
+            let serialized: Vec<u8> = messages.iter().flat_map(analyte_astm::Message::encode).collect();
+            prop_assert_eq!(&serialized, wire.as_bytes());
+            prop_assert_eq!(parse(&serialized, Limits::default()), Ok(messages));
         }
     }
     #[test]
