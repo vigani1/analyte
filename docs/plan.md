@@ -106,7 +106,7 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-model`     | Common model: results, orders, identities, revisions         |
 | `analyte-store`     | Local storage (SQLite), outbox, audit                        |
 | `analyte-transport` | Serial, TCP, folder                                          |
-| `analyte-framing`   | ASTM, MLLP, VIDAS and Autolyser envelopes, lines               |
+| `analyte-framing`   | ASTM, MLLP, POCT roots, VIDAS and Autolyser envelopes, lines               |
 | `analyte-dialog`    | ASTM, HL7, LAW, POCT, VIDAS and Autolyser conversations                                  |
 | `analyte-astm`      | ASTM record syntax                                           |
 | `analyte-hl7`       | HL7 v2 syntax, acknowledgments, LAW transactions             |

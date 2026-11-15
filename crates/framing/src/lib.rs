@@ -11,3 +11,6 @@ pub mod mllp;
 pub mod autolyser;
 /// VIDAS Literal packet framing.
 pub mod vidas;
+
+/// Incremental POCT XML root boundaries.
+pub mod poct;

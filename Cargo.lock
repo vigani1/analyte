@@ -120,6 +120,7 @@ name = "analyte-framing"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "quick-xml",
  "thiserror",
 ]
 

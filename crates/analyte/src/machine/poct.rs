@@ -11,52 +11,6 @@ use std::{
 };
 use tokio::sync::watch;
 
-/// Locates a complete XML root without treating quoted text or comments as framing.
-/// Syntax and POCT containment remain the protocol crate's responsibility.
-fn frame_length(raw: &[u8], maximum_depth: usize) -> Result<Option<usize>, Error> {
-    let mut reader = quick_xml::Reader::from_reader(raw);
-    // Boundaries need balanced depth even for a mismatched tag name. The syntax
-    // reader rejects it afterwards, while retaining the complete rejected root.
-    reader.config_mut().check_end_names = false;
-    let mut depth = 0usize;
-    loop {
-        match reader.read_event() {
-            Ok(quick_xml::events::Event::Start(_)) => {
-                depth = depth
-                    .checked_add(1)
-                    .ok_or_else(|| invalid("POCT XML depth exhausted"))?;
-                if depth > maximum_depth {
-                    return Err(invalid("POCT XML depth limit exceeded"));
-                }
-            }
-            Ok(quick_xml::events::Event::End(_)) => {
-                depth = depth
-                    .checked_sub(1)
-                    .ok_or_else(|| invalid("POCT unbalanced XML root"))?;
-                if depth == 0 {
-                    return Ok(Some(usize::try_from(reader.buffer_position())?));
-                }
-            }
-            Ok(quick_xml::events::Event::Empty(_)) if depth == 0 => {
-                return Ok(Some(usize::try_from(reader.buffer_position())?));
-            }
-            // The external XML reader can reject a partial token. Keep its bytes
-            // until the bounded message/deadline gate; never discard that evidence.
-            Ok(quick_xml::events::Event::Eof) | Err(_) => return Ok(None),
-            Ok(
-                quick_xml::events::Event::Empty(_)
-                | quick_xml::events::Event::Text(_)
-                | quick_xml::events::Event::CData(_)
-                | quick_xml::events::Event::Comment(_)
-                | quick_xml::events::Event::Decl(_)
-                | quick_xml::events::Event::PI(_)
-                | quick_xml::events::Event::DocType(_)
-                | quick_xml::events::Event::GeneralRef(_),
-            ) => {}
-        }
-    }
-}
-
 pub(super) async fn session(
     machine: &evidence::Connection<'_>,
     settings: &analyte_config::PoctStack,
@@ -77,6 +31,7 @@ pub(super) async fn session(
     )?;
     let start = Instant::now();
     let mut raw = Vec::new();
+    let mut framer = analyte_framing::poct::Decoder::new(limits.message_bytes, policy.depth);
     loop {
         let input =
             vendor::input(machine, store, conn, &mut stop, Duration::from_millis(10)).await?;
@@ -135,7 +90,7 @@ pub(super) async fn session(
                         .await?;
                         return Ok(());
                     }
-                    let length = match frame_length(&raw, policy.depth) {
+                    let length = match framer.scan(&raw) {
                         Ok(Some(length)) => length,
                         Ok(None) => continue,
                         // Parse the retained bytes through the syntax boundary to
@@ -147,6 +102,7 @@ pub(super) async fn session(
                         .ok_or_else(|| invalid("POCT framing length"))?
                         .to_vec();
                     raw.drain(..length);
+                    framer.reset();
                     let message = match Message::parse(&wire, limits) {
                         Ok(message) => message,
                         Err(error) => {
