@@ -15,4 +15,6 @@ to a lab app over HTTPS in one common format.
   machine, with an official simulator, or from documents only.
 - Written in Rust. One program for Windows and Linux.
 
+See [Adding a machine](docs/adding-a-machine.md) for configuration and qualification.
+
 Licensed under the [Apache License 2.0](LICENSE).
