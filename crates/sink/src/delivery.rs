@@ -117,10 +117,22 @@ impl<'a> Worker<'a> {
     /// # Errors
     /// Returns store/configuration failures; an uncertain write is never assumed undone.
     pub async fn deliver_once(&self) -> Result<DeliveryOutcome, Error> {
-        let now = jiff::Timestamp::now().as_second();
+        self.deliver_once_with_clock(&|| jiff::Timestamp::now().as_second())
+            .await
+    }
+
+    // Scheduling time is independent of HTTP signing time. Tests move this clock
+    // across exact persisted retry boundaries without racing whole-second ticks.
+    pub(super) async fn deliver_once_with_clock(
+        &self,
+        now: &(dyn Fn() -> i64 + Sync),
+    ) -> Result<DeliveryOutcome, Error> {
+        let claim_time = now();
         let claim = self
             .store
-            .request(deadline(self.claim_timeout())?, move |s| s.claim(now))
+            .request(deadline(self.claim_timeout())?, move |s| {
+                s.claim(claim_time)
+            })
             .await?;
         let Some(claim) = claim else {
             return Ok(DeliveryOutcome::Idle);
@@ -143,7 +155,7 @@ impl<'a> Worker<'a> {
             }
             Ok(Err(error)) => return Err(error),
         };
-        let now = jiff::Timestamp::now().as_second();
+        let now = now();
         let (attempt, outcome) = match action {
             ResponseAction::Done(status) => (Attempt::Done, DeliveryOutcome::Done(status)),
             ResponseAction::Conflict => (

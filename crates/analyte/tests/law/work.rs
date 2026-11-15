@@ -172,7 +172,13 @@ async fn law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_repla
 -> Result<(), Error> {
     for cancelling in [false, true] {
         for disconnect in [false, true] {
-            let settings = send_ahead().replace("response_ms = 1500", "response_ms = 250");
+            // Cancellation first needs a real acceptance round trip. Only the
+            // no-reply-only case can use a short timer without racing that reply.
+            let response_ms = if cancelling || disconnect { 10000 } else { 250 };
+            let settings = send_ahead().replace(
+                "response_ms = 30000",
+                &format!("response_ms = {response_ms}"),
+            );
             let (_temp, path, reference, running, mut peer) = setup(
                 vec![order("order-1", "000Ab12", Some("law"), 2)?],
                 &settings,
@@ -190,7 +196,15 @@ async fn law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_repla
             if disconnect {
                 drop(peer);
             } else {
-                no_work(&mut peer).await?;
+                // Keep the peer connected and withhold ORL until timeout is durable.
+                // Dropping it after a fixed wait could instead exercise disconnect.
+                state(&path, "Uncertain").await?;
+                let source: String = database(&path)?.query_row(
+                    "SELECT source_code FROM machine_orders",
+                    [],
+                    |row| row.get(0),
+                )?;
+                assert!(source.contains("LAW-ORL-timeout"), "{source}");
                 drop(peer);
             }
             state(&path, "Uncertain").await?;
@@ -298,7 +312,7 @@ async fn law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation(
         .await?;
     let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
     let mut peer = connect(&path, "law").await?;
-    ready(&path).await?;
+    wait_feed(&path).await?;
     wait_cancel_cache(&path).await?;
     no_work(&mut peer).await?;
     state(&path, "Accepted").await?;

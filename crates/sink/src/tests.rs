@@ -322,7 +322,7 @@ async fn post(
     let timestamp = jiff::Timestamp::now().as_second().to_string();
     let id = uuid::Uuid::from(id).to_string();
     let response = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(30))
         .no_proxy()
         .build()?
         .post(format!("{}/results", peer.url))
@@ -605,10 +605,10 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     let work = worker.run(stopped.clone());
     let poll = poller.run(stopped);
     let cancel = async {
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        // join! polls both owners before this branch closes their signal.
         drop(stop);
     };
-    tokio::time::timeout(Duration::from_secs(1), async {
+    tokio::time::timeout(Duration::from_secs(5), async {
         let (w, p, ()) = tokio::join!(work, poll, cancel);
         w?;
         p?;
@@ -685,7 +685,7 @@ async fn relay(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(30))
         .no_proxy()
         .build()?;
     let mut first = true;
@@ -755,10 +755,9 @@ async fn relay(
             let status = response.status().as_u16();
             let body = body(response).await?;
             if first && lose_response {
-                // Upstream has durably committed; hold the answer past the client deadline.
-                // Longer than the 1 s client deadline, shorter than the 5 s backoff,
-                // so this sequential relay is free again before the retry arrives.
-                tokio::time::sleep(Duration::from_secs(3)).await;
+                // The upstream committed. Close without returning its response:
+                // a lost answer, independent of the client's wall-clock deadline.
+                drop(stream);
             } else {
                 let header = format!(
                     "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -770,14 +769,6 @@ async fn relay(
         }
         first = false;
     }
-}
-
-async fn retry_due(next: i64) -> Result<(), Box<dyn std::error::Error>> {
-    let wait = next
-        .saturating_sub(jiff::Timestamp::now().as_second())
-        .saturating_add(1);
-    tokio::time::sleep(Duration::from_secs(u64::try_from(wait)?)).await;
-    Ok(())
 }
 
 #[tokio::test]
@@ -792,11 +783,8 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
             .join(if lose_response { "lost.db" } else { "retry.db" });
         let mut store = store(&path).await?;
         let mut destination = destination(&proxy.url)?;
-        // Loose enough for a slow runner's real round trip through the proxy.
-        destination.limits.request_timeout = Duration::from_secs(1);
-        // Timestamps have whole-second resolution; a 1 s backoff can already be due
-        // on a slow runner before the "not yet due" check below.
-        destination.limits.backoff_min = Duration::from_secs(5);
+        destination.limits.request_timeout = Duration::from_secs(30);
+        destination.limits.backoff_min = Duration::from_secs(1);
         destination.limits.backoff_max = Duration::from_secs(5);
         let destinations = [destination];
         let secrets = Secrets("key");
@@ -813,12 +801,17 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         let bytes = delivery.payload.clone();
         enqueue(&store, metadata, result, delivery).await?;
         let before = jiff::Timestamp::now().as_second();
-        let DeliveryOutcome::RetryAt(next) = worker.deliver_once().await? else {
+        let clock = std::sync::atomic::AtomicI64::new(before);
+        let now = || clock.load(std::sync::atomic::Ordering::Relaxed);
+        let DeliveryOutcome::RetryAt(next) = worker.deliver_once_with_clock(&now).await? else {
             return Err("not retried".into());
         };
-        if !lose_response {
-            assert!(next >= before.saturating_add(2));
-        }
+        assert_eq!(
+            next,
+            before
+                .checked_add(if lose_response { 1 } else { 2 })
+                .ok_or("retry timestamp overflow")?
+        );
         if lose_response {
             let metadata = receipt()?;
             let mut correction = make_result(metadata.id, "retry-run")?;
@@ -834,27 +827,38 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
             )?;
             enqueue(&store, metadata, correction, delivery).await?;
         }
-        assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Idle);
-        retry_due(next).await?;
         assert_eq!(
-            worker.deliver_once().await?,
+            worker.deliver_once_with_clock(&now).await?,
+            DeliveryOutcome::Idle
+        );
+        clock.store(
+            next.checked_sub(1).ok_or("retry timestamp underflow")?,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        assert_eq!(
+            worker.deliver_once_with_clock(&now).await?,
+            DeliveryOutcome::Idle
+        );
+        clock.store(next, std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(
+            worker.deliver_once_with_clock(&now).await?,
             DeliveryOutcome::Done(if lose_response {
                 analyte_contract::DeliveryStatus::Duplicate
             } else {
                 analyte_contract::DeliveryStatus::Accepted
             })
         );
-        let first = tokio::time::timeout(Duration::from_secs(1), proxy.requests.recv())
+        let first = tokio::time::timeout(Duration::from_secs(30), proxy.requests.recv())
             .await?
             .ok_or("first request missing")?;
-        let second = tokio::time::timeout(Duration::from_secs(1), proxy.requests.recv())
+        let second = tokio::time::timeout(Duration::from_secs(30), proxy.requests.recv())
             .await?
             .ok_or("retry missing")?;
         assert_eq!(first, second);
         assert_eq!(first, (uuid::Uuid::from(id).to_string(), bytes));
         if lose_response {
             assert_eq!(
-                worker.deliver_once().await?,
+                worker.deliver_once_with_clock(&now).await?,
                 DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
             );
         }
@@ -909,16 +913,23 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
                 worker.run(stopped).await
             }
         };
+        let (finished, finish) = tokio::sync::oneshot::channel();
         let cancel = async {
             let (mut stream, _) = listener.accept().await?;
             let mut byte = [0; 1];
             stream.read_exact(&mut byte).await?;
             stop.send(true).map_err(std::io::Error::other)?;
-            // Keep the socket alive while cancellation must finish.
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            // Keep the socket alive until the worker actually finishes cancellation.
+            let _ = finish.await;
+            drop(stream);
             Ok::<_, std::io::Error>(())
         };
-        tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let run = async {
+                let result = run.await;
+                let _ = finished.send(());
+                result
+            };
             let (run, cancel) = tokio::join!(run, cancel);
             run?;
             cancel?;
@@ -968,6 +979,7 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
         let secrets = Secrets("key");
         let worker = Worker::new(&store, &destinations, &secrets);
         let (stop, stopped) = watch::channel(false);
+        let (finished, finish) = tokio::sync::oneshot::channel();
         let peer = async {
             let (mut stream, _) = listener.accept().await?;
             let mut headers = Vec::new();
@@ -985,8 +997,9 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
                 let body = r#"{"contract_version":1,"status":"accepted"}"#;
                 stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await?;
             } else {
-                // Hold the request far past the grace period so the drain must give up.
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                // Keep the request unresolved until the drain has returned.
+                let _ = finish.await;
+                drop(stream);
             }
             Ok::<_, std::io::Error>(())
         };
@@ -998,7 +1011,12 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
             Duration::from_millis(75)
         };
         let (outcome, peer) = tokio::time::timeout(Duration::from_secs(10), async {
-            tokio::join!(worker.run_draining(stopped, grace), peer)
+            let run = async {
+                let result = worker.run_draining(stopped, grace).await;
+                let _ = finished.send(());
+                result
+            };
+            tokio::join!(run, peer)
         })
         .await?;
         peer?;

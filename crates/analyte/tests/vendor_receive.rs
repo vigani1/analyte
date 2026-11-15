@@ -165,16 +165,32 @@ impl Running {
             secrets,
         ));
         let peer = TcpStream::connect(self.listener.local_addr()?).await?;
-        Ok(Self {
+        let running = Self {
             stop,
             task,
             peer,
             ..self
+        };
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if running.database().is_ok_and(|db| {
+                    db.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                        .is_ok_and(|version| version == analyte_store::SCHEMA_VERSION)
+                }) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
         })
+        .await?;
+        Ok(running)
     }
 
     fn database(&self) -> Result<rusqlite::Connection, Error> {
-        let db = rusqlite::Connection::open(self.directory.path().join("data/analyte.db"))?;
+        let db = rusqlite::Connection::open_with_flags(
+            self.directory.path().join("data/analyte.db"),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
         db.busy_timeout(Duration::from_secs(1))?;
         Ok(db)
     }
