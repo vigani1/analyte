@@ -393,3 +393,44 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn lis01_6_4_eot_before_final_frame_ends_incomplete() -> TestResult {
+    let mut d = receiver();
+    let frames = wire(&[b'A'; 40], FrameNumber::FIRST, Limit::new(17)?)?;
+    let first = frames.first().ok_or("missing frame")?;
+    let a = feed(&mut d, 0, first);
+    let acked = commit(&mut d, &a, true);
+    assert!(acked.contains(&Action::Write(vec![ACK])));
+    let ended = feed(&mut d, 1, &[EOT]);
+    assert!(ended.contains(&Action::Ended(End::Incomplete)));
+    assert!(!ended.iter().any(|a| matches!(a, Action::Record(_))));
+    Ok(())
+}
+
+#[test]
+fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult {
+    let mut d = receiver();
+    let frames = wire(b"X\r", FrameNumber::FIRST, Limit::default())?;
+    let frame = frames.first().ok_or("missing frame")?;
+    let _ = feed(&mut d, 0, frame);
+    let timeout = step(&mut d, 15, Event::Tick);
+    assert!(timeout.contains(&Action::Write(vec![NAK])));
+    assert!(!timeout.iter().any(|a| matches!(a, Action::Ended(_))));
+    // The sender retransmits the same frame; it is committed again and ACKed.
+    let again = feed(&mut d, 16, frame);
+    assert!(again.iter().any(|a| matches!(a, Action::Commit(..))));
+    let id = again
+        .iter()
+        .find_map(|a| {
+            if let Action::Commit(id, _) = a {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .ok_or("missing commit")?;
+    let acked = step(&mut d, 16, Event::Committed(id));
+    assert!(acked.contains(&Action::Write(vec![ACK])));
+    Ok(())
+}

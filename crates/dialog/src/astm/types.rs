@@ -121,6 +121,10 @@ pub enum End {
     Timeout,
     /// Receiver requested termination.
     Interrupt,
+    /// EOT arrived before the final (ETX) frame of a record, or while a frame
+    /// was still being committed. Committed frames remain evidence; the host must
+    /// treat the transfer as incomplete, never as a complete message.
+    Incomplete,
 }
 
 /// Deterministic effects; raw data must go only to protected storage.

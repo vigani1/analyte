@@ -191,12 +191,13 @@ impl Dialog {
                 self.set_timer(self.config.timers.establish);
             }
             State::Establish(_) | State::Sending { .. } => self.end_send(End::Timeout, out),
-            State::Commit { id, .. } => {
-                out.extend([
-                    Action::Write(vec![NAK]),
-                    Action::CommitFailed(id),
-                    Action::Ended(End::Timeout),
-                ]);
+            State::Commit { receive, id, .. } => {
+                // Storage did not answer in time: refuse the frame but stay in the
+                // transfer, so the sender's retransmission can be committed again
+                // (LIS01-A2 §6.5.1.2 bounds the retries on the sender's side).
+                out.extend([Action::Write(vec![NAK]), Action::CommitFailed(id)]);
+                self.state = State::Receiving(receive);
+                self.set_timer(self.config.timers.receive);
             }
             State::Receiving(_) | State::Contention => out.push(Action::Ended(End::Timeout)),
             State::Neutral | State::Holdoff => {}
@@ -421,7 +422,12 @@ impl Dialog {
             State::Receiving(receive) => {
                 if byte == EOT {
                     self.deadline = None;
-                    out.push(Action::Ended(End::Normal));
+                    let end = if receive.record.is_empty() {
+                        End::Normal
+                    } else {
+                        End::Incomplete
+                    };
+                    out.push(Action::Ended(end));
                 } else {
                     self.state = State::Receiving(receive);
                 }
@@ -429,7 +435,7 @@ impl Dialog {
             State::Commit { receive, frame, id } => {
                 if byte == EOT {
                     self.deadline = None;
-                    out.push(Action::Ended(End::Normal));
+                    out.extend([Action::CommitFailed(id), Action::Ended(End::Incomplete)]);
                 } else {
                     self.state = State::Commit { receive, frame, id };
                 }
