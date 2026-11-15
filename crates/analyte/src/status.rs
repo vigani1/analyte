@@ -13,6 +13,15 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
         .request(deadline(), |store| store.restore_unreconciled())
         .await?;
     let mut lines = vec![format!("order_sending_paused_after_restore={paused}")];
+    for alert in crate::alerts::active(store).await? {
+        let (kind, machine) = crate::alerts::signal(&alert.key);
+        lines.push(format!(
+            "alert={kind} machine={machine:?} responder={:?} raised_age_seconds={} last_value={:?}",
+            alert.responder,
+            crate::alerts::age(&alert, now),
+            alert.value
+        ));
+    }
     for destination in crate::delivery::destinations(program, false)? {
         let health = destination.health(store, now).await?;
         lines.push(format!("destination={} pending_count={} pending_bytes={} oldest_pending_age_seconds={:?} paused={} last_poll={:?} cache_trusted={}",
@@ -75,4 +84,106 @@ pub async fn print(program: &Program) -> Result<(), Error> {
         crate::output::line(&line)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct Space;
+    impl analyte_store::FreeSpace for Space {
+        fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
+            Ok(u64::MAX)
+        }
+    }
+
+    // Plan section 11: status shows every active page, names responders and omits cleared alerts.
+    #[tokio::test]
+    async fn plan11_status_active_alerts_responder_age_and_read_only() -> Result<(), Error> {
+        let directory = tempfile::tempdir()?;
+        let mut store = Handle::start(
+            directory.path().join("alerts.db"),
+            analyte_store::Limits {
+                reserve_bytes: 1,
+                database_bytes: 100_000_000,
+                record_bytes: 2_097_152,
+                page_rows: 1,
+                busy_timeout: std::time::Duration::from_millis(100),
+            },
+            Box::new(Space),
+            4,
+            deadline(),
+        )
+        .await?;
+        store
+            .request(deadline(), |store| {
+                store.evaluate_alert(
+                    &analyte_store::AlertKey::RestorePaused,
+                    "lab duty officer",
+                    true,
+                    Some(1),
+                    100,
+                )?;
+                store.evaluate_alert(
+                    &analyte_store::AlertKey::MachineSilent(
+                        analyte_model::Identifier::new("busy")
+                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    ),
+                    "analyzer operator",
+                    true,
+                    None,
+                    100,
+                )?;
+                store.evaluate_alert(
+                    &analyte_store::AlertKey::ParkedItems,
+                    "cleared officer",
+                    true,
+                    Some(1),
+                    100,
+                )?;
+                store.evaluate_alert(
+                    &analyte_store::AlertKey::ParkedItems,
+                    "cleared officer",
+                    false,
+                    Some(0),
+                    101,
+                )?;
+                Ok(())
+            })
+            .await?;
+        let program = Program::load(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml"),
+        )?;
+        assert!(program.alerts().is_empty());
+        let lines = snapshot(&program, &store).await?;
+        let alerts: Vec<_> = lines
+            .iter()
+            .filter(|line| line.starts_with("alert="))
+            .collect();
+        assert_eq!(alerts.len(), 2);
+        assert!(
+            alerts
+                .iter()
+                .any(|line| line.contains("restore_paused") && line.contains("lab duty officer"))
+        );
+        assert!(alerts.iter().any(|line| line.contains("machine_silent")
+            && line.contains("busy")
+            && line.contains("analyzer operator")));
+        assert!(
+            alerts
+                .iter()
+                .all(|line| line.contains("raised_age_seconds=")
+                    && !line.contains("raised_age_seconds=unknown"))
+        );
+        assert!(!lines.iter().any(|line| line.contains("cleared officer")));
+        let state = store
+            .request(deadline(), |store| {
+                store.alert_state(&analyte_store::AlertKey::RestorePaused)
+            })
+            .await?
+            .ok_or("alert disappeared")?;
+        assert_eq!(state.evaluated_at, 100);
+        assert_eq!(state.raised_at, Some(100));
+        store.shutdown(deadline()).await?;
+        Ok(())
+    }
 }

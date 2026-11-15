@@ -329,7 +329,7 @@ fn adr0004_cancel_expiry_version_trust_and_builder_failure_never_reserve() -> Te
 }
 
 #[test]
-fn plan11_schema3_to5_preserves_rows_and_triggers() -> TestResult {
+fn plan11_schema3_to6_preserves_rows_and_triggers() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("legacy.db");
     let mut db = Connection::open(&path)?;
@@ -348,7 +348,7 @@ fn plan11_schema3_to5_preserves_rows_and_triggers() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        5
+        6
     );
     assert_eq!(
         store

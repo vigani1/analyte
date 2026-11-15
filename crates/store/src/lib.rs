@@ -1,10 +1,14 @@
 //! Durable evidence and transactional delivery state. No payloads are logged.
 #![forbid(unsafe_code)]
 
+mod alerts;
+pub use alerts::*;
 mod machine_orders;
 mod migration;
 mod restore;
-const SCHEMA_VERSION: i64 = 5;
+/// Schema version this build creates and migrates to; readers wait for it
+/// before using tables added by the latest migration.
+pub const SCHEMA_VERSION: i64 = 6;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
@@ -36,7 +40,7 @@ pub enum Error {
     #[error("storage capacity reserve reached")]
     Capacity,
     /// The database belongs to a newer implementation.
-    #[error("schema version {0} is newer than supported version 5")]
+    #[error("schema version {0} is newer than supported version 6")]
     SchemaTooNew(i64),
     /// SQLite or stored evidence failed an integrity check.
     #[error("stored evidence is corrupt")]
@@ -221,6 +225,11 @@ impl Store {
         if version <= 4 {
             let tx = db.transaction()?;
             tx.execute_batch(include_str!("migration_v5.sql"))?;
+            tx.commit()?;
+        }
+        if version <= 5 {
+            let tx = db.transaction()?;
+            tx.execute_batch(include_str!("migration_v6.sql"))?;
             tx.commit()?;
         }
         // SQL constraints also protect evidence from accidental maintenance updates.

@@ -975,3 +975,52 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
     reference.close().await?;
     Ok(())
 }
+
+// Plan section 11: the running evaluator must not gate receive ACKs, app delivery,
+// or the service's existing bounded shutdown path.
+#[tokio::test]
+async fn plan11_alert_evaluator_keeps_receive_delivery_and_shutdown_bounded() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let fixture = config(temp.path(), false)?;
+    let original = std::fs::read_to_string(&fixture)?;
+    std::fs::write(
+        &fixture,
+        format!(
+            "alert_interval_seconds=1\n{original}\n[[alerts]]\nkind='machine_silent'\nthreshold=1\nmachine='hl7'\nresponder='lab duty officer'\n[[alerts]]\nkind='restore_paused'\nresponder='lab duty officer'\n"
+        ),
+    )?;
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let mut reference =
+        Reference::start(&temp.path().join("reference.db"), listener, false).await?;
+    let running = Running::start(&fixture, &reference.url, "synthetic-api")?;
+    let mut peer = connect(&fixture, "hl7").await?;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let count: i64 =
+                database(&fixture)?
+                    .query_row("SELECT count(*) FROM alert_state", [], |r| r.get(0))?;
+            if count == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        Ok::<_, Error>(())
+    })
+    .await??;
+    let ack = tokio::time::timeout(Duration::from_secs(3), hl7(&mut peer, ORU)).await??;
+    assert!(ack.contains("MSA|AA|message1"));
+    let event = tokio::time::timeout(Duration::from_secs(3), reference.event()).await??;
+    assert_content(&event, "hl7", "00012a", "12.30", "final", 0)?;
+    drop(peer);
+    tokio::time::timeout(Duration::from_secs(7), running.stop()).await??;
+    let state: bool = database(&fixture)?.query_row(
+        "SELECT active FROM alert_state WHERE key=?1",
+        [serde_json::to_string(
+            &analyte_store::AlertKey::RestorePaused,
+        )?],
+        |r| r.get(0),
+    )?;
+    assert!(!state);
+    reference.close().await?;
+    Ok(())
+}

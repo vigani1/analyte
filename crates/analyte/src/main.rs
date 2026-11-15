@@ -24,6 +24,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    Admin {
+        #[command(subcommand)]
+        command: Admin,
+    },
     Orders {
         #[command(subcommand)]
         command: analyte::orders::Command,
@@ -57,6 +61,15 @@ enum Command {
     },
     Backup {
         target: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum Admin {
+    /// Replaces the protected admin credential and prints it once.
+    Token {
+        #[arg(long, required = true)]
+        rotate: bool,
     },
 }
 
@@ -112,6 +125,17 @@ fn main() -> Result<(), Error> {
 
 async fn execute(cli: Cli) -> Result<(), Error> {
     match cli.command {
+        Command::Admin {
+            command: Admin::Token { rotate: _ },
+        } => {
+            let program = Program::load(&cli.config)?;
+            let directory = program.data_directory().to_owned();
+            let token =
+                tokio::task::spawn_blocking(move || analyte::admin::rotate_token(&directory))
+                    .await??;
+            analyte::output::line(&token)?;
+            Ok(())
+        }
         #[cfg(windows)]
         Command::Service {
             command: ServiceCommand::Run {

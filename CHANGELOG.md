@@ -1,0 +1,22 @@
+# Changelog
+
+## Unreleased
+
+- Rust workspace with separate transport, framing, dialog, syntax, mapping and
+  shared result layers. Protocol work covers ASTM, HL7 v2 over MLLP, IHE LAW,
+  POCT01-A2, VIDAS Literal and Autolyser within the documented protocol scopes.
+  This is document-based implementation and synthetic testing, not qualification
+  against real analyzers or a completed lab pilot.
+- Receive program with validated configuration, durable raw evidence before
+  positive acknowledgment, preserved result values and revisions, parked items
+  with reasons, and protected local operator commands.
+- Durable HTTPS delivery to lab apps with stable retry IDs, signed requests,
+  order-cache freshness checks and explicit uncertain machine-order states.
+  Includes a reference receiver and synthetic conversation tests.
+- Windows service and Linux systemd packaging with dedicated service accounts,
+  protected data directories and bounded shutdown with crash recovery.
+- Verified backups and staged restore that retains the previous database and
+  pauses machine orders until the operator reconciles and resumes them.
+- Tag-only release workflow with Windows and Linux archives, checksums, locked
+  dependency inventory, GitHub provenance and an owner-published draft release.
+  Code signing and an MSI installer remain future work.
