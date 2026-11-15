@@ -24,6 +24,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    Orders {
+        #[command(subcommand)]
+        command: analyte::orders::Command,
+    },
     CheckConfig {
         file: PathBuf,
     },
@@ -67,6 +71,9 @@ async fn main() -> Result<(), Error> {
         .try_init()?;
     let cli = Cli::parse();
     match cli.command {
+        Command::Orders { command } => {
+            analyte::orders::run(&Program::load(&cli.config)?, cli.actor, command).await
+        }
         Command::CheckConfig { file } => {
             let program = Program::load(&file)?;
             for machine in program.machines() {

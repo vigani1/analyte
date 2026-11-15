@@ -175,6 +175,45 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
     machine_state(&path, "Uncertain", 1).await?;
     drop(peer);
     service.stop().await?;
+    let id: i64 = database(&path)?.query_row("SELECT id FROM machine_orders", [], |r| r.get(0))?;
+    for arguments in [
+        vec!["orders".into(), "list".into()],
+        vec![
+            "orders".into(),
+            "reconcile".into(),
+            id.to_string(),
+            "--as".into(),
+            "accepted".into(),
+            "--reason".into(),
+            "verified synthetic work list".into(),
+        ],
+    ] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .arg("--config")
+            .arg(&path)
+            .arg("--actor")
+            .arg("synthetic-operator")
+            .args(arguments)
+            .output()?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    machine_state(&path, "Accepted", 1).await?;
+    let audits: Vec<String> = database(&path)?.prepare("SELECT evidence FROM audit WHERE evidence LIKE '%synthetic-operator%' ORDER BY sequence")?.query_map([],|r|r.get(0))?.collect::<Result<_,_>>()?;
+    assert_eq!(audits.len(), 2);
+    assert!(audits.first().is_some_and(|s| s.contains("orders-list")));
+    assert!(
+        audits
+            .last()
+            .is_some_and(|s| s.contains("verified synthetic work list"))
+    );
+    let service = Running::start(&path, &reference.url, "synthetic-api")?;
+    wait_state(&path, "done", 3).await?;
+    assert_eq!(receiver_count(&receiver_path)?, 3);
+    service.stop().await?;
     reference.close().await?;
     Ok(())
 }
