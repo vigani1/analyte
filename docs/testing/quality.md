@@ -8,11 +8,16 @@ runs the tests again. A caught mutation makes a test fail; a missed mutation
 needs investigation because it may expose a missing check or may behave exactly
 like the original code.
 
+Raw mutation and replay logs stay out of the repository. Each triage row names
+the test that catches the mutant, or the exact reason it is equivalent, and the
+commands below regenerate any run. Attach logs to the pull request when a
+reviewer needs them.
+
 ## Completed round results
 
 Framing, dialog, mapping, contract and sink are complete historical rounds.
-The current store round has a completed custody/delivery/parked subset, with
-other modules unfinished. Coverage is available below.
+The current store round has completed custody/delivery/parked, machine-order
+and poll subsets, with lower-priority modules unfinished. Coverage is available below.
 Percentages sum covered/count across each crate's `src/` files, excluding
 integration test files. Regions are smaller than lines, so a covered line can
 still contain an untested decision. These are baseline measurements, before the
@@ -25,7 +30,7 @@ new tests; they are not a prediction of the final coverage.
 | analyte-mapping | 84.97 | 81.47 | 221 / 185 / 49 / 0 | 399 / 7 / 49 / 0 (combined replays) |
 | analyte-contract | 86.92 | 83.28 | 53 / 52 / 71 / 0 | 105 / 0 / 71 / 0 |
 | analyte-sink | 92.86 | 83.53 | 32 / 46 / 18 / 16 | 91 / 3 / 18 / 0 (combined replays; all 3 equivalent) |
-| analyte-store | 91.64 | 77.57 | Mixed focused baselines; see store report | 163 / 0 / 21 / 0 across 184 mutations; other modules pending |
+| analyte-store | 91.64 | 77.57 | Mixed focused baselines; see store report | 313 / 7 / 55 / 0 across 375 mutations; all 7 survivors equivalent; 191 candidates pending |
 | analyte | 64.60 | 58.03 | Outside requested mutation scope | Not run |
 | analyte-astm | 90.73 | 90.20 | Outside requested mutation scope | Not run |
 | analyte-autolyser | 84.79 | 77.49 | Outside requested mutation scope | Not run |
@@ -437,4 +442,12 @@ Receipts, records, transfers, revisions (including status and embedded v3 migrat
 
 Twenty tests were added in this continuation; the branch has 23 added tests relative to current main. All five required local checks pass, including the full workspace suite and separate fuzz-bin compilation. Production code and dependencies remain unchanged relative to main.
 
-**The round remains incomplete and PR #87 stays draft.** The current inventory is 566 mutations, with 382 candidates still requiring complete runs and triage: machine_orders and every submodule, polls, backup/restore, standalone migration, open/startup, worker, alerts, capacity, query, reprocess and lib. Earlier partial lib/alerts runs do not complete those modules. The report lists the exact files and candidate counts.
+PR #87 merged at `546195a`. Its completed subset and historical remaining inventory above are superseded by the next continuation below.
+
+### Store round 2: machine orders and polls
+
+[Round 2 triage](store-mutations.md#store-round-2-machine-orders-and-poll-custody) completes machine_orders plus cancel, eligibility, items, listing, ownership and reserve, and polls. This subset has **150 caught / 7 missed (all equivalent) / 34 unviable / 0 timeout** across 191 distinct mutations. Exact replay logs close 46 behavior-changing baseline misses; each of the seven survivors has a specific validated-input equivalence argument. No new production bug was found.
+
+Thirteen tests were added, with no production or dependency changes. State/clock, independent cancellation checks, per-item identity, bounded evidence, immutable command bytes and poll idempotence/reserve are checked directly. All five required local checks pass; store has 116 passed and one ignored manual benchmark. No test was skipped or weakened, and no short real-time hang deadline was added.
+
+**PR #93 is ready for this subset; the overall store round remains incomplete.** Cumulative completed outcomes: 313 caught, seven equivalent survivors and 55 unviable, across 375 of 566 candidates. The exact remaining 191 candidates are backup (5), restore (22), migration (12), open (20), startup (13), worker (17), reprocess (5), alerts (23), capacity (10), query (38) and lib (26). Earlier partial lib/alerts results do not complete those modules. Linux/MSRV and running the fuzzers were not performed locally; separate fuzz-bin compilation passed.

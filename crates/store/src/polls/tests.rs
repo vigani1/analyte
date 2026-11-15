@@ -287,3 +287,111 @@ fn adr0003_poll_capacity_refusal_never_admits_or_reconciles_a_cursor_movement() 
     );
     Ok(())
 }
+
+#[test]
+fn mutation_adr0003_poll_state_reason_and_repeated_evidence_are_independent() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("poll-idempotence.db");
+    let mut store = open(&path)?;
+    let machine = Identifier::new("synthetic-machine")?;
+    let initial = Reason::new("admitted cursor movement")?;
+    let id = store.begin_poll_intent(&machine, &initial)?;
+    let stored: i64 = store.db.query_row(
+        "SELECT id FROM poll_intents WHERE machine=?1",
+        [machine.as_str()],
+        |r| r.get(0),
+    )?;
+    assert_eq!(id.to_string(), stored.to_string());
+    let mut evidence = audit(id, initial.as_str())?;
+    let uncertain = store.record_poll_outcome(id, PollOutcome::Uncertain, &evidence)?;
+    assert_eq!(uncertain.state, PollIntentState::Uncertain);
+    evidence.reason = Reason::new("new disconnect evidence")?;
+    let updated = store.record_poll_outcome(id, PollOutcome::Uncertain, &evidence)?;
+    assert_eq!(updated.reason, evidence.reason);
+    store.record_poll_outcome(id, PollOutcome::Uncertain, &evidence)?;
+    assert_eq!(store.audits(0)?.len(), 2);
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM poll_intent_history", [], |r| r
+                .get::<_, i64>(0))?,
+        3
+    );
+    let confirmed = store.record_poll_outcome(id, PollOutcome::Confirmed, &evidence)?;
+    assert_eq!(confirmed.state, PollIntentState::Confirmed);
+    assert!(
+        store
+            .parked_item(confirmed.parked)?
+            .ok_or("missing custody evidence")?
+            .resolution
+            .is_some()
+    );
+    assert_eq!(store.audits(0)?.len(), 3);
+    drop(store);
+    let mut store = open(&path)?;
+    assert!(store.unconfirmed_poll_intent(&machine)?.is_none());
+    let retained =
+        store.record_poll_outcome(id, PollOutcome::Uncertain, &audit(id, "late timeout")?)?;
+    assert_eq!(retained.state, PollIntentState::Confirmed);
+    assert_eq!(retained.reason.as_str(), "new disconnect evidence");
+    assert_eq!(store.audits(0)?.len(), 3);
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM poll_intent_history", [], |r| r
+                .get::<_, i64>(0))?,
+        4
+    );
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("poll-reserve.db"))?;
+    let machine = Identifier::new("synthetic-machine")?;
+    let id = store.begin_poll_intent(&machine, &Reason::new("admitted")?)?;
+    let parked = store
+        .unconfirmed_poll_intent(&machine)?
+        .ok_or("missing intent")?
+        .parked;
+    let evidence = audit(id, "retained operator evidence")?;
+    assert!(crate::key(&evidence)?.len() > 2);
+    // Two available bytes above the reserve cannot hold even one retained audit.
+    store.space = Box::new(crate::tests::Space(
+        store.limits.reserve_bytes.checked_add(2).ok_or("space")?,
+    ));
+    for outcome in [PollOutcome::Uncertain, PollOutcome::Confirmed] {
+        assert!(matches!(
+            store.record_poll_outcome(id, outcome, &evidence),
+            Err(Error::Capacity)
+        ));
+    }
+    assert!(matches!(
+        store.resolve(parked, &evidence),
+        Err(Error::Capacity)
+    ));
+    assert_eq!(
+        store
+            .unconfirmed_poll_intent(&machine)?
+            .ok_or("missing intent")?
+            .state,
+        PollIntentState::Pending
+    );
+    assert!(
+        store
+            .parked_item(parked)?
+            .ok_or("missing parked")?
+            .resolution
+            .is_none()
+    );
+    assert!(store.audits(0)?.is_empty());
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM poll_intent_history", [], |r| r
+                .get::<_, i64>(0))?,
+        1
+    );
+    Ok(())
+}

@@ -1708,3 +1708,910 @@ fn law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart() -> T
     );
     Ok(())
 }
+
+#[test]
+fn mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_atomically()
+-> TestResult {
+    for now in [100, 101, 102] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("order-clock.db"))?;
+        store.order_page(&page(1, "requested", false, 200)?)?;
+        let key = identity()?;
+        let record = store
+            .reserve_send(
+                &OrderReservation {
+                    identity: &key,
+                    version: NonZeroU64::MIN,
+                    now: 101,
+                    freshness: 30,
+                },
+                ReserveOptions::default(),
+            )?
+            .map_err(std::io::Error::other)?;
+        let result = store.transition_order(
+            record.id,
+            OrderState::Sent,
+            SourceText::new("peer-sent")?,
+            now,
+            event,
+        );
+        if now == 100 {
+            assert!(matches!(result, Err(Error::Conflict)));
+            let retained = store.machine_order(&key)?.ok_or("missing reservation")?;
+            assert_eq!(retained.state, OrderState::Sending);
+            assert_eq!(retained.updated_at, 101);
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM machine_order_history", [], |r| r
+                        .get::<_, i64>(0))?,
+                1
+            );
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+                0
+            );
+        } else {
+            let sent = result?;
+            assert_eq!(sent.state, OrderState::Sent);
+            assert_eq!(sent.updated_at, now);
+            assert_eq!(
+                sent.items.first().ok_or("missing item")?.state,
+                OrderState::Sent
+            );
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+                1
+            );
+        }
+        assert!(matches!(
+            store.reserve_send(
+                &OrderReservation {
+                    identity: &key,
+                    version: NonZeroU64::MIN,
+                    now: 102,
+                    freshness: 30
+                },
+                ReserveOptions::default()
+            )?,
+            Err(SendRefusal::AlreadyReserved)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_reconciliation_checks_target_and_outcome_independently()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("order-operator.db"))?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let key = identity()?;
+    let record = store
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions::default(),
+        )?
+        .map_err(std::io::Error::other)?;
+    store.transition_order(
+        record.id,
+        OrderState::Uncertain,
+        SourceText::new("lost reply")?,
+        102,
+        event,
+    )?;
+    for (outcome, target) in [
+        (OrderState::Accepted, "unrelated".to_owned()),
+        (OrderState::Sent, record.id.to_string()),
+    ] {
+        let audit = Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("orders-reconcile")?,
+            targets: vec![Identifier::new(&target)?],
+            time: 103,
+            reason: analyte_model::Reason::new("synthetic evidence")?,
+        };
+        assert!(matches!(
+            store.reconcile_order(record.id, outcome, &audit, event),
+            Err(Error::InvalidInput)
+        ));
+        assert_eq!(
+            store.machine_order(&key)?.ok_or("missing order")?.state,
+            OrderState::Uncertain
+        );
+        assert!(store.audits(0)?.is_empty());
+        assert_eq!(
+            store
+                .db
+                .query_row("SELECT count(*) FROM machine_order_history", [], |r| r
+                    .get::<_, i64>(0))?,
+            2
+        );
+    }
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("orders-reconcile")?,
+        targets: vec![Identifier::new(&record.id.to_string())?],
+        time: 103,
+        reason: analyte_model::Reason::new("synthetic acceptance")?,
+    };
+    assert_eq!(
+        store
+            .reconcile_order(record.id, OrderState::Accepted, &audit, event)?
+            .state,
+        OrderState::Accepted
+    );
+    assert_eq!(store.audits(0)?.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_cancel_version_and_phase_are_rechecked_independently() -> TestResult
+{
+    for (cached_phase, requested_version) in [("cancel_requested", 1), ("requested", 2)] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("cancel-recheck.db"))?;
+        store.order_page(&page(1, "requested", false, 200)?)?;
+        let key = identity()?;
+        let record = store
+            .reserve_send(
+                &OrderReservation {
+                    identity: &key,
+                    version: NonZeroU64::MIN,
+                    now: 101,
+                    freshness: 30,
+                },
+                ReserveOptions::default(),
+            )?
+            .map_err(std::io::Error::other)?;
+        store.transition_order(
+            record.id,
+            OrderState::Accepted,
+            SourceText::new("peer-accepted")?,
+            102,
+            event,
+        )?;
+        store.order_page(&page(2, cached_phase, false, 200)?)?;
+        let version = NonZeroU64::new(requested_version).ok_or("version")?;
+        assert!(matches!(
+            store.request_order_cancel(
+                record.id,
+                version,
+                103,
+                &Identifier::new("connection")?,
+                30,
+                event
+            ),
+            Err(Error::Conflict)
+        ));
+        let retained = store.machine_order(&key)?.ok_or("missing order")?;
+        assert_eq!(retained.state, OrderState::Accepted);
+        assert_eq!(
+            retained.items.first().ok_or("missing item")?.state,
+            OrderState::Accepted
+        );
+        assert_eq!(
+            store.db.query_row(
+                "SELECT count(*) FROM machine_order_history WHERE cancel_version IS NOT NULL",
+                [],
+                |r| r.get::<_, i64>(0)
+            )?,
+            0
+        );
+        assert_eq!(
+            store
+                .db
+                .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+            1
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling()
+-> TestResult {
+    for (count, shape, succeeds) in [
+        (0, "together", false),
+        (100, "together", true),
+        (101, "together", false),
+        (100, "separate", true),
+        (100, "single-group", true),
+        (1, "empty-groups", false),
+        (1, "empty-member", false),
+        (1, "over-groups", false),
+    ] {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("order-item-bounds.db");
+        let mut store = open(&path)?;
+        let tests = (0..count)
+            .map(|index| {
+                Ok(analyte_model::NamespacedId {
+                    namespace: Identifier::new("synthetic")?,
+                    value: Identifier::new(&format!("test-{index}"))?,
+                })
+            })
+            .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
+        let mut cached = page(1, "requested", false, 200)?;
+        let order = cached.orders.first_mut().ok_or("missing cache order")?;
+        let mut document: serde_json::Value = serde_json::from_str(&order.document)?;
+        document["tests"] = serde_json::to_value(&tests)?;
+        order.document = document.to_string();
+        store.order_page(&cached)?;
+        let groups = match shape {
+            "separate" => tests
+                .iter()
+                .cloned()
+                .map(|test| vec![test])
+                .collect::<Vec<_>>(),
+            "single-group" => vec![tests.clone()],
+            "empty-member" => vec![vec![], tests.clone()],
+            "over-groups" => {
+                let mut groups = vec![vec![]; 100];
+                groups.push(tests.clone());
+                groups
+            }
+            "together" | "empty-groups" => vec![],
+            _ => unreachable!("fixed test cases"),
+        };
+        let key = identity()?;
+        let options = ReserveOptions {
+            items: if shape == "together" {
+                OrderItems::Together
+            } else {
+                OrderItems::Groups {
+                    groups: &groups,
+                    namespace: None,
+                    max_identity_bytes: 64,
+                }
+            },
+            ..Default::default()
+        };
+        let result = store.reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            options,
+        );
+        if succeeds {
+            let record = result?.map_err(std::io::Error::other)?;
+            assert_eq!(
+                record
+                    .items
+                    .iter()
+                    .map(|item| item.tests.len())
+                    .sum::<usize>(),
+                count
+            );
+            assert_eq!(
+                record.items.len(),
+                if shape == "separate" { 100 } else { 1 }
+            );
+            drop(store);
+            let mut store = open(&path)?;
+            let retained = store.machine_order(&key)?.ok_or("lost reservation")?;
+            assert_eq!(retained.items.len(), record.items.len());
+            assert_eq!(
+                retained
+                    .items
+                    .iter()
+                    .flat_map(|item| item.tests.iter())
+                    .collect::<Vec<_>>(),
+                tests.iter().collect::<Vec<_>>()
+            );
+            assert!(matches!(
+                store.reserve_send(
+                    &OrderReservation {
+                        identity: &key,
+                        version: NonZeroU64::MIN,
+                        now: 102,
+                        freshness: 30
+                    },
+                    ReserveOptions::default()
+                )?,
+                Err(SendRefusal::AlreadyReserved)
+            ));
+        } else {
+            assert!(
+                matches!(result, Err(Error::InvalidInput)),
+                "case {count}/{shape}"
+            );
+            assert!(store.machine_order(&key)?.is_none());
+            for table in [
+                "machine_order_history",
+                "machine_order_items",
+                "machine_order_item_history",
+                "outbox",
+            ] {
+                assert_eq!(
+                    store
+                        .db
+                        .query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                            .get::<_, i64>(0))?,
+                    0
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_state() -> TestResult
+{
+    for now in [100, 101, 102] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("item-exchange-clock.db"))?;
+        let record = reserve_two(&mut store)?;
+        assert!(matches!(
+            store.transition_order(
+                record.id,
+                OrderState::Sent,
+                SourceText::new("whole-order-send")?,
+                102,
+                event
+            ),
+            Err(Error::Conflict)
+        ));
+        let outcomes = [1, 2]
+            .into_iter()
+            .map(|index| {
+                Ok(ItemOutcome {
+                    index,
+                    decision: ItemDecision::Accepted,
+                    code: SourceText::new("accepted")?,
+                })
+            })
+            .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
+        let result = store.finish_order_items(record.id, &outcomes, now, event);
+        if now == 100 {
+            assert!(matches!(result, Err(Error::InvalidInput)));
+            assert_eq!(
+                store
+                    .machine_order(&record.key)?
+                    .ok_or("missing order")?
+                    .state,
+                OrderState::Sending
+            );
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+                0
+            );
+        } else {
+            let accepted = result?;
+            assert_eq!(accepted.state, OrderState::Accepted);
+            assert!(
+                accepted
+                    .items
+                    .iter()
+                    .all(|item| item.state == OrderState::Accepted && item.updated_at == now)
+            );
+            let late = [ItemOutcome {
+                index: 1,
+                decision: ItemDecision::Rejected,
+                code: SourceText::new("late reply")?,
+            }];
+            assert!(matches!(
+                store.finish_order_items(record.id, &late, 103, event),
+                Err(Error::InvalidInput)
+            ));
+            assert_eq!(
+                store
+                    .machine_order(&record.key)?
+                    .ok_or("missing order")?
+                    .state,
+                OrderState::Accepted
+            );
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+                1
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("item-index.db");
+    let mut store = open(&path)?;
+    let record = reserve_two(&mut store)?;
+    for indices in [[1, 1, 2], [1, 2, 3]] {
+        let outcomes = indices
+            .into_iter()
+            .map(|index| {
+                Ok(ItemOutcome {
+                    index,
+                    decision: ItemDecision::Accepted,
+                    code: SourceText::new("invalid coverage")?,
+                })
+            })
+            .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
+        assert!(matches!(
+            store.finish_order_items(record.id, &outcomes, 102, event),
+            Err(Error::InvalidInput)
+        ));
+        assert_eq!(
+            store
+                .machine_order(&record.key)?
+                .ok_or("missing order")?
+                .state,
+            OrderState::Sending
+        );
+        assert_eq!(
+            store
+                .db
+                .query_row("SELECT count(*) FROM machine_order_item_history", [], |r| r
+                    .get::<_, i64>(0))?,
+            2
+        );
+    }
+    let outcomes = [
+        ItemOutcome {
+            index: 1,
+            decision: ItemDecision::Accepted,
+            code: SourceText::new("accept-one")?,
+        },
+        ItemOutcome {
+            index: 2,
+            decision: ItemDecision::Rejected,
+            code: SourceText::new("reject-two")?,
+        },
+    ];
+    let completed = store.finish_order_items(record.id, &outcomes, 102, event)?;
+    assert_eq!(completed.state, OrderState::Uncertain);
+    drop(store);
+    let mut store = open(&path)?;
+    let retained = store.machine_order(&record.key)?.ok_or("missing order")?;
+    let actual = retained
+        .items
+        .iter()
+        .map(|item| (item.index, item.state, item.source_code.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        vec![
+            (1, OrderState::Accepted, "accept-one"),
+            (2, OrderState::Rejected, "reject-two")
+        ]
+    );
+    let claim = store.claim(102)?.ok_or("missing outcome event")?;
+    let delivered: MachineOrder = serde_json::from_slice(&claim.payload)?;
+    assert_eq!(
+        delivered
+            .items
+            .iter()
+            .map(|item| (item.index, item.state, item.source_code.as_str()))
+            .collect::<Vec<_>>(),
+        actual
+    );
+    assert!(matches!(
+        store.reserve_send(
+            &OrderReservation {
+                identity: &record.key,
+                version: NonZeroU64::MIN,
+                now: 103,
+                freshness: 30
+            },
+            ReserveOptions::default()
+        )?,
+        Err(SendRefusal::AlreadyReserved)
+    ));
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_pending_page_accepts_the_exact_limit_and_excludes_reservations()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("pending-bound.db"))?;
+    store.limits.page_rows = 1;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let key = identity()?;
+    let PendingOrders::Page { orders, after } =
+        store.pending_orders(&key.destination, &key.machine, "", 101, 30)?
+    else {
+        return Err("trusted cache unavailable".into());
+    };
+    assert_eq!(orders.len(), 1);
+    assert_eq!(orders.first().ok_or("missing pending order")?.id, key.order);
+    assert!(after.is_none());
+    store
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions::default(),
+        )?
+        .map_err(std::io::Error::other)?;
+    let PendingOrders::Page { orders, after } =
+        store.pending_orders(&key.destination, &key.machine, "", 102, 30)?
+    else {
+        return Err("trusted cache unavailable".into());
+    };
+    assert!(orders.is_empty());
+    assert!(after.is_none());
+    assert!(
+        store
+            .order_candidates(&key.destination, &key.machine, "", 102, 30)?
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("cancel-page.db"))?;
+    store.limits.page_rows = 1;
+    let base = identity()?;
+    let mut accepted = None;
+    for name in ["order-a", "order-b"] {
+        let key = MachineOrderKey {
+            order: Identifier::new(name)?,
+            ..identity()?
+        };
+        let mut requested = page(1, "requested", false, 200)?;
+        requested
+            .orders
+            .first_mut()
+            .ok_or("missing cache order")?
+            .id = key.order.clone();
+        store.order_page(&requested)?;
+        let record = store
+            .reserve_send(
+                &OrderReservation {
+                    identity: &key,
+                    version: NonZeroU64::MIN,
+                    now: 101,
+                    freshness: 30,
+                },
+                ReserveOptions::default(),
+            )?
+            .map_err(std::io::Error::other)?;
+        if name == "order-b" {
+            accepted = Some(
+                store
+                    .transition_order(
+                        record.id,
+                        OrderState::Accepted,
+                        SourceText::new("accepted")?,
+                        102,
+                        event,
+                    )?
+                    .id,
+            );
+        }
+        let mut cancelled = page(2, "cancel_requested", false, 200)?;
+        cancelled
+            .orders
+            .first_mut()
+            .ok_or("missing cache order")?
+            .id = key.order;
+        store.order_page(&cancelled)?;
+    }
+    let candidates = store.cancel_candidates(&base.destination, &base.machine, 103, 30)?;
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        candidates.first().ok_or("missing cancellation")?.0.id,
+        accepted.ok_or("missing accepted ID")?
+    );
+    for (expiry, expected) in [(103, 0), (104, 1)] {
+        let mut cancelled = page(2, "cancel_requested", false, expiry)?;
+        cancelled
+            .orders
+            .first_mut()
+            .ok_or("missing cache order")?
+            .id = Identifier::new("order-b")?;
+        store.order_page(&cancelled)?;
+        assert_eq!(
+            store
+                .cancel_candidates(&base.destination, &base.machine, 103, 30)?
+                .len(),
+            expected
+        );
+    }
+    let key = MachineOrderKey {
+        order: Identifier::new("order-c")?,
+        ..identity()?
+    };
+    let mut requested = page(1, "requested", false, 200)?;
+    requested
+        .orders
+        .first_mut()
+        .ok_or("missing cache order")?
+        .id = key.order.clone();
+    store.order_page(&requested)?;
+    let record = store
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions::default(),
+        )?
+        .map_err(std::io::Error::other)?;
+    store.transition_order(
+        record.id,
+        OrderState::Accepted,
+        SourceText::new("accepted")?,
+        102,
+        event,
+    )?;
+    let mut cancelled = page(2, "cancel_requested", false, 200)?;
+    cancelled
+        .orders
+        .first_mut()
+        .ok_or("missing cache order")?
+        .id = key.order;
+    store.order_page(&cancelled)?;
+    store.limits.page_rows = 2;
+    assert_eq!(
+        store
+            .cancel_candidates(&base.destination, &base.machine, 103, 30)?
+            .len(),
+        2
+    );
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive() -> TestResult {
+    for (boundary, delta) in [("history", 0), ("history", 1), ("audit", 0), ("audit", 1)] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("order-evidence-bounds.db"))?;
+        store.order_page(&page(1, "requested", false, 200)?)?;
+        let key = identity()?;
+        let record = store
+            .reserve_send(
+                &OrderReservation {
+                    identity: &key,
+                    version: NonZeroU64::MIN,
+                    now: 101,
+                    freshness: 30,
+                },
+                ReserveOptions::default(),
+            )?
+            .map_err(std::io::Error::other)?;
+        let build = |order: &MachineOrder| -> Result<OrderEventDelivery, Error> {
+            let mut value = event(order)?;
+            value.payload = b"small event".to_vec();
+            Ok(value)
+        };
+        if boundary == "history" {
+            let mut expected = record.clone();
+            expected.state = OrderState::Sent;
+            expected.updated_at = 102;
+            expected.source_code = SourceText::new("sent")?;
+            for item in &mut expected.items {
+                item.state = OrderState::Sent;
+                item.updated_at = 102;
+                item.source_code = SourceText::new("sent")?;
+            }
+            store.limits.record_bytes = serde_json::to_vec(&expected)?
+                .len()
+                .checked_sub(delta)
+                .ok_or("bound")?;
+            let result = store.transition_order(
+                record.id,
+                OrderState::Sent,
+                SourceText::new("sent")?,
+                102,
+                build,
+            );
+            if delta == 0 {
+                assert_eq!(result?.state, OrderState::Sent);
+            } else {
+                assert!(matches!(result, Err(Error::InvalidInput)));
+                assert_eq!(
+                    store.machine_order(&key)?.ok_or("missing order")?.state,
+                    OrderState::Sending
+                );
+            }
+        } else {
+            store.transition_order(
+                record.id,
+                OrderState::Uncertain,
+                SourceText::new("timeout")?,
+                102,
+                event,
+            )?;
+            let audit = Audit {
+                actor: Identifier::new("operator")?,
+                action: Identifier::new("orders-reconcile")?,
+                targets: vec![Identifier::new(&record.id.to_string())?],
+                time: 103,
+                reason: analyte_model::Reason::new(&"r".repeat(1024))?,
+            };
+            store.limits.record_bytes = serde_json::to_vec(&audit)?
+                .len()
+                .checked_sub(delta)
+                .ok_or("bound")?;
+            let result = store.reconcile_order(record.id, OrderState::Accepted, &audit, build);
+            if delta == 0 {
+                assert_eq!(result?.state, OrderState::Accepted);
+                assert_eq!(store.audits(0)?.len(), 1);
+            } else {
+                assert!(matches!(result, Err(Error::InvalidInput)));
+                assert_eq!(
+                    store.machine_order(&key)?.ok_or("missing order")?.state,
+                    OrderState::Uncertain
+                );
+                assert!(store.audits(0)?.is_empty());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically()
+-> TestResult {
+    for case in [
+        "valid",
+        "large-one",
+        "large-two",
+        "destination",
+        "order",
+        "version",
+    ] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("order-event-fields.db"))?;
+        store.order_page(&page(1, "requested", false, 200)?)?;
+        let key = identity()?;
+        let record = store
+            .reserve_send(
+                &OrderReservation {
+                    identity: &key,
+                    version: NonZeroU64::MIN,
+                    now: 101,
+                    freshness: 30,
+                },
+                ReserveOptions::default(),
+            )?
+            .map_err(std::io::Error::other)?;
+        store.limits.record_bytes = 2048;
+        let result = store.transition_order(
+            record.id,
+            OrderState::Sent,
+            SourceText::new("sent")?,
+            102,
+            |order| {
+                let mut value = event(order)?;
+                value.payload = vec![
+                    b'x';
+                    match case {
+                        "valid" => 2048,
+                        "large-one" => 2049,
+                        "large-two" => 2050,
+                        _ => 1,
+                    }
+                ];
+                match case {
+                    "destination" => {
+                        value.destination =
+                            Identifier::new("wrong").map_err(|_| Error::InvalidInput)?;
+                    }
+                    "order" => {
+                        value.order_id =
+                            Identifier::new("wrong").map_err(|_| Error::InvalidInput)?;
+                    }
+                    "version" => value.contract_version = 2,
+                    "valid" | "large-one" | "large-two" => {}
+                    _ => unreachable!("fixed cases"),
+                }
+                Ok(value)
+            },
+        );
+        if case == "valid" {
+            assert_eq!(result?.state, OrderState::Sent);
+            assert_eq!(
+                store.claim(102)?.ok_or("missing event")?.payload,
+                vec![b'x'; 2048]
+            );
+        } else {
+            assert!(matches!(result, Err(Error::InvalidInput)), "case {case}");
+            let retained = store.machine_order(&key)?.ok_or("missing order")?;
+            assert_eq!(retained.state, OrderState::Sending);
+            assert_eq!(
+                retained.items.first().ok_or("missing item")?.state,
+                OrderState::Sending
+            );
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM machine_order_history", [], |r| r
+                        .get::<_, i64>(0))?,
+                1
+            );
+            assert!(store.claim(102)?.is_none());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_rule8_order_command_refuses_empty_bytes_and_keeps_original_after_restart()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("original-command.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let key = identity()?;
+    let owner = Identifier::new("connection")?;
+    store
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions {
+                owner: Some(&owner),
+                ..Default::default()
+            },
+        )?
+        .map_err(std::io::Error::other)?;
+    assert!(matches!(
+        store.retain_order_command(&key, &owner, vec![]),
+        Err(Error::InvalidInput)
+    ));
+    assert!(
+        store
+            .machine_order(&key)?
+            .ok_or("missing order")?
+            .original_command()
+            .is_none()
+    );
+    store.retain_order_command(&key, &owner, b"exact command\0bytes".to_vec())?;
+    assert!(matches!(
+        store.retain_order_command(&key, &owner, b"different".to_vec()),
+        Err(Error::Conflict)
+    ));
+    drop(store);
+    let mut store = open(&path)?;
+    assert_eq!(
+        store
+            .machine_order(&key)?
+            .ok_or("missing order")?
+            .original_command(),
+        Some(b"exact command\0bytes".as_slice())
+    );
+    assert!(matches!(
+        store.reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 102,
+                freshness: 30
+            },
+            ReserveOptions::default()
+        )?,
+        Err(SendRefusal::AlreadyReserved)
+    ));
+    Ok(())
+}
