@@ -286,6 +286,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
         .await?;
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
+    let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
         config_path: directory.path().join("program.toml"),
         token: Token::load(directory.path())?,
@@ -314,6 +315,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
         )?],
         directory: directory.path().to_owned(),
         reserve: 1,
+        _released: released,
     });
     let server = Server {
         listener: Listener {
@@ -321,6 +323,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        released: release,
         owners: BTreeMap::new(),
     };
     let (stop, stopped) = watch::channel(false);
@@ -458,10 +461,10 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     // A peer that never finishes its headers must not prevent bounded shutdown.
     let mut slow = tokio::net::TcpStream::connect(&host).await?;
     slow.write_all(b"GET / HTTP/1.1\r\n").await?;
+    drop(state);
     stop.send_replace(true);
     tokio::time::timeout(Duration::from_secs(5), owner).await???;
     drop(slow);
-    drop(state);
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retained store after shutdown")?;
     store.shutdown(crate::deadline()).await?;
     let captured = logs.0.lock().map_err(|_| "log capture poisoned")?;
@@ -479,5 +482,23 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     ] {
         assert!(!captured.contains(secret));
     }
+    Ok(())
+}
+
+// AGENTS ownership: HTTP completion can precede the last router state destructor.
+#[tokio::test]
+async fn plan11_admin_drain_waits_for_router_state_release() -> Result<(), Error> {
+    use std::{future::Future as _, task::Poll};
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let mut drain = Box::pin(drain_server(std::future::ready(Ok(())), released));
+    // Poll HTTP completion synchronously while the final state owner is held.
+    // No scheduler, socket timing or elapsed-time assertion determines the verdict.
+    let poll = std::future::poll_fn(|cx| Poll::Ready(drain.as_mut().poll(cx))).await;
+    assert!(
+        poll.is_pending(),
+        "HTTP completion must not precede state release"
+    );
+    drop(release);
+    drain.await?;
     Ok(())
 }

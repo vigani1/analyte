@@ -95,6 +95,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             running: Arc::new(AtomicBool::new(true)),
         });
     }
+    let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
         config_path: directory.path().join("program.toml"),
         token: Token::load(directory.path())?,
@@ -106,6 +107,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         destinations: Vec::new(),
         directory: directory.path().to_owned(),
         reserve: 1,
+        _released: released,
     });
     let server = Server {
         listener: Listener {
@@ -113,6 +115,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        released: release,
         owners: BTreeMap::new(),
     };
     let (stop, stopped) = watch::channel(false);
@@ -335,9 +338,9 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     assert!(!refused.contains("RAW"));
     assert!(!refused.contains("3c 73 63"));
     rusqlite::Connection::open(database)?.execute_batch("DROP TRIGGER test_refuse_raw_audit;")?;
+    drop(state);
     stop.send_replace(true);
     tokio::time::timeout(Duration::from_secs(5), owner).await???;
-    drop(state);
     let mut store = Arc::try_unwrap(store).map_err(|_| "pages retained store")?;
     store.shutdown(crate::deadline()).await?;
     Ok(())

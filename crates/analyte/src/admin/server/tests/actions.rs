@@ -40,6 +40,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
     let bearer = super::super::super::rotate_token(program.data_directory())?;
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
+    let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
         config_path: config_path.clone(),
         token: Token::load(program.data_directory())?,
@@ -51,6 +52,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
         destinations: Vec::new(),
         directory: program.data_directory().to_owned(),
         reserve: 1,
+        _released: released,
     });
     let server = Server {
         listener: Listener {
@@ -58,6 +60,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        released: release,
         owners: BTreeMap::new(),
     };
     let (stop, stopped) = watch::channel(false);
@@ -207,9 +210,9 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             Ok(())
         })
         .await?;
+    drop(state);
     stop.send_replace(true);
     tokio::time::timeout(Duration::from_secs(5), owner).await???;
-    drop(state);
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retains store")?;
     store.shutdown(crate::deadline()).await?;
     Ok(())
