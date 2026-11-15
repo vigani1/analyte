@@ -2335,6 +2335,7 @@ fn mutation_adr0011_single_final_run_is_scoped_by_machine_order_and_test() -> Te
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("single-final.db"))?;
         for index in 0..2 {
+            store.limits.page_rows = 1;
             let mut metadata = receipt(b"raw")?;
             if index == 1 && case == "other-machine" {
                 metadata.machine = Identifier::new("other-machine")?;
@@ -2790,5 +2791,324 @@ fn mutation_adr0003_adr0011_retained_interpretation_byte_bound_is_inclusive() ->
             encoded
         );
     }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0011_progression_uses_the_requested_observation_and_unanimous_source_status()
+-> TestResult {
+    use analyte_model::{IdentityStatus, Revision, SourceText};
+    for mixed_after in [false, true] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("progression-selection.db"))?;
+        let policy = StatusLifecycle {
+            transitions: &[("draft", "ready")],
+            withheld: &[],
+            single_run: &[],
+            run: |_| None,
+        };
+        let first = receipt(b"raw")?;
+        store.receive(&first, b"raw", b"config")?;
+        let make = |owner,
+                    statuses: &[&str]|
+         -> Result<analyte_model::ResultContent, Box<dyn std::error::Error>> {
+            let mut result = production_result(owner)?;
+            let template = result
+                .parts
+                .as_slice()
+                .first()
+                .ok_or("missing part")?
+                .clone();
+            let mut parts = vec![];
+            for status in statuses {
+                let mut part = template.clone();
+                part.source_status = SourceText::new(status)?;
+                parts.push(part);
+            }
+            result.parts =
+                analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
+            Ok(result)
+        };
+        let mut other = make(first.id, &["ready"])?;
+        let IdentityStatus::Resolved(id) = &mut other.identity else {
+            return Err("missing identity".into());
+        };
+        id.observation.code.value = Identifier::new("other-test")?;
+        let wanted = make(first.id, &["draft", "draft"])?;
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![other, wanted]);
+        store.interpret_with_lifecycle(
+            first.id,
+            evidence,
+            (&[false, false], &[]),
+            policy,
+            |_, _| Ok(vec![]),
+        )?;
+        let second = receipt(b"raw")?;
+        store.receive(&second, b"raw", b"config")?;
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Results(vec![make(
+            second.id,
+            if mixed_after {
+                &["ready", "draft"]
+            } else {
+                &["ready", "ready"]
+            },
+        )?]);
+        let commit = store.interpret_with_lifecycle(
+            second.id,
+            evidence,
+            (&[false], &[]),
+            policy,
+            |_, _| Ok(vec![]),
+        )?;
+        assert_eq!(
+            commit.outcomes,
+            vec![if mixed_after {
+                RevisionOutcome::Conflict
+            } else {
+                RevisionOutcome::Correction(Revision(1))
+            }]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_park_resolve_and_audit_keep_exact_evidence_once_after_restart() -> TestResult {
+    let encoded = parked::evidence("synthetic-kind", "synthetic-target", "exact reason", None)?;
+    let decoded: parked::ParkingEvidence = serde_json::from_str(&encoded)?;
+    assert_eq!(decoded.details.kind.as_str(), "synthetic-kind");
+    assert_eq!(decoded.details.reason.as_str(), "exact reason");
+    assert_eq!(
+        decoded.details.targets,
+        vec![Identifier::new("synthetic-target")?]
+    );
+    assert!(decoded.context.is_none());
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("parking-custody.db");
+    let mut store = open(&path)?;
+    let item = Parked {
+        kind: Identifier::new("unknown-test")?,
+        reason: Reason::new("exact synthetic reason")?,
+        targets: vec![Identifier::new("synthetic-evidence")?],
+    };
+    let id = store.park(&item)?;
+    let entry = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("reviewed")?,
+        targets: vec![Identifier::new("synthetic-evidence")?],
+        time: 42,
+        reason: Reason::new("exact resolution reason")?,
+    };
+    store.audit(&entry)?;
+    assert_eq!(store.audits(0)?.len(), 1);
+    let before = store.parked_item(id)?.ok_or("missing item")?.evidence;
+    store.db.execute_batch("CREATE TRIGGER fail_resolution_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
+    assert!(matches!(store.resolve(id, &entry), Err(Error::Conflict)));
+    assert!(
+        store
+            .parked_item(id)?
+            .ok_or("missing item")?
+            .resolution
+            .is_none()
+    );
+    store
+        .db
+        .execute_batch("DROP TRIGGER fail_resolution_audit;")?;
+    store.resolve(id, &entry)?;
+    assert!(matches!(store.resolve(id, &entry), Err(Error::Conflict)));
+    assert!(matches!(
+        store.resolve(i64::MAX, &entry),
+        Err(Error::Conflict)
+    ));
+    drop(store);
+    let store = open(&path)?;
+    let retained = store.parked_item(id)?.ok_or("missing retained item")?;
+    assert_eq!(retained.evidence, before);
+    let details = retained.details()?;
+    assert_eq!(details.kind, item.kind);
+    assert_eq!(details.reason, item.reason);
+    assert_eq!(details.targets, item.targets);
+    let resolution: Audit =
+        serde_json::from_str(&retained.resolution.ok_or("missing resolution")?)?;
+    assert_eq!(resolution.actor, entry.actor);
+    assert_eq!(resolution.reason, entry.reason);
+    assert_eq!(resolution.time, 42);
+    assert_eq!(store.audits(0)?.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("feed-bounds.db"))?;
+    store.limits.page_rows = 1;
+    let destination = Identifier::new("app")?;
+    let sample = SampleId::new("000123")?;
+    assert!(matches!(
+        store.orders(&destination, &sample, 100, 30)?,
+        Lookup::NotTrusted
+    ));
+    let order = CachedOrder {
+        id: Identifier::new("order-a")?,
+        sample: sample.clone(),
+        document: "synthetic order".into(),
+        tombstone: false,
+        expiry: 200,
+    };
+    let mut page = OrderPage {
+        destination: destination.clone(),
+        cursor: Identifier::new("cursor")?,
+        complete: false,
+        polled: 100,
+        orders: vec![serde_json::from_str(&key(&order)?)?],
+    };
+    store.order_page(&page)?;
+    assert!(matches!(
+        store.orders(&destination, &sample, 100, 30)?,
+        Lookup::NotTrusted
+    ));
+    page.complete = true;
+    store.order_page(&page)?;
+    let Lookup::Orders(orders) = store.orders(&destination, &sample, 129, 30)? else {
+        return Err("lost trusted order".into());
+    };
+    assert_eq!(orders.len(), 1);
+    assert_eq!(
+        orders.first().ok_or("missing order")?.document,
+        "synthetic order"
+    );
+    assert!(matches!(
+        store.orders(&destination, &sample, 130, 30)?,
+        Lookup::NotTrusted
+    ));
+    assert!(matches!(
+        store.orders(&destination, &sample, 99, 30)?,
+        Lookup::NotTrusted
+    ));
+    page.orders.push(CachedOrder {
+        id: Identifier::new("order-b")?,
+        ..order
+    });
+    assert!(matches!(store.order_page(&page), Err(Error::InvalidInput)));
+    store.reset_orders(&destination)?;
+    assert!(matches!(
+        store.orders(&destination, &sample, 100, 30)?,
+        Lookup::NotTrusted
+    ));
+    page.orders.clear();
+    store.order_page(&page)?;
+    assert!(matches!(
+        store.orders(&destination, &sample, 100, 30)?,
+        Lookup::NoOrders
+    ));
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_claim() -> TestResult {
+    for delta in [0, 1] {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(&temp.path().join("recovery-audit-bound.db"))?;
+        let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
+        store.enqueue_order_event(
+            &OrderEventDelivery {
+                id,
+                destination: Identifier::new("app")?,
+                order_id: Identifier::new("order")?,
+                payload: b"immutable bytes".to_vec(),
+                contract_version: 1,
+            },
+            0,
+        )?;
+        store.claim(0)?.ok_or("missing initial claim")?;
+        let audit = Audit {
+            actor: Identifier::new("startup")?,
+            action: Identifier::new("recover")?,
+            targets: vec![Identifier::new(&uuid::Uuid::from(id).to_string())?],
+            time: 42,
+            reason: Reason::new("interrupted delivery")?,
+        };
+        store.limits.record_bytes = key(&audit)?.len().checked_sub(delta).ok_or("limit")?;
+        let result = store.recover_in_flight(42, &audit);
+        let state = store.delivery(id)?.ok_or("missing delivery")?.state;
+        if delta == 0 {
+            assert_eq!(result?, 1);
+            assert_eq!(state, DeliveryState::Pending);
+            let claim = store.claim(42)?.ok_or("missing recovered claim")?;
+            assert_eq!(claim.id, id);
+            assert_eq!(claim.payload, b"immutable bytes");
+            assert_eq!(claim.earlier_attempts, 1);
+            assert_eq!(store.audits(0)?.len(), 1);
+        } else {
+            assert!(matches!(result, Err(Error::InvalidInput)));
+            assert_eq!(state, DeliveryState::InFlight);
+            assert!(store.audits(0)?.is_empty());
+            assert_eq!(
+                store
+                    .db
+                    .query_row("SELECT count(*) FROM attempts", [], |r| r.get::<_, i64>(0))?,
+                0
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("resend-authorization.db"))?;
+    let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
+    store.enqueue_order_event(
+        &OrderEventDelivery {
+            id,
+            destination: Identifier::new("app")?,
+            order_id: Identifier::new("order")?,
+            payload: b"immutable bytes".to_vec(),
+            contract_version: 1,
+        },
+        0,
+    )?;
+    store.claim(0)?.ok_or("missing initial claim")?;
+    store.attempted(id, &Attempt::Done, 0)?;
+    let target = Identifier::new(&format!("delivery:{}", uuid::Uuid::from(id)))?;
+    for (action, target) in [
+        ("wrong-action", target.clone()),
+        ("delivery-resend", Identifier::new("delivery:wrong")?),
+    ] {
+        let audit = Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new(action)?,
+            targets: vec![target],
+            time: 42,
+            reason: Reason::new("synthetic resend")?,
+        };
+        assert!(matches!(
+            store.resend_delivery(id, false, &audit),
+            Err(Error::InvalidInput)
+        ));
+        assert_eq!(
+            store
+                .delivery(id)?
+                .ok_or("missing retained delivery")?
+                .state,
+            DeliveryState::Done
+        );
+        assert!(store.audits(0)?.is_empty());
+    }
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("delivery-resend")?,
+        targets: vec![target],
+        time: 42,
+        reason: Reason::new("synthetic resend")?,
+    };
+    store.resend_delivery(id, false, &audit)?;
+    let claim = store.claim(42)?.ok_or("missing resend")?;
+    assert_eq!(claim.id, id);
+    assert_eq!(claim.payload, b"immutable bytes");
+    assert_eq!(store.audits(0)?.len(), 1);
     Ok(())
 }

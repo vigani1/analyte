@@ -1,0 +1,26 @@
+Mutation: crates/store/src/resend.rs:105:13: replace || with && in Store::resend_delivery
+Original full log: target\store-resume\delivery-recheck\mutants.out\log\crates__store__src__resend.rs_line_105_col_13.log
+Failing-test output excerpt:
+
+running 3 tests
+test tests::mutation_adr0008_resend_requires_both_action_and_exact_delivery_target ... FAILED
+test tests::mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent ... ok
+test tests::mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_claim ... ok
+
+failures:
+
+---- tests::mutation_adr0008_resend_requires_both_action_and_exact_delivery_target stdout ----
+
+thread 'tests::mutation_adr0008_resend_requires_both_action_and_exact_delivery_target' (34636) panicked at crates\store\src\tests.rs:3088:9:
+assertion failed: matches!(store.resend_delivery(id, false, &audit), Err(Error::InvalidInput))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::mutation_adr0008_resend_requires_both_action_and_exact_delivery_target
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 101 filtered out; finished in 0.25s
+
+error: test failed, to rerun pass `-p analyte-store --lib`
+
+*** result: Failure(101)

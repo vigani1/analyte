@@ -1,0 +1,32 @@
+Mutation: crates/store/src/revisions.rs:386:59: replace > with == in Store::reconcile
+Original full log: target\store-resume\custody-third-recheck\mutants.out\log\crates__store__src__revisions.rs_line_386_col_59.log
+Failing-test output excerpt:
+
+running 12 tests
+test tests::mutation_adr0003_record_interpretation_roundtrip_keeps_provenance_and_failure_reason ... ok
+test tests::mutation_adr0003_reconciliation_rejects_each_provenance_mismatch_without_interpretation ... ok
+test tests::mutation_adr0003_batch_duplicates_reuse_the_matching_revision_and_keep_runs_distinct ... ok
+test tests::mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_original ... ok
+test tests::mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive ... FAILED
+test tests::mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_count_atomically ... ok
+test tests::mutation_adr0003_receipt_digests_validate_raw_and_config_independently_without_writes ... ok
+test tests::mutation_adr0003_transfer_provenance_conflicts_preserve_original_frames_and_configuration ... ok
+test tests::mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independently ... ok
+test tests::mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically ... ok
+test tests::mutation_adr0003_reprocessing_never_resolves_failure_empty_unresolved_or_flagged_evidence ... ok
+test tests::mutation_adr0011_single_final_run_is_scoped_by_machine_order_and_test ... ok
+
+failures:
+
+---- tests::mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive stdout ----
+Error: InvalidInput
+
+
+failures:
+    tests::mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive
+
+test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 84 filtered out; finished in 5.58s
+
+error: test failed, to rerun pass `-p analyte-store --lib`
+
+*** result: Failure(101)
