@@ -75,11 +75,7 @@ pub(crate) async fn run(
                     _ = stop.changed() => { closing.after_commits().await?; return Ok(()); },
                     accepted = listener.accept() => accepted?,
                 };
-                let (conn, side) = connection(limits);
-                let side = match &capture {
-                    Some(capture) => capture.attach(side),
-                    None => side,
-                };
+                let (conn, side) = recorded_connection(limits, capture.as_ref());
                 let cancel = conn.cancellation();
                 let processing = drive(&machine, session, &store, conn, stop.clone(), &mut closing);
                 let transport = analyte_transport::tcp::pump(accepted.0, side);
@@ -100,11 +96,7 @@ pub(crate) async fn run(
             session,
             ..
         } => loop {
-            let (conn, side) = connection(limits);
-            let side = match &capture {
-                Some(capture) => capture.attach(side),
-                None => side,
-            };
+            let (conn, side) = recorded_connection(limits, capture.as_ref());
             let cancel = conn.cancellation();
             let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
             let (result, transport) = tokio::join!(
@@ -157,6 +149,18 @@ pub(crate) async fn run(
             .await
         }
     }
+}
+
+fn recorded_connection(
+    limits: Limits,
+    capture: Option<&crate::evidence::capture::Capture>,
+) -> (analyte_transport::Connection, analyte_transport::IoSide) {
+    let (conn, side) = connection(limits);
+    let side = match capture {
+        Some(capture) => capture.attach(side),
+        None => side,
+    };
+    (conn, side)
 }
 
 fn retry() -> Result<Backoff, Error> {
