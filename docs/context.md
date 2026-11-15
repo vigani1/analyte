@@ -48,7 +48,7 @@ is just one app that might integrate someday. The research files still say
 | A bridge only: no auto-verification, QC or clinical decisions              | 2026-11-15 |
 | Three identities (receipt, delivery, result + revision) instead of byte-hash duplicate detection | 2026-11-15 |
 | Dialogs as per-connection state machines instead of a Mirth-style channel engine | 2026-11-15 |
-| No plugin system until three formats prove the interface                   | 2026-11-15 |
+| No plugin system until a real outside driver needs one                     | 2026-11-15 |
 | Few agent skills; core rules live in AGENTS.md                             | 2026-11-15 |
 | Analyte is its own product; the contract is designed for any lab app, not from one app | 2026-11-15 |
 | Build and test against a reference receiver inside this repository         | 2026-11-15 |

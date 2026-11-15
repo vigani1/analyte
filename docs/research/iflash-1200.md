@@ -193,6 +193,18 @@ V in [P §§3.2–3.3, P2]. Flows: results H/P/O/R/(C)/L; QC H/P/O/L; query H/Q/
 
 Prefer ASTM if the installed 1200 actually offers it and a matching vendor document/capture or proven local integration establishes its behavior. It has explicit rerun/replicate and numeric-plus-call components, but still requires YHLO-specific order/QC parsing. Switching protocols is not a compatibility fix by itself. HL7/TCP is a candidate for result-only commissioning, not yet an acceptance-tested choice.
 
+**Differences from LIS01-A2/LIS02-A2 (these go in the iFlash config, never in the standard code):**
+
+- one record per frame (a permitted subset of LIS01-A2 §6.3.1, which allows up to 64,000 characters per frame);
+- a 15-second receive timeout, against the standard's 30 seconds (LIS01-A2 §6.5.2.4);
+- the first frame number is not stated (the standard starts at 1, §6.3.2.1);
+- sample number, tray and position in O-3 and barcode in O-4, where LIS02-A2 §§8.4.3–8.4.4 define specimen ID and instrument specimen ID;
+- the local assay code in the first component of the test ID, where LIS02-A2 §5.6.1 places local codes in the fourth;
+- R-8 used for a qualitative reference instead of the nature of abnormality testing (LIS02-A2 §9);
+- whole QC result tuples carried in O-12, which LIS02-A2 defines as an action code.
+
+All of these are family-manual claims that still need confirming for the 1200.
+
 ## 7. Sample identification, especially without barcodes
 
 **1200 V:** onboard scanning is documented separately from the handheld USB reader. Table A-8 lists **Codabar, Code 39, Code 128 and ITF**; barcoded sample workflow scans tubes and assigns serial/rack/position [O §2.2.4]. The external scanner enters sample IDs and scans reagent/method/calibrator labels. Its presence does not imply absence of an internal sample reader.

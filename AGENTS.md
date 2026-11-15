@@ -66,7 +66,8 @@ These are not optional and need an ADR to change.
 
 1. **Store before acknowledging.** Never tell a machine "got it" for data that
    is not durably stored. If storage fails or the disk is nearly full, refuse
-   visibly.
+   visibly. The exact boundary per protocol is in ADR 0003 (for ASTM: each
+   frame before its ACK).
 2. **Never drop data.** Failed parses, unknown tests and undeliverable results
    are parked with a reason and shown to an operator, never deleted.
 3. **Keep the original.** Store raw bytes with the driver and config version
@@ -74,7 +75,9 @@ These are not optional and need an ADR to change.
 4. **Three identities:** the message from the machine, the delivery to the app
    (same ID on every retry), and the result itself with its revision. A
    corrected result is a new revision, not a duplicate; a rerun is a new
-   result.
+   result. Never invent a result identity: if the machine does not send
+   enough to tell these apart, keep the receipt marked unresolved for an
+   operator.
 5. **Values stay as written.** Keep `<0.1`, `1,234`, "positive" and error
    tokens exactly as sent next to any parsed number. Sample IDs are strings:
    keep leading zeros and case.
@@ -120,8 +123,8 @@ Never raise a level without the evidence that justifies it.
   minimum supported version (`rust-version`) in the workspace and test it.
 - One Cargo workspace. Shared versions live in `[workspace.dependencies]`,
   shared lints in `[workspace.lints]`. Commit `Cargo.lock`.
-- Crates follow the layers; a crate depends only on layers below it. No
-  dependency cycles, no "utils" crate.
+- Crate dependencies form an acyclic graph of ownership, not the runtime
+  data flow (ADR 0001). No dependency cycles, no "utils" crate.
 
 ### Types
 

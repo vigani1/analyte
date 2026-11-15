@@ -13,8 +13,15 @@ the code fills up with one machine's quirks presented as the standard.
 - Each standard (ASTM LIS01/LIS02, HL7 v2 with MLLP, IHE LAW, POCT1-A) is
   implemented completely from its official documents and tested against
   official examples or simulators, independent of any particular machine.
-- A standard is done when it conforms to its documents, at the documented or
-  simulated evidence level, not when one machine passes.
+- Each standard's phase starts by writing its scope: the versions, actor
+  roles, message types, options, acknowledgment modes and limits supported,
+  with explicit exclusions. "Complete" means complete within that scope, so
+  the work has a finish line.
+- A standard is done when it conforms to its documents within that scope, at
+  the documented or simulated evidence level, not when one machine passes.
+- Recordings from real machines can be collected at any time and kept as test
+  data; they qualify machine configs later and never change the standard
+  code.
 - Machines are added afterwards as configs on top, by us or the community.
   A machine's deviations from the standard live in its config or in a small
   piece in the right layer.

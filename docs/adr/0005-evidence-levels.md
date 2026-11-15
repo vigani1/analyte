@@ -20,6 +20,13 @@ docs show it:
 
 A level is never raised without the evidence that justifies it.
 
+The level is a summary of a capability list that names the model, firmware,
+driver and config digest, transport, tested dialogs, failure cases, platform
+and the evidence files. A level applies only to the capabilities that were
+exercised: a recorded result upload proves results, not orders or
+cancellation. A simulator result applies only to the actor and options it
+tested.
+
 ## Consequences
 
 - Labs can choose what to trust, and must still validate before go-live.

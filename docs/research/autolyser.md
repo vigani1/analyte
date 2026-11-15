@@ -232,7 +232,7 @@ M pp. 180–187 allows custom transmit and receive scripts defining fields, cons
 ### Script mechanics and cautions
 
 - `Char` emits/receives a byte. `String <value>|<terminator>` is terminated; `Stringn <value>|<length>` is fixed-width. Decimal literals use `$`, hex uses `0x`, printable strings use single apostrophes. `;` introduces a comment (pp. 180–181).
-- Stringn right-pads text with spaces and truncates overlong text; numerical fields are left-zero-padded and also truncated if overlong (p. 181). Widths must therefore be selected with actual limits, not guesses.
+- Stringn right-pads text with spaces and truncates overlong text; numerical fields are left-zero-padded and also truncated if overlong (p. 181). Widths must therefore be selected with actual limits, not guesses. The compiler rejects a `Stringn` length below 0 or above 128 (p. 182, error 24).
 - One complete command per line. DOS/Windows line endings are required; the manual warns against UNIX text files (p. 180).
 - Use one analysis-repeat SET; `PATIENTNUMBERTEST` must occur before it (p. 182). The vendor example uses `Set #BeginAnalysesData` / `Set #EndAnalysesData` as the SET keywords (pp. 186–187). The explanatory prose uses inconsistent group spellings; use the keywords from the example and validate in the vendor compiler.
 - Save **and recompile both transmitting and receiving scripts**, even when only one changes (p. 180).
@@ -464,14 +464,15 @@ DISCONNECTED -> OPEN -> IDLE
 IDLE --interval--> SEND_STX(02) -> WAIT_ACK(06)
 WAIT_ACK --ACK--> SEND_R(52), END_REQUEST(04) -> READ_RESPONSE
 READ_RESPONSE --NAK(15)--> IDLE until next poll
-READ_RESPONSE --payload through EOT(04)--> VERIFY_LENGTH_AND_CHECKSUM
-VERIFY -> durably retain raw payload + normalized context -> PARSE_AND_DELIVER -> IDLE
-timeout / malformed data / checksum failure -> explicit failed operation -> recovery policy
+READ_RESPONSE --payload through EOT(04)--> STORE_RAW (durable, before any check)
+STORE_RAW -> VERIFY_LENGTH_AND_CHECKSUM
+VERIFY ok -> PARSE_AND_DELIVER -> IDLE
+timeout / malformed data / checksum failure -> park the stored raw bytes with the reason -> recovery policy
 ```
 
 `SEND_R/END_REQUEST` ordering follows the manual reading, with timing to be qualified before implementation. A proposed initial idle interval could be 5 seconds, **not vendor-specified**; ACK/inter-byte/report timeouts and backoff remain unset until confirmed. Recovery should consider `L` for the last report; `A` is an explicit replay/reconciliation operation, not normal per-poll behavior. Do not advance to another `R` after a corrupt result without resolving the last-report recovery policy. Serialize optional patient downloads with polling on the same connection.
 
-Parse exact byte counts and configured mode; verify checksum before interpreting a patient identity or clinical value. Retain raw bytes and original result text. Map patient code to specimen/accession identity, analysis code to the pinned assay definition and site mapping, numerical value and comparator only when present, unit when actually transmitted/configured, flags without invented meanings, and QC markers to control handling. Preserve S/U and list semantics as context. Do not invent dates, patient demographics, unit values, normal ranges or "final/released" status absent from the source.
+Store the raw response durably first, including responses that later fail their length or checksum check; a bad checksum blocks interpretation, not storage. Then parse exact byte counts and configured mode, and verify the checksum before interpreting a patient identity or clinical value. Retain original result text. Map patient code to specimen/accession identity, analysis code to the pinned assay definition and site mapping, numerical value and comparator only when present, unit when actually transmitted/configured, flags without invented meanings, and QC markers to control handling. Preserve S/U and list semantics as context. Do not invent dates, patient demographics, unit values, normal ranges or "final/released" status absent from the source.
 
 The current normalized delivery is **FHIR**, not an arbitrary JSON `{patient,test,value}` endpoint: use the existing `MessageNormalizer`/outbox and `NormalizedBundleRenderer`/FHIR-building boundary for an added parser, with one Observation per actual test result and preserved raw data. Follow the Bridge's existing durable receipt practice before requesting the next result. There is no Autolyser receipt ACK to delay; local persistence and `L` recovery must cover the risk of a poll moving the analyzer's send cursor. The wire lacks a clear immutable run ID, so correction/rerun identity and duplicate handling need explicit qualification; hashing only code+value can collapse genuine repeats.
 

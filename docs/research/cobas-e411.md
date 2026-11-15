@@ -78,6 +78,8 @@ Verified-document: HIM A-2 and D-2-D-10 explicitly name **ASTM E1381-91 and E139
 
 HIM D-4 works one checksum through by hand. Our own synthetic check of the same rule: the frame `STX 1 ABC ETX FA CR LF` has checksum `FA`, because `31+41+42+43+03` hex is `FA`. This only shows the checksum rule; it is not an application message. The analyzer's 15 s timing takes precedence over generic ASTM receivers that assume 30 or 60 s.
 
+**Differences from LIS01-A2 (these go in the cobas config, never in the standard code):** the standard allows frames of up to 64,000 characters (LIS01-A2 §6.3.1), while the cobas limits frames to 240 text and 247 total bytes. The standard gives the receiver 30 seconds to wait for the next frame (§6.5.2.4), while the cobas gives up after 15 seconds. The standard aborts after a frame is rejected six times (§6.5.1.2); whether the cobas count includes the first attempt must be confirmed. The standard's receiver interrupt (EOT during a transfer, §§6.3.4–6.3.5) stays supported in the standard code even where the cobas description does not mention it.
+
 ## 4. Message records and field positions
 
 ### Record set and syntax
