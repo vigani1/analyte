@@ -130,6 +130,17 @@ inferred (`hl7_251_2_7_unsupported_escapes_never_become_clean_text`).
 - [ ] B — Declare legacy deferred-processing/MCF support separately from enhanced acceptance and deferred queries. 231 ch.2 §§2.12.2–2.13 pp.112–114; 251 ch.2 §2.14 p.61 and ch.5 §5.6 pp.52–60.
 - [ ] B — Test disk failure, response loss, late/mismatched ACK, duplicate message ID with changed content and restart after commit/before reply. Processing rules above plus project safety policy; timeout does not prove failure (engineering gate).
 
+Sender ACK phases follow 2.5.1 sections 2.9.2-2.9.3 pp.2-26-28.
+`hl7_251_2_9_2_2_9_3_sender_preserves_ack_phases` (dialog tests) checks early
+application replies, nonterminal CA and duplicate CA in the application phase.
+`hl7_251_2_15_8_all_codes_and_mismatched_ack` now treats CA/CE/CR in original
+mode as specific wrong-phase errors rather than completion.
+`hl7_251_2_9_3_sender_acceptance_and_application_condition_matrix` checks the
+16 AL/NE/ER/SU combinations and condition violations.
+`hl7_251_2_9_3_sender_application_wait_is_bounded_and_never_resends` checks
+the separate application deadline, timeout/disconnect uncertainty and no resend.
+Both phases disabled reports issuance with no requested response, never acceptance.
+
 ERR locations use the actual source segment occurrence and field when known,
 and remain unvalued when reconciliation cannot identify a source field. HL7 and
 LAW use one host builder. Source: 2.5.1 section 2.15.5.2 pp.2-67-68.

@@ -182,7 +182,7 @@ pub(super) async fn session(
                                 "HL7 host phase timed out; receipt requires reconciliation",
                             ));
                         }
-                        Action::Sent(_, _) => {
+                        Action::Sent(_, _) | Action::CommitAccepted(_) => {
                             return Err(invalid("unexpected outgoing HL7 outcome"));
                         }
                     }
