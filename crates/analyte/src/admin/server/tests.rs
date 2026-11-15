@@ -3,6 +3,8 @@ use analyte_model::{OrderState, Reason};
 use std::{io::Write, sync::Mutex};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
+mod pages;
+
 #[derive(Clone)]
 struct Capture(Arc<Mutex<Vec<u8>>>);
 impl Write for Capture {
@@ -276,7 +278,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     let host = socket.local_addr()?.to_string();
     let state = Arc::new(Context {
         token: Token::load(directory.path())?,
-        session: Token::session()?,
+        sessions: Sessions::default(),
         origin: format!("http://{host}"),
         host: host.clone(),
         store: store.clone(),
@@ -345,8 +347,22 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     assert!(!response.contains("protected-payload-never-log"));
     assert!(!response.contains("<script>sample</script>"));
     assert!(response.contains("Free disk bytes"));
+    let challenge = request(&host, "/login", "", None).await?;
+    let csrf = challenge
+        .split("name=\"csrf\" type=\"hidden\" value=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .ok_or("CSRF challenge missing")?;
+    let challenge_cookie = challenge
+        .lines()
+        .find_map(|s| s.strip_prefix("set-cookie: "))
+        .and_then(|s| s.split(';').next())
+        .ok_or("challenge cookie missing")?;
     let form = format!(
-        "token={}",
+        "csrf={}&token={}",
+        csrf.replace('+', "%2B")
+            .replace('/', "%2F")
+            .replace('=', "%3D"),
         bearer
             .replace('+', "%2B")
             .replace('/', "%2F")
@@ -355,7 +371,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     let login = request(
         &host,
         "/login",
-        &format!("Origin: http://{host}\r\nContent-Type: application/x-www-form-urlencoded\r\n"),
+        &format!("Cookie: {challenge_cookie}\r\nOrigin: http://{host}\r\nContent-Type: application/x-www-form-urlencoded\r\n"),
         Some(&form),
     )
     .await?;
@@ -369,15 +385,33 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     assert!(!cookie.contains("Domain="));
     assert!(!cookie.contains("Max-Age="));
     assert!(!cookie.contains("Secure"));
-    assert!(state.session.cookie(true).contains("; Secure"));
+    assert!(Token::session()?.cookie(true).contains("; Secure"));
     let session = cookie.split(';').next().ok_or("cookie missing value")?;
     let response = request(&host, "/", &format!("Cookie: {session}\r\n"), None).await?;
     assert!(response.starts_with("HTTP/1.1 200"));
+    let challenge = request(&host, "/login", "", None).await?;
+    let csrf = challenge
+        .split("name=\"csrf\" type=\"hidden\" value=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .ok_or("CSRF challenge missing")?;
+    let challenge_cookie = challenge
+        .lines()
+        .find_map(|s| s.strip_prefix("set-cookie: "))
+        .and_then(|s| s.split(';').next())
+        .ok_or("challenge cookie missing")?;
     let bad_login = request(
         &host,
         "/login",
-        "Content-Type: application/x-www-form-urlencoded\r\n",
-        Some("token=wrong-login-secret"),
+        &format!(
+            "Cookie: {challenge_cookie}\r\nContent-Type: application/x-www-form-urlencoded\r\n"
+        ),
+        Some(&format!(
+            "csrf={}&token=wrong-login-secret",
+            csrf.replace('+', "%2B")
+                .replace('/', "%2F")
+                .replace('=', "%3D")
+        )),
     )
     .await?;
     assert!(bad_login.starts_with("HTTP/1.1 401"));

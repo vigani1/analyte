@@ -48,6 +48,9 @@ async fn render(state: &Context) -> Result<String, Error> {
         })
         .await?;
     let mut html = "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Analyte overview</title><h1>Analyte overview</h1><p>Read-only. Operator actions remain CLI-only.</p><dl>".to_owned();
+    html.push_str("</dl>");
+    html.push_str(super::pages::NAV);
+    html.push_str("<dl>");
     row(
         &mut html,
         "Order sending paused after restore",

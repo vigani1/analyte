@@ -1,9 +1,13 @@
-use super::{Token, listener::Listener};
+use super::{
+    Token, escape,
+    listener::Listener,
+    sessions::{Session, Sessions},
+};
 use crate::{Error, config::Program};
 use analyte_model::Identifier;
 use axum::{
-    Form, Router,
-    extract::{DefaultBodyLimit, Request, State},
+    Extension, Form, Router,
+    extract::{DefaultBodyLimit, FromRequest, Request, State},
     http::{StatusCode, header},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
@@ -23,7 +27,7 @@ pub(super) struct Machine {
 
 pub(super) struct Context {
     token: Token,
-    session: Token,
+    pub(super) sessions: Sessions,
     host: String,
     origin: String,
     pub(super) store: Arc<analyte_store::Handle>,
@@ -49,7 +53,6 @@ pub(crate) async fn prepare(
     };
     // All credential and bind failures precede spawning any service owner.
     let token = Token::load(program.data_directory())?;
-    let session = Token::session()?;
     let socket = tokio::net::TcpListener::bind(address).await?;
     let host = address.to_string();
     let machines: Vec<_> = program
@@ -66,7 +69,7 @@ pub(crate) async fn prepare(
         .collect();
     let state = Arc::new(Context {
         token,
-        session,
+        sessions: Sessions::default(),
         origin: format!("http://{host}"),
         host,
         store,
@@ -101,17 +104,37 @@ impl Server {
 fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
-        .route("/login", post(login))
+        .route("/login", get(login_page).post(login))
+        .route("/machines", get(super::pages::machines))
+        .route("/parked", get(super::pages::parked))
+        .route("/parked/{id}", get(super::pages::detail))
+        .route("/parked/{id}/raw", post(super::pages::raw))
+        .route("/orders", get(super::pages::orders))
         .layer(DefaultBodyLimit::max(1024))
         .layer(middleware::from_fn_with_state(state.clone(), protect))
         .with_state(state)
 }
 
-const LOGIN: &str = "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Analyte login</title><h1>Analyte admin</h1><form action=\"/login\" method=\"post\"><label>Token <input name=\"token\" type=\"password\" required autocomplete=\"off\" maxlength=\"44\"></label><button>Log in</button></form></html>";
-
-fn unauthorized() -> Response {
+fn unauthorized(state: &Context, existing: Option<&Arc<Session>>) -> Response {
     tracing::warn!("admin authentication refused");
-    let mut response = (StatusCode::UNAUTHORIZED, Html(LOGIN)).into_response();
+    let session = existing
+        .cloned()
+        .map(Ok)
+        .unwrap_or_else(|| state.sessions.issue(false, None));
+    let mut response = match session {
+        Ok(session) => {
+            let html = format!(
+                "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Analyte login</title><h1>Analyte admin</h1><form action=\"/login\" method=\"post\"><input name=\"csrf\" type=\"hidden\" value=\"{}\"><label>Token <input name=\"token\" type=\"password\" required autocomplete=\"off\" maxlength=\"44\"></label><button>Log in</button></form></html>",
+                escape(session.csrf.form_value())
+            );
+            let mut response = (StatusCode::UNAUTHORIZED, Html(html)).into_response();
+            if let Ok(value) = header::HeaderValue::from_str(&session.id.cookie(false)) {
+                response.headers_mut().insert(header::SET_COOKIE, value);
+            }
+            response
+        }
+        Err(_) => (StatusCode::UNAUTHORIZED, "admin login session unavailable").into_response(),
+    };
     response.headers_mut().insert(
         header::WWW_AUTHENTICATE,
         header::HeaderValue::from_static("Bearer"),
@@ -119,13 +142,13 @@ fn unauthorized() -> Response {
     response
 }
 
-async fn protect(State(state): State<Arc<Context>>, request: Request, next: Next) -> Response {
+async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: Next) -> Response {
     let valid_host = request
         .headers()
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
         == Some(state.host.as_str());
-    let login = request.uri().path() == "/login" && request.method() == axum::http::Method::POST;
+    let login = request.uri().path() == "/login";
     let bearer = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -139,17 +162,32 @@ async fn protect(State(state): State<Arc<Context>>, request: Request, next: Next
             s.split(';')
                 .find_map(|v| v.trim().strip_prefix("analyte_session="))
         });
+    let session = state.sessions.lookup(cookie);
     let authenticated = bearer.is_some_and(|v| state.token.matches(v))
-        || cookie.is_some_and(|v| state.session.matches(v));
+        || session
+            .as_ref()
+            .ok()
+            .and_then(Option::as_ref)
+            .is_some_and(|s| s.authenticated);
     let origin = request
         .headers()
         .get(header::ORIGIN)
         .and_then(|v| v.to_str().ok());
     let same_origin = origin.is_none_or(|v| v == state.origin);
-    let mut response = if !valid_host || !same_origin {
-        unauthorized()
+    let mut response = if session.is_err() {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "admin session lookup failed",
+        )
+            .into_response()
+    } else if !valid_host || !same_origin {
+        unauthorized(&state, None)
     } else if login || authenticated {
-        match tokio::time::timeout(Duration::from_secs(2), next.run(request)).await {
+        let session = session.ok().flatten();
+        if let Some(session) = &session {
+            request.extensions_mut().insert(session.clone());
+        }
+        match tokio::time::timeout(Duration::from_secs(2), dispatch(request, next, session)).await {
             Ok(response) => response,
             Err(_) => (
                 StatusCode::GATEWAY_TIMEOUT,
@@ -158,7 +196,7 @@ async fn protect(State(state): State<Arc<Context>>, request: Request, next: Next
                 .into_response(),
         }
     } else {
-        unauthorized()
+        unauthorized(&state, session.ok().flatten().as_ref())
     };
     for (name, value) in [
         (
@@ -179,24 +217,71 @@ async fn protect(State(state): State<Arc<Context>>, request: Request, next: Next
 }
 
 #[derive(serde::Deserialize)]
+struct Csrf {
+    csrf: String,
+}
+
+async fn dispatch(request: Request, next: Next, session: Option<Arc<Session>>) -> Response {
+    if request.method() != axum::http::Method::POST {
+        return next.run(request).await;
+    }
+    let Some(session) = session else {
+        return (StatusCode::FORBIDDEN, "CSRF session required").into_response();
+    };
+    let (parts, body) = request.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, 1024).await else {
+        return (StatusCode::PAYLOAD_TOO_LARGE, "admin form exceeds limit").into_response();
+    };
+    let copy = Request::from_parts(parts.clone(), axum::body::Body::from(bytes.clone()));
+    let form = Form::<Csrf>::from_request(copy, &()).await;
+    if !form.is_ok_and(|Form(form)| session.csrf_valid(&form.csrf)) {
+        return (StatusCode::FORBIDDEN, "CSRF token invalid or missing").into_response();
+    }
+    next.run(Request::from_parts(parts, axum::body::Body::from(bytes)))
+        .await
+}
+
+async fn login_page(
+    State(state): State<Arc<Context>>,
+    session: Option<Extension<Arc<Session>>>,
+) -> Response {
+    unauthorized(&state, session.as_ref().map(|Extension(s)| s))
+}
+
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Login {
+    csrf: String,
     token: String,
 }
 
 async fn login(
     State(state): State<Arc<Context>>,
+    Extension(previous): Extension<Arc<Session>>,
     form: Result<Form<Login>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     let Ok(Form(form)) = form else {
-        return unauthorized();
+        return unauthorized(&state, Some(&previous));
     };
-    if !state.token.matches(&form.token) {
-        return unauthorized();
+    if !previous.csrf_valid(&form.csrf) || !state.token.matches(&form.token) {
+        return unauthorized(&state, Some(&previous));
     }
     // This listener is HTTP loopback only. Forwarded scheme headers are never
     // trusted. HTTPS transport, when supported, must also enable Secure here.
-    let cookie = state.session.cookie(false);
+    let session = match state.sessions.issue(true, Some(&previous)) {
+        Ok(session) => session,
+        Err(error) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Html(format!(
+                    "admin session creation failed: {}",
+                    escape(&error.to_string())
+                )),
+            )
+                .into_response();
+        }
+    };
+    let cookie = session.id.cookie(false);
     let Ok(cookie) = header::HeaderValue::from_str(&cookie) else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,

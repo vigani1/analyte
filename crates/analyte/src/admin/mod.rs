@@ -1,7 +1,9 @@
 //! Protected local administration; credentials remain owned by the host.
 mod listener;
 mod overview;
+mod pages;
 mod server;
+mod sessions;
 mod token;
 
 pub(crate) use server::prepare;

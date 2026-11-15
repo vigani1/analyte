@@ -30,6 +30,9 @@ pub enum TokenError {
 pub struct Token(String);
 
 impl Token {
+    pub(super) fn form_value(&self) -> &str {
+        &self.0
+    }
     pub(super) fn session() -> Result<Self, TokenError> {
         generate(getrandom::fill).map(Self)
     }
