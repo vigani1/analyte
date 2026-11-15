@@ -37,6 +37,10 @@ dependencies = [
 [[package]]
 name = "analyte-hl7"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+ "thiserror",
+]
 
 [[package]]
 name = "analyte-model"

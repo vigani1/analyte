@@ -1,6 +1,6 @@
 [package]
 name = "analyte-hl7"
-description = "HL7 v2 syntax (2.3.1 and 2.5.1), acknowledgments and IHE LAW transactions."
+description = "Pure HL7 v2 syntax and acknowledgments."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,8 +9,10 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+thiserror = { workspace = true }
 
 [dev-dependencies]
+proptest = { workspace = true }
 
 [lints]
 workspace = true
