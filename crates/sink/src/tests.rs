@@ -756,7 +756,9 @@ async fn relay(
             let body = body(response).await?;
             if first && lose_response {
                 // Upstream has durably committed; hold the answer past the client deadline.
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                // Longer than the 1 s client deadline, shorter than the 5 s backoff,
+                // so this sequential relay is free again before the retry arrives.
+                tokio::time::sleep(Duration::from_secs(3)).await;
             } else {
                 let header = format!(
                     "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -790,7 +792,8 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
             .join(if lose_response { "lost.db" } else { "retry.db" });
         let mut store = store(&path).await?;
         let mut destination = destination(&proxy.url)?;
-        destination.limits.request_timeout = Duration::from_millis(150);
+        // Loose enough for a slow runner's real round trip through the proxy.
+        destination.limits.request_timeout = Duration::from_secs(1);
         // Timestamps have whole-second resolution; a 1 s backoff can already be due
         // on a slow runner before the "not yet due" check below.
         destination.limits.backoff_min = Duration::from_secs(5);
