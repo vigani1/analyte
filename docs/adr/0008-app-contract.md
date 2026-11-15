@@ -39,6 +39,11 @@ are relative to it.
   in the contract document.
 - Retries and operator resends reuse the same ID and the exact same bytes;
   only the signature headers are recomputed.
+- An attempt interrupted by shutdown or a crash is retried automatically after
+  restart with the same ID and bytes, with an audit entry; this is safe because
+  receivers answer a repeat as `duplicate`. Parked, conflicting and paused
+  deliveries still need an operator. (Orders sent to machines are different:
+  they are never resent automatically, AGENTS rule 8.)
 - The app stores the delivery ID together with its effects before it
   answers. Answers:
   - `200` with `{"status": "accepted"}` or `{"status": "duplicate"}`: done;
