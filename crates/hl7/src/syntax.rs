@@ -296,7 +296,7 @@ impl Message {
             .split(|b| *b == delimiters.component)
             .next()
             .unwrap_or_default();
-        if !(matches!(version_id, b"2.3.1" | b"2.5.1") || (law && version_id.starts_with(b"2.5"))) {
+        if crate::Version::parse_wire(version_id, law).is_none() {
             return Err(Error::Control {
                 segment: "MSH",
                 field: 12,
@@ -305,7 +305,10 @@ impl Message {
         let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
             b"" | b"ASCII" => Charset::Ascii,
             b"8859/1" => Charset::Latin1,
-            b"UNICODE UTF-8" if version_id != b"2.3.1" || options.allow_utf8_in_v231 => {
+            b"UNICODE UTF-8"
+                if crate::Version::parse_wire(version_id, law) != Some(crate::Version::V231)
+                    || options.allow_utf8_in_v231 =>
+            {
                 Charset::Utf8
             }
             _ => return Err(Error::UnsupportedCharset),
@@ -334,7 +337,7 @@ impl Message {
     }
     /// Serializes exactly the accepted bytes; no normalization or loss occurs.
     #[must_use]
-    pub fn serialize(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Vec<u8> {
         self.raw.clone()
     }
     /// Borrows the original wire bytes.
@@ -643,4 +646,35 @@ pub fn decode_text(raw: &[u8], message: &Message) -> Result<String, Error> {
         output.extend_from_slice(tail.unwrap_or_default());
     }
     decode(&output, message.charset)
+}
+
+/// Escape content requiring an explicit text handling policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextEscape {
+    /// Non-delimiter escape or an unclosed escape.
+    Unsupported,
+    /// Highlighting or layout instructions.
+    Formatting,
+}
+
+/// Inspects escapes without decoding them; formatting takes precedence over
+/// earlier unsupported escapes, preserving conservative text handling.
+#[must_use]
+pub fn inspect_text_escapes(raw: &str, escape: u8) -> Option<TextEscape> {
+    let escape = char::from(escape);
+    let mut parts = raw.split(escape);
+    parts.next();
+    let mut issue = None;
+    while let Some(code) = parts.next() {
+        if parts.next().is_none() {
+            return Some(TextEscape::Unsupported);
+        }
+        match code {
+            "H" | "N" => return Some(TextEscape::Formatting),
+            _ if code.starts_with('.') => return Some(TextEscape::Formatting),
+            "F" | "S" | "T" | "R" | "E" => {}
+            _ => issue = Some(TextEscape::Unsupported),
+        }
+    }
+    issue
 }

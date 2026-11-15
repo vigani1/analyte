@@ -38,7 +38,7 @@ fn lis02_5_4_5_escapes_never_change_boundaries() -> Result<(), Error> {
         Some("|^\\&&Zx|^\\y&&X0D&&H&bold&N&&unknown&")
     );
     assert_eq!(
-        messages.first().map(analyte_astm::Message::serialize),
+        messages.first().map(analyte_astm::Message::encode),
         Some(wire.to_vec())
     );
     assert!(matches!(
@@ -212,7 +212,7 @@ fn lis02_5_4_serialize_selected_delimiters() -> Result<(), Error> {
     let target = Delimiters::new(b';', b'~', b':', b'!')?;
     let serialized = messages
         .first()
-        .map(|m| m.serialize_with(target))
+        .map(|m| m.encode_with(target))
         .transpose()?
         .unwrap_or_default();
     assert_eq!(serialized, b"H;~:!;\rP;1;a!F!b|c:d~e\rL;1\r");
@@ -234,7 +234,7 @@ proptest! {
         let parsed = parse(wire.as_bytes(), Limits::default());
         prop_assert!(parsed.is_ok());
         if let Ok(messages) = parsed {
-            let serialized: Vec<u8> = messages.iter().flat_map(analyte_astm::Message::serialize).collect();
+            let serialized: Vec<u8> = messages.iter().flat_map(analyte_astm::Message::encode).collect();
             prop_assert_eq!(&serialized, wire.as_bytes());
             prop_assert_eq!(parse(&serialized, Limits::default()), Ok(messages));
         }

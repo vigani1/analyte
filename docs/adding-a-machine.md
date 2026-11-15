@@ -16,10 +16,10 @@ edition; a family name or an Ethernet socket does not establish a protocol.
 
 | Machine interface | Read first | Starting point |
 | --- | --- | --- |
-| ASTM LIS01/LIS02 | [ASTM scope](protocols/astm.md) | [ASTM example](../crates/config/examples/astm.toml) |
-| HL7 v2 legacy over MLLP | [HL7 scope](protocols/hl7.md) | [HL7 example](../crates/config/examples/hl7.toml) |
-| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](protocols/ihe-law.md) | [LAW example](../crates/config/examples/law.toml) plus [query/work settings](../crates/config/examples/law_orders.toml); persistent TCP client/server or independent directional links |
-| POCT01-A2 | [POCT scope](protocols/poct1-a.md) | [POCT example](../crates/config/examples/poct.toml), Observation Reviewer role |
+| ASTM LIS01/LIS02 | [ASTM scope](protocols/astm/README.md) | [ASTM example](../crates/config/examples/astm.toml) |
+| HL7 v2 legacy over MLLP | [HL7 scope](protocols/hl7/README.md) | [HL7 example](../crates/config/examples/hl7.toml) |
+| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](protocols/law/README.md) | [LAW example](../crates/config/examples/law.toml) plus [query/work settings](../crates/config/examples/law_orders.toml); persistent TCP client/server or independent directional links |
+| POCT01-A2 | [POCT scope](protocols/poct/README.md) | [POCT example](../crates/config/examples/poct.toml), Observation Reviewer role |
 | VIDAS Literal or Autolyser | [Protocol index](protocols/README.md), then vendor interface rules | [VIDAS](../crates/config/examples/vidas_literal.toml) or [Autolyser](../crates/config/examples/autolyser.toml) |
 
 There are no vendor-specific pages in that protocol index yet. Use the

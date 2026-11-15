@@ -1,4 +1,5 @@
 [package]
+autotests = false
 name = "analyte-poct"
 description = "POCT01-A2 Basic Profile Observation Reviewer: pure syntax, dialog and mapping."
 version.workspace = true
@@ -20,3 +21,15 @@ proptest.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "xml"
+
+[[test]]
+name = "messages"
+
+[[test]]
+name = "duplicate"
+
+[[test]]
+name = "builders"

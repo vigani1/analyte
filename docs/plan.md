@@ -2,7 +2,7 @@
 
 Status, 2026-11-15: phases 1 to 4, 6 and 8 are built at the documented level,
 while phase 5 has a POCT Basic Profile implementation with an open conformance
-evidence gate (see the audited [POCT checklist](protocols/poct1-a.md)),
+evidence gate (see the audited [POCT checklist](protocols/poct/README.md)),
 including IHE LAW as Analyzer Manager in the program (persistent or independent
 directional links; successful recorded simulator qualification remains). The program receives and parks
 results from every stack, answers machine queries and sends work lists for
@@ -106,8 +106,8 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-model`     | Common model: results, orders, identities, revisions         |
 | `analyte-store`     | Local storage (SQLite), outbox, audit                        |
 | `analyte-transport` | Serial, TCP, folder                                          |
-| `analyte-framing`   | ASTM frames, MLLP, start/end + checksum, lines               |
-| `analyte-dialog`    | Conversation state machines                                  |
+| `analyte-framing`   | ASTM, MLLP, POCT roots, VIDAS and Autolyser envelopes, lines               |
+| `analyte-dialog`    | ASTM, HL7, LAW, POCT, VIDAS and Autolyser conversations                                  |
 | `analyte-astm`      | ASTM record syntax                                           |
 | `analyte-hl7`       | HL7 v2 syntax, acknowledgments, LAW transactions             |
 | `analyte-config`    | Machine config files (TOML), validation, versions            |
@@ -116,12 +116,12 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-sink`      | Delivery to apps and order polling                           |
 | `analyte-sim`       | Fake machine and replay of recordings                        |
 | `analyte-poct`      | POCT01-A2 DML Observation Reviewer (XML)                     |
-| `analyte-vidas`     | VIDAS Literal framing and tagged messages                    |
-| `analyte-autolyser` | Autolyser host-polled framing and fixed-width records        |
+| `analyte-vidas`     | VIDAS tagged message syntax                    |
+| `analyte-autolyser` | Autolyser fixed-width record syntax        |
 | `analyte-receiver`  | Reference receiver: a small app that implements the contract |
 | `analyte`           | The program: service, CLI, admin page                        |
 
-Vendor formats and POCT1-A have their own crates, so a new vendor format is a
+Vendor syntax and POCT1-A have their own crates, so a new vendor format is a
 new crate rather than a change to a shared one.
 
 ## 6. Common model
@@ -292,10 +292,10 @@ them can be collected at any time and kept as test data.
 | --- | ----------------------------------------------------------------------------------- | ------------------------------------------ |
 | 0   | Name, license, repo, this plan, first ADRs                                          | Plan approved                              |
 | 1   | Core: workspace, common model, store, outbox, delivery, order contract and order cache ("changes since" polling, freshness, deadlines), fake machine, first reference receiver, protected command-line view of parked items, CI | A fake result reaches the reference receiver and a fake query is answered from the cache, failure paths included |
-| 2   | ASTM complete within [its scope](protocols/astm.md): serial and TCP transport, LIS01 framing, LIS02 records, all dialogs (machine pushes, machine asks, host sends ahead) | Every checklist row has passing tests (documented) |
-| 3   | HL7 v2 complete within [its scope](protocols/hl7.md): 2.3.1 and 2.5.1 syntax, acknowledgments, MLLP | Every checklist row has passing tests, plus official examples and HL7 tools (documented) |
-| 4   | IHE LAW as Analyzer Manager within [its scope](protocols/ihe-law.md): LAB-27 query, LAB-28 work order, LAB-29 results, selected options | Every checklist row has passing tests and a recorded Gazelle run (simulated) |
-| 5   | POCT01-A2 as DML Observation Reviewer within [its scope](protocols/poct1-a.md) | Every checklist row has passing tests (documented) |
+| 2   | ASTM complete within [its scope](protocols/astm/README.md): serial and TCP transport, LIS01 framing, LIS02 records, all dialogs (machine pushes, machine asks, host sends ahead) | Every checklist row has passing tests (documented) |
+| 3   | HL7 v2 complete within [its scope](protocols/hl7/README.md): 2.3.1 and 2.5.1 syntax, acknowledgments, MLLP | Every checklist row has passing tests, plus official examples and HL7 tools (documented) |
+| 4   | IHE LAW as Analyzer Manager within [its scope](protocols/law/README.md): LAB-27 query, LAB-28 work order, LAB-29 results, selected options | Every checklist row has passing tests and a recorded Gazelle run (simulated) |
+| 5   | POCT01-A2 as DML Observation Reviewer within [its scope](protocols/poct/README.md) | Every checklist row has passing tests (documented) |
 | 6   | Published contract: full reference receiver, contract docs and test vectors any app can run | The test vectors pass against the reference receiver end to end |
 | 7   | Machine configs: cobas e 411, Biolyte 2000, iFlash 1200, Swelab Lumi        | Each config passes its vendor traces (simulated) |
 | 8   | Vendor formats: VIDAS Literal, Autolyser (start/end framing, tags, fixed width, polling dialog) | Each piece passes its vendor examples (documented or simulated) |

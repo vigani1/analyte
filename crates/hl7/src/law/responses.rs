@@ -166,42 +166,4 @@ pub(super) fn append_ack_segments(wire: &mut Wire, ack: &Message) -> Result<(), 
     Ok(())
 }
 
-/// Bounded output assembly shared by LAW renderers; check before allocating.
-pub(super) struct Wire {
-    pub(super) bytes: Vec<u8>,
-    maximum: usize,
-    separator: u8,
-}
-
-impl Wire {
-    pub(super) fn new(maximum: usize, separator: u8) -> Self {
-        Self {
-            bytes: Vec::new(),
-            maximum,
-            separator,
-        }
-    }
-
-    pub(super) fn append(&mut self, value: &[u8]) -> Result<(), Error> {
-        if self
-            .bytes
-            .len()
-            .checked_add(value.len())
-            .is_none_or(|size| size > self.maximum)
-        {
-            return Err(crate::Error::Limit {
-                kind: "LAW output",
-                segment: 0,
-                field: 0,
-            }
-            .into());
-        }
-        self.bytes.extend_from_slice(value);
-        Ok(())
-    }
-
-    pub(super) fn field(&mut self, value: &[u8]) -> Result<(), Error> {
-        self.append(&[self.separator])?;
-        self.append(value)
-    }
-}
+pub(super) use crate::encoder::Wire;

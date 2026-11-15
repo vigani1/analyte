@@ -908,3 +908,30 @@ fn hl7_231_2_24_4_8_10_251_5_10_5_3_9_11_filter_length_boundaries() -> Result<()
     }
     Ok(())
 }
+
+#[test]
+fn hl7_231_2_8_20_and_251_2_a_33_uri_code_is_edition_specific() -> Result<(), Error> {
+    for (edition, accepted) in [("2.3.1", false), ("2.5.1", true)] {
+        let message = fixture(edition, "QRD", 8, b"^Name^^^^^^^LAB&urn:synthetic&URI")?;
+        assert_eq!(Request::new(&message).is_ok(), accepted);
+    }
+    Ok(())
+}
+
+#[test]
+fn hl7_231_2_8_49_and_251_2_a_86_table_0200_name_codes() -> Result<(), Error> {
+    for (edition, code, accepted) in [
+        ("2.3.1", b"I", false),
+        ("2.5.1", b"I", true),
+        ("2.3.1", b"N", false),
+        ("2.5.1", b"N", true),
+        ("2.3.1", b"R", false),
+        ("2.5.1", b"R", true),
+    ] {
+        let mut value = b"^Name^^^^^^^^".to_vec();
+        value.extend_from_slice(code);
+        let message = fixture(edition, "QRD", 8, &value)?;
+        assert_eq!(Request::new(&message).is_ok(), accepted);
+    }
+    Ok(())
+}

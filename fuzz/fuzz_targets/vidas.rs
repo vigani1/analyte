@@ -2,10 +2,8 @@
 #![forbid(unsafe_code)]
 use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
-    use analyte_vidas::{
-        framing::*,
-        syntax::{Message, SampleLimit},
-    };
+    use analyte_framing::vidas::*;
+    use analyte_vidas::syntax::{Message, SampleLimit};
     let Ok(config) = Config::new(
         Mode::Literal,
         80,

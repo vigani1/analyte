@@ -65,6 +65,7 @@ dependencies = [
 name = "analyte-autolyser"
 version = "0.1.0"
 dependencies = [
+ "analyte-framing",
  "proptest",
  "thiserror",
 ]
@@ -104,9 +105,13 @@ dependencies = [
 name = "analyte-dialog"
 version = "0.1.0"
 dependencies = [
+ "analyte-autolyser",
  "analyte-framing",
  "analyte-hl7",
+ "analyte-poct",
+ "analyte-vidas",
  "proptest",
+ "quick-xml",
  "thiserror",
 ]
 
@@ -115,6 +120,7 @@ name = "analyte-framing"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "quick-xml",
  "thiserror",
 ]
 

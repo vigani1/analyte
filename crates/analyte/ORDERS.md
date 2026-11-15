@@ -384,4 +384,4 @@ and paused restore admission. They do not qualify a physical analyzer.
 Queries, send-ahead and cancellation share durable per-AWOS reservations and
 never replay machine work after uncertainty or restart. The current scope,
 limitations and named tests are maintained in the
-[LAW checklist](../../docs/protocols/ihe-law.md).
+[LAW checklist](../../docs/protocols/law/README.md).

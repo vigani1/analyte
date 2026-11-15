@@ -60,8 +60,8 @@ async fn packet(peer: &mut TcpStream) -> Result<(), Error> {
     assert_eq!(received, expected);
     Ok(())
 }
-fn framing() -> Result<analyte_vidas::framing::Config, Error> {
-    use analyte_vidas::framing::{Checksum, Config, Mode};
+fn framing() -> Result<analyte_framing::vidas::Config, Error> {
+    use analyte_framing::vidas::{Checksum, Config, Mode};
     Ok(Config::new(
         Mode::Literal,
         80,

@@ -1,10 +1,8 @@
 //! Synthetic Rev18 protocol and safety regressions.
-use analyte_autolyser::{
-    dialog::{
-        Action, Config, Dialog, Error as DialogError, Event, InsertionError, Reception, Recovery,
-        Request,
-    },
-    records::*,
+use analyte_autolyser::syntax::*;
+use analyte_dialog::autolyser::{
+    Action, Config, Dialog, Error as DialogError, Event, InsertionError, Reception, Recovery,
+    Request,
 };
 use proptest::prelude::*;
 use std::time::Duration;
@@ -225,7 +223,7 @@ proptest! {
     #[test]
     fn autolyser_rev18_p179_checksum_wraps_explicitly(raw in prop::collection::vec(any::<u8>(), 0..1000)) {
         let sum: u64 = raw.iter().map(|b| u64::from(*b)).sum();
-        prop_assert_eq!(u64::from(checksum(&raw)), sum % 256);
+        prop_assert_eq!(u64::from(analyte_framing::autolyser::checksum(&raw)), sum % 256);
     }
 }
 

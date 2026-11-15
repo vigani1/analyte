@@ -69,7 +69,12 @@ fn date_time(value: &[u8]) -> Option<usize> {
     }
     let mut components = time.split(|b| *b == b'.');
     let whole = components.next()?;
-    if !matches!(whole.len(), 4 | 6 | 8 | 10 | 12 | 14) || !whole.iter().all(u8::is_ascii_digit) {
+    if !Version::V251
+        .rules()
+        .timestamp_precisions
+        .contains(&whole.len())
+        || !whole.iter().all(u8::is_ascii_digit)
+    {
         return None;
     }
     if let Some(fraction) = components.next()
@@ -172,7 +177,7 @@ fn coded_parts(parts: &[&[u8]], extended: bool, version: Version) -> bool {
     if !simple_parts(parts, if extended { 9 } else { 6 }) {
         return false;
     }
-    if version == Version::V251 && !lengths(parts, &[20, 199, 20, 20, 199, 20, 10, 10, 199]) {
+    if !lengths(parts, version.rules().coded_lengths) {
         return false;
     }
     // A local CWE code remains opaque, but its non-HL7 coding system needs
@@ -197,7 +202,7 @@ fn simple_parts(parts: &[&[u8]], maximum: usize) -> bool {
 }
 
 pub(crate) fn uid(value: &[u8], version: Version) -> bool {
-    (version != Version::V231 || value != b"URI")
+    (version.rules().uri || value != b"URI")
         && choice(
             value,
             &[
@@ -244,10 +249,7 @@ pub(super) fn quantity(value: Repetition<'_>) -> bool {
 
 pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
     let components: Vec<_> = value.components().collect();
-    let limit = match version {
-        Version::V231 => 15,
-        Version::V251 => 23,
-    };
+    let limit = version.rules().xcn_components;
     if components.len() > limit {
         return false;
     }
@@ -266,15 +268,11 @@ pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
         }
         let valid = match n {
             2 => {
-                simple_parts(
-                    &parts,
-                    match version {
-                        Version::V231 => 2,
-                        Version::V251 => 5,
-                    },
-                ) && (version != Version::V251
-                    || component.raw().is_empty()
-                    || (!at(&parts, 1).is_empty() && lengths(&parts, &[50, 20, 50, 20, 50])))
+                simple_parts(&parts, version.rules().family_components)
+                    && (version.rules().family_lengths.is_empty()
+                        || component.raw().is_empty()
+                        || (!at(&parts, 1).is_empty()
+                            && lengths(&parts, version.rules().family_lengths)))
             }
             9 | 14 => hd(&parts, version),
             16 => coded_parts(&parts, false, version),
@@ -291,35 +289,16 @@ pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
         if !valid {
             return false;
         }
-        if version == Version::V251 {
-            let length = match n {
-                1 => 15,
-                2 => 194,
-                3 | 4 => 30,
-                5 | 6 => 20,
-                7 | 13 => 5,
-                8 => 4,
-                9 | 14 => 227,
-                10 | 11 | 15 | 18 => 1,
-                12 => 3,
-                16 => 483,
-                17 => 53,
-                19 | 20 => 26,
-                21 => 199,
-                22 | 23 => 705,
-                _ => return false,
-            };
-            if component.raw().len() > length {
-                return false;
-            }
+        if version
+            .rules()
+            .xcn_lengths
+            .get(offset)
+            .is_some_and(|length| component.raw().len() > *length)
+        {
+            return false;
         }
     }
-    let name_types: &[&[u8]] = match version {
-        Version::V231 => &[b"A", b"D", b"L", b"M", b"C", b"B", b"P", b"S", b"T", b"U"],
-        Version::V251 => &[
-            b"A", b"B", b"C", b"D", b"I", b"L", b"M", b"N", b"P", b"R", b"S", b"T", b"U",
-        ],
-    };
+    let name_types = version.rules().name_types;
     choice(at(&raw, 10), name_types)
         && choice(at(&raw, 12), &[b"M10", b"M11", b"ISO", b"NPI"])
         && (at(&raw, 11).is_empty() || !at(&raw, 12).is_empty())
@@ -351,7 +330,12 @@ fn sequence(parts: &[&[u8]], version: Version) -> bool {
     if !simple_parts(parts, 11) || !matches!(at(parts, 1), b"S" | b"C") {
         return false;
     }
-    if version == Version::V251 && [1, 2, 4, 8, 10].iter().any(|n| at(parts, *n).is_empty()) {
+    if version
+        .rules()
+        .sequence_required
+        .iter()
+        .any(|n| at(parts, *n).is_empty())
+    {
         return false;
     }
     if !at(parts, 7).is_empty() && !decimal(at(parts, 7)) {
@@ -376,7 +360,7 @@ fn sequence(parts: &[&[u8]], version: Version) -> bool {
             return false;
         }
     }
-    version != Version::V251 || lengths(parts, &[1, 15, 6, 15, 6, 12, 3, 15, 6, 15, 6])
+    lengths(parts, version.rules().sequence_lengths)
 }
 
 pub(super) fn timing(value: Repetition<'_>, version: Version) -> bool {
@@ -402,7 +386,7 @@ pub(super) fn timing(value: Repetition<'_>, version: Version) -> bool {
             2 => {
                 simple_parts(&parts, 2)
                     && explicit_times(at(&parts, 2))
-                    && (version != Version::V251 || lengths(&parts, &[6, 199]))
+                    && lengths(&parts, version.rules().interval_lengths)
             }
             3 => scalar(*component) && duration(component.raw()),
             4 | 5 => ts(&parts),
@@ -416,24 +400,52 @@ pub(super) fn timing(value: Repetition<'_>, version: Version) -> bool {
         if !valid {
             return false;
         }
-        if version == Version::V251 {
-            let maximum = match n {
-                1 => 267,
-                2 => 206,
-                3 | 6 => 6,
-                4 | 5 => 26,
-                7 => 199,
-                8 => 200,
-                9 => 1,
-                10 => 110,
-                11 => 483,
-                12 => 4,
-                _ => return false,
-            };
-            if component.raw().len() > maximum {
-                return false;
-            }
+        if version
+            .rules()
+            .timing_lengths
+            .get(offset)
+            .is_some_and(|maximum| component.raw().len() > *maximum)
+        {
+            return false;
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hl7_231_4_4_and_251_2_a_50_order_sequence_required_fields_and_lengths() {
+        let valid: &[&[u8]] = &[
+            b"S", b"placer", b"", b"filler", b"", b"", b"", b"uid1", b"", b"uid2",
+        ];
+        assert!(sequence(valid, Version::V231));
+        assert!(sequence(valid, Version::V251));
+        for field in [2_usize, 4, 8, 10] {
+            let mut missing = valid.to_vec();
+            missing[field - 1] = b"";
+            assert!(sequence(&missing, Version::V231));
+            assert!(!sequence(&missing, Version::V251));
+            let mut longer = valid.to_vec();
+            longer[field - 1] = b"1234567890123456";
+            assert!(sequence(&longer, Version::V231));
+            assert!(!sequence(&longer, Version::V251));
+        }
+    }
+
+    #[test]
+    fn hl7_231_2_8_3_and_251_2_a_6_coded_component_lengths() {
+        for (field, maximum) in [(0, 20), (1, 199), (2, 20), (3, 20), (4, 199), (5, 20)] {
+            let at_limit = vec![b'A'; maximum];
+            let beyond = vec![b'A'; maximum + 1];
+            let mut parts = vec![b"".as_slice(); 6];
+            parts[field] = &at_limit;
+            assert!(coded_parts(&parts, false, Version::V251));
+            parts[field] = &beyond;
+            assert!(coded_parts(&parts, false, Version::V231));
+            assert!(!coded_parts(&parts, false, Version::V251));
+        }
+    }
 }
