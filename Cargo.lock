@@ -177,6 +177,11 @@ dependencies = [
 [[package]]
 name = "analyte-sim"
 version = "0.1.0"
+dependencies = [
+ "analyte-transport",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "analyte-sink"
