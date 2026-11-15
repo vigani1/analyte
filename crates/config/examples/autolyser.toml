@@ -1,5 +1,6 @@
 # Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
 schema_version = 1
+protocol = "autolyser"
 name = "generic-synthetic"
 deviations = []
 [transport]

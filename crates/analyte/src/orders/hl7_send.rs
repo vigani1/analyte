@@ -45,7 +45,7 @@ pub(super) async fn next(
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
     let settings = super::settings::hl7(machine).ok_or("HL7 settings missing")?;
-    let Some(send) = &settings.send else {
+    let Some(send) = &settings.send() else {
         return Ok(None);
     };
     let dest = super::destination(machine);
@@ -115,7 +115,7 @@ pub(super) async fn next(
                 continue;
             }
         };
-        let namespace = send.placer_namespace.clone();
+        let namespace = send.placer_namespace().clone();
         let groups = command
             .tests()
             .iter()

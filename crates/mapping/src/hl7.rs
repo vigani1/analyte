@@ -32,7 +32,7 @@ pub(crate) fn validate_message(
         return Err(Error::Syntax);
     }
     let settings = config.effective().stack().limits();
-    if message.raw().len() > settings.bytes || message.segments().count() > settings.records {
+    if message.raw().len() > settings.bytes() || message.segments().count() > settings.records() {
         return Err(Error::Limit {
             position: Position {
                 record: 0,

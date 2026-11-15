@@ -101,6 +101,7 @@ settings, not installation recommendations.
 ```toml
 # Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
 schema_version = 1
+protocol = "astm"
 name = "generic-synthetic"
 deviations = []
 [transport]
@@ -327,15 +328,31 @@ then timed direction/base64-byte events. Use the bounded reader/writers
 specified in the simulator guide. Variable host control IDs/times need named,
 fixed byte-location exceptions, never broad masks.
 
-`analyte-sim` is a library, not an executable. Ask a contributor to add a
-source-named replay test following the existing recording tests in
-[delivery.rs](../crates/analyte/tests/delivery.rs). The test uses a temporary
-store, loopback machine peer and reference receiver, with no live credentials.
-It calls `analyte_sim::replay`, compares host bytes and checks durable records
-and delivered results. Deadlines come from the protocol/config, not capture gaps.
-Replay does not reproduce recorded waiting times; serial break events are not
-supported by the current replay implementation. Run the focused test as described
-in the simulator guide. Adding test code also requires the workspace checks.
+`cargo test --workspace` discovers every `machines/**/machine.toml`, validates
+it with the real config loader, and replays every `.rec.jsonl` in its
+`recordings/` folder through the service. Use the fixed README sections in
+[machines/README.md](../machines/README.md), including one `Level: documented`,
+`Level: simulated` or `Level: proven` line under Evidence matching the TOML.
+An empty machine inventory passes and reports that it found no definitions.
+
+The automatic test uses temporary stores and loopback peers, without live
+credentials or patient data. Physical serial/TCP I/O is replaced for replay;
+the configured framing, dialog, syntax and mapping run in the real service.
+Host bytes must match the recording, subject only to its declared located
+exceptions. Complete-file recordings contain one payload split across inbound
+events and no stream link transitions or host replies; replay checks the exact
+stored bytes. Serial break events remain unsupported by the replay library.
+
+Run the discovery test alone with:
+
+```text
+cargo test -p analyte --test delivery adr0012_5 -- --nocapture
+```
+
+For additional custody, delivery and failure assertions, follow the existing
+source-named tests in [delivery.rs](../crates/analyte/tests/delivery.rs). A
+recording replay does not establish that every clinical workflow is qualified.
+Adding a definition or test also requires the workspace checks.
 
 Cover the applicable failure cases, not just one successful upload:
 
