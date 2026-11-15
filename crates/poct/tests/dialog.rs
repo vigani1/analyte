@@ -367,3 +367,38 @@ fn poct01_b_4_1_12_escape_correlation_and_final_ack_correlation() -> Result<(), 
     );
     Ok(())
 }
+
+#[test]
+fn poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack() -> Result<(), DialogError>
+{
+    let mut left = dialog(2)?;
+    startup(&mut left)?;
+    let store = step(&mut left, received(&observation("o"))?)?;
+    let t = ticket(&store)?;
+    let mut fresh = Dialog::new(
+        DialogConfig {
+            pending_messages: 2,
+            message_bytes: 65536,
+            response_timeout: Duration::from_secs(180),
+            unannounced_ack_timeout: Duration::from_secs(20),
+        },
+        ControlId::new("different-session")?,
+    )?;
+    assert!(matches!(
+        complete(&mut fresh, t.clone(), CommitOutcome::Stored),
+        Err(DialogError::Commit)
+    ));
+    let actions = step(&mut left, DialogEvent::Disconnected)?;
+    assert!(sends(&actions).is_empty());
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a,DialogAction::Close{unresolved,..} if unresolved.contains(&t)))
+    );
+    fresh.step(Duration::from_secs(1), DialogEvent::Tick)?;
+    assert!(matches!(
+        fresh.step(Duration::ZERO, DialogEvent::Tick),
+        Err(DialogError::TimeReversed)
+    ));
+    Ok(())
+}

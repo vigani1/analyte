@@ -110,6 +110,7 @@ impl Document {
         if input.chars().any(|c| !xml_character(c)) {
             return Err(Error::Syntax);
         }
+        let input = input.strip_prefix('\u{feff}').unwrap_or(input);
         let mut reader = Reader::from_str(input);
         reader.config_mut().check_comments = true;
         let mut elements = Vec::<Element>::new();
@@ -148,7 +149,9 @@ impl Document {
                             return Err(Error::Syntax);
                         }
                         let key = attribute.key.as_ref();
-                        if !valid_name(key) {
+                        if !valid_name(key)
+                            && !matches!(key, "xml:lang" | "xml:lang-T" | "xml:lang-HL7_NAME")
+                        {
                             return Err(Error::Syntax);
                         }
                         let value = attribute
@@ -174,6 +177,9 @@ impl Document {
                     stack.pop().ok_or(Error::Root)?;
                 }
                 Event::Text(text) => {
+                    if text.as_ref().contains("]]>") {
+                        return Err(Error::Syntax);
+                    }
                     let decoded = text.xml_content(quick_xml::XmlVersion::Implicit1_0);
                     append_text(&mut elements, &stack, &decoded)?;
                 }
@@ -188,6 +194,9 @@ impl Document {
                     if stack.is_empty() {
                         return Err(Error::Root);
                     }
+                    if text.as_ref().contains("]]>") {
+                        return Err(Error::Syntax);
+                    }
                     let decoded = text.xml_content(quick_xml::XmlVersion::Implicit1_0);
                     append_text(&mut elements, &stack, &decoded)?;
                 }
@@ -201,6 +210,27 @@ impl Document {
                                 .ok_or(Error::Declaration)?
                     {
                         return Err(Error::Declaration);
+                    }
+                    let attributes = quick_xml::events::BytesStart::from_content(decl.as_ref(), 3);
+                    let mut order = 0usize;
+                    for attribute in attributes.attributes() {
+                        let attribute = attribute.map_err(|_| Error::Declaration)?;
+                        if attribute.value.len() > limits.attribute_bytes {
+                            return Err(Error::AttributeLimit);
+                        }
+                        let rank = match attribute.key.as_ref() {
+                            "version" => 1,
+                            "encoding" => 2,
+                            "standalone" => 3,
+                            _ => return Err(Error::Declaration),
+                        };
+                        if rank <= order {
+                            return Err(Error::Declaration);
+                        }
+                        order = rank;
+                        if rank == 3 && !matches!(attribute.value.as_ref(), "yes" | "no") {
+                            return Err(Error::Declaration);
+                        }
                     }
                     declaration = true;
                     if decl.version().map_err(|_| Error::Declaration)?.as_ref() != "1.0" {

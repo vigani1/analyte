@@ -129,3 +129,17 @@ proptest! {
         prop_assert_eq!(root.attributes().first().map(|(_, v)| v.as_str()), Some(value.as_str()));
     }
 }
+
+#[test]
+fn poct01_project_utf8_bom_declarations_and_forbidden_text() -> Result<(), Error> {
+    let raw = b"\xef\xbb\xbf<?xml version='1.0' encoding='UTF-8' standalone='yes'?><synthetic/>";
+    assert_eq!(Document::parse(raw, limits())?.raw(), raw);
+    for raw in [
+        "<?xml version='1.0' unknown='x'?><x/>",
+        "<?xml version='1.0' standalone='maybe'?><x/>",
+        "<x>]]></x>",
+    ] {
+        assert!(Document::parse(raw.as_bytes(), limits()).is_err());
+    }
+    Ok(())
+}

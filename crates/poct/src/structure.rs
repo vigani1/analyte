@@ -100,8 +100,16 @@ pub(crate) fn validate(document: &Document) -> Result<Vec<Option<Value>>, Messag
                 kind,
                 element.name() == "OBS.observation_id"
                     || element.name() == "ORD.universal_service_id"
-                    || matches!(element.name(), "SPC.source_cd" | "SPC.type_cd"),
+                    || matches!(
+                        element.name(),
+                        "SPC.source_cd" | "SPC.type_cd" | "NOTE" | "TRANSLTN"
+                    ),
             )?;
+            if data::attr(element, "ORIGTXT").is_some()
+                && children(document, index).any(|(_, e)| e.name() == "ORIGTXT")
+            {
+                return Err(MessageError::Structure);
+            }
             let value = data::parse(element, kind).map_err(MessageError::Data)?;
             validate_codes(element)?;
             values.push(Some(value));
@@ -294,7 +302,7 @@ fn object_rules(name: &str, patient: bool) -> Option<Vec<Rule>> {
 
 fn field_kind(name: &str) -> Option<Kind> {
     Some(match name {
-        "DCP.vendor_specific" | "NOTE" | "ORIGTXT" => Kind::Encapsulated,
+        "DCP.vendor_specific" | "THUMBNAIL" | "ORIGTXT" => Kind::Encapsulated,
         "PT.name" | "OPR.name" => Kind::Person,
         "OBS.observation_id"
         | "OBS.qualitative_value"
@@ -313,7 +321,10 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "TRM.reason_cd"
         | "ACK.error_detail_cd"
         | "REQ.request_cd"
-        | "TRANSLTN" => Kind::Code,
+        | "TRANSLTN"
+        | "NOTE"
+        | "CONFID"
+        | "RGT.lot_number" => Kind::Code,
         "DSC.connection_profile_cd"
         | "SVC.role_cd"
         | "SVC.status_cd"
@@ -322,7 +333,6 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "OBS.method_cd"
         | "OBS.status_cd"
         | "OBS.interpretation_cd"
-        | "RGT.lot_number"
         | "ACK.type_cd"
         | "ESC.detail_cd" => Kind::SimpleCode,
         "OBS.value" | "PT.weight" | "PT.height" => Kind::Quantity,
@@ -339,7 +349,7 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "CTC.expiration_date"
         | "RGT.expiration_date"
         | "EOT.update_dttm" => Kind::Time,
-        "DCP.application_timeout" | "CONFID" => Kind::Real,
+        "DCP.application_timeout" => Kind::Real,
         "DSC.max_message_sz"
         | "DST.new_observations_qty"
         | "DST.new_events_qty"
@@ -377,7 +387,8 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "FAM"
         | "PFX"
         | "SFX"
-        | "DEL" => Kind::Text,
+        | "DEL"
+        | "REF" => Kind::Text,
         _ => return None,
     })
 }
@@ -391,15 +402,21 @@ fn validate_field_children(
     let mut last = 0usize;
     let mut singleton = std::collections::BTreeSet::new();
     for (_, element) in children(document, parent) {
+        if kind == Kind::Encapsulated {
+            if matches!(element.name(), "REF" | "THUMBNAIL" | "NOTE" | "CONFID") {
+                continue;
+            }
+            return Err(MessageError::Structure);
+        }
         let (rank, many) = match element.name() {
             "ORIGTXT" if kind == Kind::Code => (0, false),
             "TRANSLTN" if equivalents => (1, true),
             "GIV" | "MID" | "FAM" | "PFX" | "SFX" | "DEL" if kind == Kind::Person => (0, true),
-            "NOTE" => (2, false),
-            "CONFID" => (3, false),
+            "NOTE" => (2, kind == Kind::Text),
+            "CONFID" => (3, kind == Kind::Text),
             _ => return Err(MessageError::Structure),
         };
-        if rank < last || (!many && !singleton.insert(rank)) {
+        if (kind != Kind::Text && rank < last) || (!many && !singleton.insert(rank)) {
             return Err(MessageError::Structure);
         }
         last = rank;

@@ -54,7 +54,9 @@ impl ControlId {
     pub fn new(value: &str) -> Result<Self, MessageError> {
         if value.is_empty()
             || value.len() > 256
-            || value.chars().any(|c| !crate::xml::xml_character(c))
+            || value
+                .chars()
+                .any(|c| c.is_control() || !crate::xml::xml_character(c))
         {
             return Err(MessageError::MissingValue("HDR.control_id"));
         }

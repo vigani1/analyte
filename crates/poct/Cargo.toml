@@ -1,6 +1,6 @@
 [package]
 name = "analyte-poct"
-description = "Bounded POCT01-A2 XML syntax foundation (not a conformant reviewer yet)."
+description = "POCT01-A2 Basic Profile Observation Reviewer: pure syntax, dialog and mapping."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,6 +20,3 @@ proptest.workspace = true
 
 [lints]
 workspace = true
-
-
-

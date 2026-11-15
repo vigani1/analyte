@@ -70,3 +70,26 @@ fn poct01_project_builder_limits_and_explicit_offset() -> Result<(), MessageErro
     }
     Ok(())
 }
+
+#[test]
+fn poct01_b_5_7_builder_honors_exact_device_receive_size() -> Result<(), MessageError> {
+    let header = Header {
+        control_id: ControlId::new("synthetic-&-id")?,
+        created: Timestamp::parse("2026-03-12T09:41:02+01:00")?,
+    };
+    let built = build(&header, &Outbound::RequestObservations, common::limits())?;
+    let mut limits = common::limits();
+    limits.message_bytes = built.document().raw().len();
+    assert_eq!(
+        build(&header, &Outbound::RequestObservations, limits)?
+            .document()
+            .raw(),
+        built.document().raw()
+    );
+    limits.message_bytes = limits
+        .message_bytes
+        .checked_sub(1)
+        .ok_or(MessageError::Structure)?;
+    assert!(build(&header, &Outbound::RequestObservations, limits).is_err());
+    Ok(())
+}

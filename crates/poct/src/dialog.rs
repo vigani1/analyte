@@ -422,7 +422,9 @@ impl Dialog {
             if let Some(capabilities) = capabilities {
                 match &capabilities.maximum_message_bytes {
                     Nullable::Value(value) => {
-                        if let Ok(limit) = value.parse::<usize>() {
+                        if let Ok(limit) = value.parse::<usize>()
+                            && limit > 0
+                        {
                             self.device_message_limit = limit.min(self.config.message_bytes);
                         } else {
                             supported = false;

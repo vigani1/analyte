@@ -120,17 +120,22 @@ pub fn build(header: &Header, body: &Outbound, limits: Limits) -> Result<Message
         ("HDR.creation_dttm", header.created.original()),
     ];
     all.extend(fields.iter().copied());
-    // Reserve for worst-case XML escaping before allocating. This keeps even
+    // Count the exact escaped size before allocating. This keeps even
     // caller-supplied timestamps inside the same message allocation boundary.
-    let mut length = 256usize;
+    let mut length = root
+        .len()
+        .checked_mul(2)
+        .and_then(|n| object.len().checked_mul(2).and_then(|o| n.checked_add(o)))
+        .and_then(|n| n.checked_add(21))
+        .ok_or(crate::Error::MessageLimit)?;
     for (name, value) in &all {
         length = length
-            .checked_add(
-                name.len()
-                    .checked_mul(2)
-                    .ok_or(crate::Error::MessageLimit)?,
-            )
-            .and_then(|n| value.len().checked_mul(6).and_then(|v| n.checked_add(v)))
+            .checked_add(name.len())
+            .and_then(|n| {
+                escaped_length(value)
+                    .and_then(|v| n.checked_add(v))
+                    .and_then(|n| n.checked_add(8))
+            })
             .ok_or(crate::Error::MessageLimit)?;
     }
     if length > limits.message_bytes {
@@ -187,4 +192,15 @@ fn fields(body: &Outbound) -> Fields<'_> {
             ],
         ),
     }
+}
+
+fn escaped_length(value: &str) -> Option<usize> {
+    value.chars().try_fold(0usize, |n, c| {
+        n.checked_add(match c {
+            '&' => 5,
+            '<' | '>' => 4,
+            '\'' | '"' => 6,
+            _ => c.len_utf8(),
+        })
+    })
 }

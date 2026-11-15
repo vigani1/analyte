@@ -229,7 +229,7 @@ pub enum Value {
     /// Interval notation with optional original unit.
     Interval(Nullable<(String, Option<String>)>),
     /// Encapsulated text; compression and encoding remain in the document.
-    Encapsulated(String),
+    Encapsulated(EncapsulatedData),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -257,7 +257,18 @@ pub(crate) fn attr<'a>(element: &'a Element, name: &str) -> Option<&'a str> {
 pub(crate) fn parse(element: &Element, kind: Kind) -> Result<Value, DataError> {
     validate_attributes(element, kind)?;
     if kind == Kind::Encapsulated {
-        return Ok(Value::Encapsulated(element.text().to_owned()));
+        return Ok(Value::Encapsulated(EncapsulatedData {
+            text: element.text().to_owned(),
+            encoding: if attr(element, "ENC") == Some("B64") {
+                Encoding::Base64
+            } else {
+                Encoding::Text
+            },
+            compression: attr(element, "COMPN").map(str::to_owned),
+            integrity_check: attr(element, "IC").map(str::to_owned),
+            media_type: attr(element, "MT").unwrap_or("text/plain").to_owned(),
+            null: attr(element, "NULL").map(Null::parse).transpose()?,
+        }));
     }
     let null = attr(element, "NULL").map(Null::parse).transpose()?;
     if null.is_some() && (attr(element, "V").is_some() || attr(element, "U").is_some()) {
@@ -349,30 +360,64 @@ fn interval(text: &str) -> Result<(), DataError> {
 }
 
 fn validate_attributes(element: &Element, kind: Kind) -> Result<(), DataError> {
-    for (key, _) in element.attributes() {
-        let allowed = matches!(key.as_str(), "V" | "NULL" | "VT" | "PROB" | "T")
+    for (key, supplied) in element.attributes() {
+        if let Some(expected) = fixed_attribute(element, kind, key) {
+            if supplied != expected {
+                return Err(DataError::Attribute);
+            }
+            continue;
+        }
+        let allowed = matches!(key.as_str(), "NULL" | "VT" | "PROB" | "T")
+            || (kind != Kind::Encapsulated && key == "V")
             || (matches!(kind, Kind::Code | Kind::SimpleCode) && key == "DN")
             || (kind == Kind::Code && matches!(key.as_str(), "S" | "SN" | "SV" | "ORIGTXT"))
             || (matches!(kind, Kind::Quantity | Kind::Interval) && key == "U")
             || (kind == Kind::Encapsulated
-                && matches!(key.as_str(), "ENC" | "COMPN" | "IC" | "MT"));
+                && matches!(key.as_str(), "ENC" | "COMPN" | "IC" | "MT"))
+            || (matches!(kind, Kind::Text | Kind::Encapsulated) && key == "xml:lang")
+            || (matches!(element.name(), "GIV" | "MID" | "FAM" | "PFX" | "SFX") && key == "QUAL")
+            || (element.name() == "REF" && key == "USE");
         if !allowed {
             return Err(DataError::Attribute);
         }
     }
     if let Some(prob) = attr(element, "PROB") {
         number(prob, false)?;
-        let probability = prob.parse::<f64>().map_err(|_| DataError::Number)?;
-        if !(0.0..=1.0).contains(&probability) {
+        let (whole, fraction) = prob
+            .strip_prefix('+')
+            .unwrap_or(prob)
+            .split_once('.')
+            .unwrap_or((prob, ""));
+        let whole = whole.trim_start_matches('0');
+        if !whole.is_empty() && !(whole == "1" && fraction.bytes().all(|b| b == b'0')) {
             return Err(DataError::Number);
         }
     }
     if let Some(t) = attr(element, "T") {
         let legal = match kind {
-            Kind::Text => t == "ST" || t == "ON",
+            Kind::Text => {
+                t == match element.name() {
+                    "DEV.manufacturer_name" => "ON",
+                    "GIV" | "MID" | "FAM" | "PFX" | "SFX" => "PNXP",
+                    "DEL" => "ADXP",
+                    "REF" => "TEL",
+                    _ => "ST",
+                }
+            }
             Kind::Person => t == "PN",
             Kind::SimpleCode => t == "CS",
-            Kind::Code => matches!(t, "CV" | "CE" | "CS"),
+            Kind::Code => {
+                matches!(t, "CS" | "CV")
+                    || (t == "CE"
+                        && matches!(
+                            element.name(),
+                            "OBS.observation_id"
+                                | "ORD.universal_service_id"
+                                | "SPC.source_cd"
+                                | "SPC.type_cd"
+                                | "NOTE"
+                        ))
+            }
             Kind::Quantity => t == "PQ",
             Kind::Time => t == "TS",
             Kind::Integer => t == "INT",
@@ -423,5 +468,117 @@ fn parse_offset(text: &str) -> Result<i32, DataError> {
         Ok(seconds)
     } else {
         Err(DataError::Time)
+    }
+}
+
+/// Encapsulated data encoding from Appendix B section 8.1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Encoding {
+    /// Plain text, the POCT default.
+    Text,
+    /// Base64 text retained encoded; no expansion is performed.
+    Base64,
+}
+
+/// Encapsulated source data. External references remain inert document nodes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncapsulatedData {
+    /// Exact decoded XML character content, without decompression or base64 decoding.
+    pub text: String,
+    /// Source encoding or the standard's TXT default.
+    pub encoding: Encoding,
+    /// Compression code; compression is never executed here.
+    pub compression: Option<String>,
+    /// Integrity check as supplied; not a claim that it has been verified.
+    pub integrity_check: Option<String>,
+    /// Source media type or the standard's text/plain default.
+    pub media_type: String,
+    /// Explicit null, when supplied.
+    pub null: Option<Null>,
+}
+
+fn fixed_attribute<'a>(element: &Element, kind: Kind, key: &'a str) -> Option<&'a str> {
+    let code = matches!(kind, Kind::Code | Kind::SimpleCode);
+    match key {
+        "V-T" | "DN-T" if code => Some("ST"),
+        "V-T" => Some(match kind {
+            Kind::Text => {
+                if element.name() == "REF" {
+                    "URL"
+                } else if element.name().contains('.') && element.name() != "DEV.manufacturer_name"
+                {
+                    "BIN"
+                } else {
+                    "ST"
+                }
+            }
+            Kind::Person | Kind::Time => "ST",
+            Kind::Integer => "INT",
+            Kind::Real | Kind::Quantity | Kind::Interval => "REAL",
+            Kind::Code | Kind::SimpleCode | Kind::Encapsulated => return None,
+        }),
+        "V-HL7_NAME" if kind != Kind::Encapsulated => Some(if code {
+            "code"
+        } else if kind == Kind::Person {
+            "formatted"
+        } else {
+            "value"
+        }),
+        "VT-T" => Some(if element.name() == "REF" {
+            "GTS"
+        } else {
+            "IVL_TS"
+        }),
+        "VT-HL7_NAME" => Some("validTime"),
+        "PROB-T" => Some("REAL"),
+        "PROB-HL7_NAME" => Some("probability"),
+        "DN-HL7_NAME" if code => Some("displayName"),
+        "S-T" | "SV-T" if kind == Kind::Code => Some("OID"),
+        "S-HL7_NAME" if kind == Kind::Code => Some("codeSystem"),
+        "SN-T" | "ORIGTXT-T" if kind == Kind::Code => Some("ST"),
+        "SN-HL7_NAME" if kind == Kind::Code => Some("codeSystemName"),
+        "SV-HL7_NAME" if kind == Kind::Code => Some("codeSystemVersion"),
+        "ORIGTXT-HL7_NAME" if kind == Kind::Code => Some("originalText"),
+        "U-T" if matches!(kind, Kind::Quantity | Kind::Interval) => Some("CS"),
+        "U-HL7_NAME" if matches!(kind, Kind::Quantity | Kind::Interval) => Some("unit"),
+        "MT-T" if matches!(kind, Kind::Text | Kind::Encapsulated) => Some("CS"),
+        "MT-HL7_NAME" if matches!(kind, Kind::Text | Kind::Encapsulated) => Some("type"),
+        "MT-DOMAIN" if kind == Kind::Encapsulated => Some("2.16.840.1.113883.6.10"),
+        "MT" if kind == Kind::Text => Some("text/plain"),
+        "xml:lang-T" if matches!(kind, Kind::Text | Kind::Encapsulated) => Some("CS"),
+        "xml:lang-HL7_NAME" if matches!(kind, Kind::Text | Kind::Encapsulated) => Some("language"),
+        "COMPN-T" if kind == Kind::Encapsulated => Some("CS"),
+        "COMPN-HL7_NAME" if kind == Kind::Encapsulated => Some("compression"),
+        "COMPN-DOMAIN" if kind == Kind::Encapsulated => Some("2.16.840.1.113883.5.1009"),
+        "IC-T" if kind == Kind::Encapsulated => Some("BIN"),
+        "IC-HL7_NAME" if kind == Kind::Encapsulated => Some("integrityCheck"),
+        "QUAL-T" if matches!(element.name(), "GIV" | "MID" | "FAM" | "PFX" | "SFX") => {
+            Some("SET_CS")
+        }
+        "QUAL-HL7_NAME" if matches!(element.name(), "GIV" | "MID" | "FAM" | "PFX" | "SFX") => {
+            Some("qualifier")
+        }
+        "QUAL-DOMAIN" if matches!(element.name(), "GIV" | "MID" | "FAM" | "PFX" | "SFX") => {
+            Some("2.16.840.1.113883.5.1014")
+        }
+        "USE-T" if element.name() == "REF" => Some("SET_CS"),
+        "USE-HL7_NAME" if element.name() == "REF" => Some("use"),
+        "USE-DOMAIN" if element.name() == "REF" => Some("2.16.840.1.113883.5.1011"),
+        "HL7_NAME" => match element.name() {
+            "NOTE" => Some("note"),
+            "CONFID" => Some("confidence"),
+            "REF" => Some("reference"),
+            "THUMBNAIL" => Some("thumbnail"),
+            "ORIGTXT" => Some("originalText"),
+            "TRANSLTN" => Some("translation"),
+            "GIV" => Some("given"),
+            "MID" => Some("middle"),
+            "FAM" => Some("family"),
+            "PFX" => Some("prefix"),
+            "SFX" => Some("suffix"),
+            "DEL" => Some("delimiter"),
+            _ => None,
+        },
+        _ => None,
     }
 }

@@ -172,3 +172,53 @@ proptest! {
         prop_assert_eq!(parsed.document().raw(),raw.as_bytes());
     }
 }
+
+#[test]
+fn poct01_b_12_auxiliary_metadata_and_encapsulation_are_local_only() -> Result<(), MessageError> {
+    let raw = hello("h").replace("</DCP>","<DCP.vendor_specific ENC=\"B64\" COMPN=\"GZ\" MT=\"application/octet-stream\"><REF V=\"https://invalid.example/never-fetch\"/><THUMBNAIL ENC=\"TXT\">synthetic</THUMBNAIL></DCP.vendor_specific></DCP>");
+    Message::parse(raw.as_bytes(), limits())?;
+    let raw = observation("o",true,"<OBS.value V=\"1.230\" U=\"unit\" V-T=\"REAL\" U-T=\"CS\" PROB=\"0.9\"><NOTE V=\"synthetic-note\"/><CONFID V=\"synthetic-confidence\" SN=\"synthetic-system\"/></OBS.value>").replace("<PT.patient_id V=\"000xyz\"/>","<PT.patient_id V=\"000xyz\" xml:lang=\"en\"/><PT.name V=\"Synthetic Person\"><GIV T=\"PNXP\" V=\"Synthetic\" QUAL=\"RE\"/><FAM V=\"Person\"/></PT.name>");
+    Message::parse(raw.as_bytes(), limits())?;
+    for corrupted in [
+        raw.replace("V-T=\"REAL\"", "V-T=\"ST\""),
+        raw.replace("U-T=\"CS\"", "U-T=\"REAL\""),
+        raw.replace("T=\"PNXP\"", "T=\"ST\""),
+    ] {
+        assert!(Message::parse(corrupted.as_bytes(), limits()).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn poct01_b_12_intervals_and_value_choice_are_not_later_hl7_encodings() -> Result<(), MessageError>
+{
+    let raw = observation("o", true, "<OBS.value V=\"1.230\" U=\"unit\"/>").replace(
+        "</OBS>",
+        "<OBS.normal_lo-hi_limit V=\"[0.1;+inf[\" U=\"unit\"/></OBS>",
+    );
+    Message::parse(raw.as_bytes(), limits())?;
+    for bad in [
+        raw.replace("[0.1;+inf[", "[missing]"),
+        raw.replace("</OBS>", "<OBS.qualitative_value V=\"positive\"/></OBS>"),
+    ] {
+        assert!(Message::parse(bad.as_bytes(), limits()).is_err());
+    }
+    Ok(())
+}
+
+proptest! {
+    #[test]
+    fn poct01_project_typed_parser_arbitrary_bytes_are_bounded(raw in prop::collection::vec(any::<u8>(),0..2048)) {
+        let _ = Message::parse(&raw,limits());
+    }
+}
+
+#[test]
+fn poct01_b_12_probability_is_checked_without_binary_rounding() {
+    let raw = observation(
+        "o",
+        true,
+        "<OBS.value V=\"1.230\" U=\"unit\" PROB=\"1.00000000000000000000000000000000001\"/>",
+    );
+    assert!(Message::parse(raw.as_bytes(), limits()).is_err());
+}

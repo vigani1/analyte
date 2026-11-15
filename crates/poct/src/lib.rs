@@ -1,7 +1,9 @@
-//! Bounded XML syntax foundation for POCT01-A2. Evidence level: documented.
+//! POCT01-A2 Basic Profile Observation Reviewer. Evidence level: documented.
 //!
-//! This module does not validate DML message structures or authorize ACKs.
-//! The host must retain rejected bytes in its protected store, too.
+//! Pure message syntax, reviewer builders, dialog, duplicate comparison and mapping.
+//! The host owns transport, clocks, protected storage and trusted identity resolution.
+//! No acceptance ACK is emitted until the host reports durable custody.
+//! See the crate README for the host contract and checklist-to-test mapping.
 #![forbid(unsafe_code)]
 
 mod xml;
@@ -33,3 +35,5 @@ pub use duplicate::{
 
 mod mapping;
 pub use mapping::{MappedObservation, MappingError, map_observations};
+
+pub use data::{EncapsulatedData, Encoding};
