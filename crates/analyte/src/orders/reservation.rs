@@ -37,3 +37,27 @@ pub(super) async fn reject(
         })
         .await?)
 }
+
+/// Admit cancellation of the current version without resending the original order.
+/// The caller registers the key before awaiting so disconnect cleanup owns it.
+pub(super) async fn cancel(
+    store: &Handle,
+    until: Instant,
+    id: i64,
+    version: NonZeroU64,
+    owner: analyte_model::Identifier,
+    freshness: u64,
+) -> Result<MachineOrder, analyte_store::Error> {
+    store
+        .request(until, move |store| {
+            store.request_order_cancel(
+                id,
+                version,
+                jiff::Timestamp::now().as_second(),
+                &owner,
+                freshness,
+                super::event,
+            )
+        })
+        .await
+}

@@ -17,7 +17,6 @@ impl Connection {
         machine: &Machine,
         options: Options,
     ) -> Result<Option<Message>, Error> {
-        let freshness = machine.destination_limits.freshness.as_secs();
         if self.exchange.is_some() {
             return Ok(None);
         }
@@ -30,6 +29,7 @@ impl Connection {
                 cfg.timeouts().send_timeout_ms(),
             )))
             .ok_or("LAW preparation deadline overflow")?;
+        let freshness = machine.destination_limits.freshness.as_secs();
         let destination = super::super::destination(machine);
         let target = machine.id.clone();
         let cancels = store
@@ -53,6 +53,27 @@ impl Connection {
         let Some(cancels) = cancels else {
             return Ok(None);
         };
+        if let Some(sent) = self
+            .idle_cancel(store, machine, options, until, cancels)
+            .await?
+        {
+            return Ok(Some(sent));
+        }
+        if !settings.send_ahead() {
+            return Ok(None);
+        }
+        self.idle_work(store, machine, options, until).await
+    }
+
+    async fn idle_cancel(
+        &mut self,
+        store: &Handle,
+        machine: &Machine,
+        options: Options,
+        until: Instant,
+        cancels: Vec<(MachineOrder, analyte_store::CachedOrder)>,
+    ) -> Result<Option<Message>, Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         for (record, cached) in cancels {
             let app: analyte_contract::Order =
                 analyte_contract::decode(cached.document.as_bytes())?;
@@ -62,17 +83,7 @@ impl Connection {
             let version = app.fields().version;
             let owner = self.owner.clone();
             self.reserving.push(record.key.clone());
-            match store
-                .request(until, move |store| {
-                    store.request_order_cancel(
-                        id,
-                        version,
-                        jiff::Timestamp::now().as_second(),
-                        &owner,
-                        freshness,
-                        super::super::event,
-                    )
-                })
+            match super::super::reservation::cancel(store, until, id, version, owner, freshness)
                 .await
             {
                 Ok(record) => {
@@ -92,9 +103,17 @@ impl Connection {
                 Err(error) => return Err(error.into()),
             }
         }
-        if !settings.send_ahead() {
-            return Ok(None);
-        }
+        Ok(None)
+    }
+
+    async fn idle_work(
+        &mut self,
+        store: &Handle,
+        machine: &Machine,
+        options: Options,
+        until: Instant,
+    ) -> Result<Option<Message>, Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
         let candidates =
             super::super::sending::candidate_page(store, machine, &mut self.cursor).await?;
         for cached in candidates {

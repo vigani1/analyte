@@ -111,23 +111,7 @@ impl Connection {
             Ok(query) => query,
             Err(error) => {
                 evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                return crate::machine::hl7_response::response_metadata(
-                    crate::machine::hl7_response::Profile::Law,
-                )
-                .build(|response| {
-                    let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
-                    law::reject_trigger(
-                        message.raw(),
-                        response,
-                        error
-                            .acknowledgment_code()
-                            .ok_or("query failure has no ACK outcome")?,
-                        detail,
-                        options,
-                    )?
-                    .map(Reply::Response)
-                    .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
-                });
+                return reject_query(message, &error, options);
             }
         };
         let stack = super::settings::law(machine)?;
@@ -218,7 +202,6 @@ impl Connection {
         until: Instant,
         options: Options,
     ) -> Result<Reply, Error> {
-        let freshness = machine.destination_limits.freshness.as_secs();
         let cfg = super::settings::law(machine)?;
         let work = Arc::new(
             cfg.orders()
@@ -244,66 +227,7 @@ impl Connection {
                 return Err(invalid("unsupported LAW query scope"));
             }
         };
-        let destination = super::destination(machine);
-        let target = machine.id.clone();
-        let bound = options.limits.segments;
-        let cached = store
-            .request(until, move |store| {
-                let now = jiff::Timestamp::now().as_second();
-                let mut found = Vec::new();
-                if let Some(sample) = sample {
-                    match store.orders(&destination, &sample, now, freshness)? {
-                        Lookup::Orders(orders) => {
-                            for order in orders {
-                                let key = MachineOrderKey {
-                                    destination: destination.clone(),
-                                    order: order.id.clone(),
-                                    machine: target.clone(),
-                                };
-                                if store.machine_order(&key)?.is_none() {
-                                    found.push(order);
-                                }
-                            }
-                        }
-                        Lookup::NoOrders => {}
-                        Lookup::NotTrusted => return Err(analyte_store::Error::Conflict),
-                    }
-                } else {
-                    let mut after = String::new();
-                    for page in 0..bound {
-                        if Instant::now() >= until {
-                            return Err(analyte_store::Error::Timeout);
-                        }
-                        match store.pending_orders(&destination, &target, &after, now, freshness)? {
-                            PendingOrders::NotTrusted => {
-                                return Err(analyte_store::Error::Conflict);
-                            }
-                            PendingOrders::Page {
-                                orders,
-                                after: cursor,
-                            } => {
-                                if found
-                                    .len()
-                                    .checked_add(orders.len())
-                                    .is_none_or(|count| count > bound)
-                                {
-                                    return Err(analyte_store::Error::InvalidInput);
-                                }
-                                found.extend(orders);
-                                match cursor {
-                                    Some(cursor) => after = cursor.as_str().to_owned(),
-                                    None => return Ok(found),
-                                }
-                            }
-                        }
-                        if page.checked_add(1) == Some(bound) {
-                            return Err(analyte_store::Error::InvalidInput);
-                        }
-                    }
-                }
-                Ok(found)
-            })
-            .await?;
+        let cached = query_orders(store, machine, sample, until, options).await?;
         let prepared = self.reserve(store, machine, cached, until, options).await?;
         if Instant::now() >= until {
             return Err(invalid("LAW query deadline after reservation"));
@@ -410,44 +334,7 @@ impl Connection {
                 .await?;
         }
         for record in &exchange.records {
-            let mut outcomes = Vec::new();
-            for item in &record.items {
-                let expected = &item.placer;
-                let (decision, code) = match &response {
-                    Ok(response) if response.acceptance() == AckCode::Aa => {
-                        match response
-                            .decisions()
-                            .iter()
-                            .find(|decision| decision.id.raw() == expected.as_bytes())
-                            .map(|decision| decision.outcome)
-                        {
-                            Some(law::AwosOutcome::Accepted) => {
-                                (ItemDecision::Accepted, "LAW-OK".to_owned())
-                            }
-                            Some(law::AwosOutcome::UnableToAccept) => {
-                                (ItemDecision::Rejected, "LAW-UA".to_owned())
-                            }
-                            Some(law::AwosOutcome::CancelAccepted) => {
-                                (ItemDecision::CancelConfirmed, "LAW-CR".to_owned())
-                            }
-                            Some(law::AwosOutcome::UnableToCancel) => {
-                                (ItemDecision::CancelRefused, "LAW-UC".to_owned())
-                            }
-                            None => (ItemDecision::Uncertain, "LAW-ORL-item-missing".to_owned()),
-                        }
-                    }
-                    Ok(response) => (
-                        ItemDecision::Uncertain,
-                        format!("LAW-ORL-application-{:?}", response.acceptance()),
-                    ),
-                    Err(error) => (ItemDecision::Uncertain, format!("LAW-invalid-ORL:{error}")),
-                };
-                outcomes.push(ItemOutcome {
-                    index: item.index,
-                    decision,
-                    code: SourceText::new(&code)?,
-                });
-            }
+            let outcomes = item_outcomes(record, &response)?;
             let id = record.id;
             let key = record.key.clone();
             store
@@ -494,4 +381,138 @@ fn reply(
                 .clone(),
             ))
         })
+}
+
+fn reject_query(message: &Message, error: &law::Failure, options: Options) -> Result<Reply, Error> {
+    crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Law)
+        .build(|response| {
+            let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
+            law::reject_trigger(
+                message.raw(),
+                response,
+                error
+                    .acknowledgment_code()
+                    .ok_or("query failure has no ACK outcome")?,
+                detail,
+                options,
+            )?
+            .map(Reply::Response)
+            .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
+        })
+}
+
+async fn query_orders(
+    store: &Handle,
+    machine: &Machine,
+    sample: Option<SampleId>,
+    until: Instant,
+    options: Options,
+) -> Result<Vec<analyte_store::CachedOrder>, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
+    let destination = super::destination(machine);
+    let target = machine.id.clone();
+    let bound = options.limits.segments;
+    let cached = store
+        .request(until, move |store| {
+            let now = jiff::Timestamp::now().as_second();
+            let mut found = Vec::new();
+            if let Some(sample) = sample {
+                match store.orders(&destination, &sample, now, freshness)? {
+                    Lookup::Orders(orders) => {
+                        for order in orders {
+                            let key = MachineOrderKey {
+                                destination: destination.clone(),
+                                order: order.id.clone(),
+                                machine: target.clone(),
+                            };
+                            if store.machine_order(&key)?.is_none() {
+                                found.push(order);
+                            }
+                        }
+                    }
+                    Lookup::NoOrders => {}
+                    Lookup::NotTrusted => return Err(analyte_store::Error::Conflict),
+                }
+            } else {
+                let mut after = String::new();
+                for page in 0..bound {
+                    if Instant::now() >= until {
+                        return Err(analyte_store::Error::Timeout);
+                    }
+                    match store.pending_orders(&destination, &target, &after, now, freshness)? {
+                        PendingOrders::NotTrusted => {
+                            return Err(analyte_store::Error::Conflict);
+                        }
+                        PendingOrders::Page {
+                            orders,
+                            after: cursor,
+                        } => {
+                            if found
+                                .len()
+                                .checked_add(orders.len())
+                                .is_none_or(|count| count > bound)
+                            {
+                                return Err(analyte_store::Error::InvalidInput);
+                            }
+                            found.extend(orders);
+                            match cursor {
+                                Some(cursor) => after = cursor.as_str().to_owned(),
+                                None => return Ok(found),
+                            }
+                        }
+                    }
+                    if page.checked_add(1) == Some(bound) {
+                        return Err(analyte_store::Error::InvalidInput);
+                    }
+                }
+            }
+            Ok(found)
+        })
+        .await?;
+    Ok(cached)
+}
+
+fn item_outcomes(
+    record: &MachineOrder,
+    response: &Result<law::WorkResponse<'_>, law::Failure>,
+) -> Result<Vec<ItemOutcome>, Error> {
+    let mut outcomes = Vec::new();
+    for item in &record.items {
+        let expected = &item.placer;
+        let (decision, code) = match &response {
+            Ok(response) if response.acceptance() == AckCode::Aa => {
+                match response
+                    .decisions()
+                    .iter()
+                    .find(|decision| decision.id.raw() == expected.as_bytes())
+                    .map(|decision| decision.outcome)
+                {
+                    Some(law::AwosOutcome::Accepted) => {
+                        (ItemDecision::Accepted, "LAW-OK".to_owned())
+                    }
+                    Some(law::AwosOutcome::UnableToAccept) => {
+                        (ItemDecision::Rejected, "LAW-UA".to_owned())
+                    }
+                    Some(law::AwosOutcome::CancelAccepted) => {
+                        (ItemDecision::CancelConfirmed, "LAW-CR".to_owned())
+                    }
+                    Some(law::AwosOutcome::UnableToCancel) => {
+                        (ItemDecision::CancelRefused, "LAW-UC".to_owned())
+                    }
+                    None => (ItemDecision::Uncertain, "LAW-ORL-item-missing".to_owned()),
+                }
+            }
+            Ok(response) => (
+                ItemDecision::Uncertain,
+                format!("LAW-ORL-application-{:?}", response.acceptance()),
+            ),
+            Err(error) => (ItemDecision::Uncertain, format!("LAW-invalid-ORL:{error}")),
+        };
+        outcomes.push(ItemOutcome {
+            index: item.index,
+            decision,
+            code: SourceText::new(&code)?,
+        });
+    }
+    Ok(outcomes)
 }
