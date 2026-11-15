@@ -1,0 +1,222 @@
+//! Reserve for durable machine orders.
+use super::*;
+
+impl Store {
+    /// Atomically rechecks the current cache and persists Sending and history without an app event.
+    /// Once committed, cancellation or a lost reply requires reconciliation,
+    /// never a second automatic reservation. Only a later real outcome builds
+    /// contract bytes; an internal reservation must not be reported as sent.
+    /// # Errors
+    /// Returns storage failures; expected eligibility refusals are values.
+    pub fn reserve_send(
+        &mut self,
+        identity: &MachineOrderKey,
+        version: NonZeroU64,
+        now: i64,
+        freshness: u64,
+    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
+        let code = SourceText::new("host-reserved").map_err(|_| Error::InvalidInput)?;
+        self.start_order(
+            &OrderReservation {
+                identity,
+                version,
+                now,
+                freshness,
+            },
+            OrderState::Sending,
+            code,
+            OrderItems::Together,
+            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+            None,
+        )
+    }
+
+    /// Reserves query work with a retained connection owner for cancelled-wait recovery.
+    /// Only the matching owner may treat an interrupted request as its own reservation.
+    /// # Errors
+    /// Reports storage failures; expected eligibility refusals remain explicit values.
+    pub fn reserve_send_owned(
+        &mut self,
+        candidate: &OrderReservation<'_>,
+        owner: &Identifier,
+    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
+        let code = SourceText::new(&format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()))
+            .map_err(|_| Error::InvalidInput)?;
+        self.start_order(
+            candidate,
+            OrderState::Sending,
+            code,
+            OrderItems::Together,
+            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+            None,
+        )
+    }
+
+    /// Reserves per-test HL7 items atomically with the parent, without an app event.
+    /// # Errors
+    /// Refuses oversized identities, missing/oversized test coverage and I/O failures.
+    pub fn reserve_send_items(
+        &mut self,
+        candidate: &OrderReservation<'_>,
+        items: OrderItems<'_>,
+    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
+        self.start_order(
+            candidate,
+            OrderState::Sending,
+            SourceText::new("host-reserved").map_err(|_| Error::InvalidInput)?,
+            items,
+            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+            None,
+        )
+    }
+
+    /// Atomically preflights exact store-assigned item identities before committing Sending.
+    /// The pure builder must perform no I/O. Failure rolls back parent, items and history.
+    /// # Errors
+    /// Reports preflight, identity, storage and eligibility failures without issuing bytes.
+    pub fn reserve_send_items_with<T>(
+        &mut self,
+        candidate: &OrderReservation<'_>,
+        items: OrderItems<'_>,
+        owner: &Identifier,
+        prepare: impl FnOnce(&MachineOrder) -> Result<T, Error>,
+    ) -> Result<Result<(MachineOrder, T), SendRefusal>, Error> {
+        let code = SourceText::new(&format!("{RESERVATION_OWNER_PREFIX}{}", owner.as_str()))
+            .map_err(|_| Error::InvalidInput)?;
+        let mut builder = Some(prepare);
+        let mut payload = None;
+        let mut preflight = |record: &MachineOrder| {
+            payload = Some(builder.take().ok_or(Error::InvalidInput)?(record)?);
+            Ok(())
+        };
+        let reserved = self.start_order(
+            candidate,
+            OrderState::Sending,
+            code,
+            items,
+            None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+            Some(&mut preflight),
+        )?;
+        match reserved {
+            Ok(order) => Ok(Ok((order, payload.ok_or(Error::InvalidInput)?))),
+            Err(refusal) => Ok(Err(refusal)),
+        }
+    }
+
+    /// Records a mapping rejection and app event without claiming anything was sent.
+    /// # Errors
+    /// Reports cache refusals, builder errors and storage failures.
+    pub fn reject_unsent(
+        &mut self,
+        candidate: &OrderReservation<'_>,
+        reason: SourceText,
+        build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
+    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
+        self.start_order(
+            candidate,
+            OrderState::Rejected,
+            reason,
+            OrderItems::Together,
+            Some(build),
+            None,
+        )
+    }
+
+    pub(super) fn start_order(
+        &mut self,
+        candidate: &OrderReservation<'_>,
+        initial: OrderState,
+        code: SourceText,
+        items: OrderItems<'_>,
+        build: Option<impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
+        prepare: Option<Preflight<'_>>,
+    ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
+        let OrderReservation {
+            identity,
+            version,
+            now,
+            freshness,
+        } = *candidate;
+        self.capacity(self.limits.record_bytes)?;
+        let limit = self.limits.record_bytes;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let trust = Self::order_trust_on(&tx, &identity.destination, now, freshness)?;
+        if trust == crate::OrderTrust::RestorePaused {
+            return Ok(Err(SendRefusal::RestoreUnreconciled));
+        }
+        let existing = tx
+            .query_row(
+                "SELECT id FROM machine_orders WHERE destination=?1 AND order_id=?2 AND machine=?3",
+                params![
+                    identity.destination.as_str(),
+                    identity.order.as_str(),
+                    identity.machine.as_str()
+                ],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()?;
+        if existing.is_some() {
+            return Ok(Err(SendRefusal::AlreadyReserved));
+        }
+        if !trust.is_trusted() {
+            return Ok(Err(SendRefusal::Untrusted));
+        }
+        let cached = tx.query_row("SELECT evidence FROM orders WHERE destination=?1 AND id=?2 AND generation=(SELECT generation FROM feed WHERE destination=?1)",params![identity.destination.as_str(),identity.order.as_str()], |r| r.get::<_,String>(0)).optional()?;
+        let Some(cached) = cached else {
+            return Ok(Err(SendRefusal::Missing));
+        };
+        let cached: CachedOrder = serde_json::from_str(&cached)?;
+        let fields: CachedFields = serde_json::from_str(&cached.document)?;
+        if fields.version != version {
+            return Ok(Err(SendRefusal::VersionChanged));
+        }
+        if cached.tombstone {
+            return Ok(Err(SendRefusal::Withdrawn));
+        }
+        if cached.expiry <= now {
+            return Ok(Err(SendRefusal::Expired));
+        }
+        match fields.state.eligible_for(
+            OrderState::Requested,
+            fields.tombstone,
+            fields
+                .target_analyzers
+                .as_ref()
+                .map(|targets| targets.iter().map(Identifier::as_str)),
+            identity.machine.as_str(),
+        ) {
+            Ok(()) => {}
+            Err(analyte_model::OrderIneligible::Withdrawn) => {
+                return Ok(Err(SendRefusal::Withdrawn));
+            }
+            Err(analyte_model::OrderIneligible::Phase) => {
+                return Ok(Err(SendRefusal::NotRequested));
+            }
+            Err(analyte_model::OrderIneligible::Target) => {
+                return Ok(Err(SendRefusal::WrongMachine));
+            }
+        }
+        let state = OrderState::Requested.transition(OrderTransition::Advance(initial))?;
+        tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,?5,?6,?6,?7)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),key(&state)?,now,code.as_str()])?;
+        let mut record = MachineOrder {
+            id: tx.last_insert_rowid(),
+            key: identity.clone(),
+            version,
+            state,
+            created_at: now,
+            updated_at: now,
+            source_code: code,
+            items: Vec::new(),
+        };
+        record.items = create_items(&tx, &record, fields.tests, items, limit)?;
+        if let Some(prepare) = prepare {
+            prepare(&record)?;
+        }
+        let event = build.map(|build| build(&record)).transpose()?;
+        append(&tx, &record, event.as_ref(), limit)?;
+        tx.commit()?;
+        Ok(Ok(record))
+    }
+}

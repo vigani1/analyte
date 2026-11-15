@@ -184,3 +184,18 @@ Unknown. Lookups, candidate reads, transaction admission and cache alerts use
 that rule; only Trusted can establish no orders. Cached state is typed and
 shares the model eligibility function with the host. Cancellation scans filter
 typed states in bounded pages rather than comparing state text in SQL.
+
+## Implementation ownership
+
+`open` owns integrity checks and forward migrations; `capacity` owns admission
+and size limits. `receipts` retains raw inputs, `transfers` journals frames and
+provenance, `outbox` owns claims and attempts, `parked` owns operator parking and
+audit writes, `feed` owns cache writes and trust, and `backup` owns online copies.
+`revisions` owns interpretation transactions.
+
+Machine-order eligibility, reservation, listing, cancellation admission and item
+exchange completion live under `machine_orders/`. The parent module retains
+shared lifecycle types and transaction helpers so state changes and history
+writes still have one implementation. These boundaries do not change the
+schema, public API, transaction boundaries or evidence formats. Existing store
+test filenames remain stable for mutation-coverage work.
