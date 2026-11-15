@@ -126,6 +126,7 @@ pub struct Code<'a> {
     pub(super) identifier: &'a [u8],
     pub(super) text: &'a [u8],
     pub(super) system: &'a [u8],
+    pub(super) version: Option<&'a [u8]>,
 }
 
 impl<'a> Code<'a> {
@@ -140,7 +141,18 @@ impl<'a> Code<'a> {
             identifier,
             text,
             system,
+            version: None,
         })
+    }
+
+    /// Supplies a CWE coding-system version without guessing it from the code.
+    /// CE destinations cannot represent this metadata and reject it explicitly.
+    /// # Errors
+    /// Rejects missing, oversized or injected version strings.
+    pub fn with_version(mut self, version: &'a [u8]) -> Result<Self, Error> {
+        scalar(version, "CWE", 7, 10, true)?;
+        self.version = Some(version);
+        Ok(self)
     }
 }
 
@@ -214,7 +226,7 @@ pub struct Timing<'a> {
 pub struct Specimen<'a> {
     /// Literal sample identity.
     pub sample: SampleId<'a>,
-    /// Agreed placer-owned field; the standard assigns no barcode field in ORM.
+    /// ORM-only placer-field mapping. OML uses its standard SPM-2 identifier.
     pub field: SampleField,
     /// Source/type code from the caller, not inferred from a test.
     pub source: Code<'a>,

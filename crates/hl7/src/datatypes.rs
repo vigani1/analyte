@@ -158,6 +158,16 @@ fn lengths(parts: &[&[u8]], maxima: &[usize]) -> bool {
         .all(|(value, max)| value.len() <= *max)
 }
 
+pub(crate) fn cwe(parts: &[Component<'_>]) -> bool {
+    parts.iter().copied().all(scalar)
+        && parts.iter().any(|p| !p.raw().is_empty())
+        && coded_parts(
+            &parts.iter().map(|p| p.raw()).collect::<Vec<_>>(),
+            true,
+            Version::V251,
+        )
+}
+
 fn coded_parts(parts: &[&[u8]], extended: bool, version: Version) -> bool {
     if !simple_parts(parts, if extended { 9 } else { 6 }) {
         return false;

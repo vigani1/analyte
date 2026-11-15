@@ -165,6 +165,39 @@ sample identities, output bounds and replay purity. There is no storage, transpo
 automatic retry or lifecycle machinery in these APIs. No simulator/real-machine
 evidence is claimed. The host must retain uncertain delivery and prior acceptance.
 
-Non-LAW OML/O21 and ORL/O22 remain unimplemented; checklist G is not yet claimed
-complete. Work on those transactions is separate from this ORM/ORR change.
+### Non-LAW OML/O21 and ORL/O22
+
+`order::oml` reuses the same caller-supplied `Order`, identity, sample, code,
+priority and timing types for HL7 2.5.1 sections 4.4.6–7. It renders one SPM per
+new order, standard SPM-2 sample identity and TQ1 timing before OBR. Legacy OBR
+sample/source/timing fields are not populated; `Specimen::field` applies only to
+ORM. Cancellation needs no invented specimen or container. Containers are not
+generated from sample IDs. Source codes requiring a CWE version must receive it
+through `Code::with_version`; CE destinations explicitly reject that metadata
+rather than discard it.
+
+`OrderResponse::new` selects ORR/O02 or ORL/O22 from the private family of the
+sent message; it cannot fall back to another transaction or to LAW O34. It reuses
+the same exhaustive controls, outcomes, message/order correlation, duplicate
+checks and `NotReported` behavior. O22 decisions follow its patient response
+group. Timing stays with its order, specimens stay with their order and returned
+SAC containers stay with their specimen. A returned specimen must match the sent
+placer specimen identity where one was provided; no namespace is inferred from
+MSH. Extra specimen context in cancellation replies stays peer-reported data.
+Original header context and additional raw fields remain available to the host.
+
+The implementation reuses the borrowed segment/control views used by LAW and its
+generic `FieldRule` engine, without applying the LAW profile's restrictions.
+For example, base SPM-2 retains its 80-byte limit rather than LAW's extension.
+Sample spelling, case, leading zeros and literal delimiters survive escaping.
+Named synthetic positive/negative and property tests cover wire placement,
+identity conflicts, specimen/container ownership, bounds and unknown controls.
+Evidence remains documented; no simulator or real-machine run is claimed.
+
+This is the single-specimen, single-window subset expressible by the current
+order types. Multiple returned specimens per order, repeated timing/TQ2 and
+associated observation groups are rejected explicitly. Additional returned fields
+are preserved as raw views for host interpretation, not claimed as fully validated
+clinical content. The APIs do not store, resend or change lifecycle state.
+Checklist G is not yet claimed complete; its audit is separate work.
 

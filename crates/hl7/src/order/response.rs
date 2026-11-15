@@ -1,4 +1,4 @@
-use super::{Control, Error, OrderMessage, invalid, raw};
+use super::{Control, Error, Family, OrderMessage, SpecimenResponse, invalid, laboratory, raw};
 use crate::{AckCode, Field, Message, Msa, Msh, Segment, Version};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,6 +34,8 @@ pub struct Decision<'a> {
     detail: Option<Segment<'a>>,
     notes: Vec<Segment<'a>>,
     filler: Option<Field<'a>>,
+    timing: Vec<Segment<'a>>,
+    specimens: Vec<SpecimenResponse<'a>>,
 }
 
 impl<'a> Decision<'a> {
@@ -78,9 +80,22 @@ impl<'a> Decision<'a> {
     pub fn filler(&self) -> Option<Field<'a>> {
         self.filler
     }
+
+    /// Returns O22 timing segments owned by this order; no schedule runs here.
+    #[must_use]
+    pub fn timing(&self) -> &[Segment<'a>] {
+        &self.timing
+    }
+
+    /// Returns each O22 specimen with its own containers; missing data is not invented.
+    #[must_use]
+    pub fn specimens(&self) -> &[SpecimenResponse<'a>] {
+        &self.specimens
+    }
 }
 
-/// Correlated ORR response; message acceptance never substitutes for an order decision.
+/// Correlated ORR or non-LAW ORL response, selected by the sent transaction.
+/// Message acceptance never substitutes for an order decision.
 #[derive(Debug)]
 pub struct OrderResponse<'a> {
     message: &'a Message,
@@ -219,12 +234,19 @@ fn outcome<'a>(
 }
 
 impl<'a> OrderResponse<'a> {
-    /// Reads an ORR for a builder-produced ORM, checking message/order correlation.
+    /// Reads ORR/O02 for ORM/O01 or ORL/O22 for OML/O21, without fallback between families.
     ///
     /// ORC/OBR duplicate identities must agree. Unknown, duplicate and mismatched
     /// order responses are rejected atomically. Missing order responses remain
     /// `NotReported`; MSA AA alone never turns them into accepted work. Original
     /// ERR, PID and header/patient notes remain in `message()`.
+    ///
+    /// O22 order decisions require its patient response group. Only the declared
+    /// single-window TQ1 and one-SPM-per-order subset is interpreted. Returned
+    /// specimens must match the sent specimen where one was supplied. Extra
+    /// specimen data for cancellation is retained as peer-reported context;
+    /// it does not acquire an inferred identity from the request. Containers stay
+    /// with their SPM, and additional raw fields remain for host interpretation.
     ///
     /// # Errors
     /// Rejects wrong editions/events/control IDs, invalid MSA, unsupported grammar,
@@ -240,10 +262,15 @@ impl<'a> OrderResponse<'a> {
             });
         }
         let mut kind = header.message_type();
-        if kind.next() != Some(b"ORR")
-            || kind.next() != Some(b"O02")
-            || kind.next().is_some_and(|v| v != b"ORR_O02")
-        {
+        let [code, event, structure] = sent.family.response();
+        let valid_code = kind.next() == Some(code);
+        let valid_event = kind.next() == Some(event);
+        let valid_structure = match (sent.family, kind.next()) {
+            (Family::Orm, None) => true,
+            (Family::Orm | Family::Oml, Some(value)) => value == structure,
+            (Family::Oml, None) => false,
+        };
+        if !valid_code || !valid_event || !valid_structure {
             return Err(invalid("MSH", 9));
         }
         if header.control_id() == sent_header.control_id() {
@@ -297,6 +324,8 @@ impl<'a> OrderResponse<'a> {
                 detail: None,
                 notes: Vec::new(),
                 filler: None,
+                timing: Vec::new(),
+                specimens: Vec::new(),
             });
         }
         let mut errors = 0_usize;
@@ -308,21 +337,43 @@ impl<'a> OrderResponse<'a> {
             }
             crate::ErrView::new(error, version)?;
         }
-        while segments.peek().is_some_and(|s| s.id() == b"NTE") {
-            segments.next();
-        }
-        if segments.peek().is_some_and(|s| s.id() == b"PID") {
-            segments.next();
-            while segments.peek().is_some_and(|s| s.id() == b"NTE") {
+        if sent.family == Family::Oml {
+            while segments.peek().is_some_and(|s| s.id() == b"SFT") {
                 segments.next();
             }
         }
+        while segments.peek().is_some_and(|s| s.id() == b"NTE") {
+            segments.next();
+        }
+        let has_patient = segments.peek().is_some_and(|s| s.id() == b"PID");
+        if has_patient {
+            segments.next();
+            while sent.family == Family::Orm && segments.peek().is_some_and(|s| s.id() == b"NTE") {
+                segments.next();
+            }
+        }
+        if sent.family == Family::Oml && segments.peek().is_some() && !has_patient {
+            return Err(invalid("PID", 0));
+        }
+        let specimens = match sent.family {
+            Family::Orm => Vec::new(),
+            Family::Oml => laboratory::sent_specimens(sent.message(), decisions.len())?,
+        };
+        let lab = match sent.family {
+            Family::Orm => None,
+            Family::Oml => Some(laboratory::ReplyContext {
+                message,
+                sent_message: sent.message(),
+                sent_specimens: &specimens,
+            }),
+        };
         read_orders(
             &mut segments,
             version,
             &expected,
             &sent_fillers,
             &mut decisions,
+            lab,
         )?;
         Ok(Self {
             message,
@@ -356,6 +407,7 @@ fn read_orders<'a>(
     expected: &BTreeMap<Vec<&[u8]>, usize>,
     sent_fillers: &[Option<Vec<&[u8]>>],
     decisions: &mut [Decision<'a>],
+    lab: Option<laboratory::ReplyContext<'a, '_>>,
 ) -> Result<(), Error> {
     let mut seen = BTreeSet::new();
     let mut seen_fillers = BTreeSet::new();
@@ -373,6 +425,17 @@ fn read_orders<'a>(
         }
         let control = Control::parse(raw(common, 1))?;
         validate_order_status(common)?;
+        let mut timing = Vec::new();
+        if lab.is_some() {
+            while segments.peek().is_some_and(|s| s.id() == b"TQ1") {
+                if !timing.is_empty() {
+                    return Err(invalid("TQ1", 0));
+                }
+                let tq1 = segments.next().ok_or_else(|| invalid("TQ1", 0))?;
+                laboratory::timing(tq1)?;
+                timing.push(tq1);
+            }
+        }
         let detail = if segments.peek().is_some_and(|s| s.id() == b"OBR") {
             segments.next()
         } else {
@@ -409,6 +472,15 @@ fn read_orders<'a>(
             segment: "ORC",
             field: 2,
         })?;
+        let specimens = if let Some(context) = lab {
+            if detail.is_some() {
+                laboratory::read_specimens(segments, context, index)?
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
         if !seen.insert(index) {
             return Err(Error::Duplicate { field: 2 });
         }
@@ -443,7 +515,9 @@ fn read_orders<'a>(
         decision.common = Some(common);
         decision.detail = detail;
         decision.filler = filler;
-        while segments.peek().is_some_and(|s| s.id() == b"NTE") {
+        decision.timing = timing;
+        decision.specimens = specimens;
+        while lab.is_none() && segments.peek().is_some_and(|s| s.id() == b"NTE") {
             decision
                 .notes
                 .push(segments.next().ok_or_else(|| invalid("NTE", 0))?);

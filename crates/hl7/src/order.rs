@@ -1,17 +1,20 @@
-//! Legacy laboratory ORM/O01 and ORR/O02 (both editions). Evidence: documented.
+//! Laboratory ORM/O01–ORR/O02 (both editions) and non-LAW OML/O21–ORL/O22 (2.5.1).
+//! Evidence: documented.
 //!
 //! These pure functions never store, transmit, resend or change order state.
 //! A returned order decision reports the peer's words, not a host lifecycle change.
 use crate::{Field, Message, Segment};
 use thiserror::Error;
 
+mod laboratory;
 mod response;
 mod types;
 mod wire;
 
+pub use laboratory::SpecimenResponse;
 pub use response::{Decision, OrderResponse, Outcome};
 pub use types::*;
-pub use wire::orm;
+pub use wire::{oml, orm};
 
 /// A located failure that never includes patient/order payloads in its display.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -107,10 +110,33 @@ impl Control {
     }
 }
 
-/// An ORM produced from validated caller data; its message identity is host supplied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Family {
+    Orm,
+    Oml,
+}
+
+impl Family {
+    fn request(self) -> &'static [u8] {
+        match self {
+            Self::Orm => b"ORM^O01^ORM_O01",
+            Self::Oml => b"OML^O21^OML_O21",
+        }
+    }
+
+    fn response(self) -> [&'static [u8]; 3] {
+        match self {
+            Self::Orm => [b"ORR", b"O02", b"ORR_O02"],
+            Self::Oml => [b"ORL", b"O22", b"ORL_O22"],
+        }
+    }
+}
+
+/// A validated ORM/O01 or OML/O21; its message identity is host supplied.
 #[derive(Debug)]
 pub struct OrderMessage {
     message: Message,
+    family: Family,
 }
 
 impl OrderMessage {

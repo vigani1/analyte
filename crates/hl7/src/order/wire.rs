@@ -1,6 +1,6 @@
 use super::{
-    Code, Control, Error, Header, Order, OrderId, OrderMessage, SampleField, Subject, invalid,
-    types::scalar,
+    Code, Control, Error, Family, Header, Order, OrderId, OrderMessage, SampleField, Subject,
+    invalid, types::scalar,
 };
 use crate::{Charset, Message, Options, Terminator, Version};
 use std::collections::BTreeSet;
@@ -91,14 +91,45 @@ fn identity(id: OrderId<'_>, version: Version, field: usize) -> Result<Vec<u8>, 
     Ok(raw)
 }
 
-fn code(code: Code<'_>, separator: u8, maximum: usize, field: usize) -> Result<Vec<u8>, Error> {
+#[derive(Clone, Copy)]
+enum CodeForm {
+    Ce,
+    Cwe,
+}
+
+fn code(
+    code: Code<'_>,
+    separator: u8,
+    maximum: usize,
+    segment: &str,
+    field: usize,
+    form: CodeForm,
+) -> Result<Vec<u8>, Error> {
     let mut raw = code.identifier.to_vec();
     raw.push(separator);
     raw.extend_from_slice(code.text);
     raw.push(separator);
     raw.extend_from_slice(code.system);
+    match form {
+        CodeForm::Ce => {
+            if code.version.is_some() {
+                return Err(invalid(segment, field));
+            }
+        }
+        CodeForm::Cwe => {
+            if !code.system.starts_with(b"HL7") && code.version.is_none() {
+                return Err(invalid(segment, field));
+            }
+            if let Some(version) = code.version {
+                for _ in 0..4 {
+                    raw.push(separator);
+                }
+                raw.extend_from_slice(version);
+            }
+        }
+    }
     if raw.len() > maximum {
-        return Err(invalid("OBR", field));
+        return Err(invalid(segment, field));
     }
     Ok(raw)
 }
@@ -118,6 +149,38 @@ pub fn orm(
     subject: Subject<'_>,
     header: Header<'_>,
     options: Options,
+) -> Result<OrderMessage, Error> {
+    build(orders, subject, header, options, Family::Orm)
+}
+
+/// Builds a non-LAW OML/O21 using the existing caller-supplied order types.
+///
+/// New work uses one SPM per order, sample identity in SPM-2 and the supplied
+/// source in SPM-4. `Specimen::field` applies only to ORM; no local OBR sample
+/// field is populated here. Timing uses TQ1. A cancellation needs no invented
+/// specimen/container. Non-HL7 specimen coding systems require a supplied version.
+///
+/// # Errors
+/// Rejects editions other than 2.5.1, invalid/duplicate work, missing coding versions
+/// and output beyond the caller's configured bounds.
+pub fn oml(
+    orders: &[Order<'_>],
+    subject: Subject<'_>,
+    header: Header<'_>,
+    options: Options,
+) -> Result<OrderMessage, Error> {
+    if header.version != Version::V251 {
+        return Err(invalid("MSH", 12));
+    }
+    build(orders, subject, header, options, Family::Oml)
+}
+
+fn build(
+    orders: &[Order<'_>],
+    subject: Subject<'_>,
+    header: Header<'_>,
+    options: Options,
+    family: Family,
 ) -> Result<OrderMessage, Error> {
     if orders.is_empty() {
         return Err(invalid("ORC", 0));
@@ -155,7 +218,7 @@ pub fn orm(
             header.peer_facility,
             header.timestamp.raw(),
             b"",
-            b"ORM^O01^ORM_O01",
+            family.request(),
             header.control_id.raw(),
             header.processing.wire(),
             version,
@@ -197,6 +260,7 @@ pub fn orm(
     }
     let mut placer_ids = IdentitySet::default();
     let mut filler_ids = IdentitySet::default();
+    let mut specimen_number = 0_usize;
     for (offset, order) in orders.iter().enumerate() {
         let (placer, filler, control) = match order {
             Order::New { placer, filler, .. } => (*placer, *filler, Control::New),
@@ -242,7 +306,18 @@ pub fn orm(
                 segment(
                     &mut output,
                     b"ORC",
-                    &[control.wire(), &placer, &filler, b"", b"", b"F", &schedule],
+                    &[
+                        control.wire(),
+                        &placer,
+                        &filler,
+                        b"",
+                        b"",
+                        b"F",
+                        match family {
+                            Family::Orm => &schedule,
+                            Family::Oml => b"",
+                        },
+                    ],
                     options.limits.message_bytes,
                 )?;
                 let test = code(
@@ -252,24 +327,69 @@ pub fn orm(
                         Version::V231 => 200,
                         Version::V251 => 250,
                     },
+                    "OBR",
                     4,
+                    CodeForm::Ce,
                 )?;
-                let source = code(specimen.source, b'&', 300, 15)?;
-                let sample_field = match specimen.field {
-                    SampleField::Placer1 => 18,
-                    SampleField::Placer2 => 19,
+                let sample_field = match family {
+                    Family::Orm => match specimen.field {
+                        SampleField::Placer1 => 18,
+                        SampleField::Placer2 => 19,
+                    },
+                    Family::Oml => 2,
                 };
-                let sample = escape(specimen.sample.raw(), "OBR", sample_field, 60)?;
-                let number = offset.checked_add(1).ok_or(Error::Limit)?.to_string();
+                let (source, sample) = match family {
+                    Family::Orm => (
+                        code(specimen.source, b'&', 300, "OBR", 15, CodeForm::Ce)?,
+                        escape(specimen.sample.raw(), "OBR", sample_field, 60)?,
+                    ),
+                    Family::Oml => (
+                        code(specimen.source, b'^', 250, "SPM", 4, CodeForm::Cwe)?,
+                        escape(
+                            specimen.sample.raw(),
+                            "SPM",
+                            2,
+                            super::laboratory::SPECIMEN_ID_BYTES,
+                        )?,
+                    ),
+                };
+                if family == Family::Oml {
+                    let mut priority_code = priority.wire().to_vec();
+                    priority_code.extend_from_slice(b"^^HL70485");
+                    segment(
+                        &mut output,
+                        b"TQ1",
+                        &[
+                            b"1",
+                            b"",
+                            b"",
+                            b"",
+                            b"",
+                            b"",
+                            timing.start.map_or(b"", |v| v.raw()),
+                            timing.end.map_or(b"", |v| v.raw()),
+                            &priority_code,
+                        ],
+                        options.limits.message_bytes,
+                    )?;
+                }
+                let number = match family {
+                    Family::Orm => offset.checked_add(1).ok_or(Error::Limit)?,
+                    Family::Oml => {
+                        specimen_number = specimen_number.checked_add(1).ok_or(Error::Limit)?;
+                        specimen_number
+                    }
+                }
+                .to_string();
+                if family == Family::Oml && number.len() > 4 {
+                    return Err(invalid("SPM", 1));
+                }
                 let mut fields = vec![b"".as_slice(); 27];
                 for (field, value) in [
-                    (1, number.as_bytes()),
+                    (1_usize, number.as_bytes()),
                     (2, placer.as_slice()),
                     (3, filler.as_slice()),
                     (4, test.as_slice()),
-                    (15, source.as_slice()),
-                    (sample_field, sample.as_slice()),
-                    (27, schedule.as_slice()),
                 ] {
                     let target = field
                         .checked_sub(1)
@@ -277,7 +397,33 @@ pub fn orm(
                         .ok_or(Error::Limit)?;
                     *target = value;
                 }
+                if family == Family::Orm {
+                    for (field, value) in [
+                        (15, source.as_slice()),
+                        (sample_field, sample.as_slice()),
+                        (27, schedule.as_slice()),
+                    ] {
+                        let target = field
+                            .checked_sub(1)
+                            .and_then(|n| fields.get_mut(n))
+                            .ok_or(Error::Limit)?;
+                        *target = value;
+                    }
+                }
                 segment(&mut output, b"OBR", &fields, options.limits.message_bytes)?;
+                if family == Family::Oml {
+                    segment(
+                        &mut output,
+                        b"SPM",
+                        &[
+                            specimen_number.to_string().as_bytes(),
+                            &sample,
+                            b"",
+                            &source,
+                        ],
+                        options.limits.message_bytes,
+                    )?;
+                }
             }
         }
     }
@@ -289,5 +435,5 @@ pub fn orm(
         },
     )?;
     crate::Msh::new(&message)?;
-    Ok(OrderMessage { message })
+    Ok(OrderMessage { message, family })
 }
