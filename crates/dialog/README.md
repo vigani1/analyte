@@ -118,3 +118,25 @@ and parser limits. Restart reconciliation and real durability latency tests
 are covered by host tests in [receive.rs](../analyte/tests/receive.rs) and
 [HL7 orders](../analyte/tests/orders/hl7_send.rs); no simulator or real machine
 claim is made. The random-event property guards uncommitted positive responses.
+
+## LAW connections
+
+`law::Dialog` owns MLLP decoding, first-byte and per-reply send budgets,
+transaction routing, QBP response/work ordering, and result ACK choice. The
+same actions drive persistent links and both sides of independent links.
+`law::WorkExchange` retains the original command and starts the ORL budget
+only after transport issuance; transferring it between host connection owners
+preserves its clock and reservation identity.
+
+The host executes `Commit`, cache lookup, interpretation, transport write and
+reservation cleanup actions. It supplies metadata and factual interpretation
+outcomes, never an ACK code. AA requires both raw custody and successful durable
+interpretation. A response never starts an ACK loop. Unconfirmed complete blocks,
+partial frames and unread tails stay protected on cancellation or refusal.
+
+Evidence remains **documented** (PaLM TF-2b Rev 11 B.6/B.7 and sections
+3.27?3.29). `tests/law.rs` covers custody-before-ACK, error choices, deadline
+boundaries, availability-before-work, independent-link rejection and uncertain
+issuance without replay. Host integration tests cover both link topologies,
+restart, failed storage and cache lookup, corrections, cancellation and ORL
+correlation. No real-machine or simulator evidence is added by this refactor.

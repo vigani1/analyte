@@ -19,18 +19,14 @@ pub(crate) struct Connection {
     reserving: Vec<MachineOrderKey>,
     exchange: Option<Exchange>,
     cursor: String,
+    clock: Instant,
 }
 
-/// A positive availability response always owns its required LAB-28 followup.
-pub(crate) enum Reply {
-    Response(Message),
-    Followup { response: Message, work: Message },
-}
+pub(crate) use analyte_dialog::law::Reply;
 
 struct Exchange {
     records: Vec<MachineOrder>,
-    sent: Message,
-    until: Instant,
+    protocol: analyte_dialog::law::WorkExchange,
     query: Option<ReceiptId>,
 }
 
@@ -41,22 +37,27 @@ impl Connection {
             reserving: Vec::new(),
             exchange: None,
             cursor: String::new(),
+            clock: Instant::now(),
         })
     }
     pub(crate) fn due(&self) -> Option<Instant> {
-        self.exchange.as_ref().map(|exchange| exchange.until)
+        self.exchange
+            .as_ref()
+            .and_then(|exchange| self.clock.checked_add(exchange.protocol.deadline()))
     }
     pub(crate) async fn tick(&mut self, store: &Handle) -> Result<(), Error> {
-        if self.due().is_some_and(|until| Instant::now() >= until) {
+        if self
+            .exchange
+            .as_ref()
+            .is_some_and(|exchange| exchange.protocol.expired(self.clock.elapsed()))
+        {
             self.close(store, "LAW-ORL-timeout").await?;
         }
         Ok(())
     }
     pub(crate) fn issued(&mut self, wait: Duration) -> Result<(), Error> {
         if let Some(exchange) = &mut self.exchange {
-            exchange.until = Instant::now()
-                .checked_add(wait)
-                .ok_or("LAW ORL deadline overflow")?;
+            exchange.protocol.issued(self.clock.elapsed(), wait)?;
         }
         Ok(())
     }
@@ -340,8 +341,10 @@ impl Connection {
         let prepared_query = prepared.is_empty().then_some(receipt);
         self.exchange = Some(Exchange {
             records: prepared.into_iter().map(|(_, record)| record).collect(),
-            sent: followup,
-            until,
+            protocol: analyte_dialog::law::WorkExchange::new(
+                followup,
+                until.duration_since(self.clock),
+            ),
             query: prepared_query,
         });
         Ok(outgoing)
@@ -359,7 +362,7 @@ impl Connection {
                 .await?;
             return Ok(());
         };
-        if Instant::now() >= exchange.until {
+        if exchange.protocol.expired(self.clock.elapsed()) {
             self.close(store, "LAW-ORL-late").await?;
             evidence::failed_reading(
                 store,
@@ -370,7 +373,7 @@ impl Connection {
             .await?;
             return Ok(());
         }
-        let response = law::receive_work_response(message, &exchange.sent);
+        let response = exchange.protocol.response(message);
         if let Err(error) = &response {
             evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
         }

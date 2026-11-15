@@ -78,8 +78,10 @@ impl Connection {
                 Ok(record) => {
                     self.exchange = Some(Exchange {
                         records: vec![record],
-                        sent: sent.clone(),
-                        until,
+                        protocol: analyte_dialog::law::WorkExchange::new(
+                            sent.clone(),
+                            until.duration_since(self.clock),
+                        ),
                         query: None,
                     });
                     return Ok(Some(sent));
@@ -152,8 +154,10 @@ impl Connection {
             let sent = render(&refs, law::WorkAction::New, options)?;
             self.exchange = Some(Exchange {
                 records: prepared.into_iter().map(|(_, record)| record).collect(),
-                sent: sent.clone(),
-                until,
+                protocol: analyte_dialog::law::WorkExchange::new(
+                    sent.clone(),
+                    until.duration_since(self.clock),
+                ),
                 query: None,
             });
             return Ok(Some(sent));

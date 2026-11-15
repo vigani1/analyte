@@ -2,7 +2,6 @@
 use super::{Connection, Error, evidence, invalid};
 use crate::{config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
-use analyte_framing::mllp;
 use analyte_hl7::Message;
 use analyte_store::Handle;
 use std::{sync::Arc, time::Duration};
@@ -281,59 +280,16 @@ async fn transaction(
     conn: &mut analyte_transport::Connection,
     stop: &mut watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let options = settings.options();
-    let limit = mllp::Limit::new(options.limits.message_bytes.min(settings.frame_limit))?;
-    let mut decoder = mllp::Decoder::new(limit);
-    let result=async {
-        loop {
-            let until=orders.due().ok_or("LAW outbound deadline absent")?;
-            let event=tokio::select! {
-                biased;
-                ()=crate::machine::stopping(stop)=>return Ok(()),
-                result=tokio::time::timeout_at(until.into(),conn.receive())=>result.map_err(|_|invalid("LAW independent transaction deadline"))??,
-            }.ok_or("LAW independent peer closed before ORL")?;
-            match event {
-                analyte_transport::Event::Opened {..}=>{
-                    if std::time::Instant::now()>=until {return Err(invalid("LAW outbound work expired before issuance"));}
-                    tokio::select! {biased; ()=crate::machine::stopping(stop)=>return Ok(()), result=super::write(conn,message,limit,until.into())=>result?};
-                    orders.issued(Duration::from_millis(u64::from(settings.policy.response_ms)))?;
-                },
-                analyte_transport::Event::Received {bytes,..}=>{
-                    for byte in bytes {
-                        if let Some(event)=decoder.push(byte) {
-                            match event {
-                                mllp::Event::Rejected {raw,error}=>{evidence::park_bytes(store,machine,raw,&error.to_string()).await?;return Err(error.into());},
-                                mllp::Event::Block(raw)=>{
-                                    if *stop.borrow() {
-                                        evidence::park_bytes(store,machine,raw,"LAW outbound response interrupted by shutdown").await?;
-                                        return Ok(());
-                                    }
-                                    if std::time::Instant::now()>=until {
-                                        evidence::park_bytes(store,machine,raw,"LAW outbound response exceeded its transaction deadline").await?;
-                                        return Err(invalid("LAW outbound response deadline expired"));
-                                    }
-                                    let id=analyte_model::ReceiptId::new();
-                                    evidence::receive(store,machine,id,raw.clone()).await?;
-                                    let payload=raw.get(1..raw.len().saturating_sub(2)).ok_or("LAW ORL envelope")?;
-                                    match analyte_hl7::law::parse_message(payload,options) {
-                                        Ok(response) if response.segments().next().and_then(|s|s.field(9)).is_some_and(|f|f.raw()==b"ORL^O34^ORL_O42")=>orders.orl(store,machine,&response,id).await?,
-                                        Ok(_)=>{evidence::failed_reading(store,machine,id,"LAW outbound link received a non-ORL message").await?;return Err(invalid("LAW outbound link received a non-ORL message"));},
-                                        Err(error)=>{evidence::failed_reading(store,machine,id,&error.to_string()).await?;return Err(error.into());},
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if orders.due().is_none() {return Ok(());}
-                },
-                analyte_transport::Event::Closed(_)=>return Err(invalid("LAW independent peer disconnected")),
-                analyte_transport::Event::Failed(reason)=>return Err(invalid(&format!("LAW independent transport failed: {reason:?}"))),
-                analyte_transport::Event::RecordingFailed(_)=>{},
-            }
-        }
-    }.await;
-    if let Some(mllp::Event::Rejected { raw, error }) = decoder.finish() {
-        evidence::park_bytes(store, machine, raw, &error.to_string()).await?;
-    }
+    let mut host = super::Host::new(
+        machine,
+        settings,
+        store,
+        conn,
+        stop.clone(),
+        orders,
+        analyte_dialog::law::Link::WorkResponse,
+    )?;
+    let result = host.outbound(message).await;
+    host.finish().await?;
     result
 }
