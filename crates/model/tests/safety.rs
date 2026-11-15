@@ -47,6 +47,7 @@ fn rule5_no_guessed_decimal_or_lost_tokens() -> Result<(), Box<dyn std::error::E
     ] {
         assert!(Decimal::new(raw).is_err());
         let value = ResultValue {
+            decoded_text: None,
             original: SourceText::new(raw)?,
             parsed: ValueInterpretation::Text,
         };
@@ -174,6 +175,7 @@ fn plan6_analyte_revision_is_independent_of_source_action() -> Result<(), Box<dy
 #[test]
 fn plan6_repeated_typed_and_unsupported_values_survive() -> Result<(), Box<dyn std::error::Error>> {
     let value = ResultValue {
+        decoded_text: None,
         original: SourceText::new("raw composite")?,
         parsed: ValueInterpretation::Unsupported {
             source_type: Identifier::new("LOCAL")?,
@@ -281,6 +283,7 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
         .into_iter()
         .map(|parsed| {
             Ok(ResultValue {
+                decoded_text: None,
                 original: SourceText::new("original composite")?,
                 parsed,
             })
@@ -289,6 +292,7 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
     let supported_part = ResultPart {
         test: named.clone(),
         values: EvidenceList::new(vec![ResultValue {
+            decoded_text: None,
             original: SourceText::new("<0.10")?,
             parsed: ValueInterpretation::Numeric(NumericValue {
                 number: Decimal::new("0.10")?,

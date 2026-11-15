@@ -191,6 +191,10 @@ pub enum Hl7Processing {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Hl7Send {
+    /// Require PID patient identification. Contract v1 has no names, so orders
+    /// for this interface are rejected before reservation rather than inventing PID-5.
+    #[serde(default)]
+    pub require_patient_identification: bool,
     /// Outgoing MSH-3.
     pub application: Identifier,
     /// Outgoing MSH-5.
@@ -518,7 +522,7 @@ impl Orders {
             None => return Err(invalid(path, "syntax.edition", "HL7 requires an edition")),
         };
         let wire = format!(
-            "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02|config|P|{edition}\rQRD|{}\r",
+            "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02^QRY_Q02|config|P|{edition}\rQRD|{}\r",
             fields.join("|")
         );
         let syntax = analyte_hl7::Message::parse(wire.as_bytes(), analyte_hl7::Options::default())

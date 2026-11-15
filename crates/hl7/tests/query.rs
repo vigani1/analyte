@@ -2,7 +2,7 @@
 use analyte_hl7::{ControlId, Message, Options, Response, query};
 
 fn request(version: &str) -> Result<Message, analyte_hl7::Error> {
-    Message::parse(format!("MSH|^~\\&|A|B|C|D|202611150900||QRY^Q02|q1|P|{version}\rQRD|20261115|D|D|tag|||5^LI|0001^^^^^^^LCL|ORD|TEST\rQRF|LAB\r").as_bytes(), Options::default())
+    Message::parse(format!("MSH|^~\\&|A|B|C|D|202611150900||QRY^Q02^QRY_Q02|q1|P|{version}\rQRD|20261115|D|D|tag|||5^LI|0001^^^^^^^LCL|ORD|TEST\rQRF|LAB\r").as_bytes(), Options::default())
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr() -> Result<(), analyte_
     )?;
     assert!(dsr.raw().ends_with(b"QRF|LAB\rDSP|1||Synthetic line\r"));
     let ack = Message::parse(
-        b"MSH|^~\\&|A|B|C|D|20261115||ACK^Q03|a1|P|2.3.1\rMSA|AA|dsr1\r",
+        b"MSH|^~\\&|A|B|C|D|20261115||ACK^Q03^ACK|a1|P|2.3.1\rMSA|AA|dsr1\r",
         Options::default(),
     )?;
     assert!(query::DisplayAck::new(&ack, ControlId::new(b"dsr1")?).is_ok());
@@ -67,7 +67,7 @@ fn hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr() -> Result<(), analyte_
 proptest::proptest! {
     #[test]
     fn hl7_231_2_24_4_query_id_is_preserved(id in "[A-Za-z0-9]{1,10}") {
-        let bytes = format!("MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|q1|P|2.3.1\rQRD|20261115|D|D|{id}|||5^LI|0001^^^^^^^LCL|ORD|TEST\r");
+        let bytes = format!("MSH|^~\\&|A|B|C|D|20261115||QRY^Q02^QRY_Q02|q1|P|2.3.1\rQRD|20261115|D|D|{id}|||5^LI|0001^^^^^^^LCL|ORD|TEST\r");
         let parsed = Message::parse(bytes.as_bytes(), Options::default());
         proptest::prop_assert!(parsed.is_ok());
         if let Ok(message) = parsed {
@@ -87,7 +87,7 @@ fn hl7_231_2_24_4_rejects_vendor_quantity_and_missing_department() -> Result<(),
         b"QRD|20261115|D|D|tag|||RD|0001^^^^^^^LCL|ORD|TEST\r".as_slice(),
         b"QRD|20261115|D|D|tag|||5^LI|0001^^^^^^^LCL|ORD\r",
     ] {
-        let mut bytes = b"MSH|^~\\&|A|B|C|D|20261115||QRY^Q02|q1|P|2.3.1\r".to_vec();
+        let mut bytes = b"MSH|^~\\&|A|B|C|D|20261115||QRY^Q02^QRY_Q02|q1|P|2.3.1\r".to_vec();
         bytes.extend_from_slice(definition);
         let message = Message::parse(&bytes, Options::default())?;
         assert!(query::Request::new(&message).is_err());
@@ -176,7 +176,7 @@ fn hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events()
         "QCN^J01^QCN_J01",
         "QSX^J02^QCN_J01",
     ] {
-        let bytes = text.replace("QRY^Q02", kind);
+        let bytes = text.replace("QRY^Q02^QRY_Q02", kind);
         let message = Message::parse(bytes.as_bytes(), Options::default())?;
         assert!(matches!(
             query::Request::new(&message),
@@ -196,7 +196,7 @@ fn hl7_231_2_19_2_20_undeclared_enhanced_query_forms_are_rejected() -> Result<()
     let source = request("2.3.1")?;
     let text = std::str::from_utf8(source.raw()).map_err(|_| analyte_hl7::Error::Encoding)?;
     for kind in ["EQQ^Q04", "VQQ^Q07", "SPQ^Q08", "ERP^R09"] {
-        let bytes = text.replace("QRY^Q02", kind);
+        let bytes = text.replace("QRY^Q02^QRY_Q02", kind);
         let message = Message::parse(bytes.as_bytes(), Options::default())?;
         assert!(matches!(
             query::Request::new(&message),

@@ -340,7 +340,8 @@ async fn receive(
     {
         return failure(StatusCode::FORBIDDEN, "invalid_signature");
     }
-    // Contract deserialization validates every evidence part before storage. Keep
+    // Contract deserialization validates every evidence part, including decoded
+    // text availability, before storage. Never interpret source protocol escapes here. Keep
     // the received body itself: serializing the validated types would lose unknown fields.
     let document_id = if kind == "results" {
         decode::<Delivery>(&body).map(|d| d.fields().delivery_id.as_str().to_owned())

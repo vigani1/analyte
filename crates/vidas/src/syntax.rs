@@ -244,6 +244,7 @@ impl Message {
             sample: self.sample.clone(),
             assay: SourceText::new(self.get("rt").ok_or_else(|| Error::Field("rt".into()))?)?,
             value: ResultValue {
+                decoded_text: None,
                 original: SourceText::new(
                     self.get("qn").ok_or_else(|| Error::Field("qn".into()))?,
                 )?,

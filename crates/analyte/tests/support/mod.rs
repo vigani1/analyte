@@ -16,7 +16,7 @@ use tokio::{
 };
 
 pub(super) const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
-pub(super) const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01|message1|P|2.5.1\rPID|1\rOBR|1||00012a\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
+pub(super) const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012a\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
 pub(super) const ASTM: &[u8] = b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012A\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
 
 pub(super) struct Space;

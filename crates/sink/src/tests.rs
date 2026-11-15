@@ -124,6 +124,7 @@ fn make_result(receipt: ReceiptId, run: &str) -> Result<ResultContent, Box<dyn s
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![ResultPart {
             test: name("test")?,
             values: EvidenceList::new(vec![ResultValue {
+                decoded_text: None,
                 original: SourceText::new("<0.1")?,
                 parsed: ValueInterpretation::Text,
             }])?,
@@ -148,6 +149,7 @@ fn corrected_content(result: &mut ResultContent) -> Result<(), Box<dyn std::erro
         part.source_status = SourceText::new("C")?;
         part.status = ResultStatus::Corrected;
         part.values = EvidenceList::new(vec![ResultValue {
+            decoded_text: None,
             original: SourceText::new("<0.2")?,
             parsed: ValueInterpretation::Text,
         }])?;

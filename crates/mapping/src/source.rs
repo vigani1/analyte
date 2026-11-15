@@ -18,6 +18,7 @@ pub(crate) struct Node<'a> {
 }
 
 pub(crate) struct Source<'a> {
+    message: Option<&'a analyte_hl7::Message>,
     pub nodes: Vec<Node<'a>>,
     pub syntax: FieldSyntax,
     pub component_separator: u8,
@@ -25,6 +26,28 @@ pub(crate) struct Source<'a> {
 }
 
 impl Source<'_> {
+    pub(crate) fn text_problem(&self, raw: &str) -> Option<crate::Problem> {
+        let Record::Hl7(header) = self.nodes.first()?.record else {
+            return None;
+        };
+        let escape = char::from(*header.field(2)?.raw().get(2)?);
+        let mut parts = raw.split(escape);
+        parts.next();
+        let mut issue = None;
+        while let Some(code) = parts.next() {
+            if parts.next().is_none() {
+                return Some(crate::Problem::UnsupportedEscape);
+            }
+            match code {
+                "H" | "N" => return Some(crate::Problem::UnsupportedFormatting),
+                _ if code.starts_with('.') => return Some(crate::Problem::UnsupportedFormatting),
+                "F" | "S" | "T" | "R" | "E" => {}
+                _ => issue = Some(crate::Problem::UnsupportedEscape),
+            }
+        }
+        issue
+    }
+
     pub(crate) fn attach_comments(&mut self) -> Result<(), Error> {
         for index in 0..self.nodes.len() {
             let parent = self
@@ -59,6 +82,48 @@ impl Source<'_> {
     }
 
     pub(crate) fn text(&self, raw: &[u8], index: usize, field: usize) -> Result<String, Error> {
+        // Decode only after the caller has selected a structural position. The
+        // receipt and original_text retain the exact source spelling.
+        let original = self.original_text(raw, index, field)?;
+        if let Some(message) = self.message {
+            if self.text_problem(&original).is_some() {
+                return Err(Error::Structure {
+                    position: self.position(index, field),
+                    reason: "selected text contains unsupported HL7 escapes",
+                });
+            }
+            analyte_hl7::decode_text(raw, message).map_err(|source| Error::Hl7 {
+                position: self.position(index, field),
+                source,
+            })
+        } else {
+            Ok(original)
+        }
+    }
+
+    pub(crate) fn decoded_repetition(
+        &self,
+        index: usize,
+        field: usize,
+        repetition: usize,
+    ) -> Result<Option<String>, Error> {
+        let Some(Node {
+            record: Record::Hl7(segment),
+            ..
+        }) = self.nodes.get(index)
+        else {
+            return Ok(None);
+        };
+        let raw = segment
+            .field(field)
+            .and_then(|f| f.repetitions().nth(repetition))
+            .map(analyte_hl7::Repetition::raw);
+        raw.filter(|raw| *raw != b"\"\"")
+            .map(|raw| self.text(raw, index, field))
+            .transpose()
+    }
+
+    fn original_text(&self, raw: &[u8], index: usize, field: usize) -> Result<String, Error> {
         if raw.len() > 16384 {
             return Err(Error::Limit {
                 position: self.position(index, field),
@@ -83,7 +148,8 @@ impl Source<'_> {
             Record::Astm(record) => record.field(field).map(analyte_astm::Field::raw),
             Record::Hl7(segment) => segment.field(field).map(analyte_hl7::Field::raw),
         };
-        raw.map(|bytes| self.text(bytes, index, field)).transpose()
+        raw.map(|bytes| self.original_text(bytes, index, field))
+            .transpose()
     }
 
     pub(crate) fn component(
@@ -152,7 +218,7 @@ impl Source<'_> {
                             }
                             raw.extend_from_slice(component.raw());
                         }
-                        values.push(self.text(&raw, index, field)?);
+                        values.push(self.original_text(&raw, index, field)?);
                     }
                     Ok(values)
                 },
@@ -168,7 +234,7 @@ impl Source<'_> {
                                 resource: "repeated values",
                             });
                         }
-                        values.push(self.text(repetition.raw(), index, field)?);
+                        values.push(self.original_text(repetition.raw(), index, field)?);
                     }
                     Ok(values)
                 },
@@ -271,6 +337,7 @@ pub(crate) fn astm(message: &analyte_astm::Message) -> Source<'_> {
         })
         .collect();
     Source {
+        message: None,
         nodes,
         syntax: FieldSyntax::AstmLis02,
         component_separator: message.delimiters().bytes().get(2).copied().unwrap_or(b'^'),
@@ -331,6 +398,7 @@ fn hl7_segments(
 ) -> Result<Source<'_>, Error> {
     let oul = matches!(structure, Hl7Structure::Oul | Hl7Structure::Law);
     let mut source = Source {
+        message: Some(message),
         nodes: Vec::new(),
         syntax: FieldSyntax::Hl7V2,
         component_separator: message.delimiters().bytes().get(1).copied().unwrap_or(b'^'),

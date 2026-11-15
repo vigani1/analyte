@@ -45,8 +45,26 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
             .await
     });
     let client = reqwest::Client::builder().timeout(HANG_GUARD).build()?;
-    let body = include_bytes!("../../../docs/contract/vectors/delivery.json");
+    let body = include_bytes!("../../../docs/contract/vectors/decoded-text.json");
     let id = "019ab000-0000-7000-8000-000000000001";
+    let mut unsupported: Value = serde_json::from_slice(include_bytes!(
+        "../../../docs/contract/vectors/unsupported-formatting.json"
+    ))?;
+    unsupported["results"][0]["parts"][0]["values"][0]["decoded_text"] =
+        json!("partially interpreted");
+    assert_eq!(
+        post(
+            &client,
+            &url,
+            "results",
+            &serde_json::to_vec(&unsupported)?,
+            id,
+            "key"
+        )
+        .await?
+        .status(),
+        422
+    );
     // The contract owns evidence validation; invalid nested input must not reach storage.
     let mut invalid: Value = serde_json::from_slice(body)?;
     invalid["results"][0]["parts"] = json!([]);

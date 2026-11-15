@@ -135,11 +135,10 @@ async fn read_ack(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
     .await?
 }
 
-const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
+const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
 
 #[tokio::test]
-async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() -> Result<(), Error>
-{
+async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -177,15 +176,16 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
         1
     );
     drop(store);
-    let bad = String::from_utf8(ORU.to_vec())?
-        .replace("SYN^Synthetic", "UNKNOWN^Synthetic")
-        .replace("message1", "message2");
+    let mut bad = String::from_utf8(ORU.to_vec())?.replace("message1", "message2");
+    bad.push_str("OBX|2|NM|UNKNOWN^Synthetic^synthetic||12.30|mg/L|||||F\r");
     peer.write_all(&analyte_framing::mllp::encode(
         bad.as_bytes(),
         analyte_framing::mllp::Limit::new(1048576)?,
     )?)
     .await?;
-    assert!(String::from_utf8_lossy(&read_ack(&mut peer).await?).contains("MSA|AE|message2"));
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AE|message2"));
+    assert!(ack.contains("ERR||OBX^2^3|207|E|operator-review"), "{ack}");
     assert!(!stored(&program)?.parked(0)?.is_empty());
     assert_eq!(
         stored(&program)?
@@ -197,6 +197,17 @@ async fn adr0003_hl7_aa_only_after_interpretation_and_ae_for_mapping_findings() 
             .pending_count,
         1
     );
+    let conflict = String::from_utf8(ORU.to_vec())?
+        .replace("message1", "message3")
+        .replace("12.30", "99.10");
+    peer.write_all(&analyte_framing::mllp::encode(
+        conflict.as_bytes(),
+        analyte_framing::mllp::Limit::new(1048576)?,
+    )?)
+    .await?;
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AE|message3"));
+    assert!(ack.contains("ERR|||207|E|operator-review"), "{ack}");
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
     tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())

@@ -297,11 +297,10 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
         .replace("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB");
     let (_, unknown_body) = unknown.split_once('\r').ok_or("synthetic header absent")?;
     let mixed_mapping = format!("{valid}{}", unknown_body.replacen("SPM|1|", "SPM|2|", 1));
-    assert!(
-        hl7(&mut peer, mixed_mapping.as_bytes())
-            .await?
-            .contains("MSA|AE|mixed-mapping")
-    );
+    // HL7 2.5.1 section 2.15.5.2: the second OBX, not the first, has the unknown code.
+    let ack = hl7(&mut peer, mixed_mapping.as_bytes()).await?;
+    assert!(ack.contains("MSA|AE|mixed-mapping"));
+    assert!(ack.contains("ERR||OBX^2^3|207^^HL70357|E"), "{ack}");
     assert_eq!(count(&path, "observation_revisions")?, 3);
     assert_eq!(count(&path, "outbox")?, 3);
     assert!(

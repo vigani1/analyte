@@ -81,11 +81,41 @@ pub struct NumericValue {
 
 /// Source value text always survives, even when parsing is unavailable or fails.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ResultValueWire")]
 pub struct ResultValue {
     /// Original numeric, qualitative or error token, unchanged.
     pub original: SourceText,
+    /// Fully decoded protocol-neutral text, only when all source encoding is understood.
+    /// The original remains authoritative; absence never means an empty decoded value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decoded_text: Option<SourceText>,
     /// Explicit interpretation by the mapping layer; never inferred here.
     pub parsed: ValueInterpretation,
+}
+
+/// Decoded text is valid only for a fully interpreted textual value.
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[error("decoded text requires a text interpretation")]
+pub struct DecodedTextError;
+
+#[derive(Deserialize)]
+struct ResultValueWire {
+    original: SourceText,
+    decoded_text: Option<SourceText>,
+    parsed: ValueInterpretation,
+}
+impl TryFrom<ResultValueWire> for ResultValue {
+    type Error = DecodedTextError;
+    fn try_from(value: ResultValueWire) -> Result<Self, Self::Error> {
+        if value.decoded_text.is_some() && !matches!(value.parsed, ValueInterpretation::Text) {
+            return Err(DecodedTextError);
+        }
+        Ok(Self {
+            original: value.original,
+            decoded_text: value.decoded_text,
+            parsed: value.parsed,
+        })
+    }
 }
 
 /// An explicit source-to-UCUM mapping, not a claim of terminology validation.
