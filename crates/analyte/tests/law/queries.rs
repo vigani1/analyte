@@ -147,22 +147,8 @@ async fn send(peer: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 async fn packet(peer: &mut TcpStream) -> Result<analyte_hl7::Message, Error> {
-    tokio::time::timeout(HANG_GUARD, async {
-        assert_eq!(peer.read_u8().await?, 11);
-        let mut bytes = Vec::new();
-        loop {
-            let byte = peer.read_u8().await?;
-            if byte == 28 {
-                assert_eq!(peer.read_u8().await?, 13);
-                return Ok::<_, Error>(analyte_hl7::law::parse_message(&bytes, options())?);
-            }
-            if bytes.len() >= 1048576 {
-                return Err("LAW response bound".into());
-            }
-            bytes.push(byte);
-        }
-    })
-    .await?
+    let bytes = crate::support::read_mllp_packet(peer, "LAW response bound").await?;
+    Ok(analyte_hl7::law::parse_message(&bytes, options())?)
 }
 fn field<'a>(
     message: &'a analyte_hl7::Message,

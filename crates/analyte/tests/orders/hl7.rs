@@ -87,24 +87,7 @@ async fn send(peer: &mut TcpStream, payload: &[u8]) -> Result<(), Error> {
     .await?;
     Ok(())
 }
-async fn packet(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
-    tokio::time::timeout(HANG_GUARD, async {
-        assert_eq!(peer.read_u8().await?, 11);
-        let mut bytes = Vec::new();
-        loop {
-            let byte = peer.read_u8().await?;
-            if byte == 28 {
-                assert_eq!(peer.read_u8().await?, 13);
-                return Ok::<_, Error>(bytes);
-            }
-            if bytes.len() >= 1048576 {
-                return Err("oversized HL7 response".into());
-            }
-            bytes.push(byte);
-        }
-    })
-    .await?
-}
+
 async fn ack(peer: &mut TcpStream, dsr: &[u8], code: &str, edition: &str) -> Result<(), Error> {
     let message = analyte_hl7::Message::parse(dsr, analyte_hl7::Options::default())?;
     let header = analyte_hl7::Msh::new(&message)?;
@@ -128,7 +111,7 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
         let (_temp, path, reference, service, mut peer) = setup(edition, 30000, 30000).await?;
         let qry = query("000Ab12", version);
         send(&mut peer, &qry).await?;
-        let qck = packet(&mut peer).await?;
+        let qck = crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
         assert!(text(&qck)?.contains("QCK^Q02"));
         assert!(text(&qck)?.contains("QAK||OK\r"));
         let raw: Vec<u8> =
@@ -137,7 +120,7 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
             raw,
             analyte_framing::mllp::encode(&qry, analyte_framing::mllp::Limit::new(1048576)?)?
         );
-        let dsr = packet(&mut peer).await?;
+        let dsr = crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
         assert!(
             text(&dsr)?.contains(
                 "DSP|1||000Ab12\rDSP|2||SEND\rDSP|3||R\rDSP|4||\rDSP|5||order-1\rDSP|6||\r"
@@ -164,7 +147,10 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
         )
         .await?;
         send(&mut peer, &qry).await?;
-        assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
+        assert!(
+            text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+                .contains("QAK||AE\r")
+        );
         service.stop().await?;
         reference.close().await?;
     }
@@ -175,7 +161,10 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
 async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     send(&mut peer, &query("absent", "2.5.1")).await?;
-    assert!(text(&packet(&mut peer).await?)?.contains("QAK||NF\r"));
+    assert!(
+        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+            .contains("QAK||NF\r")
+    );
     reference.close().await?;
     for update in [
         "UPDATE feed SET complete=0",
@@ -185,7 +174,10 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
     ] {
         database(&path)?.execute_batch(update)?;
         send(&mut peer, &query("absent", "2.5.1")).await?;
-        assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
+        assert!(
+            text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+                .contains("QAK||AE\r")
+        );
     }
     send(
         &mut peer,
@@ -194,7 +186,10 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
             .into_bytes(),
     )
     .await?;
-    assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
+    assert!(
+        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+            .contains("QAK||AE\r")
+    );
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
             .get::<_, i64>(0))?,
@@ -215,8 +210,8 @@ async fn hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain() -> R
         let (_temp, path, reference, service, mut peer) =
             setup("v251", if code == "lost" { 500 } else { 30000 }, 30000).await?;
         send(&mut peer, &query("000Ab12", "2.5.1")).await?;
-        packet(&mut peer).await?;
-        let dsr = packet(&mut peer).await?;
+        crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+        let dsr = crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
         if matches!(code, "AE" | "AR") {
             ack(&mut peer, &dsr, code, "2.5.1").await?;
         }
@@ -247,7 +242,10 @@ async fn hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time(
     peer.write_all(wire.get(..10).ok_or("prefix")?).await?;
     tokio::time::sleep(Duration::from_millis(1100)).await;
     peer.write_all(wire.get(10..).ok_or("suffix")?).await?;
-    assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
+    assert!(
+        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+            .contains("QAK||AE\r")
+    );
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
             .get::<_, i64>(0))?,
@@ -274,8 +272,8 @@ fn hl7_231_251_synthetic_query_obeys_section_2_18_and_5_10() -> Result<(), Error
 async fn hl7_251_dsr_mismatched_application_ack_is_retained_and_uncertain() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
-    packet(&mut peer).await?;
-    packet(&mut peer).await?;
+    crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+    crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
     send(&mut peer,b"MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ACK^Q03^ACK|reply1|P|2.5.1\rMSA|AA|wrong-control-id\r").await?;
     event(
         &path,
@@ -310,7 +308,10 @@ async fn hl7_251_section5_10_quantity_limit_refuses_partial_dsr_before_reservati
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     let bytes = String::from_utf8(query("000Ab12", "2.5.1"))?.replace("100^LI", "1^LI");
     send(&mut peer, bytes.as_bytes()).await?;
-    assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
+    assert!(
+        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+            .contains("QAK||AE\r")
+    );
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
             .get::<_, i64>(0))?,
@@ -327,7 +328,10 @@ async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     database(&path)?.execute("INSERT INTO audit(evidence) VALUES (?1)",[serde_json::json!({"actor":"operator","action":"store-restore","targets":[],"time":jiff::Timestamp::now().as_second(),"reason":"synthetic restore"}).to_string()])?;
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
-    assert!(text(&packet(&mut peer).await?)?.contains("QAK||AE\r"));
+    assert!(
+        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+            .contains("QAK||AE\r")
+    );
     for table in [
         "machine_orders",
         "machine_order_items",
@@ -357,7 +361,10 @@ async fn rule9_hl7_query_freshness_follows_destination_config() -> Result<(), Er
             [jiff::Timestamp::now().as_second() - 50],
         )?;
         send(&mut peer, &query("absent", "2.5.1")).await?;
-        assert!(text(&packet(&mut peer).await?)?.contains(expected));
+        assert!(
+            text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+                .contains(expected)
+        );
         service.stop().await?;
     }
     Ok(())
