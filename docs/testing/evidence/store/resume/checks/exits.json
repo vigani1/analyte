@@ -1,0 +1,7 @@
+{
+    "test":  0,
+    "fuzz":  0,
+    "fmt":  0,
+    "deny":  0,
+    "clippy":  0
+}

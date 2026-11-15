@@ -1,0 +1,27 @@
+Mutation: crates/store/src/resend.rs:40:9: replace Store::delivery -> Result<Option<StoredDelivery>, Error> with Ok(None)
+Original full log: target\store-resume\delivery-recheck\mutants.out\log\crates__store__src__resend.rs_line_40_col_9.log
+Failing-test output excerpt:
+
+running 3 tests
+test tests::mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_claim ... FAILED
+test tests::mutation_adr0008_resend_requires_both_action_and_exact_delivery_target ... FAILED
+test tests::mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent ... ok
+
+failures:
+
+---- tests::mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_claim stdout ----
+Error: "missing delivery"
+
+---- tests::mutation_adr0008_resend_requires_both_action_and_exact_delivery_target stdout ----
+Error: "missing retained delivery"
+
+
+failures:
+    tests::mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_claim
+    tests::mutation_adr0008_resend_requires_both_action_and_exact_delivery_target
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 101 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `-p analyte-store --lib`
+
+*** result: Failure(101)
