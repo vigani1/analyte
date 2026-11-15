@@ -16,3 +16,6 @@ pub use message::{
     AckKind, Body, Capabilities, ControlId, Header, Message, MessageError, Observation, Profile,
     Role, Service,
 };
+
+mod build;
+pub use build::{ApplicationError, EscapeReason, Outbound, TerminationReason, build};
