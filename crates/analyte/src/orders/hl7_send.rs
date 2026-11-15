@@ -127,12 +127,9 @@ async fn next_work(
             machine: machine.id.clone(),
         };
         let version = app.fields().version;
-        let command = match command(machine, &app, options) {
-            Ok(command) => command,
-            Err(error) => {
-                reject(store, key, version, &error.to_string(), freshness).await?;
-                continue;
-            }
+        let Some(command) = prepare_command(store, machine, &app, options, key.clone()).await?
+        else {
+            continue;
         };
         let namespace = send.placer_namespace().clone();
         let groups = command
@@ -329,4 +326,27 @@ pub(super) async fn finish(
         })
         .await?;
     Ok(())
+}
+
+async fn prepare_command(
+    store: &Handle,
+    machine: &Machine,
+    app: &analyte_contract::Order,
+    options: Options,
+    key: MachineOrderKey,
+) -> Result<Option<Command>, Error> {
+    match command(machine, app, options) {
+        Ok(command) => Ok(Some(command)),
+        Err(error) => {
+            reject(
+                store,
+                key,
+                app.fields().version,
+                &error.to_string(),
+                machine.destination_limits.freshness.as_secs(),
+            )
+            .await?;
+            Ok(None)
+        }
+    }
 }

@@ -289,23 +289,7 @@ impl Connection {
         let mut answer = CacheAnswer::Unavailable;
         let mut lines = Vec::new();
         let mut candidates = Vec::new();
-        let selected = match sample(request, layout) {
-            Ok(Some(sample)) => Some(sample),
-            Ok(None) => {
-                evidence::failed_reading(
-                    store,
-                    machine,
-                    receipt,
-                    "HL7 query selectors are outside the configured scope",
-                )
-                .await?;
-                None
-            }
-            Err(error) => {
-                evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                None
-            }
-        };
+        let selected = select_sample(store, machine, request, receipt, layout).await?;
         if !busy
             && Instant::now() < until
             && let Some(sample) = selected
@@ -580,4 +564,31 @@ mod tests {
         store.shutdown(deadline()).await?;
         Ok(())
     }
+}
+
+async fn select_sample(
+    store: &Handle,
+    machine: &Machine,
+    request: query::Request<'_>,
+    receipt: ReceiptId,
+    layout: &analyte_config::Hl7OrderQuery,
+) -> Result<Option<SampleId>, Error> {
+    let selected = match sample(request, layout) {
+        Ok(Some(sample)) => Some(sample),
+        Ok(None) => {
+            evidence::failed_reading(
+                store,
+                machine,
+                receipt,
+                "HL7 query selectors are outside the configured scope",
+            )
+            .await?;
+            None
+        }
+        Err(error) => {
+            evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
+            None
+        }
+    };
+    Ok(selected)
 }
