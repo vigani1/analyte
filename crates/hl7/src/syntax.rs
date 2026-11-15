@@ -109,6 +109,8 @@ pub struct Options {
     pub terminator: Terminator,
     /// Malformed escapes.
     pub escapes: EscapePolicy,
+    /// Explicit vendor departure allowing the later UTF-8 code in HL7 2.3.1.
+    pub allow_utf8_in_v231: bool,
     /// Resource limits.
     pub limits: Limits,
 }
@@ -118,6 +120,7 @@ impl Default for Options {
             charset: Charset::Ascii,
             terminator: Terminator::Cr,
             escapes: EscapePolicy::Reject,
+            allow_utf8_in_v231: false,
             limits: Limits::default(),
         }
     }
@@ -302,7 +305,9 @@ impl Message {
         let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
             b"" | b"ASCII" => Charset::Ascii,
             b"8859/1" => Charset::Latin1,
-            b"UNICODE UTF-8" => Charset::Utf8,
+            b"UNICODE UTF-8" if version_id != b"2.3.1" || options.allow_utf8_in_v231 => {
+                Charset::Utf8
+            }
             _ => return Err(Error::UnsupportedCharset),
         };
         if charset != options.charset {

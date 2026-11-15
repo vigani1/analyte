@@ -32,7 +32,9 @@ then becomes the test list, one or more tests per row.
 - **Groups.** Parsing keeps the patient/order/observation/specimen group each
   segment belongs to; field paths are relative to their group.
 - **Character sets.** Each connection declares its encoding (ASCII, ISO 8859-1
-  or UTF-8); MSH-18 is checked against it. Undecodable bytes are kept and
+  or UTF-8); MSH-18 is checked against it. The `UNICODE UTF-8` code is standard
+  in 2.5.1 only; accepting it in 2.3.1 requires `syntax.allow_utf8_in_v231 = true`
+  and a named deviation with the same key and a reason. Undecodable bytes are kept and
   reported, never replaced.
 - **Vendor departures** (repurposed fields, reused control IDs in responses,
   QC arrays in OBR) live in machine configs as named deviations, never in the
@@ -81,6 +83,9 @@ then becomes the test list, one or more tests per row.
 ### D. Character encoding
 
 - [ ] B — Apply edition-specific MSH-18 default and code-table rules; do not guess from local OS settings. 231 ch.2 §2.24.1.18 pp.144–145; 251 ch.2 §2.15.9.18 pp.79–81.
+
+  **Partial evidence:** [control.rs](../../crates/hl7/tests/control.rs): `hl7_231_2_24_1_18_and_251_2_15_9_18_charset_is_edition_specific` tests the supported ASCII, Latin-1 and UTF-8 subset by edition, including default rejection and explicit override for legacy UTF-8. [config.rs](../../crates/config/tests/config.rs): `hl7_231_2_24_1_18_utf8_requires_named_vendor_departure` requires a named reason and limits the departure to 2.3.1 with UTF-8 configured. Other table encodings remain unsupported.
+
 - [ ] B — Implement declared alternate-set switching and MSH-20 handling or explicitly reject the unsupported scheme. 231 ch.2 §§2.9.2, 2.24.1.20 pp.102, 145; 251 ch.2 §§2.7.2, 2.15.9.20 pp.17–18, 82.
 - [ ] 251 — Enforce the charset table's UTF-8 restrictions; MLLP's UTF-8 capability does not independently authorize every HL7 header usage. Ch.2 §2.15.9.18 pp.79–81.
 - [ ] M — Agree a connection encoding compatible with R1; exclude UTF-16/32 and embedded conflicting control bytes. MLLP §1.3 pp.2–3.

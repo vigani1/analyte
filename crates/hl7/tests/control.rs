@@ -517,3 +517,49 @@ fn hl7_251_2_a_44_and_231_2_24_1_9_message_type_components() -> Result<(), Error
     }
     Ok(())
 }
+
+// HL7 2.3.1 section 2.24.1.18 p.2-108; 2.5.1 section 2.15.9.18 pp.2-78-81.
+#[test]
+fn hl7_231_2_24_1_18_and_251_2_15_9_18_charset_is_edition_specific() -> Result<(), Error> {
+    let options = Options {
+        charset: Charset::Utf8,
+        ..Options::default()
+    };
+    let legacy = wire("2.3.1", "", "", "UNICODE UTF-8", "");
+    assert!(matches!(
+        Message::parse(&legacy, options),
+        Err(Error::UnsupportedCharset)
+    ));
+    assert_eq!(
+        Message::parse(
+            &legacy,
+            Options {
+                allow_utf8_in_v231: true,
+                ..options
+            }
+        )?
+        .serialize(),
+        legacy
+    );
+    let modern = wire("2.5.1", "", "", "UNICODE UTF-8", "");
+    assert_eq!(Message::parse(&modern, options)?.serialize(), modern);
+    for version in ["2.3.1", "2.5.1"] {
+        for charset in ["", "ASCII"] {
+            let raw = wire(version, "", "", charset, "");
+            assert_eq!(parse(&raw)?.serialize(), raw);
+        }
+        let raw = wire(version, "", "", "8859/1", "");
+        assert_eq!(
+            Message::parse(
+                &raw,
+                Options {
+                    charset: Charset::Latin1,
+                    ..Options::default()
+                }
+            )?
+            .serialize(),
+            raw
+        );
+    }
+    Ok(())
+}
