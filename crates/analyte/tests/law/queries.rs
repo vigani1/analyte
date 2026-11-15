@@ -147,7 +147,7 @@ async fn send(peer: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 async fn packet(peer: &mut TcpStream) -> Result<analyte_hl7::Message, Error> {
-    let bytes = crate::support::read_mllp_packet(peer, "LAW response bound").await?;
+    let bytes = read_mllp_packet(peer, "LAW response bound").await?;
     Ok(analyte_hl7::law::parse_message(&bytes, options())?)
 }
 fn field<'a>(

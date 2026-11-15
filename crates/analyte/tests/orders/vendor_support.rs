@@ -3,7 +3,7 @@ use super::*;
 use crate::support::HANG_GUARD;
 use tokio::{io::AsyncReadExt, net::TcpStream};
 pub(super) async fn state(path: &Path, expected: &str) -> Result<(), Error> {
-    crate::support::wait_database_count(
+    wait_database_count(
         path,
         "SELECT count(*) FROM machine_orders WHERE state=?1",
         [expected],

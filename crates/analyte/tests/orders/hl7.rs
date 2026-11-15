@@ -2,10 +2,7 @@
 use super::vendor_support::{event, no_event, state};
 use super::*;
 use crate::support::HANG_GUARD;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-};
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 async fn setup(
     edition: &str,
@@ -111,7 +108,7 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
         let (_temp, path, reference, service, mut peer) = setup(edition, 30000, 30000).await?;
         let qry = query("000Ab12", version);
         send(&mut peer, &qry).await?;
-        let qck = crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+        let qck = read_mllp_packet(&mut peer, "oversized HL7 response").await?;
         assert!(text(&qck)?.contains("QCK^Q02"));
         assert!(text(&qck)?.contains("QAK||OK\r"));
         let raw: Vec<u8> =
@@ -120,7 +117,7 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
             raw,
             analyte_framing::mllp::encode(&qry, analyte_framing::mllp::Limit::new(1048576)?)?
         );
-        let dsr = crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+        let dsr = read_mllp_packet(&mut peer, "oversized HL7 response").await?;
         assert!(
             text(&dsr)?.contains(
                 "DSP|1||000Ab12\rDSP|2||SEND\rDSP|3||R\rDSP|4||\rDSP|5||order-1\rDSP|6||\r"
@@ -148,7 +145,7 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
         .await?;
         send(&mut peer, &qry).await?;
         assert!(
-            text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+            text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
                 .contains("QAK||AE\r")
         );
         service.stop().await?;
@@ -162,8 +159,7 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     send(&mut peer, &query("absent", "2.5.1")).await?;
     assert!(
-        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
-            .contains("QAK||NF\r")
+        text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?.contains("QAK||NF\r")
     );
     reference.close().await?;
     for update in [
@@ -175,7 +171,7 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
         database(&path)?.execute_batch(update)?;
         send(&mut peer, &query("absent", "2.5.1")).await?;
         assert!(
-            text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
+            text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
                 .contains("QAK||AE\r")
         );
     }
@@ -187,8 +183,7 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
     )
     .await?;
     assert!(
-        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
-            .contains("QAK||AE\r")
+        text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?.contains("QAK||AE\r")
     );
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
@@ -210,8 +205,8 @@ async fn hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain() -> R
         let (_temp, path, reference, service, mut peer) =
             setup("v251", if code == "lost" { 500 } else { 30000 }, 30000).await?;
         send(&mut peer, &query("000Ab12", "2.5.1")).await?;
-        crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
-        let dsr = crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+        read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+        let dsr = read_mllp_packet(&mut peer, "oversized HL7 response").await?;
         if matches!(code, "AE" | "AR") {
             ack(&mut peer, &dsr, code, "2.5.1").await?;
         }
@@ -243,8 +238,7 @@ async fn hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time(
     tokio::time::sleep(Duration::from_millis(1100)).await;
     peer.write_all(wire.get(10..).ok_or("suffix")?).await?;
     assert!(
-        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
-            .contains("QAK||AE\r")
+        text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?.contains("QAK||AE\r")
     );
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
@@ -272,8 +266,8 @@ fn hl7_231_251_synthetic_query_obeys_section_2_18_and_5_10() -> Result<(), Error
 async fn hl7_251_dsr_mismatched_application_ack_is_retained_and_uncertain() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
-    crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
-    crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+    read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+    read_mllp_packet(&mut peer, "oversized HL7 response").await?;
     send(&mut peer,b"MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ACK^Q03^ACK|reply1|P|2.5.1\rMSA|AA|wrong-control-id\r").await?;
     event(
         &path,
@@ -309,8 +303,7 @@ async fn hl7_251_section5_10_quantity_limit_refuses_partial_dsr_before_reservati
     let bytes = String::from_utf8(query("000Ab12", "2.5.1"))?.replace("100^LI", "1^LI");
     send(&mut peer, bytes.as_bytes()).await?;
     assert!(
-        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
-            .contains("QAK||AE\r")
+        text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?.contains("QAK||AE\r")
     );
     assert_eq!(
         database(&path)?.query_row("SELECT count(*) FROM machine_orders", [], |r| r
@@ -329,8 +322,7 @@ async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result
     database(&path)?.execute("INSERT INTO audit(evidence) VALUES (?1)",[serde_json::json!({"actor":"operator","action":"store-restore","targets":[],"time":jiff::Timestamp::now().as_second(),"reason":"synthetic restore"}).to_string()])?;
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
     assert!(
-        text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
-            .contains("QAK||AE\r")
+        text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?.contains("QAK||AE\r")
     );
     for table in [
         "machine_orders",
@@ -362,8 +354,7 @@ async fn rule9_hl7_query_freshness_follows_destination_config() -> Result<(), Er
         )?;
         send(&mut peer, &query("absent", "2.5.1")).await?;
         assert!(
-            text(&crate::support::read_mllp_packet(&mut peer, "oversized HL7 response").await?)?
-                .contains(expected)
+            text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?.contains(expected)
         );
         service.stop().await?;
     }

@@ -156,7 +156,7 @@ async fn hl7_231_251_send_ahead_accepted_rejected_and_mixed_items() -> Result<()
             (["OK", "UA"], "Uncertain"),
         ] {
             let (_temp, path, reference, service, mut peer) = setup(edition).await?;
-            let bytes = crate::support::read_mllp_packet(&mut peer, "oversized packet").await?;
+            let bytes = read_mllp_packet(&mut peer, "oversized packet").await?;
             let message = analyte_hl7::Message::parse(&bytes, analyte_hl7::Options::default())?;
             assert_eq!(
                 analyte_hl7::Msh::new(&message)?.message_type().next(),
@@ -214,7 +214,7 @@ async fn hl7_251_no_reply_disconnect_and_restart_never_resend() -> Result<(), Er
             if disconnect { 30000 } else { 250 },
         )
         .await?;
-        crate::support::read_mllp_packet(&mut peer, "oversized packet").await?;
+        read_mllp_packet(&mut peer, "oversized packet").await?;
         if disconnect {
             drop(peer);
         }
@@ -256,11 +256,11 @@ async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> R
     for (edition, version) in [("v231", "2.3.1"), ("v251", "2.5.1")] {
         for refused in [false, true] {
             let (_temp, path, reference, service, mut peer) = setup(edition).await?;
-            let bytes = crate::support::read_mllp_packet(&mut peer, "oversized packet").await?;
+            let bytes = read_mllp_packet(&mut peer, "oversized packet").await?;
             reply(&mut peer, &bytes, &["OK", "OK"], version).await?;
             outcome(&path, "Accepted").await?;
             cancel_cache(&path, &reference).await?;
-            let cancel = crate::support::read_mllp_packet(&mut peer, "oversized packet").await?;
+            let cancel = read_mllp_packet(&mut peer, "oversized packet").await?;
             let parsed = analyte_hl7::Message::parse(&cancel, analyte_hl7::Options::default())?;
             assert!(
                 parsed
@@ -332,7 +332,7 @@ async fn hl7_231_orc4_overlong_group_is_rejected_before_any_reservation() -> Res
 #[tokio::test]
 async fn adr0003_hl7_restart_during_sending_recovers_items_without_resend() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251").await?;
-    crate::support::read_mllp_packet(&mut peer, "oversized packet").await?;
+    read_mllp_packet(&mut peer, "oversized packet").await?;
     state(&path, "Sending").await?;
     service.crash().await?;
     tokio::time::timeout(HANG_GUARD, async {
@@ -368,7 +368,7 @@ async fn adr0003_hl7_restart_during_sending_recovers_items_without_resend() -> R
 #[tokio::test]
 async fn hl7_ei_actual_store_id_overflow_rejects_before_sending_reservation() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251").await?;
-    let bytes = crate::support::read_mllp_packet(&mut peer, "oversized packet").await?;
+    let bytes = read_mllp_packet(&mut peer, "oversized packet").await?;
     reply(&mut peer, &bytes, &["OK", "OK"], "2.5.1").await?;
     outcome(&path, "Accepted").await?;
     database(&path)?.execute(
