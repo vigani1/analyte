@@ -3,7 +3,8 @@ use analyte_hl7::Terminator;
 pub(crate) use analyte_hl7::location_error as build;
 use analyte_mapping::Output;
 
-use analyte_hl7::{Location, syntax_location};
+pub(crate) use analyte_hl7::Location;
+use analyte_hl7::syntax_location;
 
 pub(crate) fn mapping_location(
     mapping: &Result<Output, crate::Error>,
@@ -81,3 +82,4 @@ mod tests {
         assert!(Location::at(raw, Terminator::Cr, 4, 0).is_none());
     }
 }
+
