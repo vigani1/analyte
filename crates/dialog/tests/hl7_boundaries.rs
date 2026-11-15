@@ -209,8 +209,7 @@ fn adr0003_0010_hl7_251_2_9_callbacks_require_matching_receipt_and_phase() -> Te
 }
 
 #[test]
-fn rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt() -> TestResult
-{
+fn rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt() -> TestResult {
     let application = [b'X'; 65];
     for (segment, code, app, accepted) in [
         (
