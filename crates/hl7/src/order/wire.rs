@@ -27,15 +27,7 @@ impl<'a> IdentitySet<'a> {
 }
 
 fn append(output: &mut Vec<u8>, value: &[u8], maximum: usize) -> Result<(), Error> {
-    if output
-        .len()
-        .checked_add(value.len())
-        .is_none_or(|n| n > maximum)
-    {
-        return Err(Error::Limit);
-    }
-    output.extend_from_slice(value);
-    Ok(())
+    crate::encoder::append(output, value, maximum).map_err(|_| Error::Limit)
 }
 
 fn segment(

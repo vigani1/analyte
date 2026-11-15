@@ -276,7 +276,7 @@ fn segment(wire: &mut Wire, id: &[u8], fields: &[&[u8]]) -> Result<(), Error> {
     for field in fields {
         wire.field(field)?;
     }
-    wire.append(b"\r")
+    wire.append(b"\r").map_err(Into::into)
 }
 
 fn set_field<'a>(

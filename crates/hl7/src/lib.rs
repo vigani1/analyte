@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod ack;
+mod encoder;
 mod datatypes;
 mod syntax;
 mod views;
