@@ -17,6 +17,9 @@ use tokio::sync::watch;
 /// Syntax and POCT containment remain the protocol crate's responsibility.
 fn frame_length(raw: &[u8], maximum_depth: usize) -> Result<Option<usize>, Error> {
     let mut reader = quick_xml::Reader::from_reader(raw);
+    // Boundaries need balanced depth even for a mismatched tag name. The syntax
+    // reader rejects it afterwards, while retaining the complete rejected root.
+    reader.config_mut().check_end_names = false;
     let mut depth = 0usize;
     loop {
         match reader.read_event() {
@@ -137,16 +140,9 @@ pub(super) async fn session(
                     let length = match frame_length(&raw, policy.depth) {
                         Ok(Some(length)) => length,
                         Ok(None) => continue,
-                        Err(error) => {
-                            evidence::park_bytes(
-                                store,
-                                machine,
-                                std::mem::take(&mut raw),
-                                &error.to_string(),
-                            )
-                            .await?;
-                            return Err(error);
-                        }
+                        // Parse the retained bytes through the syntax boundary to
+                        // classify a framing failure and recover a Hello header.
+                        Err(_) => raw.len(),
                     };
                     let wire = raw
                         .get(..length)
@@ -156,6 +152,8 @@ pub(super) async fn session(
                     let message = match Message::parse(&wire, limits) {
                         Ok(message) => message,
                         Err(error) => {
+                            let reference = analyte_poct::hello_error_reference(&wire, limits);
+                            let ack_error = error.acknowledgement_error();
                             evidence::park_bytes(
                                 store,
                                 machine,
@@ -163,6 +161,29 @@ pub(super) async fn session(
                                 &format!("POCT syntax: {error}"),
                             )
                             .await?;
+                            if let Some(reference) = reference {
+                                let actions = dialog.step(
+                                    start.elapsed(),
+                                    DialogEvent::InvalidHello {
+                                        reference,
+                                        error: ack_error,
+                                    },
+                                )?;
+                                if process(
+                                    actions,
+                                    &mut dialog,
+                                    start,
+                                    machine,
+                                    store,
+                                    conn,
+                                    settings,
+                                )
+                                .await?
+                                {
+                                    return Ok(());
+                                }
+                                continue;
+                            }
                             return Err(error.into());
                         }
                     };
@@ -210,17 +231,18 @@ async fn process(
             DialogAction::Store { ticket, message } => {
                 let id = ReceiptId::new();
                 let operation = async {
-                    let time =
-                        evidence::receive(store, machine, id, message.document().raw().to_vec())
-                            .await?;
+                    evidence::receive(store, machine, id, message.document().raw().to_vec())
+                        .await?;
                     match message.body() {
                         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
-                            match super::interpretation::map(
-                                machine,
-                                id,
-                                time,
-                                message.document().raw(),
-                            ) {
+                            let receipt = store
+                                .request(crate::deadline(), move |s| {
+                                    s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+                                })
+                                .await?;
+                            match super::interpretation::map_retained(store, machine, &receipt)
+                                .await
+                            {
                                 Ok(reading) => {
                                     evidence::vendor_reading(store, machine, id, reading).await?;
                                 }
@@ -232,21 +254,31 @@ async fn process(
                                         &format!("POCT interpretation: {error}"),
                                     )
                                     .await?;
-                                    return Ok::<_, Error>(CommitOutcome::ApplicationError(
+                                    return Ok(CommitOutcome::ApplicationError(
                                         analyte_poct::ApplicationError::UnsupportedValue,
                                     ));
                                 }
                             }
                         }
-                        Body::Hello { .. }
-                        | Body::Status { .. }
+                        Body::Hello { .. } => {
+                            // Mark the complete, parsed Hello as connection context. Transport
+                            // journal fragments are also receipts, but are not interpreted Hellos.
+                            evidence::vendor_reading(
+                                store,
+                                machine,
+                                id,
+                                analyte_mapping::Output::default(),
+                            )
+                            .await?;
+                        }
+                        Body::Status { .. }
                         | Body::EndTopic(_)
                         | Body::Terminate(_)
                         | Body::Acknowledgement { .. }
                         | Body::Escape { .. }
                         | Body::Request(_) => {}
                     }
-                    Ok(CommitOutcome::Stored)
+                    Ok::<_, Error>(CommitOutcome::Stored)
                 };
                 let outcome = match operation.await {
                     Ok(outcome) => outcome,
@@ -259,7 +291,13 @@ async fn process(
                     dialog.step(start.elapsed(), DialogEvent::Committed { ticket, outcome })?,
                 );
             }
+            DialogAction::Park { message, reason } => {
+                evidence::park_bytes(store, machine, message.document().raw().to_vec(), reason)
+                    .await?;
+            }
             DialogAction::Send { control_id, body } => {
+                let mut limits = limits;
+                limits.message_bytes = limits.message_bytes.min(dialog.outbound_message_limit());
                 let message = analyte_poct::build(
                     &Header {
                         control_id,

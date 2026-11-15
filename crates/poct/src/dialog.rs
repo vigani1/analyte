@@ -3,14 +3,18 @@ use crate::{
     AckKind, ApplicationError, Body, Capabilities, ControlId, EscapeReason, Message, Nullable,
     Outbound, TerminationReason,
 };
-use std::{collections::VecDeque, time::Duration};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    time::Duration,
+};
 
 /// Host limits and deadlines; these are policy, not claimed standard defaults.
 #[derive(Debug, Clone)]
 pub struct DialogConfig {
     /// Maximum uncommitted dynamic messages, including asynchronous observations.
     pub pending_messages: usize,
-    /// Maximum accepted bytes in any message.
+    /// Maximum accepted bytes in any message, and aggregate received control-ID bytes.
+    /// Each ID is nonempty, so this also bounds the number of retained IDs.
     pub message_bytes: usize,
     /// Generous wait for the device's next response.
     pub response_timeout: Duration,
@@ -78,6 +82,13 @@ pub enum CommitOutcome {
 pub enum DialogEvent {
     /// A structurally checked received message. Host retains rejected raw receipts.
     Received(Box<Message>),
+    /// Host has durably parked invalid Hello bytes and recovered a unique header ID.
+    InvalidHello {
+        /// Source control ID, never guessed from body content.
+        reference: ControlId,
+        /// Error classified by the syntax boundary.
+        error: ApplicationError,
+    },
     /// Host policy accepts or rejects the inspected device.
     HelloDecision(bool),
     /// A specific durable storage request completed, possibly out of order.
@@ -115,6 +126,13 @@ pub enum DialogAction {
         ticket: CommitId,
         /// Exact received evidence and typed content.
         message: Box<Message>,
+    },
+    /// Park rejected source evidence before issuing subsequent protocol responses.
+    Park {
+        /// Exact rejected message, never processed as an accepted result.
+        message: Box<Message>,
+        /// Protocol reason without payloads.
+        reason: &'static str,
     },
     /// Build and issue this message in action order; host supplies creation time.
     Send {
@@ -189,6 +207,8 @@ pub struct Dialog {
     reads: bool,
     hello_received: Duration,
     last_sent: Option<ControlId>,
+    received_ids: BTreeSet<ControlId>,
+    received_id_bytes: usize,
 }
 
 impl Dialog {
@@ -217,6 +237,8 @@ impl Dialog {
             reads: true,
             hello_received: Duration::ZERO,
             last_sent: None,
+            received_ids: BTreeSet::new(),
+            received_id_bytes: 0,
         })
     }
 
@@ -254,6 +276,23 @@ impl Dialog {
             DialogEvent::Received(message) => {
                 self.response_deadline = response_deadline;
                 self.receive(message, &mut actions)?;
+            }
+            DialogEvent::InvalidHello { reference, error } => {
+                if matches!(self.phase, Phase::Hello)
+                    && reference.as_str().len() <= self.config.message_bytes
+                {
+                    // Header recovery does not accept Hello, but its source ID
+                    // has still occurred and cannot be reused by the final ACK.
+                    self.received_id_bytes = reference.as_str().len();
+                    self.received_ids.insert(reference.clone());
+                    self.send(
+                        Outbound::ApplicationError { reference, error },
+                        &mut actions,
+                    )?;
+                    self.terminate(TerminationReason::Abnormal, &mut actions)?;
+                } else {
+                    self.close(false, &mut actions);
+                }
             }
             DialogEvent::HelloDecision(accepted) => self.decide_hello(accepted, &mut actions)?,
             DialogEvent::Committed { ticket, outcome } => {
@@ -306,6 +345,34 @@ impl Dialog {
             return Ok(());
         }
         let reference = message.header().control_id.clone();
+        if self.received_ids.contains(&reference) {
+            return self.refuse_protocol(
+                message,
+                "POCT reused incoming control ID",
+                EscapeReason::Other,
+                actions,
+            );
+        }
+        // A new final ACK closes this conversation; retaining it cannot affect
+        // any later decision. It must remain usable even when the ID budget filled.
+        let terminal_ack = matches!(self.phase, Phase::Ending(_))
+            && matches!(message.body(), Body::Acknowledgement { .. });
+        if !terminal_ack {
+            let Some(bytes) = self
+                .received_id_bytes
+                .checked_add(reference.as_str().len())
+                .filter(|bytes| *bytes <= self.config.message_bytes)
+            else {
+                return self.refuse_protocol(
+                    message,
+                    "POCT conversation control-ID budget exhausted",
+                    EscapeReason::CannotComplete,
+                    actions,
+                );
+            };
+            self.received_ids.insert(reference.clone());
+            self.received_id_bytes = bytes;
+        }
         match message.body() {
             Body::Hello {
                 device_id,
@@ -400,7 +467,7 @@ impl Dialog {
         let Phase::Inspect(message) = std::mem::replace(&mut self.phase, Phase::HelloCommit) else {
             return Err(DialogError::State);
         };
-        let mut supported = accepted;
+        let mut supported = true;
         if let Body::Hello {
             application_timeout,
             capabilities,
@@ -444,15 +511,28 @@ impl Dialog {
                 }
             }
         }
-        if !supported {
+        if !supported || !accepted {
+            let reference = message.header().control_id.clone();
+            actions.push(DialogAction::Park {
+                message,
+                reason: if supported {
+                    "POCT Hello rejected by host policy"
+                } else {
+                    "POCT Hello capabilities could not be interpreted"
+                },
+            });
             self.send(
                 Outbound::ApplicationError {
-                    reference: message.header().control_id.clone(),
+                    reference,
                     error: ApplicationError::UnsupportedValue,
                 },
                 actions,
             )?;
-            self.close(false, actions);
+            if supported {
+                self.close(false, actions);
+            } else {
+                self.terminate(TerminationReason::Abnormal, actions)?;
+            }
         } else {
             self.store(message, Purpose::Hello, actions)?;
         }
@@ -561,6 +641,32 @@ impl Dialog {
             .checked_add(self.config.response_timeout)
             .ok_or(DialogError::Exhausted)?;
         Ok(())
+    }
+
+    fn refuse_protocol(
+        &mut self,
+        message: Box<Message>,
+        reason: &'static str,
+        detail: EscapeReason,
+        actions: &mut Vec<DialogAction>,
+    ) -> Result<(), DialogError> {
+        let reference = message.header().control_id.clone();
+        let already_ending = matches!(self.phase, Phase::Ending(_));
+        actions.push(DialogAction::Park { message, reason });
+        self.send(
+            Outbound::Escape {
+                reference,
+                reason: detail,
+            },
+            actions,
+        )?;
+        if already_ending {
+            // Repeated bad traffic must not restart the termination deadline.
+            self.close(false, actions);
+            Ok(())
+        } else {
+            self.terminate(TerminationReason::Abnormal, actions)
+        }
     }
 
     fn unexpected(

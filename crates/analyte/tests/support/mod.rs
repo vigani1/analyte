@@ -1,4 +1,7 @@
 //! Synthetic localhost fixtures; no environment mutation or external peers.
+mod guard;
+pub(super) use guard::HANG_GUARD;
+
 use analyte::{Error, config::Program, service};
 use analyte_store::FreeSpace;
 use std::{
@@ -123,7 +126,7 @@ impl Running {
 
     pub(super) async fn stop(self) -> Result<(), Error> {
         self.stop.send(()).map_err(|()| "service stopped early")?;
-        tokio::time::timeout(Duration::from_secs(7), self.task).await???;
+        tokio::time::timeout(HANG_GUARD, self.task).await???;
         Ok(())
     }
 }
@@ -139,7 +142,7 @@ pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error>
         .effective()
         .site()
         .endpoint;
-    let stream = tokio::time::timeout(Duration::from_secs(5), async {
+    let stream = tokio::time::timeout(HANG_GUARD, async {
         loop {
             if let Ok(stream) = TcpStream::connect(address).await {
                 return Ok::<_, Error>(stream);
@@ -150,7 +153,7 @@ pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error>
     .await??;
     // Listeners are bound before the service starts, so an accepted connection
     // does not prove the store exists; wait until the latest schema is present.
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             // The file appears before migration completes; wait for the version.
             let ready = database(path).is_ok_and(|db| {
@@ -170,7 +173,7 @@ pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error>
 pub(super) async fn hl7(peer: &mut TcpStream, message: &[u8]) -> Result<String, Error> {
     let wire = analyte_framing::mllp::encode(message, analyte_framing::mllp::Limit::new(1048576)?)?;
     peer.write_all(&wire).await?;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         let mut ack = Vec::new();
         while !ack.ends_with(b"\x1c\r") {
             if ack.len() >= 65536 {
@@ -184,7 +187,7 @@ pub(super) async fn hl7(peer: &mut TcpStream, message: &[u8]) -> Result<String, 
 }
 
 pub(super) async fn astm(peer: &mut TcpStream, message: &[u8]) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         peer.write_all(b"\x05").await?;
         assert_eq!(peer.read_u8().await?, 6);
         for frame in analyte_framing::astm::encode(
@@ -214,7 +217,7 @@ pub(super) fn database(path: &Path) -> Result<rusqlite::Connection, Error> {
 }
 
 pub(super) async fn wait_state(path: &Path, state: &str, count: i64) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(8), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let found: i64 = database(path)?.query_row(
                 "SELECT count(*) FROM outbox WHERE state=?1",
@@ -249,7 +252,7 @@ impl Running {
 }
 
 pub(super) async fn wait_feed(path: &Path) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             if database(path)?.query_row(
                 "SELECT count(*) FROM feed WHERE complete=1 AND trusted=1",

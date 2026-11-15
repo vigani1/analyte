@@ -1,6 +1,7 @@
 //! Declared single-persistent-link scope; TF-2b B.5/B.6 and 3.27-3.29.
 //! This is host integration evidence, not independent-link conformance.
 use super::*;
+use crate::support::HANG_GUARD;
 
 async fn client(
     settings: &str,
@@ -49,7 +50,7 @@ async fn client(
     let mut loaded = Program::load(&path)?;
     loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
     let running = Running::start_program(loaded, "synthetic-api")?;
-    let (peer, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+    let (peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
         .map_err(|e| format!("reconnect after disconnect: {e}"))??;
     wait_feed(&path).await?;
@@ -112,6 +113,7 @@ async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions
         quiet(&mut peer).await?;
         if let Some(listener) = listener {
             assert!(
+                // Deliberate quiet window: no reply may arrive.
                 tokio::time::timeout(Duration::from_millis(100), listener.accept())
                     .await
                     .is_err(),
@@ -134,7 +136,7 @@ async fn law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work(
     packet(&mut peer).await?;
     vendor_support::state(&path, "Sending").await?;
     drop(peer);
-    let (mut peer, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
+    let (mut peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
         .map_err(|e| format!("reconnect after disconnect: {e}"))??;
     vendor_support::state(&path, "Uncertain").await?;
@@ -144,11 +146,11 @@ async fn law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work(
     peer.write_all(&[11, b'M', b'S', b'H']).await?;
     let mut byte = [0];
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(3), peer.read(&mut byte)).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut byte)).await??,
         0
     );
     drop(peer);
-    let (mut peer, _) = tokio::time::timeout(Duration::from_secs(3), listener.accept())
+    let (mut peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
         .map_err(|e| format!("reconnect after partial deadline: {e}"))??;
     quiet(&mut peer).await?;
@@ -173,6 +175,7 @@ async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadline
     let (_temp, path, reference, running, mut peer, _listener) = client(&settings).await?;
     packet(&mut peer).await?;
     // A missing ORL uses response_ms, not the much longer transport timeout.
+    // Deliberate upper bound on configured ORL response expiry.
     tokio::time::timeout(
         Duration::from_secs(2),
         vendor_support::state(&path, "Uncertain"),
@@ -221,6 +224,7 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
     )
     .await?;
     assert!(
+        // Deliberate quiet window: no outbound connection may be opened.
         tokio::time::timeout(Duration::from_millis(100), listener.accept())
             .await
             .is_err(),
@@ -236,8 +240,7 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
     drop(other);
     quiet(&mut peer).await?;
     drop(peer);
-    let (mut outbound, _) =
-        tokio::time::timeout(Duration::from_secs(5), listener.accept()).await??;
+    let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
     let work = packet(&mut outbound).await?;
     assert_eq!(field(&work, b"MSH", 9)?, b"OML^O33^OML_O33");
     orl(&mut outbound, &work, &["OK"], false).await?;
@@ -263,8 +266,7 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
     send(&mut peer, query(CONTAINER, "empty").as_bytes()).await?;
     assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"OK");
     drop(peer);
-    let (mut outbound, _) =
-        tokio::time::timeout(Duration::from_secs(5), listener.accept()).await??;
+    let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
     let negative = packet(&mut outbound).await?;
     assert!(!negative.segments().any(|s| s.id() == b"OBR"));
     orl(&mut outbound, &negative, &[], false).await?;
@@ -273,6 +275,7 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
     running.stop().await?;
     let running = Running::start(&path, &reference.url, "synthetic-api")?;
     assert!(
+        // Deliberate quiet window: no outbound connection may be opened.
         tokio::time::timeout(Duration::from_millis(250), listener.accept())
             .await
             .is_err(),
@@ -314,8 +317,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
         drop(peer);
         let mut waiting_peer = None;
         if let Some(listener) = &listener {
-            let (mut outbound, _) =
-                tokio::time::timeout(Duration::from_secs(5), listener.accept()).await??;
+            let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
             let work = packet(&mut outbound).await?;
             assert_eq!(field(&work, b"MSH", 9)?, b"OML^O33^OML_O33");
             if failure == "timeout" {
@@ -327,7 +329,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
         vendor_support::state(&path, "Uncertain").await?;
         if let Some(mut waiting_peer) = waiting_peer {
             assert!(
-                tokio::time::timeout(Duration::from_secs(5), waiting_peer.read_u8())
+                tokio::time::timeout(HANG_GUARD, waiting_peer.read_u8())
                     .await?
                     .is_err(),
                 "expired transaction socket must close without another command"
@@ -346,6 +348,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
         )?;
         let running = Running::start(&path, &reference.url, "synthetic-api")?;
         assert!(
+            // Deliberate quiet window: no outbound connection may be opened.
             tokio::time::timeout(Duration::from_millis(500), listener.accept())
                 .await
                 .is_err(),
@@ -378,6 +381,7 @@ async fn law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work() -> Result
     assert_eq!(field(&rsp, b"QAK", 2)?, b"AE");
     assert_eq!(count(&path, "machine_orders")?, 0);
     assert!(
+        // Deliberate quiet window: no outbound connection may be opened.
         tokio::time::timeout(Duration::from_millis(250), listener.accept())
             .await
             .is_err()
@@ -402,16 +406,14 @@ async fn law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos() -> R
     )
     .await?;
     drop(peer);
-    let (mut outbound, _) =
-        tokio::time::timeout(Duration::from_secs(5), listener.accept()).await??;
+    let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
     let sent = packet(&mut outbound).await?;
     let placer = field(&sent, b"OBR", 2)?.to_vec();
     orl(&mut outbound, &sent, &["OK"], false).await?;
     drop(outbound);
     vendor_support::state(&path, "Accepted").await?;
     work::cancel_cache(&path, &reference).await?;
-    let (mut outbound, _) =
-        tokio::time::timeout(Duration::from_secs(5), listener.accept()).await??;
+    let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
     let cancel = packet(&mut outbound).await?;
     assert_eq!(field(&cancel, b"ORC", 1)?, b"CA");
     assert_eq!(field(&cancel, b"OBR", 2)?, placer);
@@ -440,13 +442,12 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
     )
     .await?;
     drop(peer);
-    let (mut outbound, _) =
-        tokio::time::timeout(Duration::from_secs(5), listener.accept()).await??;
+    let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
     let sent = packet(&mut outbound).await?;
     assert_eq!(field(&sent, b"MSH", 9)?, b"OML^O33^OML_O33");
     vendor_support::state(&path, "Sending").await?;
     running.crash().await?;
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         let mut byte = [0];
         loop {
             match outbound.read(&mut byte).await {
@@ -462,6 +463,7 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
     let peer = connect(&path, "law").await?;
     vendor_support::state(&path, "Uncertain").await?;
     assert!(
+        // Deliberate quiet window: no outbound connection may be opened.
         tokio::time::timeout(Duration::from_millis(500), listener.accept())
             .await
             .is_err()

@@ -1773,3 +1773,88 @@ fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
     }
     Ok(())
 }
+
+// ADR 0003; POCT01-A2 B 3.2 pp.71-72: provenance offsets must not create results.
+#[test]
+fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evidence() -> TestResult
+{
+    use analyte_model::{EvidenceList, Identifier, NonEmptyEvidenceList, Revision, SourceNode};
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("legacy-offsets.db");
+    let mut store = open(&path)?;
+    let first = receipt(b"original")?;
+    store.receive(&first, b"original", b"config")?;
+    let mut result = production_result(first.id)?;
+    let mut parts = result.parts.as_slice().to_vec();
+    parts.first_mut().ok_or(Error::Corruption)?.source_path =
+        EvidenceList::new(vec![SourceNode {
+            occurrence: 5,
+            kind: Identifier::new("OBS")?,
+            sequence: None,
+            status: None,
+        }])?;
+    result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
+    let mut old_parts = serde_json::to_value(&result.parts)?;
+    for part in old_parts.as_array_mut().ok_or(Error::Corruption)? {
+        part.as_object_mut()
+            .ok_or(Error::Corruption)?
+            .remove("received_at");
+    }
+    // Construct the previous released algorithm's digest, including source offsets.
+    let old_digest = digest(&serde_json::to_vec(&(
+        &result.sample,
+        result.processing,
+        old_parts,
+    ))?);
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![result.clone()]);
+    let analyte_model::IdentityStatus::Resolved(identity) = &result.identity else {
+        return Err(Error::Corruption.into());
+    };
+    let receipt_key = key(&first.id)?;
+    let identity_key = key(&(&first.machine, &identity.observation))?;
+    store.db.execute(
+        "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
+        params![receipt_key, key(&evidence)?],
+    )?;
+    store.db.execute(
+        "INSERT INTO observation_revisions VALUES (?1,0,?2,1,?3)",
+        params![identity_key, receipt_key, old_digest.0.as_slice()],
+    )?;
+    drop(store);
+    let mut store = open(&path)?;
+    let second = receipt(b"resent")?;
+    store.receive(&second, b"resent", b"config")?;
+    result.receipt = second.id;
+    let mut parts = result.parts.as_slice().to_vec();
+    parts.first_mut().ok_or(Error::Corruption)?.source_path =
+        EvidenceList::new(vec![SourceNode {
+            occurrence: 6,
+            kind: Identifier::new("OBS")?,
+            sequence: None,
+            status: None,
+        }])?;
+    result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
+    evidence.outcome = Reading::Results(vec![result]);
+    let commit =
+        store.interpret_reconciled(second.id, evidence, &[false], &[], |_, outcomes| {
+            assert_eq!(outcomes, &[RevisionOutcome::Retransmission(Revision(0))]);
+            Ok(vec![])
+        })?;
+    assert_eq!(
+        commit.outcomes,
+        vec![RevisionOutcome::Retransmission(Revision(0))]
+    );
+    assert_eq!(
+        store.receipt(first.id)?.ok_or(Error::Corruption)?.raw,
+        b"original"
+    );
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        1
+    );
+    Ok(())
+}

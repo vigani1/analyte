@@ -19,6 +19,7 @@ mod order_cases;
 #[path = "service/recovery.rs"]
 mod service_recovery;
 mod support;
+use support::HANG_GUARD;
 #[path = "orders/vendor_support.rs"]
 mod vendor_support;
 #[path = "orders/vidas.rs"]
@@ -96,7 +97,7 @@ async fn capture_response(
         return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
     if state.hold_once.swap(false, Ordering::AcqRel) {
-        let _ = tokio::time::timeout(Duration::from_secs(10), state.release.notified()).await;
+        let _ = tokio::time::timeout(HANG_GUARD, state.release.notified()).await;
     }
     Response::from_parts(parts, Body::from(body))
 }
@@ -149,17 +150,15 @@ impl Reference {
     }
 
     async fn event(&mut self) -> Result<Captured, Error> {
-        Ok(
-            tokio::time::timeout(Duration::from_secs(8), self.events.recv())
-                .await?
-                .ok_or("reference event missing")?,
-        )
+        Ok(tokio::time::timeout(HANG_GUARD, self.events.recv())
+            .await?
+            .ok_or("reference event missing")?)
     }
 
     async fn close(self) -> Result<(), Error> {
         self.capture.release.notify_one();
         self.stop.send(()).map_err(|()| "reference stopped")?;
-        tokio::time::timeout(Duration::from_secs(3), self.task).await???;
+        tokio::time::timeout(HANG_GUARD, self.task).await???;
         self.receiver
             .shutdown()
             .map_err(|_| "reference worker panicked")?;
@@ -348,7 +347,7 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
             Ok((r.get(0)?, r.get(1)?))
         })?;
     // Initial enqueue is also pending; prove an outage attempt actually failed.
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let attempts: i64 =
                 database(&path)?
@@ -440,7 +439,7 @@ async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_du
     )?];
     // A prior refusal may have scheduled a future retry. Wait under a deadline
     // until the real worker claims it; cancel only after the receiver commits.
-    let original = tokio::time::timeout(Duration::from_secs(6), async {
+    let original = tokio::time::timeout(HANG_GUARD, async {
         let worker = analyte_sink::Worker::new(&store, &destinations, &secrets);
         loop {
             let attempt = worker.deliver_once();
@@ -509,7 +508,7 @@ async fn adr0008_shutdown_during_http_wait_is_bounded_and_restart_sends_same_del
     assert!(original.outcome.contains("accepted"));
     // The receiver has committed, but its answer is deliberately withheld. The
     // request deadline expires inside the shutdown drain and preserves a retry.
-    tokio::time::timeout(Duration::from_secs(5), service.stop()).await??;
+    tokio::time::timeout(HANG_GUARD, service.stop()).await??;
     let restarted = Running::start(&path, &reference.url, "synthetic-api")?;
     let duplicate = reference.event().await?;
     assert_eq!(duplicate.id, original.id);
@@ -684,7 +683,7 @@ async fn recording_eof(peer: &mut tokio::net::TcpStream) -> Result<(), Error> {
     peer.shutdown().await?;
     let mut byte = [0];
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut byte)).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut byte)).await??,
         0,
         "unexpected extra host byte"
     );
@@ -724,6 +723,7 @@ async fn failure_recording_case(name: &str, completes: bool) -> Result<(), Error
         .await?;
         let mut byte = [0];
         assert!(
+            // Deliberate quiet window: no reply may arrive.
             tokio::time::timeout(Duration::from_millis(50), peer.read(&mut byte))
                 .await
                 .is_err(),
@@ -860,6 +860,7 @@ async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_reta
     );
     let mut byte = [0];
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(50), peer.read(&mut byte))
             .await
             .is_err(),
@@ -867,7 +868,7 @@ async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_reta
     );
     control.stop();
     assert_eq!(
-        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut byte)).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut byte)).await??,
         0,
         "connection must close without sending the frame ACK"
     );
@@ -952,7 +953,7 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
     )?];
     // A prior refusal may have scheduled a future retry. Wait under a deadline
     // until the real worker claims it; cancel only after the receiver commits.
-    let original = tokio::time::timeout(Duration::from_secs(6), async {
+    let original = tokio::time::timeout(HANG_GUARD, async {
         let worker = analyte_sink::Worker::new(&store, &destinations, &secrets);
         loop {
             let attempt = worker.deliver_once();
@@ -1019,7 +1020,7 @@ async fn plan11_alert_evaluator_keeps_receive_delivery_and_shutdown_bounded() ->
         Reference::start(&temp.path().join("reference.db"), listener, false).await?;
     let running = Running::start(&fixture, &reference.url, "synthetic-api")?;
     let mut peer = connect(&fixture, "hl7").await?;
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(HANG_GUARD, async {
         loop {
             let count: i64 =
                 database(&fixture)?
@@ -1032,12 +1033,12 @@ async fn plan11_alert_evaluator_keeps_receive_delivery_and_shutdown_bounded() ->
         Ok::<_, Error>(())
     })
     .await??;
-    let ack = tokio::time::timeout(Duration::from_secs(3), hl7(&mut peer, ORU)).await??;
+    let ack = tokio::time::timeout(HANG_GUARD, hl7(&mut peer, ORU)).await??;
     assert!(ack.contains("MSA|AA|message1"));
-    let event = tokio::time::timeout(Duration::from_secs(3), reference.event()).await??;
+    let event = tokio::time::timeout(HANG_GUARD, reference.event()).await??;
     assert_content(&event, "hl7", "00012a", "12.30", "final", 0)?;
     drop(peer);
-    tokio::time::timeout(Duration::from_secs(7), running.stop()).await??;
+    tokio::time::timeout(HANG_GUARD, running.stop()).await??;
     let state: bool = database(&fixture)?.query_row(
         "SELECT active FROM alert_state WHERE key=?1",
         [serde_json::to_string(
@@ -1142,6 +1143,7 @@ async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and
     );
     // No operator resend writes to the analyzer connection.
     assert!(
+        // Deliberate quiet window: no reply may arrive.
         tokio::time::timeout(Duration::from_millis(50), peer.read_u8())
             .await
             .is_err()

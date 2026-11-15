@@ -1,6 +1,9 @@
+#[path = "../../analyte/tests/support/guard.rs"]
+mod guard;
 use super::*;
 use analyte_model::*;
 use analyte_store::{FreeSpace, Handle};
+use guard::HANG_GUARD;
 use std::{
     path::Path,
     time::{Duration, Instant},
@@ -245,7 +248,7 @@ impl Peer {
             .kill_on_drop(true)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());
-        let output = tokio::time::timeout(Duration::from_secs(120), build.output()).await??;
+        let output = tokio::time::timeout(HANG_GUARD, build.output()).await??;
         if !output.status.success() {
             return Err("reference receiver build failed".into());
         }
@@ -285,7 +288,7 @@ impl Peer {
             child,
             url: format!("http://{address}"),
         };
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG_GUARD, async {
             loop {
                 if peer.child.try_wait()?.is_some() {
                     return Err(std::io::Error::other("receiver exited before readiness"));
@@ -302,7 +305,7 @@ impl Peer {
 
     async fn stop(mut self) -> TestResult {
         self.child.kill().await?;
-        tokio::time::timeout(Duration::from_secs(5), self.child.wait()).await??;
+        tokio::time::timeout(HANG_GUARD, self.child.wait()).await??;
         Ok(())
     }
 }
@@ -617,7 +620,7 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
         // join! polls both owners before this branch closes their signal.
         drop(stop);
     };
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(HANG_GUARD, async {
         let (w, p, ()) = tokio::join!(work, poll, cancel);
         w?;
         p?;
@@ -665,7 +668,7 @@ impl Proxy {
             let _ = stop.send(());
         }
         if let Some(mut task) = self.task.take() {
-            match tokio::time::timeout(Duration::from_secs(2), &mut task).await {
+            match tokio::time::timeout(HANG_GUARD, &mut task).await {
                 Ok(result) => result?.map_err(std::io::Error::other)?,
                 Err(error) => {
                     task.abort();
@@ -706,8 +709,7 @@ async fn relay(
                 break index.checked_add(4).ok_or("header overflow")?;
             }
             let mut buffer = [0; 1024];
-            let read =
-                tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buffer)).await??;
+            let read = tokio::time::timeout(HANG_GUARD, stream.read(&mut buffer)).await??;
             if read == 0 || bytes.len() > 16_384 {
                 return Err("invalid synthetic HTTP headers".into());
             }
@@ -729,8 +731,7 @@ async fn relay(
         let expected = boundary.checked_add(length).ok_or("length overflow")?;
         while bytes.len() < expected {
             let mut buffer = [0; 4096];
-            let read =
-                tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buffer)).await??;
+            let read = tokio::time::timeout(HANG_GUARD, stream.read(&mut buffer)).await??;
             if read == 0 {
                 return Err("request incomplete".into());
             }
@@ -857,10 +858,10 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
                 analyte_contract::DeliveryStatus::Accepted
             })
         );
-        let first = tokio::time::timeout(Duration::from_secs(30), proxy.requests.recv())
+        let first = tokio::time::timeout(HANG_GUARD, proxy.requests.recv())
             .await?
             .ok_or("first request missing")?;
-        let second = tokio::time::timeout(Duration::from_secs(30), proxy.requests.recv())
+        let second = tokio::time::timeout(HANG_GUARD, proxy.requests.recv())
             .await?
             .ok_or("retry missing")?;
         assert_eq!(first, second);
@@ -934,7 +935,7 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
             drop(stream);
             Ok::<_, std::io::Error>(())
         };
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(HANG_GUARD, async {
             let run = async {
                 let result = run.await;
                 let _ = finished.send(());
@@ -1021,7 +1022,7 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
         } else {
             Duration::from_millis(75)
         };
-        let (outcome, peer) = tokio::time::timeout(Duration::from_secs(10), async {
+        let (outcome, peer) = tokio::time::timeout(HANG_GUARD, async {
             let run = async {
                 let result = worker.run_draining(stopped, grace).await;
                 let _ = finished.send(());
