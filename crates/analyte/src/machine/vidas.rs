@@ -23,6 +23,16 @@ fn timer_index(timer: Timer) -> usize {
     }
 }
 
+/// Dialog, decoder and timers cannot outlive their owning transport connection.
+struct ConnectionState {
+    dialog: Dialog,
+    decoder: Option<Decoder>,
+    suffix: Option<(u8, usize)>,
+    timers: [Option<std::time::Duration>; 4],
+    start: Instant,
+    actions: VecDeque<Action>,
+}
+
 pub(super) async fn session(
     machine: &Machine,
     store: &Handle,
@@ -58,39 +68,32 @@ pub(super) async fn session(
         retries: installed.retries,
         backoff: ms(installed.backoff_ms),
     };
-    let mut dialog = Dialog::upload(config.clone(), policy)?;
-    let mut decoder = None;
-    let mut suffix: Option<(u8, usize)> = None;
-    let mut timers = [None; 4];
-    let start = Instant::now();
-    let mut actions: VecDeque<_> = dialog.start().into();
+    let dialog = Dialog::upload(config.clone(), policy)?;
+    let actions = dialog.start().into();
+    let mut state = ConnectionState {
+        dialog,
+        decoder: None,
+        suffix: None,
+        timers: [None; 4],
+        start: Instant::now(),
+        actions,
+    };
     loop {
-        if process_inline(
-            &mut actions,
-            &mut dialog,
-            &mut timers,
-            start,
-            machine,
-            store,
-            conn,
-            installed,
-        )
-        .await?
-        {
+        if process_inline(&mut state, machine, store, conn, installed).await? {
             return Ok(());
         }
-        let next = timers
-            .iter()
-            .flatten()
-            .copied()
-            .min()
-            .unwrap_or(start.elapsed().saturating_add(ms(installed.session_ms)));
+        let next = state.timers.iter().flatten().copied().min().unwrap_or(
+            state
+                .start
+                .elapsed()
+                .saturating_add(ms(installed.session_ms)),
+        );
         let input = vendor::input(
             machine,
             store,
             conn,
             &mut stop,
-            next.saturating_sub(start.elapsed()),
+            next.saturating_sub(state.start.elapsed()),
         )
         .await?;
         match input {
@@ -102,28 +105,33 @@ pub(super) async fn session(
                     Timer::Acknowledgment,
                     Timer::Interbyte,
                 ] {
-                    if timers
+                    if state
+                        .timers
                         .get(timer_index(timer))
                         .copied()
                         .flatten()
-                        .is_some_and(|d| d <= start.elapsed())
+                        .is_some_and(|d| d <= state.start.elapsed())
                     {
-                        actions.extend(dialog.on(Event::Expired(timer)));
+                        state.actions.extend(state.dialog.on(Event::Expired(timer)));
                         break;
                     }
                 }
             }
             Input::End => {
-                let _ = dialog.on(Event::Disconnected);
+                let _ = state.dialog.on(Event::Disconnected);
                 return Ok(());
             }
             Input::Bytes(bytes) => {
                 for byte in bytes {
-                    if let Some(deadline) = timers.get_mut(timer_index(Timer::Interbyte)) {
-                        *deadline =
-                            Some(start.elapsed().saturating_add(ms(installed.interbyte_ms)));
+                    if let Some(deadline) = state.timers.get_mut(timer_index(Timer::Interbyte)) {
+                        *deadline = Some(
+                            state
+                                .start
+                                .elapsed()
+                                .saturating_add(ms(installed.interbyte_ms)),
+                        );
                     }
-                    let event = if let Some(decoder) = &mut decoder {
+                    let event = if let Some(decoder) = &mut state.decoder {
                         match Decoder::push(decoder, byte) {
                             Ok(Some(packet)) => Some(Event::Packet(packet)),
                             Ok(None) => None,
@@ -138,7 +146,7 @@ pub(super) async fn session(
                                 return Err(error.into());
                             }
                         }
-                    } else if let Some((control, index)) = suffix {
+                    } else if let Some((control, index)) = state.suffix {
                         if installed.suffix.get(index) != Some(&byte) {
                             evidence::park_bytes(
                                 store,
@@ -150,41 +158,30 @@ pub(super) async fn session(
                             return Err(invalid("VIDAS control suffix mismatch"));
                         }
                         if index.saturating_add(1) == installed.suffix.len() {
-                            suffix = None;
+                            state.suffix = None;
                             Some(Event::Control(control))
                         } else {
-                            suffix = Some((control, index.saturating_add(1)));
+                            state.suffix = Some((control, index.saturating_add(1)));
                             None
                         }
                     } else if byte == 2 {
                         let mut next = Decoder::new(config.clone());
                         next.push(byte)?;
-                        decoder = Some(next);
+                        state.decoder = Some(next);
                         None
                     } else if installed.suffix.is_empty() {
                         Some(Event::Control(byte))
                     } else {
-                        suffix = Some((byte, 0usize));
+                        state.suffix = Some((byte, 0usize));
                         None
                     };
                     if let Some(event) = event {
                         if matches!(event, Event::Packet(_)) {
-                            decoder = None;
+                            state.decoder = None;
                         }
-                        actions.extend(dialog.on(event));
+                        state.actions.extend(state.dialog.on(event));
                         // Process Store before consuming a merged ETX/EOT following it.
-                        if process_inline(
-                            &mut actions,
-                            &mut dialog,
-                            &mut timers,
-                            start,
-                            machine,
-                            store,
-                            conn,
-                            installed,
-                        )
-                        .await?
-                        {
+                        if process_inline(&mut state, machine, store, conn, installed).await? {
                             return Ok(());
                         }
                     }
@@ -194,20 +191,20 @@ pub(super) async fn session(
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "all state belongs to one serialized VIDAS connection"
-)]
 async fn process_inline(
-    actions: &mut VecDeque<Action>,
-    dialog: &mut Dialog,
-    timers: &mut [Option<std::time::Duration>; 4],
-    start: Instant,
+    state: &mut ConnectionState,
     machine: &Machine,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     installed: &analyte_config::Vidas,
 ) -> Result<bool, Error> {
+    let ConnectionState {
+        actions,
+        dialog,
+        timers,
+        start,
+        ..
+    } = state;
     while let Some(action) = actions.pop_front() {
         match action {
             Action::Send(bytes) => {

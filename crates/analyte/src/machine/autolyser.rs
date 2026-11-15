@@ -10,6 +10,17 @@ use analyte_store::Handle;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
+/// Mutable conversation state has one owner for the entire connection.
+struct ConnectionState {
+    dialog: Dialog,
+    start: Instant,
+    wake: std::time::Duration,
+    receipt: Option<(ReceiptId, jiff::Timestamp)>,
+    ready: bool,
+    recovering: bool,
+    guard: Option<i64>,
+}
+
 pub(super) async fn session(
     machine: &Machine,
     store: &Handle,
@@ -17,13 +28,12 @@ pub(super) async fn session(
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     super::autolyser_custody::ensure_reconciled(store, machine).await?;
-    let mut guard = None;
     let settings = machine.snapshot.effective().machine();
     let policy = settings
         .autolyser
         .as_ref()
         .ok_or_else(|| invalid("Autolyser policy missing"))?;
-    let mut dialog = Dialog::new(Config {
+    let dialog = Dialog::new(Config {
         poll: ms(policy.poll_ms),
         ack: ms(policy.acknowledgment_ms),
         response: ms(policy.response_ms),
@@ -37,53 +47,43 @@ pub(super) async fn session(
             Recovery::ManualLast
         },
     })?;
-    let start = Instant::now();
-    let mut wake = start.elapsed();
-    let mut ready = false;
-    let mut recovering = false;
-    let mut receipt = None;
+    let mut state = ConnectionState {
+        dialog,
+        start: Instant::now(),
+        wake: std::time::Duration::ZERO,
+        receipt: None,
+        ready: false,
+        recovering: false,
+        guard: None,
+    };
     loop {
         let input = vendor::input(
             machine,
             store,
             conn,
             &mut stop,
-            wake.saturating_sub(start.elapsed()),
+            state.wake.saturating_sub(state.start.elapsed()),
         )
         .await?;
         let ended = matches!(input, Input::End);
         let events = match input {
             Input::Opened => {
-                ready = false;
+                state.ready = false;
                 vec![Event::Poll(Request::Next)]
             }
             Input::Bytes(bytes) => bytes.into_iter().map(Event::Byte).collect(),
             Input::Tick => {
-                let actions = dialog.step(start.elapsed(), Event::Tick);
+                let actions = state.dialog.step(state.start.elapsed(), Event::Tick);
                 // Tick alone can initiate L recovery. Never interleave R with it.
-                if actions.is_empty() && ready {
-                    ready = false;
+                if actions.is_empty() && state.ready {
+                    state.ready = false;
                     vec![Event::Poll(Request::Next)]
                 } else {
-                    if process(
-                        actions,
-                        &mut dialog,
-                        machine,
-                        store,
-                        conn,
-                        start,
-                        &mut wake,
-                        &mut receipt,
-                        &mut ready,
-                        &mut recovering,
-                        &mut guard,
-                    )
-                    .await?
-                    {
+                    if process(actions, &mut state, machine, store, conn).await? {
                         return Ok(());
                     }
-                    if wake <= start.elapsed() {
-                        wake = start.elapsed().saturating_add(ms(policy.poll_ms));
+                    if state.wake <= state.start.elapsed() {
+                        state.wake = state.start.elapsed().saturating_add(ms(policy.poll_ms));
                     }
                     Vec::new()
                 }
@@ -92,24 +92,10 @@ pub(super) async fn session(
         };
         for event in events {
             if matches!(event, Event::Poll(Request::Next)) {
-                guard = Some(super::autolyser_custody::reserve(store, machine).await?);
+                state.guard = Some(super::autolyser_custody::reserve(store, machine).await?);
             }
-            let actions = dialog.step(start.elapsed(), event);
-            if process(
-                actions,
-                &mut dialog,
-                machine,
-                store,
-                conn,
-                start,
-                &mut wake,
-                &mut receipt,
-                &mut ready,
-                &mut recovering,
-                &mut guard,
-            )
-            .await?
-            {
+            let actions = state.dialog.step(state.start.elapsed(), event);
+            if process(actions, &mut state, machine, store, conn).await? {
                 return Ok(());
             }
         }
@@ -119,23 +105,22 @@ pub(super) async fn session(
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one connection owns its dialog and custody correlation"
-)]
 async fn process(
     actions: Vec<Action>,
-    dialog: &mut Dialog,
+    state: &mut ConnectionState,
     machine: &Machine,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
-    start: Instant,
-    wake: &mut std::time::Duration,
-    receipt: &mut Option<(ReceiptId, jiff::Timestamp)>,
-    ready: &mut bool,
-    recovering: &mut bool,
-    guard: &mut Option<i64>,
 ) -> Result<bool, Error> {
+    let ConnectionState {
+        dialog,
+        start,
+        wake,
+        receipt,
+        ready,
+        recovering,
+        guard,
+    } = state;
     let policy = machine
         .snapshot
         .effective()
