@@ -12,6 +12,7 @@ mod serial;
 mod vendor;
 mod vendor_model;
 mod vidas;
+mod worker;
 use crate::{Error, config::Machine, invalid};
 use analyte_config::TransportKind;
 use analyte_store::Handle;

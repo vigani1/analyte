@@ -558,3 +558,6 @@ resolution, a single reference-receiver delivery and idempotent reprocessing,
 without machine traffic. Its 50-character control ID requires the LAW entry point.
 `law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines` also
 covers explicit client-side query and ORL budgets.
+
+Folder and serial worker shutdown reports worker errors and panics separately,
+without including error text or panic payloads in ordinary logs.
