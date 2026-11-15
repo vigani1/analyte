@@ -1,5 +1,5 @@
 //! Transport admission from supported stacks; serial settings cannot be absent.
-use analyte_config::{Serial, Stack, StreamTransport, TcpRole};
+use analyte_config::{Serial, Stack, StreamKind, StreamTransport, TcpRole};
 
 #[derive(Clone, Copy)]
 pub(super) enum Session<'a> {
@@ -41,52 +41,48 @@ impl Link<'_> {
 
 pub(super) fn transport(stack: &Stack) -> Link<'_> {
     match stack {
-        Stack::Astm(s) => stream(&s.transport, Session::Astm(s)),
-        Stack::VidasLiteral(s) => stream(&s.transport, Session::Vidas(s)),
-        Stack::Autolyser(s) => stream(&s.transport, Session::Autolyser(s)),
-        Stack::Hl7(s) => Link::Tcp {
+        Stack::Astm(analyte_config::RecordTransport::Stream(s)) => {
+            stream(s.transport(), Session::Astm(s))
+        }
+        Stack::VidasLiteral(s) => stream(s.transport(), Session::Vidas(s)),
+        Stack::Autolyser(s) => stream(s.transport(), Session::Autolyser(s)),
+        Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => Link::Tcp {
             session: Session::Hl7(s),
-            role: s.transport.role,
-            timeout_ms: s.transport.operation_timeout_ms,
+            role: s.transport().role(),
+            timeout_ms: s.transport().operation_timeout_ms(),
         },
         Stack::Law(s) => Link::Tcp {
             session: Session::Law(s),
-            role: s.transport.role,
-            timeout_ms: s.transport.operation_timeout_ms,
+            role: s.transport().role(),
+            timeout_ms: s.transport().operation_timeout_ms(),
         },
         Stack::Poct(s) => Link::Tcp {
             session: Session::Poct(s),
-            role: s.transport.role,
-            timeout_ms: s.transport.operation_timeout_ms,
+            role: s.transport().role(),
+            timeout_ms: s.transport().operation_timeout_ms(),
         },
-        Stack::FileAstm(s) => Link::Folder {
-            timeout_ms: s.operation_timeout_ms,
-            bytes: s.syntax.limits.bytes,
+        Stack::Astm(analyte_config::RecordTransport::Folder(s)) => Link::Folder {
+            timeout_ms: s.operation_timeout_ms(),
+            bytes: s.syntax().limits().bytes(),
         },
-        Stack::FileHl7(s) => Link::Folder {
-            timeout_ms: s.operation_timeout_ms,
-            bytes: s.syntax.limits.bytes,
+        Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => Link::Folder {
+            timeout_ms: s.operation_timeout_ms(),
+            bytes: s.syntax().limits().bytes(),
         },
     }
 }
 
 fn stream<'a>(transport: &'a StreamTransport, session: Session<'a>) -> Link<'a> {
-    match transport {
-        StreamTransport::Serial {
-            settings,
-            operation_timeout_ms,
-        } => Link::Serial(SerialLink {
+    match transport.kind() {
+        StreamKind::Serial(settings) => Link::Serial(SerialLink {
             settings,
             session,
-            timeout_ms: *operation_timeout_ms,
+            timeout_ms: transport.operation_timeout_ms(),
         }),
-        StreamTransport::Tcp {
-            role,
-            operation_timeout_ms,
-        } => Link::Tcp {
+        StreamKind::Tcp(role) => Link::Tcp {
             session,
             role: *role,
-            timeout_ms: *operation_timeout_ms,
+            timeout_ms: transport.operation_timeout_ms(),
         },
     }
 }

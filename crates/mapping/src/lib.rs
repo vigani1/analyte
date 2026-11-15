@@ -81,10 +81,10 @@ fn is_law(config: &Validated) -> bool {
     use analyte_config::Stack;
     match config.effective().stack() {
         Stack::Law(_) => true,
-        Stack::Astm(_)
-        | Stack::FileAstm(_)
-        | Stack::Hl7(_)
-        | Stack::FileHl7(_)
+        Stack::Astm(analyte_config::RecordTransport::Stream(_))
+        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
+        | Stack::Hl7(analyte_config::RecordTransport::Stream(_))
+        | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
         | Stack::Poct(_)
         | Stack::VidasLiteral(_)
         | Stack::Autolyser(_) => false,
@@ -94,10 +94,10 @@ fn is_law(config: &Validated) -> bool {
 fn astm_syntax(config: &Validated) -> Result<&analyte_config::AstmSyntax, Error> {
     use analyte_config::Stack;
     match config.effective().stack() {
-        Stack::Astm(s) => Ok(&s.syntax),
-        Stack::FileAstm(s) => Ok(&s.syntax),
-        Stack::Hl7(_)
-        | Stack::FileHl7(_)
+        Stack::Astm(analyte_config::RecordTransport::Stream(s)) => Ok(s.syntax()),
+        Stack::Astm(analyte_config::RecordTransport::Folder(s)) => Ok(s.syntax()),
+        Stack::Hl7(analyte_config::RecordTransport::Stream(_))
+        | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
         | Stack::Law(_)
         | Stack::Poct(_)
         | Stack::VidasLiteral(_)
@@ -108,11 +108,11 @@ fn astm_syntax(config: &Validated) -> Result<&analyte_config::AstmSyntax, Error>
 fn hl7_edition(config: &Validated) -> Result<analyte_config::Edition, Error> {
     use analyte_config::Stack;
     match config.effective().stack() {
-        Stack::Hl7(s) => Ok(s.syntax.edition),
-        Stack::FileHl7(s) => Ok(s.syntax.edition),
+        Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => Ok(s.syntax().edition()),
+        Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => Ok(s.syntax().edition()),
         Stack::Law(_) => Ok(analyte_config::Edition::V251),
-        Stack::Astm(_)
-        | Stack::FileAstm(_)
+        Stack::Astm(analyte_config::RecordTransport::Stream(_))
+        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
         | Stack::Poct(_)
         | Stack::VidasLiteral(_)
         | Stack::Autolyser(_) => Err(Error::Syntax),

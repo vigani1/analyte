@@ -19,21 +19,21 @@ pub(super) async fn session(
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     let timers = Timers {
-        establish: Duration::from_millis(u64::from(settings.timeouts.send_timeout_ms)),
-        frame: Duration::from_millis(u64::from(settings.timeouts.send_timeout_ms)),
-        receive: Duration::from_millis(u64::from(settings.timeouts.receive_timeout_ms)),
+        establish: Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
+        frame: Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
+        receive: Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
         commit: Duration::from_secs(5),
         ..Timers::default()
     };
     let config = Config::new(
-        analyte_framing::astm::Limit::new(settings.frame_limit)?,
+        analyte_framing::astm::Limit::new(settings.frame_limit())?,
         timers,
-        match settings.contention_priority {
+        match settings.contention_priority() {
             analyte_config::Priority::Host => Role::Instrument,
             analyte_config::Priority::Instrument => Role::Computer,
         },
-        settings.syntax.limits.bytes,
-        settings.syntax.limits.records,
+        settings.syntax().limits().bytes(),
+        settings.syntax().limits().records(),
         true,
     )?;
     let epoch = Epoch(uuid::Uuid::now_v7().as_u128());
@@ -99,7 +99,7 @@ pub(super) async fn session(
                 if let Event::Byte(byte) = &event {
                     if *byte == analyte_framing::astm::STX { partial.clear(); }
                     if *byte == analyte_framing::astm::STX || !partial.is_empty() {
-                        if partial.len() > settings.frame_limit { return Err(invalid("ASTM partial frame bound exceeded")); }
+                        if partial.len() > settings.frame_limit() { return Err(invalid("ASTM partial frame bound exceeded")); }
                         partial.push(*byte);
                     }
                 }
@@ -114,7 +114,7 @@ pub(super) async fn session(
                         response = crate::orders::astm::failure(machine);
                         response_deadline = None;
                     }
-                    let expected = settings.frame_limit.checked_add(machine.snapshot.canonical().len()).ok_or_else(|| invalid("ASTM admission size overflow"))?;
+                    let expected = settings.frame_limit().checked_add(machine.snapshot.canonical().len()).ok_or_else(|| invalid("ASTM admission size overflow"))?;
                     let capacity = store.request(deadline(), move |s| s.admission(expected)).await;
                     if let Err(error) = &capacity { tracing::error!(machine = machine.id.as_str(), error_kind = %error, "storage admission refused"); }
                     actions.extend(dialog.step(start.elapsed(), Event::Capacity(capacity.is_ok()))?);
@@ -129,7 +129,7 @@ pub(super) async fn session(
                         Action::Commit(id, number, bytes) => {
                             let transfer_id = Identifier::new(&format!("{:032x}-{}", id.epoch().0, id.transfer()))?;
                             transfer = Some(transfer_id.clone());
-                            if raw.len().checked_add(bytes.len()).is_none_or(|n| n > settings.syntax.limits.bytes) { return Err(invalid("ASTM transfer wire-byte bound exceeded")); }
+                            if raw.len().checked_add(bytes.len()).is_none_or(|n| n > settings.syntax().limits().bytes()) { return Err(invalid("ASTM transfer wire-byte bound exceeded")); }
                             raw.extend_from_slice(&bytes);
                             let provenance = analyte_store::FrameProvenance { machine: machine.id.clone(), driver: evidence::driver(machine)?, config: machine.snapshot.canonical().as_bytes().to_vec() };
                             let sequence = analyte_store::FrameSequence::new(number.value(), analyte_framing::astm::FrameNumber::MAX.value())?;
@@ -143,7 +143,7 @@ pub(super) async fn session(
                         }
                         Action::Record(record) => {
                             if record.first() == Some(&b'Q') && query_started.is_none() { query_started = Some(Instant::now()); }
-                            if payload.len().checked_add(record.len()).is_none_or(|n| n > settings.syntax.limits.bytes) { return Err(invalid("ASTM message bound exceeded")); }
+                            if payload.len().checked_add(record.len()).is_none_or(|n| n > settings.syntax().limits().bytes()) { return Err(invalid("ASTM message bound exceeded")); }
                             payload.extend_from_slice(&record);
                         }
                         Action::Ended(end) => {

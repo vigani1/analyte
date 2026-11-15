@@ -47,8 +47,10 @@ pub enum Error {
         setting: &'static str,
     },
     /// Protocol layers or transport cannot be combined.
-    #[error("{path}: incompatible protocol stack")]
+    #[error("{path}: incompatible protocol stack: {reason}")]
     IncompatibleStack {
+        /// Required compatible settings.
+        reason: &'static str,
         /// Source layer.
         path: String,
     },
@@ -359,14 +361,14 @@ impl Effective {
     #[must_use]
     pub fn astm_limits(&self) -> Option<analyte_astm::Limits> {
         match &self.machine.stack {
-            Stack::Astm(s) => Some(s.syntax.parser_limits()),
-            Stack::FileAstm(s) => Some(s.syntax.parser_limits()),
-            Stack::Hl7(_)
+            Stack::Astm(RecordTransport::Stream(s)) => Some(s.syntax().parser_limits()),
+            Stack::Astm(RecordTransport::Folder(s)) => Some(s.syntax().parser_limits()),
+            Stack::Hl7(RecordTransport::Stream(_))
             | Stack::Law(_)
             | Stack::Poct(_)
             | Stack::VidasLiteral(_)
             | Stack::Autolyser(_)
-            | Stack::FileHl7(_) => None,
+            | Stack::Hl7(RecordTransport::Folder(_)) => None,
         }
     }
 
@@ -374,11 +376,11 @@ impl Effective {
     #[must_use]
     pub fn hl7_options(&self) -> Option<analyte_hl7::Options> {
         match &self.machine.stack {
-            Stack::Hl7(s) => Some(s.syntax.options()),
-            Stack::FileHl7(s) => Some(s.syntax.options()),
+            Stack::Hl7(RecordTransport::Stream(s)) => Some(s.syntax().options()),
+            Stack::Hl7(RecordTransport::Folder(s)) => Some(s.syntax().options()),
             Stack::Law(s) => Some(s.options()),
-            Stack::Astm(_)
-            | Stack::FileAstm(_)
+            Stack::Astm(RecordTransport::Stream(_))
+            | Stack::Astm(RecordTransport::Folder(_))
             | Stack::Poct(_)
             | Stack::VidasLiteral(_)
             | Stack::Autolyser(_) => None,

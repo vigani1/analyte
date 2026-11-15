@@ -516,6 +516,8 @@ pub struct Evidence {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MachineDocument {
+    /// Protocol selection, independent of physical transport.
+    pub protocol: Protocol,
     /// Required only for the LAW Analyzer Manager stack.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub law: Option<crate::Law>,
@@ -763,4 +765,22 @@ pub struct PoctIdentity {
     pub sequence_number: bool,
     /// Explicit installed processing mode; no source mode is inferred from Hello.
     pub processing: analyte_model::ProcessingMode,
+}
+
+/// Protocol family, independent of physical transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Protocol {
+    /// ASTM LIS02.
+    Astm,
+    /// Generic HL7 v2.
+    Hl7,
+    /// IHE LAW profile.
+    Law,
+    /// POCT reviewer.
+    Poct,
+    /// VIDAS Literal.
+    Vidas,
+    /// Autolyser polling.
+    Autolyser,
 }

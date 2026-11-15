@@ -22,12 +22,12 @@ impl Connection {
             return Ok(None);
         }
         let cfg = super::super::settings::law(machine)?;
-        let Some(settings) = &cfg.orders else {
+        let Some(settings) = &cfg.orders() else {
             return Ok(None);
         };
         let until = Instant::now()
             .checked_add(Duration::from_millis(u64::from(
-                cfg.timeouts.send_timeout_ms,
+                cfg.timeouts().send_timeout_ms(),
             )))
             .ok_or("LAW preparation deadline overflow")?;
         let destination = super::super::destination(machine);
@@ -92,7 +92,7 @@ impl Connection {
                 Err(error) => return Err(error.into()),
             }
         }
-        if !settings.send_ahead {
+        if !settings.send_ahead() {
             return Ok(None);
         }
         let candidates =

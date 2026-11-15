@@ -38,9 +38,12 @@ fn config_version(machine: &Machine) -> Result<Identifier, Error> {
 pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
     Ok(NamespacedId {
         namespace: Identifier::new(match machine.snapshot.effective().stack() {
-            analyte_config::Stack::Astm(_) | analyte_config::Stack::FileAstm(_) => "analyte-astm",
-            analyte_config::Stack::Hl7(_)
-            | analyte_config::Stack::FileHl7(_)
+            analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
+            | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_)) => {
+                "analyte-astm"
+            }
+            analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
+            | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_))
             | analyte_config::Stack::Law(_) => "analyte-hl7",
             analyte_config::Stack::Poct(_) => "analyte-poct",
             analyte_config::Stack::VidasLiteral(_) => "analyte-vidas",
@@ -134,10 +137,10 @@ pub(crate) async fn persist_mapping(
 ) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
     let atomic = match machine.snapshot.effective().stack() {
         analyte_config::Stack::Law(_) => true,
-        analyte_config::Stack::Astm(_)
-        | analyte_config::Stack::Hl7(_)
-        | analyte_config::Stack::FileAstm(_)
-        | analyte_config::Stack::FileHl7(_)
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
+        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
+        | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
+        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_))
         | analyte_config::Stack::Poct(_)
         | analyte_config::Stack::VidasLiteral(_)
         | analyte_config::Stack::Autolyser(_) => false,

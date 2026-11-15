@@ -143,7 +143,7 @@ async fn accepted_connection(
 ) -> Result<(), Error> {
     let limits = analyte_transport::Limits::new(
         CHANNEL_LIMIT,
-        Duration::from_millis(u64::from(settings.transport.operation_timeout_ms)),
+        Duration::from_millis(u64::from(settings.transport().operation_timeout_ms())),
     )?;
     let (mut conn, side) = analyte_transport::connection(limits);
     let side = match &capture {
@@ -269,7 +269,7 @@ async fn exchange(
     mut stop: watch::Receiver<bool>,
     capture: Option<&crate::capture::Capture>,
 ) -> Result<(), Error> {
-    let LawLinks::Independent { outbound } = settings.policy.links else {
+    let LawLinks::Independent { outbound } = settings.policy().links() else {
         return Err(invalid("LAW independent destination absent"));
     };
     let until = orders.due().ok_or("LAW outbound deadline absent")?;
@@ -283,7 +283,7 @@ async fn exchange(
     };
     let limits = analyte_transport::Limits::new(
         CHANNEL_LIMIT,
-        Duration::from_millis(u64::from(settings.transport.operation_timeout_ms)),
+        Duration::from_millis(u64::from(settings.transport().operation_timeout_ms())),
     )?;
     let (mut conn, side) = analyte_transport::connection(limits);
     let side = match capture {

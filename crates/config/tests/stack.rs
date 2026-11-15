@@ -1,5 +1,5 @@
 //! ADR 0001/0002: validated stacks preserve the existing layered TOML interface.
-use analyte_config::{Draft, Stack, StreamTransport, TcpRole};
+use analyte_config::{Draft, Stack, StreamKind, TcpRole};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const SITE: &str = include_str!("../examples/site.toml");
@@ -21,14 +21,14 @@ fn load(
 
 fn variant(stack: &Stack) -> &str {
     match stack {
-        Stack::Astm(_) => "astm",
-        Stack::Hl7(_) => "hl7",
+        Stack::Astm(analyte_config::RecordTransport::Stream(_)) => "astm",
+        Stack::Hl7(analyte_config::RecordTransport::Stream(_)) => "hl7",
         Stack::Law(_) => "law",
         Stack::Poct(_) => "poct",
         Stack::VidasLiteral(_) => "vidas",
         Stack::Autolyser(_) => "autolyser",
-        Stack::FileAstm(_) => "file_astm",
-        Stack::FileHl7(_) => "file_hl7",
+        Stack::Astm(analyte_config::RecordTransport::Folder(_)) => "file_astm",
+        Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => "file_hl7",
     }
 }
 
@@ -79,62 +79,65 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
         assert_eq!(toml::Value::try_from(validated.effective())?, canonical);
         let original: toml::Value = toml::from_str(&machine)?;
         match validated.effective().stack() {
-            Stack::Astm(stack) => {
+            Stack::Astm(analyte_config::RecordTransport::Stream(stack)) => {
                 assert_eq!(
-                    Some(stack.frame_limit),
+                    Some(stack.frame_limit()),
                     original
                         .get("framing")
                         .and_then(|f| f.get("limit"))
                         .and_then(toml::Value::as_integer)
                         .and_then(|n| usize::try_from(n).ok())
                 );
-                assert_eq!(stack.mappings.tests.len(), raw.tests().len());
-                assert!(matches!(stack.transport, StreamTransport::Serial { .. }));
-                assert_eq!(stack.orders.is_some(), name == "orders.toml");
-                if let Some(orders) = &stack.orders {
-                    assert!(orders.query.is_some());
-                    assert_eq!(orders.layout.test.field, 5);
+                assert_eq!(stack.mappings().tests.len(), raw.tests().len());
+                assert!(matches!(stack.transport().kind(), StreamKind::Serial(_)));
+                assert_eq!(stack.orders().is_some(), name == "orders.toml");
+                if let Some(orders) = &stack.orders() {
+                    assert!(orders.query().is_some());
+                    assert_eq!(orders.layout().test.field, 5);
                 }
             }
-            Stack::Hl7(stack) => {
-                assert_eq!(stack.transport.role, TcpRole::Server);
-                assert_eq!(stack.mappings.tests.len(), raw.tests().len());
+            Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) => {
+                assert_eq!(stack.transport().role(), TcpRole::Server);
+                assert_eq!(stack.mappings().tests.len(), raw.tests().len());
                 assert_eq!(
-                    stack.orders.is_some(),
+                    stack.orders().is_some(),
                     matches!(name, "hl7_orders.toml" | "hl7_send.toml")
                 );
-                if let Some(orders) = &stack.orders {
-                    assert_eq!(orders.query.is_some(), name == "hl7_orders.toml");
-                    assert_eq!(orders.send.is_some(), name == "hl7_send.toml");
-                    if let Some(send) = &orders.send {
-                        assert_eq!(send.placer_namespace.as_str(), "LAB");
+                if let Some(orders) = &stack.orders() {
+                    assert_eq!(orders.query().is_some(), name == "hl7_orders.toml");
+                    assert_eq!(orders.send().is_some(), name == "hl7_send.toml");
+                    if let Some(send) = &orders.send() {
+                        assert_eq!(send.placer_namespace().as_str(), "LAB");
                     }
                 }
             }
             Stack::Law(stack) => {
-                assert_eq!(stack.transport.role, TcpRole::Server);
-                assert_eq!(stack.policy.query_deadline_ms, 1500);
-                assert_eq!(stack.orders.is_some(), name == "law_orders.toml");
-                if let Some(orders) = &stack.orders {
-                    assert!(!orders.specimen_types.is_empty());
-                    assert_eq!(orders.work.application.as_str(), "HOST");
+                assert_eq!(stack.transport().role(), TcpRole::Server);
+                assert_eq!(stack.policy().query_deadline_ms(), 1500);
+                assert_eq!(stack.orders().is_some(), name == "law_orders.toml");
+                if let Some(orders) = &stack.orders() {
+                    assert!(!orders.specimen_types().is_empty());
+                    assert_eq!(orders.work().application.as_str(), "HOST");
                 }
             }
             Stack::Poct(stack) => {
-                assert_eq!(stack.policy.depth, 32);
-                assert!(!stack.codes.tests.is_empty());
+                assert_eq!(stack.policy().depth, 32);
+                assert!(!stack.codes().tests.is_empty());
             }
             Stack::VidasLiteral(stack) => {
-                assert_eq!(u8::from(stack.policy.sample_limit), 12);
-                assert!(!stack.codes.tests.is_empty());
-                assert!(stack.orders.is_none());
+                assert_eq!(u8::from(stack.policy().sample_limit), 12);
+                assert!(!stack.codes().tests.is_empty());
+                assert!(stack.orders().is_none());
             }
             Stack::Autolyser(stack) => {
-                assert_eq!(stack.policy.poll_ms, 1000);
-                assert!(!stack.codes.tests.is_empty());
-                assert!(stack.orders.is_none());
+                assert_eq!(stack.policy().poll_ms, 1000);
+                assert!(!stack.codes().tests.is_empty());
+                assert!(stack.orders().is_none());
             }
-            Stack::FileAstm(_) | Stack::FileHl7(_) => panic!("no folder example is shipped"),
+            Stack::Astm(analyte_config::RecordTransport::Folder(_))
+            | Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
+                panic!("no folder example is shipped")
+            }
         }
     }
     Ok(())
@@ -143,18 +146,16 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
 #[test]
 fn adr0002_stack_is_built_after_overrides_and_keeps_serial_settings() -> TestResult {
     let original = load(ASTM, SITE, "schema_version=1")?;
-    let Stack::Astm(stack) = original.effective().stack() else {
+    let Stack::Astm(analyte_config::RecordTransport::Stream(stack)) = original.effective().stack()
+    else {
         panic!("ASTM stack")
     };
-    let StreamTransport::Serial {
-        settings,
-        operation_timeout_ms,
-    } = &stack.transport
-    else {
+    let StreamKind::Serial(settings) = stack.transport().kind() else {
         panic!("serial transport")
     };
+    let operation_timeout_ms = stack.transport().operation_timeout_ms();
     assert_eq!(settings.baud, 9600);
-    assert_eq!(*operation_timeout_ms, 10000);
+    assert_eq!(operation_timeout_ms, 10000);
     let overridden = load(
         ASTM,
         SITE,
@@ -164,16 +165,15 @@ kind="tcp_client"
 operation_timeout_ms=1234
 "#,
     )?;
-    let Stack::Astm(stack) = overridden.effective().stack() else {
+    let Stack::Astm(analyte_config::RecordTransport::Stream(stack)) =
+        overridden.effective().stack()
+    else {
         panic!("ASTM stack")
     };
-    assert!(matches!(
-        stack.transport,
-        StreamTransport::Tcp {
-            role: TcpRole::Client,
-            operation_timeout_ms: 1234
-        }
-    ));
+    assert!(
+        matches!(stack.transport().kind(), StreamKind::Tcp(TcpRole::Client))
+            && stack.transport().operation_timeout_ms() == 1234
+    );
     Ok(())
 }
 
@@ -205,6 +205,49 @@ send_timeout_ms=15000
         );
         let validated = load(&machine, &site, "schema_version=1")?;
         assert_eq!(variant(validated.effective().stack()), expected);
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0012_protocol_and_transport_are_independent_and_invalid_pairs_fail_loading() -> TestResult {
+    for (name, protocol, serial) in [
+        ("astm", "astm", true),
+        ("hl7", "hl7", false),
+        ("law", "law", false),
+        ("poct", "poct", false),
+        ("vidas_literal", "vidas", true),
+        ("autolyser", "autolyser", true),
+    ] {
+        let definition = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("examples/{name}.toml")),
+        )?;
+        for transport in ["serial", "tcp_client", "tcp_server", "watched_folder"] {
+            let serial_settings = if transport == "serial" {
+                "[transport.serial]\nbaud=9600\ndata_bits=8\nparity='none'\nstop_bits=1\nflow_control='none'\n"
+            } else {
+                ""
+            };
+            let overrides = format!(
+                "schema_version=1\n[transport]\nkind='{transport}'\noperation_timeout_ms=10000\n{serial_settings}"
+            );
+            let result = load(&definition, SITE, &overrides);
+            let allowed = matches!(transport, "tcp_client" | "tcp_server")
+                || (serial && transport == "serial");
+            if allowed {
+                assert!(result.is_ok(), "{protocol}/{transport}: {result:?}");
+            } else {
+                assert!(
+                    matches!(result, Err(analyte_config::Error::IncompatibleStack { .. })),
+                    "{protocol}/{transport}: {result:?}"
+                );
+            }
+        }
+        let wrong = definition.replace(
+            &format!(r#"protocol = "{protocol}""#),
+            r#"protocol = "unknown""#,
+        );
+        assert!(load(&wrong, SITE, "schema_version=1").is_err());
     }
     Ok(())
 }

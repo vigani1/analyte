@@ -38,7 +38,7 @@ pub(crate) fn message(
     law: Option<&analyte_hl7::law::Results<'_>>,
 ) -> Result<Output, Error> {
     let machine = config.effective().machine();
-    if source.nodes.len() > config.effective().stack().limits().records {
+    if source.nodes.len() > config.effective().stack().limits().records() {
         return Err(Error::Limit {
             position: source.position(0, 0),
             resource: "records",

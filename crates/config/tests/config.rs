@@ -255,11 +255,13 @@ fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() 
                     analyte_config::Stack::Poct(_) => "poct",
                     analyte_config::Stack::VidasLiteral(_) => "vidas_literal",
                     analyte_config::Stack::Autolyser(_) => "autolyser",
-                    analyte_config::Stack::Astm(_) | analyte_config::Stack::FileAstm(_) =>
+                    analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
+                    | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_)) =>
                         "astm_lis02",
-                    analyte_config::Stack::Hl7(_)
+                    analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
                     | analyte_config::Stack::Law(_)
-                    | analyte_config::Stack::FileHl7(_) => "hl7_v2",
+                    | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_)) =>
+                        "hl7_v2",
                 }
             ),
             "kind = \"mllp\"",
@@ -371,16 +373,18 @@ fn vidas(config: &analyte_config::Validated) -> Result<&analyte_config::Vidas, E
             protocol: "vidas",
         });
     };
-    Ok(&stack.policy)
+    Ok(stack.policy())
 }
 fn astm_frame_limit(config: &analyte_config::Validated) -> Result<usize, Error> {
-    let analyte_config::Stack::Astm(stack) = config.effective().stack() else {
+    let analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(stack)) =
+        config.effective().stack()
+    else {
         return Err(Error::ProtocolSettings {
             path: "fixture".into(),
             protocol: "astm",
         });
     };
-    Ok(stack.frame_limit)
+    Ok(stack.frame_limit())
 }
 
 #[test]
@@ -395,13 +399,15 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
     assert!(draft(&selected, OVERRIDES)?.validate().is_err());
     let declared = selected.replace("deviations = []", "deviations = [{name='synthetic-legacy-utf8',key='syntax.allow_utf8_in_v231',reason='Synthetic vendor uses the later UTF-8 code'}]");
     let config = draft(&declared, OVERRIDES)?.validate()?;
-    let analyte_config::Stack::Hl7(stack) = config.effective().stack() else {
+    let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
+        config.effective().stack()
+    else {
         return Err(Error::ProtocolSettings {
             path: "fixture".into(),
             protocol: "hl7",
         });
     };
-    assert!(stack.syntax.options().allow_utf8_in_v231);
+    assert!(stack.syntax().options().allow_utf8_in_v231);
     for invalid in [
         declared.replace("edition = \"v231\"", "edition = \"v251\""),
         declared.replace("encoding = \"utf8\"", "encoding = \"ascii\""),
@@ -409,12 +415,14 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
         assert!(draft(&invalid, OVERRIDES)?.validate().is_err());
     }
     let strict = draft(&base, OVERRIDES)?.validate()?;
-    let analyte_config::Stack::Hl7(stack) = strict.effective().stack() else {
+    let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
+        strict.effective().stack()
+    else {
         return Err(Error::ProtocolSettings {
             path: "fixture".into(),
             protocol: "hl7",
         });
     };
-    assert!(!stack.syntax.options().allow_utf8_in_v231);
+    assert!(!stack.syntax().options().allow_utf8_in_v231);
     Ok(())
 }
