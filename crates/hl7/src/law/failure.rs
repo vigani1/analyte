@@ -51,7 +51,11 @@ impl Failure {
             Self::QueryRejected { location } => return Some(*location),
         };
         match error {
-            Error::Content { segment, field }
+            Error::DilutionDefinition { segment, field, .. }
+            | Error::Subcomponent { segment, field, .. }
+            | Error::Authority { segment, field, .. }
+            | Error::Component { segment, field, .. }
+            | Error::Content { segment, field }
             | Error::Inconsistent { segment, field }
             | Error::Syntax(crate::Error::Control { segment, field }) => Some(ErrorLocation {
                 segment,
@@ -89,7 +93,8 @@ impl Failure {
 
 fn triggered(error: Error) -> Failure {
     match error {
-        Error::Inconsistent { .. }
+        Error::Component { segment: "MSH", .. }
+        | Error::Inconsistent { .. }
         | Error::Content {
             segment: "MSH",
             field: 9 | 12 | 15 | 16 | 18 | 21,
@@ -98,7 +103,12 @@ fn triggered(error: Error) -> Failure {
             segment: "MSH",
             field: 9 | 12 | 15 | 16 | 18 | 21,
         }) => Failure::ContentReject(error),
-        Error::Content { .. } | Error::Syntax(_) => Failure::MalformedTrigger(error),
+        Error::DilutionDefinition { .. }
+        | Error::Subcomponent { .. }
+        | Error::Authority { .. }
+        | Error::Component { .. }
+        | Error::Content { .. }
+        | Error::Syntax(_) => Failure::MalformedTrigger(error),
     }
 }
 
@@ -131,30 +141,31 @@ pub fn receive_work_response<'a>(
 /// Invalid acknowledgments are exchange failures, never new triggered messages to ACK.
 pub fn receive_acknowledgment(message: &Message, sent: &Message) -> Result<AckCode, Failure> {
     let validate = || -> Result<AckCode, Error> {
+        super::validate_control(message, super::ControlDirection::Receive)?;
         let incoming = super::msh(message)?;
         let outgoing = super::msh(sent)?;
         let d = message.delimiters();
         let trigger = outgoing.message_type().nth(1).ok_or(content("MSH", 9))?;
-        if !raw(incoming.segment(), 9).split(|b| *b == d.component).eq([
-            b"ACK".as_slice(),
-            trigger,
-            b"ACK",
-        ]) {
+        if !raw(incoming.segment(), 9)
+            .split(|b| *b == d.component)
+            .take(3)
+            .eq([b"ACK".as_slice(), trigger, b"ACK"])
+        {
             return Err(content("MSH", 9));
         }
         let mut segments = message.segments().skip(1);
         let msa_segment = segments.next().ok_or(content("MSA", 0))?;
-        let msa = Msa::with_control_limit(msa_segment, 50)?;
+        let msa = Msa::from_law(msa_segment)?;
         if msa.control_id() != outgoing.control_id() {
             return Err(content("MSA", 2));
         }
-        super::profile::validate_segment(msa_segment)?;
+        super::control::received_segment(msa_segment)?;
         let mut errors = 0usize;
         for segment in segments {
             if segment.id() != b"ERR" {
                 return Err(content("ACK", 0));
             }
-            super::profile::validate_segment(segment)?;
+            super::control::received_segment(segment)?;
             errors = errors.checked_add(1).ok_or(content("ERR", 0))?;
         }
         if (msa.code() == AckCode::Aa) == (errors != 0) {
