@@ -1,0 +1,26 @@
+Mutation: crates/store/src/polls.rs:225:5: replace resolution_bytes -> Result<usize, Error> with Ok(0)
+Original full log: target\store-round-2\polls-recheck\mutants.out\log\crates__store__src__polls.rs_line_225_col_5.log
+Failing-test output excerpt:
+
+running 2 tests
+test polls::tests::mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit ... FAILED
+test polls::tests::mutation_adr0003_poll_state_reason_and_repeated_evidence_are_independent ... ok
+
+failures:
+
+---- polls::tests::mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit stdout ----
+
+thread 'polls::tests::mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit' (36692) panicked at crates\store\src\polls\tests.rs:365:9:
+assertion failed: matches!(store.record_poll_outcome(id, outcome, &evidence),
+    Err(Error::Capacity))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    polls::tests::mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 104 filtered out; finished in 0.46s
+
+error: test failed, to rerun pass `-p analyte-store --lib`
+
+*** result: Failure(101)

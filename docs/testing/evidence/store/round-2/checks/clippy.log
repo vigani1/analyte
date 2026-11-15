@@ -1,0 +1,11 @@
+cargo.exe :     Checking analyte-mapping v0.1.0
+(C:\Users\super\.t3\worktrees\analyte\t3-3eebd17c-275a01987eda2e57\crates\mapping)
+At line:2 char:126
++ ... STEXITCODE; & "$HOME/.cargo/bin/cargo.exe" clippy --all-targets --all ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking an...crates\mapping):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+    Checking analyte v0.1.0 (C:\Users\super\.t3\worktrees\analyte\t3-3eebd17c-275a01987eda2e57\crates\analyte)
+    Checking analyte-store v0.1.0 (C:\Users\super\.t3\worktrees\analyte\t3-3eebd17c-275a01987eda2e57\crates\store)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.18s

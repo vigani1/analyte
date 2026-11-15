@@ -2513,11 +2513,11 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
                 match case {
                     "destination" => {
                         value.destination =
-                            Identifier::new("wrong").map_err(|_| Error::InvalidInput)?
+                            Identifier::new("wrong").map_err(|_| Error::InvalidInput)?;
                     }
                     "order" => {
                         value.order_id =
-                            Identifier::new("wrong").map_err(|_| Error::InvalidInput)?
+                            Identifier::new("wrong").map_err(|_| Error::InvalidInput)?;
                     }
                     "version" => value.contract_version = 2,
                     "valid" | "large-one" | "large-two" => {}

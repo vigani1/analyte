@@ -306,8 +306,147 @@ The final fetch also merged main's ADR 0012 documentation update (#90) with sign
 
 ## Store round 2: machine orders and poll custody
 
-Baseline: `546195ac346667aba25a0fc421332bd4be87296d` (origin/main after PR #87).
-Branch: `test/mutation-store-2`. This continuation is in progress; no new results are claimed yet.
-Production code remains unchanged. Use cargo-mutants 27.1.0, all features, scratch copies, 60-second tests and 180-second builds.
+Baseline: `546195ac346667aba25a0fc421332bd4be87296d` (origin/main after PR #87). Branch `test/mutation-store-2`, PR #93. Production code and dependencies are unchanged relative to main.
 
-Priority: finish machine_orders and every submodule, then polls, before lower-risk modules.
+This reviewable subset completes machine_orders and all six submodules, and polls. The whole store round is not complete. No new production bug was found. Thirteen tests were added: eleven order tests and two poll tests.
+
+### Round 2 per-module results
+
+Missed includes equivalent survivors; the equivalent column is a subset of missed, not additional mutants. Combined exact-name replays close 40 order gaps and six poll gaps. All seven survivors are justified below.
+
+| Module | Before caught / missed / unviable / timeout | After caught | After missed | Of which equivalent | After unviable | After timeout |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `machine_orders.rs` | 49 / 32 / 9 / 0 | 77 | 4 | 4 | 9 | 0 |
+| `machine_orders/cancel.rs` | 0 / 0 / 1 / 0 | 0 | 0 | 0 | 1 | 0 |
+| `machine_orders/eligibility.rs` | 5 / 1 / 2 / 0 | 6 | 0 | 0 | 2 | 0 |
+| `machine_orders/items.rs` | 15 / 6 / 1 / 0 | 20 | 1 | 1 | 1 | 0 |
+| `machine_orders/listing.rs` | 11 / 5 / 4 / 0 | 16 | 0 | 0 | 4 | 0 |
+| `machine_orders/ownership.rs` | 7 / 0 / 9 / 0 | 7 | 0 | 0 | 9 | 0 |
+| `machine_orders/reserve.rs` | 8 / 3 / 3 / 0 | 9 | 2 | 2 | 3 | 0 |
+| `polls.rs` | 9 / 6 / 5 / 0 | 15 | 0 | 0 | 5 | 0 |
+
+Total for this subset: **150 caught / 7 missed (all equivalent) / 34 unviable / 0 timeout**, 191 distinct mutations. Together with PR #87: 313 caught / 7 equivalent survivors / 55 unviable across 375 of the current 566 candidates.
+
+### Round 2 commands and every run
+
+Cargo-mutants 27.1.0; pinned Rust 1.100.0; all features; scratch copies; 60-second test and 180-second build deadlines. File selectors cover every production submodule. Filters select source-named suites; they do not skip or weaken tests. The final workspace check runs the full suite.
+
+| Run | Caught | Missed | Unviable | Timeout |
+| --- | ---: | ---: | ---: | ---: |
+| `orders-before` | 95 | 47 | 29 | 0 |
+| `polls-before` | 9 | 6 | 5 | 0 |
+| `polls-recheck` | 6 | 0 | 0 | 0 |
+| `orders-recheck` | 40 | 7 | 0 | 0 |
+
+[Recorded outcomes and phases](evidence/store/round-2/runs.json). Original full logs remain in `target/store-round-2/<run>/mutants.out/`. Rechecks match complete mutation names, not just locations.
+
+```powershell
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 3 --file crates/store/src/machine_orders.rs --file 'crates/store/src/machine_orders/*.rs' --cargo-test-arg order -o target/store-round-2/orders-before
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 1 --file crates/store/src/polls.rs --cargo-test-arg poll -o target/store-round-2/polls-before
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/store/src/polls.rs -F '11:9|178:|225:5' --cargo-test-arg mutation_adr0003_poll_ -o target/store-round-2/polls-recheck
+$misses = (Get-Content target/store-round-2/orders-before/mutants.out/outcomes.json -Raw | ConvertFrom-Json).outcomes | Where-Object summary -eq MissedMutant
+$pattern = ($misses | ForEach-Object { [regex]::Escape($_.scenario.Mutant.name) }) -join '|'
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 3 --file crates/store/src/machine_orders.rs --file 'crates/store/src/machine_orders/*.rs' -F $pattern --cargo-test-arg mutation_adr0003_rule8_order_ -o target/store-round-2/orders-recheck
+```
+
+The exact regex used is also retained in [orders-pattern.txt](evidence/store/round-2/orders-pattern.txt).
+
+### Every round 2 baseline miss
+
+| Baseline missed mutation | Decision and evidence |
+| --- | --- |
+| `crates/store/src/machine_orders.rs:268:11: replace &#124;&#124; with && in Store::reconcile_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_reconciliation_checks_target_and_outcome_independently`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_268_col_11.log). |
+| `crates/store/src/machine_orders.rs:320:17: replace &#124;&#124; with && in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_cancel_version_and_phase_are_rechecked_independently`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_320_col_17.log). |
+| `crates/store/src/machine_orders.rs:340:16: replace < with <= in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_340_col_16_001.log). |
+| `crates/store/src/machine_orders.rs:340:16: replace < with == in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_340_col_16.log). |
+| `crates/store/src/machine_orders.rs:340:36: replace &#124;&#124; with && in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_340_col_36.log). |
+| `crates/store/src/machine_orders.rs:344:35: replace > with < in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_state`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_344_col_35_001.log). |
+| `crates/store/src/machine_orders.rs:344:35: replace > with == in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive`, `order_tests::mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically`, `order_tests::mutation_adr0003_rule8_order_cancel_version_and_phase_are_rechecked_independently`, `order_tests::mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_state`, `order_tests::mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work`, `order_tests::mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_344_col_35.log). |
+| `crates/store/src/machine_orders.rs:344:35: replace > with >= in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_cancel_version_and_phase_are_rechecked_independently`, `order_tests::mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive`, `order_tests::mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work`, `order_tests::mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically`, `order_tests::mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_344_col_35_002.log). |
+| `crates/store/src/machine_orders.rs:374:31: replace > with == in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_374_col_31.log). |
+| `crates/store/src/machine_orders.rs:374:31: replace > with >= in Store::change_order` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_374_col_31_001.log). |
+| `crates/store/src/machine_orders.rs:399:23: replace > with == in append` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_399_col_23.log). |
+| `crates/store/src/machine_orders.rs:399:23: replace > with >= in append` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_399_col_23_001.log). |
+| `crates/store/src/machine_orders.rs:410:28: replace > with == in append` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_410_col_28.log). |
+| `crates/store/src/machine_orders.rs:410:28: replace > with >= in append` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_410_col_28_001.log). |
+| `crates/store/src/machine_orders.rs:411:9: replace &#124;&#124; with && in append` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_411_col_9.log). |
+| `crates/store/src/machine_orders.rs:412:9: replace &#124;&#124; with && in append` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_412_col_9.log). |
+| `crates/store/src/machine_orders.rs:413:9: replace &#124;&#124; with && in append` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_413_col_9.log). |
+| `crates/store/src/machine_orders.rs:426:24: replace &#124;&#124; with && in load_items` | Equivalent for validated stores: every committed reservation writes at least one item and item-history row; v5 migration creates one for each legacy order. Retention triggers forbid deleting either. Thus the latest-per-item history query has 1..100 rows (schema item_index CHECK 1..100 plus primary key). Both original and changed checks are false throughout that domain. An empty item history requires damaged/unvalidated custody, not a supported store operation. |
+| `crates/store/src/machine_orders.rs:426:38: replace > with == in load_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_426_col_38.log). |
+| `crates/store/src/machine_orders.rs:426:38: replace > with >= in load_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_426_col_38_001.log). |
+| `crates/store/src/machine_orders.rs:441:25: replace &#124;&#124; with && in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_441_col_25.log). |
+| `crates/store/src/machine_orders.rs:441:40: replace > with == in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_441_col_40.log). |
+| `crates/store/src/machine_orders.rs:441:40: replace > with >= in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_441_col_40_001.log). |
+| `crates/store/src/machine_orders.rs:448:17: replace &#124;&#124; with && in create_items` | Equivalent: the preceding unmutated test-list check establishes 1..100 tests. Empty groups leave that list nonempty and fail the later exact-coverage check. More than 100 groups either contain an empty/oversized member, rejected by the unchanged member check, or require more than 100 distinct consumed test entries, rejected by remaining.position before item writes. Valid exact-coverage groups make both checks false; invalid shapes still return InvalidInput and the reservation transaction rolls back. |
+| `crates/store/src/machine_orders.rs:448:33: replace > with == in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_448_col_33.log). |
+| `crates/store/src/machine_orders.rs:448:33: replace > with >= in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_448_col_33_001.log). |
+| `crates/store/src/machine_orders.rs:449:17: replace &#124;&#124; with && in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_449_col_17.log). |
+| `crates/store/src/machine_orders.rs:451:51: replace &#124;&#124; with && in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_451_col_51.log). |
+| `crates/store/src/machine_orders.rs:451:66: replace > with == in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_451_col_66.log). |
+| `crates/store/src/machine_orders.rs:451:66: replace > with >= in create_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders.rs_line_451_col_66_001.log). |
+| `crates/store/src/machine_orders.rs:505:23: replace > with == in write_item` | Equivalent for validated operations: every write_item caller subsequently appends the enclosing MachineOrder with the identical item(s), in the same transaction. Serialized order evidence strictly contains the item evidence plus enclosing fields. Any item exceeding the limit therefore makes append return InvalidInput and rolls back the earlier item writes; valid enclosing evidence implies the item is strictly below the limit. No independent successful item-only write API exists. |
+| `crates/store/src/machine_orders.rs:505:23: replace > with >= in write_item` | Equivalent for validated operations: an item exactly at the limit cannot fit inside the larger serialized MachineOrder. The original already refuses that transaction at append with InvalidInput; below the limit both checks pass. Every caller appends the enclosing order before commit, so there is no successful boundary case to reject or durable partial item write. |
+| `crates/store/src/machine_orders/eligibility.rs:41:34: replace > with >= in Store::pending_orders` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_pending_page_accepts_the_exact_limit_and_excludes_reservations`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__eligibility.rs_line_41_col_34.log). |
+| `crates/store/src/machine_orders/items.rs:26:11: replace &#124;&#124; with && in Store::finish_order_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_state`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__items.rs_line_26_col_11.log). |
+| `crates/store/src/machine_orders/items.rs:26:18: replace < with <= in Store::finish_order_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_state`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__items.rs_line_26_col_18_001.log). |
+| `crates/store/src/machine_orders/items.rs:26:18: replace < with == in Store::finish_order_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_state`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__items.rs_line_26_col_18.log). |
+| `crates/store/src/machine_orders/items.rs:27:13: replace &#124;&#124; with && in Store::finish_order_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_state`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__items.rs_line_27_col_13.log). |
+| `crates/store/src/machine_orders/items.rs:28:13: replace &#124;&#124; with && in Store::finish_order_items` | Equivalent: load_items already requires nonempty retained item history. The preceding duplicate-index and membership checks require each supplied outcome to name a distinct retained item, so an outcome list longer than the item list necessarily fails with InvalidInput before item writes. Changing the last OR to AND therefore removes only redundant empty/cardinality refusals; the state and clock terms remain unchanged. The new index test also exercises oversized duplicate and unknown-index lists. |
+| `crates/store/src/machine_orders/items.rs:43:81: replace == with != in Store::finish_order_items` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__items.rs_line_43_col_81.log). |
+| `crates/store/src/machine_orders/listing.rs:73:40: replace < with <= in Store::cancel_candidates` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__listing.rs_line_73_col_40.log). |
+| `crates/store/src/machine_orders/listing.rs:80:21: replace && with &#124;&#124; in Store::cancel_candidates` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__listing.rs_line_80_col_21.log). |
+| `crates/store/src/machine_orders/listing.rs:80:38: replace > with >= in Store::cancel_candidates` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__listing.rs_line_80_col_38.log). |
+| `crates/store/src/machine_orders/listing.rs:81:21: replace && with &#124;&#124; in Store::cancel_candidates` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__listing.rs_line_81_col_21.log). |
+| `crates/store/src/machine_orders/listing.rs:95:41: replace == with != in Store::cancel_candidates` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__listing.rs_line_95_col_41.log). |
+| `crates/store/src/machine_orders/reserve.rs:162:29: replace &#124;&#124; with && in Store::retain_order_command` | Real test gap, caught by `order_tests::mutation_adr0003_rule8_order_command_refuses_empty_bytes_and_keeps_original_after_restart`. [Failure log](evidence/store/round-2/orders-recheck-crates__store__src__machine_orders__reserve.rs_line_162_col_29.log). |
+| `crates/store/src/machine_orders/reserve.rs:162:44: replace > with == in Store::retain_order_command` | Equivalent for validated operations: retained command bytes are serialized into the enclosing MachineOrder as a JSON byte array, with additional enclosing fields, before append commits. Nonempty N bytes require more than N serialized bytes, so N >= record_bytes cannot fit and append refuses InvalidInput. Allowing a larger raw byte vector through this local check cannot commit it; all successful sizes are below the local limit and behave identically. |
+| `crates/store/src/machine_orders/reserve.rs:162:44: replace > with >= in Store::retain_order_command` | Equivalent: a raw command exactly at record_bytes already produces enclosing JSON larger than record_bytes and is refused by append before commit. Successful nonempty commands are strictly smaller than this local threshold, so changing the equality edge cannot reject a successful retained command. |
+| `crates/store/src/polls.rs:11:9: replace <impl std::fmt::Display for PollIntentId>::fmt -> std::fmt::Result with Ok(Default::default())` | Real test gap, caught by `polls::tests::mutation_adr0003_poll_state_reason_and_repeated_evidence_are_independent`. [Failure log](evidence/store/round-2/polls-recheck-crates__store__src__polls.rs_line_11_col_9.log). |
+| `crates/store/src/polls.rs:178:25: replace == with != in Store::record_poll_outcome` | Real test gap, caught by `polls::tests::mutation_adr0003_poll_state_reason_and_repeated_evidence_are_independent`. [Failure log](evidence/store/round-2/polls-recheck-crates__store__src__polls.rs_line_178_col_25.log). |
+| `crates/store/src/polls.rs:178:34: replace && with &#124;&#124; in Store::record_poll_outcome` | Real test gap, caught by `polls::tests::mutation_adr0003_poll_state_reason_and_repeated_evidence_are_independent`. [Failure log](evidence/store/round-2/polls-recheck-crates__store__src__polls.rs_line_178_col_34.log). |
+| `crates/store/src/polls.rs:178:51: replace == with != in Store::record_poll_outcome` | Real test gap, caught by `polls::tests::mutation_adr0003_poll_state_reason_and_repeated_evidence_are_independent`. [Failure log](evidence/store/round-2/polls-recheck-crates__store__src__polls.rs_line_178_col_51.log). |
+| `crates/store/src/polls.rs:225:5: replace resolution_bytes -> Result<usize, Error> with Ok(0)` | Real test gap, caught by `polls::tests::mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit`. [Failure log](evidence/store/round-2/polls-recheck-crates__store__src__polls.rs_line_225_col_5.log). |
+| `crates/store/src/polls.rs:225:5: replace resolution_bytes -> Result<usize, Error> with Ok(1)` | Real test gap, caught by `polls::tests::mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit`. [Failure log](evidence/store/round-2/polls-recheck-crates__store__src__polls.rs_line_225_col_5_001.log). |
+
+### Round 2 source-claim audit
+
+AGENTS.md rule 8, ADRs 0003/0004 and plan section 6: tests distinguish reservation/Sending, Sent, Accepted, Uncertain and cancellation states. Equal timestamps are legal; backwards time refuses atomically. Whole-order completion cannot replace per-item evidence. Wrong operator targets, unsupported reconciliation outcomes and mismatched cancel versions/phases do not change history or emit an app event.
+Rules 2–4 and 8 / ADR 0003: outcome indices retain their individual states and full peer codes after restart and in the app event. Duplicate/unknown outcomes fail atomically. Command bytes remain exact after restart; empty commands are refused and retaining a command never permits a new reservation.
+ADR 0004 and rule 8: pending-page and cancellation-page tests use exact host row limits, scan past unsent work, refuse expired work and exclude already reserved orders. These are store/cache eligibility assertions, not analyzer wire-conformance claims.
+Rule 7 / ADR 0003: host item-count, history, event and audit byte ceilings are tested at their inclusive boundary. Event destination, order and version are checked independently; failed checks leave both lifecycle and outbox unchanged. The number 100 is a host command-item ceiling, not a standard-specified analyzer limit.
+ADR 0010 Autolyser custody, ADR 0003 and rules 2/3/8: poll admissions and state/reason changes retain history and operator evidence. Identical repeats append nothing; new evidence in the same state must still be stored. Confirmation is terminal after restart. Insufficient reserve for even one audit refuses reconciliation without changing custody.
+Existing suites continue to cover item transition/aggregation tables, cancellation refusal, cache trust/restore pause, preflight failure, typed ownership and legacy migration. Their source-named test selections are recorded in runs.json; no test was renamed, weakened, ignored or deleted. No machine evidence level was raised. No claim is made here about physically sending bytes or actual analyzer ACK timing.
+New tests use synthetic fixtures, temporary stores and no added waits; existing shared HANG_GUARD remains unchanged.
+
+### Round 2 exact remaining work
+
+PR #93 is ready for the completed order/poll subset. The full store round still has these **191 candidates**, not yet fully run and triaged; original partial lib/alerts outcomes do not complete those modules. Resume in this order:
+
+| Remaining file | Candidate mutations |
+| --- | ---: |
+| `backup.rs` | 5 |
+| `restore.rs` | 22 |
+| `migration.rs` | 12 |
+| `open.rs` | 20 |
+| `startup.rs` | 13 |
+| `worker.rs` | 17 |
+| `reprocess.rs` | 5 |
+| `alerts.rs` | 23 |
+| `capacity.rs` | 10 |
+| `query.rs` | 38 |
+| `lib.rs` | 26 |
+
+### Round 2 final verification
+
+Fetched main and ran `git merge --signoff origin/main` before final verification: already up to date. All five checks exited 0 on Windows with pinned Rust 1.100.0:
+
+| Check | Output |
+| --- | --- |
+| `cargo fmt --check` | Exit 0; no diagnostics. |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Exit 0; dev profile finished successfully. |
+| `cargo test --workspace` | Exit 0; store: 116 passed, 1 manual benchmark ignored. Other workspace targets and doc tests passed. |
+| `cargo deny check` | Exit 0; advisories ok, bans ok, licenses ok, sources ok. Existing duplicate-dependency warnings remain. |
+| `cargo check --manifest-path fuzz/Cargo.toml --bins` | Exit 0; fuzz binaries compiled, not executed. |
+
+[Final check exit codes](evidence/store/round-2/checks/exits.json) and sibling logs preserve the output. The first Clippy run found two missing semicolons in new test match arms; both were fixed without suppressions, then all five checks were rerun. No Linux or minimum-Rust run was performed locally; those remain CI work.
