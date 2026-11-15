@@ -164,7 +164,7 @@ async fn machine_state(path: &Path, state: &str, count: i64) -> Result<(), Error
         loop {
             if database(path)?.query_row(
                 "SELECT count(*) FROM machine_orders WHERE state=?1",
-                [format!("\"{state}\"")],
+                [state],
                 |r| r.get::<_, i64>(0),
             )? == count
             {

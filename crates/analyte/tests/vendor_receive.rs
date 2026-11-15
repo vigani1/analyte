@@ -350,14 +350,23 @@ impl Running {
     }
 
     async fn close(self) -> Result<(), Error> {
+        self.close_with_deliveries(0).await
+    }
+
+    async fn close_with_deliveries(self, deliveries: u64) -> Result<(), Error> {
         self.stop.send(()).map_err(|()| "service ended early")?;
         tokio::time::timeout(HANG_GUARD, self.task).await???;
-        assert_eq!(self.result_requests.load(Ordering::Acquire), 0);
+        let requests = self.result_requests.load(Ordering::Acquire);
+        if deliveries == 0 {
+            assert_eq!(requests, 0);
+        } else {
+            assert!(requests >= deliveries);
+        }
         let db = rusqlite::Connection::open(self.directory.path().join("reference.db"))?;
         assert_eq!(
             db.query_row("SELECT count(*) FROM deliveries", [], |r| r
                 .get::<_, i64>(0))?,
-            0
+            i64::try_from(deliveries)?
         );
         self.receiver_stop
             .send(())
@@ -702,4 +711,335 @@ async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Resul
         0
     );
     run.close().await
+}
+
+// CLSI POCT01-A2 Appendix B section 5.7, p.96: the advertised capacity bounds host replies.
+#[tokio::test]
+async fn poct01_b5_7_host_never_sends_beyond_device_capacity() -> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let hello = poct_peer::hello("hello").replace(
+        "<DSC.max_message_sz NULL=\"PINF\"/>",
+        "<DSC.max_message_sz V=\"1\"/>",
+    );
+    run.peer.write_all(hello.as_bytes()).await?;
+    let mut response = [0u8; 1];
+    let received =
+        tokio::time::timeout(HANG_GUARD, run.peer.read(&mut response)).await??;
+    assert_eq!(
+        received, 0,
+        "an unfit reply must fail without sending or truncating it"
+    );
+    run.stored(hello.as_bytes(), "analyte-poct")?;
+    run.close().await
+}
+
+async fn poct_start(run: &mut Running, hello: &str) -> Result<(), Error> {
+    let middle = hello.len() / 2;
+    run.peer
+        .write_all(hello.get(..middle).ok_or("Hello split")?.as_bytes())
+        .await?;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    run.peer
+        .write_all(hello.get(middle..).ok_or("Hello split")?.as_bytes())
+        .await?;
+    xml(&mut run.peer).await?;
+    run.peer
+        .write_all(poct_peer::status("status", "1").as_bytes())
+        .await?;
+    xml(&mut run.peer).await?;
+    xml(&mut run.peer).await?;
+    Ok(())
+}
+
+async fn poct_deliveries(run: &Running, expected: i64) -> Result<(), Error> {
+    tokio::time::timeout(HANG_GUARD, async {
+        loop {
+            let db = rusqlite::Connection::open(run.directory.path().join("reference.db"))?;
+            let count: i64 = db.query_row("SELECT count(*) FROM deliveries", [], |r| r.get(0))?;
+            if count == expected {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok::<_, Error>(())
+    })
+    .await??;
+    Ok(())
+}
+
+// CLSI POCT01-A2 Appendix B 3.2 pp.71-72, 5.5 p.95, 5.21 Tables 46/49 p.105; ADR 0003.
+#[tokio::test]
+async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Result<(), Error> {
+    let definition = include_str!("../../config/examples/poct.toml").replace(
+        "[poct]",
+        "[poct]\nidentity = { sequence_number = true, processing = \"Production\" }",
+    );
+    let mut run = Running::start(&definition).await?;
+    let hello = poct_peer::hello("hello");
+    poct_start(&mut run, &hello).await?;
+    let original = poct_peer::observation("first", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>")
+        .replace("</PT>", "</PT><SPC><SPC.specimen_id V=\"000xyz\"/><SPC.specimen_dttm NULL=\"UNK\"/><SPC.source_cd NULL=\"UNK\"/><SPC.type_cd NULL=\"UNK\"/></SPC>");
+    run.peer.write_all(original.as_bytes()).await?;
+    // The peer deliberately does not consume the first ACK before resending.
+    poct_deliveries(&run, 1).await?;
+    let resent = original.replace("first", "resent").replace(
+        "<SVC.sequence_nbr",
+        "<SVC.reason_cd V=\"RES\"/><SVC.sequence_nbr",
+    );
+    run.peer.write_all(resent.as_bytes()).await?;
+    xml(&mut run.peer).await?;
+    xml(&mut run.peer).await?;
+    for restart in [false, true] {
+        if restart {
+            run = run.restart().await?;
+        } else {
+            run.peer = TcpStream::connect(run.listener.local_addr()?).await?;
+        }
+        poct_start(&mut run, &hello).await?;
+        run.peer.write_all(resent.as_bytes()).await?;
+        xml(&mut run.peer).await?;
+    }
+    assert_eq!(
+        run.database()?
+            .query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        1
+    );
+    assert_eq!(
+        run.database()?.query_row(
+            "SELECT count(*) FROM parked WHERE evidence LIKE '%conflict%'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        0,
+        "an unchanged resend must be a retransmission, not a parked conflict"
+    );
+    let edited = resent
+        .replace("12.30", "13.30")
+        .replace("RES", "EDT")
+        .replace("resent", "edited");
+    run.peer.write_all(edited.as_bytes()).await?;
+    xml(&mut run.peer).await?;
+    poct_deliveries(&run, 2).await?;
+    assert_eq!(
+        run.database()?
+            .query_row("SELECT max(revision) FROM observation_revisions", [], |r| r
+                .get::<_, i64>(0))?,
+        1
+    );
+    let missing_time = resent.replace("resent", "missing-time").replace(
+        "<SVC.observation_dttm V=\"2026-03-12T09:35:00+01:00\"/>",
+        "<SVC.observation_dttm NULL=\"UNK\"/>",
+    );
+    run.peer.write_all(missing_time.as_bytes()).await?;
+    xml(&mut run.peer).await?;
+
+    run.stored(missing_time.as_bytes(), "analyte-poct")?;
+    let missing_sequence = resent
+        .replace("resent", "missing-sequence")
+        .replace("<SVC.sequence_nbr V=\"0007\"/>", "");
+    run.peer.write_all(missing_sequence.as_bytes()).await?;
+    xml(&mut run.peer).await?;
+    let conflict = original
+        .replace("12.30", "99.30")
+        .replace("first", "conflict");
+    run.peer.write_all(conflict.as_bytes()).await?;
+    xml(&mut run.peer).await?;
+    let db = run.database()?;
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+            .get::<_, i64>(0))?,
+        2
+    );
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        2
+    );
+    let mut statement = db.prepare(
+        "SELECT i.evidence FROM interpretations i JOIN receipts r ON i.receipt=r.id WHERE r.raw=?1",
+    )?;
+    let encoded: String = statement
+        .query_row([missing_time.as_bytes()], |r| r.get(0))
+        .map_err(|e| format!("missing time interpretation: {e}"))?;
+    let evidence: analyte_store::Interpretation = serde_json::from_str(&encoded)?;
+    assert!(
+        matches!(evidence.outcome, analyte_store::Reading::Results(results) if results.iter().all(|r| matches!(r.identity, analyte_model::IdentityStatus::Unresolved(_))))
+    );
+    assert!(
+        db.query_row(
+            "SELECT count(*) FROM parked WHERE evidence LIKE '%identity evidence missing%'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )? >= 2
+    );
+    assert!(
+        db.query_row(
+            "SELECT count(*) FROM parked WHERE evidence LIKE '%conflict%'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )? >= 1
+    );
+    drop(statement);
+    drop(db);
+    run.peer = TcpStream::connect(run.listener.local_addr()?).await?;
+    let missing_device = hello.replace("<DEV.device_id V=\"A1-B2-C3-D4-E5-F6-07-08\"/>", "");
+    run.peer.write_all(missing_device.as_bytes()).await?;
+    tokio::time::timeout(HANG_GUARD, async {
+        loop {
+            if run.database()?.query_row(
+                "SELECT count(*) FROM parked WHERE evidence LIKE '%DEV.device_id%'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )? > 0
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok::<_, Error>(())
+    })
+    .await??;
+    run.stored(missing_device.as_bytes(), "analyte-poct")
+        .map_err(|e| format!("missing device receipt: {e}"))?;
+    assert_eq!(
+        run.database()?
+            .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        2
+    );
+    assert!(
+        run.database()?.query_row(
+            "SELECT count(*) FROM parked WHERE evidence LIKE '%DEV.device_id%'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )? >= 1
+    );
+    run.close_with_deliveries(2).await
+}
+
+// POCT01-A2 Appendix B 4.1.2 p.78, 3.4.1 p.73: error ACK precedes abnormal END.
+#[tokio::test]
+async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> Result<(), Error> {
+    let base = poct_peer::hello("bad-hello");
+    for (raw, code, reason) in [
+        (
+            base.replace(
+                "DSC.connection_profile_cd V=\"SA\"",
+                "DSC.connection_profile_cd V=\"invalid\"",
+            ),
+            "103",
+            "POCT syntax",
+        ),
+        (
+            base.replace("<DEV.device_id V=\"A1-B2-C3-D4-E5-F6-07-08\"/>", ""),
+            "101",
+            "POCT syntax",
+        ),
+        (base.replace("</DEV>", "</BROKEN>"), "102", "POCT syntax"),
+        (
+            base.replace(
+                "<DSC.max_message_sz NULL=\"PINF\"/>",
+                "<DSC.max_message_sz V=\"0\"/>",
+            ),
+            "200",
+            "POCT Hello capabilities",
+        ),
+        (
+            base.replace("HDR.version_id V=\"POCT01\"", "HDR.version_id V=\"POCT02\""),
+            "201",
+            "POCT syntax",
+        ),
+    ] {
+        let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+        run.peer.write_all(raw.as_bytes()).await?;
+        let ack = xml(&mut run.peer).await?;
+        let ack = analyte_poct::Message::parse(&ack, poct_peer::limits())?;
+        assert!(
+            matches!(ack.body(), analyte_poct::Body::Acknowledgement { kind: analyte_poct::AckKind::Error, reference } if reference.as_str() == "bad-hello")
+        );
+        assert!(
+            String::from_utf8(ack.document().raw().to_vec())?
+                .contains(&format!("ACK.error_detail_cd V=\"{code}\""))
+        );
+        // Both retention and parking have completed before the error response.
+        run.stored(raw.as_bytes(), "analyte-poct")?;
+        run.parked(reason).await?;
+        let end = xml(&mut run.peer).await?;
+        let end = analyte_poct::Message::parse(&end, poct_peer::limits())?;
+        assert!(
+            matches!(end.body(), analyte_poct::Body::Terminate(code) if matches!(code, analyte_poct::Nullable::Value(code) if code.value == "ABN"))
+        );
+        let final_ack = poct_peer::message(
+            "ACK.R01",
+            "end-ack",
+            &format!(
+                "<ACK><ACK.type_cd V=\"AA\"/>{}</ACK>",
+                poct_peer::field("ACK.ack_control_id", end.header().control_id.as_str())
+            ),
+        );
+        run.peer.write_all(final_ack.as_bytes()).await?;
+        let mut byte = [0];
+        assert_eq!(
+            tokio::time::timeout(HANG_GUARD, run.peer.read(&mut byte)).await??,
+            0
+        );
+        run.close().await?;
+    }
+    Ok(())
+}
+
+// POCT01-A2 B 4.1.2 p.78; AGENTS.md rule 4: never guess a reply reference.
+#[tokio::test]
+async fn poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack()
+-> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let raw = poct_peer::hello("one").replace(
+        "<HDR.control_id V=\"one\"/>",
+        "<HDR.control_id V=\"one\"/><HDR.control_id V=\"two\"/>",
+    );
+    run.peer.write_all(raw.as_bytes()).await?;
+    let mut byte = [0];
+    assert_eq!(
+        tokio::time::timeout(HANG_GUARD, run.peer.read(&mut byte)).await??,
+        0
+    );
+    run.stored(raw.as_bytes(), "analyte-poct")?;
+    run.parked("POCT syntax").await?;
+    run.close().await
+}
+
+// POCT01-A2 B 5.13 p.99 and 3.4.2 p.74: reused IDs are protocol faults, not new results.
+#[tokio::test]
+async fn poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes() -> Result<(), Error> {
+    for reused in ["observation", "status"] {
+        let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+        poct_start(&mut run, &poct_peer::hello("hello")).await?;
+        let first =
+            poct_peer::observation("observation", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>");
+        run.peer.write_all(first.as_bytes()).await?;
+        xml(&mut run.peer).await?;
+        let repeated = poct_peer::observation(reused, true, "<OBS.value V=\"99.30\" U=\"mg/L\"/>");
+        run.peer.write_all(repeated.as_bytes()).await?;
+        let escape = xml(&mut run.peer).await?;
+        let escape = analyte_poct::Message::parse(&escape, poct_peer::limits())?;
+        assert!(
+            matches!(escape.body(), analyte_poct::Body::Escape { reference, .. } if reference.as_str() == reused)
+        );
+        run.stored(repeated.as_bytes(), "analyte-poct")?;
+        run.parked("POCT reused incoming control ID").await?;
+        run.result_value("12.30")?;
+        let end = xml(&mut run.peer).await?;
+        let end = analyte_poct::Message::parse(&end, poct_peer::limits())?;
+        assert!(matches!(end.body(), analyte_poct::Body::Terminate(_)));
+        let ack = poct_peer::message(
+            "ACK.R01",
+            "unique-end-ack",
+            &format!(
+                "<ACK><ACK.type_cd V=\"AA\"/>{}</ACK>",
+                poct_peer::field("ACK.ack_control_id", end.header().control_id.as_str())
+            ),
+        );
+        run.peer.write_all(ack.as_bytes()).await?;
+        run.close().await?;
+    }
+    Ok(())
 }

@@ -32,6 +32,19 @@ fn clinical_digest(result: &ResultContent) -> Result<analyte_model::Digest, Erro
         for part in parts {
             if let Some(fields) = part.as_object_mut() {
                 fields.remove("received_at");
+                // Source offsets locate immutable evidence, not clinical content.
+                // An optional resend field can shift every later XML/record offset.
+                // Keep source kinds, sequences and statuses in the comparison.
+                if let Some(path) = fields
+                    .get_mut("source_path")
+                    .and_then(serde_json::Value::as_array_mut)
+                {
+                    for node in path {
+                        if let Some(node) = node.as_object_mut() {
+                            node.remove("occurrence");
+                        }
+                    }
+                }
             }
         }
     }
@@ -128,7 +141,12 @@ impl Store {
         }
         let findings = findings
             .iter()
-            .map(|finding| self.encode(finding))
+            .map(|finding| {
+                self.encode(&crate::parked::ParkingEvidence {
+                    details: finding.clone(),
+                    context: None,
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let limit = self.limits.record_bytes;
         let receipt_key = key(&receipt)?;
@@ -160,6 +178,19 @@ impl Store {
                 let identity_key = key(&(&stored.metadata.machine, &identity.observation))?;
                 // A delayed retransmission may refer to any retained revision, not just the latest.
                 let same: Option<i64> = tx.query_row("SELECT revision FROM observation_revisions WHERE identity_key=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1", params![identity_key, content.0.as_slice()], |r| r.get(0)).optional()?;
+                // Older digests included source offsets. Compare retained typed evidence
+                // on a miss; do not rewrite history or silently treat old results as new.
+                let same = match same {
+                    Some(revision) => Some(revision),
+                    None => same_retained_content(
+                        &tx,
+                        &identity_key,
+                        &identity.observation,
+                        &content,
+                        self.limits.page_rows,
+                        limit,
+                    )?,
+                };
                 let same = revisions
                     .iter()
                     .rev()
@@ -308,30 +339,30 @@ impl Store {
             {
                 return Err(Error::InvalidInput);
             }
-            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'pending',0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version])?;
+            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version,crate::DeliveryState::Pending])?;
         }
         match &evidence.outcome {
             Reading::Failed(reason) => {
                 tx.execute(
                     "INSERT INTO parked(evidence) VALUES (?1)",
-                    [key(&(
+                    [crate::parked::evidence(
                         "interpretation_failure",
-                        &receipt_key,
-                        reason,
-                        version,
-                    ))?],
+                        &serde_json::from_str::<String>(&receipt_key)?,
+                        reason.as_str(),
+                        Some(crate::parked::ParkingContext::Interpretation { version }),
+                    )?],
                 )?;
             }
             Reading::Results(results) => {
                 if action.is_some() && results.is_empty() && findings_empty {
                     tx.execute(
                         "INSERT INTO parked(evidence) VALUES (?1)",
-                        [key(&(
+                        [crate::parked::evidence(
                             "interpretation_failure",
-                            &receipt_key,
+                            &serde_json::from_str::<String>(&receipt_key)?,
                             "reprocessing produced no results",
-                            version,
-                        ))?],
+                            Some(crate::parked::ParkingContext::Interpretation { version }),
+                        )?],
                     )?;
                 }
                 for (index, (result, outcome)) in results.iter().zip(&outcomes).enumerate() {
@@ -343,13 +374,15 @@ impl Store {
                     {
                         tx.execute(
                             "INSERT INTO parked(evidence) VALUES (?1)",
-                            [key(&(
+                            [crate::parked::evidence(
                                 "result_reconciliation",
-                                &receipt_key,
-                                index,
-                                format!("{outcome:?}"),
-                                version,
-                            ))?],
+                                &serde_json::from_str::<String>(&receipt_key)?,
+                                &format!("result reconciliation: {outcome:?}"),
+                                Some(crate::parked::ParkingContext::Result {
+                                    version: Some(version),
+                                    index,
+                                }),
+                            )?],
                         )?;
                     }
                 }
@@ -431,4 +464,43 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+}
+
+fn same_retained_content(
+    tx: &rusqlite::Transaction<'_>,
+    identity_key: &str,
+    observation: &analyte_model::ObservationIdentity,
+    content: &analyte_model::Digest,
+    maximum_rows: usize,
+    maximum_bytes: usize,
+) -> Result<Option<i64>, Error> {
+    let bound = maximum_rows
+        .checked_add(1)
+        .ok_or(Error::RevisionHistoryLimit)?;
+    let mut statement = tx.prepare("SELECT r.revision,i.evidence FROM observation_revisions r JOIN interpretations i ON i.receipt=r.receipt AND i.version=r.interpretation_version WHERE r.identity_key=?1 ORDER BY r.revision DESC LIMIT ?2")?;
+    let mut rows = statement.query(params![
+        identity_key,
+        i64::try_from(bound).map_err(|_| Error::RevisionHistoryLimit)?
+    ])?;
+    let mut count = 0usize;
+    while let Some(row) = rows.next()? {
+        if count >= maximum_rows {
+            return Err(Error::RevisionHistoryLimit);
+        }
+        count = count.checked_add(1).ok_or(Error::RevisionHistoryLimit)?;
+        let revision: i64 = row.get(0)?;
+        let encoded: String = row.get(1)?;
+        if encoded.len() > maximum_bytes {
+            return Err(Error::Corruption);
+        }
+        let evidence: Interpretation = serde_json::from_str(&encoded)?;
+        let Reading::Results(results) = evidence.outcome else {
+            return Err(Error::Corruption);
+        };
+        let retained = results.iter().find(|result| matches!(&result.identity, IdentityStatus::Resolved(identity) if &identity.observation == observation && i64::try_from(identity.revision.0).ok() == Some(revision))).ok_or(Error::Corruption)?;
+        if clinical_digest(retained)? == *content {
+            return Ok(Some(revision));
+        }
+    }
+    Ok(None)
 }

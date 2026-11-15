@@ -524,3 +524,89 @@ fn parse_services(
     }
     Ok(services)
 }
+
+impl MessageError {
+    /// Classifies a rejected message for the error ACK (Appendix B Table 14).
+    #[must_use]
+    pub fn acknowledgement_error(&self) -> crate::ApplicationError {
+        match self {
+            Self::Data(data::DataError::MissingValue) | Self::MissingValue(_) => {
+                crate::ApplicationError::RequiredField
+            }
+            Self::Data(data::DataError::Code) => crate::ApplicationError::TableValue,
+            Self::Xml(_)
+            | Self::Data(
+                data::DataError::Null
+                | data::DataError::MissingUnit
+                | data::DataError::Number
+                | data::DataError::Time
+                | data::DataError::Attribute
+                | data::DataError::Interval,
+            ) => crate::ApplicationError::DataType,
+            Self::Missing(name) => {
+                if name.contains('.') {
+                    crate::ApplicationError::RequiredField
+                } else {
+                    crate::ApplicationError::ObjectSequence
+                }
+            }
+            Self::Version => crate::ApplicationError::UnsupportedVersion,
+            Self::UnsupportedMessage | Self::MessageType => {
+                crate::ApplicationError::UnsupportedValue
+            }
+            Self::Structure | Self::UnsupportedElement | Self::ObservationValue | Self::Role => {
+                crate::ApplicationError::ObjectSequence
+            }
+        }
+    }
+}
+
+/// Recovers only an unambiguous Hello error-ACK reference from a complete header.
+/// This never accepts a message or supplies missing data. Returns None if the
+/// bounded prefix is invalid XML, is not Hello's first HDR, or has a missing,
+/// null, repeated or invalid control ID. The caller retains the original failure.
+#[must_use]
+pub fn hello_error_reference(bytes: &[u8], limits: Limits) -> Option<ControlId> {
+    if bytes.len() > limits.message_bytes {
+        return None;
+    }
+    let mut reader = quick_xml::Reader::from_reader(bytes);
+    loop {
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::End(end)) if end.name().as_ref() == "HDR" => {
+                let length = usize::try_from(reader.buffer_position()).ok()?;
+                let closing = b"</HEL.R01>";
+                if length.checked_add(closing.len())? > limits.message_bytes {
+                    return None;
+                }
+                let mut prefix = bytes.get(..length)?.to_vec();
+                prefix.extend_from_slice(closing);
+                // The normal bounded XML reader also rejects DTDs, entities and
+                // invalid characters; scanning alone never establishes trust.
+                let document = Document::parse(&prefix, limits).ok()?;
+                if document.elements().first()?.name() != "HEL.R01" {
+                    return None;
+                }
+                let mut children = structure::children(&document, 0);
+                let (hdr, element) = children.next()?;
+                if element.name() != "HDR" || children.next().is_some() {
+                    return None;
+                }
+                let mut ids = structure::children(&document, hdr)
+                    .filter(|(_, e)| e.name() == "HDR.control_id");
+                let (index, id) = ids.next()?;
+                if ids.next().is_some()
+                    || structure::children(&document, index).next().is_some()
+                    || id.attributes().iter().any(|(key, _)| key == "NULL")
+                {
+                    return None;
+                }
+                return ControlId::new(data::attr(id, "V")?).ok();
+            }
+            Ok(quick_xml::events::Event::Eof) | Err(_) => return None,
+            // External XML events are scanned only to locate the header boundary;
+            // the complete prefix must still pass Document::parse above.
+            Ok(_) => {}
+        }
+    }
+}

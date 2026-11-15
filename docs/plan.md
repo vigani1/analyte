@@ -1,6 +1,8 @@
 # Analyte plan
 
-Status, 2026-11-15: phases 1 to 6 and 8 are built at the documented level,
+Status, 2026-11-15: phases 1 to 4, 6 and 8 are built at the documented level,
+while phase 5 has a POCT Basic Profile implementation with an open conformance
+evidence gate (see the audited [POCT checklist](protocols/poct1-a.md)),
 including IHE LAW as Analyzer Manager in the program (one persistent link;
 independent links and successful recorded simulator qualification remain). The program receives and parks
 results from every stack, answers machine queries and sends work lists for

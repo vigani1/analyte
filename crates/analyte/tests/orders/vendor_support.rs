@@ -7,7 +7,7 @@ pub(super) async fn state(path: &Path, expected: &str) -> Result<(), Error> {
         loop {
             let found: i64 = database(path)?.query_row(
                 "SELECT count(*) FROM machine_orders WHERE state=?1",
-                [format!("\"{expected}\"")],
+                [expected],
                 |r| r.get(0),
             )?;
             if found == 1 {

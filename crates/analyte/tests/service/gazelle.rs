@@ -177,7 +177,7 @@ async fn wait_orders(path: &Path, cancellation: bool) -> Result<(), Error> {
                     .query_map([], |row| row.get::<_, String>(0))?
                     .collect::<Result<Vec<_>, _>>()?;
                 if states.len() == 2 {
-                    let states: Vec<_> = states.iter().map(|s| s.trim_matches('"')).collect();
+                    let states: Vec<_> = states.iter().map(String::as_str).collect();
                     if cancellation {
                         let refused: i64 = db.query_row(
                             "SELECT count(*) FROM machine_orders WHERE source_code LIKE '%LAW-UC%'",

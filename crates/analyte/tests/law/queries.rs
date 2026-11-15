@@ -321,14 +321,12 @@ async fn law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_
                 codes
                     .iter()
                     .map(|code| (
-                        format!(
-                            "\"{}\"",
-                            if *code == "OK" {
-                                "Accepted"
-                            } else {
-                                "Rejected"
-                            }
-                        ),
+                        if *code == "OK" {
+                            "Accepted"
+                        } else {
+                            "Rejected"
+                        }
+                        .to_owned(),
                         "LAB".to_owned()
                     ))
                     .collect::<Vec<_>>()

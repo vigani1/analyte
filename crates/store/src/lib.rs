@@ -2,7 +2,19 @@
 #![forbid(unsafe_code)]
 
 mod alerts;
+mod backup;
+mod capacity;
+mod feed;
+mod open;
+mod outbox;
+mod parked;
+mod polls;
+pub use polls::{PollIntent, PollIntentId, PollIntentState, PollOutcome};
+mod receipts;
+mod sql_types;
+mod transfers;
 pub use alerts::*;
+pub use transfers::{FrameSequence, TransferOutcome};
 mod machine_orders;
 mod migration;
 mod reprocess;
@@ -12,7 +24,7 @@ mod restore;
 pub use resend::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 9;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
@@ -25,18 +37,27 @@ pub use records::*;
 mod worker;
 pub use worker::Handle;
 
-use analyte_model::{DeliveryId, Digest, Identifier, ReceiptId, ReceiptMetadata, SampleId};
-use rusqlite::{Connection, OptionalExtension, params};
+use analyte_model::Digest;
+#[cfg(test)]
+use analyte_model::{DeliveryId, Identifier, ReceiptId, ReceiptMetadata, SampleId};
+use rusqlite::Connection;
+#[cfg(test)]
+use rusqlite::params;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
+#[cfg(test)]
+use std::time::Instant;
 use std::{
     path::{Path, PathBuf},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Legacy content comparison exceeded the configured reconciliation row bound.
+    #[error("observation history comparison exceeds page_rows; operator reconciliation required")]
+    RevisionHistoryLimit,
     /// Requested receipt has never been stored.
     #[error("receipt does not exist")]
     UnknownReceipt,
@@ -60,8 +81,25 @@ pub enum Error {
     #[error("storage capacity reserve reached")]
     Capacity,
     /// The database belongs to a newer implementation.
-    #[error("schema version {0} is newer than supported version 6")]
+    #[error("schema version {0} is newer than supported version {SCHEMA_VERSION}")]
     SchemaTooNew(i64),
+    /// A legacy row cannot be converted without guessing; migration is rolled back.
+    #[error("cannot migrate {table} row {row}: {cause}")]
+    MigrationEvidence {
+        /// Table containing the refused legacy record.
+        table: &'static str,
+        /// Stable row identity retained for diagnosis.
+        row: i64,
+        /// Specific decoding, bound or storage failure.
+        #[source]
+        cause: Box<Error>,
+    },
+    /// A previous poll may already have moved this machine's cursor.
+    #[error("poll intent remains unresolved; reconcile before polling again")]
+    PollIntentUnresolved,
+    /// No retained poll has the requested identity.
+    #[error("poll intent does not exist")]
+    UnknownPollIntent,
     /// SQLite or stored evidence failed an integrity check.
     #[error("stored evidence is corrupt")]
     Corruption,
@@ -80,8 +118,8 @@ pub enum Error {
     /// The dedicated worker stopped.
     #[error("storage worker stopped")]
     Closed,
-    /// The store-assigned placer plus configured namespace cannot fit the edition's EI.
-    #[error("HL7 placer identity exceeds edition limit or has no namespace")]
+    /// The generated local command identity exceeds the caller's byte budget.
+    #[error("command identity exceeds caller byte limit")]
     ItemIdentityTooLong,
     /// Input exceeds a configured bound or violates its declared provenance.
     #[error("invalid or oversized storage input")]
@@ -192,705 +230,12 @@ impl Store {
         serde_json::to_writer(&mut writer, value)?;
         String::from_utf8(writer.bytes).map_err(|_| Error::Corruption)
     }
-    /// Opens, checks integrity, and applies forward-only migrations before accepting writes.
-    /// # Errors
-    /// Refuses corruption, newer schemas, invalid limits and filesystem/database failures.
-    pub fn open(path: &Path, limits: Limits, space: Box<dyn FreeSpace>) -> Result<Self, Error> {
-        if limits.record_bytes == 0
-            || limits.page_rows == 0
-            || limits.busy_timeout.is_zero()
-            || limits.busy_timeout > Duration::from_secs(30)
-        {
-            return Err(Error::InvalidInput);
-        }
-        let lock = Self::lock(path, false)?;
-        if path.with_extension("restore-pending").exists() {
-            return Err(Error::Conflict);
-        }
-        Self::open_locked(path, limits, space, lock)
-    }
-
-    fn open_locked(
-        path: &Path,
-        limits: Limits,
-        space: Box<dyn FreeSpace>,
-        lock: std::fs::File,
-    ) -> Result<Self, Error> {
-        let mut db = Connection::open(path)?;
-        db.busy_timeout(limits.busy_timeout)?;
-        let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version > SCHEMA_VERSION {
-            return Err(Error::SchemaTooNew(version));
-        }
-        Self::integrity(&db)?;
-        db.execute_batch(
-            "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
-        )?;
-        if version == 0 {
-            let tx = db.transaction()?;
-            tx.execute_batch(include_str!("schema.sql"))?;
-            tx.commit()?;
-        }
-        if version <= 1 {
-            Self::migrate_v2(&mut db)?;
-        }
-        if version <= 2 {
-            Self::migrate_v3(&mut db, limits.record_bytes)?;
-        }
-        if version <= 3 {
-            let tx = db.transaction()?;
-            tx.execute_batch(include_str!("migration_v4.sql"))?;
-            tx.commit()?;
-        }
-        if version <= 4 {
-            let tx = db.transaction()?;
-            tx.execute_batch(include_str!("migration_v5.sql"))?;
-            tx.commit()?;
-        }
-        if version <= 5 {
-            let tx = db.transaction()?;
-            tx.execute_batch(include_str!("migration_v6.sql"))?;
-            tx.commit()?;
-        }
-        // SQL constraints also protect evidence from accidental maintenance updates.
-        for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
-            db.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER IF NOT EXISTS immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
-        }
-        Ok(Self {
-            _lock: lock,
-            db,
-            path: path.into(),
-            limits,
-            space,
-        })
-    }
-
-    fn integrity(db: &Connection) -> Result<(), Error> {
-        let result: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
-        if result != "ok" {
-            return Err(Error::Corruption);
-        }
-        let foreign_error = db.prepare("PRAGMA foreign_key_check")?.exists([])?;
-        if foreign_error {
-            return Err(Error::Corruption);
-        }
-        Ok(())
-    }
-
-    fn bound(&self, bytes: &[u8]) -> Result<(), Error> {
-        if bytes.len() > self.limits.record_bytes {
-            return Err(Error::InvalidInput);
-        }
-        Ok(())
-    }
-
-    fn capacity(&self, bytes: usize) -> Result<(), Error> {
-        Self::capacity_on(&self.db, &self.path, &self.limits, &*self.space, bytes)
-    }
-
-    fn capacity_on(
-        db: &Connection,
-        path: &Path,
-        limits: &Limits,
-        space: &dyn FreeSpace,
-        bytes: usize,
-    ) -> Result<(), Error> {
-        let input = u64::try_from(bytes).map_err(|_| Error::Capacity)?;
-        let needed = limits
-            .reserve_bytes
-            .checked_add(input)
-            .ok_or(Error::Capacity)?;
-        let pages: u32 = db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
-        let size: u32 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
-        if space.available(path)? <= needed
-            || u64::from(pages)
-                .checked_mul(u64::from(size))
-                .and_then(|n| n.checked_add(input))
-                .ok_or(Error::Capacity)?
-                >= limits.database_bytes
-        {
-            return Err(Error::Capacity);
-        }
-        Ok(())
-    }
-
-    /// Checks, without writing anything, whether new evidence of up to
-    /// `expected_bytes` would be admitted under the disk reserve and the
-    /// database size limit. Dialogs call this before accepting a new transfer
-    /// (for example before answering an ASTM ENQ, ADR 0003). It is a snapshot:
-    /// every later write checks capacity again and can still refuse.
-    /// # Errors
-    /// Returns `Error::Capacity` when admission would cross a limit, or the
-    /// specific error of a failed free-space probe.
-    pub fn admission(&self, expected_bytes: usize) -> Result<(), Error> {
-        self.capacity(expected_bytes)
-    }
-
-    /// Commits exact bytes and effective config; supplied digests must match.
-    /// # Errors
-    /// Refuses insufficient capacity, oversized evidence, digest mismatches or duplicate IDs.
-    pub fn receive(
-        &mut self,
-        metadata: &ReceiptMetadata,
-        raw: &[u8],
-        config: &[u8],
-    ) -> Result<(), Error> {
-        self.bound(raw)?;
-        self.bound(config)?;
-        let encoded = self.encode(metadata)?;
-        self.bound(encoded.as_bytes())?;
-        self.capacity(raw.len().checked_add(config.len()).ok_or(Error::Capacity)?)?;
-        if digest(raw) != metadata.raw_digest || digest(config) != metadata.config_digest {
-            return Err(Error::InvalidInput);
-        }
-        self.db.execute(
-            "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
-            params![key(&metadata.id)?, encoded, raw, config],
-        )?;
-        Ok(())
-    }
-
-    /// Returns exact protected raw bytes for a receipt, or absence; never logs them.
-    /// # Errors
-    /// Reports database failures.
-    pub fn raw(&self, id: ReceiptId) -> Result<Option<Vec<u8>>, Error> {
-        Ok(self
-            .db
-            .query_row("SELECT raw FROM receipts WHERE id=?1", [key(&id)?], |r| {
-                r.get(0)
-            })
-            .optional()?)
-    }
-
-    /// Commits one ASTM frame before returning its monotonic journal sequence.
-    /// # Errors
-    /// Refuses closed transfers, oversized frames, invalid frame numbers or capacity failures.
-    pub fn frame(&mut self, transfer: &Identifier, number: u8, raw: &[u8]) -> Result<i64, Error> {
-        self.bound(raw)?;
-        self.capacity(raw.len())?;
-        if number > 7 {
-            return Err(Error::InvalidInput);
-        }
-        let tx = self.db.transaction()?;
-        tx.execute(
-            "INSERT OR IGNORE INTO transfers VALUES (?1,'open',NULL)",
-            [transfer.as_str()],
-        )?;
-        let state: String = tx.query_row(
-            "SELECT state FROM transfers WHERE id=?1",
-            [transfer.as_str()],
-            |r| r.get(0),
-        )?;
-        if state != "open" {
-            return Err(Error::Conflict);
-        }
-        tx.execute(
-            "INSERT INTO frames(transfer,number,raw) VALUES (?1,?2,?3)",
-            params![transfer.as_str(), number, raw],
-        )?;
-        let sequence = tx.last_insert_rowid();
-        tx.commit()?;
-        Ok(sequence)
-    }
-
-    /// Completes a transfer with a stored receipt, or preserves it as aborted evidence.
-    /// # Errors
-    /// Refuses missing receipts and already closed transfers.
-    pub fn finish_transfer(
-        &mut self,
-        transfer: &Identifier,
-        receipt: Option<ReceiptId>,
-    ) -> Result<(), Error> {
-        let state = if receipt.is_some() {
-            "complete"
-        } else {
-            "aborted"
-        };
-        let receipt = receipt.map(|id| key(&id)).transpose()?;
-        let tx = self.db.transaction()?;
-        if tx.execute(
-            "UPDATE transfers SET state=?2,receipt=?3 WHERE id=?1 AND state='open'",
-            params![transfer.as_str(), state, receipt],
-        )? != 1
-        {
-            return Err(Error::Conflict);
-        }
-        if receipt.is_none() {
-            tx.execute(
-                "INSERT INTO parked(evidence) VALUES (?1)",
-                [key(&(
-                    "incomplete_transfer",
-                    transfer,
-                    "ASTM transfer ended before a complete receipt was retained",
-                ))?],
-            )?;
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Lists unfinished or aborted transfer IDs in a bounded page after an ID.
-    /// # Errors
-    /// Reports database failures.
-    pub fn incomplete(&self, after: &str) -> Result<Vec<String>, Error> {
-        let mut stmt = self.db.prepare(
-            "SELECT id FROM transfers WHERE state!='complete' AND id>?1 ORDER BY id LIMIT ?2",
-        )?;
-        Ok(stmt
-            .query_map(
-                params![
-                    after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
-                ],
-                |r| r.get(0),
-            )?
-            .collect::<Result<_, _>>()?)
-    }
-
-    /// Adds one interpretation and all its immutable delivery bytes atomically.
-    /// # Errors
-    /// Rejects unsafe result delivery, mismatched receipt IDs, bounds and database conflicts.
-    pub fn interpret(
-        &mut self,
-        receipt: ReceiptId,
-        evidence: &Interpretation,
-        deliveries: &[Delivery],
-    ) -> Result<i64, Error> {
-        for delivery in deliveries {
-            if self.db.query_row(
-                "SELECT count(*) FROM outbox WHERE id=?1",
-                [key(&delivery.id)?],
-                |row| row.get::<_, i64>(0),
-            )? != 0
-            {
-                return Err(Error::Conflict);
-            }
-        }
-        let count = match &evidence.outcome {
-            Reading::Results(results) => results.len(),
-            Reading::Failed(_) => 0,
-        };
-        let commit = self.interpret_reconciled(receipt, evidence.clone(), &vec![false; count], &[], |assigned, outcomes| {
-            let mut selected = Vec::new();
-            for delivery in deliveries {
-                let eligible = match &assigned.outcome {
-                    Reading::Results(results) => results.iter().zip(outcomes).any(|(result,outcome)| matches!(outcome, RevisionOutcome::New(_) | RevisionOutcome::Correction(_)) && matches!(&result.identity, analyte_model::IdentityStatus::Resolved(identity) if identity.observation == delivery.ordering_key.observation)),
-                    Reading::Failed(_) => false,
-                };
-                if eligible {
-                    // Prebuilt bytes cannot be fixed after revision assignment. Callers
-                    // needing corrections must build through interpret_reconciled instead.
-                    if let (Reading::Results(before), Reading::Results(after)) = (&evidence.outcome, &assigned.outcome)
-                        && before.iter().zip(after).any(|(a,b)| a.identity != b.identity) { return Err(Error::InvalidInput); }
-                    selected.push(Delivery { id: delivery.id, destination: delivery.destination.clone(), ordering_key: OrderingKey { machine: delivery.ordering_key.machine.clone(), observation: delivery.ordering_key.observation.clone() }, payload: delivery.payload.clone(), contract_version: delivery.contract_version });
-                } else if !outcomes.iter().any(|outcome| matches!(outcome, RevisionOutcome::Retransmission(_))) {
-                    return Err(Error::InvalidInput);
-                }
-            }
-            Ok(selected)
-        })?;
-        Ok(commit.version)
-    }
-
-    /// Claims an eligible head item; unresolved earlier items block only their own key.
-    /// # Errors
-    /// Reports database failures. In-flight items remain uncertain after restart.
-    pub fn claim(&mut self, now: i64) -> Result<Option<Claim>, Error> {
-        let tx = self.db.transaction()?;
-        let found = tx.query_row("SELECT id,payload,destination,contract,kind,(SELECT count(*) FROM attempts a WHERE a.delivery=o.id) FROM outbox o WHERE state='pending' AND next_attempt<=?1 AND NOT EXISTS(SELECT 1 FROM outbox older WHERE older.destination=o.destination AND older.kind=o.kind AND older.ordering_key=o.ordering_key AND older.sequence<o.sequence AND older.state!='done') AND NOT EXISTS(SELECT 1 FROM outbox paused WHERE paused.destination=o.destination AND paused.state='paused') ORDER BY sequence LIMIT 1", [now], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Vec<u8>>(1)?,r.get::<_,String>(2)?,r.get::<_,u32>(3)?,r.get::<_,String>(4)?,r.get::<_,i64>(5)?))).optional()?;
-        let result =
-            if let Some((id, payload, destination, contract_version, kind, earlier_attempts)) =
-                found
-            {
-                tx.execute("UPDATE outbox SET state='in_flight' WHERE id=?1", [&id])?;
-                Some(Claim {
-                    id: serde_json::from_str(&id)?,
-                    payload,
-                    destination: Identifier::new(&destination).map_err(|_| Error::Corruption)?,
-                    contract_version,
-                    kind: match kind.as_str() {
-                        "result" => DeliveryKind::Result,
-                        "order_event" => DeliveryKind::OrderEvent,
-                        _ => return Err(Error::Corruption),
-                    },
-                    earlier_attempts: u64::try_from(earlier_attempts)
-                        .map_err(|_| Error::Corruption)?,
-                })
-            } else {
-                None
-            };
-        tx.commit()?;
-        Ok(result)
-    }
-
-    /// Records an attempt and its next state atomically, retaining bytes and delivery ID.
-    /// # Errors
-    /// Refuses outcomes for items that are not in flight.
-    pub fn attempted(&mut self, id: DeliveryId, outcome: &Attempt, now: i64) -> Result<(), Error> {
-        self.bound(key(outcome)?.as_bytes())?;
-        let (state, next) = match outcome {
-            Attempt::Done => ("done", 0),
-            Attempt::RetryAt(time) => ("pending", *time),
-            Attempt::Interrupted => ("pending", now),
-            Attempt::Parked(_) => ("parked", 0),
-            Attempt::Paused(_) => ("paused", 0),
-            Attempt::Conflict(_) => ("conflict", 0),
-        };
-        let tx = self.db.transaction()?;
-        let id = key(&id)?;
-        if tx.execute(
-            "UPDATE outbox SET state=?2,next_attempt=?3 WHERE id=?1 AND state='in_flight'",
-            params![id, state, next],
-        )? != 1
-        {
-            return Err(Error::Conflict);
-        }
-        tx.execute(
-            "INSERT INTO attempts(delivery,outcome,time) VALUES (?1,?2,?3)",
-            params![id, key(outcome)?, now],
-        )?;
-        match outcome {
-            Attempt::Parked(reason) | Attempt::Conflict(reason) => {
-                tx.execute(
-                    "INSERT INTO parked(evidence) VALUES (?1)",
-                    [key(&(state, &id, reason))?],
-                )?;
-            }
-            Attempt::Done | Attempt::Interrupted | Attempt::RetryAt(_) | Attempt::Paused(_) => {}
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Appends operator-visible evidence without a deletion API.
-    /// # Errors
-    /// Refuses oversized evidence or database failures.
-    pub fn park(&mut self, item: &Parked) -> Result<i64, Error> {
-        let encoded = self.encode(item)?;
-        self.bound(encoded.as_bytes())?;
-        self.db
-            .execute("INSERT INTO parked(evidence) VALUES (?1)", [encoded])?;
-        Ok(self.db.last_insert_rowid())
-    }
-
-    /// Resolves once, recording who, when and how in both the item and audit trail.
-    /// # Errors
-    /// Refuses missing or already resolved items.
-    pub fn resolve(&mut self, id: i64, resolution: &Audit) -> Result<(), Error> {
-        let encoded = self.encode(resolution)?;
-        self.bound(encoded.as_bytes())?;
-        let tx = self.db.transaction()?;
-        if tx.execute(
-            "UPDATE parked SET resolution=?2 WHERE id=?1 AND resolution IS NULL",
-            params![id, encoded],
-        )? != 1
-        {
-            return Err(Error::Conflict);
-        }
-        tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [encoded])?;
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Appends an audit entry permanently.
-    /// # Errors
-    /// Refuses oversized entries or database failures.
-    pub fn audit(&mut self, entry: &Audit) -> Result<(), Error> {
-        let encoded = self.encode(entry)?;
-        self.bound(encoded.as_bytes())?;
-        self.db
-            .execute("INSERT INTO audit(evidence) VALUES (?1)", [encoded])?;
-        Ok(())
-    }
-
-    /// Recovers one bounded page of interrupted app deliveries for idempotent retry.
-    /// Call before starting the sole worker until zero is returned. IDs and bytes
-    /// remain immutable; parked, conflicting and paused entries are never changed.
-    /// Each recovered entry receives its own audit with the delivery as its target.
-    /// # Errors
-    /// Reports capacity, encoding or database failures; each page commits atomically.
-    pub fn recover_in_flight(&mut self, now: i64, audit: &Audit) -> Result<usize, Error> {
-        if !self
-            .db
-            .prepare("SELECT 1 FROM outbox WHERE state='in_flight' LIMIT 1")?
-            .exists([])?
-        {
-            return Ok(0);
-        }
-        let tx = self.db.transaction()?;
-        let ids = {
-            let mut query = tx.prepare(
-                "SELECT id FROM outbox WHERE state='in_flight' ORDER BY sequence LIMIT ?1",
-            )?;
-            query
-                .query_map(
-                    [i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?],
-                    |row| row.get::<_, String>(0),
-                )?
-                .collect::<Result<Vec<_>, _>>()?
-        };
-        let mut required = 0usize;
-        for id in &ids {
-            let delivery: String = serde_json::from_str(id)?;
-            let entry = Audit {
-                actor: audit.actor.clone(),
-                action: audit.action.clone(),
-                targets: vec![Identifier::new(&delivery).map_err(|_| Error::Corruption)?],
-                time: now,
-                reason: audit.reason.clone(),
-            };
-            let encoded = key(&entry)?;
-            if encoded.len() > self.limits.record_bytes {
-                return Err(Error::InvalidInput);
-            }
-            let outcome = key(&Attempt::Interrupted)?;
-            required = required
-                .checked_add(encoded.len())
-                .and_then(|bytes| bytes.checked_add(outcome.len()))
-                .and_then(|bytes| bytes.checked_add(128))
-                .ok_or(Error::Capacity)?;
-            Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
-            tx.execute(
-                "INSERT INTO attempts(delivery,outcome,time) VALUES (?1,?2,?3)",
-                params![id, outcome, now],
-            )?;
-            tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [encoded])?;
-            tx.execute(
-                "UPDATE outbox SET state='pending',next_attempt=?2 WHERE id=?1",
-                params![id, now],
-            )?;
-        }
-        tx.commit()?;
-        Ok(ids.len())
-    }
-
-    /// Explicitly releases a parked, conflicting or paused delivery with its existing bytes and ID.
-    /// Interrupted attempts use startup recovery instead; operator release records setup or evidence repair.
-    /// # Errors
-    /// Refuses pending/done items, oversized audit evidence or database failures.
-    pub fn release_delivery(&mut self, id: DeliveryId, audit: &Audit) -> Result<(), Error> {
-        let encoded = self.encode(audit)?;
-        self.bound(encoded.as_bytes())?;
-        let tx = self.db.transaction()?;
-        if tx.execute("UPDATE outbox SET state='pending',next_attempt=0 WHERE id=?1 AND state IN ('parked','paused','conflict')", [key(&id)?])? != 1 { return Err(Error::Conflict); }
-        tx.execute(
-            "INSERT INTO audit(evidence) VALUES (?1)",
-            [key(&(id, encoded))?],
-        )?;
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Stores a bounded page with its cursor in the same commit.
-    /// # Errors
-    /// Rejects oversized pages and database failures.
-    pub fn order_page(&mut self, page: &OrderPage) -> Result<(), Error> {
-        if page.orders.len() > self.limits.page_rows {
-            return Err(Error::InvalidInput);
-        }
-        self.bound(self.encode(page)?.as_bytes())?;
-        let tx = self.db.transaction()?;
-        tx.execute("INSERT INTO feed(destination,cursor,complete,trusted,polled) VALUES (?1,?2,?3,1,?4) ON CONFLICT(destination) DO UPDATE SET cursor=excluded.cursor,complete=max(feed.complete,excluded.complete),trusted=1,polled=excluded.polled",params![page.destination.as_str(),page.cursor.as_str(),page.complete,page.polled])?;
-        for order in &page.orders {
-            tx.execute("INSERT INTO orders VALUES (?1,?2,?3,?4,?5,?6,(SELECT generation FROM feed WHERE destination=?1)) ON CONFLICT(destination,id) DO UPDATE SET sample=excluded.sample,evidence=excluded.evidence,tombstone=excluded.tombstone,expiry=excluded.expiry,generation=excluded.generation", params![page.destination.as_str(),order.id.as_str(),order.sample.as_str(),key(order)?,order.tombstone,order.expiry])?;
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Invalidates the cursor and snapshot after 410; stale orders remain as evidence.
-    /// # Errors
-    /// Reports database failures.
-    pub fn reset_orders(&mut self, destination: &Identifier) -> Result<(), Error> {
-        self.db.execute(
-            "UPDATE feed SET trusted=0,complete=0,cursor='',generation=generation+1 WHERE destination=?1",
-            [destination.as_str()],
-        )?;
-        Ok(())
-    }
-
-    /// Returns three-way trust, refusing stale, incomplete, future-clock or oversized answers.
-    /// # Errors
-    /// Reports database or encoded evidence failures.
-    pub fn orders(
-        &self,
-        destination: &Identifier,
-        sample: &SampleId,
-        now: i64,
-        freshness: u64,
-    ) -> Result<Lookup, Error> {
-        if !self.order_trust(destination, now, freshness)?.is_trusted() {
-            return Ok(Lookup::NotTrusted);
-        }
-        let mut stmt=self.db.prepare("SELECT evidence FROM orders WHERE destination=?1 AND sample=?2 AND tombstone=0 AND expiry>?3 AND generation=(SELECT generation FROM feed WHERE destination=?1) LIMIT ?4")?;
-        let limit = self
-            .limits
-            .page_rows
-            .checked_add(1)
-            .ok_or(Error::InvalidInput)?;
-        let encoded = stmt
-            .query_map(
-                params![
-                    destination.as_str(),
-                    sample.as_str(),
-                    now,
-                    i64::try_from(limit).map_err(|_| Error::InvalidInput)?
-                ],
-                |r| r.get::<_, String>(0),
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
-        if encoded.len() > self.limits.page_rows {
-            return Ok(Lookup::NotTrusted);
-        }
-        let orders = encoded
-            .iter()
-            .map(|s| serde_json::from_str(s))
-            .collect::<Result<Vec<_>, _>>()?;
-        if orders.is_empty() {
-            Ok(Lookup::NoOrders)
-        } else {
-            Ok(Lookup::Orders(orders))
-        }
-    }
-
-    /// Evaluates the destination cache without conflating unavailable data with no orders.
-    /// The transaction helper uses exactly this rule for atomic reservation checks.
-    /// # Errors
-    /// Reports database failures; never substitutes an empty lookup.
-    pub fn order_trust(
-        &self,
-        destination: &Identifier,
-        now: i64,
-        freshness: u64,
-    ) -> Result<OrderTrust, Error> {
-        Self::order_trust_on(&self.db, destination, now, freshness)
-    }
-
-    fn order_trust_on(
-        db: &Connection,
-        destination: &Identifier,
-        now: i64,
-        freshness: u64,
-    ) -> Result<OrderTrust, Error> {
-        if Self::restore_paused(db)? {
-            return Ok(OrderTrust::RestorePaused);
-        }
-        let feed: Option<(i64, bool, bool)> = db
-            .query_row(
-                "SELECT polled,complete,trusted FROM feed WHERE destination=?1",
-                [destination.as_str()],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
-            .optional()?;
-        let Some((polled, complete, trusted)) = feed else {
-            return Ok(OrderTrust::Unknown);
-        };
-        if !complete || !trusted {
-            return Ok(OrderTrust::Incomplete);
-        }
-        let Some(age) = now
-            .checked_sub(polled)
-            .and_then(|age| u64::try_from(age).ok())
-        else {
-            return Ok(OrderTrust::Unknown);
-        };
-        if age >= freshness {
-            Ok(OrderTrust::Stale { age })
-        } else {
-            Ok(OrderTrust::Trusted { age })
-        }
-    }
-
-    /// Uses SQLite online backup, then checks the restored copy before reporting success.
-    /// # Errors
-    /// Refuses an existing target, timeout, corruption or database/filesystem failures.
-    pub fn backup(&self, target: &Path, deadline: Instant) -> Result<(), Error> {
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(target)?;
-        drop(file);
-        let mut copy = Connection::open(target)?;
-        {
-            let backup = rusqlite::backup::Backup::new(&self.db, &mut copy)?;
-            loop {
-                if Instant::now() >= deadline {
-                    return Err(Error::Timeout);
-                }
-                match backup.step(64)? {
-                    rusqlite::backup::StepResult::Done => break,
-                    rusqlite::backup::StepResult::More => {}
-                    rusqlite::backup::StepResult::Busy | rusqlite::backup::StepResult::Locked => {
-                        return Err(Error::Timeout);
-                    }
-                    _ => return Err(Error::Corruption), // Future SQLite states fail closed.
-                }
-            }
-        }
-        Self::integrity(&copy)
-    }
 }
 
 #[cfg(test)]
 mod tests;
 
-impl Store {
-    /// Retains transfer provenance before journaling a frame; success permits its ACK.
-    /// Provenance commits first, so a later frame failure never loses configuration evidence.
-    /// # Errors
-    /// Rejects changed provenance, bounds, capacity or database failures.
-    pub fn journal_frame(
-        &mut self,
-        transfer: &Identifier,
-        number: u8,
-        raw: &[u8],
-        provenance: &FrameProvenance,
-    ) -> Result<i64, Error> {
-        let evidence = self.encode(provenance)?;
-        let retained: Option<String> = self
-            .db
-            .query_row(
-                "SELECT evidence FROM frame_provenance WHERE transfer=?1",
-                [transfer.as_str()],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match retained {
-            Some(retained) if retained != evidence => return Err(Error::Conflict),
-            Some(_) => {}
-            None => {
-                self.capacity(evidence.len())?;
-                self.db.execute(
-                    "INSERT INTO frame_provenance VALUES (?1,?2)",
-                    params![transfer.as_str(), evidence],
-                )?;
-            }
-        }
-        self.frame(transfer, number, raw)
-    }
-
-    /// Reads protected configuration evidence retained for a journaled transfer.
-    /// # Errors
-    /// Reports database failures or corrupt provenance.
-    pub fn frame_provenance(
-        &self,
-        transfer: &Identifier,
-    ) -> Result<Option<FrameProvenance>, Error> {
-        let evidence: Option<String> = self
-            .db
-            .query_row(
-                "SELECT evidence FROM frame_provenance WHERE transfer=?1",
-                [transfer.as_str()],
-                |row| row.get(0),
-            )
-            .optional()?;
-        evidence
-            .map(|e| serde_json::from_str(&e).map_err(Error::from))
-            .transpose()
-    }
-}
-
-/// Authoritative cache availability, kept distinct from an authoritative empty answer.
+/// Authoritative cache availability, distinct from an authoritative empty answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrderTrust {
     /// Complete current snapshot inside the configured age limit.

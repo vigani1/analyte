@@ -45,7 +45,7 @@ async fn law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos() -> Result<(
             .collect::<Result<Vec<_>, _>>()?;
         for (state, code) in states.iter().zip(codes) {
             assert_eq!(
-                state.trim_matches('"'),
+                state.as_str(),
                 if code == "OK" { "Accepted" } else { "Rejected" }
             );
         }
@@ -147,7 +147,7 @@ async fn law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos() ->
             .collect::<Result<Vec<_>, _>>()?;
         for (state, code) in states.iter().zip(codes) {
             assert_eq!(
-                state.trim_matches('"'),
+                state.as_str(),
                 if code == "CR" {
                     "CancelConfirmed"
                 } else {
@@ -264,7 +264,7 @@ async fn law_tf2b_3_28_adr0003_restart_during_sending_or_cancelling_is_uncertain
         no_work(&mut peer).await?;
         assert_eq!(
             database(&path)?.query_row(
-                "SELECT count(*) FROM machine_order_items WHERE state='\"Uncertain\"'",
+                "SELECT count(*) FROM machine_order_items WHERE state='Uncertain'",
                 [],
                 |r| r.get::<_, i64>(0)
             )?,

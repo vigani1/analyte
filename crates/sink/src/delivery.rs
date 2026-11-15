@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 
 /// Builds immutable production bytes and creates their delivery ID exactly once.
-/// The caller commits this with its interpretation using `Store::interpret`.
+/// The caller commits this with its interpretation using `Store::interpret_reconciled`.
 /// # Errors
 /// Refuses non-production modes, parked evidence, receipt mismatch and wire errors.
 pub fn build_delivery(

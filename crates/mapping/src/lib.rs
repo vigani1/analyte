@@ -504,3 +504,27 @@ fn reserve_evidence(
         })?;
     Ok(())
 }
+
+/// Encodes ordered device-sent run evidence without concatenation collisions.
+/// Source spelling and order are retained; empty/missing evidence must be handled
+/// by the protocol mapper before calling this function.
+/// # Errors
+/// Rejects a run exceeding the common model's 16384-byte source-text bound,
+/// before growing its buffer beyond that bound.
+pub fn identity_run(values: &[&str]) -> Result<SourceText, TextError> {
+    let mut run = String::new();
+    for value in values {
+        let prefix = format!("{}:", value.len());
+        if run
+            .len()
+            .checked_add(prefix.len())
+            .and_then(|n| n.checked_add(value.len()))
+            .is_none_or(|n| n > 16384)
+        {
+            return Err(TextError::TooLong { limit: 16384 });
+        }
+        run.push_str(&prefix);
+        run.push_str(value);
+    }
+    SourceText::new(&run)
+}
