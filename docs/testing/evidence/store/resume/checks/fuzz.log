@@ -1,6 +1,0 @@
-cargo.exe :     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.08s
-At line:2 char:573
-+ ... STEXITCODE; & "$HOME/.cargo/bin/cargo.exe" check --manifest-path fuzz ...
-+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (    Finished `d...get(s) in 0.08s:String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
