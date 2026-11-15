@@ -76,6 +76,13 @@ async fn serve_with(
     let destinations = crate::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
     let store = Arc::new(open_store(&program, space).await?);
+    let paused = store
+        .request(deadline(), |store| store.restore_unreconciled())
+        .await?;
+    tracing::info!(
+        order_sending_paused_after_restore = paused,
+        "store restore reconciliation status"
+    );
     crate::delivery::recover(&store).await?;
     let (delivery_stop, delivery_stopped) = watch::channel(false);
     let mut delivery_owners = JoinSet::new();

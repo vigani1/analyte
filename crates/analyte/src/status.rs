@@ -9,7 +9,10 @@ use std::collections::BTreeMap;
 /// Reports destination construction, storage or deadline failures.
 pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, Error> {
     let now = jiff::Timestamp::now().as_second();
-    let mut lines = Vec::new();
+    let paused = store
+        .request(deadline(), |store| store.restore_unreconciled())
+        .await?;
+    let mut lines = vec![format!("order_sending_paused_after_restore={paused}")];
     for destination in crate::delivery::destinations(program, false)? {
         let health = destination.health(store, now).await?;
         lines.push(format!("destination={} pending_count={} pending_bytes={} oldest_pending_age_seconds={:?} paused={} last_poll={:?} cache_trusted={}",
