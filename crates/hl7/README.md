@@ -64,12 +64,20 @@ Covered by source-named synthetic tests and a query property test:
   profile headers, timestamp precision/timezone, numeric units, status/datatype
   subsets, equipment multiplicity, SPM/OBX sequencing and repeated-value rules.
   LAW's extended control-ID limit is scoped; base HL7 limits remain unchanged.
+- Additional Appendix C control checks: MSH delimiters, application/facility
+  namespace length and cardinality, repeated profile identifier required components;
+  ERR error-code subset and coding system, severity E, location components and
+  available application-code/user-message bounds. Component failures have a
+  distinct error carrying the segment, field and component position.
 - Recovery classes for malformed triggers, content rejection, invalid ACK,
   inconsistent ORL and host query rejection. Failed responses do not start ACK
   loops. Unnamespaced local diagnostics remain text rather than invented codes.
 
 Not yet complete:
 
+- Completion of the MSH/MSA/ERR segment group (including all composite datatype
+  rules and cross-segment predicates), and the PID/PV1, SPM/SAC,
+  ORC/OBR/TQ1/TCD and OBX/NTE/INV groups.
 - Every Appendix C field/component and option predicate and its individual test.
   The shared validator is not a complete LAW conformance validator.
 - Complete typed validation of all value composites and enhanced-content

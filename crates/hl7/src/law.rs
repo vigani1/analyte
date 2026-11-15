@@ -9,6 +9,17 @@ use thiserror::Error;
 /// A LAW validation failure, without payload in its diagnostic.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// A composite component violates its profiled usage, length or datatype.
+    #[error("LAW component rejected at {segment}-{field}.{component}")]
+    Component {
+        /// Segment identifier.
+        segment: &'static str,
+        /// One-based field position.
+        field: usize,
+        /// One-based component position.
+        component: usize,
+    },
+
     /// Individually valid fields contradict each other; reject the whole content.
     #[error("inconsistent LAW content at {segment}-{field}")]
     Inconsistent {
