@@ -133,6 +133,8 @@ new crate rather than a change to a shared one.
   operator; Analyte never invents a result key from sample, test, value or
   time. Different content under the same trusted identity is an error, never
   a silent replacement.
+- **Revisions** are assigned by the store from the identity and the retained
+  history, in the same transaction as the interpretation (rules in ADR 0003).
 - **Sample identity:** ID as a string with its source, plus position (rack or
   disk, slot) when the machine reports one.
 - **Values:** original text, parsed number with comparator and precision when
