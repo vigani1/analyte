@@ -1,0 +1,4 @@
+{"version":1,"stack":["tcp_server","astm_lis01","astm_link","astm_lis02"],"machine":"synthetic","software":null,"evidence":"synthetic","de_identification":"Synthetic; no patient data","source":"ADR 0003 protocol acknowledgment boundaries; LIS01-A2 sections 6.3.2 and 6.3.4; stop at durable commit before pending ACK; synthetic fault applied to existing Analyte ASTM fixture"}
+{"direction":"machine_to_host","time_ms":0,"bytes":"BQ=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjFIfFxeJnx8fHx8fHx8fHxQfExJUzItQTJ8MjAyNjExMTUxMjAwMDANUHwxDU98MXwwMDAxMkENUnwxfF5eXlNZTnwxMi4zMHxtZy9MfHxOfHxGDUx8MXxODQM2Mg0K"}

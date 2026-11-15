@@ -44,19 +44,40 @@ pub fn acknowledgment(
     error: Option<AckError<'_>>,
     options: Options,
 ) -> Result<Option<Message>, Error> {
-    acknowledgment_with_limit(message, response, code, responsibility, error, options, 20)
+    acknowledgment_with_msh(
+        Msh::new(message)?,
+        response,
+        code,
+        responsibility,
+        error,
+        options,
+        AckProfile::Base,
+    )
 }
 
-pub(crate) fn acknowledgment_with_limit(
-    message: &Message,
+/// Selects the identity length and wire-version policy owned by the ACK caller.
+#[derive(Clone, Copy)]
+pub(crate) enum AckProfile {
+    /// General HL7 control constraints.
+    Base,
+    /// LAW's extended identities and compatible 2.5 version declarations.
+    Law,
+}
+
+/// Renders an ACK with an already-validated control view and explicit profile.
+pub(crate) fn acknowledgment_with_msh(
+    msh: Msh<'_>,
     response: Response<'_>,
     code: AckCode,
     responsibility: Responsibility,
     error: Option<AckError<'_>>,
     options: Options,
-    control_limit: usize,
+    profile: AckProfile,
 ) -> Result<Option<Message>, Error> {
-    let msh = Msh::with_control_limit(message, control_limit)?;
+    let control_limit = match profile {
+        AckProfile::Base => 20,
+        AckProfile::Law => 50,
+    };
     match (code, responsibility) {
         (AckCode::Aa, Responsibility::StoredAndInterpreted)
         | (AckCode::Ca, Responsibility::Stored | Responsibility::StoredAndInterpreted)
@@ -87,8 +108,11 @@ pub(crate) fn acknowledgment_with_limit(
     if !requested {
         return Ok(None);
     }
-    let delimiters = message.delimiters();
+    let delimiters = msh.segment().delimiters;
     let safe = |raw: &[u8], field, maximum| -> Result<(), Error> {
+        if matches!(profile, AckProfile::Law) && field == 10 {
+            return crate::law::control_id(raw).map(|_| ());
+        }
         if raw.len() > maximum
             || raw
                 .iter()
@@ -211,7 +235,11 @@ pub(crate) fn acknowledgment_with_limit(
         });
     }
     // Output always uses standard CR, regardless of a negotiated inbound tolerance.
-    Message::parse(
+    let parse = match profile {
+        AckProfile::Base => Message::parse,
+        AckProfile::Law => Message::parse_law,
+    };
+    parse(
         &raw,
         Options {
             terminator: crate::Terminator::Cr,

@@ -24,6 +24,11 @@ impl<'a> ControlId<'a> {
         }
         Ok(Self(raw))
     }
+    /// Constructs a borrowed identity after validation by its owning profile.
+    pub(crate) fn from_profile(raw: &'a [u8]) -> Self {
+        Self(raw)
+    }
+
     /// Returns the exact identity bytes.
     #[must_use]
     pub fn raw(self) -> &'a [u8] {
@@ -223,6 +228,23 @@ impl<'a> Msh<'a> {
             mode,
         })
     }
+    /// Constructs a view after LAW control-profile validation, including its
+    /// compatible version and ignored-component policies.
+    pub(crate) fn from_law(segment: Segment<'a>, triggered: bool) -> Self {
+        Self {
+            segment,
+            version: Version::V251,
+            mode: if triggered {
+                AckMode::Enhanced {
+                    accept: Some(Condition::Never),
+                    application: Some(Condition::Always),
+                }
+            } else {
+                AckMode::Original
+            },
+        }
+    }
+
     /// Returns the source segment, including all composite identifier components.
     #[must_use]
     pub fn segment(self) -> Segment<'a> {
@@ -305,6 +327,14 @@ impl<'a> Msa<'a> {
     pub fn new(segment: Segment<'a>) -> Result<Self, Error> {
         Self::with_control_limit(segment, 20)
     }
+    /// Constructs a view after the LAW boundary has validated the MSA profile.
+    pub(crate) fn from_law(segment: Segment<'a>) -> Result<Self, Error> {
+        Ok(Self {
+            segment,
+            code: AckCode::parse(segment.field(1).map_or(&[], Field::raw))?,
+        })
+    }
+
     pub(crate) fn with_control_limit(segment: Segment<'a>, maximum: usize) -> Result<Self, Error> {
         if segment.id() != b"MSA" {
             return Err(Error::Control {

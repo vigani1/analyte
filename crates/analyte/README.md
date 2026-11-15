@@ -127,3 +127,15 @@ and configure the patient namespace and outbound codes. Successful transfer
 means Sent, never Accepted. Interrupted orders become Uncertain and are never
 automatically replayed. Autolyser host-initiated insertions use the same durable path after a completed
 host poll, with an explicit specimen-medium table, clone flag and cup position.
+
+## Test-only commit boundary hook
+
+The non-default `test-hooks` Cargo feature exposes one one-shot ASTM hook:
+`AstmCommitted`, after durable frame storage and before ACK generation. Tests
+install it only on an explicitly injected loopback listener. It can pause,
+resume normal processing, or stop that connection; it cannot modify wire bytes
+or bypass storage. Pauses stop on cancellation, dropped control or a five-second
+deadline. Without the feature, both the hook and its call site compile out.
+`test-hooks` is test-only and must never be enabled for release builds.
+Exercise its restart test with
+`cargo test -p analyte --all-features --test delivery recording`.

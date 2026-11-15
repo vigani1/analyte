@@ -857,7 +857,7 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
         ..ContainerDetails::default()
     };
     let order = OrderDetails {
-        group: Some(b"group-1&99LAB"),
+        group: Some(b"group-1"),
         facility: Some(b"Synthetic lab"),
         provider: Some(b"provider-1"),
         result_handling: None,
@@ -884,7 +884,7 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
         taxonomy: None,
         visit: Some(Visit {
             class: b"I",
-            location: Some(b"Ward^Room^Bed"),
+            location: Some(b"^Room"),
         }),
     };
     let mut capabilities = work_capabilities();
@@ -917,7 +917,7 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
         (b"SAC", 21, b"2.5"),
         (b"SAC", 24, b"mL^mL^UCUM"),
         (b"SAC", 29, b"^1^:^2"),
-        (b"ORC", 4, b"group-1&99LAB"),
+        (b"ORC", 4, b"group-1"),
         (b"OBR", 16, b"provider-1"),
     ] {
         let segment = message
@@ -1028,5 +1028,96 @@ fn law_tf2b_c12_control_specimen_uses_explicit_null_type() -> Result<(), Box<dyn
         spm.field(11).map(Field::raw),
         Some(b"Q^^HL70369".as_slice())
     );
+    Ok(())
+}
+
+fn validate_profile_body(body: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let message = query(body)?;
+    let segment = message
+        .segments()
+        .nth(1)
+        .ok_or("missing synthetic segment")?;
+    analyte_hl7::law::validate_segment(segment)?;
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c1_error_codes_severity_and_available_fields() -> Result<(), Box<dyn std::error::Error>>
+{
+    for code in [
+        "100", "101", "102", "103", "200", "201", "202", "203", "207",
+    ] {
+        validate_profile_body(&format!(
+            "ERR||OBX^1^5|{code}^Synthetic description^HL70357|E"
+        ))?;
+    }
+    validate_profile_body("ERR|||100^^HL70357|E|LOCAL^Synthetic^99LAB|||Synthetic detail")?;
+    for body in [
+        "ERR|||0^^HL70357|E",
+        "ERR|||100^^OTHER|E",
+        "ERR|||100^^HL70357|W",
+        "ERR|||100^^HL70357|I",
+        "ERR|||100^^HL70357|E|LOCAL",
+        "ERR||OBX^x|100^^HL70357|E",
+        "ERR||OBX^0|100^^HL70357|E",
+        "ERR||OBX^1^x|100^^HL70357|E",
+        "ERR||OBX|100^^HL70357|E",
+    ] {
+        assert!(validate_profile_body(body).is_err(), "{body}");
+    }
+    validate_profile_body(&format!("ERR|||100^^HL70357|E||||{}", "x".repeat(251)))?;
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c4_namespaces_and_profile_identifier_components()
+-> Result<(), Box<dyn std::error::Error>> {
+    let message = query("QPD|WOS_ALL^Synthetic^IHELAW|tag")?;
+    let original = std::str::from_utf8(message.raw())?;
+    for replacement in ["", "A", "12345678901234567890"] {
+        let bytes = original.replacen("|A|AF|", &format!("|{replacement}|AF|"), 1);
+        let parsed = Message::parse(bytes.as_bytes(), utf8_options())?;
+        Query::new(&parsed)?;
+    }
+    for (from, to) in [
+        ("|A|AF|", "|123456789012345678901|AF|"),
+        ("|A|AF|", "|A~B|AF|"),
+        ("LAB-27^IHE", "LAB-27^IHE~vendor"),
+        ("LAB-27^IHE", "LAB-27^IHE~vendor^123456789012345678901"),
+    ] {
+        let bytes = original.replace(from, to);
+        let parsed = Message::parse(bytes.as_bytes(), utf8_options())?;
+        assert!(Query::new(&parsed).is_err());
+        assert_eq!(parsed.raw(), bytes.as_bytes());
+    }
+    let bytes = original.replace("LAB-27^IHE", "LAB-27^IHE~vendor^LAB");
+    let parsed = Message::parse(bytes.as_bytes(), utf8_options())?;
+    Query::new(&parsed)?;
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c1_component_failures_report_precise_locations()
+-> Result<(), Box<dyn std::error::Error>> {
+    for (body, field, component) in [
+        ("ERR||OBX^x|100^^HL70357|E", 2, 2),
+        ("ERR|||999^^HL70357|E", 3, 1),
+        ("ERR|||100^^OTHER|E", 3, 3),
+        ("ERR|||100^^HL70357|E|LOCAL^^OTHER", 5, 3),
+    ] {
+        let message = query(body)?;
+        let segment = message
+            .segments()
+            .nth(1)
+            .ok_or("missing synthetic segment")?;
+        assert_eq!(
+            analyte_hl7::law::validate_segment(segment),
+            Err(Error::Component {
+                segment: "ERR",
+                field,
+                component,
+            })
+        );
+    }
     Ok(())
 }

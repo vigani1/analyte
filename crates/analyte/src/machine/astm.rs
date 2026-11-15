@@ -135,6 +135,10 @@ pub(super) async fn session(
                             let provenance = analyte_store::FrameProvenance { machine: machine.id.clone(), driver: evidence::driver(machine)?, config: machine.snapshot.canonical().as_bytes().to_vec() };
                             let committed = store.request(deadline(), move |s| s.journal_frame(&transfer_id, number, &bytes, &provenance)).await;
                             if let Err(error) = &committed { tracing::error!(machine = machine.id.as_str(), error_kind = %error, "ASTM frame commit refused"); }
+                            #[cfg(feature = "test-hooks")]
+                            if committed.is_ok() && let Some(hook) = &machine.astm_committed {
+                                hook.pause(&mut stop).await?;
+                            }
                             actions.extend(dialog.step(start.elapsed(), if committed.is_ok() { Event::Committed(id) } else { Event::CommitFailed(id) })?);
                         }
                         Action::Record(record) => {

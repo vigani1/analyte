@@ -77,18 +77,17 @@ pub fn query_response(
     };
     // Reuse the core's responsibility, metadata, and ERR validation rather than
     // acquiring a second interpretation of when a positive acknowledgment is safe.
-    let ack = crate::ack::acknowledgment_with_limit(
-        query.message(),
+    let ack = crate::ack::acknowledgment_with_msh(
+        super::msh(query.message())?,
         response,
         code,
         responsibility,
         error,
         options,
-        50,
+        crate::ack::AckProfile::Law,
     )?
     .ok_or(content("MSH", 16))?;
-    let msh = super::msh(&ack)?;
-    let source = msh.segment();
+    let source = ack.segments().next().ok_or(content("MSH", 0))?;
     let delimiters = ack.delimiters();
     let component = delimiters.component;
     let mut message_type = b"RSP".to_vec();
@@ -105,7 +104,7 @@ pub fn query_response(
         let value = match field {
             9 => message_type.as_slice(),
             21 => profile.as_slice(),
-            _ => raw(source, field),
+            _ => super::control::reply_field(source, field),
         };
         wire.field(value)?;
     }
@@ -118,13 +117,14 @@ pub fn query_response(
     wire.append(b"\r")?;
     wire.append(query.qpd.raw())?;
     wire.append(b"\r")?;
-    let message = Message::parse(
+    let message = super::parse_message(
         &wire.bytes,
         Options {
             terminator: crate::Terminator::Cr,
             ..options
         },
     )?;
+    super::validate_control(&message, super::ControlDirection::Send)?;
     Ok(QueryResponse { message, followup })
 }
 

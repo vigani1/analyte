@@ -172,7 +172,7 @@ impl Frame {
 pub enum Event {
     /// Structurally valid, checksum-verified frame.
     Frame(Frame),
-    /// Rejected prefix, including offending byte except a restarting STX.
+    /// Rejected frame through LF, or a bounded/interrupted prefix.
     Rejected {
         /// Specific cause.
         error: Error,
@@ -194,7 +194,7 @@ enum State {
     Lf,
 }
 
-/// Incremental decoder retaining at most the configured total bound plus one evidence byte.
+/// Incremental decoder retaining at most the configured total frame bound.
 #[derive(Debug)]
 pub struct Decoder {
     limit: Limit,
@@ -205,6 +205,7 @@ pub struct Decoder {
     number: FrameNumber,
     text_end: usize,
     final_frame: bool,
+    rejection: Option<Error>,
 }
 
 impl Decoder {
@@ -220,11 +221,13 @@ impl Decoder {
             number: FrameNumber::FIRST,
             text_end: 0,
             final_frame: false,
+            rejection: None,
         }
     }
 
     fn reject(&mut self, error: Error) -> Event {
         self.state = State::Idle;
+        self.rejection = None;
         Event::Rejected {
             error,
             raw: std::mem::take(&mut self.raw),
@@ -242,7 +245,8 @@ impl Decoder {
         if self.raw.is_empty() {
             None
         } else {
-            Some(self.reject(Error::Incomplete))
+            let error = self.rejection.take().unwrap_or(Error::Incomplete);
+            Some(self.reject(error))
         }
     }
 
@@ -251,8 +255,12 @@ impl Decoder {
     pub fn push(&mut self, byte: u8) -> Option<Event> {
         if byte == STX {
             let event = self.finish().map(|event| match event {
-                Event::Rejected { raw, .. } => Event::Rejected {
-                    error: Error::Interrupted,
+                Event::Rejected { error, raw } => Event::Rejected {
+                    error: if error == Error::Incomplete {
+                        Error::Interrupted
+                    } else {
+                        error
+                    },
                     raw,
                 },
                 Event::Frame(frame) => Event::Frame(frame),
@@ -270,12 +278,17 @@ impl Decoder {
             self.raw.push(byte);
             return Some(self.reject(Error::LinkControlInFrame(byte)));
         }
-        // Leave room for the offending byte so no received evidence is lost.
-        if self.raw.len() == self.limit.0 {
-            self.raw.push(byte);
-            return Some(self.reject(Error::TooLong));
-        }
         self.raw.push(byte);
+        if self.rejection.is_some() {
+            if byte == LF {
+                let error = self.rejection.take().unwrap_or(Error::Incomplete);
+                return Some(self.reject(error));
+            }
+            if self.raw.len() == self.limit.0 {
+                return Some(self.reject(Error::TooLong));
+            }
+            return None;
+        }
         let result = match self.state {
             State::Idle => return Some(Event::Outside(byte)),
             State::Number => FrameNumber::new(byte).map(|number| {
@@ -327,11 +340,17 @@ impl Decoder {
                 }
             }
         };
-        if let Err(error) = result {
-            Some(self.reject(error))
-        } else {
-            None
+        if self.raw.len() == self.limit.0 && byte != LF {
+            return Some(self.reject(Error::TooLong));
         }
+        if let Err(error) = result {
+            if byte == LF {
+                return Some(self.reject(error));
+            }
+            // Keep the original frame envelope, including the trailer, after a defect.
+            self.rejection = Some(error);
+        }
+        None
     }
 }
 

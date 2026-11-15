@@ -70,7 +70,7 @@ pub(super) fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
     std::fs::write(
         &path,
         format!(
-            "schema_version = 1\ndata_directory = 'data'\n{machines}[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 20\n"
+            "schema_version = 1\ndata_directory = 'data'\n{machines}[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 1000\n"
         ),
     )?;
     Ok(Fixture { path, listeners })
@@ -103,6 +103,10 @@ pub(super) struct Running {
 impl Running {
     pub(super) fn start(path: &Fixture, url: &str, api: &str) -> Result<Self, Error> {
         let program = program(path, url)?;
+        Self::start_program(program, api)
+    }
+
+    pub(super) fn start_program(program: Program, api: &str) -> Result<Self, Error> {
         let secrets = secrets(&program, api)?;
         let (stop, stopped) = oneshot::channel();
         let task = tokio::spawn(service::serve_loopback_test(
