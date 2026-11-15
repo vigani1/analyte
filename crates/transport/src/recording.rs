@@ -1,9 +1,11 @@
 //! Append-only protected recordings. The host must use a dedicated storage thread.
 
+mod format;
 use crate::CHUNK_LIMIT;
+pub use format::*;
 use std::{
     fs::OpenOptions,
-    io::{self, Write},
+    io::{self},
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, SyncSender},
     time::Instant,
@@ -60,7 +62,7 @@ pub struct Worker {
     failure: tokio::sync::watch::Sender<Option<Failure>>,
     receiver: Receiver<Record>,
     path: PathBuf,
-    origin: Instant,
+    header: Header,
 }
 
 /// Creates a bounded recording queue without starting a detached thread.
@@ -68,6 +70,22 @@ pub struct Worker {
 /// # Errors
 /// Rejects queue capacities outside 1..=1024.
 pub fn recording(path: PathBuf, capacity: usize) -> Result<(Tap, Worker), Error> {
+    recording_with_header(path, capacity, Header::live())
+}
+
+/// Creates a protected tap with the configured protocol stack and known machine metadata.
+/// # Errors
+/// Rejects invalid capacity or non-machine provenance for live captures.
+pub fn recording_with_header(
+    path: PathBuf,
+    capacity: usize,
+    header: Header,
+) -> Result<(Tap, Worker), Error> {
+    if header.evidence != Evidence::Machine
+        || !header.de_identification.contains("NOT de-identified")
+    {
+        return Err(Error::Oversized);
+    }
     if !(1..=1024).contains(&capacity) {
         return Err(Error::Queue);
     }
@@ -82,7 +100,7 @@ pub fn recording(path: PathBuf, capacity: usize) -> Result<(Tap, Worker), Error>
             failure: failure_tx,
             receiver,
             path,
-            origin: Instant::now(),
+            header,
         },
     ))
 }
@@ -119,7 +137,7 @@ impl Tap {
 }
 
 impl Worker {
-    /// Appends complete length-delimited records and synchronizes each record to disk.
+    /// Appends complete ADR 0009 JSONL records and synchronizes each record to disk.
     /// Existing data is never truncated. Run only on a dedicated storage thread.
     ///
     /// # Errors
@@ -142,6 +160,16 @@ impl Worker {
             .create(true)
             .append(true)
             .open(Path::new(&self.path))?;
+        if file.metadata()?.len() != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "use a fresh recording file; existing captures are never changed",
+            ));
+        }
+        write_header(&mut file, &self.header, Limits::default()).map_err(io::Error::other)?;
+        file.sync_data()?;
+        let mut origin = None;
+        let mut count = 0usize;
         loop {
             let record = match self
                 .receiver
@@ -153,19 +181,32 @@ impl Worker {
                     continue;
                 }
             };
-            let kind = match record.kind {
-                Kind::Open => 0,
-                Kind::In => 1,
-                Kind::Out => 2,
-                Kind::Close => 3,
+            count = count
+                .checked_add(1)
+                .ok_or_else(|| io::Error::other("event count overflow"))?;
+            if count > Limits::default().events
+                || file.metadata()?.len()
+                    >= u64::try_from(Limits::default().file_bytes).map_err(io::Error::other)?
+            {
+                return Err(io::Error::other("recording file/event limit"));
+            }
+            let (direction, link) = match record.kind {
+                Kind::Open => (Direction::MachineToHost, Some(Link::Connect)),
+                Kind::In => (Direction::MachineToHost, None),
+                Kind::Out => (Direction::HostToMachine, None),
+                Kind::Close => (Direction::MachineToHost, Some(Link::Disconnect)),
             };
-            let elapsed = record.at.saturating_duration_since(self.origin).as_nanos();
-            let length = u32::try_from(record.bytes.len()).map_err(io::Error::other)?;
-            file.write_all(b"ATR1")?;
-            file.write_all(&[kind])?;
-            file.write_all(&elapsed.to_le_bytes())?;
-            file.write_all(&length.to_le_bytes())?;
-            file.write_all(&record.bytes)?;
+            let elapsed = record
+                .at
+                .saturating_duration_since(*origin.get_or_insert(record.at))
+                .as_millis();
+            let event = Event {
+                direction,
+                time_ms: u64::try_from(elapsed).map_err(io::Error::other)?,
+                bytes: record.bytes,
+                link,
+            };
+            write_event(&mut file, &event, Limits::default()).map_err(io::Error::other)?;
             file.sync_data()?;
         }
         Ok(())

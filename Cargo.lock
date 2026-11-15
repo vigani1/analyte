@@ -218,6 +218,10 @@ dependencies = [
 name = "analyte-transport"
 version = "0.1.0"
 dependencies = [
+ "base64",
+ "proptest",
+ "serde",
+ "serde_json",
  "serialport",
  "tempfile",
  "thiserror",
