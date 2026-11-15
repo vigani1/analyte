@@ -16,6 +16,16 @@ async fn setup_with_id(
     paused: bool,
     response_ms: u32,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_with_patient_requirement(edition, id, paused, response_ms, false).await
+}
+
+async fn setup_with_patient_requirement(
+    edition: &str,
+    id: &str,
+    paused: bool,
+    response_ms: u32,
+    require_patient: bool,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let definition = std::fs::read_to_string(temp.path().join("hl7.toml"))?
@@ -24,10 +34,15 @@ async fn setup_with_id(
         temp.path().join("hl7.toml"),
         format!(
             "{definition}\n{}",
-            include_str!("../../../config/examples/hl7_send.toml").replace(
-                "response_ms = 1500",
-                &format!("response_ms = {response_ms}")
-            )
+            include_str!("../../../config/examples/hl7_send.toml")
+                .replace(
+                    "require_patient_identification = false",
+                    &format!("require_patient_identification = {require_patient}")
+                )
+                .replace(
+                    "response_ms = 1500",
+                    &format!("response_ms = {response_ms}")
+                )
         ),
     )?;
     let reference = Reference::start(
@@ -176,7 +191,7 @@ async fn hl7_231_251_send_ahead_accepted_rejected_and_mixed_items() -> Result<()
                 .collect::<Result<Vec<_>, Error>>()?;
             assert_eq!(ids, vec!["1-1^LAB", "1-2^LAB"]);
             for segment in message.segments().filter(|segment| segment.id() == b"ORC") {
-                assert_eq!(segment.field(4).ok_or("group")?.raw(), b"order-1");
+                assert_eq!(segment.field(4).ok_or("group")?.raw(), b"order-1^LAB");
             }
             state(&path, "Sending").await?;
             assert_eq!(
@@ -431,5 +446,59 @@ async fn plan11_hl7_send_ahead_reserves_nothing_while_restore_paused() -> Result
     }
 
     reference.close().await?;
+    Ok(())
+}
+
+// HL7 2.3.1 section 3.3.2 p.3-36: no name is available in contract v1.
+#[tokio::test]
+async fn hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing_name()
+-> Result<(), Error> {
+    for edition in ["v231", "v251"] {
+        let (_temp, path, reference, service, mut peer) =
+            setup_with_patient_requirement(edition, "order-1", false, 30000, true).await?;
+        outcome(&path, "Rejected").await?;
+        let reason: String =
+            database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |row| {
+                row.get(0)
+            })?;
+        assert!(
+            reason.contains("HL7-patient-name-required-but-not-carried-by-contract"),
+            "{reason}"
+        );
+        assert_eq!(database(&path)?.query_row("SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.state')='Sending'", [], |row| row.get::<_, i64>(0))?, 0);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
+                .await
+                .is_err()
+        );
+        service.stop().await?;
+        reference.close().await?;
+    }
+    Ok(())
+}
+
+// HL7 2.3.1 section 4.3.1.4 p.4-17; 2.5.1 section 4.5.1.4 p.4-39.
+// The scalar fits 22 bytes, but the EI including its namespace does not.
+#[tokio::test]
+async fn hl7_231_4_3_1_4_251_4_5_1_4_full_group_ei_overflow_precedes_reservation()
+-> Result<(), Error> {
+    for edition in ["v231", "v251"] {
+        let (_temp, path, reference, service, mut peer) =
+            setup_with_id(edition, &"g".repeat(19), false, 30000).await?;
+        outcome(&path, "Rejected").await?;
+        let code: String =
+            database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |row| {
+                row.get(0)
+            })?;
+        assert!(code.contains("HL7-app-order-id-too-long-for-ORC-4"));
+        assert_eq!(database(&path)?.query_row("SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.state')='Sending'", [], |row| row.get::<_, i64>(0))?, 0);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
+                .await
+                .is_err()
+        );
+        service.stop().await?;
+        reference.close().await?;
+    }
     Ok(())
 }

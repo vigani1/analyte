@@ -250,7 +250,19 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
         }
     }
     // Compatibility choices must remain visible to reviewers as named departures.
+    if s.allow_utf8_in_v231
+        && (s.kind != SyntaxKind::Hl7V2
+            || s.edition != Some(Edition::V231)
+            || s.encoding != Encoding::Utf8)
+    {
+        return Err(invalid(
+            path,
+            "syntax.allow_utf8_in_v231",
+            "use this departure only for HL7 2.3.1 with UTF-8 encoding",
+        ));
+    }
     let departures = [
+        ("syntax.allow_utf8_in_v231", s.allow_utf8_in_v231),
         (
             "framing.limit",
             f.kind == FramingKind::AstmLis01 && f.limit != 64_000,

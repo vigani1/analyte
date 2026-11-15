@@ -2,8 +2,72 @@
 use analyte_hl7::*;
 use proptest::prelude::*;
 
+// HL7 2.5.1 section 2.15.5.2 pp.2-67-68; 2.3.1 section 2.24.3.1.
+#[test]
+fn hl7_251_2_15_5_2_unknown_location_stays_unvalued() -> Result<(), Error> {
+    for (version, expected) in [
+        ("2.5.1", "ERR|||207|E|operator-review\r"),
+        ("2.3.1", "ERR|^^^207\r"),
+    ] {
+        let message = parse(&wire(version, "", "", "", ""))?;
+        let ack = acknowledgment(
+            &message,
+            response()?,
+            AckCode::Ae,
+            Responsibility::Stored,
+            Some(AckError::unlocated(b"207", b"operator-review")),
+            Options::default(),
+        )?
+        .ok_or(Error::AckMode)?;
+        assert!(ack.raw().ends_with(expected.as_bytes()));
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 section 2.7.6 pp.2-19-20; synthetic command/argument cases.
+#[test]
+fn hl7_251_2_7_6_formatting_command_grammar() -> Result<(), Error> {
+    for command in [
+        ".br", ".fi", ".nf", ".ce", ".sp", ".sp3", ".sp 3", ".in+2", ".in -3", ".ti2", ".ti-2",
+        ".sk4",
+    ] {
+        let raw = wire(
+            "2.5.1",
+            "",
+            "",
+            "",
+            &format!("OBX|1|FT|SYN||\\{command}\\\r"),
+        );
+        assert_eq!(parse(&raw)?.serialize(), raw);
+    }
+    for command in [
+        ".unknown", ".br2", ".ce x", ".sp0", ".sp-2", ".sp1.5", ".in", ".ti+", ".in2x", ".sk",
+        ".sk-2",
+    ] {
+        let raw = wire(
+            "2.5.1",
+            "",
+            "",
+            "",
+            &format!("OBX|1|FT|SYN||\\{command}\\\r"),
+        );
+        assert!(
+            matches!(
+                parse(&raw),
+                Err(Error::Escape {
+                    segment: 2,
+                    field: 5,
+                    ..
+                })
+            ),
+            "{command}"
+        );
+    }
+    Ok(())
+}
+
 fn wire(version: &str, accept: &str, application: &str, charset: &str, body: &str) -> Vec<u8> {
-    format!("MSH|^~\\&|SENDER|SF|RECEIVER|RF|202601011200||ORU^R01|00017|P|{version}|||{accept}|{application}||{charset}\r{body}").into_bytes()
+    format!("MSH|^~\\&|SENDER|SF|RECEIVER|RF|202601011200||ORU^R01^ORU_R01|00017|P|{version}|||{accept}|{application}||{charset}\r{body}").into_bytes()
 }
 fn parse(raw: &[u8]) -> Result<Message, Error> {
     Message::parse(raw, Options::default())
@@ -18,7 +82,7 @@ fn response() -> Result<Response<'static>, Error> {
 #[test]
 fn hl7_251_2_5_4_alternate_delimiters_and_msh_indexing() -> Result<(), Error> {
     let raw =
-        b"MSH*$%!@*SENDER*SF*RECEIVER*RF*202601011200**ORU$R01*00017*P*2.5.1\rOBX**A$$B@C%%\r";
+        b"MSH*$%!@*SENDER*SF*RECEIVER*RF*202601011200**ORU$R01$ORU_R01*00017*P*2.5.1\rOBX**A$$B@C%%\r";
     let m = parse(raw)?;
     let msh = Msh::new(&m)?;
     assert_eq!(m.delimiters().bytes(), *b"*$%!@");
@@ -356,7 +420,7 @@ fn hl7_251_2_15_control_fields_reject_invalid_codes_and_header_injection() -> Re
 #[test]
 fn hl7_251_2_15_9_2_rejects_later_version_truncation() {
     assert_eq!(
-        parse(b"MSH|^~\\&#|A|B|C|D|20260101||ORU^R01|1|P|2.5.1\r"),
+        parse(b"MSH|^~\\&#|A|B|C|D|20260101||ORU^R01^ORU_R01|1|P|2.5.1\r"),
         Err(Error::Truncation)
     );
 }
@@ -399,7 +463,7 @@ fn hl7_251_2_5_4_crlf_policy_rejects_mixed_line_endings() {
 }
 #[test]
 fn hl7_251_2_9_ack_uses_negotiated_separators() -> Result<(), Error> {
-    let m = parse(b"MSH*$%!@*S*SF*R*RF*20260101**ORU$R01*00017*P*2.5.1***AL*AL\r")?;
+    let m = parse(b"MSH*$%!@*S*SF*R*RF*20260101**ORU$R01$ORU_R01*00017*P*2.5.1***AL*AL\r")?;
     let ack = acknowledgment(
         &m,
         response()?,
@@ -430,5 +494,136 @@ fn hl7_231_2_24_2_6_legacy_msa_fields_preserved() -> Result<(), Error> {
         msa.segment().field(6).map(Field::raw),
         Some(&b"102^type^HL70357"[..])
     );
+    Ok(())
+}
+
+// HL7 2.5.1 sections 2.15.9, 2.15.9.7 pp.2-74, 2-76;
+// HL7 2.3.1 section 2.24.1.7: timestamp usage remains optional.
+#[test]
+fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Result<(), Error> {
+    for version in ["2.5.1", "2.3.1"] {
+        for stamp in [
+            "",
+            "\"\"",
+            "20260230",
+            "202613",
+            "202601011260",
+            "20260101~20260102",
+            "20260101&x",
+            "20260101^Q",
+            "20260101^D^extra",
+        ] {
+            let raw = String::from_utf8(wire(version, "", "", "", ""))
+                .expect("synthetic ASCII")
+                .replace("202601011200", stamp)
+                .into_bytes();
+            let m = parse(&raw)?;
+            if version == "2.3.1" && stamp.is_empty() {
+                assert!(Msh::new(&m).is_ok());
+            } else {
+                assert!(
+                    matches!(
+                        Msh::new(&m),
+                        Err(Error::Control {
+                            segment: "MSH",
+                            field: 7
+                        })
+                    ),
+                    "{version}: {stamp}"
+                );
+            }
+            assert_eq!(m.serialize(), raw);
+        }
+        for stamp in [
+            "2026",
+            "202601",
+            "20260228",
+            "20260101120000.1234+0130",
+            "20260101^D",
+        ] {
+            let raw = String::from_utf8(wire(version, "", "", "", ""))
+                .expect("synthetic ASCII")
+                .replace("202601011200", stamp)
+                .into_bytes();
+            let m = parse(&raw)?;
+            assert!(Msh::new(&m).is_ok(), "{version}: {stamp}");
+            assert_eq!(m.serialize(), raw);
+        }
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 section 2.A.44 pp.2-180-181; 2.3.1 section 2.24.1.9 p.2-95.
+#[test]
+fn hl7_251_2_a_44_and_231_2_24_1_9_message_type_components() -> Result<(), Error> {
+    for (version, kind, valid) in [
+        ("2.5.1", "ORU^R01", false),
+        ("2.5.1", "ACK", false),
+        ("2.5.1", "ACK^^ACK", false),
+        ("2.5.1", "ORUU^R01^ORU_R01", false),
+        ("2.5.1", "ORU^R001^ORU_R01", false),
+        ("2.5.1", "ORU^R01^ORU_R011", false),
+        ("2.5.1", "ORU^R01^ORU_R01", true),
+        ("2.3.1", "ACK", true),
+        ("2.3.1", "ACK^^ACK", true),
+        ("2.3.1", "DSR", true),
+        ("2.3.1", "ORU", false),
+        ("2.3.1", "ORU^^ORU_R01", false),
+        ("2.3.1", "ORU^R01", true),
+    ] {
+        let raw = String::from_utf8(wire(version, "", "", "", ""))
+            .expect("synthetic ASCII")
+            .replace("ORU^R01^ORU_R01", kind)
+            .into_bytes();
+        let message = parse(&raw)?;
+        assert_eq!(Msh::new(&message).is_ok(), valid, "{version}: {kind}");
+        assert_eq!(message.serialize(), raw);
+    }
+    Ok(())
+}
+
+// HL7 2.3.1 section 2.24.1.18 p.2-108; 2.5.1 section 2.15.9.18 pp.2-78-81.
+#[test]
+fn hl7_231_2_24_1_18_and_251_2_15_9_18_charset_is_edition_specific() -> Result<(), Error> {
+    let options = Options {
+        charset: Charset::Utf8,
+        ..Options::default()
+    };
+    let legacy = wire("2.3.1", "", "", "UNICODE UTF-8", "");
+    assert!(matches!(
+        Message::parse(&legacy, options),
+        Err(Error::UnsupportedCharset)
+    ));
+    assert_eq!(
+        Message::parse(
+            &legacy,
+            Options {
+                allow_utf8_in_v231: true,
+                ..options
+            }
+        )?
+        .serialize(),
+        legacy
+    );
+    let modern = wire("2.5.1", "", "", "UNICODE UTF-8", "");
+    assert_eq!(Message::parse(&modern, options)?.serialize(), modern);
+    for version in ["2.3.1", "2.5.1"] {
+        for charset in ["", "ASCII"] {
+            let raw = wire(version, "", "", charset, "");
+            assert_eq!(parse(&raw)?.serialize(), raw);
+        }
+        let raw = wire(version, "", "", "8859/1", "");
+        assert_eq!(
+            Message::parse(
+                &raw,
+                Options {
+                    charset: Charset::Latin1,
+                    ..Options::default()
+                }
+            )?
+            .serialize(),
+            raw
+        );
+    }
     Ok(())
 }

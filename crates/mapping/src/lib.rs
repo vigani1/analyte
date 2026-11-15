@@ -210,6 +210,10 @@ pub enum Problem {
     },
     /// A source value type cannot be interpreted safely.
     UnsupportedValue,
+    /// Formatting/highlighting instructions are retained but never rendered as clean text.
+    UnsupportedFormatting,
+    /// An escape requires an interpretation agreement that this mapping does not have.
+    UnsupportedEscape,
     /// Message processing code is unknown or absent.
     UnknownProcessing,
     /// QC rules produce conflicting classifications.

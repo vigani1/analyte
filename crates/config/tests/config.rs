@@ -382,3 +382,39 @@ fn astm_frame_limit(config: &analyte_config::Validated) -> Result<usize, Error> 
     };
     Ok(stack.frame_limit)
 }
+
+#[test]
+fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error> {
+    let base = HL7
+        .replace("edition = \"v251\"", "edition = \"v231\"")
+        .replace("encoding = \"ascii\"", "encoding = \"utf8\"");
+    let selected = base.replace(
+        "escapes = \"reject\"",
+        "escapes = \"reject\"\nallow_utf8_in_v231 = true",
+    );
+    assert!(draft(&selected, OVERRIDES)?.validate().is_err());
+    let declared = selected.replace("deviations = []", "deviations = [{name='synthetic-legacy-utf8',key='syntax.allow_utf8_in_v231',reason='Synthetic vendor uses the later UTF-8 code'}]");
+    let config = draft(&declared, OVERRIDES)?.validate()?;
+    let analyte_config::Stack::Hl7(stack) = config.effective().stack() else {
+        return Err(Error::ProtocolSettings {
+            path: "fixture".into(),
+            protocol: "hl7",
+        });
+    };
+    assert!(stack.syntax.options().allow_utf8_in_v231);
+    for invalid in [
+        declared.replace("edition = \"v231\"", "edition = \"v251\""),
+        declared.replace("encoding = \"utf8\"", "encoding = \"ascii\""),
+    ] {
+        assert!(draft(&invalid, OVERRIDES)?.validate().is_err());
+    }
+    let strict = draft(&base, OVERRIDES)?.validate()?;
+    let analyte_config::Stack::Hl7(stack) = strict.effective().stack() else {
+        return Err(Error::ProtocolSettings {
+            path: "fixture".into(),
+            protocol: "hl7",
+        });
+    };
+    assert!(!stack.syntax.options().allow_utf8_in_v231);
+    Ok(())
+}
