@@ -110,6 +110,7 @@ fn make_result(receipt: ReceiptId) -> Result<ResultContent, Box<dyn std::error::
             observation: ObservationIdentity {
                 code: name("observation")?,
                 sub_id: SourceText::new("")?,
+                run: SourceText::new("")?,
                 order: name("order")?,
             },
             revision: Revision(0),
