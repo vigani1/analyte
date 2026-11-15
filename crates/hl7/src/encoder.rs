@@ -34,8 +34,17 @@ impl Wire {
         append(&mut self.bytes, value, self.maximum)
     }
 
+    pub(crate) fn segment(&mut self, name: &[u8], fields: &[&[u8]]) -> Result<(), Limit> {
+        segment(&mut self.bytes, name, fields, self.maximum, self.separator)
+    }
     pub(crate) fn field(&mut self, value: &[u8]) -> Result<(), Limit> {
         self.append(&[self.separator])?;
         self.append(value)
     }
+}
+
+pub(crate) fn segment(output: &mut Vec<u8>, name: &[u8], fields: &[&[u8]], maximum: usize, separator: u8) -> Result<(), Limit> {
+    append(output, name, maximum)?;
+    for value in fields { append(output, &[separator], maximum)?; append(output, value, maximum)?; }
+    append(output, b"\r", maximum)
 }

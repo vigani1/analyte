@@ -36,12 +36,7 @@ fn segment(
     fields: &[&[u8]],
     maximum: usize,
 ) -> Result<(), Error> {
-    append(output, name, maximum)?;
-    for value in fields {
-        append(output, b"|", maximum)?;
-        append(output, value, maximum)?;
-    }
-    append(output, b"\r", maximum)
+    crate::encoder::segment(output, name, fields, maximum, b'|').map_err(Into::into)
 }
 
 fn escape(value: &[u8], segment: &str, field: usize, maximum: usize) -> Result<Vec<u8>, Error> {
