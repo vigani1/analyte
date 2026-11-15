@@ -219,13 +219,9 @@ fn count(path: &Path, table: &str) -> Result<i64, Error> {
     Ok(database(path)?.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?)
 }
 async fn quiet(peer: &mut TcpStream) -> Result<(), Error> {
-    assert!(
-        // Deliberate quiet window: no reply may arrive.
-        tokio::time::timeout(Duration::from_millis(60), peer.read_u8())
-            .await
-            .is_err(),
-        "unexpected work or ACK loop"
-    );
+    // Deliberate quiet window: no reply may arrive.
+    let outcome = tokio::time::timeout(Duration::from_millis(60), peer.read_u8()).await;
+    assert!(outcome.is_err(), "unexpected work or ACK loop: {outcome:?}");
     Ok(())
 }
 /// Waits until `table` holds at least `expected` rows. Messages the host
