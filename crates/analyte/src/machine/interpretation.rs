@@ -1,5 +1,6 @@
 //! Interpretation has no transport handle and cannot send orders or acknowledgments.
 use crate::{Error, config::Machine, deadline, evidence, invalid};
+use analyte_config::Stack;
 use analyte_model::{ReceiptId, Revision};
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
 
@@ -46,12 +47,12 @@ pub(crate) fn map(
         received_at: time,
         revision: Revision(0),
     };
-    match effective.machine().syntax.kind {
-        analyte_config::SyntaxKind::Poct => {
-            let message = analyte_poct::Message::parse(payload, poct_limits(machine)?)?;
+    match effective.stack() {
+        Stack::Poct(settings) => {
+            let message = analyte_poct::Message::parse(payload, poct_limits(settings))?;
             super::vendor_model::poct(machine, id, &message, time)
         }
-        analyte_config::SyntaxKind::VidasLiteral => {
+        Stack::VidasLiteral(settings) => {
             let mut decoder = analyte_vidas::framing::Decoder::new(vidas_config(machine)?);
             let mut packet = None;
             for byte in payload {
@@ -61,16 +62,9 @@ pub(crate) fn map(
                 packet = decoder.push(*byte)?;
             }
             let packet = packet.ok_or_else(|| invalid("VIDAS receipt is incomplete"))?;
-            let installed = machine
-                .snapshot
-                .effective()
-                .machine()
-                .vidas
-                .as_ref()
-                .ok_or_else(|| invalid("VIDAS settings missing"))?;
             let message = analyte_vidas::syntax::Message::parse(
                 std::str::from_utf8(&packet.body)?,
-                match installed.sample_limit {
+                match settings.policy.sample_limit {
                     analyte_config::VidasSampleLimit::Twelve => {
                         analyte_vidas::syntax::SampleLimit::Twelve
                     }
@@ -81,67 +75,20 @@ pub(crate) fn map(
             )?;
             super::vendor_model::vidas(machine, id, &message, time)
         }
-        analyte_config::SyntaxKind::Autolyser => {
-            let policy = effective
-                .machine()
-                .autolyser
-                .as_ref()
-                .ok_or_else(|| invalid("Autolyser policy missing"))?;
-            let report = analyte_autolyser::records::Report::parse(payload, policy.controls)?;
+        Stack::Autolyser(settings) => {
+            let report =
+                analyte_autolyser::records::Report::parse(payload, settings.policy.controls)?;
             super::vendor_model::autolyser(machine, id, &report, time)
         }
-        analyte_config::SyntaxKind::AstmLis02 => {
-            let limits = effective
-                .astm_limits()
-                .ok_or_else(|| invalid("ASTM parser limits missing"))?;
-            let messages = analyte_astm::parse_with(payload, limits, |bytes| {
-                match effective.machine().syntax.encoding {
-                    analyte_config::Encoding::Ascii => bytes
-                        .is_ascii()
-                        .then(|| String::from_utf8_lossy(bytes).into_owned()),
-                    analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
-                    analyte_config::Encoding::Utf8 => {
-                        std::str::from_utf8(bytes).ok().map(str::to_owned)
-                    }
-                }
-            })?;
-            // A transfer may contain multiple messages; the host must retain every one.
-            if messages.len() != 1 {
-                return Err(invalid(
-                    "ASTM transfer does not contain exactly one message; operator review required",
-                ));
-            }
-            Ok(analyte_mapping::map_astm(
-                messages
-                    .first()
-                    .ok_or_else(|| invalid("ASTM message missing"))?,
-                &machine.snapshot,
-                input,
-            )?)
-        }
-        analyte_config::SyntaxKind::Hl7V2 => {
-            if effective.machine().dialog.kind == analyte_config::DialogKind::LawManager {
-                let message = analyte_hl7::law::parse_message(
-                    payload,
-                    effective
-                        .hl7_options()
-                        .ok_or_else(|| invalid("LAW parser options missing"))?,
-                )?;
-                let results = analyte_hl7::law::receive_results(&message)?;
-                return Ok(analyte_mapping::map_law(
-                    &results,
-                    &machine.snapshot,
-                    input,
-                )?);
-            }
-            let message = analyte_hl7::Message::parse(
-                payload,
-                effective
-                    .hl7_options()
-                    .ok_or_else(|| invalid("HL7 parser options missing"))?,
-            )?;
-            Ok(analyte_mapping::map_hl7(
-                &message,
+        Stack::Astm(settings) => map_astm(machine, payload, input, &settings.syntax),
+        Stack::FileAstm(settings) => map_astm(machine, payload, input, &settings.syntax),
+        Stack::Hl7(settings) => map_hl7(machine, payload, input, &settings.syntax),
+        Stack::FileHl7(settings) => map_hl7(machine, payload, input, &settings.syntax),
+        Stack::Law(settings) => {
+            let message = analyte_hl7::law::parse_message(payload, settings.options())?;
+            let results = analyte_hl7::law::receive_results(&message)?;
+            Ok(analyte_mapping::map_law(
+                &results,
                 &machine.snapshot,
                 input,
             )?)
@@ -149,13 +96,63 @@ pub(crate) fn map(
     }
 }
 
+fn map_astm(
+    machine: &Machine,
+    payload: &[u8],
+    input: analyte_mapping::Input,
+    syntax: &analyte_config::AstmSyntax,
+) -> Result<analyte_mapping::Output, Error> {
+    let messages = analyte_astm::parse_with(payload, syntax.parser_limits(), |bytes| match syntax
+        .encoding
+    {
+        analyte_config::Encoding::Ascii => bytes
+            .is_ascii()
+            .then(|| String::from_utf8_lossy(bytes).into_owned()),
+        analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
+        analyte_config::Encoding::Utf8 => std::str::from_utf8(bytes).ok().map(str::to_owned),
+    })?;
+    // A transfer may contain multiple messages; the host must retain every one.
+    if messages.len() != 1 {
+        return Err(invalid(
+            "ASTM transfer does not contain exactly one message; operator review required",
+        ));
+    }
+    Ok(analyte_mapping::map_astm(
+        messages
+            .first()
+            .ok_or_else(|| invalid("ASTM message missing"))?,
+        &machine.snapshot,
+        input,
+    )?)
+}
+
+fn map_hl7(
+    machine: &Machine,
+    payload: &[u8],
+    input: analyte_mapping::Input,
+    syntax: &analyte_config::Hl7Syntax,
+) -> Result<analyte_mapping::Output, Error> {
+    let message = analyte_hl7::Message::parse(payload, syntax.options())?;
+    Ok(analyte_mapping::map_hl7(
+        &message,
+        &machine.snapshot,
+        input,
+    )?)
+}
+
 pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_vidas::framing::Config, Error> {
     use analyte_vidas::framing::{Checksum, Config, Mode};
-    let settings = machine.snapshot.effective().machine();
-    let installed = settings
-        .vidas
-        .as_ref()
-        .ok_or_else(|| invalid("VIDAS settings missing"))?;
+    let settings = match machine.snapshot.effective().stack() {
+        Stack::VidasLiteral(settings) => settings,
+        Stack::Astm(_)
+        | Stack::Hl7(_)
+        | Stack::Law(_)
+        | Stack::Poct(_)
+        | Stack::Autolyser(_)
+        | Stack::FileAstm(_)
+        | Stack::FileHl7(_) => return Err(invalid("VIDAS settings missing")),
+    };
+    let installed = &settings.policy;
     Ok(Config::new(
         if installed.alternate {
             Mode::Alternate
@@ -163,7 +160,7 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_vidas::framing::
             Mode::Literal
         },
         installed.chunk,
-        settings.framing.limit,
+        settings.frame_limit,
         &installed.suffix,
         Checksum {
             include_stx: installed.include_stx,
@@ -174,18 +171,14 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_vidas::framing::
     )?)
 }
 
-pub(super) fn poct_limits(machine: &Machine) -> Result<analyte_poct::Limits, Error> {
-    let settings = machine.snapshot.effective().machine();
-    let policy = settings
-        .poct
-        .as_ref()
-        .ok_or_else(|| invalid("POCT policy missing"))?;
-    Ok(analyte_poct::Limits {
-        message_bytes: settings.framing.limit.min(settings.syntax.bytes),
+pub(super) fn poct_limits(settings: &analyte_config::PoctStack) -> analyte_poct::Limits {
+    let policy = &settings.policy;
+    analyte_poct::Limits {
+        message_bytes: settings.frame_limit.min(settings.limits.bytes),
         depth: policy.depth,
         elements: policy.elements,
         attribute_bytes: policy.attribute_bytes,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -194,46 +187,17 @@ mod tests;
 // Stored ASTM receipts contain accepted frames, MLLP receipts contain one block,
 // and folder receipts contain syntax bytes. Never infer the envelope from content.
 fn unpack<'a>(machine: &Machine, raw: &'a [u8]) -> Result<std::borrow::Cow<'a, [u8]>, Error> {
-    use analyte_config::FramingKind;
-    let settings = machine.snapshot.effective().machine();
-    match settings.framing.kind {
-        FramingKind::None
-        | FramingKind::Poct
-        | FramingKind::VidasLiteral
-        | FramingKind::Autolyser => Ok(raw.into()),
-        FramingKind::Mllp => {
-            use analyte_framing::mllp::{Decoder, Event, Limit};
-            let mut decoder = Decoder::new(Limit::new(settings.framing.limit)?);
-            let mut complete = false;
-            for byte in raw {
-                if complete {
-                    return Err(invalid(
-                        "receipt contains multiple MLLP blocks or trailing bytes",
-                    ));
-                }
-                if let Some(event) = decoder.push(*byte) {
-                    match event {
-                        Event::Block(_) => complete = true,
-                        Event::Rejected { error, .. } => return Err(error.into()),
-                    }
-                }
-            }
-            if !complete {
-                return Err(invalid("receipt contains incomplete MLLP block"));
-            }
-            Ok(raw
-                .get(
-                    1..raw
-                        .len()
-                        .checked_sub(2)
-                        .ok_or_else(|| invalid("MLLP length"))?,
-                )
-                .ok_or_else(|| invalid("MLLP payload"))?
-                .into())
-        }
-        FramingKind::AstmLis01 => {
+    match machine.snapshot.effective().stack() {
+        Stack::FileAstm(_)
+        | Stack::FileHl7(_)
+        | Stack::Poct(_)
+        | Stack::VidasLiteral(_)
+        | Stack::Autolyser(_) => Ok(raw.into()),
+        Stack::Hl7(settings) => unpack_mllp(raw, settings.frame_limit),
+        Stack::Law(settings) => unpack_mllp(raw, settings.frame_limit),
+        Stack::Astm(settings) => {
             use analyte_framing::astm::{Decoder, Event, HexPolicy, Limit};
-            let mut decoder = Decoder::new(Limit::new(settings.framing.limit)?, HexPolicy::Strict);
+            let mut decoder = Decoder::new(Limit::new(settings.frame_limit)?, HexPolicy::Strict);
             let mut payload = Vec::new();
             let mut final_frame = false;
             for byte in raw {
@@ -243,7 +207,7 @@ fn unpack<'a>(machine: &Machine, raw: &'a [u8]) -> Result<std::borrow::Cow<'a, [
                             if payload
                                 .len()
                                 .checked_add(frame.text().len())
-                                .is_none_or(|n| n > settings.syntax.bytes)
+                                .is_none_or(|n| n > settings.syntax.limits.bytes)
                             {
                                 return Err(invalid("ASTM assembled receipt exceeds syntax bound"));
                             }
@@ -263,4 +227,35 @@ fn unpack<'a>(machine: &Machine, raw: &'a [u8]) -> Result<std::borrow::Cow<'a, [
             Ok(payload.into())
         }
     }
+}
+
+fn unpack_mllp(raw: &[u8], frame_limit: usize) -> Result<std::borrow::Cow<'_, [u8]>, Error> {
+    use analyte_framing::mllp::{Decoder, Event, Limit};
+    let mut decoder = Decoder::new(Limit::new(frame_limit)?);
+    let mut complete = false;
+    for byte in raw {
+        if complete {
+            return Err(invalid(
+                "receipt contains multiple MLLP blocks or trailing bytes",
+            ));
+        }
+        if let Some(event) = decoder.push(*byte) {
+            match event {
+                Event::Block(_) => complete = true,
+                Event::Rejected { error, .. } => return Err(error.into()),
+            }
+        }
+    }
+    if !complete {
+        return Err(invalid("receipt contains incomplete MLLP block"));
+    }
+    Ok(raw
+        .get(
+            1..raw
+                .len()
+                .checked_sub(2)
+                .ok_or_else(|| invalid("MLLP length"))?,
+        )
+        .ok_or_else(|| invalid("MLLP payload"))?
+        .into())
 }

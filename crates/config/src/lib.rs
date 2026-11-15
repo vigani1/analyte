@@ -308,47 +308,33 @@ impl Effective {
 }
 
 impl Effective {
-    /// Returns LIS02 parser limits only when ASTM syntax was selected.
+    /// Returns LIS02 parser limits only for ASTM record stacks.
     #[must_use]
     pub fn astm_limits(&self) -> Option<analyte_astm::Limits> {
-        let s = &self.machine.syntax;
-        (s.kind == SyntaxKind::AstmLis02).then_some(analyte_astm::Limits {
-            bytes: s.bytes,
-            record: s.record_bytes,
-            fields: s.fields,
-            repeats: s.repetitions,
-            components: s.components,
-        })
+        match &self.stack {
+            Stack::Astm(s) => Some(s.syntax.parser_limits()),
+            Stack::FileAstm(s) => Some(s.syntax.parser_limits()),
+            Stack::Hl7(_)
+            | Stack::Law(_)
+            | Stack::Poct(_)
+            | Stack::VidasLiteral(_)
+            | Stack::Autolyser(_)
+            | Stack::FileHl7(_) => None,
+        }
     }
 
-    /// Returns the exact HL7 syntax options only when HL7 was selected.
+    /// Returns negotiated HL7 options, including LAW's fixed policy, only for HL7 stacks.
     #[must_use]
     pub fn hl7_options(&self) -> Option<analyte_hl7::Options> {
-        let s = &self.machine.syntax;
-        if s.kind != SyntaxKind::Hl7V2 {
-            return None;
+        match &self.stack {
+            Stack::Hl7(s) => Some(s.syntax.options()),
+            Stack::FileHl7(s) => Some(s.syntax.options()),
+            Stack::Law(s) => Some(s.options()),
+            Stack::Astm(_)
+            | Stack::FileAstm(_)
+            | Stack::Poct(_)
+            | Stack::VidasLiteral(_)
+            | Stack::Autolyser(_) => None,
         }
-        Some(analyte_hl7::Options {
-            charset: match s.encoding {
-                Encoding::Ascii => analyte_hl7::Charset::Ascii,
-                Encoding::Latin1 => analyte_hl7::Charset::Latin1,
-                Encoding::Utf8 => analyte_hl7::Charset::Utf8,
-            },
-            terminator: match s.terminator? {
-                Terminator::Cr => analyte_hl7::Terminator::Cr,
-                Terminator::CrLf => analyte_hl7::Terminator::CrLf,
-                Terminator::Lf => analyte_hl7::Terminator::Lf,
-            },
-            escapes: match s.escapes? {
-                Escapes::Reject => analyte_hl7::EscapePolicy::Reject,
-                Escapes::Preserve => analyte_hl7::EscapePolicy::Preserve,
-            },
-            limits: analyte_hl7::Limits {
-                message_bytes: s.bytes,
-                segments: s.records,
-                fields: s.fields,
-                repetitions: s.repetitions,
-            },
-        })
     }
 }

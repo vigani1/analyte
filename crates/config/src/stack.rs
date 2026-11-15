@@ -157,6 +157,8 @@ pub struct Hl7SendOrders {
 /// Independent, explicitly enabled HL7 query and send capabilities.
 #[derive(Debug, Clone)]
 pub struct Hl7Orders {
+    /// Optional assigning namespace for explicitly supplied patient identities.
+    pub patient_namespace: Option<Identifier>,
     /// Outbound translations.
     pub tables: OrderTables,
     /// Query capability; omission disables it.
@@ -650,6 +652,7 @@ fn astm_orders(orders: &Orders) -> AstmOrders {
 )]
 fn hl7_orders(orders: &Orders) -> Hl7Orders {
     Hl7Orders {
+        patient_namespace: orders.patient_namespace.clone(),
         tables: order_tables(orders),
         query: orders.query.as_ref().map(|policy| Hl7Query {
             policy: policy.clone(),
@@ -665,5 +668,117 @@ fn hl7_orders(orders: &Orders) -> Hl7Orders {
                 .clone()
                 .expect("validated HL7 send requires placer namespace"),
         }),
+    }
+}
+
+impl AstmSyntax {
+    /// Supplies the LIS02 parser with the configured resource ceilings.
+    #[must_use]
+    pub fn parser_limits(&self) -> analyte_astm::Limits {
+        analyte_astm::Limits {
+            bytes: self.limits.bytes,
+            record: self.limits.record_bytes,
+            fields: self.limits.fields,
+            repeats: self.limits.repetitions,
+            components: self.limits.components,
+        }
+    }
+}
+
+impl Hl7Syntax {
+    /// Supplies all negotiated HL7 parser options without optional required fields.
+    #[must_use]
+    pub fn options(&self) -> analyte_hl7::Options {
+        hl7_options(self.encoding, self.terminator, self.escapes, &self.limits)
+    }
+}
+
+impl LawStack {
+    /// Supplies LAW's fixed HL7 2.5.1 syntax policy and configured resource ceilings.
+    #[must_use]
+    pub fn options(&self) -> analyte_hl7::Options {
+        hl7_options(
+            Encoding::Utf8,
+            Terminator::Cr,
+            Escapes::Reject,
+            &self.limits,
+        )
+    }
+}
+
+fn hl7_options(
+    encoding: Encoding,
+    terminator: Terminator,
+    escapes: Escapes,
+    limits: &SyntaxLimits,
+) -> analyte_hl7::Options {
+    analyte_hl7::Options {
+        charset: match encoding {
+            Encoding::Ascii => analyte_hl7::Charset::Ascii,
+            Encoding::Latin1 => analyte_hl7::Charset::Latin1,
+            Encoding::Utf8 => analyte_hl7::Charset::Utf8,
+        },
+        terminator: match terminator {
+            Terminator::Cr => analyte_hl7::Terminator::Cr,
+            Terminator::CrLf => analyte_hl7::Terminator::CrLf,
+            Terminator::Lf => analyte_hl7::Terminator::Lf,
+        },
+        escapes: match escapes {
+            Escapes::Reject => analyte_hl7::EscapePolicy::Reject,
+            Escapes::Preserve => analyte_hl7::EscapePolicy::Preserve,
+        },
+        limits: analyte_hl7::Limits {
+            message_bytes: limits.bytes,
+            segments: limits.records,
+            fields: limits.fields,
+            repetitions: limits.repetitions,
+        },
+    }
+}
+
+impl Stack {
+    /// Returns the selected stack's resource ceilings without reconstructing syntax kinds.
+    #[must_use]
+    pub fn limits(&self) -> &SyntaxLimits {
+        match self {
+            Self::Astm(s) => &s.syntax.limits,
+            Self::Hl7(s) => &s.syntax.limits,
+            Self::FileAstm(s) => &s.syntax.limits,
+            Self::FileHl7(s) => &s.syntax.limits,
+            Self::Law(s) => &s.limits,
+            Self::Poct(s) => &s.limits,
+            Self::VidasLiteral(s) => &s.limits,
+            Self::Autolyser(s) => &s.limits,
+        }
+    }
+
+    /// Returns host dialog deadlines, including file handoff budgets.
+    #[must_use]
+    pub fn timeouts(&self) -> &DialogTimeouts {
+        match self {
+            Self::Astm(s) => &s.timeouts,
+            Self::Hl7(s) => &s.timeouts,
+            Self::FileAstm(s) => &s.timeouts,
+            Self::FileHl7(s) => &s.timeouts,
+            Self::Law(s) => &s.timeouts,
+            Self::Poct(s) => &s.timeouts,
+            Self::VidasLiteral(s) => &s.timeouts,
+            Self::Autolyser(s) => &s.timeouts,
+        }
+    }
+
+    /// Returns the required test and unit tables for this stack; there is no absent-table fallback.
+    #[must_use]
+    pub fn code_tables(&self) -> (&[TestMapping], &[UnitMapping]) {
+        match self {
+            Self::Astm(s) => (&s.mappings.tests, &s.mappings.units),
+            Self::Hl7(s) => (&s.mappings.tests, &s.mappings.units),
+            Self::FileAstm(s) => (&s.mappings.tests, &s.mappings.units),
+            Self::FileHl7(s) => (&s.mappings.tests, &s.mappings.units),
+            Self::Law(s) => (&s.mappings.tests, &s.mappings.units),
+            Self::Poct(s) => (&s.codes.tests, &s.codes.units),
+            Self::VidasLiteral(s) => (&s.codes.tests, &s.codes.units),
+            Self::Autolyser(s) => (&s.codes.tests, &s.codes.units),
+        }
     }
 }

@@ -9,14 +9,16 @@ pub use interpretation::reprocess;
 mod law;
 mod poct;
 mod serial;
+mod settings;
 mod vendor;
 mod vendor_model;
 mod vidas;
 mod worker;
 use crate::{Error, config::Machine, invalid};
-use analyte_config::TransportKind;
+use analyte_config::TcpRole;
 use analyte_store::Handle;
 use analyte_transport::{Backoff, Limits, connection};
+use settings::Link;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 
@@ -44,20 +46,14 @@ pub(crate) async fn run(
     mut closing: Closing,
     capture: Option<crate::capture::Capture>,
 ) -> Result<(), Error> {
-    let limits = Limits::new(
-        16,
-        Duration::from_millis(u64::from(
-            machine
-                .snapshot
-                .effective()
-                .machine()
-                .transport
-                .operation_timeout_ms,
-        )),
-    )?;
+    let link = settings::transport(machine.snapshot.effective().stack());
+    let limits = Limits::new(16, Duration::from_millis(u64::from(link.timeout_ms())))?;
     let endpoint = &machine.snapshot.effective().site().endpoint;
-    match machine.snapshot.effective().machine().transport.kind {
-        TransportKind::TcpServer => {
+    match link {
+        Link::Tcp {
+            role: TcpRole::Server,
+            ..
+        } => {
             let listener = match machine.listener.take() {
                 Some(listener) => tokio::net::TcpListener::from_std(listener)?,
                 None => analyte_transport::tcp::bind(endpoint.parse()?).await?,
@@ -88,7 +84,10 @@ pub(crate) async fn run(
                 }
             }
         }
-        TransportKind::TcpClient => loop {
+        Link::Tcp {
+            role: TcpRole::Client,
+            ..
+        } => loop {
             let (conn, side) = connection(limits);
             let side = match &capture {
                 Some(capture) => capture.attach(side),
@@ -120,11 +119,29 @@ pub(crate) async fn run(
                 () = tokio::time::sleep(Duration::from_millis(100)) => {}
             }
         },
-        TransportKind::Serial => {
-            serial::run(&machine, &store, limits, stop, closing, capture.as_ref()).await
+        Link::Serial { settings, .. } => {
+            serial::run(
+                &machine,
+                &store,
+                settings,
+                limits,
+                stop,
+                closing,
+                capture.as_ref(),
+            )
+            .await
         }
-        TransportKind::WatchedFolder => {
-            folder::session(&machine, &store, file_root, stop, closing, capture.as_ref()).await
+        Link::Folder { bytes, .. } => {
+            folder::session(
+                &machine,
+                &store,
+                bytes,
+                file_root,
+                stop,
+                closing,
+                capture.as_ref(),
+            )
+            .await
         }
     }
 }
@@ -145,18 +162,28 @@ async fn session(
 ) -> Result<(), Error> {
     let context = crate::evidence::Connection::new(machine)?;
     let machine = &context;
-    match machine.snapshot.effective().machine().dialog.kind {
-        analyte_config::DialogKind::AstmLink => astm::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::Hl7Receiver => hl7::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::LawManager => law::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::Poct => poct::session(machine, store, conn, stop).await,
-        analyte_config::DialogKind::VidasLiteral => {
-            vidas::session(machine, store, conn, stop).await
+    match machine.snapshot.effective().stack() {
+        analyte_config::Stack::Astm(settings) => {
+            astm::session(machine, settings, store, conn, stop).await
         }
-        analyte_config::DialogKind::Autolyser => {
-            autolyser::session(machine, store, conn, stop).await
+        analyte_config::Stack::Hl7(settings) => {
+            hl7::session(machine, settings, store, conn, stop).await
         }
-        analyte_config::DialogKind::FilePickup => Err(invalid("file pickup dialog is not wired")),
+        analyte_config::Stack::Law(settings) => {
+            law::session(machine, settings, store, conn, stop).await
+        }
+        analyte_config::Stack::Poct(settings) => {
+            poct::session(machine, settings, store, conn, stop).await
+        }
+        analyte_config::Stack::VidasLiteral(settings) => {
+            vidas::session(machine, settings, store, conn, stop).await
+        }
+        analyte_config::Stack::Autolyser(settings) => {
+            autolyser::session(machine, settings, store, conn, stop).await
+        }
+        analyte_config::Stack::FileAstm(_) | analyte_config::Stack::FileHl7(_) => {
+            Err(invalid("file pickup dialog is not wired"))
+        }
     }
 }
 

@@ -41,15 +41,12 @@ struct ConnectionState {
 
 pub(super) async fn session(
     machine: &evidence::Connection<'_>,
+    settings: &analyte_config::VidasStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let settings = machine.snapshot.effective().machine();
-    let installed = settings
-        .vidas
-        .as_ref()
-        .ok_or_else(|| invalid("VIDAS settings missing"))?;
+    let installed = &settings.policy;
     let config = super::interpretation::vidas_config(machine)?;
     let policy = Policy {
         acknowledgment: ms(installed.acknowledgment_ms),

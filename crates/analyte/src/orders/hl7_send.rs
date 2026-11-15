@@ -14,7 +14,7 @@ pub(super) struct Exchange {
     pub(super) message: OrderMessage,
 }
 struct Command {
-    settings: analyte_config::Orders,
+    settings: analyte_config::Hl7Orders,
     version: Version,
     options: Options,
     app: analyte_mapping::AppOrder,
@@ -26,17 +26,11 @@ impl Command {
         app: &analyte_contract::Order,
         options: Options,
     ) -> Result<Self, Error> {
-        let settings = machine
-            .snapshot
-            .effective()
-            .machine()
-            .orders
-            .clone()
-            .ok_or("HL7 orders absent")?;
-        let version = match machine.snapshot.effective().machine().syntax.edition {
-            Some(analyte_config::Edition::V231) => Version::V231,
-            Some(analyte_config::Edition::V251) => Version::V251,
-            None => return Err(invalid("HL7 edition absent")),
+        let configured = super::settings::hl7(machine).ok_or("HL7 orders absent")?;
+        let settings = configured.orders.clone();
+        let version = match configured.syntax.edition {
+            analyte_config::Edition::V231 => Version::V231,
+            analyte_config::Edition::V251 => Version::V251,
         };
         let group = app.fields().id.as_str().to_owned();
         if group.len() > 22 {
@@ -53,9 +47,10 @@ impl Command {
     fn build(&self, record: &MachineOrder, cancel: bool) -> Result<OrderMessage, Error> {
         let cfg = self
             .settings
-            .hl7_send
+            .send
             .as_ref()
             .ok_or("HL7 send config absent")?;
+        let cfg = &cfg.settings;
         let timestamp = jiff::Timestamp::now()
             .strftime("%Y%m%d%H%M%S%z")
             .to_string();
@@ -117,6 +112,7 @@ impl Command {
             (Some(system), Some(specimen)) => {
                 let mapped = self
                     .settings
+                    .tables
                     .specimen_types
                     .as_ref()
                     .and_then(|types| types.iter().find(|value| value.app == *specimen))
@@ -141,6 +137,7 @@ impl Command {
         };
         let priority = self
             .settings
+            .tables
             .priorities
             .iter()
             .find(|priority| {
@@ -198,6 +195,7 @@ impl Command {
             };
             let mapped = self
                 .settings
+                .tables
                 .tests
                 .iter()
                 .find(|mapped| mapped.app == *test)
@@ -277,16 +275,12 @@ pub(super) async fn next(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let settings = machine
-        .snapshot
-        .effective()
-        .machine()
-        .orders
-        .as_ref()
+    let settings = super::settings::hl7(machine)
+        .map(|settings| settings.orders)
         .ok_or("HL7 settings missing")?;
-    if !settings.send_ahead {
+    let Some(send) = &settings.send else {
         return Ok(None);
-    }
+    };
     let dest = super::destination(machine);
     let target = machine.id.clone();
     let cancels = store
@@ -354,10 +348,7 @@ pub(super) async fn next(
                 continue;
             }
         };
-        let namespace = settings
-            .placer_namespace
-            .clone()
-            .ok_or("HL7 placer namespace missing")?;
+        let namespace = send.placer_namespace.clone();
         let identity = key.clone();
         let owner = owner.clone();
         reserving.push(key.clone());

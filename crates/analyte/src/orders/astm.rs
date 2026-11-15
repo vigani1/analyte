@@ -38,12 +38,7 @@ pub(crate) enum Request {
 
 /// Recognizes supported query intent without normalizing specimen identifiers.
 pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Request>, Error> {
-    if machine
-        .snapshot
-        .effective()
-        .machine()
-        .orders
-        .as_ref()
+    if super::settings::astm(machine)
         .and_then(|o| o.query.as_ref())
         .is_none()
     {
@@ -125,12 +120,7 @@ impl<'a> Pending<'a> {
         samples: Vec<SampleId>,
         started: Instant,
     ) -> Result<Self, Error> {
-        let query = machine
-            .snapshot
-            .effective()
-            .machine()
-            .orders
-            .as_ref()
+        let query = super::settings::astm(machine)
             .and_then(|o| o.query.as_ref())
             .ok_or_else(|| invalid("query capability absent"))?;
         let until = started
@@ -164,7 +154,7 @@ async fn answer(
     let mut records = Vec::new();
     let mut candidates = Vec::new();
     let mut bytes = 0usize;
-    let limits = &machine.snapshot.effective().machine().syntax;
+    let limits = machine.snapshot.effective().stack().limits();
     for sample in samples {
         let answer = super::lookup(store, machine, sample, until).await?;
         match answer {
@@ -247,12 +237,7 @@ async fn answer(
 }
 /// Applies the explicit failure policy without manufacturing an empty answer.
 pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
-    match machine
-        .snapshot
-        .effective()
-        .machine()
-        .orders
-        .as_ref()?
+    match super::settings::astm(machine)?
         .query
         .as_ref()?
         .when_untrusted

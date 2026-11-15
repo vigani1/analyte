@@ -43,19 +43,12 @@ impl Owner {
 pub(super) async fn run(
     machine: &Machine,
     store: &Handle,
+    serial: &analyte_config::Serial,
     limits: Limits,
     stop: watch::Receiver<bool>,
     mut closing: super::Closing,
     capture: Option<&crate::capture::Capture>,
 ) -> Result<(), Error> {
-    let serial = machine
-        .snapshot
-        .effective()
-        .machine()
-        .transport
-        .serial
-        .as_ref()
-        .ok_or_else(|| invalid("serial settings absent"))?;
     let parity = match serial.parity {
         analyte_config::Parity::None => serialport::Parity::None,
         analyte_config::Parity::Odd => serialport::Parity::Odd,

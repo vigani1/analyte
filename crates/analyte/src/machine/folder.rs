@@ -151,6 +151,7 @@ impl Owner {
 pub(super) async fn session(
     machine: &Machine,
     store: &Handle,
+    bytes: usize,
     root: PathBuf,
     mut stop: watch::Receiver<bool>,
     mut closing: super::Closing,
@@ -161,7 +162,7 @@ pub(super) async fn session(
     let (owner, mut files) = Owner::start(
         PathBuf::from(&machine.snapshot.effective().site().endpoint),
         root,
-        u64::try_from(machine.snapshot.effective().machine().syntax.bytes)?,
+        u64::try_from(bytes)?,
         capture.map(|c| {
             Box::new(c.factory())
                 as Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>

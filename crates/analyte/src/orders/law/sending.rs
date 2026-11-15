@@ -21,16 +21,14 @@ impl Connection {
         if self.exchange.is_some() {
             return Ok(None);
         }
-        let cfg = machine.snapshot.effective().machine();
-        let Some(settings) = cfg
-            .orders
-            .as_ref()
-            .filter(|_| cfg.law.as_ref().is_some_and(|law| law.work.is_some()))
-        else {
+        let cfg = super::super::settings::law(machine)?;
+        let Some(settings) = &cfg.orders else {
             return Ok(None);
         };
         let until = Instant::now()
-            .checked_add(Duration::from_millis(u64::from(cfg.dialog.send_timeout_ms)))
+            .checked_add(Duration::from_millis(u64::from(
+                cfg.timeouts.send_timeout_ms,
+            )))
             .ok_or("LAW preparation deadline overflow")?;
         let destination = super::super::destination(machine);
         let target = machine.id.clone();
@@ -192,11 +190,7 @@ impl Connection {
             let version = app.fields().version;
             let identity = key.clone();
             let owner = self.owner.clone();
-            let namespace = command
-                .settings
-                .placer_namespace
-                .clone()
-                .ok_or("LAW placer namespace absent")?;
+            let namespace = command.settings.placer_namespace.clone();
             self.reserving.push(key);
             let reserved = store
                 .request(until, move |store| {

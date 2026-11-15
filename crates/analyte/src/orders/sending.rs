@@ -98,14 +98,7 @@ pub(crate) async fn next(
     after: &mut String,
 ) -> Result<Option<Reserved>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    if !machine
-        .snapshot
-        .effective()
-        .machine()
-        .orders
-        .as_ref()
-        .is_some_and(|orders| orders.send_ahead)
-    {
+    if !super::settings::send_ahead(machine) {
         return Ok(None);
     }
     let candidates = candidate_page(store, machine, after).await?;

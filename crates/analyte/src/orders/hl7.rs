@@ -45,8 +45,8 @@ impl Connection {
                 machine
                     .snapshot
                     .effective()
-                    .machine()
-                    .dialog
+                    .stack()
+                    .timeouts()
                     .receive_timeout_ms,
             )))
         });
@@ -82,14 +82,11 @@ impl Connection {
         )
         .await?
         {
-            let wait = machine
-                .snapshot
-                .effective()
-                .machine()
-                .orders
-                .as_ref()
-                .and_then(|orders| orders.hl7_send.as_ref())
+            let wait = super::settings::hl7(machine)
+                .map(|settings| settings.orders)
+                .and_then(|orders| orders.send.as_ref())
                 .ok_or("send settings")?
+                .settings
                 .response_ms;
             let until = Instant::now()
                 .checked_add(Duration::from_millis(u64::from(wait)))
@@ -139,8 +136,8 @@ impl Connection {
                     machine
                         .snapshot
                         .effective()
-                        .machine()
-                        .dialog
+                        .stack()
+                        .timeouts()
                         .receive_timeout_ms,
                 ))
         }) {
@@ -399,21 +396,15 @@ impl Connection {
                 return Ok(());
             }
         };
-        let settings = machine
-            .snapshot
-            .effective()
-            .machine()
-            .orders
-            .as_ref()
+        let settings = super::settings::hl7(machine)
+            .map(|settings| settings.orders)
             .ok_or_else(|| invalid("HL7 orders missing"))?;
-        let policy = settings
+        let query = settings
             .query
             .as_ref()
             .ok_or_else(|| invalid("HL7 query policy missing"))?;
-        let layout = settings
-            .hl7
-            .as_ref()
-            .ok_or_else(|| invalid("HL7 query layout missing"))?;
+        let policy = &query.policy;
+        let layout = &query.layout;
         let until = started
             .checked_add(Duration::from_millis(u64::from(policy.deadline_ms)))
             .ok_or_else(|| invalid("HL7 query deadline overflow"))?;
@@ -685,7 +676,7 @@ async fn write(
 fn edition_matches(machine: &Machine, version: analyte_hl7::Version) -> bool {
     matches!(
         (
-            machine.snapshot.effective().machine().syntax.edition,
+            super::settings::hl7(machine).map(|settings| settings.syntax.edition),
             version
         ),
         (
