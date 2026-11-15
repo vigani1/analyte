@@ -561,3 +561,7 @@ covers explicit client-side query and ORL budgets.
 
 Folder and serial worker shutdown reports worker errors and panics separately,
 without including error text or panic payloads in ordinary logs.
+
+Receipt and interpretation config versions are the lowercase SHA-256 digest of
+the canonical effective config. Each host connection has a fresh UUID, shared by
+its receipts and parked evidence; a watched-folder session has its own UUID.

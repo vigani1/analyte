@@ -15,7 +15,7 @@ pub(super) enum Input {
 /// Every transport chunk is durably journaled before a dialog sees any byte.
 /// Dropping this wait cannot cancel an already queued store request.
 pub(super) async fn input(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     stop: &mut watch::Receiver<bool>,

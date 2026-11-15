@@ -138,6 +138,8 @@ pub(super) async fn session(
     mut stop: watch::Receiver<bool>,
     mut closing: super::Closing,
 ) -> Result<(), Error> {
+    let context = evidence::Connection::new(machine)?;
+    let machine = &context;
     let (owner, mut files) = Owner::start(
         PathBuf::from(&machine.snapshot.effective().site().endpoint),
         root,

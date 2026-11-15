@@ -3,6 +3,38 @@ use crate::{Error, config::Machine, deadline, invalid};
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 
+/// Binds all evidence from one host connection to its immutable configuration.
+pub(crate) struct Connection<'a> {
+    machine: &'a Machine,
+    connection_id: Identifier,
+}
+
+impl<'a> Connection<'a> {
+    pub(crate) fn new(machine: &'a Machine) -> Result<Self, Error> {
+        Ok(Self {
+            machine,
+            connection_id: Identifier::new(&uuid::Uuid::now_v7().to_string())?,
+        })
+    }
+}
+
+impl std::ops::Deref for Connection<'_> {
+    type Target = Machine;
+    fn deref(&self) -> &Machine {
+        self.machine
+    }
+}
+
+fn config_version(machine: &Machine) -> Result<Identifier, Error> {
+    let digest = machine.snapshot.digest();
+    let mut version = String::with_capacity(64);
+    use std::fmt::Write;
+    for byte in digest {
+        write!(&mut version, "{byte:02x}")?;
+    }
+    Ok(Identifier::new(&version)?)
+}
+
 pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
     Ok(NamespacedId {
         namespace: Identifier::new(match machine.snapshot.effective().machine().syntax.kind {
@@ -18,7 +50,7 @@ pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
 
 pub(crate) async fn receive(
     store: &Handle,
-    machine: &Machine,
+    machine: &Connection<'_>,
     id: ReceiptId,
     raw: Vec<u8>,
 ) -> Result<jiff::Timestamp, Error> {
@@ -27,10 +59,10 @@ pub(crate) async fn receive(
     let metadata = ReceiptMetadata {
         id,
         raw_digest: Digest(analyte_contract::content_digest(&raw)),
-        connection: machine.id.clone(),
-        machine: machine.id.clone(),
+        connection: machine.connection_id.clone(),
+        machine: machine.machine.id.clone(),
         driver: driver(machine)?,
-        config_version: Identifier::new("1")?,
+        config_version: config_version(machine)?,
         config_digest: Digest(machine.snapshot.digest()),
         received_at,
     };
@@ -116,7 +148,7 @@ pub(crate) async fn persist_mapping(
     };
     let interpretation = Interpretation {
         driver: driver(machine)?,
-        config_version: Identifier::new("1")?,
+        config_version: config_version(machine)?,
         config: machine.snapshot.canonical().as_bytes().to_vec(),
         outcome: reading,
     };
@@ -272,7 +304,7 @@ fn build_deliveries(
 
 pub(crate) async fn park_bytes(
     store: &Handle,
-    machine: &Machine,
+    machine: &Connection<'_>,
     bytes: Vec<u8>,
     reason: &str,
 ) -> Result<(), Error> {
@@ -280,7 +312,7 @@ pub(crate) async fn park_bytes(
     receive(store, machine, id, bytes).await?;
     let evidence = Interpretation {
         driver: driver(machine)?,
-        config_version: Identifier::new("1")?,
+        config_version: config_version(machine)?,
         config: machine.snapshot.canonical().as_bytes().to_vec(),
         outcome: Reading::Failed(analyte_model::Reason::new(reason)?),
     };

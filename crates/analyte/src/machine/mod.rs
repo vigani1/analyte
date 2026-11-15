@@ -132,6 +132,8 @@ async fn session(
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
+    let context = crate::evidence::Connection::new(machine)?;
+    let machine = &context;
     match machine.snapshot.effective().machine().dialog.kind {
         analyte_config::DialogKind::AstmLink => astm::session(machine, store, conn, stop).await,
         analyte_config::DialogKind::Hl7Receiver => hl7::session(machine, store, conn, stop).await,

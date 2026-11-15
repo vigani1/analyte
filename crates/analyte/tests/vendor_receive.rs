@@ -189,7 +189,13 @@ impl Running {
         let metadata: analyte_model::ReceiptMetadata = serde_json::from_str(&metadata)?;
         assert_eq!(metadata.driver.namespace.as_str(), driver);
         assert_eq!(metadata.driver.value.as_str(), env!("CARGO_PKG_VERSION"));
-        assert_eq!(metadata.config_version.as_str(), "1");
+        assert_eq!(
+            metadata.config_version.as_str(),
+            analyte_contract::content_digest(&config)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        );
         assert_eq!(
             metadata.config_digest.0,
             analyte_contract::content_digest(&config)

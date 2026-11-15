@@ -26,7 +26,13 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
     let machine = program.machines().first().ok_or("machine missing")?;
     let receipt = analyte_model::ReceiptId::new();
     let raw = analyte_framing::mllp::encode(b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r", analyte_framing::mllp::Limit::new(1048576)?)?;
-    crate::evidence::receive(&store, machine, receipt, raw).await?;
+    crate::evidence::receive(
+        &store,
+        &crate::evidence::Connection::new(machine)?,
+        receipt,
+        raw,
+    )
+    .await?;
     assert!(!crate::evidence::interpret(&store, machine, receipt).await?);
     let parked = store
         .request(crate::deadline(), |s| {

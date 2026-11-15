@@ -1,6 +1,6 @@
 //! VIDAS upload custody, with installed checksum, suffix and timer policy.
 use super::vendor::{self, Input, ms};
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_vidas::{
@@ -40,7 +40,7 @@ struct ConnectionState {
 }
 
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
@@ -256,7 +256,7 @@ fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
 
 async fn process_inline(
     state: &mut ConnectionState,
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     installed: &analyte_config::Vidas,

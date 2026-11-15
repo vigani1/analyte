@@ -1,6 +1,6 @@
 //! Host-polled Autolyser connection; a corrupt report blocks R until L recovery.
 use super::vendor::{self, Input, ms};
-use crate::{Error, config::Machine, evidence, invalid};
+use crate::{Error, evidence, invalid};
 use analyte_autolyser::dialog::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -22,7 +22,7 @@ struct ConnectionState {
 }
 
 pub(super) async fn session(
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
@@ -150,7 +150,7 @@ pub(super) async fn session(
 async fn process(
     actions: Vec<Action>,
     state: &mut ConnectionState,
-    machine: &Machine,
+    machine: &evidence::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
 ) -> Result<bool, Error> {
