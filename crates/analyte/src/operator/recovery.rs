@@ -1,5 +1,5 @@
 //! Operator recovery changes app delivery or interpretation, never machine orders.
-use crate::{Error, config::Program, deadline, invalid};
+use crate::{Error, deadline, installation::config::Program, invalid};
 use analyte_model::{DeliveryId, Identifier, Reason, ReceiptId};
 use analyte_store::{Audit, Handle, InterpretationCommit, Reprocess};
 

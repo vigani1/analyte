@@ -1,6 +1,6 @@
 //! Host-owned independent LAW links, TF-2b B.6 pp.79-80.
 use super::{Connection, Error, evidence, invalid};
-use crate::{config::Machine, machine::Closing};
+use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
 use analyte_hl7::Message;
 use analyte_store::Handle;
@@ -29,7 +29,7 @@ pub(in crate::machine) async fn run(
     store: Arc<Handle>,
     mut stop: watch::Receiver<bool>,
     mut closing: Closing,
-    capture: Option<crate::capture::Capture>,
+    capture: Option<evidence::capture::Capture>,
 ) -> Result<(), Error> {
     let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() else {
         return Err(invalid("independent LAW stack absent"));
@@ -86,7 +86,7 @@ async fn server(
     settings: Arc<LawStack>,
     outbound: mpsc::Sender<Work>,
     mut stop: watch::Receiver<bool>,
-    capture: Option<Arc<crate::capture::Capture>>,
+    capture: Option<Arc<evidence::capture::Capture>>,
 ) -> Result<(), Error> {
     let mut sessions = JoinSet::new();
     let (sessions_stop, sessions_rx) = watch::channel(false);
@@ -139,7 +139,7 @@ async fn accepted_connection(
     settings: Arc<LawStack>,
     outbound: mpsc::Sender<Work>,
     stop: watch::Receiver<bool>,
-    capture: Option<Arc<crate::capture::Capture>>,
+    capture: Option<Arc<evidence::capture::Capture>>,
 ) -> Result<(), Error> {
     let limits = analyte_transport::Limits::new(
         CHANNEL_LIMIT,
@@ -190,7 +190,7 @@ async fn worker(
     settings: Arc<LawStack>,
     mut queue: mpsc::Receiver<Work>,
     mut stop: watch::Receiver<bool>,
-    capture: Option<Arc<crate::capture::Capture>>,
+    capture: Option<Arc<evidence::capture::Capture>>,
 ) -> Result<(), Error> {
     let mut idle_orders = Connection::new()?;
     let mut tick = tokio::time::interval(Duration::from_millis(100));
@@ -267,7 +267,7 @@ async fn exchange(
     orders: &mut Connection,
     message: &Message,
     mut stop: watch::Receiver<bool>,
-    capture: Option<&crate::capture::Capture>,
+    capture: Option<&evidence::capture::Capture>,
 ) -> Result<(), Error> {
     let LawLinks::Independent { outbound } = settings.policy().links() else {
         return Err(invalid("LAW independent destination absent"));

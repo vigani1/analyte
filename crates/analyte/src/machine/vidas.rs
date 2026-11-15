@@ -269,25 +269,7 @@ async fn process_inline(
             }
             Action::Store(packet) => {
                 let id = ReceiptId::new();
-                let operation = async {
-                    let time = evidence::receive(store, machine, id, packet.raw.clone()).await?;
-                    let reading = super::interpretation::map(machine, id, time, &packet.raw);
-                    match reading {
-                        Ok(reading) => {
-                            evidence::vendor_reading(store, machine, id, reading).await?;
-                        }
-                        Err(error) => {
-                            evidence::failed_reading(
-                                store,
-                                machine,
-                                id,
-                                &format!("VIDAS interpretation: {error}"),
-                            )
-                            .await?;
-                        }
-                    }
-                    Ok::<_, Error>(())
-                };
+                let operation = store_upload(store, machine, id, &packet.raw);
                 match tokio::time::timeout(ms(installed.commit_ms), operation).await {
                     Ok(Ok(())) => {
                         // Completion effects precede previously queued timer changes.
@@ -358,4 +340,29 @@ async fn process_inline(
         Some(error) => Err(error),
         None => Ok(complete),
     }
+}
+
+async fn store_upload(
+    store: &Handle,
+    machine: &evidence::Connection<'_>,
+    id: ReceiptId,
+    raw: &[u8],
+) -> Result<(), Error> {
+    let time = evidence::receive(store, machine, id, raw.to_vec()).await?;
+    let reading = super::interpretation::map(machine, id, time, raw);
+    match reading {
+        Ok(reading) => {
+            evidence::vendor_reading(store, machine, id, reading).await?;
+        }
+        Err(error) => {
+            evidence::failed_reading(
+                store,
+                machine,
+                id,
+                &format!("VIDAS interpretation: {error}"),
+            )
+            .await?;
+        }
+    }
+    Ok::<_, Error>(())
 }

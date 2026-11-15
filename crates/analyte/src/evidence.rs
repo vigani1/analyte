@@ -1,7 +1,9 @@
 //! Protected evidence processing; no payload enters ordinary logs.
-use crate::{Error, config::Machine, deadline, invalid};
+pub(crate) mod capture;
+use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
+use std::fmt::Write;
 
 /// Binds all evidence from one host connection to its immutable configuration.
 pub(crate) struct Connection<'a> {
@@ -28,7 +30,6 @@ impl std::ops::Deref for Connection<'_> {
 fn config_version(machine: &Machine) -> Result<Identifier, Error> {
     let digest = machine.snapshot.digest();
     let mut version = String::with_capacity(64);
-    use std::fmt::Write;
     for byte in digest {
         write!(&mut version, "{byte:02x}")?;
     }
@@ -146,27 +147,7 @@ pub(crate) async fn persist_mapping(
         | analyte_config::Stack::Autolyser(_) => false,
     };
     let lifecycle = atomic.then_some(law_lifecycle());
-    let work_conflict = if let analyte_config::Stack::Law(settings) =
-        machine.snapshot.effective().stack()
-    {
-        let receipt = store
-            .request(deadline(), move |s| {
-                s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-            })
-            .await?;
-        let payload = receipt.raw.get(1..receipt.raw.len().saturating_sub(2));
-        match payload
-            .and_then(|bytes| analyte_hl7::law::parse_message(bytes, settings.options()).ok())
-        {
-            Some(message) if analyte_hl7::law::receive_results(&message).is_ok() => {
-                crate::orders::law::validation::check(store, machine, &message, settings.options())
-                    .await?
-            }
-            _ => None,
-        }
-    } else {
-        None
-    };
+    let work_conflict = work_conflict(store, machine, id).await?;
     let mapping = if work_conflict.is_some() {
         Err(invalid(
             "LAW returned work differs from retained downloaded command; operator review required",
@@ -174,39 +155,12 @@ pub(crate) async fn persist_mapping(
     } else {
         mapping
     };
-    let mut accepted = false;
-    let (reading, corrections, findings) = match mapping {
-        Ok(output) => {
-            accepted = !output.requires_parking();
-            let mut findings = output
-                .findings
-                .iter()
-                .map(|f| format!("{:?}: {:?}", f.position, f.problem))
-                .collect::<Vec<_>>();
-            for result in &output.results {
-                if let analyte_model::IdentityStatus::Unresolved(reason) = &result.content.identity
-                {
-                    findings.push(reason.as_str().to_owned());
-                }
-            }
-            let corrections = output
-                .results
-                .iter()
-                .map(|r| r.corrections.as_slice().iter().any(|c| *c))
-                .collect::<Vec<_>>();
-            (
-                Reading::Results(output.results.into_iter().map(|r| r.content).collect()),
-                corrections,
-                findings,
-            )
-        }
-        // Parser diagnostics can contain source tokens; keep them only in protected evidence.
-        Err(error) => (
-            Reading::Failed(analyte_model::Reason::new(&error.to_string())?),
-            Vec::new(),
-            Vec::new(),
-        ),
-    };
+    let MappedReading {
+        accepted,
+        reading,
+        corrections,
+        findings,
+    } = map_reading(mapping)?;
     // A rejected LAW batch must not register otherwise-new history without an
     // outbox delivery: a later accepted retry would be mistaken for a retransmission.
     let (reading, corrections) = if atomic && !accepted && matches!(reading, Reading::Results(_)) {
@@ -314,27 +268,7 @@ pub(crate) async fn persist_mapping(
         .await?;
     let (result, successful) = result;
     let successful = work_conflict.map_or(successful, InterpretationOutcome::WorkConflict);
-    let accepted = matches!(successful, InterpretationOutcome::Accepted)
-        && !result
-            .outcomes
-            .iter()
-            .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
-    Ok((
-        if accepted {
-            InterpretationOutcome::Accepted
-        } else {
-            match successful {
-                InterpretationOutcome::Conflict => InterpretationOutcome::Conflict,
-                InterpretationOutcome::WorkConflict(location) => {
-                    InterpretationOutcome::WorkConflict(location)
-                }
-                InterpretationOutcome::Accepted | InterpretationOutcome::Failed => {
-                    InterpretationOutcome::Failed
-                }
-            }
-        },
-        result,
-    ))
+    mapping_outcome(result, successful)
 }
 
 // One audit dispatch for normal and rejected-batch commits; recovery never bypasses it.
@@ -475,4 +409,113 @@ fn law_lifecycle() -> analyte_store::StatusLifecycle<'static> {
             analyte_hl7::law::observation_run(identity.sub_id.as_str()).map(str::to_owned)
         },
     }
+}
+
+async fn work_conflict(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+) -> Result<Option<crate::orders::law::validation::Mismatch>, Error> {
+    Ok(
+        if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() {
+            let receipt = store
+                .request(deadline(), move |s| {
+                    s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+                })
+                .await?;
+            let payload = receipt.raw.get(1..receipt.raw.len().saturating_sub(2));
+            match payload
+                .and_then(|bytes| analyte_hl7::law::parse_message(bytes, settings.options()).ok())
+            {
+                Some(message) if analyte_hl7::law::receive_results(&message).is_ok() => {
+                    crate::orders::law::validation::check(
+                        store,
+                        machine,
+                        &message,
+                        settings.options(),
+                    )
+                    .await?
+                }
+                _ => None,
+            }
+        } else {
+            None
+        },
+    )
+}
+
+struct MappedReading {
+    accepted: bool,
+    reading: Reading,
+    corrections: Vec<bool>,
+    findings: Vec<String>,
+}
+
+fn map_reading(mapping: Result<analyte_mapping::Output, Error>) -> Result<MappedReading, Error> {
+    let mut accepted = false;
+    let (reading, corrections, findings) = match mapping {
+        Ok(output) => {
+            accepted = !output.requires_parking();
+            let mut findings = output
+                .findings
+                .iter()
+                .map(|f| format!("{:?}: {:?}", f.position, f.problem))
+                .collect::<Vec<_>>();
+            for result in &output.results {
+                if let analyte_model::IdentityStatus::Unresolved(reason) = &result.content.identity
+                {
+                    findings.push(reason.as_str().to_owned());
+                }
+            }
+            let corrections = output
+                .results
+                .iter()
+                .map(|r| r.corrections.as_slice().iter().any(|c| *c))
+                .collect::<Vec<_>>();
+            (
+                Reading::Results(output.results.into_iter().map(|r| r.content).collect()),
+                corrections,
+                findings,
+            )
+        }
+        // Parser diagnostics can contain source tokens; keep them only in protected evidence.
+        Err(error) => (
+            Reading::Failed(analyte_model::Reason::new(&error.to_string())?),
+            Vec::new(),
+            Vec::new(),
+        ),
+    };
+    Ok(MappedReading {
+        accepted,
+        reading,
+        corrections,
+        findings,
+    })
+}
+
+fn mapping_outcome(
+    result: analyte_store::InterpretationCommit,
+    successful: InterpretationOutcome,
+) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
+    let accepted = matches!(successful, InterpretationOutcome::Accepted)
+        && !result
+            .outcomes
+            .iter()
+            .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
+    Ok((
+        if accepted {
+            InterpretationOutcome::Accepted
+        } else {
+            match successful {
+                InterpretationOutcome::Conflict => InterpretationOutcome::Conflict,
+                InterpretationOutcome::WorkConflict(location) => {
+                    InterpretationOutcome::WorkConflict(location)
+                }
+                InterpretationOutcome::Accepted | InterpretationOutcome::Failed => {
+                    InterpretationOutcome::Failed
+                }
+            }
+        },
+        result,
+    ))
 }

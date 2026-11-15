@@ -1,3 +1,4 @@
+//! ASTM order tests guard the host order conversation without changing custody.
 use super::*;
 use analyte_model::Identifier;
 use std::{path::Path, time::Duration};
@@ -29,7 +30,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     .validate()?;
     Ok(Machine {
         capture: false,
-        destination_limits: crate::delivery::limits(30),
+        destination_limits: crate::runtime::delivery::limits(30),
         #[cfg(feature = "test-hooks")]
         law_committed: None,
         #[cfg(feature = "test-hooks")]
