@@ -120,10 +120,13 @@ answers "no orders" when unsure, and every result keeps the three identities.
 
 ## Next steps
 
-1. Finish the IHE LAW profile rules and the fake machines with replay.
-2. Phase 6 in the program: answer machine queries from the order cache and
-   send work lists ahead (ASTM, HL7, LAW), with the order lifecycle.
-3. Wire POCT01-A2, VIDAS and Autolyser connections into the program.
-4. Phase 7: machine configs for cobas e 411, Biolyte 2000, iFlash 1200 and
-   Swelab Lumi (documented level until recordings exist).
-5. Phase 9: admin page, installers, release process, lab pilot.
+1. Finish IHE LAW in the program, then a recorded IHE Gazelle run (simulated).
+2. Finish the read-only admin page; operator actions follow as audited
+   commands on the page.
+3. Phase 7: get the lab's settings and one de-identified recording per
+   machine (see "Still needed from outside"), then write the four standard
+   machine configs at the documented level.
+4. Alerts with named responders, monitoring, and the pilot targets (outage
+   length, disk reserve, retention, backup and restore) before a pilot.
+5. Lab pilot: install as a service, rehearse a restore, raise each machine
+   to proven with its recordings.
