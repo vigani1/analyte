@@ -93,3 +93,24 @@ query selectors are not claimed by these synthetic tests.
 All other transitions, including every attempt to return to Sending, are refused.
 Contract conversion explicitly rejects Sending; only real transfer outcomes become
 app events. The same reservation and completion rules apply to query answers.
+
+
+## Durable command items
+
+Every new machine-order reservation retains items atomically in schema v5.
+ASTM and vendor records cover all tests in one item; HL7 send-ahead will reserve
+one item per test. Store-owned placer identities are `<machine-order-id>-<index>`;
+the HL7 configuration must supply their namespace. App order IDs belong in
+ORC-4, independently of these identities. Neither identity may be truncated.
+
+Application evidence is recorded per item. All Accepted, all Rejected, all Sent
+or all CancelConfirmed produce that aggregate state; mixed or missing answers
+produce Uncertain with per-item reasons. Cancellation covers all items. Explicit
+refusal restores the preceding order state with a CancelRefused event/history;
+missing evidence remains Uncertain. Orders list shows item identities, test
+coverage and reasons. Reconciliation stays per order, audited, and never resends.
+
+Migrated v4 orders explicitly mark original test coverage unavailable, because
+v4 did not retain it. Their existing reservations continue to prevent replay.
+The store API is implemented; HL7 program/config wiring remains deferred
+until its own implementation steps are complete.

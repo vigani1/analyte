@@ -106,6 +106,18 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             order.state,
             order.updated_at
         ))?;
+        for item in order.items {
+            crate::output::line(&format!(
+                "  item={} placer={} namespace={:?} coverage_known={} tests={} state={:?} reason={}",
+                item.index,
+                item.placer,
+                item.placer_namespace.as_ref().map(Identifier::as_str),
+                item.coverage_known,
+                serde_json::to_string(&item.tests)?,
+                item.state,
+                item.source_code.as_str()
+            ))?;
+        }
     }
     Ok(())
 }
