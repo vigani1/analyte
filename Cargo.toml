@@ -22,6 +22,7 @@ analyte-dialog = { path = "crates/dialog", version = "0.1.0" }
 analyte-astm = { path = "crates/astm", version = "0.1.0" }
 analyte-hl7 = { path = "crates/hl7", version = "0.1.0" }
 analyte-config = { path = "crates/config", version = "0.1.0" }
+analyte-mapping = { path = "crates/mapping", version = "0.1.0" }
 analyte-contract = { path = "crates/contract", version = "0.1.0" }
 analyte-sink = { path = "crates/sink", version = "0.1.0" }
 analyte-sim = { path = "crates/sim", version = "0.1.0" }

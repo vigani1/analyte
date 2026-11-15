@@ -70,6 +70,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "analyte-mapping"
+version = "0.1.0"
+
+[[package]]
 name = "analyte-model"
 version = "0.1.0"
 dependencies = [
