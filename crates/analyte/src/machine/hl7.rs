@@ -123,20 +123,14 @@ pub(super) async fn session(
                             let id = pending
                                 .remove(&(token.epoch(), token.ordinal()))
                                 .ok_or_else(|| invalid("HL7 receipt correlation missing"))?;
-                            let success =
-                                evidence::interpret(store, machine, id).await?;
+                            let (success, location) =
+                                evidence::interpret_with_location(store, machine, id).await?;
                             let event = if success {
                                 Event::Interpreted(token)
                             } else {
                                 Event::NotInterpretable(
                                     token,
-                                    analyte_hl7::AckError {
-                                        segment: b"OBX",
-                                        occurrence: 1,
-                                        field: 1,
-                                        code: b"207",
-                                        application_code: b"operator-review",
-                                    },
+                                    super::hl7_error::build(location.as_ref(), b"207", b"operator-review"),
                                     false,
                                 )
                             };
@@ -188,7 +182,7 @@ pub(super) async fn session(
                                 "HL7 host phase timed out; receipt requires reconciliation",
                             ));
                         }
-                        Action::Sent(_, _) => {
+                        Action::Sent(_, _) | Action::CommitAccepted(_) => {
                             return Err(invalid("unexpected outgoing HL7 outcome"));
                         }
                     }

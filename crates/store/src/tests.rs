@@ -446,6 +446,7 @@ fn production_result(
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![ResultPart {
             test: name,
             values: EvidenceList::new(vec![ResultValue {
+                decoded_text: None,
                 original: SourceText::new("positive")?,
                 parsed: ValueInterpretation::Text,
             }])?,

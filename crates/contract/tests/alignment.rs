@@ -4,6 +4,45 @@
 use analyte_contract::{Delivery, ResultDocument, decode};
 use serde_json::{Value, json};
 
+#[test]
+fn rule5_decoded_text_preserves_original_and_never_accompanies_unsupported()
+-> Result<(), Box<dyn std::error::Error>> {
+    for bytes in [
+        include_bytes!("../../../docs/contract/vectors/decoded-text.json").as_slice(),
+        include_bytes!("../../../docs/contract/vectors/unsupported-formatting.json").as_slice(),
+    ] {
+        let document: Value = serde_json::from_slice(bytes)?;
+        let expected = document.pointer("/results/0").ok_or("result")?;
+        let mut input = expected.clone();
+        model_fixture(&mut input);
+        let model: analyte_model::ResultContent = serde_json::from_value(input)?;
+        assert_eq!(
+            serde_json::to_value(ResultDocument::from(&model))?,
+            *expected
+        );
+        let _: Delivery = decode(bytes)?;
+    }
+    for decoded in [json!(""), json!("A|B"), json!("x".repeat(16384))] {
+        let value = json!({"original":r"A\F\B", "parsed":"text", "decoded_text":decoded});
+        let contract: analyte_contract::evidence::ResultValue =
+            serde_json::from_value(value.clone())?;
+        assert_eq!(serde_json::to_value(contract)?, value);
+    }
+    for value in [
+        json!({"original":"x","parsed":"text","decoded_text":"x".repeat(16385)}),
+        json!({"original":"x","parsed":{"unsupported":{"source_type":"FT","reason":"Formatting"}},"decoded_text":"partial"}),
+    ] {
+        assert!(
+            serde_json::from_value::<analyte_contract::evidence::ResultValue>(value.clone())
+                .is_err()
+        );
+        let mut model_value = value;
+        model_fixture(&mut model_value);
+        assert!(serde_json::from_value::<analyte_model::ResultValue>(model_value).is_err());
+    }
+    Ok(())
+}
+
 // Model serde spellings are deliberately different from the wire spellings.
 // Only fixture enum tokens are translated; production conversion never uses JSON.
 fn model_fixture(value: &mut Value) {

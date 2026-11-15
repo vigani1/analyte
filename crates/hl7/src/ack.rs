@@ -23,9 +23,9 @@ pub struct Response<'a> {
 pub struct AckError<'a> {
     /// Segment with the error, e.g. MSH; empty only for [`Self::unlocated`].
     pub segment: &'a [u8],
-    /// Segment occurrence, starting at one; zero only for an unlocated LAW error.
+    /// Segment occurrence, starting at one; zero only for an unlocated error.
     pub occurrence: u16,
-    /// Field position, starting at one; zero only for an unlocated LAW error.
+    /// Field position, starting at one; zero only for an unlocated error.
     pub field: u16,
     /// HL7 table 0357 code.
     pub code: &'a [u8],
@@ -34,8 +34,7 @@ pub struct AckError<'a> {
 }
 
 impl<'a> AckError<'a> {
-    /// Creates an error without an invented location (LAW TF-2b C.1, optional ERR-2).
-    /// Only LAW builders accept this form; generic HL7 builders still require a location.
+    /// Creates an error without an invented location (HL7 2.5.1 section 2.15.5.2).
     #[must_use]
     pub fn unlocated(code: &'a [u8], application_code: &'a [u8]) -> Self {
         Self {
@@ -206,10 +205,7 @@ pub(crate) fn acknowledgment_with_msh(
         safe(error.segment, 0, 3)?;
         safe(error.code, 0, 3)?;
         safe(error.application_code, 0, 64)?;
-        let unlocated = matches!(profile, AckProfile::Law)
-            && error.segment.is_empty()
-            && error.occurrence == 0
-            && error.field == 0;
+        let unlocated = error.segment.is_empty() && error.occurrence == 0 && error.field == 0;
         if (!unlocated && (error.segment.len() != 3 || error.occurrence == 0 || error.field == 0))
             || error.code.is_empty()
         {
@@ -230,6 +226,9 @@ pub(crate) fn acknowledgment_with_msh(
         raw.push(field);
         match msh.version() {
             Version::V231 => {
+                if unlocated {
+                    location.extend_from_slice(&[component, component]);
+                }
                 raw.extend_from_slice(&location);
                 raw.push(component);
                 raw.extend_from_slice(error.code);

@@ -114,7 +114,7 @@ fn identity_key<'a>(
     version: Version,
 ) -> Result<Vec<&'a [u8]>, Error> {
     if field.is_null()
-        || field.raw().len() > super::ORDER_ID_MAX_BYTES
+        || field.raw().len() > super::EI_MAX_BYTES
         || field.repetitions().count() != 1
     {
         return Err(invalid(segment, number));
