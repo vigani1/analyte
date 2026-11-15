@@ -43,8 +43,17 @@ impl Wire {
     }
 }
 
-pub(crate) fn segment(output: &mut Vec<u8>, name: &[u8], fields: &[&[u8]], maximum: usize, separator: u8) -> Result<(), Limit> {
+pub(crate) fn segment(
+    output: &mut Vec<u8>,
+    name: &[u8],
+    fields: &[&[u8]],
+    maximum: usize,
+    separator: u8,
+) -> Result<(), Limit> {
     append(output, name, maximum)?;
-    for value in fields { append(output, &[separator], maximum)?; append(output, value, maximum)?; }
+    for value in fields {
+        append(output, &[separator], maximum)?;
+        append(output, value, maximum)?;
+    }
     append(output, b"\r", maximum)
 }
