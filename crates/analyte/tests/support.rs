@@ -55,14 +55,14 @@ pub(super) fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
         let address = listener.local_addr()?;
         listeners.push((name.to_owned(), listener));
         let definition = if is_astm {
-            include_str!("../../../config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
+            include_str!("../../config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
         } else {
-            include_str!("../../../config/examples/hl7.toml").to_owned()
+            include_str!("../../config/examples/hl7.toml").to_owned()
         };
         std::fs::write(root.join(format!("{name}.toml")), definition)?;
         std::fs::write(
             root.join(format!("{name}-site.toml")),
-            include_str!("../../../config/examples/site.toml")
+            include_str!("../../config/examples/site.toml")
                 .replace("127.0.0.1:5600", &address.to_string()),
         )?;
         machines.push_str(&format!(
@@ -243,13 +243,24 @@ pub(super) fn database(path: &Path) -> Result<rusqlite::Connection, Error> {
 }
 
 pub(super) async fn wait_state(path: &Path, state: &str, count: i64) -> Result<(), Error> {
+    wait_database_count(
+        path,
+        "SELECT count(*) FROM outbox WHERE state=?1",
+        [state],
+        count,
+    )
+    .await
+}
+
+pub(crate) async fn wait_database_count(
+    path: &Path,
+    query: &'static str,
+    params: impl rusqlite::Params + Clone,
+    count: i64,
+) -> Result<(), Error> {
     tokio::time::timeout(HANG_GUARD, async {
         loop {
-            let found: i64 = database(path)?.query_row(
-                "SELECT count(*) FROM outbox WHERE state=?1",
-                [state],
-                |r| r.get(0),
-            )?;
+            let found: i64 = database(path)?.query_row(query, params.clone(), |r| r.get(0))?;
             if found == count {
                 return Ok::<_, Error>(());
             }
@@ -278,20 +289,13 @@ impl Running {
 }
 
 pub(super) async fn wait_feed(path: &Path) -> Result<(), Error> {
-    tokio::time::timeout(HANG_GUARD, async {
-        loop {
-            if database(path)?.query_row(
-                "SELECT count(*) FROM feed WHERE complete=1 AND trusted=1",
-                [],
-                |r| r.get::<_, i64>(0),
-            )? == 1
-            {
-                return Ok::<_, Error>(());
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await?
+    wait_database_count(
+        path,
+        "SELECT count(*) FROM feed WHERE complete=1 AND trusted=1",
+        [],
+        1,
+    )
+    .await
 }
 
 #[tokio::test]
@@ -306,4 +310,26 @@ async fn startup_failure_reaches_caller_before_any_peer_or_cache_wait() -> Resul
         .ok_or("failed service startup was reported as ready")?;
     assert!(error.downcast_ref::<std::io::Error>().is_some(), "{error}");
     Ok(())
+}
+
+pub(crate) async fn read_mllp_packet(
+    peer: &mut TcpStream,
+    oversized: &'static str,
+) -> Result<Vec<u8>, Error> {
+    tokio::time::timeout(HANG_GUARD, async {
+        assert_eq!(peer.read_u8().await?, 11);
+        let mut bytes = Vec::new();
+        loop {
+            let byte = peer.read_u8().await?;
+            if byte == 28 {
+                assert_eq!(peer.read_u8().await?, 13);
+                return Ok::<_, Error>(bytes);
+            }
+            if bytes.len() >= 1048576 {
+                return Err(oversized.into());
+            }
+            bytes.push(byte);
+        }
+    })
+    .await?
 }

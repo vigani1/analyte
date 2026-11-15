@@ -1,4 +1,5 @@
 [package]
+autotests = false
 name = "analyte-transport"
 description = "Host-owned byte transports."
 version.workspace = true
@@ -22,3 +23,23 @@ tempfile = { workspace = true }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "behavior"
+path = "tests/behavior.rs"
+
+[[test]]
+name = "folder"
+path = "tests/folder.rs"
+
+[[test]]
+name = "recording_format"
+path = "tests/recording_format.rs"
+
+[[test]]
+name = "serial"
+path = "tests/serial.rs"
+
+[[test]]
+name = "supervision"
+path = "tests/supervision.rs"
