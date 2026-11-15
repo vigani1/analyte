@@ -1,4 +1,5 @@
 //! Synthetic BCI A sections 3-5 / PC sections 10-24 to 10-26 and ADR 0004/0008.
+use super::vendor_support::*;
 use super::*;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -33,7 +34,7 @@ async fn setup(
     value: serde_json::Value,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
-    let path = vendor_config(temp.path(), &definition())?;
+    let path = vendor_config(temp.path(), "vidas", &definition())?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),
         TcpListener::bind("127.0.0.1:0").await?,
@@ -49,32 +50,6 @@ async fn setup(
     let service = Running::start(&path, &reference.url, "synthetic-api")?;
     let peer = connect(&path, "vidas").await?;
     Ok((temp, path, reference, service, peer))
-}
-async fn state(path: &Path, expected: &str) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(8), async {
-        loop {
-            let found: i64 = database(path)?.query_row(
-                "SELECT count(*) FROM machine_orders WHERE state=?1",
-                [format!("\"{expected}\"")],
-                |r| r.get(0),
-            )?;
-            if found == 1 {
-                return Ok::<_, Error>(());
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await?
-}
-async fn byte(peer: &mut TcpStream) -> Result<u8, Error> {
-    Ok(tokio::time::timeout(Duration::from_secs(8), peer.read_u8()).await??)
-}
-async fn no_event(path: &Path) -> Result<(), Error> {
-    assert_eq!(
-        database(path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
-        0
-    );
-    Ok(())
 }
 async fn packet(peer: &mut TcpStream) -> Result<(), Error> {
     peer.write_all(b"\x06").await?;
@@ -105,41 +80,6 @@ async fn confirm(peer: &mut TcpStream) -> Result<(), Error> {
     assert_eq!(byte(peer).await?, 4);
     Ok(())
 }
-async fn event(
-    path: &Path,
-    receiver: &Path,
-    expected_state: &str,
-    code: &str,
-) -> Result<(), Error> {
-    state(path, expected_state).await?;
-    wait_state(path, "done", 1).await?;
-    assert_eq!(
-        database(path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
-        1
-    );
-    assert_eq!(receiver_count(receiver)?, 1);
-    let bytes: Vec<u8> = rusqlite::Connection::open(receiver)?.query_row(
-        "SELECT body FROM deliveries WHERE kind='order-events'",
-        [],
-        |r| r.get(0),
-    )?;
-    let body: serde_json::Value = serde_json::from_slice(&bytes)?;
-    assert_eq!(
-        body.get("state").and_then(serde_json::Value::as_str),
-        Some(expected_state.to_ascii_lowercase().as_str())
-    );
-    assert_eq!(
-        body.get("order_id").and_then(serde_json::Value::as_str),
-        Some("order-1")
-    );
-    assert_eq!(
-        body.get("source_status")
-            .and_then(serde_json::Value::as_str),
-        Some(code)
-    );
-    Ok(())
-}
-
 #[tokio::test]
 async fn vidas_bci_a_ch3_5_all_assays_confirm_once_sent_survives_restart() -> Result<(), Error> {
     let mut value = order()?;
@@ -356,6 +296,7 @@ async fn adr0004_vidas_missing_patient_namespace_prevents_program_start() -> Res
     let temp = tempfile::tempdir()?;
     let path = vendor_config(
         temp.path(),
+        "vidas",
         &definition().replace("patient_namespace = \"synthetic\"", ""),
     )?;
     let receiver_path = temp.path().join("receiver.db");
@@ -377,6 +318,32 @@ async fn adr0004_vidas_missing_patient_namespace_prevents_program_start() -> Res
     assert!(error.to_string().contains("orders.patient_namespace"));
     assert!(!temp.path().join("data/analyte.db").exists());
     assert_eq!(receiver_count(&receiver_path)?, 0);
+    reference.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn vidas_bci_a_ch3_park_mid_send_commits_uncertain_same_round_then_closes()
+-> Result<(), Error> {
+    let (temp, path, reference, service, mut peer) = setup(order()?).await?;
+    assert_eq!(byte(&mut peer).await?, 5);
+    packet(&mut peer).await?;
+    state(&path, "Sending").await?;
+    no_event(&path).await?;
+    peer.write_all(b"\x15").await?;
+    event(
+        &path,
+        &temp.path().join("receiver.db"),
+        "Uncertain",
+        "VIDAS-transfer-refused-or-unexpected",
+    )
+    .await?;
+    let mut byte = [0];
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), peer.read(&mut byte)).await??,
+        0
+    );
+    service.stop().await?;
     reference.close().await?;
     Ok(())
 }

@@ -34,6 +34,16 @@ pub struct OutboundTest {
     pub machine_components: Vec<String>,
 }
 
+/// Explicit app specimen type to protocol sample-medium code.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutboundSpecimen {
+    /// Exact app code system and value.
+    pub app: NamespacedId,
+    /// Exact protocol code; Autolyser supports S and U.
+    pub machine: Identifier,
+}
+
 /// Priority translations are independent of inbound tables.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -72,6 +82,8 @@ pub struct Orders {
     pub send_ahead: bool,
     /// Outbound app-to-machine translations.
     pub tests: Vec<OutboundTest>,
+    /// Optional explicit specimen-type translations; absence maps no values.
+    pub specimen_types: Option<Vec<OutboundSpecimen>>,
     /// Explicit priority translations.
     pub priorities: Vec<OrderPriority>,
     /// Accepted assigning system for the unqualified vendor patient field.
@@ -208,6 +220,49 @@ impl Orders {
                 path,
                 "orders.tests",
                 "VIDAS requires one printable assay code of 1 to 4 bytes without a pipe",
+            ));
+        }
+        if let Some(types) = &self.specimen_types {
+            let mut seen = HashSet::new();
+            if machine.syntax.kind != SyntaxKind::Autolyser
+                || types.is_empty()
+                || types.len() > 4096
+                || types.iter().any(|t| {
+                    !seen.insert((&t.app.namespace, &t.app.value))
+                        || !matches!(t.machine.as_str(), "S" | "U")
+                })
+            {
+                return Err(invalid(
+                    path,
+                    "orders.specimen_types",
+                    "use unique explicit Autolyser specimen mappings to S or U",
+                ));
+            }
+        }
+        if machine.syntax.kind == SyntaxKind::Autolyser
+            && self.tests.iter().any(|test| {
+                let [code] = test.machine_components.as_slice() else {
+                    return true;
+                };
+                code.len() != 4 || !code.bytes().all(|b| (32..=126).contains(&b))
+            })
+        {
+            return Err(invalid(
+                path,
+                "orders.tests",
+                "Autolyser requires one exact four-byte printable analysis code",
+            ));
+        }
+        if machine.syntax.kind == SyntaxKind::Autolyser
+            && self
+                .priorities
+                .iter()
+                .any(|p| !matches!(p.machine.as_str(), "T" | "R"))
+        {
+            return Err(invalid(
+                path,
+                "orders.priorities",
+                "Autolyser list codes are T (routine) and R (STAT)",
             ));
         }
         let mut priorities = HashSet::new();

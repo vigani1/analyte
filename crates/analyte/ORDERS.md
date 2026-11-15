@@ -131,4 +131,56 @@ order evidence and wire data, not ordinary logs.
 reference receiver: multi-assay completion, timeout, mid-send disconnect,
 restart during Sending, Sent surviving restart, no replay, unmapped test and
 specimen type, wrong/missing patient context, over-long IDs and cancellation
-before sending. Autolyser sending remains deferred.
+before sending. Autolyser insertion follows the same shared lifecycle below.
+
+
+## Autolyser internal work lists
+
+Evidence remains **documented** (Rev18 chapter 23, pages 175-179; synthetic
+local peers, no hardware qualification). The host initiates R polling and
+work-list insertion through the existing vendor dialog. A completed, stored
+poll response opens the next idle interval for an insertion. An unanswered
+initial poll never reserves an app order. Poll-custody guards remain separate
+from order reservations: uncertain R cursor movement still blocks a new R
+connection until reconciled; insertion recovery never advances that cursor.
+
+Enable `[autolyser] download = true` and `[orders] send_ahead = true`, with
+required `patient_namespace` and explicit `clone = true` or `false`. Test
+mappings contain one exact four-byte analysis code, including any padding.
+Priority mappings explicitly select `T` (routine list) or `R` (STAT list).
+Supply specimen-medium mappings separately, for example:
+
+```toml
+specimen_types = [{app={namespace="synthetic",value="SERUM"},machine="S"}]
+```
+
+Only `S` and `U` are supported by this internal format. Missing specimen type
+or an unmapped namespace/value is rejected, never defaulted. Patient values
+must match the configured namespace, use printable ASCII and fit fifteen bytes;
+the documented fixed-width space padding is applied without truncation. The
+original ID is retained in protected order evidence. This format has one
+patient-code field and no separate sample-ID field; the bridge never substitutes
+the app sample ID for a missing patient. Incoming results still have unresolved
+specimen/run identity, as before.
+
+An order must supply its cup slot, numeric 1-99; `00` is not silently used to
+ask the machine to autoassign. The shared position type retains kind, carrier
+and exact slot in protected order evidence; only the addressed slot is encoded
+by this protocol. ASTM position/specimen forwarding remains a separate step.
+
+Every mapping is complete before `reserve_send` commits Sending, with no app
+event. The host sends STX, waits for ACK and then sends the fixed-width work
+list plus checksum and EOT. Only a complete, durably stored `Y` plus position
+reply becomes Sent, with one event retaining the exact binary position in its
+source code. It never becomes Accepted automatically. A partial reply, deadline,
+disconnect, bad ACK, negative reply or unknown reply becomes Uncertain with a
+specific code and closes the insertion connection for reconciliation. Park
+finalizes the active order in the same run; pending store/interpretation effects
+are consumed before Close. Restart recovers only Sending and never replays.
+
+`tests/orders/autolyser.rs` exercises both clone settings on the wire, confirmed
+and partial replies, same-round Park, timeout, disconnect, restart, no replay,
+unmapped codes/medium, missing/invalid cup slot, wrong/missing patient context,
+over-long patient ID and cancellation before insertion. VIDAS also has an
+explicit mid-send Park test asserting Uncertain and one app event before any
+restart. Both suites use the program, temporary storage and reference receiver.

@@ -50,7 +50,7 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
     ] {
         let definition = definition.replace("download = false", "download = true");
         let section = if definition.contains("[autolyser]") {
-            format!("{VENDOR_ORDERS}clone = false\n")
+            format!("{}clone = false\n", autolyser_orders())
         } else {
             VENDOR_ORDERS.to_owned()
         };
@@ -104,9 +104,12 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
 fn autolyser_rev18_ch23_clone_requires_explicit_true_or_false() -> TestResult {
     let definition =
         include_str!("../examples/autolyser.toml").replace("download = false", "download = true");
-    invalid_key(vendor_config(&definition, VENDOR_ORDERS), "orders.clone");
+    invalid_key(
+        vendor_config(&definition, &autolyser_orders()),
+        "orders.clone",
+    );
     for value in [true, false] {
-        let section = format!("{VENDOR_ORDERS}clone = {value}\n");
+        let section = format!("{}clone = {value}\n", autolyser_orders());
         let valid = vendor_config(&definition, &section)?;
         assert_eq!(
             valid
@@ -129,7 +132,7 @@ fn adr0002_outbound_settings_cannot_silently_apply_to_another_stack() -> TestRes
     let vidas = include_str!("../examples/vidas_literal.toml")
         .replace("download = false", "download = true");
     invalid_key(
-        vendor_config(&vidas, &format!("{VENDOR_ORDERS}clone = false\n")),
+        vendor_config(&vidas, &format!("{}clone = false\n", autolyser_orders())),
         "orders.clone",
     );
     invalid_key(
@@ -178,7 +181,7 @@ fn adr0002_outbound_settings_cannot_silently_apply_to_another_stack() -> TestRes
         include_str!("../examples/autolyser.toml"),
     ] {
         let section = if definition.contains("[autolyser]") {
-            format!("{VENDOR_ORDERS}clone=false\n")
+            format!("{}clone=false\n", autolyser_orders())
         } else {
             VENDOR_ORDERS.to_owned()
         };
@@ -202,5 +205,45 @@ fn vidas_bci_a_section4_outbound_assay_codes_require_single_bounded_tag_value() 
             "orders.tests",
         );
     }
+    Ok(())
+}
+
+fn autolyser_orders() -> String {
+    VENDOR_ORDERS
+        .replace(r#"["SYN"]"#, r#"["SYN "]"#)
+        .replace(r#"machine="R""#, r#"machine="T""#)
+}
+
+#[test]
+fn autolyser_rev18_ch23_outbound_medium_list_and_analysis_tables_are_explicit() -> TestResult {
+    let definition =
+        include_str!("../examples/autolyser.toml").replace("download = false", "download = true");
+    let section = format!("{}clone=false\n", autolyser_orders());
+    let types = r#"[{app={namespace="synthetic",value="SERUM"},machine="S"}]"#;
+    vendor_config(&definition, &format!("{section}specimen_types={types}\n"))?;
+    for table in [
+        "[]".to_owned(),
+        types.replace(r#"machine="S""#, r#"machine="X""#),
+        types.replace(
+            "]",
+            &format!(",{}]", types.trim_start_matches('[').trim_end_matches(']')),
+        ),
+    ] {
+        invalid_key(
+            vendor_config(&definition, &format!("{section}specimen_types={table}\n")),
+            "orders.specimen_types",
+        );
+    }
+    invalid_key(
+        vendor_config(&definition, &section.replace(r#"["SYN "]"#, r#"["SYN"]"#)),
+        "orders.tests",
+    );
+    invalid_key(
+        vendor_config(
+            &definition,
+            &section.replace(r#"machine="T""#, r#"machine="routine""#),
+        ),
+        "orders.priorities",
+    );
     Ok(())
 }

@@ -101,7 +101,7 @@ pub(crate) async fn next(
             machine: machine.id.clone(),
         };
         let version = fields.version;
-        let mapped = super::app_order(&order)
+        let mapped = super::app_order(&order, machine)
             .and_then(|order| Ok(analyte_mapping::map_order(&order, &machine.snapshot)?));
         let mapped = match mapped {
             Ok(mapped) => mapped,

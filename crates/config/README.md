@@ -58,7 +58,8 @@ and `examples/autolyser.toml`. They require explicit installed policies and use
 Incompatible stacks and vendor field mappings have distinct typed errors.
 All three examples remain synthetic and documented. VIDAS work-list sending
 requires both download permission and an explicit outbound order table; see
-`../analyte/ORDERS.md`. Autolyser sending remains deferred.
+`../analyte/ORDERS.md`. Autolyser host-initiated insertion follows its existing dialog after a completed
+host poll and idle interval.
 
 
 For outbound VIDAS or Autolyser work lists, `[orders]` requires an explicit
@@ -66,7 +67,7 @@ For outbound VIDAS or Autolyser work lists, `[orders]` requires an explicit
 allowed in the vendor's unqualified patient field. Autolyser also requires
 `clone = true` or `clone = false`; omission never means false. These settings
 are not needed by receive-only machines without `[orders]`. Namespace mismatch
-and missing patient data are rejected by the VIDAS outbound mapping boundary;
+and missing patient data are rejected by the shared outbound patient boundary;
 configuration alone does not send an order.
 
 Vendor order tables omit `[orders.astm]`, which remains required for ASTM.
@@ -79,3 +80,10 @@ VIDAS outbound test mappings require one printable 1-4 byte assay code, without
 pipes. The stack has no specimen-type tag; supplied specimen types are rejected
 rather than misusing the origin or specimen-start tags. App patient IDs must
 match `patient_namespace` exactly before their values enter the vendor field.
+
+Autolyser `[orders] specimen_types` maps exact app namespace/value pairs to
+`S` (serum) or `U` (urine); absent tables map no values. Duplicate pairs, unknown
+medium codes and empty supplied tables are rejected. Autolyser analysis codes
+must occupy exactly four printable bytes; list mappings use only `T` or `R`.
+Missing patient, specimen medium or cup position in an app order produces a
+specific rejection before reservation or transmission. Cup zero is never inferred.

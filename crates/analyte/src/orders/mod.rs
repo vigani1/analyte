@@ -14,6 +14,7 @@ pub(crate) const FRESHNESS_SECONDS: u64 = 30;
 /// Adapts validated app fields without inventing a code system or position.
 pub(crate) fn app_order(
     order: &analyte_contract::Order,
+    machine: &Machine,
 ) -> Result<analyte_mapping::AppOrder, Error> {
     let fields = order.fields();
     let tests = fields
@@ -42,7 +43,13 @@ pub(crate) fn app_order(
         },
         // Position forwarding is a separate ASTM change. VIDAS has no position
         // destination; it never substitutes a position for sample identity.
-        position: None,
+        position: if machine.snapshot.effective().machine().syntax.kind
+            == analyte_config::SyntaxKind::Autolyser
+        {
+            fields.position.as_ref().map(position).transpose()?
+        } else {
+            None
+        },
     })
 }
 
@@ -86,5 +93,26 @@ fn namespaced(id: &analyte_contract::evidence::NamespacedId) -> Result<Namespace
     Ok(NamespacedId {
         namespace: Identifier::new(id.namespace.as_str())?,
         value: Identifier::new(id.value.as_str())?,
+    })
+}
+
+fn position(
+    position: &analyte_contract::evidence::SamplePosition,
+) -> Result<analyte_model::SamplePosition, Error> {
+    use analyte_contract::evidence::CarrierKind as Wire;
+    use analyte_model::CarrierKind;
+    Ok(analyte_model::SamplePosition {
+        kind: match &position.kind {
+            Wire::Rack => CarrierKind::Rack,
+            Wire::Disk => CarrierKind::Disk,
+            Wire::Tray => CarrierKind::Tray,
+            Wire::Other(id) => CarrierKind::Other(Identifier::new(id.as_str())?),
+        },
+        carrier: position
+            .carrier
+            .as_ref()
+            .map(|id| Identifier::new(id.as_str()))
+            .transpose()?,
+        slot: Identifier::new(position.slot.as_str())?,
     })
 }

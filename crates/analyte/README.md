@@ -125,4 +125,5 @@ and lifecycle APIs; see [ORDERS.md](ORDERS.md). The download permission alone
 does not schedule an order: `[orders]` must also explicitly enable send-ahead
 and configure the patient namespace and outbound codes. Successful transfer
 means Sent, never Accepted. Interrupted orders become Uncertain and are never
-automatically replayed. Autolyser work-list sending remains deferred.
+automatically replayed. Autolyser host-initiated insertions use the same durable path after a completed
+host poll, with an explicit specimen-medium table, clone flag and cup position.

@@ -14,6 +14,7 @@ analyte-config.workspace = true
 analyte-astm.workspace = true
 analyte-hl7.workspace = true
 analyte-vidas.workspace = true
+analyte-autolyser.workspace = true
 thiserror.workspace = true
 jiff.workspace = true
 

@@ -1,6 +1,6 @@
 //! Outbound mapping never searches or reverses the incoming result table.
 use analyte_config::Validated;
-use analyte_model::{NamespacedId, SampleId, SourceText};
+use analyte_model::{NamespacedId, SampleId, SamplePosition};
 
 /// Explicit app priority, translated only by the outbound priority table.
 #[derive(Debug, Clone, Copy)]
@@ -32,7 +32,7 @@ pub struct AppOrder {
     /// Explicit priority from the app.
     pub priority: AppOrderPriority,
     /// Position supplied by the app, never invented by the bridge.
-    pub position: Option<SourceText>,
+    pub position: Option<SamplePosition>,
     /// Optional exact patient identifier; the namespace is checked before encoding.
     pub patient: Option<NamespacedId>,
     /// Specimen type evidence, never substituted for origin metadata.
@@ -45,6 +45,8 @@ pub enum MachineOrder {
     Astm(Vec<u8>),
     /// One validated request per assay, in the app's order.
     Vidas(Vec<analyte_vidas::syntax::Message>),
+    /// A complete validated host-initiated insertion.
+    Autolyser(analyte_autolyser::records::Worklist),
 }
 
 impl MachineOrder {
@@ -54,7 +56,7 @@ impl MachineOrder {
     pub fn record(&self) -> Result<&[u8], OrderMappingError> {
         match self {
             Self::Astm(record) => Ok(record),
-            Self::Vidas(_) => Err(OrderMappingError::Disabled),
+            Self::Vidas(_) | Self::Autolyser(_) => Err(OrderMappingError::Disabled),
         }
     }
 }
@@ -74,6 +76,18 @@ pub enum OrderMappingError {
     /// The supplied specimen type has no wire mapping.
     #[error("unmapped-specimen-type")]
     UnmappedSpecimenType,
+    /// The machine requires a specimen medium supplied by the app.
+    #[error("missing-specimen-type")]
+    MissingSpecimenType,
+    /// No explicitly addressed cup can be encoded; zero is never invented.
+    #[error("invalid-cup-position")]
+    InvalidCupPosition,
+    /// Autolyser requires an explicit addressed cup.
+    #[error("missing-cup-position")]
+    MissingCupPosition,
+    /// An Autolyser field fails the documented fixed-width rules.
+    #[error("Autolyser request is not representable: {0}")]
+    Autolyser(#[from] analyte_autolyser::records::Error),
     /// A field exceeds its documented or installed ceiling.
     #[error("overlong-{0}")]
     Overlong(&'static str),
@@ -89,8 +103,8 @@ pub enum OrderMappingError {
     /// Priority has no explicit translation.
     #[error("unmapped order priority")]
     UnmappedPriority,
-    /// Input cannot be represented under the declared ASTM repertoire and bounds.
-    #[error("order cannot be represented within the configured ASTM bounds")]
+    /// Input cannot be represented under the selected protocol repertoire and bounds.
+    #[error("order cannot be represented within the configured protocol bounds")]
     Representation,
 }
 
@@ -103,6 +117,9 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
     let settings = machine.orders.as_ref().ok_or(OrderMappingError::Disabled)?;
     if machine.syntax.kind == analyte_config::SyntaxKind::VidasLiteral {
         return vidas(order, machine, settings);
+    }
+    if machine.syntax.kind == analyte_config::SyntaxKind::Autolyser {
+        return autolyser(order, machine, settings);
     }
     let astm = settings.astm.as_ref().ok_or(OrderMappingError::Disabled)?;
     let limits = &machine.syntax;
@@ -140,10 +157,15 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
             .position
             .as_ref()
             .ok_or(OrderMappingError::MissingPosition)?;
-        if value.as_str().is_empty() {
+        if value.slot.as_str().is_empty() {
             return Err(OrderMappingError::MissingPosition);
         }
-        set(&mut fields, position, value.as_str(), limits.components)?;
+        set(
+            &mut fields,
+            position,
+            value.slot.as_str(),
+            limits.components,
+        )?;
     }
     let prefix = "^".repeat(usize::from(astm.test.component).saturating_sub(1));
     if settings.tests.iter().any(|t| {
@@ -300,4 +322,87 @@ fn vidas(
         requests.push(request);
     }
     Ok(MachineOrder::Vidas(requests))
+}
+
+fn autolyser(
+    order: &AppOrder,
+    machine: &analyte_config::Machine,
+    settings: &analyte_config::Orders,
+) -> Result<MachineOrder, OrderMappingError> {
+    use analyte_autolyser::records::{Field, List, PatientCode, Sample, Worklist};
+    if !machine.autolyser.as_ref().is_some_and(|a| a.download) {
+        return Err(OrderMappingError::Disabled);
+    }
+    let patient = patient(order, settings)?;
+    if patient.len() > 15 {
+        return Err(OrderMappingError::Overlong("patient-id"));
+    }
+    let mut padded = [b' '; 15];
+    padded
+        .get_mut(..patient.len())
+        .ok_or(OrderMappingError::Overlong("patient-id"))?
+        .copy_from_slice(patient.as_bytes());
+    let patient = PatientCode::new(&padded)?;
+    let specimen = order
+        .specimen_type
+        .as_ref()
+        .ok_or(OrderMappingError::MissingSpecimenType)?;
+    let mapped = settings
+        .specimen_types
+        .as_ref()
+        .and_then(|types| types.iter().find(|t| t.app == *specimen))
+        .ok_or(OrderMappingError::UnmappedSpecimenType)?;
+    let sample = match mapped.machine.as_str() {
+        "S" => Sample::Serum,
+        "U" => Sample::Urine,
+        _ => return Err(OrderMappingError::UnmappedSpecimenType),
+    };
+    let priority = settings
+        .priorities
+        .iter()
+        .find(|p| p.app.as_str() == order.priority.code())
+        .ok_or(OrderMappingError::UnmappedPriority)?;
+    let list = match priority.machine.as_str() {
+        "T" => List::Routine,
+        "R" => List::Stat,
+        _ => return Err(OrderMappingError::UnmappedPriority),
+    };
+    let position = order
+        .position
+        .as_ref()
+        .ok_or(OrderMappingError::MissingCupPosition)?;
+    let slot = position.slot.as_str();
+    if slot.is_empty() || slot.len() > 2 || !slot.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(OrderMappingError::InvalidCupPosition);
+    }
+    let position = slot
+        .parse::<u8>()
+        .map_err(|_| OrderMappingError::InvalidCupPosition)?;
+    if !(1..=99).contains(&position) {
+        return Err(OrderMappingError::InvalidCupPosition);
+    }
+    if order.tests.is_empty()
+        || order.tests.len() > 99
+        || order.tests.len() > machine.syntax.repetitions
+    {
+        return Err(OrderMappingError::Representation);
+    }
+    let mut tests = Vec::new();
+    for test in &order.tests {
+        let mapped = settings
+            .tests
+            .iter()
+            .find(|t| t.app == *test)
+            .ok_or_else(|| OrderMappingError::UnmappedTest(test.clone()))?;
+        let [code] = mapped.machine_components.as_slice() else {
+            return Err(OrderMappingError::Representation);
+        };
+        tests.push(Field::<4>::new(code.as_bytes())?);
+    }
+    let clone = settings.clone.ok_or(OrderMappingError::Disabled)?;
+    let worklist = Worklist::new(patient, list, sample, clone, position, tests)?;
+    if worklist.encode().len() > machine.syntax.bytes {
+        return Err(OrderMappingError::Representation);
+    }
+    Ok(MachineOrder::Autolyser(worklist))
 }
