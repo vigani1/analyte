@@ -101,11 +101,14 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-contract`  | The app contract: documents, signing, validation (ADR 0008)   |
 | `analyte-sink`      | Delivery to apps and order polling                           |
 | `analyte-sim`       | Fake machine and replay of recordings                        |
+| `analyte-poct`      | POCT01-A2 DML Observation Reviewer (XML)                     |
+| `analyte-vidas`     | VIDAS Literal framing and tagged messages                    |
+| `analyte-autolyser` | Autolyser host-polled framing and fixed-width records        |
 | `analyte-receiver`  | Reference receiver: a small app that implements the contract |
 | `analyte`           | The program: service, CLI, admin page                        |
 
-Vendor formats (VIDAS, Autolyser) and POCT1-A get their own crates when they
-are built.
+Vendor formats and POCT1-A have their own crates, so a new vendor format is a
+new crate rather than a change to a shared one.
 
 ## 6. Common model
 
@@ -130,6 +133,8 @@ are built.
   operator; Analyte never invents a result key from sample, test, value or
   time. Different content under the same trusted identity is an error, never
   a silent replacement.
+- **Revisions** are assigned by the store from the identity and the retained
+  history, in the same transaction as the interpretation (rules in ADR 0003).
 - **Sample identity:** ID as a string with its source, plus position (rack or
   disk, slot) when the machine reports one.
 - **Values:** original text, parsed number with comparator and precision when

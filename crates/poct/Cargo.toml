@@ -1,0 +1,22 @@
+[package]
+name = "analyte-poct"
+description = "POCT01-A2 Basic Profile Observation Reviewer: pure syntax, dialog and mapping."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+quick-xml.workspace = true
+thiserror.workspace = true
+
+jiff.workspace = true
+analyte-model.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

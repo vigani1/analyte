@@ -1,4 +1,345 @@
-//! Mapping from parsed ASTM and HL7 messages to the common model, driven by
-//! machine config: no clinical decisions, no guessed values.
-
+//! Pure, bounded mapping of documented LIS02 and HL7 laboratory results.
+//! The caller retains the receipt and parks any output with findings.
 #![forbid(unsafe_code)]
+
+mod identity;
+mod map;
+mod result;
+mod source;
+mod time;
+mod value;
+
+use analyte_config::{SyntaxKind, Validated};
+use analyte_model::*;
+
+/// One-based source record/segment and field; field zero denotes the record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    /// One-based occurrence in the complete message.
+    pub record: usize,
+    /// Standard field position, zero for whole-record failures.
+    pub field: usize,
+}
+
+/// Mapping failure: keep the raw receipt and park it without delivering partial output.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// The validated config belongs to another syntax family.
+    #[error("configuration syntax does not match the parsed message")]
+    Syntax,
+    /// A bound was reached before producing a partial success.
+    #[error("{position:?}: {resource} limit exceeded")]
+    Limit {
+        /// Source location.
+        position: Position,
+        /// Exhausted bound.
+        resource: &'static str,
+    },
+    /// Source structure cannot safely establish field ownership.
+    #[error("{position:?}: {reason}")]
+    Structure {
+        /// Source location.
+        position: Position,
+        /// Specific structural failure.
+        reason: &'static str,
+    },
+    /// Bytes cannot be represented as source text in the declared encoding.
+    #[error("{position:?}: invalid source encoding")]
+    Encoding {
+        /// Source location.
+        position: Position,
+    },
+    /// A common-model text constraint failed.
+    #[error("{position:?}: {source}")]
+    Text {
+        /// Source location.
+        position: Position,
+        /// Exact violated constraint.
+        source: TextError,
+    },
+    /// HL7 control validation failed.
+    #[error("{position:?}: {source}")]
+    Hl7 {
+        /// Source location.
+        position: Position,
+        /// Original control error.
+        source: analyte_hl7::Error,
+    },
+}
+
+/// Host-owned identity, receive time and revision; mapping performs no I/O.
+#[derive(Debug, Clone, Copy)]
+pub struct Input {
+    /// Receipt already retained by the host.
+    pub receipt: ReceiptId,
+    /// Host receive instant.
+    pub received_at: jiff::Timestamp,
+    /// Explicit caller-assigned revision, never derived from source status.
+    pub revision: Revision,
+}
+
+/// A problem requiring host review; contains positions rather than patient data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Problem {
+    /// Sample selector is missing, empty or explicitly null.
+    MissingSample,
+    /// No unique source code/system translation exists.
+    UnknownTest,
+    /// A required identity selector is missing, empty or null.
+    MissingIdentity {
+        /// Configuration key requiring evidence.
+        setting: &'static str,
+    },
+    /// A source value type cannot be interpreted safely.
+    UnsupportedValue,
+    /// Message processing code is unknown or absent.
+    UnknownProcessing,
+    /// QC rules produce conflicting classifications.
+    ConflictingClassification,
+    /// No source observation was present; retain the message for reconciliation.
+    NoObservations,
+    /// Source time could not be interpreted; original text survives.
+    InvalidTime,
+}
+
+/// Positioned mapping problem; every finding prevents automatic delivery.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Finding {
+    /// Source location, with field zero when ownership itself is missing.
+    pub position: Position,
+    /// Specific issue for operator reconciliation.
+    pub problem: Problem,
+}
+
+/// One replacement unit and correction evidence in the same order as its parts.
+#[derive(Debug)]
+pub struct MappedResult {
+    /// Common-model content; revision came from the caller.
+    pub content: ResultContent,
+    /// Whether each source status is an explicitly configured correction code.
+    pub corrections: EvidenceList<bool>,
+}
+
+/// A source observation that cannot supply a nonempty namespaced test code.
+#[derive(Debug)]
+pub struct UnmappedObservation {
+    /// Original source position.
+    pub position: Position,
+    /// Original values retained even without a representable test identity.
+    pub values: EvidenceList<ResultValue>,
+}
+
+/// A note with its exact parent hierarchy, even when that parent has no result.
+#[derive(Debug)]
+pub struct SourceComment {
+    /// Position of the C or NTE record.
+    pub position: Position,
+    /// Path to the parent; source occurrences disambiguate repeated parents.
+    pub parent_path: EvidenceList<SourceNode>,
+    /// Original note field, without normalization.
+    pub text: SourceText,
+}
+
+/// All mapped and unrepresentable observations, together with every discovered issue.
+#[derive(Debug)]
+pub struct Output {
+    /// Replacement units, in first-occurrence order.
+    pub results: Vec<MappedResult>,
+    /// Observations requiring a code/system decision; never silently discarded.
+    pub unmapped: Vec<UnmappedObservation>,
+    /// Every issue found during mapping.
+    pub findings: Vec<Finding>,
+    /// All notes once, with their parents; result parts also expose applicable text.
+    pub comments: Vec<SourceComment>,
+    evidence_budget: usize,
+}
+
+impl Output {
+    /// True when the host must park this receipt; callers must check this before delivery.
+    #[must_use]
+    pub fn requires_parking(&self) -> bool {
+        !self.findings.is_empty()
+            || !self.unmapped.is_empty()
+            || self.results.iter().any(|r| r.content.requires_parking())
+    }
+}
+
+/// Maps one parsed LIS02 message, retaining hierarchy and original value text.
+/// # Errors
+/// Rejects a mismatched config, invalid ownership, encoding or model resource bounds.
+pub fn map_astm(
+    message: &analyte_astm::Message,
+    config: &Validated,
+    input: Input,
+) -> Result<Output, Error> {
+    if config.effective().machine().syntax.kind != SyntaxKind::AstmLis02 {
+        return Err(Error::Syntax);
+    }
+    let settings = &config.effective().machine().syntax;
+    if message.records().len() > settings.records {
+        return Err(Error::Limit {
+            position: Position {
+                record: 0,
+                field: 0,
+            },
+            resource: "records",
+        });
+    }
+    let mut bytes = 0_usize;
+    for (index, record) in message.records().iter().enumerate() {
+        bytes = bytes
+            .checked_add(record.raw().len())
+            .and_then(|b| b.checked_add(1))
+            .ok_or(Error::Limit {
+                position: Position {
+                    record: index.saturating_add(1),
+                    field: 0,
+                },
+                resource: "message bytes",
+            })?;
+        if bytes > settings.bytes || record.raw().len() > settings.record_bytes {
+            return Err(Error::Limit {
+                position: Position {
+                    record: index.saturating_add(1),
+                    field: 0,
+                },
+                resource: "message or record bytes",
+            });
+        }
+    }
+    let mut source = source::astm(message);
+    source.charset = match settings.encoding {
+        analyte_config::Encoding::Ascii => analyte_hl7::Charset::Ascii,
+        analyte_config::Encoding::Latin1 => analyte_hl7::Charset::Latin1,
+        analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
+    };
+    source.attach_comments()?;
+    map::message(&source, config, input)
+}
+
+/// Maps ORU R01 or OUL R22 (2.5.1 only), with group-relative selectors.
+/// # Errors
+/// Rejects unsupported/misplaced segments rather than guessing group ownership.
+pub fn map_hl7(
+    message: &analyte_hl7::Message,
+    config: &Validated,
+    input: Input,
+) -> Result<Output, Error> {
+    if config.effective().machine().syntax.kind != SyntaxKind::Hl7V2 {
+        return Err(Error::Syntax);
+    }
+    if config
+        .effective()
+        .hl7_options()
+        .is_none_or(|o| o.charset != message.charset())
+    {
+        return Err(Error::Syntax);
+    }
+    let settings = &config.effective().machine().syntax;
+    if message.raw().len() > settings.bytes || message.segments().count() > settings.records {
+        return Err(Error::Limit {
+            position: Position {
+                record: 0,
+                field: 0,
+            },
+            resource: "message bytes or segments",
+        });
+    }
+    let mut source = source::hl7(message)?;
+    let version = analyte_hl7::Msh::new(message)
+        .map_err(|source| Error::Hl7 {
+            position: Position {
+                record: 1,
+                field: 12,
+            },
+            source,
+        })?
+        .version();
+    if !matches!(
+        (settings.edition, version),
+        (
+            Some(analyte_config::Edition::V231),
+            analyte_hl7::Version::V231
+        ) | (
+            Some(analyte_config::Edition::V251),
+            analyte_hl7::Version::V251
+        )
+    ) {
+        return Err(Error::Structure {
+            position: Position {
+                record: 1,
+                field: 12,
+            },
+            reason: "message edition disagrees with validated configuration",
+        });
+    }
+    source.attach_comments()?;
+    map::message(&source, config, input)
+}
+
+fn text(value: &str, position: Position) -> Result<SourceText, Error> {
+    SourceText::new(value).map_err(|source| Error::Text { position, source })
+}
+
+fn identifier(value: &str, position: Position) -> Result<Identifier, Error> {
+    Identifier::new(value).map_err(|source| Error::Text { position, source })
+}
+
+fn list<T>(entries: Vec<T>, position: Position) -> Result<EvidenceList<T>, Error> {
+    EvidenceList::new(entries).map_err(|_| Error::Limit {
+        position,
+        resource: "evidence entries",
+    })
+}
+
+fn present(value: Option<String>) -> Option<String> {
+    value.filter(|s| !s.is_empty() && s != "\"\"")
+}
+
+fn finding(output: &mut Output, position: Position, problem: Problem) -> Result<(), Error> {
+    if output.findings.len() == 65536 {
+        return Err(Error::Limit {
+            position,
+            resource: "findings",
+        });
+    }
+    output.findings.push(Finding { position, problem });
+    Ok(())
+}
+
+fn reserve_evidence(
+    output: &mut Output,
+    source: &source::Source<'_>,
+    index: usize,
+) -> Result<(), Error> {
+    let position = source.position(index, 0);
+    // Charge ancestors and their notes before copying. Repeated parent evidence
+    // can expand a small message, so the source byte bound alone is insufficient.
+    let mut bytes = 65536_usize;
+    for ancestor in source.ancestors(index)? {
+        let node = source.nodes.get(ancestor).ok_or(Error::Structure {
+            position,
+            reason: "evidence owner missing",
+        })?;
+        for size in std::iter::once(source.raw_size(ancestor))
+            .chain(node.comments.iter().map(|i| source.raw_size(*i)))
+        {
+            bytes = size
+                .checked_mul(16)
+                .and_then(|size| bytes.checked_add(size))
+                .ok_or(Error::Limit {
+                    position,
+                    resource: "expanded evidence budget",
+                })?;
+        }
+    }
+    output.evidence_budget = output
+        .evidence_budget
+        .checked_add(bytes)
+        .filter(|bytes| *bytes <= 67_108_864)
+        .ok_or(Error::Limit {
+            position,
+            resource: "expanded evidence budget",
+        })?;
+    Ok(())
+}

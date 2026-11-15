@@ -1,0 +1,19 @@
+[package]
+name = "analyte-vidas"
+description = "bioMérieux VIDAS vendor format: Literal framing and the tagged message syntax."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+analyte-model.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

@@ -39,6 +39,10 @@ pub struct Delivery {
 
 /// One claimed delivery; cancellation leaves it in flight for reconciliation.
 pub struct Claim {
+    /// Endpoint category retained at enqueue.
+    pub kind: DeliveryKind,
+    /// Number of durably recorded earlier attempts.
+    pub earlier_attempts: u64,
     /// Identity reused on every retry.
     pub id: DeliveryId,
     /// Exact stored bytes.
@@ -137,4 +141,46 @@ pub enum Lookup {
     NoOrders,
     /// No safe answer can be given.
     NotTrusted,
+}
+
+/// Disjoint endpoint categories; their ordering domains never overlap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeliveryKind {
+    /// Clinical result tied to an interpretation.
+    Result,
+    /// Order lifecycle evidence tied to an app order.
+    OrderEvent,
+}
+
+/// Immutable order lifecycle delivery, independent of result evidence.
+pub struct OrderEventDelivery {
+    /// Stable delivery identity.
+    pub id: DeliveryId,
+    /// Configured app destination.
+    pub destination: Identifier,
+    /// App order identity, also its ordering key.
+    pub order_id: Identifier,
+    /// Exact contract bytes.
+    pub payload: Vec<u8>,
+    /// Captured wire contract version.
+    pub contract_version: u32,
+}
+
+/// Durable destination status. Cache freshness is evaluated by the host.
+#[derive(Debug)]
+pub struct Health {
+    /// Unresolved deliveries, including paused, parked and in-flight items.
+    pub pending_count: u64,
+    /// Exact bytes held by unresolved deliveries.
+    pub pending_bytes: u64,
+    /// Seconds since oldest enqueue; absent when empty or clock moved backwards.
+    pub oldest_pending_age: Option<u64>,
+    /// At least one delivery has paused this destination.
+    pub paused: bool,
+    /// Last committed successful page time.
+    pub last_successful_poll: Option<i64>,
+    /// A complete snapshot has been committed.
+    pub snapshot_complete: bool,
+    /// Store trusts the snapshot; the host must also check freshness.
+    pub cache_trusted: bool,
 }

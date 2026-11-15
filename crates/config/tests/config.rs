@@ -93,7 +93,7 @@ fn adr_0003_identity_remains_unresolved_without_evidence() -> Result<(), Error> 
             .machine()
             .mappings
             .identity
-            .rerun
+            .run
             .is_empty()
     );
     assert!(
@@ -102,8 +102,9 @@ fn adr_0003_identity_remains_unresolved_without_evidence() -> Result<(), Error> 
             .machine()
             .mappings
             .identity
-            .correction
-            .is_empty()
+            .correction_status_codes
+            .iter()
+            .all(|code| code.as_str() == "C")
     );
     Ok(())
 }
@@ -154,6 +155,67 @@ fn adr_0007_vendor_departures_need_named_reasons() -> Result<(), Error> {
             .framing
             .limit,
         247
+    );
+    Ok(())
+}
+
+#[test]
+fn adr0003_identity_settings_are_required_and_unknown_keys_are_rejected() {
+    for (setting, line) in [
+        (
+            "order_id",
+            "order_id = {group=\"order\",record=\"O\",field=3,component=1,repetition=1}\n",
+        ),
+        (
+            "order_namespace",
+            "order_namespace = {fixed=\"synthetic-orders\"}\n",
+        ),
+    ] {
+        let missing = ASTM
+            .lines()
+            .filter(|candidate| !candidate.starts_with(line.trim_end()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            matches!(draft(&missing, OVERRIDES), Err(Error::MissingIdentitySetting { setting: actual, .. }) if actual == setting)
+        );
+    }
+    let unknown = ASTM.replace("run = []", "rerun = []");
+    assert!(
+        matches!(draft(&unknown, OVERRIDES), Err(Error::Schema { source, .. }) if source.message().contains("unknown field `rerun`"))
+    );
+    let ambiguous = ASTM.replace(
+        "{fixed=\"synthetic-orders\"}",
+        "{fixed='orders', field={group='order',record='O',field=3,component=1,repetition=1}}",
+    );
+    assert!(matches!(
+        draft(&ambiguous, OVERRIDES),
+        Err(Error::Schema { .. })
+    ));
+}
+
+#[test]
+fn adr0003_identity_selectors_are_validated() -> Result<(), Error> {
+    let bad = ASTM.replace(
+        "order_id = {group=\"order\",record=\"O\",field=3",
+        "order_id = {group=\"order\",record=\"O\",field=0",
+    );
+    assert!(
+        matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.order_id")
+    );
+    let bad = ASTM.replace(
+        "run = []",
+        "run = [{group='observation',record='R',field=0,component=1,repetition=1}]",
+    );
+    assert!(
+        matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.run")
+    );
+    let bad = ASTM.replace(
+        "correction_status_codes = [\"C\"]",
+        "correction_status_codes = ['C','C']",
+    );
+    assert!(
+        matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.correction_status_codes")
     );
     Ok(())
 }

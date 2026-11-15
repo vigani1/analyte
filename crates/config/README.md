@@ -41,3 +41,12 @@ The loader cannot certify recordings or raise evidence. Hosts must apply the
 selected HL7 edition to message headers, the ASTM text decoder and the declared
 mapping/deviation rules. Protocol syntax success alone is not clinical acceptance.
 Credential references must resolve through host-owned protected storage.
+
+`mappings.identity` requires `order_id` and `order_namespace`. Namespace is
+exactly `{fixed="system"}` or `{field=<selector>}`. `sub_id` is a selector or the
+literal `"none"`; only that declaration deliberately supplies an empty sub-ID.
+`run` is an ordered selector list, empty when no run evidence exists.
+`correction_status_codes` is an explicit list of source correction codes, not
+revision numbers. The former retransmission/correction/rerun lists are rejected
+as unknown keys. Missing required order settings have a positioned configuration
+error; selected evidence missing from a message remains unresolved in mapping.
