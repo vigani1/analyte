@@ -448,8 +448,7 @@ mod alert_program_tests {
         let path = temp.path().join("program.toml");
         std::fs::write(&path, &original)?;
         assert!(Program::load(&path)?.alerts().is_empty());
-        let policy =
-            "\n[[alerts]]\nkind='restore_paused'\nthreshold=1\nresponder='lab duty officer'\n";
+        let policy = "\n[[alerts]]\nkind='restore_paused'\nresponder='lab duty officer'\n";
         std::fs::write(&path, format!("{original}{policy}"))?;
         assert_eq!(Program::load(&path)?.alerts().len(), 1);
         std::fs::write(&path, format!("{original}{policy}{policy}"))?;

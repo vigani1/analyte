@@ -46,7 +46,7 @@ pub enum AlertKind {
     UncertainOrders,
     /// Parked item count strictly above the threshold.
     ParkedItems,
-    /// Restore reconciliation pause; threshold is one.
+    /// Restore reconciliation pause; has no threshold.
     RestorePaused,
 }
 
@@ -54,7 +54,7 @@ pub enum AlertKind {
 #[derive(Debug, Clone)]
 pub struct Alert {
     kind: AlertKind,
-    threshold: u64,
+    threshold: Option<u64>,
     responder: String,
     machine: Option<analyte_model::Identifier>,
 }
@@ -64,9 +64,9 @@ impl Alert {
     pub fn kind(&self) -> AlertKind {
         self.kind
     }
-    /// Returns seconds, bytes, count or one, according to the kind.
+    /// Returns seconds, bytes, or count; restore pause has no threshold.
     #[must_use]
-    pub fn threshold(&self) -> u64 {
+    pub fn threshold(&self) -> Option<u64> {
         self.threshold
     }
     /// Borrows the named role or person.
@@ -85,7 +85,7 @@ impl Alert {
 #[serde(deny_unknown_fields)]
 pub(super) struct DraftAlert {
     kind: String,
-    threshold: u64,
+    threshold: Option<u64>,
     responder: String,
     machine: Option<analyte_model::Identifier>,
 }
@@ -114,21 +114,25 @@ impl DraftAlert {
             AlertKind::OldestUndelivered
             | AlertKind::MachineSilent
             | AlertKind::OrderCacheStale => {
-                if !(1..=31_536_000).contains(&self.threshold) {
+                if !(1..=31_536_000).contains(&self.threshold.ok_or(AlertConfigError::Threshold)?) {
                     return Err(AlertConfigError::Threshold);
                 }
             }
             AlertKind::DiskReserve => {
                 reserve
-                    .checked_add(self.threshold)
+                    .checked_add(self.threshold.ok_or(AlertConfigError::Threshold)?)
                     .ok_or(AlertConfigError::Threshold)?;
             }
             AlertKind::RestorePaused => {
-                if self.threshold != 1 {
+                if self.threshold.is_some() {
                     return Err(AlertConfigError::Threshold);
                 }
             }
-            AlertKind::UncertainOrders | AlertKind::ParkedItems => {}
+            AlertKind::UncertainOrders | AlertKind::ParkedItems => {
+                if self.threshold.is_none_or(|value| value > i64::MAX as u64) {
+                    return Err(AlertConfigError::Threshold);
+                }
+            }
         }
         Ok(Alert {
             kind,
@@ -149,7 +153,7 @@ mod tests {
     fn draft(kind: &str, threshold: u64) -> DraftAlert {
         DraftAlert {
             kind: kind.into(),
-            threshold,
+            threshold: Some(threshold),
             responder: "lab duty officer".into(),
             machine: None,
         }
@@ -162,7 +166,6 @@ mod tests {
             "order_cache_stale",
             "uncertain_orders",
             "parked_items",
-            "restore_paused",
         ] {
             assert!(draft(kind, 1).validate(100).is_ok());
         }
@@ -191,6 +194,23 @@ mod tests {
             draft("restore_paused", 0).validate(100).unwrap_err(),
             AlertConfigError::Threshold
         );
+        let mut pause = draft("restore_paused", 1);
+        pause.threshold = None;
+        assert!(pause.validate(100).is_ok());
+        for kind in [
+            "oldest_undelivered",
+            "disk_reserve",
+            "order_cache_stale",
+            "uncertain_orders",
+            "parked_items",
+        ] {
+            let mut policy = draft(kind, 1);
+            policy.threshold = None;
+            assert_eq!(
+                policy.validate(100).unwrap_err(),
+                AlertConfigError::Threshold
+            );
+        }
         assert!(draft("uncertain_orders", 0).validate(100).is_ok());
     }
     #[test]
@@ -202,6 +222,7 @@ mod tests {
             "role\nsecond".into(),
         ] {
             let mut policy = draft("restore_paused", 1);
+            policy.threshold = None;
             policy.responder = responder;
             assert_eq!(
                 policy.validate(100).unwrap_err(),
