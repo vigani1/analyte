@@ -240,7 +240,7 @@ async fn process(
             // The pure failure names a segment/field but not its occurrence. Only
             // report a wire location when the original proves it is unambiguous.
             error_location = failure.location().and_then(|location| {
-                super::hl7_error::Location::unique(&message, &location.segment, location.field)
+                super::hl7_error::Location::unique(&message, location.segment, location.field)
             });
             (
                 failure

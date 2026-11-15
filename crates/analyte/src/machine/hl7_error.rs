@@ -45,7 +45,10 @@ impl Location {
             .get(..3)?
             .try_into()
             .ok()?;
-        if !segment.iter().all(u8::is_ascii_uppercase) {
+        if !segment
+            .iter()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+        {
             return None;
         }
         let occurrence = segments()
@@ -144,5 +147,75 @@ pub(crate) fn build<'a>(
             application_code,
         },
         None => AckError::unlocated(code, application_code),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hl7_251_2_15_5_2_location_requires_source_occurrence_and_keeps_numeric_segment_ids() {
+        let raw = b"MSH|^~\\&|\rPV1|1\rOBX|1\rOBX|2\r";
+        let precise = syntax_location(
+            &analyte_hl7::Error::Escape {
+                segment: 4,
+                field: 5,
+                offset: 0,
+            },
+            raw,
+            Terminator::Cr,
+        );
+        let error = build(precise.as_ref(), b"102", b"synthetic");
+        assert_eq!(
+            (error.segment, error.occurrence, error.field),
+            (b"OBX".as_slice(), 2, 5)
+        );
+        assert!(
+            syntax_location(
+                &analyte_hl7::Error::Control {
+                    segment: "OBX",
+                    field: 5
+                },
+                raw,
+                Terminator::Cr
+            )
+            .is_none()
+        );
+        let precise = syntax_location(
+            &analyte_hl7::Error::Control {
+                segment: "PV1",
+                field: 2,
+            },
+            raw,
+            Terminator::Cr,
+        );
+        let error = build(precise.as_ref(), b"102", b"synthetic");
+        assert_eq!(
+            (error.segment, error.occurrence, error.field),
+            (b"PV1".as_slice(), 1, 2)
+        );
+        assert!(
+            Location::at(
+                raw,
+                Terminator::Cr,
+                Position {
+                    record: 99,
+                    field: 5
+                }
+            )
+            .is_none()
+        );
+        assert!(
+            Location::at(
+                raw,
+                Terminator::Cr,
+                Position {
+                    record: 4,
+                    field: 0
+                }
+            )
+            .is_none()
+        );
     }
 }
