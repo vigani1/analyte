@@ -1,4 +1,4 @@
-# Synthetic query-work policy to append to examples/law.toml; documented only.
+# Synthetic LAW work policy to append to examples/law.toml; documented only.
 [law.work]
 application = "HOST"
 facility = "LAB"
@@ -10,6 +10,7 @@ specimen_role = "P"
 specimen_system = "HL70487"
 
 [orders]
+# Set true to admit unsolicited LAB-28 on the current connection.
 send_ahead = false
 placer_namespace = "LAB"
 tests = [{app={namespace="synthetic",value="TEST"},machine_components=["SYN","Synthetic","99LAB"]}]

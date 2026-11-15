@@ -564,4 +564,8 @@ The negative-query builder projects received EI values to the C.11 manager-autho
 EI.1 subset, while RSP retains its exact QPD echo. Qualified-container regression
 coverage is in `law_tf2b_3_28_4_negative_lab28_for_genuine_no_work`. Host reservation,
 ORL and failure evidence is in the program's `tests/law/queries.rs`. Unsolicited
-send-ahead/cancellation and full link conformance are still separate host gates.
+send-ahead/cancellation now reuse that host path (step 4), including existing
+`WorkAction::Cancel` and `AwosOutcome::CancelAccepted`/`UnableToCancel`; no new
+protocol API was needed. Seven program/reference-receiver tests in
+`tests/law/work.rs` cover outcomes, restore pause and recovery without resend.
+Independent directional links and Gazelle remain separate host gates.

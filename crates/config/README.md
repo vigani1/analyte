@@ -140,7 +140,7 @@ processing, specimen placement and response deadline are explicit. Test
 components are code/text/system. Position output is available only in ORM's
 other placer-owned OBR field; an OML position mapping is refused.
 
-## LAW configuration (results and query-triggered work)
+## LAW configuration (results, queries and work)
 
 `examples/law.toml` selects `dialog.kind = "law_manager"`, MLLP and HL7
 2.5.1. LAW requires UTF-8, CR segments, strict escapes and store-and-forward
@@ -161,9 +161,11 @@ only explicit C correction status and cannot select legacy display queries or
 non-LAW order layouts.
 
 The declarations have documented evidence in `tests/law.rs`. The program now
-runs LAB-29 results and configured LAB-27 query/followup exchanges. Other connection
-roles, unsolicited send-ahead and cancellation remain disabled. `send_ahead = true`
-is rejected for this checkpoint. Trusted empty uses the restricted negative
+runs LAB-29 results, configured LAB-27 followups, unsolicited LAB-28 with
+`orders.send_ahead = true`, and app-requested cancellation of previously accepted
+work (including queried work with send-ahead disabled). No attempt is resent.
+Other connection roles and independent links remain unwired; the current runtime
+uses the existing analyzer-initiated TCP connection. Trusted empty uses the restricted negative
 LAB-28; untrusted, failed, stale, paused or late lookups receive an error RSP.
 
 The specimen namespace binds SPM-2 when supported; the container namespace binds
@@ -179,3 +181,13 @@ its type; no authority is guessed. When AWOS is null, an explicit OBR-3 analyzer
 order with its own assigning authority can identify unsolicited work; insufficient
 evidence remains unresolved and parked. The configured sample selector still
 owns sample identity; the example selects SAC-3.1 and preserves case/zeroes.
+
+LAW work preparation and writes use `dialog.send_timeout_ms`; `law.response_ms`
+starts after issuance for both work and cancel ORLs. Partial input still uses
+`dialog.receive_timeout_ms`, and queries retain their first-byte budget. Restore
+pause and stale/untrusted feed admission use the shared store checks. A failed
+idle lookup produces no work bytes and retains the receiving connection. Tests:
+`law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead` in this
+crate, and the program's source-named `tests/law/work.rs` matrix. TF-2b B.6's
+independent manager-initiated broadcast link and lifetime policy are step 5,
+not implied by enabling send-ahead here.

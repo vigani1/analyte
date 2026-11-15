@@ -1,22 +1,23 @@
-//! Query-triggered LAW work, TF-2b 3.27/3.28; shared cache, reservations and item outcomes.
+//! LAW work exchanges, TF-2b 3.27/3.28; shared cache, reservations and item outcomes.
+mod sending;
 mod work;
 use crate::{Error, config::Machine, deadline, evidence, invalid};
 use analyte_hl7::{AckCode, AckError, Message, Options, Responsibility, law};
 use analyte_model::{Identifier, OrderState, ReceiptId, SampleId, SourceText};
 use analyte_store::{
-    Handle, ItemDecision, ItemOutcome, Lookup, MachineOrder, MachineOrderKey, OrderItems,
-    OrderReservation, PendingOrders,
+    Handle, ItemDecision, ItemOutcome, Lookup, MachineOrder, MachineOrderKey, PendingOrders,
 };
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use work::{Command, address, render};
+use work::{address, render};
 
 pub(crate) struct Connection {
     owner: Identifier,
     reserving: Vec<MachineOrderKey>,
     exchange: Option<Exchange>,
+    cursor: String,
 }
 
 /// A positive availability response always owns its required LAB-28 followup.
@@ -29,7 +30,7 @@ struct Exchange {
     records: Vec<MachineOrder>,
     sent: Message,
     until: Instant,
-    query: ReceiptId,
+    query: Option<ReceiptId>,
 }
 
 impl Connection {
@@ -38,6 +39,7 @@ impl Connection {
             owner: Identifier::new(&uuid::Uuid::now_v7().to_string())?,
             reserving: Vec::new(),
             exchange: None,
+            cursor: String::new(),
         })
     }
     pub(crate) fn due(&self) -> Option<Instant> {
@@ -67,8 +69,7 @@ impl Connection {
             store
                 .request(deadline(), move |store| {
                     if let Some(record) = store.machine_order(&key)?
-                        && record.state == OrderState::Sending
-                        && record.reserved_by(&owner)
+                        && (record.reserved_by(&owner) || record.cancel_requested_by(&owner))
                     {
                         let outcomes = record
                             .items
@@ -210,12 +211,6 @@ impl Connection {
                 .ok_or("LAW work layout absent")?
                 .clone(),
         );
-        let settings = Arc::new(
-            cfg.orders
-                .as_ref()
-                .ok_or("LAW order mappings absent")?
-                .clone(),
-        );
         let sample = match query.scope() {
             law::Scope::Container(id) => {
                 let mut parts = id.raw().split(|byte| *byte == b'^');
@@ -305,62 +300,7 @@ impl Connection {
                 Ok(found)
             })
             .await?;
-        let mut prepared = Vec::new();
-        let peer = cfg.law.as_ref().ok_or("LAW")?.peer.capabilities();
-        for cached in cached {
-            let app: analyte_contract::Order =
-                analyte_contract::decode(cached.document.as_bytes())?;
-            if !super::eligible(&app, machine) {
-                continue;
-            }
-            if Instant::now() >= until {
-                return Err(invalid("LAW query deadline before reservation"));
-            }
-            let command = Command {
-                app: super::app_order(&app)?,
-                settings: settings.clone(),
-                work: work.clone(),
-                priority: peer.priority,
-                specimen: peer.specimen,
-            };
-            let key = MachineOrderKey {
-                destination: super::destination(machine),
-                order: cached.id,
-                machine: machine.id.clone(),
-            };
-            let version = app.fields().version;
-            let identity = key.clone();
-            let owner = self.owner.clone();
-            let namespace = settings
-                .placer_namespace
-                .clone()
-                .ok_or("LAW placer namespace absent")?;
-            self.reserving.push(key);
-            let reserved = store
-                .request(until, move |store| {
-                    store.reserve_send_items_with(
-                        &OrderReservation {
-                            identity: &identity,
-                            version,
-                            now: jiff::Timestamp::now().as_second(),
-                            freshness: super::FRESHNESS_SECONDS,
-                        },
-                        OrderItems::PerTest {
-                            namespace: &namespace,
-                            identity_bytes: 50,
-                        },
-                        &owner,
-                        |record| {
-                            render(&[(&command, record)], options)
-                                .map_err(analyte_store::Error::DeliveryBuild)?;
-                            Ok(command)
-                        },
-                    )
-                })
-                .await?
-                .map_err(std::io::Error::other)?;
-            prepared.push((reserved.1, reserved.0));
-        }
+        let prepared = self.reserve(store, machine, cached, until, options).await?;
         if Instant::now() >= until {
             return Err(invalid("LAW query deadline after reservation"));
         }
@@ -378,7 +318,7 @@ impl Connection {
                 .iter()
                 .map(|(command, record)| (command, record))
                 .collect::<Vec<_>>();
-            render(&refs, options)?
+            render(&refs, law::WorkAction::New, options)?
         };
         let answer = if prepared.is_empty() {
             law::CacheAnswer::NoWork
@@ -395,11 +335,12 @@ impl Connection {
             response,
             work: followup.clone(),
         };
+        let prepared_query = prepared.is_empty().then_some(receipt);
         self.exchange = Some(Exchange {
             records: prepared.into_iter().map(|(_, record)| record).collect(),
             sent: followup,
             until,
-            query: receipt,
+            query: prepared_query,
         });
         Ok(outgoing)
     }
@@ -431,8 +372,7 @@ impl Connection {
         if let Err(error) = &response {
             evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
         }
-        if exchange.records.is_empty() {
-            let query = exchange.query;
+        if let Some(query) = exchange.query {
             let correlated = response.is_ok();
             let code = response
                 .as_ref()
@@ -478,12 +418,12 @@ impl Connection {
                             Some(law::AwosOutcome::UnableToAccept) => {
                                 (ItemDecision::Rejected, "LAW-UA".to_owned())
                             }
-                            Some(
-                                law::AwosOutcome::CancelAccepted | law::AwosOutcome::UnableToCancel,
-                            ) => (
-                                ItemDecision::Uncertain,
-                                "LAW-ORL-unexpected-cancel".to_owned(),
-                            ),
+                            Some(law::AwosOutcome::CancelAccepted) => {
+                                (ItemDecision::CancelConfirmed, "LAW-CR".to_owned())
+                            }
+                            Some(law::AwosOutcome::UnableToCancel) => {
+                                (ItemDecision::CancelRefused, "LAW-UC".to_owned())
+                            }
                             None => (ItemDecision::Uncertain, "LAW-ORL-item-missing".to_owned()),
                         }
                     }
@@ -503,10 +443,12 @@ impl Connection {
             let key = record.key.clone();
             store
                 .request(deadline(), move |store| {
-                    if store
-                        .machine_order(&key)?
-                        .is_some_and(|current| current.state == OrderState::Sending)
-                    {
+                    if store.machine_order(&key)?.is_some_and(|current| {
+                        matches!(
+                            current.state,
+                            OrderState::Sending | OrderState::CancelRequested
+                        )
+                    }) {
                         store.finish_order_items(
                             id,
                             &outcomes,

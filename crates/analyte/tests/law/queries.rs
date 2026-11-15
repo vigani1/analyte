@@ -1,5 +1,7 @@
 //! Synthetic program/reference-receiver LAB-27 and query-triggered LAB-28, TF-2b 3.27/3.28/B.7.
 use super::*;
+#[path = "work.rs"]
+mod work;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -59,39 +61,43 @@ async fn setup(
         reference.receiver.seed(batch.to_vec()).await?;
     }
     if paused {
-        let loaded = program(&path, &reference.url)?;
-        let mut store = analyte::open_system_store(&loaded).await?;
-        store
-            .request(
-                std::time::Instant::now()
-                    .checked_add(Duration::from_secs(5))
-                    .ok_or("deadline")?,
-                |store| {
-                    store.audit(&analyte_store::Audit {
-                        actor: analyte_model::Identifier::new("operator")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        action: analyte_model::Identifier::new("store-restore")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        targets: Vec::new(),
-                        time: jiff::Timestamp::now().as_second(),
-                        reason: analyte_model::Reason::new("synthetic restore")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
-                    })
-                },
-            )
-            .await?;
-        store
-            .shutdown(
-                std::time::Instant::now()
-                    .checked_add(Duration::from_secs(5))
-                    .ok_or("deadline")?,
-            )
-            .await?;
+        pause(&path, &reference.url).await?;
     }
     let running = Running::start(&path, &reference.url, "synthetic-api")?;
     let peer = connect(&path, "law").await?;
     ready(&path).await?;
     Ok((temp, path, reference, running, peer))
+}
+async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
+    let loaded = program(path, url)?;
+    let mut store = analyte::open_system_store(&loaded).await?;
+    store
+        .request(
+            std::time::Instant::now()
+                .checked_add(Duration::from_secs(5))
+                .ok_or("deadline")?,
+            |store| {
+                store.audit(&analyte_store::Audit {
+                    actor: analyte_model::Identifier::new("operator")
+                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    action: analyte_model::Identifier::new("store-restore")
+                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    targets: Vec::new(),
+                    time: jiff::Timestamp::now().as_second(),
+                    reason: analyte_model::Reason::new("synthetic restore")
+                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                })
+            },
+        )
+        .await?;
+    store
+        .shutdown(
+            std::time::Instant::now()
+                .checked_add(Duration::from_secs(5))
+                .ok_or("deadline")?,
+        )
+        .await?;
+    Ok(())
 }
 async fn ready(path: &Path) -> Result<(), Error> {
     tokio::time::timeout(Duration::from_secs(5), async {
@@ -192,7 +198,11 @@ async fn orl(
                 let code = codes.get(index).ok_or("ORL outcome missing")?;
                 replies.push(format!(
                     "ORC|{code}|{awos}|||{}\r",
-                    if *code == "OK" { "SC" } else { "CA" }
+                    match *code {
+                        "OK" => "SC",
+                        "UC" => "IP",
+                        _ => "CA",
+                    }
                 ));
                 index = index.checked_add(1).ok_or("index")?;
             }

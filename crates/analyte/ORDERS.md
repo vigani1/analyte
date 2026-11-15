@@ -52,7 +52,8 @@ send occurred. App events use the existing immutable delivery outbox.
 A reservation prevents another automatic send for that app order and machine,
 including after a version change or restart. A link timeout, interrupted transfer
 or disconnect before transfer confirmation becomes `Uncertain`. On restart,
-only remaining `Sending` entries become `Uncertain` with an app event; confirmed `Sent` entries remain `Sent`.
+remaining `Sending` and admitted `CancelRequested` entries become `Uncertain`
+with an app event; confirmed `Sent` entries remain `Sent`.
 
 LIS01 frame acknowledgments establish transfer completion, not application
 acceptance of a work order. Successful transfers advance from `Sending` to `Sent` with one app event; they do not
@@ -425,5 +426,45 @@ untrusted/paused/late lookups use AE. Neither makes a no-work claim.
 `tests/law/queries.rs` names the source sections for thirteen program/reference-receiver
 tests. Results-only config without a work layout remains covered by
 `tests/law/results.rs::law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_acceptance`.
-Send-ahead and cancellation (step 4), original-work result correlation, independent
-directional links and hardware/Gazelle qualification remain. Evidence is documented.
+This historical query checkpoint is extended by step 4 below. Original-work
+result correlation, independent directional links and hardware/Gazelle qualification
+remain. Evidence is documented.
+
+
+## LAW send-ahead and cancellation checkpoint (step 4)
+
+`orders.send_ahead = true` opts into unsolicited LAB-28 with the existing
+`law.work` bindings. One bounded candidate page is considered per idle interval.
+The same preflight and per-test reservation function admits queried and unsolicited
+work. One shared LAW builder, writer, pending exchange and ORL handler serve both.
+Each AWOS keeps its stored placer identity; only explicit per-AWOS OK/UA determines
+acceptance/rejection. Missing, late or inconsistent replies become Uncertain.
+
+App `cancel_requested` versions use the existing shared cancellation admission
+transaction and the LAW Cancel control. The retained AWOS IDs and test coverage
+identify each request; no new AWOS or item is allocated for cancellation. CR becomes
+CancelConfirmed; UC produces CancelRefused and preserves the preceding item state.
+Mixed cancellation outcomes remain per item and use the shared store's aggregate
+policy. Cancellation works for queried work even with send-ahead disabled. Each
+app cancellation version is admitted once, including after UC and restart.
+
+The shared restore pause helper blocks new and cancel admission. Idle read failures
+are reported without issuing bytes or converting them into an empty answer. Any
+owned in-flight store call is reconciled before continuing. Disconnect, response
+timeout, shutdown and restart cannot repeat work or cancel commands. Startup
+recovery now handles admitted CancelRequested attempts alongside Sending; both
+become Uncertain with retained item evidence and an app event.
+
+Seven tests in `tests/law/work.rs` (under `delivery.rs`) cite TF-2b 3.28.4/C.8 and
+ADR 0003: accepted/rejected/mixed AWOS; CR/UC/mixed cancellations; timeout and
+disconnect; crash during Sending or CancelRequested; restore pause for both
+admissions; preflight rejection with no bytes; and queried-work cancellation.
+They use temporary stores and the reference receiver. Accepted, rejected and
+cancelled/refused work also survives a restart without resend.
+
+Step 5 is deferred: TF-2b B.5 governs message acknowledgements; B.6 and TF-2x 2.2.4
+require independent analyzer- and manager-initiated links. This step keeps the
+existing analyzer-initiated connection and makes no topology-conformance claim.
+Splitting and coordinating query-triggered followups across independently opened
+links is a larger transport/config change. Existing receive, send, query and ORL
+deadlines remain configurable. No new dependency, stored format or contract change.

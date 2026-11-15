@@ -12,6 +12,28 @@ pub(super) struct Command {
     pub(super) priority: bool,
     pub(super) specimen: bool,
 }
+impl Command {
+    pub(super) fn new(
+        machine: &crate::config::Machine,
+        app: &analyte_contract::Order,
+    ) -> Result<Self, Error> {
+        let cfg = machine.snapshot.effective().machine();
+        let law = cfg.law.as_ref().ok_or("LAW settings absent")?;
+        let peer = law.peer.capabilities();
+        Ok(Self {
+            app: super::super::app_order(app)?,
+            settings: Arc::new(
+                cfg.orders
+                    .as_ref()
+                    .ok_or("LAW order mappings absent")?
+                    .clone(),
+            ),
+            work: Arc::new(law.work.as_ref().ok_or("LAW work layout absent")?.clone()),
+            priority: peer.priority,
+            specimen: peer.specimen,
+        })
+    }
+}
 struct WireAwos {
     id: String,
     specimen: String,
@@ -37,6 +59,7 @@ fn plain(value: &str) -> Result<&str, Error> {
 
 pub(super) fn render(
     commands: &[(&Command, &MachineOrder)],
+    action: law::WorkAction,
     options: Options,
 ) -> Result<Message, Error> {
     let (first, _) = commands.first().ok_or("LAW work empty")?;
@@ -54,7 +77,7 @@ pub(super) fn render(
             .as_ref()
             .and_then(|types| types.iter().find(|entry| entry.app == *specimen))
             .ok_or("LAW specimen type unmapped")?;
-        let priority = if command.priority {
+        let priority = if command.priority && action == law::WorkAction::New {
             let app = match command.app.priority {
                 analyte_mapping::AppOrderPriority::Routine => "routine",
                 analyte_mapping::AppOrderPriority::Urgent => "urgent",
@@ -115,7 +138,7 @@ pub(super) fn render(
                 first.work.specimen_role.as_str().as_bytes(),
                 item.container.as_bytes(),
                 item.test.as_bytes(),
-                law::WorkAction::New,
+                action,
             )?
             .with_instructions(law::Instructions {
                 priority: item.priority.as_ref().map(String::as_bytes),

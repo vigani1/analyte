@@ -1,4 +1,4 @@
-//! LAB-29 responder (TF-2b 3.29.4/B.7); all protocol views and ACK rules stay in hl7.
+//! LAW program exchanges; all protocol views, builders and ACK rules stay in hl7.
 use crate::orders::law::{Connection, Reply, response_metadata};
 use crate::{Error, config::Machine, evidence, invalid};
 use analyte_framing::mllp;
@@ -29,6 +29,9 @@ pub(super) async fn session(
     let send = Duration::from_millis(u64::from(config.dialog.send_timeout_ms));
     let mut until = None;
     let mut orders = Connection::new()?;
+    let mut opened = false;
+    let mut idle = tokio::time::interval(Duration::from_millis(100));
+    idle.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let result = async {
         loop {
             let event = tokio::select! {
@@ -40,6 +43,32 @@ pub(super) async fn session(
                 },
                 () = async { match until { Some(until) => tokio::time::sleep_until(until).await, None => std::future::pending().await } } => {
                     return Err(invalid("LAW receive deadline expired"));
+                },
+                () = async { idle.tick().await; } => {
+                    if opened && decoder.pending().is_empty() {
+                        let outgoing = tokio::select! {
+                            biased;
+                            () = super::stopping(&mut stop) => break,
+                            result = orders.idle(store, machine, options) => match result {
+                                Ok(message) => message,
+                                Err(error) => {
+                                    orders.close(store, "LAW-idle-admission-failed").await?;
+                                    tracing::error!(machine=machine.id.as_str(),error_kind=%error,"LAW idle admission stopped; no command retried");
+                                    None
+                                }
+                            },
+                        };
+                        if let Some(message) = outgoing {
+                            let end = orders.due().ok_or("LAW outgoing deadline absent")?;
+                            tokio::select! {
+                                biased;
+                                () = super::stopping(&mut stop) => break,
+                                result = write(conn, &message, limit, end.into()) => result?,
+                            }
+                            orders.issued(Duration::from_millis(u64::from(config.law.as_ref().ok_or("LAW options absent")?.response_ms)))?;
+                        }
+                    }
+                    continue;
                 },
                 event = conn.receive() => match event {
                     Ok(Some(event)) => event,
@@ -68,15 +97,11 @@ pub(super) async fn session(
                             };
                             let write_end = if has_followup { orders.due().map(tokio::time::Instant::from_std).map_or(end, |due| due.min(end)) } else { end };
                             for message in response {
-                                let bytes = mllp::encode(message.raw(), limit)?;
                                 let send_until = tokio::time::Instant::now().checked_add(send).ok_or("LAW send deadline overflow")?;
                                 tokio::select! {
                                     biased;
                                     () = super::stopping(&mut stop) => return Ok(()),
-                                    result = tokio::time::timeout_at(write_end.min(send_until), async {
-                                        for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) { conn.write(chunk.to_vec()).await?; }
-                                        Ok::<_, Error>(())
-                                    }) => result.map_err(|_| invalid("LAW response send deadline expired"))??,
+                                    result = write(conn, &message, limit, write_end.min(send_until)) => result?,
                                 }
                             }
                             if has_followup { orders.issued(Duration::from_millis(u64::from(config.law.as_ref().ok_or("LAW options absent")?.response_ms)))?; }
@@ -85,8 +110,8 @@ pub(super) async fn session(
                     }
                 }
                 analyte_transport::Event::Closed(_) => break,
-                analyte_transport::Event::Opened { .. }
-                | analyte_transport::Event::Failed(_)
+                analyte_transport::Event::Opened { .. } => { opened = true; },
+                analyte_transport::Event::Failed(_)
                 | analyte_transport::Event::RecordingFailed(_) => {},
             }
         }
@@ -106,6 +131,24 @@ pub(super) async fn session(
         evidence::park_bytes(store, machine, raw, &error.to_string()).await?;
     }
     result
+}
+
+/// A failed or cancelled write may already have issued bytes; the exchange stays owned.
+async fn write(
+    conn: &mut analyte_transport::Connection,
+    message: &analyte_hl7::Message,
+    limit: mllp::Limit,
+    until: tokio::time::Instant,
+) -> Result<(), Error> {
+    let bytes = mllp::encode(message.raw(), limit)?;
+    tokio::time::timeout_at(until, async {
+        for chunk in bytes.chunks(analyte_transport::CHUNK_LIMIT) {
+            conn.write(chunk.to_vec()).await?;
+        }
+        Ok::<_, Error>(())
+    })
+    .await
+    .map_err(|_| invalid("LAW response send deadline expired"))?
 }
 
 async fn process(

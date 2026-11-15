@@ -52,7 +52,7 @@ impl LawPeer {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Law {
-    /// Explicit query-triggered work layout; absence leaves query execution disabled.
+    /// Explicit work layout; absence leaves query execution and work sending disabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work: Option<LawWork>,
     /// Explicit supported lookup scopes; no positional or parent-ID inference.
@@ -65,7 +65,7 @@ pub struct Law {
     pub response_ms: u32,
 }
 
-/// Explicit header and sample/specimen bindings for query-triggered LAB-28.
+/// Explicit header and sample/specimen bindings for LAB-28.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LawWork {
@@ -108,8 +108,7 @@ pub(crate) fn validate_orders(
             "LAW outbound mappings require an explicit query work layout",
         ));
     };
-    if orders.send_ahead
-        || orders.query.is_some()
+    if orders.query.is_some()
         || orders.hl7.is_some()
         || orders.hl7_send.is_some()
         || orders.astm.is_some()
@@ -135,7 +134,7 @@ pub(crate) fn validate_orders(
         return Err(invalid(
             path,
             "orders",
-            "LAW queries require per-test code/text/system, placer namespace and specimen mappings; send-ahead, legacy and patient layouts are disabled",
+            "LAW queries require per-test code/text/system, placer namespace and specimen mappings; legacy and patient layouts are disabled",
         ));
     }
     Ok(())

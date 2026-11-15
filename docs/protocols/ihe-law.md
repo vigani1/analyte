@@ -38,10 +38,10 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
 
 - [ ] **R** Support LAB-27 responder, LAB-28 initiator and LAB-29 responder; preserve unique AWOS and work linkage (TF-1 §§5.1–5.1.1, pp.33–34; §5.4.1, pp.41–42).
   Tests: `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`, `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`, `law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_notes`.
-  Host results and configured queries with their required work/ORL followups now have the step-2/3 matrices below. Unsolicited send-ahead, cancellation, originating-work result correlation and independent directional links remain; this is not complete actor conformance.
+  Host results, queries, send-ahead and cancellation have the step-2/3/4 matrices below. Originating-work result correlation and independent directional links remain; this is not complete actor conformance.
 - [ ] **R** Answer supported peer query forms, support broadcast and assume query mode unless configured otherwise (TF-1 §5.1.1.2, p.34).
   Tests: `law_tf2b_3_27_4_query_forms_and_conditional_fields`.
-  Pure query forms and broadcast rendering are tested. Host config declares container/all-pending only (`crates/config/tests/law.rs::law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms`); the step-3 host matrix now covers both. Broadcast/send-ahead remains disabled. Isolate/parent needs app-supplied identities in a future contract version; rack/tray/informational-position forms are explicitly rejected by the host, without a no-work claim.
+  Pure query forms and broadcast rendering are tested. Host config declares container/all-pending only (`crates/config/tests/law.rs::law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms`); the step-3 host matrix now covers both. Send-ahead is explicitly selected by `orders.send_ahead` (default query example: false); host evidence: `law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos` in `crates/analyte/tests/law/work.rs`. Independent broadcast links remain open. Isolate/parent needs app-supplied identities in a future contract version; rack/tray/informational-position forms are explicitly rejected by the host, without a no-work claim.
 - [x] **R** Apply LAW M/R/RE/RE.AN/C/X usages, cardinality, length, data-type and empty/null rules (TF-2b §§2.2.1–2.2.3, pp.9–14; Appendix A, p.59).
   Tests: `law_tf2b_2_2_usage_cardinality_length_and_null_rules`, `law_tf2b_c2_c5_c7_x_fields_components_and_composite_send_ceilings`.
   Field-profile tests also span law_control.rs, law_patient.rs, law_specimen.rs and law_order.rs; cross-message negotiation is separate.
@@ -68,10 +68,10 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   All six pure query scopes have synthetic evidence. The running program supports container and all-pending only; known unsupported forms return QAK AR (`law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work`). This checked row is pure view/build support, not a claim of all-form host support.
 - [ ] **R** Send work in OML and process ORL for every AWOS, including all applicable groups/fields (TF-2b §3.28.4.1.2, pp.47–51).
   Tests: `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`, `law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively`.
-  Supported builders and per-AWOS responses are covered, including query-triggered host work/ORL (`law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`). Unsolicited send-ahead, cancellation, related-observation and pooling work groups remain outside this checkpoint.
+  Supported builders and per-AWOS responses are covered, including query-triggered host work/ORL (`law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`). Host send-ahead and cancellation now share the same path, covered in `crates/analyte/tests/law/work.rs` by `law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos` and `law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos`. Related-observation and pooling work groups, broader enhanced work content and independent directional links remain outside this checkpoint.
 - [x] **R** Distinguish new-work OK/UA and cancel CR/UC from message acceptance (TF-2b §3.28.4.1.3, pp.51–52).
   Tests: `law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively`.
-  Every permitted/refused request-specific control/status pair is checked.
+  Every permitted/refused request-specific control/status pair is checked. Host item decisions are covered by `crates/analyte/tests/law/work.rs::law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos`.
 - [x] **R** Use restricted negative LAB-28 structure for genuine no-work; preserve query scope and analyzer-specific deadline (TF-2b §2.2.4.2, p.16; §§3.27.4–3.28.4, pp.34–52).
   Tests: `law_tf2b_2_2_4_2_c11_c12_negative_query_echoes_each_scope_without_invented_ids`.
   Host evidence for the selected forms: `law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_orl_without_items`, `law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage`, and `law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_effects` in `crates/analyte/tests/law/queries.rs`. No items are reserved for negative work. Unsupported forms return an error rather than negative work.
@@ -283,8 +283,8 @@ The one new public read, `pending_orders`, shares the existing age predicate wit
 SampleId lookup and reservations, and shares the restore-aware lookup gate.
 No schema or contract changed.
 
-Config requires explicit `[law.work]` bindings plus shared `[orders]` translations;
-`send_ahead = true` is rejected. Test: `crates/config/tests/law.rs::law_tf2b_3_27_query_work_requires_explicit_bindings_and_rejects_send_ahead`.
+Config requires explicit `[law.work]` bindings plus shared `[orders]` translations.
+Step 4 permits explicit send-ahead; test: `crates/config/tests/law.rs::law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead`.
 Results-only configuration still returns a query error without work.
 
 Small pure-code corrections use the LAW syntax entry point in both LAB-28
@@ -295,8 +295,29 @@ Tests: `law_tf2b_c4_work_and_negative_builders_keep_fifty_character_control_ids`
 `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup` for QAK AR.
 Source: [IHE PaLM TF-2b Rev 11, 3.27/3.28, B.7.7 and Appendix C](https://www.ihe.net/uploadedFiles/Documents/PaLM/IHE_PaLM_TF_Vol2b.pdf).
 
-Remaining: unsolicited send-ahead and cancellation (step 4), returned-result
+The step-4 checkpoint below extends this query checkpoint. Returned-result
 validation against durable originating work, independent directional links,
-full enhanced work workflows, restart qualification and Gazelle. Step 4 was not
-started. Earlier historical checkpoint gaps above are superseded only by the
-explicitly named step-3 evidence; unchecked actor/conformance gates stay open.
+full enhanced work workflows and Gazelle remain. Earlier historical checkpoint
+gaps are superseded only by named evidence; unchecked actor/conformance gates
+stay open.
+
+
+## Program integration checkpoint: step 4 ? send-ahead and cancellation
+
+Evidence remains **documented**. No Gazelle or real analyzer was used. Tests below
+live in `crates/analyte/tests/law/work.rs`, compiled under `tests/delivery.rs`, and
+run the program with temporary stores and the reference receiver.
+
+- [x] Reserve one shared item per AWOS before unsolicited OML; match ORL by retained AWOS ID through the same `finish_order_items` handler as queries (TF-2b 3.28.4, C.8). Test: `law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos` (OK/UA/mixed, including reversed replies and restart without resend).
+- [x] Use LAW CA control and original stored AWOS IDs for app-requested cancellation; CR confirms per item and UC reports refusal, preserving prior item state (TF-2b 3.28.4, C.8). Test: `law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos` (CR/UC/mixed; each version admitted once, including after refusal and restart).
+- [x] Query-triggered and unsolicited work reuse reservation, rendering, writing, exchange and ORL handling; queried work can be cancelled with send-ahead disabled (TF-2b 3.27/3.28). Test: `law_tf2b_3_27_3_28_queried_work_uses_the_same_cancel_exchange_without_send_ahead`.
+- [x] Missing ORL or disconnect produces Uncertain for original work and cancellation, with no replay (TF-2b 3.28.4/B.7; ADR 0003 rule 8). Test: `law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_replayed`.
+- [x] Restart during Sending or admitted CancelRequested recovers retained items as Uncertain, never repeats work or cancel bytes (ADR 0003 rule 8). Test: `law_tf2b_3_28_adr0003_restart_during_sending_or_cancelling_is_uncertain_without_resend`. The shared startup recovery now covers both states.
+- [x] Shared restore pause blocks both new work and cancel admission (ADR 0003, TF-2b 3.28.4). Test: `law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation`. Cancellation still rechecks the fresh trusted feed inside the shared transaction.
+- [x] An unmapped command is retained as Rejected without Sending or bytes (TF-2b 3.28.4; ADR 0003). Test: `law_tf2b_3_28_adr0003_unmapped_send_is_rejected_before_reservation_or_bytes`.
+- [ ] Independent directional connections and lifetime policy (TF-2b B.6, TF-2x 2.2.4). Step 5 remains: manager-initiated broadcast connection, analyzer-initiated query/result connection, cross-link followup ownership, independent establishment and persistent/short-lived tests. This checkpoint uses the existing analyzer-initiated connection for all traffic; it is not B.6-conformant. B.5 message acknowledgement rules remain in the pure crate and existing host paths. Splitting the topology is a larger transport/config change, so it was not included in this round.
+- [ ] Complete LAW actor qualification: returned-result content against originating work, remaining enhanced work groups/options, directional links, and a recorded Gazelle run. The existing receive/send/query/ORL deadlines are configurable and covered by source-named tests; that does not close the independent-link requirement.
+
+No protocol API, dependency, store schema or contract was added for step 4. The
+merge from main brings alerts schema 6 and admin; those are not a LAW schema or
+admin/CLI implementation change in this step.

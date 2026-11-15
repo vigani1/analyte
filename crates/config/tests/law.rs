@@ -130,10 +130,10 @@ fn law_tf2b_3_29_4_config_allows_corrections_only_by_explicit_c() {
 }
 
 #[test]
-fn law_tf2b_3_27_query_work_requires_explicit_bindings_and_rejects_send_ahead() -> Result<(), Error>
-{
+fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() -> Result<(), Error> {
     let layout = include_str!("../examples/law_orders.toml");
     let text = format!("{LAW}\n{layout}");
+    load(&text.replace("send_ahead = false", "send_ahead = true"))?;
     let valid = load(&text)?;
     assert!(
         valid
@@ -145,7 +145,6 @@ fn law_tf2b_3_27_query_work_requires_explicit_bindings_and_rejects_send_ahead() 
             .is_some()
     );
     for bad in [
-        text.replace("send_ahead = false", "send_ahead = true"),
         text.replace("placer_namespace = \"LAB\"", ""),
         text.replace("specimen_role = \"P\"", "specimen_role = \"Q\""),
         text.replace(

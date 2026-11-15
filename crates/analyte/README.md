@@ -456,8 +456,14 @@ at the first MLLP byte, including raw storage and reservations. Response timers
 start at followup issuance. Cancellation cleanup retains every submitted key so
 a committed reservation can be recovered even if its caller lost the response.
 
-Unsolicited work, send-ahead, cancellation, other connection roles and independent
-LAW link topology remain disabled/unqualified pending later steps. Results-only
+LAW send-ahead is enabled by explicit `orders.send_ahead = true`. Cancellation
+from a trusted app feed is enabled for previously accepted queried or sent-ahead
+work. Both reuse the query exchange builder, shared per-AWOS reservation and ORL
+handler. CR confirms cancellation per item; UC preserves its preceding state with
+a CancelRefused event. No reply, disconnect or restart makes the admitted attempt
+Uncertain; neither original work nor cancellation is resent. Restore pause blocks
+both admissions. Independent directional LAW links remain unimplemented (step 5);
+this checkpoint still sends on the existing analyzer-initiated connection. Results-only
 config still rejects queries without a work layout. No full actor conformance is
 claimed at this checkpoint.
 `tests/law/results.rs` contains nine synthetic program/reference-receiver cases,
@@ -468,5 +474,7 @@ checks startup selection/role restriction. `tests/law/queries.rs` adds thirteen
 program/reference-receiver cases, including paging past a full page for other
 analyzers, blocked cache access, an unreachable receiver, restore pause, late
 queries, item reservation storage failure, ORL outcomes and no replay. Evidence
-remains documented; originating-work result correlation, send-ahead/cancellation,
-restart qualification and Gazelle remain.
+remains documented. `tests/law/work.rs` adds seven cases for send-ahead and
+cancellation, including per-AWOS mixed outcomes, restart during Sending and
+CancelRequested, no resend, preflight rejection, and restore pause. Originating-work
+result correlation, directional link qualification and Gazelle remain.
