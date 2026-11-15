@@ -3,7 +3,7 @@
 //!
 //! These pure functions never store, transmit, resend or change order state.
 //! A returned order decision reports the peer's words, not a host lifecycle change.
-use crate::{Field, Message, Segment};
+use crate::{Field, Segment};
 use thiserror::Error;
 
 mod encode;
@@ -136,21 +136,6 @@ impl Family {
             Self::Orm => [b"ORR", b"O02", b"ORR_O02"],
             Self::Oml => [b"ORL", b"O22", b"ORL_O22"],
         }
-    }
-}
-
-/// A validated ORM/O01 or OML/O21; its message identity is host supplied.
-#[derive(Debug)]
-pub struct OrderMessage {
-    message: Message,
-    family: Family,
-}
-
-impl OrderMessage {
-    /// Returns the message for transport and protected retention; no send occurs here.
-    #[must_use]
-    pub fn message(&self) -> &Message {
-        &self.message
     }
 }
 

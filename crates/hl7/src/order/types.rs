@@ -330,3 +330,18 @@ pub struct Header<'a> {
     /// Processing environment; no production default is inferred.
     pub processing: Processing,
 }
+
+/// A validated ORM/O01 or OML/O21; its message identity is host supplied.
+#[derive(Debug)]
+pub struct OrderMessage {
+    pub(super) message: crate::Message,
+    pub(super) family: super::Family,
+}
+
+impl OrderMessage {
+    /// Returns the message for transport and protected retention; no send occurs here.
+    #[must_use]
+    pub fn message(&self) -> &crate::Message {
+        &self.message
+    }
+}
