@@ -111,7 +111,12 @@ impl Store {
             SourceText::new(&format!("{prefix}: {summary}")).map_err(|_| Error::InvalidInput)?;
         tx.execute(
             "UPDATE machine_orders SET state=?1,updated_at=?2,source_code=?3 WHERE id=?4",
-            params![key(&order.state)?, now, order.source_code.as_str(), id],
+            params![
+                SqlOrderState(order.state),
+                now,
+                order.source_code.as_str(),
+                id
+            ],
         )?;
         append(&tx, &order, Some(&build(&order)?), limit)?;
         tx.commit()?;

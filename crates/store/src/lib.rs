@@ -9,6 +9,7 @@ mod open;
 mod outbox;
 mod parked;
 mod receipts;
+mod sql_types;
 mod transfers;
 pub use alerts::*;
 mod machine_orders;
@@ -20,7 +21,7 @@ mod restore;
 pub use resend::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 pub use machine_orders::*;
 #[cfg(test)]
 mod order_tests;
@@ -74,8 +75,19 @@ pub enum Error {
     #[error("storage capacity reserve reached")]
     Capacity,
     /// The database belongs to a newer implementation.
-    #[error("schema version {0} is newer than supported version 6")]
+    #[error("schema version {0} is newer than supported version {SCHEMA_VERSION}")]
     SchemaTooNew(i64),
+    /// A legacy row cannot be converted without guessing; migration is rolled back.
+    #[error("cannot migrate {table} row {row}: {cause}")]
+    MigrationEvidence {
+        /// Table containing the refused legacy record.
+        table: &'static str,
+        /// Stable row identity retained for diagnosis.
+        row: i64,
+        /// Specific decoding, bound or storage failure.
+        #[source]
+        cause: Box<Error>,
+    },
     /// SQLite or stored evidence failed an integrity check.
     #[error("stored evidence is corrupt")]
     Corruption,

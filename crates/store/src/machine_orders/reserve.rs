@@ -21,9 +21,8 @@ impl Store {
             candidate,
             OrderState::Sending,
             SourceText::new(&code).map_err(|_| Error::InvalidInput)?,
-            options.items,
+            options,
             None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-            options.prepare,
         )
     }
 
@@ -40,9 +39,8 @@ impl Store {
             candidate,
             OrderState::Rejected,
             reason,
-            OrderItems::Together,
+            ReserveOptions::default(),
             Some(build),
-            None,
         )
     }
 
@@ -51,9 +49,8 @@ impl Store {
         candidate: &OrderReservation<'_>,
         initial: OrderState,
         code: SourceText,
-        items: OrderItems<'_>,
+        options: ReserveOptions<'_>,
         build: Option<impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
-        prepare: Option<ReservationPreflight<'_>>,
     ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
         let OrderReservation {
             identity,
@@ -123,7 +120,7 @@ impl Store {
             }
         }
         let state = OrderState::Requested.transition(OrderTransition::Advance(initial))?;
-        tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,?5,?6,?6,?7)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),key(&state)?,now,code.as_str()])?;
+        tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,?5,?6,?6,?7)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),SqlOrderState(state),now,code.as_str()])?;
         let mut record = MachineOrder {
             id: tx.last_insert_rowid(),
             key: identity.clone(),
@@ -132,10 +129,13 @@ impl Store {
             created_at: now,
             updated_at: now,
             source_code: code,
+            owner: options.owner.map_or(OrderOwner::None, |owner| {
+                OrderOwner::Reservation(owner.clone())
+            }),
             items: Vec::new(),
         };
-        record.items = create_items(&tx, &record, fields.tests, items, limit)?;
-        if let Some(prepare) = prepare {
+        record.items = create_items(&tx, &record, fields.tests, options.items, limit)?;
+        if let Some(prepare) = options.prepare {
             prepare(&record)?;
         }
         let event = build.map(|build| build(&record)).transpose()?;

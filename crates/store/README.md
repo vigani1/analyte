@@ -7,7 +7,7 @@ and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 6 is
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 7 is
 created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
 Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
@@ -17,7 +17,7 @@ nonzero timeout capped at 30 seconds. These guarantees still require a local
 filesystem and storage hardware that honor flush requests. See SQLite's
 [PRAGMA documentation](https://sqlite.org/pragma.html).
 
-`frame` commits independently before returning the sequence a dialog may ACK.
+`journal_frame` commits independently before returning the sequence a dialog may ACK.
 Incomplete and aborted transfers retain every frame; recovery is paged by
 transfer ID and sequence. `finish_transfer` can link only to an existing receipt.
 Receipts include exact effective config bytes and checked SHA-256 digests.
@@ -210,3 +210,47 @@ The internal frame insertion primitive also serves legacy-schema migration tests
 Unfinished-transfer inspection is a crate-test helper; host receive tests inspect
 the protected journal directly after running the real service path. Operator
 resends use `resend_delivery`, including audited recovery from a setup pause.
+
+## Schema 7: typed persistence (ADR 0003 rules 2/3/8)
+
+Order/item SQL states use plain lifecycle names rather than JSON string literals.
+`sql_types` owns the SQLite codecs for lifecycle state, delivery state, delivery
+kind and ownership kind; callers bind typed values and reject unknown SQL values.
+The model remains independent of SQLite. Delivery encodings and immutable bytes
+remain unchanged.
+
+Each lifecycle history row now has checked `owner_kind`, `owner_id` and
+`cancel_version` columns. Ownership checks read those columns, and cancellation
+replay checks use an indexed, exact version comparison. Versions are canonical
+unsigned decimal strings so the full `u64` range survives SQLite's signed integer
+limit. The human-readable source codes remain unchanged for evidence compatibility;
+they no longer decide ownership. Only migration interprets the old prefixes.
+For historical cancellations it preserves the old final-colon-component ownership
+rule, including an empty component that could never match a valid owner. New
+cancellations retain the supplied full connection ID explicitly.
+
+All parking writes use one object containing `kind`, `reason`, `targets` and
+`context`. Context retains interpretation version and result position where the
+old tuples carried them. Migration preserves each exact former JSON string in
+`original_evidence`, including resolved parking and Autolyser custody guards.
+Canonical and original evidence are immutable; resolution still appends an audit.
+No custody intent table or protocol behavior is introduced in this migration.
+
+The table rebuild follows [SQLite's documented procedure](https://www.sqlite.org/lang_altertable.html#making_other_kinds_of_table_schema_changes).
+The forward migration copies every order and item with its existing identity,
+retains the reservation AUTOINCREMENT high-water mark, leaves history JSON and
+other evidence untouched, and preserves the alert counters. It decodes one
+bounded legacy record at a time. An unknown, corrupt or oversized record refuses
+the upgrade with its table and row identity; the whole schema-7 transaction rolls
+back rather than discarding or guessing evidence.
+
+`migration_tests.rs` exercises all eight retained order/item states, all six
+delivery states and both delivery kinds, unowned/reservation/cancellation forms,
+colon-containing owners, the maximum cancellation version, all five legacy tuple
+kinds (including older tuples without version context), structured custody parking,
+and both open and resolved rows. It compares
+every original table/row, checks ownership and replay meaning, retained bytes,
+foreign-key integrity, counters and reservation identity allocation, and proves
+that unreadable parking or ownership rolls the upgrade back without changing legacy
+rows. Noncanonical cancellation-version tokens are refused rather than normalized
+into replay guards.

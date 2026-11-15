@@ -1,4 +1,7 @@
 //! Durable machine command reservations; a reserved identity is never sent twice.
+pub(crate) mod ownership;
+use crate::sql_types::SqlOrderState;
+use ownership::OrderOwner;
 mod cancel;
 mod eligibility;
 mod items;
@@ -38,6 +41,8 @@ pub struct MachineOrder {
     pub updated_at: i64,
     /// Exact evidence code; never a guessed machine status.
     pub source_code: SourceText,
+    #[serde(skip)]
+    owner: OrderOwner,
     /// Durable command items; legacy v4 coverage is explicitly unknown.
     #[serde(default)]
     pub items: Vec<MachineOrderItem>,
@@ -50,19 +55,14 @@ impl MachineOrder {
     #[must_use]
     pub fn cancel_requested_by(&self, owner: &Identifier) -> bool {
         self.state == OrderState::CancelRequested
-            && self.source_code.as_str().starts_with("app-cancel:")
-            && self.source_code.as_str().rsplit(':').next() == Some(owner.as_str())
+            && matches!(&self.owner, OrderOwner::Cancellation { connection, .. } if connection.as_ref() == Some(owner))
     }
     /// True only while this connection's retained reservation is still Sending.
     /// Completed outcomes and another connection's reservation are never owned here.
     #[must_use]
     pub fn reserved_by(&self, owner: &Identifier) -> bool {
         self.state == OrderState::Sending
-            && self
-                .source_code
-                .as_str()
-                .strip_prefix(RESERVATION_OWNER_PREFIX)
-                == Some(owner.as_str())
+            && matches!(&self.owner, OrderOwner::Reservation(connection) if connection == owner)
     }
 }
 
@@ -224,7 +224,7 @@ pub type ReservationPreflight<'a> = &'a mut dyn FnMut(&MachineOrder) -> Result<(
 enum ChangeEvidence<'a> {
     Machine,
     Operator(&'a Audit),
-    AppCancel(NonZeroU64, u64),
+    AppCancel(NonZeroU64, u64, &'a Identifier),
 }
 
 impl Store {
@@ -291,7 +291,13 @@ impl Store {
         let (audit, cancel_version) = match evidence {
             ChangeEvidence::Machine => (None, None),
             ChangeEvidence::Operator(audit) => (Some(audit), None),
-            ChangeEvidence::AppCancel(version, freshness) => (None, Some((version, freshness))),
+            ChangeEvidence::AppCancel(version, freshness, owner) => {
+                record.owner = OrderOwner::Cancellation {
+                    connection: Some(owner.clone()),
+                    version,
+                };
+                (None, Some((version, freshness)))
+            }
         };
         if let Some((version, freshness)) = cancel_version {
             if !Self::order_trust_on(&tx, &record.key.destination, now, freshness)?.is_trusted() {
@@ -316,7 +322,7 @@ impl Store {
             {
                 return Err(Error::Conflict);
             }
-            let prior:i64=tx.query_row("SELECT count(*) FROM machine_order_history WHERE machine_order=?1 AND json_extract(evidence,'$.source_code') LIKE ?2",params![id,format!("app-cancel:{version}:%")],|row|row.get(0))?;
+            let prior:i64=tx.query_row("SELECT count(*) FROM machine_order_history WHERE machine_order=?1 AND cancel_version=?2",params![id,version.to_string()],|row|row.get(0))?;
             if prior != 0 {
                 return Err(Error::Conflict);
             }
@@ -345,7 +351,12 @@ impl Store {
         record.source_code = code;
         tx.execute(
             "UPDATE machine_orders SET state=?1,updated_at=?2,source_code=?3 WHERE id=?4",
-            params![key(&record.state)?, now, record.source_code.as_str(), id],
+            params![
+                SqlOrderState(record.state),
+                now,
+                record.source_code.as_str(),
+                id
+            ],
         )?;
         append(&tx, &record, Some(&build(&record)?), limit)?;
         if let Some(audit) = audit {
@@ -361,8 +372,9 @@ impl Store {
 }
 
 fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, Error> {
-    let evidence: String = db.query_row("SELECT evidence FROM machine_order_history WHERE machine_order=?1 ORDER BY sequence DESC LIMIT 1", [id], |r| r.get(0))?;
+    let (evidence, owner): (String, OrderOwner) = db.query_row("SELECT evidence,owner_kind,owner_id,cancel_version FROM machine_order_history WHERE machine_order=?1 ORDER BY sequence DESC LIMIT 1", [id], |row| Ok((row.get(0)?, OrderOwner::read(row)?)))?;
     let mut record: MachineOrder = serde_json::from_str(&evidence)?;
+    record.owner = owner;
     record.items = load_items(db, id)?;
     Ok(record)
 }
@@ -377,9 +389,10 @@ fn append(
     if evidence.len() > limit {
         return Err(Error::InvalidInput);
     }
+    let (kind, owner, version) = record.owner.columns();
     tx.execute(
-        "INSERT INTO machine_order_history(machine_order,evidence) VALUES (?1,?2)",
-        params![record.id, evidence],
+        "INSERT INTO machine_order_history(machine_order,evidence,owner_kind,owner_id,cancel_version) VALUES (?1,?2,?3,?4,?5)",
+        params![record.id, evidence, kind, owner, version],
     )?;
     let Some(event) = event else {
         return Ok(());
@@ -391,7 +404,7 @@ fn append(
     {
         return Err(Error::InvalidInput);
     }
-    tx.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,'order_event',?2,?3,?2,?4,?5,?6,'pending',0,?7)",params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,digest(&event.payload).0.as_slice(),event.contract_version,record.updated_at])?;
+    tx.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?8,?2,?3,?2,?4,?5,?6,?9,0,?7)",params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,digest(&event.payload).0.as_slice(),event.contract_version,record.updated_at,crate::DeliveryKind::OrderEvent,crate::DeliveryState::Pending])?;
     Ok(())
 }
 
@@ -455,7 +468,7 @@ fn create_items(
             updated_at: order.updated_at,
             source_code: order.source_code.clone(),
         };
-        tx.execute("INSERT INTO machine_order_items(machine_order,item_index,tests,coverage_known,placer,placer_namespace,state) VALUES (?1,?2,?3,1,?4,?5,?6)", params![order.id,index,key(&item.tests)?,item.placer,item.placer_namespace.as_ref().map(Identifier::as_str),key(&item.state)?])?;
+        tx.execute("INSERT INTO machine_order_items(machine_order,item_index,tests,coverage_known,placer,placer_namespace,state) VALUES (?1,?2,?3,1,?4,?5,?6)", params![order.id,index,key(&item.tests)?,item.placer,item.placer_namespace.as_ref().map(Identifier::as_str),SqlOrderState(item.state)])?;
         write_item(tx, &item, limit)?;
         items.push(item);
     }
@@ -469,7 +482,7 @@ fn write_item(tx: &Transaction<'_>, item: &MachineOrderItem, limit: usize) -> Re
     }
     tx.execute(
         "UPDATE machine_order_items SET state=?1 WHERE machine_order=?2 AND item_index=?3",
-        params![key(&item.state)?, item.machine_order, item.index],
+        params![SqlOrderState(item.state), item.machine_order, item.index],
     )?;
     tx.execute("INSERT INTO machine_order_item_history(machine_order,item_index,evidence) VALUES (?1,?2,?3)", params![item.machine_order,item.index,evidence])?;
     Ok(())

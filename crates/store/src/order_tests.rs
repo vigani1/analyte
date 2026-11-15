@@ -45,6 +45,97 @@ fn event(order: &MachineOrder) -> Result<OrderEventDelivery, Error> {
 }
 
 #[test]
+fn adr0003_typed_ownership_ignores_reason_prefixes_and_cancel_replay_keeps_full_version()
+-> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("typed-owners.db");
+    let mut store = open(&path)?;
+    store.order_page(&page(1, "requested", false, 200)?)?;
+    let key = identity()?;
+    let owner = Identifier::new("connection:part")?;
+    let record = store
+        .reserve_send(
+            &OrderReservation {
+                identity: &key,
+                version: NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            ReserveOptions {
+                owner: Some(&owner),
+                ..Default::default()
+            },
+        )?
+        .map_err(std::io::Error::other)?;
+    assert!(record.reserved_by(&owner));
+    assert!(!record.reserved_by(&Identifier::new("part")?));
+    // A peer-supplied reason that resembles the historical ownership convention
+    // must not admit a host cancellation or create a replay-blocking version.
+    let uncertain = store.transition_order(
+        record.id,
+        OrderState::Uncertain,
+        SourceText::new("app-cancel:9:other")?,
+        102,
+        event,
+    )?;
+    assert!(!uncertain.cancel_requested_by(&Identifier::new("other")?));
+    assert_eq!(
+        store.db.query_row(
+            "SELECT count(*) FROM machine_order_history WHERE cancel_version IS NOT NULL",
+            [],
+            |row| row.get::<_, i64>(0)
+        )?,
+        0
+    );
+    store.reconcile_order(
+        record.id,
+        OrderState::Accepted,
+        &Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("reconcile")?,
+            targets: vec![Identifier::new(&record.id.to_string())?],
+            time: 103,
+            reason: analyte_model::Reason::new("synthetic acceptance evidence")?,
+        },
+        event,
+    )?;
+    let version = NonZeroU64::new(u64::MAX).ok_or("invalid version")?;
+    store.order_page(&page(version.get(), "cancel_requested", false, 200)?)?;
+    assert_eq!(
+        store
+            .cancel_candidates(&key.destination, &key.machine, 104, 30)?
+            .len(),
+        1
+    );
+    let cancelled = store.request_order_cancel(record.id, version, 104, &owner, 30, event)?;
+    assert!(cancelled.cancel_requested_by(&owner));
+    assert!(!cancelled.cancel_requested_by(&Identifier::new("part")?));
+    assert!(
+        store
+            .cancel_candidates(&key.destination, &key.machine, 104, 30)?
+            .is_empty()
+    );
+    assert!(matches!(
+        store.request_order_cancel(record.id, version, 104, &owner, 30, event),
+        Err(Error::Conflict)
+    ));
+    drop(store);
+    let store = open(&path)?;
+    assert!(
+        store
+            .machine_order(&key)?
+            .ok_or("missing cancellation")?
+            .cancel_requested_by(&owner)
+    );
+    assert!(
+        store
+            .cancel_candidates(&key.destination, &key.machine, 104, 30)?
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[test]
 fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay() -> TestResult
 {
     let temp = tempfile::tempdir()?;
@@ -380,7 +471,7 @@ fn plan11_schema3_to6_preserves_rows_and_triggers() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        6
+        SCHEMA_VERSION
     );
     assert_eq!(
         store

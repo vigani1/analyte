@@ -21,7 +21,7 @@ impl Store {
             OrderState::CancelRequested,
             code,
             now,
-            ChangeEvidence::AppCancel(version, freshness),
+            ChangeEvidence::AppCancel(version, freshness, owner),
             build,
         )
     }

@@ -26,7 +26,7 @@ impl Store {
     /// Reports database failures or invalid persisted evidence.
     pub fn machine_orders(&self, filter: &MachineOrderFilter) -> Result<Vec<MachineOrder>, Error> {
         let mut statement = self.db.prepare("SELECT id FROM machine_orders WHERE id>?1 AND (?2 IS NULL OR machine=?2) AND (?3 IS NULL OR state=?3) ORDER BY id LIMIT ?4")?;
-        let state = filter.state.map(|s| key(&s)).transpose()?;
+        let state = filter.state.map(SqlOrderState);
         let ids = statement
             .query_map(
                 params![
@@ -58,7 +58,7 @@ impl Store {
         let mut candidates = Vec::new();
         // Bound filtering work without letting an ineligible first page starve later cancels.
         for _ in 0..128 {
-            let mut statement = self.db.prepare("SELECT m.id,o.evidence FROM machine_orders m JOIN orders o ON o.destination=m.destination AND o.id=m.order_id JOIN feed f ON f.destination=o.destination AND f.generation=o.generation WHERE m.destination=?1 AND m.machine=?2 AND m.id>?3 AND NOT EXISTS(SELECT 1 FROM machine_order_history h WHERE h.machine_order=m.id AND json_extract(h.evidence,'$.source_code') LIKE 'app-cancel:'||json_extract(json_extract(o.evidence,'$.document'),'$.version')||':%') ORDER BY m.id LIMIT ?4")?;
+            let mut statement = self.db.prepare("SELECT m.id,o.evidence FROM machine_orders m JOIN orders o ON o.destination=m.destination AND o.id=m.order_id JOIN feed f ON f.destination=o.destination AND f.generation=o.generation WHERE m.destination=?1 AND m.machine=?2 AND m.id>?3 AND NOT EXISTS(SELECT 1 FROM machine_order_history h WHERE h.machine_order=m.id AND h.cancel_version=(json_extract(o.evidence,'$.document')->'$.version')) ORDER BY m.id LIMIT ?4")?;
             let rows = statement
                 .query_map(
                     params![

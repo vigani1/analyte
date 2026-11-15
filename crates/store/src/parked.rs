@@ -1,13 +1,45 @@
 //! Parked storage responsibilities.
 use crate::{Audit, Error, Parked, Store};
+use analyte_model::{Identifier, Reason};
 use rusqlite::params;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) enum ParkingContext {
+    Interpretation { version: i64 },
+    Result { version: Option<i64>, index: usize },
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ParkingEvidence {
+    #[serde(flatten)]
+    pub(crate) details: Parked,
+    pub(crate) context: Option<ParkingContext>,
+}
+
+pub(crate) fn evidence(
+    kind: &str,
+    target: &str,
+    reason: &str,
+    context: Option<ParkingContext>,
+) -> Result<String, Error> {
+    let details = Parked {
+        kind: Identifier::new(kind).map_err(|_| Error::InvalidInput)?,
+        reason: Reason::new(reason).map_err(|_| Error::InvalidInput)?,
+        targets: vec![Identifier::new(target).map_err(|_| Error::InvalidInput)?],
+    };
+    crate::key(&ParkingEvidence { details, context })
+}
 
 impl Store {
     /// Appends operator-visible evidence without a deletion API.
     /// # Errors
     /// Refuses oversized evidence or database failures.
     pub fn park(&mut self, item: &Parked) -> Result<i64, Error> {
-        let encoded = self.encode(item)?;
+        let encoded = self.encode(&ParkingEvidence {
+            details: item.clone(),
+            context: None,
+        })?;
         self.bound(encoded.as_bytes())?;
         self.db
             .execute("INSERT INTO parked(evidence) VALUES (?1)", [encoded])?;

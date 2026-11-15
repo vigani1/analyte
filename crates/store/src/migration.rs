@@ -17,3 +17,158 @@ impl Store {
         Self::integrity(db)
     }
 }
+
+impl Store {
+    pub(super) fn migrate_v7(db: &mut Connection, limit: usize) -> Result<(), Error> {
+        db.execute_batch("PRAGMA foreign_keys=OFF")?;
+        let result = (|| {
+            let tx = db.transaction()?;
+            tx.execute_batch(include_str!("migration_v7.sql"))?;
+            migrate_rows(
+                &tx,
+                "machine_order_history",
+                "sequence",
+                limit,
+                |id, encoded| {
+                    let record: serde_json::Value = serde_json::from_str(encoded)?;
+                    let code = record
+                        .get("source_code")
+                        .and_then(serde_json::Value::as_str)
+                        .ok_or(Error::Corruption)?;
+                    let owner = crate::machine_orders::ownership::OrderOwner::legacy(code)?;
+                    let (kind, owner, version) = owner.columns();
+                    tx.execute("UPDATE machine_order_history SET owner_kind=?2,owner_id=?3,cancel_version=?4 WHERE sequence=?1", rusqlite::params![id,kind,owner,version])?;
+                    Ok(())
+                },
+            )?;
+            migrate_rows(&tx, "parked", "id", limit, |id, encoded| {
+                let canonical = parking(encoded)?;
+                if canonical.len() > limit {
+                    return Err(Error::InvalidInput);
+                }
+                tx.execute(
+                    "UPDATE parked SET original_evidence=evidence,evidence=?2 WHERE id=?1",
+                    rusqlite::params![id, canonical],
+                )?;
+                Ok(())
+            })?;
+            tx.execute_batch("CREATE TRIGGER machine_order_history_update BEFORE UPDATE ON machine_order_history BEGIN SELECT RAISE(ABORT,'immutable lifecycle history'); END;
+CREATE TRIGGER parked_evidence_immutable BEFORE UPDATE OF evidence,original_evidence ON parked BEGIN SELECT RAISE(ABORT,'immutable parking evidence'); END;
+PRAGMA user_version=7;")?;
+            Self::integrity(&tx)?;
+            tx.commit()?;
+            Ok::<_, Error>(())
+        })();
+        db.execute_batch("PRAGMA foreign_keys=ON")?;
+        result
+    }
+}
+
+// At most one bounded record is decoded at a time. A bad row aborts the whole migration.
+fn migrate_rows(
+    db: &Connection,
+    table: &'static str,
+    identity: &str,
+    limit: usize,
+    mut convert: impl FnMut(i64, &str) -> Result<(), Error>,
+) -> Result<(), Error> {
+    use rusqlite::OptionalExtension;
+    let mut after: Option<i64> = None;
+    let selection = format!(
+        "SELECT {identity},CASE WHEN length(CAST(evidence AS BLOB))<=?2 THEN evidence END FROM {table}"
+    );
+    let first = format!("{selection} WHERE ?1 IS NULL ORDER BY {identity} LIMIT 1");
+    let following = format!("{selection} WHERE {identity}>?1 ORDER BY {identity} LIMIT 1");
+    loop {
+        let sql = if after.is_none() { &first } else { &following };
+        let row: Option<(i64, Option<String>)> = db
+            .query_row(
+                sql,
+                rusqlite::params![
+                    after,
+                    i64::try_from(limit).map_err(|_| Error::InvalidInput)?
+                ],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((id, encoded)) = row else { break };
+        let converted = encoded
+            .ok_or(Error::InvalidInput)
+            .and_then(|encoded| convert(id, &encoded));
+        converted.map_err(|cause| Error::MigrationEvidence {
+            table,
+            row: id,
+            cause: Box::new(cause),
+        })?;
+        after = Some(id);
+    }
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum LegacyParkingKind {
+    InterpretationFailure,
+    ResultReconciliation,
+    Parked,
+    Conflict,
+    IncompleteTransfer,
+}
+
+fn parking(encoded: &str) -> Result<String, Error> {
+    use crate::parked::{ParkingContext, ParkingEvidence};
+    let value: serde_json::Value = serde_json::from_str(encoded)?;
+    if value.is_object() {
+        let evidence: ParkingEvidence = serde_json::from_value(value)?;
+        return crate::key(&evidence);
+    }
+    let kind: LegacyParkingKind =
+        serde_json::from_value(value.get(0).ok_or(Error::Corruption)?.clone())?;
+    let string = |i| {
+        value
+            .get(i)
+            .and_then(serde_json::Value::as_str)
+            .ok_or(Error::Corruption)
+    };
+    let integer = |i| {
+        value
+            .get(i)
+            .and_then(serde_json::Value::as_i64)
+            .ok_or(Error::Corruption)
+    };
+    let target = match kind {
+        LegacyParkingKind::IncompleteTransfer => string(1)?.to_owned(),
+        LegacyParkingKind::InterpretationFailure
+        | LegacyParkingKind::ResultReconciliation
+        | LegacyParkingKind::Parked
+        | LegacyParkingKind::Conflict => serde_json::from_str::<String>(string(1)?)?,
+    };
+    let (name, reason, context) = match kind {
+        LegacyParkingKind::InterpretationFailure => (
+            "interpretation_failure",
+            string(2)?.to_owned(),
+            value
+                .get(3)
+                .map(|_| integer(3).map(|version| ParkingContext::Interpretation { version }))
+                .transpose()?,
+        ),
+        LegacyParkingKind::ResultReconciliation => (
+            "result_reconciliation",
+            format!("result reconciliation: {}", string(3)?),
+            Some(ParkingContext::Result {
+                version: value.get(4).map(|_| integer(4)).transpose()?,
+                index: usize::try_from(integer(2)?).map_err(|_| Error::Corruption)?,
+            }),
+        ),
+        LegacyParkingKind::Parked => ("parked", string(2)?.to_owned(), None),
+        LegacyParkingKind::Conflict => ("conflict", string(2)?.to_owned(), None),
+        LegacyParkingKind::IncompleteTransfer => {
+            ("incomplete_transfer", string(2)?.to_owned(), None)
+        }
+    };
+    crate::parked::evidence(name, &target, &reason, context)
+}
+
+#[cfg(test)]
+#[path = "migration_tests.rs"]
+mod tests;

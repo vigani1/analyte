@@ -65,11 +65,12 @@ impl Store {
         if receipt.is_none() {
             tx.execute(
                 "INSERT INTO parked(evidence) VALUES (?1)",
-                [key(&(
+                [crate::parked::evidence(
                     "incomplete_transfer",
-                    transfer,
+                    transfer.as_str(),
                     "ASTM transfer ended before a complete receipt was retained",
-                ))?],
+                    None,
+                )?],
             )?;
         }
         tx.commit()?;

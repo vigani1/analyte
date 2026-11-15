@@ -211,7 +211,7 @@ mod tests {
             VALUES('delivery','order_event','SAMPLE-PRIVATE-00012','lab','SAMPLE-PRIVATE-00012',x'00',zeroblob(32),1,'pending',0,90);
             INSERT INTO parked(evidence) VALUES('SAMPLE-PRIVATE-00012');
             INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code)
-            VALUES('lab','SAMPLE-PRIVATE-00012','busy','1','"Uncertain"',90,90,'test');
+            VALUES('lab','SAMPLE-PRIVATE-00012','busy','1','Uncertain',90,90,'test');
             INSERT INTO audit(evidence) VALUES('{"action":"store-restore"}');"#)?;
         let policies = [
             "oldest_undelivered",
@@ -261,7 +261,7 @@ mod tests {
             UPDATE feed SET polled=101;
             UPDATE outbox SET state='done';
             UPDATE parked SET resolution='resolved';
-            UPDATE machine_orders SET state='"Done"';
+            UPDATE machine_orders SET state='Done';
             INSERT INTO audit(evidence) VALUES('{"action":"orders-resume-after-restore"}');"#,
         )?;
         space.store(1034, Ordering::SeqCst);
