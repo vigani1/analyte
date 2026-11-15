@@ -1,6 +1,6 @@
 [package]
 name = "analyte-poct"
-description = "POCT01-A2 Device Messaging Layer as the Observation Reviewer: XML messages and the reviewer conversation."
+description = "Bounded POCT01-A2 XML syntax foundation (not a conformant reviewer yet)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,8 +9,11 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+quick-xml.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true
