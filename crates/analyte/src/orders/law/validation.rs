@@ -209,7 +209,7 @@ fn same_code(a: Segment<'_>, b: Segment<'_>, field: usize) -> bool {
 mod tests {
     use super::*;
 
-    // HL7 2.5.1 ??2.5.4/2.6: each field uses its own message's delimiters.
+    // HL7 2.5.1 §§2.5.4/2.6: each field uses its own message's delimiters.
     #[test]
     fn hl7_251_2_5_4_2_6_retained_work_components_use_each_message_delimiters() -> Result<(), Error>
     {

@@ -102,7 +102,7 @@ Program/reference-receiver regression:
 `crates/analyte/tests/vendor_receive.rs` proves a real delivery, lost-ACK resend,
 reconnect, restart, edited revision, changed-original conflict, and missing
 time/declared sequence/device evidence. Library duplicate tests alone do not
-prove those program behaviors (Appendix B section 3.2, pp.71?72; ADR 0003).
+prove those program behaviors (Appendix B section 3.2, pp.71–72; ADR 0003).
 
 Mapping preserves original numbers, codes, code systems/versions, units, flags
 and source times. Source paths retain one-based XML element positions, including
