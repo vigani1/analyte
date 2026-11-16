@@ -1,3 +1,4 @@
+//! Bounded fuzz input for the hl7 parser.
 #![no_main]
 #![forbid(unsafe_code)]
 use libfuzzer_sys::fuzz_target;

@@ -1,4 +1,4 @@
-//! LIS02-A2 §§8,11,12 and ADR 0004, using synthetic loopback peers only.
+//! LIS02-A2 §§8,11,12 and ADR 0004, using synthetic loopback peers only. Kept whole: ASTM order context cases share one query and send-ahead exchange fixture.
 use super::*;
 use crate::support::HANG_GUARD;
 use tokio::{
@@ -499,19 +499,7 @@ async fn astm_context_exchange(
         false,
     )
     .await?;
-    let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
-        "../../../../docs/contract/vectors/order-context.json"
-    ))?;
-    if let Some(code) = specimen {
-        *value
-            .pointer_mut("/specimen_type/value")
-            .ok_or("specimen value")? = code.into();
-    } else {
-        value
-            .as_object_mut()
-            .ok_or("order")?
-            .remove("specimen_type");
-    }
+    let value = context_order_value(specimen)?;
     reference
         .receiver
         .seed(vec![analyte_contract::decode(&serde_json::to_vec(
@@ -789,4 +777,21 @@ fn assert_astm_context(actual: &[u8], expected: &[u8]) -> Result<(), Error> {
     normalized.extend_from_slice(body);
     assert_eq!(normalized, expected);
     Ok(())
+}
+
+fn context_order_value(specimen: Option<&str>) -> Result<serde_json::Value, Error> {
+    let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../../docs/contract/vectors/order-context.json"
+    ))?;
+    if let Some(code) = specimen {
+        *value
+            .pointer_mut("/specimen_type/value")
+            .ok_or("specimen value")? = code.into();
+    } else {
+        value
+            .as_object_mut()
+            .ok_or("order")?
+            .remove("specimen_type");
+    }
+    Ok(value)
 }

@@ -1,4 +1,4 @@
-//! Synthetic HL7 dialog conversations and safety properties.
+//! Synthetic HL7 dialog conversations and safety properties. Kept whole: The HL7 acknowledgment matrix uses one shared dialog fixture and adjacent failure cases.
 use analyte_dialog::hl7::*;
 use analyte_hl7::{AckCode, AckError, ControlId, Options, Response};
 use proptest::prelude::*;

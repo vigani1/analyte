@@ -94,19 +94,20 @@ fn mutation_adr0003_rule7_capacity_checks_reserve_and_database_bound_independent
     store.limits.database_bytes = u64::MAX;
     store.space = Box::new(Space(u64::MAX));
     assert!(matches!(store.admission(1), Err(Error::Capacity)));
-    struct FailedProbe;
-    impl FreeSpace for FailedProbe {
-        fn available(&self, _: &Path) -> std::io::Result<u64> {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "synthetic probe failure",
-            ))
-        }
-    }
     store.limits.reserve_bytes = 0;
     store.space = Box::new(FailedProbe);
     assert!(
         matches!(store.admission(0),Err(Error::Io(error)) if error.kind()==std::io::ErrorKind::PermissionDenied)
     );
     Ok(())
+}
+
+struct FailedProbe;
+impl FreeSpace for FailedProbe {
+    fn available(&self, _: &Path) -> std::io::Result<u64> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "synthetic probe failure",
+        ))
+    }
 }

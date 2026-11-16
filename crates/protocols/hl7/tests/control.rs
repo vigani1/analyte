@@ -1,4 +1,4 @@
-//! Synthetic cases paraphrased from the cited HL7 control rules.
+//! Synthetic cases paraphrased from the cited HL7 control rules. Kept whole: Control acknowledgment validation cases share the same synthetic message builders.
 use analyte_hl7::*;
 use proptest::prelude::*;
 

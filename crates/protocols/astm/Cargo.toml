@@ -16,3 +16,7 @@ proptest = { workspace = true }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "syntax"
+path = "tests/syntax/mod.rs"

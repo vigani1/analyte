@@ -1,4 +1,4 @@
-//! Host-owned cache lookups, reservations and delivery outcomes; HL7 2.3.1 section 2.18 / 2.5.1 section 5.10.
+//! Host-owned cache lookups, reservations and delivery outcomes; HL7 2.3.1 section 2.18 / 2.5.1 section 5.10. Kept whole: HL7 order exchange driving keeps cancellation, peer replies and durable transitions together.
 use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
 use analyte_framing::mllp;
 use analyte_hl7::{
