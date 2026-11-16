@@ -120,7 +120,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
     store.shutdown(deadline()).await?;
     for order in result? {
         crate::operator::output::line(&format!(
-            "{} app={} order={} machine={} version={} state={:?} updated_at={}",
+            "{} app={} order={} machine={} version={} state={} updated_at={}",
             order.id,
             order.key.destination.as_str(),
             order.key.order.as_str(),
@@ -131,10 +131,12 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         ))?;
         for item in order.items {
             crate::operator::output::line(&format!(
-                "  item={} placer={} namespace={:?} coverage_known={} tests={} state={:?} reason={}",
+                "  item={} placer={} namespace={} coverage_known={} tests={} state={} reason={}",
                 item.index,
                 item.placer,
-                item.placer_namespace.as_ref().map(Identifier::as_str),
+                crate::operator::display::optional_text(
+                    item.placer_namespace.as_ref().map(Identifier::as_str)
+                ),
                 item.coverage_known,
                 serde_json::to_string(&item.tests)?,
                 item.state,

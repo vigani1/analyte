@@ -71,7 +71,7 @@ pub(super) async fn deliveries(
             for row in &rows {
                 let delivery = uuid::Uuid::from(row.id);
                 html.push_str(&format!(
-                    "<section><h2>{delivery}</h2><p>Destination: {}. State: {:?}.</p>",
+                    "<section><h2>{delivery}</h2><p>Destination: {}. State: {}.</p>",
                     escape(row.destination.as_str()),
                     row.state
                 ));
@@ -149,7 +149,7 @@ pub(super) async fn confirm_resend(
         Ok(row) => page(
             "Confirm resend",
             &format!(
-                "<p>Resend delivery {} to {} with its original ID and exact bytes. Recorded state: {:?}. The app treats a repeat as already done. The store checks eligibility again on confirmation.</p>{}",
+                "<p>Resend delivery {} to {} with its original ID and exact bytes. Recorded state: {}. The app treats a repeat as already done. The store checks eligibility again on confirmation.</p>{}",
                 uuid::Uuid::from(delivery),
                 escape(row.destination.as_str()),
                 row.state,
@@ -203,8 +203,9 @@ pub(super) async fn reprocess(
         Ok(commit) => page(
             "Reprocess recorded",
             &format!(
-                "<p>Interpretation {} recorded. Decisions: {:?}. <a href=\"/parked\">Inspect remaining parked reasons</a>.</p>",
-                commit.version, commit.outcomes
+                "<p>Interpretation {} recorded. Decisions: {}. <a href=\"/parked\">Inspect remaining parked reasons</a>.</p>",
+                commit.version,
+                crate::operator::display::list(&commit.outcomes)
             ),
         ),
         Err(error) => failure(error.as_ref()),

@@ -14,7 +14,7 @@ use std::sync::Arc;
 pub(super) fn projection(item: &analyte_store::MachineOrderItem) -> String {
     match &item.execution {
         Some(p) => format!(
-            "<p><strong>Execution: {:?}</strong>. Command state: {:?}. Origin: analyzer. Receipt: {} (interpretation {}). Host recorded: {}. Cancel request outstanding at receipt: {}. <a href=\"/awos/{}/{}\">Execution history and reconciliation evidence</a>.</p>",
+            "<p><strong>Execution: {}</strong>. Command state: {}. Origin: analyzer. Receipt: {} (interpretation {}). Host recorded: {}. Cancel request outstanding at receipt: {}. <a href=\"/awos/{}/{}\">Execution history and reconciliation evidence</a>.</p>",
             p.state,
             item.state,
             escape(&uuid::Uuid::from(p.receipt).to_string()),
@@ -65,9 +65,9 @@ pub(super) async fn detail(
         html.push_str(&projection(item));
         html.push_str("<p>Command acceptance and execution are independent. Estimate ordering is uncertain unless source evidence proves otherwise. Estimates keep source spelling and use only the MSH-7 zone; an absent estimate does not erase earlier evidence. Rejected message evidence below was not applied.</p>");
         for row in &rows {
-            html.push_str(&format!("<section><h2>Receipt {} — interpretation {}</h2><p>Received: {}. Host recorded: {}. Message: {}. Disposition: {:?}.</p>",escape(&uuid::Uuid::from(row.receipt).to_string()),row.version,escape(row.received_at.as_str()),row.custody.recorded_at,escape(row.custody.message.as_str()),row.disposition));
+            html.push_str(&format!("<section><h2>Receipt {} — interpretation {}</h2><p>Received: {}. Host recorded: {}. Message: {}. Disposition: {}.</p>",escape(&uuid::Uuid::from(row.receipt).to_string()),row.version,escape(row.received_at.as_str()),row.custody.recorded_at,escape(row.custody.message.as_str()),row.disposition));
             for work in row.custody.work.iter().filter(|w|w.order==order&&w.item==item.index) {
-                html.push_str(&format!("<p>Execution: {:?}. Result-bearing completion evidence: {}.</p>{}",work.execution,work.complete,source_evidence(work.source.as_str())));
+                html.push_str(&format!("<p>Execution: {}. Result-bearing completion evidence: {}.</p>{}",crate::operator::display::optional(work.execution),work.complete,source_evidence(work.source.as_str())));
             }
             html.push_str("</section>");
         }

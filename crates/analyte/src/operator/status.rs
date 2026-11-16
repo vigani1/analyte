@@ -29,17 +29,18 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
     for alert in crate::operator::alerts::active(store).await? {
         let (kind, machine) = crate::operator::alerts::signal(&alert.key);
         lines.push(format!(
-            "alert={kind} machine={machine:?} responder={:?} raised_age_seconds={} last_value={:?}",
-            alert.responder,
+            "alert={kind} machine={} responder={} raised_age_seconds={} last_value={}",
+            super::display::optional_text(machine),
+            super::display::text(&alert.responder),
             crate::operator::alerts::age(&alert, now),
-            alert.value
+            super::display::optional(alert.value)
         ));
     }
     for destination in crate::runtime::delivery::destinations(program, false)? {
         let health = destination.health(store, now).await?;
-        lines.push(format!("destination={} pending_count={} pending_bytes={} oldest_pending_age_seconds={:?} paused={} last_poll={:?} cache_trusted={}",
-            destination.id().as_str(), health.pending_count, health.pending_bytes, health.oldest_pending_age,
-            health.paused, health.last_successful_poll, health.cache_trusted));
+        lines.push(format!("destination={} pending_count={} pending_bytes={} oldest_pending_age_seconds={} paused={} last_poll={} cache_trusted={}",
+            destination.id().as_str(), health.pending_count, health.pending_bytes, super::display::optional(health.oldest_pending_age),
+            health.paused, super::display::optional(health.last_successful_poll), health.cache_trusted));
     }
     let until = deadline();
     let mut after = String::new();

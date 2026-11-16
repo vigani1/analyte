@@ -69,3 +69,41 @@ pub struct DepartureEvidence {
     #[serde(default)]
     pub incomplete: Option<crate::Reason>,
 }
+
+impl std::fmt::Display for DepartureSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "DepartureSpan {{ start: {}, end: {} }}",
+            self.start, self.end
+        )
+    }
+}
+impl std::fmt::Display for EvidenceList<DepartureSpan> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("EvidenceList([")?;
+        for (index, span) in self.as_slice().iter().enumerate() {
+            if index != 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{span}")?;
+        }
+        f.write_str("])")
+    }
+}
+#[test]
+fn departure_span_spellings_are_compatible() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(
+        EvidenceList::<DepartureSpan>::default().to_string(),
+        "EvidenceList([])"
+    );
+    let spans = EvidenceList::new(vec![
+        DepartureSpan::try_from(1..3)?,
+        DepartureSpan::try_from(4..4)?,
+    ])?;
+    assert_eq!(
+        spans.to_string(),
+        "EvidenceList([DepartureSpan { start: 1, end: 3 }, DepartureSpan { start: 4, end: 4 }])"
+    );
+    Ok(())
+}
