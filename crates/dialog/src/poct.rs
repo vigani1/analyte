@@ -368,6 +368,15 @@ impl Dialog {
             self.received_ids.insert(reference.clone());
             self.received_id_bytes = bytes;
         }
+        self.receive_body(message, reference, actions)
+    }
+
+    fn receive_body(
+        &mut self,
+        message: Box<Message>,
+        reference: ControlId,
+        actions: &mut Vec<DialogAction>,
+    ) -> Result<(), Error> {
         match message.body() {
             Body::Hello {
                 device_id,
