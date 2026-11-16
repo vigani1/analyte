@@ -236,7 +236,7 @@ impl Connection {
                 },
             )
             .await?
-            .map_err(std::io::Error::other)?;
+            .map_err(Error::Refused)?;
 
             let bytes = render(&[(&reserved.1, &reserved.0)], law::WorkAction::New, options)?
                 .raw()

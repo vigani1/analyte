@@ -8,9 +8,6 @@ pub enum OrderError {
     TestHook(crate::Error),
     /// Preserves the original boundary failure.
     #[error(transparent)]
-    Io(#[from] std::io::Error),
-    /// Preserves the original boundary failure.
-    #[error(transparent)]
     Refused(#[from] analyte_store::SendRefusal),
     /// Preserves the original boundary failure.
     #[error(transparent)]
