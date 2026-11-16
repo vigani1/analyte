@@ -200,7 +200,7 @@ mod tests {
             limits(),
             Box::new(Space(space.clone())),
             8,
-            deadline(),
+            crate::test_startup_deadline()?,
         )
         .await?;
         let db = rusqlite::Connection::open(&path)?;
@@ -243,7 +243,7 @@ mod tests {
             limits(),
             Box::new(Space(space.clone())),
             8,
-            deadline(),
+            crate::test_startup_deadline()?,
         )
         .await?;
         evaluate(&store, &policies, &destinations, 101).await?;
@@ -306,6 +306,7 @@ mod tests {
     // Rule 10 and plan section 11: only scalar values and machine IDs reach transition logs.
     #[test]
     fn rule10_alert_logs_exclude_responder_and_sample_ids() -> Result<(), Error> {
+        crate::test_tracing::init();
         let log = Log(Arc::new(Mutex::new(Vec::new())));
         let subscriber = tracing_subscriber::fmt()
             .with_ansi(false)
@@ -341,7 +342,7 @@ mod tests {
                 limits(),
                 Box::new(Space(Arc::new(AtomicU64::new(u64::MAX)))),
                 8,
-                deadline(),
+                crate::test_startup_deadline()?,
             )
             .await?,
         ))

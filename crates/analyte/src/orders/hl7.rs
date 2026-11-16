@@ -482,7 +482,7 @@ mod tests {
             },
             Box::new(Space),
             4,
-            deadline(),
+            crate::test_startup_deadline()?,
         )
         .await?;
         let key = analyte_store::MachineOrderKey {
@@ -554,6 +554,8 @@ mod tests {
             listener: None,
             #[cfg(feature = "test-hooks")]
             astm_committed: None,
+            #[cfg(feature = "test-hooks")]
+            connection_closing: None,
         })
     }
 

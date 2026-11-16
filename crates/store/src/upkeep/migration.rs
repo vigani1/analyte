@@ -1,0 +1,222 @@
+//! Migration storage operations owned by upkeep.
+use crate::{Error, Store};
+use rusqlite::Connection;
+
+impl Store {
+    pub(crate) fn migrate_v2(db: &mut Connection) -> Result<(), Error> {
+        // Rebuild with foreign keys temporarily disabled so attempts continue to
+        // reference the same outbox name. The transaction retains every sequence.
+        db.execute_batch("PRAGMA foreign_keys=OFF")?;
+        let result = (|| {
+            let tx = db.transaction()?;
+            tx.execute_batch(include_str!("migration_v2.sql"))?;
+            tx.commit()?;
+            Ok::<_, Error>(())
+        })();
+        db.execute_batch("PRAGMA foreign_keys=ON")?;
+        result?;
+        Self::integrity(db)
+    }
+}
+
+impl Store {
+    pub(crate) fn migrate_v7(db: &mut Connection, limit: usize) -> Result<(), Error> {
+        db.execute_batch("PRAGMA foreign_keys=OFF")?;
+        let result = (|| {
+            let tx = db.transaction()?;
+            tx.execute_batch(include_str!("migration_v7.sql"))?;
+            migrate_rows(
+                &tx,
+                "machine_order_history",
+                "sequence",
+                limit,
+                |id, encoded| {
+                    let record: serde_json::Value = serde_json::from_str(encoded)?;
+                    let code = record
+                        .get("source_code")
+                        .and_then(serde_json::Value::as_str)
+                        .ok_or(Error::Corruption)?;
+                    let owner = crate::machine_orders::ownership::OrderOwner::legacy(code)?;
+                    let (kind, owner, version) = owner.columns();
+                    tx.execute("UPDATE machine_order_history SET owner_kind=?2,owner_id=?3,cancel_version=?4 WHERE sequence=?1", rusqlite::params![id,kind,owner,version])?;
+                    Ok(())
+                },
+            )?;
+            migrate_rows(&tx, "parked", "id", limit, |id, encoded| {
+                let canonical = parking(encoded)?;
+                if canonical.len() > limit {
+                    return Err(Error::InvalidInput);
+                }
+                tx.execute(
+                    "UPDATE parked SET original_evidence=evidence,evidence=?2 WHERE id=?1",
+                    rusqlite::params![id, canonical],
+                )?;
+                Ok(())
+            })?;
+            tx.execute_batch("CREATE TRIGGER machine_order_history_update BEFORE UPDATE ON machine_order_history BEGIN SELECT RAISE(ABORT,'immutable lifecycle history'); END;
+CREATE TRIGGER parked_evidence_immutable BEFORE UPDATE OF evidence,original_evidence ON parked BEGIN SELECT RAISE(ABORT,'immutable parking evidence'); END;
+PRAGMA user_version=7;")?;
+            Self::integrity(&tx)?;
+            tx.commit()?;
+            Ok::<_, Error>(())
+        })();
+        db.execute_batch("PRAGMA foreign_keys=ON")?;
+        result
+    }
+}
+
+impl Store {
+    pub(crate) fn migrate_v9(db: &mut Connection, limit: usize) -> Result<(), Error> {
+        let tx = db.transaction()?;
+        tx.execute_batch(include_str!("migration_v9.sql"))?;
+        migrate_rows(&tx, "parked", "id", limit, |id, encoded| {
+            let evidence: crate::parked::ParkingEvidence = serde_json::from_str(encoded)?;
+            let details = evidence.details;
+            // Compatibility belongs only to migration; normal admission never reads categories.
+            if details.kind.as_str() != "autolyser_poll_custody" {
+                return Ok(());
+            }
+            if details.targets.is_empty() {
+                return Err(Error::Corruption);
+            }
+            let (resolved, resolution): (bool, Option<String>) = tx.query_row(
+                "SELECT resolution IS NOT NULL,CASE WHEN length(CAST(resolution AS BLOB))<=?2 THEN resolution END FROM parked WHERE id=?1",
+                rusqlite::params![id,i64::try_from(limit).map_err(|_| Error::InvalidInput)?],
+                |row| Ok((row.get(0)?,row.get(1)?)),
+            )?;
+            if resolved && resolution.is_none() {
+                return Err(Error::InvalidInput);
+            }
+            let state = if resolution.is_some() {
+                crate::PollIntentState::Confirmed
+            } else {
+                crate::PollIntentState::Uncertain
+            };
+            let mut machines = std::collections::HashSet::new();
+            for machine in details.targets {
+                if !machines.insert(machine.clone()) {
+                    continue;
+                }
+                tx.execute(
+                    "INSERT INTO poll_intents(machine,parked,state,reason) VALUES (?1,?2,?3,?4)",
+                    rusqlite::params![machine.as_str(), id, state, details.reason.as_str()],
+                )?;
+                let intent = tx.last_insert_rowid();
+                tx.execute("INSERT INTO poll_intent_history(intent,state,reason,audit) VALUES (?1,?2,?3,?4)",rusqlite::params![intent,state,details.reason.as_str(),resolution])?;
+            }
+            Ok(())
+        })?;
+        tx.execute_batch("PRAGMA user_version=9")?;
+        Self::integrity(&tx)?;
+        tx.commit()?;
+        Ok(())
+    }
+}
+
+// At most one bounded record is decoded at a time. A bad row aborts the whole migration.
+fn migrate_rows(
+    db: &Connection,
+    table: &'static str,
+    identity: &str,
+    limit: usize,
+    mut convert: impl FnMut(i64, &str) -> Result<(), Error>,
+) -> Result<(), Error> {
+    use rusqlite::OptionalExtension;
+    let mut after: Option<i64> = None;
+    let selection = format!(
+        "SELECT {identity},CASE WHEN length(CAST(evidence AS BLOB))<=?2 THEN evidence END FROM {table}"
+    );
+    let first = format!("{selection} WHERE ?1 IS NULL ORDER BY {identity} LIMIT 1");
+    let following = format!("{selection} WHERE {identity}>?1 ORDER BY {identity} LIMIT 1");
+    loop {
+        let sql = if after.is_none() { &first } else { &following };
+        let row: Option<(i64, Option<String>)> = db
+            .query_row(
+                sql,
+                rusqlite::params![
+                    after,
+                    i64::try_from(limit).map_err(|_| Error::InvalidInput)?
+                ],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((id, encoded)) = row else { break };
+        let converted = encoded
+            .ok_or(Error::InvalidInput)
+            .and_then(|encoded| convert(id, &encoded));
+        converted.map_err(|cause| Error::MigrationEvidence {
+            table,
+            row: id,
+            cause: Box::new(cause),
+        })?;
+        after = Some(id);
+    }
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum LegacyParkingKind {
+    InterpretationFailure,
+    ResultReconciliation,
+    Parked,
+    Conflict,
+    IncompleteTransfer,
+}
+
+fn parking(encoded: &str) -> Result<String, Error> {
+    use crate::parked::{ParkingContext, ParkingEvidence};
+    let value: serde_json::Value = serde_json::from_str(encoded)?;
+    if value.is_object() {
+        let evidence: ParkingEvidence = serde_json::from_value(value)?;
+        return crate::key(&evidence);
+    }
+    let kind: LegacyParkingKind =
+        serde_json::from_value(value.get(0).ok_or(Error::Corruption)?.clone())?;
+    let string = |i| {
+        value
+            .get(i)
+            .and_then(serde_json::Value::as_str)
+            .ok_or(Error::Corruption)
+    };
+    let integer = |i| {
+        value
+            .get(i)
+            .and_then(serde_json::Value::as_i64)
+            .ok_or(Error::Corruption)
+    };
+    let target = match kind {
+        LegacyParkingKind::IncompleteTransfer => string(1)?.to_owned(),
+        LegacyParkingKind::InterpretationFailure
+        | LegacyParkingKind::ResultReconciliation
+        | LegacyParkingKind::Parked
+        | LegacyParkingKind::Conflict => serde_json::from_str::<String>(string(1)?)?,
+    };
+    let (name, reason, context) = match kind {
+        LegacyParkingKind::InterpretationFailure => (
+            "interpretation_failure",
+            string(2)?.to_owned(),
+            value
+                .get(3)
+                .map(|_| integer(3).map(|version| ParkingContext::Interpretation { version }))
+                .transpose()?,
+        ),
+        LegacyParkingKind::ResultReconciliation => (
+            "result_reconciliation",
+            format!("result reconciliation: {}", string(3)?),
+            Some(ParkingContext::Result {
+                version: value.get(4).map(|_| integer(4)).transpose()?,
+                index: usize::try_from(integer(2)?).map_err(|_| Error::Corruption)?,
+            }),
+        ),
+        LegacyParkingKind::Parked => ("parked", string(2)?.to_owned(), None),
+        LegacyParkingKind::Conflict => ("conflict", string(2)?.to_owned(), None),
+        LegacyParkingKind::IncompleteTransfer => {
+            ("incomplete_transfer", string(2)?.to_owned(), None)
+        }
+    };
+    crate::parked::evidence(name, &target, &reason, context)
+}
+
+#[cfg(test)]
+mod tests;
