@@ -5,6 +5,60 @@ use analyte_hl7::Version;
 const MACHINE: &str = include_str!("../examples/hl7.toml");
 const SITE: &str = include_str!("../examples/site.toml");
 
+fn query_config(edition: &str) -> Result<analyte_config::Validated, Error> {
+    let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+    Draft::load(
+        (
+            "synthetic.toml",
+            &format!("{base}\n{}", include_str!("../examples/hl7_orders.toml")),
+        ),
+        ("site.toml", SITE),
+        ("local.toml", "schema_version=1"),
+    )?
+    .validate()
+}
+
+#[test]
+fn hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation() {
+    let error = query_config("v282").unwrap_err();
+    assert!(matches!(
+        &error,
+        Error::WithdrawnHl7Query {
+            edition: "2.8.2",
+            section: "5.10.2",
+            ..
+        }
+    ));
+    assert_eq!(
+        error.to_string(),
+        "synthetic.toml: orders.hl7: HL7 2.8.2 withdraws the original query messages (§5.10.2); legacy query is not available for this edition"
+    );
+}
+
+#[test]
+fn hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation() {
+    let error = query_config("v291").unwrap_err();
+    assert!(matches!(
+        &error,
+        Error::WithdrawnHl7Query {
+            edition: "2.9.1",
+            section: "5.9.2",
+            ..
+        }
+    ));
+    assert_eq!(
+        error.to_string(),
+        "synthetic.toml: orders.hl7: HL7 2.9.1 withdraws the original query messages (§5.9.2); legacy query is not available for this edition"
+    );
+}
+
+#[test]
+fn hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility() -> Result<(), Error> {
+    assert_eq!(Version::V26.legacy_query_withdrawal(), None);
+    query_config("v26")?;
+    Ok(())
+}
+
 fn draft(edition: &str) -> Result<Draft, Error> {
     let machine = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
     Draft::load(

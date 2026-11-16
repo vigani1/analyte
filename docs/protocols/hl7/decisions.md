@@ -1,5 +1,23 @@
 # HL7 decisions
 
+## Receive results without reviving withdrawn original queries
+
+- **what**: The selected scope for 2.8.2 and 2.9.1 is result reception only.
+  A legacy-query configuration fails before activation with `WithdrawnHl7Query`;
+  the diagnostic names the edition and its withdrawing section. This rule does
+  not depend on whether the result profile has finished qualification.
+  In 2.6, keep the bounded original-query exchange: chapter 5 retains it for
+  backward compatibility and does not withdraw it.
+- **why**: The newer editions withdraw the original query messages from 2.7.
+  No replacement contract is selected or needed. LAW's QBP contract remains
+  a separate modern-query path and does not pass through this legacy gate.
+- **source**: 2.6 §5.10.2 pp.95–96; 2.8.2 §5.10.2 p.104;
+  2.9.1 §5.9.2 p.80.
+  Result-only scope and no replacement query design were selected by the owner.
+- **tests**: config `hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation`,
+  `hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation`, and
+  `hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility`.
+
 ## Bound the 2.6 receiving profile and refuse ambiguous intent
 
 - **what**: Qualify the existing ORU/R01 core and deferred display-query
@@ -24,10 +42,11 @@
 - **tests**: protocol `receiving.rs`; mapping
   `hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity`
   and `hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map`.
-- **remaining**: 2.8.2/2.9.1 typed profiles and their query-scope decision stay
-  unfinished and fail config validation. Their original queries are withdrawn
+- **remaining**: 2.8.2/2.9.1 typed result profiles stay unfinished and fail
+  config validation. Their original queries are withdrawn
   (2.8.2 §5.10.2; 2.9.1 §5.9.2); a modern query contract is not implicitly
-  selected. Step 5 order writers remain a separate PR. Evidence: documented.
+  selected; result-only scope is selected above. Step 5 order writers remain
+  a separate PR. Evidence: documented.
 
 ## Bound compatibility to the established legacy receiving prefix
 

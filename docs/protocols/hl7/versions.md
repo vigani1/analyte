@@ -10,10 +10,22 @@ own constraints (§§2.A.13, 2.A.22). MSH-10 and MSA-2 allow 199 characters
 name-context, check-digit and time-component limits differ (§2.A.86 pp.2-190–193).
 Deprecated nested DR and TQ filters are refused visibly; see the bounded 2.6 decision.
 
-The 2.8.2 §5.10.2 and 2.9.1 §5.9.2 clauses mark the original query forms
-withdrawn as of 2.7. They must not acquire a working legacy handler merely from
-registering a newer edition. Config enablement follows tested typed support;
-command writers remain a separate step-5 PR. Evidence stays documented.
+The 2.8.2 §5.10.2 (p.104) and 2.9.1 §5.9.2 (p.80) clauses mark the original
+query forms withdrawn as of 2.7. The owner selected **result reception only** for
+these editions. Any config enabling the legacy query profile fails with
+`WithdrawnHl7Query`, naming the edition and withdrawing section, before runtime
+or typed-result qualification. No replacement query contract is selected;
+LAW's QBP path remains separate. Config enablement for results follows tested
+typed support; command writers remain a separate step-5 PR. Evidence stays documented.
+
+In 2.6, §5.10.2 (pp.95–96) retains original queries for backward compatibility;
+it does not withdraw them. Analyte keeps its bounded deferred display exchange.
+
+| Original-query capability row | Source | Config test |
+| --- | --- | --- |
+| 2.6 retained; bounded query config accepted | 2.6 §5.10.2 pp.95–96 | `hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility` |
+| 2.8.2 withdrawn; legacy query config refused with its section | 2.8.2 §5.10.2 p.104 | `hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation` |
+| 2.9.1 withdrawn; legacy query config refused with its section | 2.9.1 §5.9.2 p.80 | `hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation` |
 
 **2.3.1 and 2.5.1** have native typed profiles; **2.3, 2.4 and 2.5** have
 bounded receiving compatibility profiles described below. MLLP Release 1 is the framing
@@ -142,9 +154,10 @@ original bytes; it never trims or converts a value to fit.
 
 Whole-edition progress in this PR: **2.6 bounded profile completed**.
 Remaining step 4: qualify 2.8.2 and 2.9.1 result/message/datatype rules, including
-withdrawals and newer CWE/XCN components, and settle a bounded query scope that
-does not revive withdrawn original queries. Both editions remain refused in
-config. Step 5 order writers remain a separate PR for all non-native editions.
+withdrawals and newer coded components. Their scope is result reception only;
+legacy-query refusal is implemented and tested now. Both result profiles remain
+refused in config pending qualification. Step 5 order writers remain a separate
+PR for all non-native editions.
 
 ## Compatibility rule
 

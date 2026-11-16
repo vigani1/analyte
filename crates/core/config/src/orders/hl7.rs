@@ -5,6 +5,16 @@ use std::collections::HashSet;
 
 impl Orders {
     pub(super) fn validate_hl7(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
+        if (self.query.is_some() || self.hl7.is_some())
+            && let Some(edition) = machine.syntax.edition.map(analyte_hl7::Version::from)
+            && let Some(section) = edition.legacy_query_withdrawal()
+        {
+            return Err(Error::WithdrawnHl7Query {
+                path: path.into(),
+                edition: edition.as_str(),
+                section,
+            });
+        }
         if self.astm.is_some()
             || self.clone.is_some()
             || self.send_ahead != self.hl7_send.is_some()

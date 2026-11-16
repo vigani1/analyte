@@ -35,10 +35,14 @@
   protected raw retention. Sources and per-row tests: [versions](versions.md),
   protocol `receiving.rs`, mapping `mapping/compatibility.rs`, dialog
   `hl7_compatibility.rs` and config `hl7_editions.rs`. Evidence: documented.
-- [ ] 2.8.2 — Complete typed result/message/datatype differences and select a
-  query scope that does not revive original queries withdrawn since 2.7.
-- [ ] 2.9.1 — Complete typed result/message/datatype differences and select that
-  edition's query scope, including its later CWE/XCN components and withdrawals.
+- [x] Refuse withdrawn original queries in config for 2.8.2 (§5.10.2 p.104)
+  and 2.9.1 (§5.9.2 p.80), with a specific edition/section diagnostic. Keep
+  2.6's retained backward-compatible query path (§5.10.2 pp.95–96).
+  Evidence: the three source-named config tests listed in [versions](versions.md).
+  The newer editions' selected scope is result reception only; LAW QBP is separate.
+- [ ] 2.8.2 — Complete typed result/message/datatype differences for result reception.
+- [ ] 2.9.1 — Complete typed result/message/datatype differences for result reception,
+  including its later coded components and withdrawals.
 - [ ] Step 5 — Implement order writers per edition in a separate PR.
 
 

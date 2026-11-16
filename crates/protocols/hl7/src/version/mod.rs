@@ -27,6 +27,7 @@ struct EditionRules {
     wire: &'static str,
     truncation: bool,
     required_timestamp: bool,
+    legacy_query_withdrawal: Option<&'static str>,
     // None refuses typed interpretation until the edition's field rules exist.
     grammar: Option<&'static Rules>,
 }
@@ -38,6 +39,7 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.3",
         truncation: false,
         required_timestamp: false,
+        legacy_query_withdrawal: None,
         grammar: Some(&GRAMMARS[0]),
     },
     // HL7 2.3.1 sections 2.24.1.2/.7/.12, pp.2-94-95, 2-107.
@@ -46,6 +48,7 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.3.1",
         truncation: false,
         required_timestamp: false,
+        legacy_query_withdrawal: None,
         grammar: Some(&GRAMMARS[0]),
     },
     // HL7 2.5.1 sections 2.8, 2.15.9.7: MSH-7 became required in 2.4.
@@ -54,6 +57,7 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.4",
         truncation: false,
         required_timestamp: true,
+        legacy_query_withdrawal: None,
         grammar: Some(&GRAMMARS[0]),
     },
     // HL7 2.5.1 sections 2.8, 2.A.44 and 2.15.5.1: common prefix plus 2.5 control changes.
@@ -62,6 +66,7 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.5",
         truncation: false,
         required_timestamp: true,
+        legacy_query_withdrawal: None,
         grammar: Some(&COMPATIBILITY_25),
     },
     // HL7 2.5.1 sections 2.15.9.2/.7/.12, pp.2-74-77.
@@ -70,14 +75,17 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.5.1",
         truncation: false,
         required_timestamp: true,
+        legacy_query_withdrawal: None,
         grammar: Some(&GRAMMARS[1]),
     },
-    // HL7 2.6 sections 2.14.9.2/.7/.12, pp.56-58.
+    // HL7 2.6 sections 2.14.9.2/.7/.12, pp.56-58;
+    // section 5.10.2, pp.95-96 retains original queries for backward compatibility.
     EditionRules {
         edition: Version::V26,
         wire: "2.6",
         truncation: false,
         required_timestamp: true,
+        legacy_query_withdrawal: None,
         grammar: Some(&GRAMMAR_26),
     },
     // HL7 2.8.2 sections 2.14.9.2/.7/.12, pp.59-61.
@@ -86,6 +94,8 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.8.2",
         truncation: true,
         required_timestamp: true,
+        // HL7 2.8.2 chapter 5 section 5.10.2: withdrawn since 2.7.
+        legacy_query_withdrawal: Some("5.10.2"),
         grammar: None,
     },
     // HL7 2.9.1 sections 2.13.9.2/.7/.12, pp.69-71.
@@ -94,6 +104,8 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.9.1",
         truncation: true,
         required_timestamp: true,
+        // HL7 2.9.1 chapter 5 section 5.9.2: withdrawn since 2.7.
+        legacy_query_withdrawal: Some("5.9.2"),
         grammar: None,
     },
 ];
@@ -132,6 +144,13 @@ impl Version {
     #[must_use]
     pub fn uses_compatibility_contract(self) -> bool {
         matches!(self, Self::V23 | Self::V24 | Self::V25)
+    }
+
+    /// Returns the section withdrawing original queries, independently of result qualification.
+    /// LAW's separately selected QBP contract does not use this original-query capability.
+    #[must_use]
+    pub fn legacy_query_withdrawal(self) -> Option<&'static str> {
+        self.entry().legacy_query_withdrawal
     }
 
     /// Reports whether specimen/container extensions are outside the selected receiving profile.
