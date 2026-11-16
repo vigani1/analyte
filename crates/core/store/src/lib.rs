@@ -7,7 +7,7 @@ use upkeep::{startup, worker};
 mod orders;
 use orders::{machine_orders, polls};
 mod delivery;
-use delivery::resend;
+use delivery::operator as delivery_operator;
 mod results;
 use results::revisions;
 mod intake;
@@ -24,7 +24,7 @@ pub use transfers::{FrameSequence, TransferOutcome};
 
 pub use reprocess::Reprocess;
 
-pub use resend::{DeliveryState, StoredDelivery};
+pub use delivery_operator::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
 pub const SCHEMA_VERSION: i64 = 9;

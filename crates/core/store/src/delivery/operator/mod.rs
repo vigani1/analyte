@@ -1,4 +1,4 @@
-//! Operator resend preserves ADR 0008 delivery identity and immutable bytes.
+//! Lists delivery states and bounded operator metadata, and resends deliveries with the same ID and bytes (ADR 0008).
 use crate::{Audit, DeliveryKind, Error, OrderingKey, Store, key};
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};

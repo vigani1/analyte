@@ -1,7 +1,5 @@
 //! Patient/visit profiles from TF-2b C.9/C.10; nested types from HL7 2.5.1 2A.
-use super::control::{
-    characters, component_error, excluded_fields, field, part, primitive, scalar,
-};
+use super::fields::{characters, component_error, excluded_fields, field, part, primitive, scalar};
 use super::{ControlDirection, Error, Profile, content, raw};
 use crate::Segment;
 

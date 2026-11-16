@@ -1,5 +1,5 @@
 //! Test details from TF-2b C.13; no observation value is calculated here.
-use super::control::{component_error, excluded_fields, field, part, primitive, scalar};
+use super::fields::{component_error, excluded_fields, field, part, primitive, scalar};
 use super::order::{limit, test_code};
 use super::patient::{coded, excluded, extras};
 use super::{ControlDirection, Error, Profile, content, raw};
@@ -280,7 +280,7 @@ fn consumption(value: &[u8], direction: ControlDirection) -> Result<(), Error> {
     extras(value, b'^', &[1, 2], direction, |position| {
         component_error("TCD", 9, position)
     })?;
-    if direction == ControlDirection::Send && super::control::characters(units) > 225 {
+    if direction == ControlDirection::Send && super::fields::characters(units) > 225 {
         return Err(component_error("TCD", 9, 2));
     }
     limit(value, "TCD", 9, 242, direction)

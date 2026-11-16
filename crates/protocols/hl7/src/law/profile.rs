@@ -170,8 +170,8 @@ impl<'a> Profile<'a> {
         super::validate_control(message, direction)?;
         let mut segments = message.segments();
         let msh = segments.next().ok_or(content("MSH", 0))?;
-        let results_message = super::control::part(raw(msh, 9), 1) == b"OUL";
-        let negative_query = super::control::part(raw(msh, 9), 1) == b"OML"
+        let results_message = super::fields::part(raw(msh, 9), 1) == b"OUL";
+        let negative_query = super::fields::part(raw(msh, 9), 1) == b"OML"
             && segments
                 .map(Segment::id)
                 .eq([b"SPM".as_slice(), b"SAC", b"ORC"])
@@ -185,8 +185,8 @@ impl<'a> Profile<'a> {
                 .segments()
                 .find(|s| s.id() == b"SPM")
                 .is_some_and(|s| {
-                    super::control::part(raw(s, 11), 1) == b"U"
-                        && super::control::part(raw(s, 11), 3) == b"IHELAW"
+                    super::fields::part(raw(s, 11), 1) == b"U"
+                        && super::fields::part(raw(s, 11), 3) == b"IHELAW"
                 });
         self.context = if negative_query {
             MessageContext::NegativeQuery
@@ -232,7 +232,7 @@ impl<'a> Profile<'a> {
         direction: super::ControlDirection,
     ) -> Result<(), Error> {
         match segment.id() {
-            b"MSH" | b"MSA" | b"ERR" => super::control::validate_segment(segment, direction),
+            b"MSH" | b"MSA" | b"ERR" => super::envelope::validate_segment(segment, direction),
             b"PID" | b"PV1" => super::patient::validate(segment, self, direction),
             b"SPM" | b"SAC" => super::specimen::validate(segment, self, direction),
             b"ORC" | b"OBR" | b"TQ1" => super::order::validate(segment, self, direction),
@@ -351,7 +351,7 @@ pub fn validate_segment(segment: Segment<'_>) -> Result<(), Error> {
         );
     }
     if matches!(segment.id(), b"MSH" | b"MSA" | b"ERR") {
-        return super::control::validate_segment(segment, super::ControlDirection::Send);
+        return super::envelope::validate_segment(segment, super::ControlDirection::Send);
     }
     match segment.id() {
         b"OBX" | b"NTE" | b"INV" => {

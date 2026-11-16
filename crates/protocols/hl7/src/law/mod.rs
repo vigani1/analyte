@@ -369,9 +369,10 @@ pub use results::{
     result_acknowledgment,
 };
 
-mod control;
+mod envelope;
+mod fields;
 
-pub use control::{ControlDirection, message_type, parse_message, validate_control};
+pub use envelope::{ControlDirection, message_type, parse_message, validate_control};
 
 mod patient;
 
@@ -393,7 +394,7 @@ pub use patient::AuthorityBinding;
 
 fn msh(message: &Message) -> Result<Msh<'_>, Error> {
     let segment = message.segments().next().ok_or(content("MSH", 0))?;
-    control::validate_segment(segment, ControlDirection::Receive)?;
+    envelope::validate_segment(segment, ControlDirection::Receive)?;
     let kind = raw(segment, 9)
         .split(|b| *b == b'^')
         .next()
@@ -408,7 +409,7 @@ fn msh(message: &Message) -> Result<Msh<'_>, Error> {
 /// # Errors
 /// Rejects empty, null, oversized or control-containing IDs and unescaped delimiters.
 pub fn control_id(raw: &[u8]) -> Result<crate::ControlId<'_>, crate::Error> {
-    control::identity(raw).map_err(|_| crate::Error::Control {
+    fields::identity(raw).map_err(|_| crate::Error::Control {
         segment: "MSH",
         field: 10,
     })?;
@@ -434,8 +435,8 @@ pub use rejection::reject_trigger;
 mod status;
 pub use status::{SINGLE_RUN_STATUSES, STATUS_TRANSITIONS, WITHHELD_STATUSES, observation_run};
 
-impl From<crate::encoder::Limit> for Error {
-    fn from(_: crate::encoder::Limit) -> Self {
+impl From<crate::wire::Limit> for Error {
+    fn from(_: crate::wire::Limit) -> Self {
         crate::Error::Limit {
             kind: "LAW output",
             segment: 0,

@@ -7,7 +7,7 @@ mod migration;
 mod outbox;
 mod parking;
 mod progression;
-mod status;
+mod status_policy;
 use crate::{Delivery, Error, Interpretation, Reading, Store, digest, key};
 use admission::required_capacity;
 use analyte_model::{IdentityStatus, ReceiptId, ResultContent, ResultStatus, Revision};
@@ -16,7 +16,7 @@ use content::clinical_digest;
 use history::write_history;
 use parking::{park_outcomes, reconciliation_succeeded, write_reprocess_audit};
 use rusqlite::{OptionalExtension, params};
-pub use status::StatusLifecycle;
+pub use status_policy::StatusLifecycle;
 
 /// Store decision for one result, in input order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

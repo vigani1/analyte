@@ -1,9 +1,9 @@
-//! Version-1 collections evidence owns its wire types and validation.
+//! Holds evidence lists capped at 256 entries during deserialization, plus a non-empty variant.
 use serde::{Deserialize, Serialize};
 /// A bounded sequence, capped at 256 entries including during deserialization.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
-pub struct EvidenceList<T>(Vec<T>);
+pub struct EvidenceList<T>(pub(super) Vec<T>);
 /// A source supplied too many evidence entries.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[error("evidence list exceeds 256 entries")]
@@ -55,7 +55,7 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for EvidenceList<T> {
 /// A replacement unit must contain source evidence, even when its value is unsupported.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
-pub struct NonEmptyEvidenceList<T>(EvidenceList<T>);
+pub struct NonEmptyEvidenceList<T>(pub(super) EvidenceList<T>);
 /// Replacement evidence cannot be absent.
 #[derive(Debug, thiserror::Error)]
 #[error("replacement unit has no source parts")]
@@ -83,5 +83,3 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for NonEmptyEvidenceList<T> {
         Self::new(EvidenceList::deserialize(d)?).map_err(serde::de::Error::custom)
     }
 }
-
-mod conversion;

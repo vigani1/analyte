@@ -264,15 +264,15 @@ impl<'a> ResultGroups<'a> {
             Some(Parent::Container(_)) => {
                 if self.has_container_inventory
                     || self.specimen.is_none_or(|s| {
-                        law::control::part(raw(s, 11), 1) != b"Q"
-                            || law::control::part(raw(s, 11), 3) != b"HL70369"
+                        law::fields::part(raw(s, 11), 1) != b"Q"
+                            || law::fields::part(raw(s, 11), 3) != b"HL70369"
                     })
                 {
                     return Err(content("INV", 0));
                 }
                 if profile.results.contributing_substances
-                    && (law::control::part(raw(segment, 3), 1) != b"CO"
-                        || law::control::part(raw(segment, 3), 3) != b"HL70384")
+                    && (law::fields::part(raw(segment, 3), 1) != b"CO"
+                        || law::fields::part(raw(segment, 3), 3) != b"HL70384")
                 {
                     return Err(content("INV", 3));
                 }

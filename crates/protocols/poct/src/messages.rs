@@ -1,4 +1,4 @@
-//! Reviewer message builders. XML is escaped and checked before it can be sent.
+//! Builds POCT reviewer messages, escaping and checking XML before transmission.
 use crate::{ControlId, Header, Limits, Message, MessageError};
 
 /// Application error classification from Appendix B section 5.3.

@@ -1,4 +1,4 @@
-//! The same freshness and lifecycle admission rule for query and pushed orders.
+//! Rechecks order version and freshness for reservation candidates, mapping rejection and cancellation in the store.
 use crate::Error;
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation, SendRefusal};
 use std::{num::NonZeroU64, time::Instant};

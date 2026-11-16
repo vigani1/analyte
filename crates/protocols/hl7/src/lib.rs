@@ -3,10 +3,10 @@
 
 mod ack;
 mod datatypes;
-mod encoder;
 mod syntax;
 mod version;
 mod views;
+mod wire;
 pub use ack::*;
 pub use syntax::*;
 pub use version::Version;

@@ -1,4 +1,4 @@
-//! Caller-owned source status semantics; the store contains no protocol codes.
+//! Applies caller-supplied status transitions, withheld statuses and single-run statuses without protocol codes.
 use crate::{Error, Interpretation, Reading, key};
 use analyte_model::{IdentityStatus, ObservationIdentity, ResultContent};
 use rusqlite::{OptionalExtension, params};

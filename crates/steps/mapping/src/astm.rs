@@ -1,4 +1,4 @@
-//! ASTM code and evidence mapping (LIS02-A2); no I/O or protocol dialog state.
+//! Maps received ASTM messages to model results and app orders to ASTM fields without I/O (LIS02-A2).
 use crate::inbound::{grouping, source};
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_specimen};

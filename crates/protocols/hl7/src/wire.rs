@@ -1,4 +1,4 @@
-//! Private bounded wire assembly; callers retain their own error categories.
+//! Writes HL7 segments into a size-capped byte buffer without escaping, shared by LAW renderers.
 #[derive(Debug)]
 pub(crate) struct Limit;
 

@@ -50,7 +50,7 @@ impl Reconciliation<'_, '_> {
         };
         let identity_key = key(&(self.machine, &identity.observation))?;
         if let Some(policy) = self.lifecycle
-            && status::other_final_run(
+            && status_policy::other_final_run(
                 self.tx,
                 self.machine,
                 &candidate,

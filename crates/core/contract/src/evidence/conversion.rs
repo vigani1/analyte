@@ -1,6 +1,5 @@
-//! Model conversions preserve meanings at the contract boundary.
-use super::super::*;
-use super::{EvidenceList, NonEmptyEvidenceList};
+//! Converts model result, sample, identity and lifecycle values to contract types.
+use super::*;
 
 impl From<&analyte_model::NumericValue> for NumericValue {
     fn from(v: &analyte_model::NumericValue) -> Self {

@@ -257,7 +257,7 @@ pub fn negative_work(
         // C.11 manager-authored EI fields support EI.1 only. The RSP still
         // echoes the original QPD; ignored receive components stay in that original.
         *slot = if matches!(target, 2 | 3 | 9 | 12) {
-            law::control::part(value, 1)
+            law::fields::part(value, 1)
         } else {
             value
         };

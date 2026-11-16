@@ -18,8 +18,8 @@ pub use views::message::{
     Role, Service, hello_error_reference,
 };
 
-mod encoder;
-pub use encoder::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
+mod messages;
+pub use messages::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
 
 mod duplicate;
 pub use duplicate::{

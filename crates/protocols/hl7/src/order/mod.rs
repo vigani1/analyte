@@ -139,8 +139,8 @@ impl Family {
     }
 }
 
-impl From<crate::encoder::Limit> for Error {
-    fn from(_: crate::encoder::Limit) -> Self {
+impl From<crate::wire::Limit> for Error {
+    fn from(_: crate::wire::Limit) -> Self {
         Self::Limit
     }
 }

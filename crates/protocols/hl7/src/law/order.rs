@@ -1,7 +1,5 @@
 //! Order and timing profiles from TF-2b C.6/C.8/C.14.
-use super::control::{
-    characters, component_error, excluded_fields, field, part, primitive, scalar,
-};
+use super::fields::{characters, component_error, excluded_fields, field, part, primitive, scalar};
 use super::patient::{authority_value, coded, excluded, extras};
 use super::{ControlDirection, Error, Profile, content, raw};
 use crate::Segment;
