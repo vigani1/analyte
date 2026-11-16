@@ -504,26 +504,29 @@ pub struct EncapsulatedData {
     pub null: Option<Null>,
 }
 
+fn value_type(element: &Element, kind: Kind) -> Option<&'static str> {
+    Some(match kind {
+        Kind::Text => {
+            if element.name() == "REF" {
+                "URL"
+            } else if element.name().contains('.') && element.name() != "DEV.manufacturer_name" {
+                "BIN"
+            } else {
+                "ST"
+            }
+        }
+        Kind::Person | Kind::Time => "ST",
+        Kind::Integer => "INT",
+        Kind::Real | Kind::Quantity | Kind::Interval => "REAL",
+        Kind::Code | Kind::SimpleCode | Kind::Encapsulated => return None,
+    })
+}
+
 fn fixed_attribute<'a>(element: &Element, kind: Kind, key: &'a str) -> Option<&'a str> {
     let code = matches!(kind, Kind::Code | Kind::SimpleCode);
     match key {
         "V-T" | "DN-T" if code => Some("ST"),
-        "V-T" => Some(match kind {
-            Kind::Text => {
-                if element.name() == "REF" {
-                    "URL"
-                } else if element.name().contains('.') && element.name() != "DEV.manufacturer_name"
-                {
-                    "BIN"
-                } else {
-                    "ST"
-                }
-            }
-            Kind::Person | Kind::Time => "ST",
-            Kind::Integer => "INT",
-            Kind::Real | Kind::Quantity | Kind::Interval => "REAL",
-            Kind::Code | Kind::SimpleCode | Kind::Encapsulated => return None,
-        }),
+        "V-T" => value_type(element, kind),
         "V-HL7_NAME" if kind != Kind::Encapsulated => Some(if code {
             "code"
         } else if kind == Kind::Person {
@@ -548,6 +551,12 @@ fn fixed_attribute<'a>(element: &Element, kind: Kind, key: &'a str) -> Option<&'
         "ORIGTXT-HL7_NAME" if kind == Kind::Code => Some("originalText"),
         "U-T" if matches!(kind, Kind::Quantity | Kind::Interval) => Some("CS"),
         "U-HL7_NAME" if matches!(kind, Kind::Quantity | Kind::Interval) => Some("unit"),
+        _ => content_attribute(element, kind, key),
+    }
+}
+
+fn content_attribute<'a>(element: &Element, kind: Kind, key: &'a str) -> Option<&'a str> {
+    match key {
         "MT-T" if matches!(kind, Kind::Text | Kind::Encapsulated) => Some("CS"),
         "MT-HL7_NAME" if matches!(kind, Kind::Text | Kind::Encapsulated) => Some("type"),
         "MT-DOMAIN" if kind == Kind::Encapsulated => Some("2.16.840.1.113883.6.10"),
@@ -559,6 +568,12 @@ fn fixed_attribute<'a>(element: &Element, kind: Kind, key: &'a str) -> Option<&'
         "COMPN-DOMAIN" if kind == Kind::Encapsulated => Some("2.16.840.1.113883.5.1009"),
         "IC-T" if kind == Kind::Encapsulated => Some("BIN"),
         "IC-HL7_NAME" if kind == Kind::Encapsulated => Some("integrityCheck"),
+        _ => name_attribute(element, key),
+    }
+}
+
+fn name_attribute<'a>(element: &Element, key: &'a str) -> Option<&'a str> {
+    match key {
         "QUAL-T" if matches!(element.name(), "GIV" | "MID" | "FAM" | "PFX" | "SFX") => {
             Some("SET_CS")
         }

@@ -374,24 +374,8 @@ pub fn parse_with(
                     reason: "header before terminator",
                 });
             }
-            let definition = raw.get(1..6).ok_or(Error::Delimiters { record: number })?;
-            let mut chars = definition.iter().copied();
-            let (Some(f), Some(r), Some(c), Some(e), Some(end)) = (
-                chars.next(),
-                chars.next(),
-                chars.next(),
-                chars.next(),
-                chars.next(),
-            ) else {
-                return Err(Error::Delimiters { record: number });
-            };
-            if f != end {
-                return Err(Error::Delimiters { record: number });
-            }
-            let delimiters =
-                Delimiters::new(f, r, c, e).map_err(|_| Error::Delimiters { record: number })?;
             current = Some(Message {
-                delimiters,
+                delimiters: parse_delimiters(raw, number)?,
                 records: Vec::new(),
             });
             ancestors.clear();
@@ -407,61 +391,8 @@ pub fn parse_with(
         }
         let fields = parse_fields(raw, kind, d, limits, number, &decode)?;
         let level = kind.level().unwrap_or(ancestors.len());
-        let parent = match kind {
-            Kind::Header => None,
-
-            Kind::Comment | Kind::Manufacturer => message.records.len().checked_sub(1),
-            Kind::Terminator | Kind::Patient | Kind::Query | Kind::Scientific => Some(0),
-            Kind::Order => ancestors.get(1).copied().filter(|i| {
-                message
-                    .records
-                    .get(*i)
-                    .is_some_and(|r| r.kind == Kind::Patient)
-            }),
-            Kind::Result => ancestors.get(2).copied().filter(|i| {
-                message
-                    .records
-                    .get(*i)
-                    .is_some_and(|r| r.kind == Kind::Order)
-            }),
-        };
-        if kind != Kind::Header && parent.is_none() {
-            return Err(Error::Hierarchy {
-                record: number,
-                reason: "missing required parent",
-            });
-        }
-        counts.retain(|(_, old_level, _)| *old_level <= level);
-        let sequence = if kind == Kind::Header {
-            None
-        } else {
-            let previous = counts
-                .iter()
-                .find(|(k, l, _)| *k == kind && *l == level)
-                .map_or(0, |(_, _, n)| *n);
-            let expected = previous.checked_add(1).ok_or(Error::Sequence {
-                record: number,
-                expected: previous,
-            })?;
-            let value = fields.get(1).map(|f| f.raw.as_slice()).unwrap_or_default();
-            let parsed = value.iter().try_fold(0usize, |n, b| {
-                if b.is_ascii_digit() {
-                    n.checked_mul(10)?
-                        .checked_add(usize::from(b.checked_sub(b'0')?))
-                } else {
-                    None
-                }
-            });
-            if parsed != Some(expected) {
-                return Err(Error::Sequence {
-                    record: number,
-                    expected,
-                });
-            }
-            counts.retain(|(k, l, _)| *k != kind || *l != level);
-            counts.push((kind, level, expected));
-            Some(expected)
-        };
+        let parent = record_parent(kind, &ancestors, message, number)?;
+        let sequence = parse_sequence(&fields, kind, level, &mut counts, number)?;
         if kind.level().is_some() {
             ancestors.truncate(level);
             ancestors.push(message.records.len());
@@ -486,6 +417,100 @@ pub fn parse_with(
         });
     }
     Ok(messages)
+}
+
+fn record_parent(
+    kind: Kind,
+    ancestors: &[usize],
+    message: &Message,
+    number: usize,
+) -> Result<Option<usize>, Error> {
+    let parent = match kind {
+        Kind::Header => None,
+
+        Kind::Comment | Kind::Manufacturer => message.records.len().checked_sub(1),
+        Kind::Terminator | Kind::Patient | Kind::Query | Kind::Scientific => Some(0),
+        Kind::Order => ancestors.get(1).copied().filter(|i| {
+            message
+                .records
+                .get(*i)
+                .is_some_and(|r| r.kind == Kind::Patient)
+        }),
+        Kind::Result => ancestors.get(2).copied().filter(|i| {
+            message
+                .records
+                .get(*i)
+                .is_some_and(|r| r.kind == Kind::Order)
+        }),
+    };
+    if kind != Kind::Header && parent.is_none() {
+        return Err(Error::Hierarchy {
+            record: number,
+            reason: "missing required parent",
+        });
+    }
+    Ok(parent)
+}
+
+fn parse_delimiters(raw: &[u8], number: usize) -> Result<Delimiters, Error> {
+    let definition = raw.get(1..6).ok_or(Error::Delimiters { record: number })?;
+    let mut chars = definition.iter().copied();
+    let (Some(f), Some(r), Some(c), Some(e), Some(end)) = (
+        chars.next(),
+        chars.next(),
+        chars.next(),
+        chars.next(),
+        chars.next(),
+    ) else {
+        return Err(Error::Delimiters { record: number });
+    };
+    if f != end {
+        return Err(Error::Delimiters { record: number });
+    }
+    let delimiters =
+        Delimiters::new(f, r, c, e).map_err(|_| Error::Delimiters { record: number })?;
+    Ok(delimiters)
+}
+
+fn parse_sequence(
+    fields: &[Field],
+    kind: Kind,
+    level: usize,
+    counts: &mut Vec<(Kind, usize, usize)>,
+    number: usize,
+) -> Result<Option<usize>, Error> {
+    counts.retain(|(_, old_level, _)| *old_level <= level);
+    let sequence = if kind == Kind::Header {
+        None
+    } else {
+        let previous = counts
+            .iter()
+            .find(|(k, l, _)| *k == kind && *l == level)
+            .map_or(0, |(_, _, n)| *n);
+        let expected = previous.checked_add(1).ok_or(Error::Sequence {
+            record: number,
+            expected: previous,
+        })?;
+        let value = fields.get(1).map(|f| f.raw.as_slice()).unwrap_or_default();
+        let parsed = value.iter().try_fold(0usize, |n, b| {
+            if b.is_ascii_digit() {
+                n.checked_mul(10)?
+                    .checked_add(usize::from(b.checked_sub(b'0')?))
+            } else {
+                None
+            }
+        });
+        if parsed != Some(expected) {
+            return Err(Error::Sequence {
+                record: number,
+                expected,
+            });
+        }
+        counts.retain(|(k, l, _)| *k != kind || *l != level);
+        counts.push((kind, level, expected));
+        Some(expected)
+    };
+    Ok(sequence)
 }
 
 fn split(
