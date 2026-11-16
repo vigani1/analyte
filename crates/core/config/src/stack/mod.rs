@@ -205,3 +205,5 @@ use limits::{hl7_options, limits};
 mod order_tables;
 pub use order_tables::OrderTables;
 use order_tables::order_tables;
+
+mod capabilities;
