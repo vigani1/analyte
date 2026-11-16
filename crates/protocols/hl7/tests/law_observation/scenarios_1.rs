@@ -377,17 +377,22 @@ fn law_tf2b_c7_obx_5_ed_hd_encoding_and_payload_limits() -> TestResult {
 }
 
 #[test]
-fn law_tf2b_c7_obx_5_rp_nested_hd_limits_and_no_pointer_fetch() -> TestResult {
+fn law_tf2b_c7_10_tf2x_a4_rp_application_hd_profile() -> TestResult {
     for value in [
         "https://synthetic.invalid/result^^IM^JPEG",
         "pointer^Local^^vendor",
-        "pointer^&1.2.3&ISO^^",
     ] {
         both("OBX", &[(2, "RP"), (5, value), (6, "")], true)?;
     }
     both("OBX", &[(2, "RP"), (5, &"x".repeat(999)), (6, "")], true)?;
     both("OBX", &[(2, "RP"), (5, &"x".repeat(1000)), (6, "")], false)?;
-    for value in ["^Local", "pointer^&oid", "pointer^&oid&BAD"] {
+    for value in [
+        "^Local",
+        "pointer^&oid",
+        "pointer^&oid&BAD",
+        "pointer^&1.2.3&ISO",
+        "pointer^Local&1.2.3&URI",
+    ] {
         both("OBX", &[(2, "RP"), (5, value), (6, "")], false)?;
     }
     for value in [
@@ -397,6 +402,23 @@ fn law_tf2b_c7_obx_5_rp_nested_hd_limits_and_no_pointer_fetch() -> TestResult {
         format!("pointer^^^{}", "x".repeat(20)),
     ] {
         both("OBX", &[(2, "RP"), (5, &value), (6, "")], false)?;
+    }
+    for value in ["pointer^&1.2.3&ISO", "pointer^Local&1.2.3&URI"] {
+        let error = check(
+            "OBX",
+            &[(2, "RP"), (5, value), (6, "")],
+            Profile::receive(),
+            ControlDirection::Receive,
+        )
+        .expect_err("TF-2x A.4 rejects this application HD");
+        assert!(matches!(
+            error.downcast_ref::<Error>(),
+            Some(Error::Component {
+                segment: "OBX",
+                field: 5,
+                component: 2
+            })
+        ));
     }
     let bindings = [law::AuthorityBinding::new(b"Local", b"1.2.3", b"ISO")?];
     let profile = Profile::receive().with_authorities(&bindings);

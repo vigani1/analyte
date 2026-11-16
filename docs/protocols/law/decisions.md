@@ -57,7 +57,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   complete implementation of external results.
 - **source**: PaLM TF-2b Rev11 §B.3.12, p.77;
   [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), I/O ownership.
-- **test**: `law_tf2b_c7_obx_5_rp_nested_hd_limits_and_no_pointer_fetch`.
+- **test**: `law_tf2b_c7_10_tf2x_a4_rp_application_hd_profile`.
 
 ## 6. Use a short-lived outbound link in independent mode
 
@@ -141,3 +141,14 @@ TF-2b C.7 Table C.7-4 requires distinct observations under one OBR. Results
 validation rejects a repeated primary code/system and complete OG before
 returning any observations, locating OBX-4 at its whole-message occurrence.
 Test: `law_tf2b_c7_repeated_observation_requires_unique_complete_og`.
+
+## Retained work matching
+
+Received OBR-2 uses only EI.1 to find retained work for the configured machine.
+Result mapping requires an explicit fixed AWOS namespace; selecting a received
+OBR-2 authority component is rejected at configuration loading.
+Other OBR-2 components are X under TF-2b 2.2.1/2.2.2 and C.6-2: they remain
+in protected original bytes but do not authorize or reject a match. Specimen,
+container and test comparisons still reject conflicting returned work as a whole.
+Test: `law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match`.
+The combined receive/structure qualification row remains open.

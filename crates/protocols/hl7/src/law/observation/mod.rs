@@ -223,6 +223,20 @@ fn pointer(value: &[u8], profile: Profile<'_>, direction: ControlDirection) -> R
     for (pos, required, maximum) in [(1, true, 999), (3, false, 9), (4, false, 19)] {
         primitive(part(value, pos), required, maximum, location(5, pos))?;
     }
+    let application = part(value, 2);
+    if !application.is_empty() {
+        let mut parts = application.split(|b| *b == b'&');
+        let namespace = parts.next().unwrap_or_default();
+        let universal = parts.next().unwrap_or_default();
+        let kind = parts.next().unwrap_or_default();
+        // TF-2x A.4 applies here; PID/OBR have separate authority overrides.
+        if namespace.is_empty()
+            || (!universal.is_empty() && kind != b"ISO")
+            || (universal.is_empty() && !kind.is_empty())
+        {
+            return Err(location(5, 2));
+        }
+    }
     authority_value(part(value, 2), "OBX", 5, 2, profile, direction)?;
     // RP permits vendor-defined type/subtype values and never retrieves the pointer.
     extras(value, b'^', &[1, 2, 3, 4], direction, |pos| {

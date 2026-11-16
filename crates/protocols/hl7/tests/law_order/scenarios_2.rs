@@ -151,7 +151,7 @@ fn law_tf2b_c13_tcd_2_3_5_sn_ratio_predicates_and_direction() -> TestResult {
 }
 
 #[test]
-fn law_tf2b_c13_tcd_6_7_r_permissions_8_r_repeat_status() -> TestResult {
+fn law_tf2b_c13_9_repeat_status_text_matches_code() -> TestResult {
     let permissions = Profile::receive().with_repeat_options(false, true);
     for first in ["Y", "N"] {
         for second in ["Y", "N"] {
@@ -183,10 +183,15 @@ fn law_tf2b_c13_tcd_6_7_r_permissions_8_r_repeat_status() -> TestResult {
         }
     }
     let repeat = Profile::receive().with_repeat_options(true, false);
-    for code in ["O", "R", "D", "F"] {
+    for (code, text) in [
+        ("O", "Original, first run"),
+        ("R", "Repeated without dilution"),
+        ("D", "Repeated with dilution"),
+        ("F", "Reflex test"),
+    ] {
         check(
             "TCD",
-            &[(8, &format!("{code}^Synthetic^HL70389"))],
+            &[(8, &format!("{code}^{text}^HL70389"))],
             repeat,
             ControlDirection::Send,
         )?;
