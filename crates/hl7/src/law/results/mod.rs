@@ -312,264 +312,24 @@ impl<'a> Results<'a> {
         {
             return Err(content("MSH", 9));
         }
-        let mut specimen = None;
-        let mut container = None;
-        let mut order = None;
-        let mut parent = None;
-        let mut observations: Vec<Observation<'a>> = Vec::new();
-        let mut specimen_observations = Vec::new();
-        let mut result_phase = ResultPhase::NoResult;
-        let mut has_container_inventory = false;
-        let mut attached = Vec::new();
-        let mut order_status = None;
-        let mut order_count = 0usize;
-        let mut observation_count = 0usize;
-        let mut has_patient = false;
-        let mut has_visit = false;
-        let mut has_timing = false;
+        let mut groups = ResultGroups::new();
         let mut occurrences = std::collections::BTreeMap::<&[u8], usize>::new();
         for (ordinal, segment) in message.segments().enumerate().skip(1) {
             let occurrence = occurrences.entry(segment.id()).or_default();
             *occurrence = occurrence.checked_add(1).ok_or(content("OUL", 0))?;
-            let checked = (|| -> Result<(), Error> {
-                match segment.id() {
-                    b"PID" => {
-                        if has_patient || specimen.is_some() {
-                            return Err(content("PID", 0));
-                        }
-                        has_patient = true;
-                        parent = Some(Parent::Patient(ordinal));
-                    }
-                    b"PV1" => {
-                        if !has_patient || has_visit || specimen.is_some() {
-                            return Err(content("PV1", 0));
-                        }
-                        has_visit = true;
-                        attached.push(Attached {
-                            parent: parent.ok_or(content("PV1", 0))?,
-                            segment,
-                        });
-                    }
-                    b"SPM" => {
-                        if specimen.is_some() && order.is_none() {
-                            return Err(content("OBR", 0));
-                        }
-                        check_complete(order_status, observation_count)?;
-                        if order.is_some() && order_status.is_none() {
-                            return Err(content("ORC", 0));
-                        }
-                        specimen = Some(segment);
-                        container = None;
-                        order = None;
-                        order_status = None;
-                        parent = Some(Parent::Specimen(ordinal));
-                    }
-                    b"SAC" => {
-                        if specimen.is_none() || container.is_some() {
-                            return Err(content("SAC", 0));
-                        }
-                        container = Some(segment);
-                        has_container_inventory = false;
-                        order = None;
-                        parent = Some(Parent::Container(ordinal));
-                    }
-                    b"OBR" => {
-                        check_complete(order_status, observation_count)?;
-                        if order.is_some() && order_status.is_none() {
-                            return Err(content("ORC", 0));
-                        }
-                        if container.is_none() {
-                            return Err(content("OBR", 0));
-                        }
-                        for field in [2, 4] {
-                            if raw(segment, field).is_empty() {
-                                return Err(content("OBR", field));
-                            }
-                        }
-                        order = Some(segment);
-                        order_status = None;
-                        observation_count = 0;
-                        has_timing = false;
-                        order_count = order_count.checked_add(1).ok_or(content("OBR", 0))?;
-                        parent = Some(Parent::Order(ordinal));
-                    }
-                    b"ORC" => {
-                        if order.is_none()
-                            || super::OrderControl::parse(raw(segment, 1))?
-                                != super::OrderControl::StatusChange
-                            || order_status.is_some()
-                        {
-                            return Err(content("ORC", 1));
-                        }
-                        order_status = Some(super::OrderStatus::parse(raw(segment, 5))?);
-                        attached.push(Attached {
-                            parent: parent.ok_or(content("ORC", 0))?,
-                            segment,
-                        });
-                    }
-                    b"TQ1" => {
-                        if order_status.is_none() || has_timing || observation_count != 0 {
-                            return Err(content("TQ1", 0));
-                        }
-                        has_timing = true;
-                        attached.push(Attached {
-                            parent: parent.ok_or(content("TQ1", 0))?,
-                            segment,
-                        });
-                    }
-                    b"OBX" => {
-                        if order.is_none() && container.is_none() {
-                            let specimen = specimen.ok_or(content("SPM", 0))?;
-                            specimen_observations.push(SpecimenObservation {
-                                specimen,
-                                segment,
-                                values: values(segment)?,
-                            });
-                            parent = Some(Parent::SpecimenObservation(ordinal));
-                            return Ok(());
-                        }
-                        match order_status {
-                            Some(super::OrderStatus::InProgress | super::OrderStatus::Complete) => {
-                            }
-                            Some(super::OrderStatus::Scheduled | super::OrderStatus::Cancelled)
-                            | None => return Err(content("OBX", 0)),
-                        }
-                        for field in [3, 4, 11] {
-                            if raw(segment, field).is_empty() {
-                                return Err(content("OBX", field));
-                            }
-                        }
-                        let sequence = observation_count.checked_add(1).ok_or(content("OBX", 1))?;
-                        if raw(segment, 1) != sequence.to_string().as_bytes() {
-                            return Err(content("OBX", 1));
-                        }
-                        let observation = Observation {
-                            order_ordinal: order_count,
-                            segment,
-                            order: order.ok_or(content("OBR", 0))?,
-                            specimen: specimen.ok_or(content("SPM", 0))?,
-                            container: container.ok_or(content("SAC", 0))?,
-                            status: ResultStatus::parse(raw(segment, 11))?,
-                            detail: None,
-                            values: values(segment)?,
-                        };
-                        observations.push(observation);
-                        result_phase = ResultPhase::Observation;
-                        observation_count =
-                            observation_count.checked_add(1).ok_or(content("OBX", 0))?;
-                        parent = Some(Parent::Observation(ordinal));
-                    }
-                    b"TCD" => {
-                        match result_phase {
-                            ResultPhase::Observation => {}
-                            ResultPhase::NoResult
-                            | ResultPhase::Detail
-                            | ResultPhase::Inventory
-                            | ResultPhase::Notes => return Err(content("TCD", 0)),
-                        }
-                        result_phase = ResultPhase::Detail;
-                        if !matches!(parent, Some(Parent::Observation(_))) {
-                            return Err(content("TCD", 0));
-                        }
-                        let observation = observations.last().ok_or(content("TCD", 0))?;
-                        if !super::order::same_test(raw(segment, 1), observation.code()) {
-                            return Err(Error::Inconsistent {
-                                segment: "TCD",
-                                field: 1,
-                            });
-                        }
-                        observations.last_mut().ok_or(content("TCD", 0))?.detail =
-                            Some(super::TestDetail::from_validated(
-                                segment,
-                                profile,
-                                super::ControlDirection::Receive,
-                            ));
-                        attached.push(Attached {
-                            parent: parent.ok_or(content("TCD", 0))?,
-                            segment,
-                        });
-                    }
-                    b"NTE" => {
-                        match parent {
-                            Some(Parent::Patient(_)) => {}
-                            Some(Parent::Order(_)) => {
-                                if order_status.is_none() {
-                                    return Err(content("ORC", 0));
-                                }
-                            }
-                            Some(Parent::Observation(_)) => {
-                                result_phase = ResultPhase::Notes;
-                            }
-                            Some(
-                                Parent::Specimen(_)
-                                | Parent::Container(_)
-                                | Parent::SpecimenObservation(_),
-                            )
-                            | None => return Err(content("NTE", 0)),
-                        }
-                        attached.push(Attached {
-                            parent: parent.ok_or(content("NTE", 0))?,
-                            segment,
-                        });
-                    }
-                    b"INV" => {
-                        match parent {
-                            Some(Parent::Container(_)) => {
-                                if has_container_inventory
-                                    || specimen.is_none_or(|s| {
-                                        super::control::part(raw(s, 11), 1) != b"Q"
-                                            || super::control::part(raw(s, 11), 3) != b"HL70369"
-                                    })
-                                {
-                                    return Err(content("INV", 0));
-                                }
-                                if profile.contributing_substances
-                                    && (super::control::part(raw(segment, 3), 1) != b"CO"
-                                        || super::control::part(raw(segment, 3), 3) != b"HL70384")
-                                {
-                                    return Err(content("INV", 3));
-                                }
-                                has_container_inventory = true;
-                            }
-                            Some(Parent::Observation(_)) => {
-                                match result_phase {
-                                    ResultPhase::Observation
-                                    | ResultPhase::Detail
-                                    | ResultPhase::Inventory => {}
-                                    ResultPhase::NoResult | ResultPhase::Notes => {
-                                        return Err(content("INV", 0));
-                                    }
-                                }
-                                result_phase = ResultPhase::Inventory;
-                            }
-                            Some(
-                                Parent::Patient(_)
-                                | Parent::Specimen(_)
-                                | Parent::Order(_)
-                                | Parent::SpecimenObservation(_),
-                            )
-                            | None => return Err(content("INV", 0)),
-                        }
-                        attached.push(Attached {
-                            parent: parent.ok_or(content("INV", 0))?,
-                            segment,
-                        });
-                    }
-                    _ => return Err(content("OUL", 0)),
-                }
-                Ok(())
-            })();
+            let checked =
+                groups.parse_segment(segment, ordinal, profile);
             checked.map_err(|error| error.at_segment(segment, *occurrence))?;
         }
-        check_complete(order_status, observation_count)?;
-        if order.is_some() && order_status.is_none() {
+        check_complete(groups.order_status, groups.observation_count)?;
+        if groups.order.is_some() && groups.order_status.is_none() {
             return Err(content("ORC", 0));
         }
-        if order_count == 0 || order.is_none() {
+        if groups.order_count == 0 || groups.order.is_none() {
             return Err(content("OBR", 0));
         }
         let mut code_counts = std::collections::BTreeMap::new();
-        for observation in &observations {
+        for observation in &groups.observations {
             let count = code_counts
                 .entry((
                     observation.order_ordinal,
@@ -579,7 +339,7 @@ impl<'a> Results<'a> {
                 .or_insert(0usize);
             *count = count.checked_add(1).ok_or(content("OBX", 4))?;
         }
-        for observation in &observations {
+        for observation in &groups.observations {
             let repeated_code = code_counts
                 .get(&(
                     observation.order_ordinal,
@@ -597,10 +357,10 @@ impl<'a> Results<'a> {
             }
         }
         Ok(Self {
-            specimen_observations,
+            specimen_observations: groups.specimen_observations,
             message,
-            observations,
-            attached,
+            observations: groups.observations,
+            attached: groups.attached,
         })
     }
 
@@ -693,3 +453,6 @@ pub fn result_acknowledgment(
     super::validate_control(&output, super::ControlDirection::Send)?;
     Ok(Some(output))
 }
+
+mod groups;
+use groups::ResultGroups;
