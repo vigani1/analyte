@@ -7,6 +7,9 @@ pub enum Error {
     /// Message byte bound exceeded.
     #[error("POCT message limit exceeded")]
     Limit,
+    /// XML cannot become valid by appending bytes.
+    #[error("malformed POCT XML: {0}")]
+    Malformed(#[source] quick_xml::Error),
     /// Element depth bound exceeded.
     #[error("POCT XML depth limit exceeded")]
     Depth,
@@ -16,7 +19,7 @@ pub enum Error {
 }
 
 /// Scans an append-only, host-owned message buffer without revisiting complete tokens.
-/// Incomplete or malformed tokens remain pending for syntax or the host deadline.
+/// Only incomplete tokens remain pending for more bytes.
 #[derive(Debug)]
 pub struct Decoder {
     cursor: usize,
@@ -43,7 +46,7 @@ impl Decoder {
         self.depth = 0;
     }
 
-    /// Returns the complete root's byte length, retaining partial/malformed tokens.
+    /// Returns the complete root's byte length, retaining incomplete tokens.
     /// Call with the same buffer plus appended bytes until completion, then reset.
     /// # Errors
     /// Rejects byte/depth limit violations and an unbalanced closing root.
@@ -57,7 +60,9 @@ impl Decoder {
             reader.config_mut().check_end_names = false;
             reader.config_mut().allow_unmatched_ends = true;
             let event = match reader.read_event() {
-                Ok(Event::Eof) | Err(_) => return Ok(None),
+                Ok(Event::Eof) => return Ok(None),
+                Err(error) if incomplete(&error, tail) => return Ok(None),
+                Err(error) => return Err(Error::Malformed(error)),
                 Ok(event) => event,
             };
             let consumed = usize::try_from(reader.buffer_position()).map_err(|_| Error::Limit)?;
@@ -76,8 +81,7 @@ impl Decoder {
                 }
                 Event::End(_) => {
                     if self.depth == 0 {
-                        self.cursor = self.cursor.saturating_sub(consumed);
-                        return Ok(None);
+                        return Err(Error::Unbalanced);
                     }
                     self.depth = self.depth.checked_sub(1).ok_or(Error::Unbalanced)?;
                     if self.depth == 0 {
@@ -96,6 +100,30 @@ impl Decoder {
                 Event::Eof => return Ok(None),
             }
         }
+    }
+}
+
+// quick-xml distinguishes EOF-truncated constructs from definite syntax errors.
+// A partial bang introducer needs special handling before the reader knows its kind.
+fn incomplete(error: &quick_xml::Error, tail: &[u8]) -> bool {
+    use quick_xml::{Error as XmlError, errors::SyntaxError};
+    match error {
+        XmlError::Syntax(SyntaxError::InvalidBangMarkup) => {
+            [b"<!--".as_slice(), b"<![CDATA[", b"<!DOCTYPE"]
+                .iter()
+                .any(|prefix| prefix.starts_with(tail))
+        }
+        XmlError::Syntax(
+            SyntaxError::UnclosedPI
+            | SyntaxError::UnclosedXmlDecl
+            | SyntaxError::UnclosedComment
+            | SyntaxError::UnclosedDoctype
+            | SyntaxError::UnclosedCData
+            | SyntaxError::UnclosedTag
+            | SyntaxError::UnclosedSingleQuotedAttributeValue
+            | SyntaxError::UnclosedDoubleQuotedAttributeValue,
+        ) => true,
+        _ => false, // Other external XML errors cannot be repaired by appending bytes.
     }
 }
 
@@ -121,7 +149,19 @@ mod tests {
     }
 
     #[test]
-    fn poct01_b_xml_partial_and_malformed_roots_remain_pending() -> Result<(), Error> {
+    fn poct01_b_xml_definite_errors_are_refused() {
+        assert!(matches!(
+            Decoder::new(1024, 16).scan(b"<a><!invalid>"),
+            Err(Error::Malformed(_))
+        ));
+        assert!(matches!(
+            Decoder::new(1024, 16).scan(b"</root>"),
+            Err(Error::Unbalanced)
+        ));
+    }
+
+    #[test]
+    fn poct01_b_xml_incomplete_roots_remain_pending() -> Result<(), Error> {
         for raw in [
             b"<a><!-- unfinished".as_slice(),
             b"<a><",
@@ -135,7 +175,10 @@ mod tests {
             Decoder::new(1024, 1).scan(b"<a><b>"),
             Err(Error::Depth)
         ));
-        assert_eq!(Decoder::new(1024, 1).scan(b"</a>")?, None);
+        assert!(matches!(
+            Decoder::new(1024, 1).scan(b"</a>"),
+            Err(Error::Unbalanced)
+        ));
         Ok(())
     }
 }
@@ -151,8 +194,10 @@ mod equivalence {
         // Boundaries need balanced depth even for a mismatched tag name. The syntax
         // reader rejects it afterwards, while retaining the complete rejected root.
         reader.config_mut().check_end_names = false;
+        reader.config_mut().allow_unmatched_ends = true;
         let mut depth = 0usize;
         loop {
+            let position = usize::try_from(reader.buffer_position()).map_err(|_| Error::Limit)?;
             match reader.read_event() {
                 Ok(Event::Start(_)) => {
                     depth = depth.checked_add(1).ok_or(Error::Depth)?;
@@ -175,7 +220,11 @@ mod equivalence {
                 }
                 // The external XML reader can reject a partial token. Keep its bytes
                 // until the bounded message/deadline gate; never discard that evidence.
-                Ok(Event::Eof) | Err(_) => return Ok(None),
+                Ok(Event::Eof) => return Ok(None),
+                Err(error) if incomplete(&error, raw.get(position..).ok_or(Error::Limit)?) => {
+                    return Ok(None);
+                }
+                Err(error) => return Err(Error::Malformed(error)),
                 Ok(
                     Event::Empty(_)
                     | Event::Text(_)
