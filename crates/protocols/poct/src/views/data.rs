@@ -517,8 +517,8 @@ fn value_type(element: &Element, kind: Kind) -> Option<&'static str> {
             }
         }
         Kind::Person | Kind::Time => "ST",
-        Kind::Integer => "INT",
-        Kind::Real | Kind::Quantity | Kind::Interval => "REAL",
+        Kind::Integer | Kind::Real => "ST",
+        Kind::Quantity | Kind::Interval => "REAL",
         Kind::Code | Kind::SimpleCode | Kind::Encapsulated => return None,
     })
 }
