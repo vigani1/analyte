@@ -163,6 +163,10 @@ fn validate_children(
     Ok(())
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Flat POCT object cardinality table is reviewed as one vocabulary lookup."
+)]
 fn object_rules(name: &str, patient: bool) -> Option<Vec<Rule>> {
     Some(match name {
         "HEL.R01" => vec![one("HDR"), one("DEV"), optional("AP")],
