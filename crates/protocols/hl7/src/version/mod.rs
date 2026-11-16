@@ -47,6 +47,10 @@ struct EditionRules {
     orm_patient_name_required: bool,
     // HL7 2.3.1 §4.2.1: qualified ORM writer.
     orm_writer: bool,
+    // Named 2.3.1 UTF-8 receiving departure (ADR 0002).
+    utf8_departure: bool,
+    // HL7 2.3.1 §4.3.1: ORM position in the other placer field.
+    placer_position: bool,
     // HL7 2.3.1 §4.4: legacy specimen coding has no explicit version.
     specimen_code_version: bool,
     // HL7 2.3.1 §3.3.2.3: bounded patient identifier.
@@ -89,6 +93,8 @@ const EDITIONS: [EditionRules; 8] = [
         legacy_query_structure: false,
         orm_patient_name_required: false,
         orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
         specimen_code_version: true,
         short_patient_identifier: false,
         single_order_error: false,
@@ -118,6 +124,8 @@ const EDITIONS: [EditionRules; 8] = [
         legacy_query_structure: false,
         orm_patient_name_required: true,
         orm_writer: true,
+        utf8_departure: true,
+        placer_position: true,
         specimen_code_version: false,
         short_patient_identifier: true,
         single_order_error: true,
@@ -147,6 +155,8 @@ const EDITIONS: [EditionRules; 8] = [
         legacy_query_structure: false,
         orm_patient_name_required: false,
         orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
         specimen_code_version: true,
         short_patient_identifier: false,
         single_order_error: false,
@@ -176,6 +186,8 @@ const EDITIONS: [EditionRules; 8] = [
         legacy_query_structure: true,
         orm_patient_name_required: false,
         orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
         specimen_code_version: true,
         short_patient_identifier: false,
         single_order_error: false,
@@ -205,6 +217,8 @@ const EDITIONS: [EditionRules; 8] = [
         legacy_query_structure: true,
         orm_patient_name_required: false,
         orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
         specimen_code_version: true,
         short_patient_identifier: false,
         single_order_error: false,
@@ -235,6 +249,8 @@ const EDITIONS: [EditionRules; 8] = [
         legacy_query_structure: true,
         orm_patient_name_required: false,
         orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
         specimen_code_version: true,
         short_patient_identifier: false,
         single_order_error: false,
@@ -264,6 +280,8 @@ const EDITIONS: [EditionRules; 8] = [
         legacy_query_structure: false,
         orm_patient_name_required: false,
         orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
         specimen_code_version: true,
         short_patient_identifier: false,
         single_order_error: false,
@@ -294,6 +312,8 @@ const EDITIONS: [EditionRules; 8] = [
         legacy_query_structure: false,
         orm_patient_name_required: false,
         orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
         specimen_code_version: true,
         short_patient_identifier: false,
         single_order_error: false,
@@ -315,6 +335,16 @@ const EDITIONS: [EditionRules; 8] = [
 ];
 
 impl Version {
+    /// Named 2.3.1 UTF-8 receiving departure (ADR 0002).
+    #[must_use]
+    pub fn utf8_departure(self) -> bool {
+        self.entry().utf8_departure
+    }
+    /// HL7 2.3.1 §4.3.1: ORM position in the other placer field.
+    #[must_use]
+    pub fn placer_position(self) -> bool {
+        self.entry().placer_position
+    }
     /// HL7 2.5.1 §2.A.44: ACK message structure component.
     #[must_use]
     pub fn ack_structure(self) -> bool {

@@ -1,5 +1,5 @@
 //! Selects LAW options explicitly (TF-1 §5.2 and TF-2b 2.2/3.27).
-use crate::{DialogKind, Edition, Encoding, Error, Escapes, MachineDocument, Terminator, invalid};
+use crate::{DialogKind, Encoding, Error, Escapes, MachineDocument, Terminator, invalid};
 use serde::{Deserialize, Serialize};
 
 /// Supported host lookup scopes. Other LAW scopes must receive an error response.
@@ -342,7 +342,10 @@ fn validate_link_and_work(machine: &MachineDocument, law: &Law, path: &str) -> R
             "provide explicit bounded headers, specimen/container namespaces, P role and outbound mappings",
         ));
     }
-    if machine.syntax.edition != Some(Edition::V251)
+    if !machine
+        .syntax
+        .edition
+        .is_some_and(|edition| analyte_hl7::Version::from(edition).law_edition())
         || machine.syntax.encoding != Encoding::Utf8
         || machine.syntax.terminator != Some(Terminator::Cr)
         || machine.syntax.escapes != Some(Escapes::Reject)

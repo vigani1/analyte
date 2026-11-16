@@ -190,6 +190,8 @@ fn hl7_chapters_2_4_5_7_pin_each_independent_rule() {
     ] {
         assert_eq!(version.ack_structure(), modern);
         assert_eq!(version.orm_writer(), legacy_order);
+        assert_eq!(version.placer_position(), legacy_order);
+        assert_eq!(version.utf8_departure(), legacy_order);
         assert_eq!(version.single_order_error(), legacy_order);
         assert_eq!(version.short_patient_identifier(), legacy_order);
         assert_eq!(version.specimen_code_version(), !legacy_order);

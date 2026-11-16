@@ -1,6 +1,5 @@
 //! Validates configured HL7 outbound message layouts.
 use super::*;
-use crate::Edition;
 use std::collections::HashSet;
 
 impl Orders {
@@ -140,7 +139,9 @@ impl Orders {
                 || send.position_field.is_some_and(|field| {
                     !matches!(field, 18 | 19)
                         || field == send.sample_field
-                        || machine.syntax.edition != Some(Edition::V231)
+                        || !machine.syntax.edition.is_some_and(|edition| {
+                            analyte_hl7::Version::from(edition).placer_position()
+                        })
                 })
             {
                 return Err(invalid(
