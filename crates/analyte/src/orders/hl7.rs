@@ -96,18 +96,27 @@ impl Connection {
         _machine: &intake::Connection<'_>,
         code: &str,
     ) -> Result<(), Error> {
+        let mut result = Ok(());
         for identity in self.reserving.drain(..) {
-            if let Some(order) = store
+            let loaded = store
                 .request(deadline(), move |store| store.machine_order(&identity))
-                .await?
-                && (order.reserved_by(&self.owner) || order.cancel_requested_by(&self.owner))
+                .await;
+            let order = match loaded {
+                Ok(Some(order)) => order,
+                Ok(None) => continue,
+                Err(error) => {
+                    crate::machine::custody::retain_cleanup(&mut result, Err(error.into()));
+                    continue;
+                }
+            };
+            if (order.reserved_by(&self.owner) || order.cancel_requested_by(&self.owner))
                 && !self.active.iter().any(|active| active.id == order.id)
             {
                 self.active.push(order);
             }
         }
         if let Some(exchange) = &self.exchange {
-            super::hl7_send::finish(
+            let cleanup = super::hl7_send::finish(
                 store,
                 exchange,
                 None,
@@ -117,11 +126,13 @@ impl Connection {
                     "HL7-order-session-error"
                 },
             )
-            .await?;
+            .await;
+            crate::machine::custody::retain_cleanup(&mut result, cleanup);
         }
         self.exchange = None;
-        self.outcome(store, code, false).await?;
-        Ok(())
+        let cleanup = self.outcome(store, code, false).await;
+        crate::machine::custody::retain_cleanup(&mut result, cleanup);
+        result
     }
     pub(crate) async fn outcome(
         &mut self,
@@ -129,10 +140,11 @@ impl Connection {
         code: &str,
         sent: bool,
     ) -> Result<(), Error> {
-        while let Some(order) = self.active.first() {
+        let mut result = Ok(());
+        for order in self.active.drain(..) {
             let identity = order.key.clone();
             let code = analyte_model::SourceText::new(code)?;
-            store
+            let cleanup = store
                 .request(deadline(), move |store| {
                     let current = store
                         .machine_order(&identity)?
@@ -170,11 +182,11 @@ impl Connection {
                     }
                     Ok(())
                 })
-                .await?;
-            self.active.remove(0);
+                .await
+                .map_err(Into::into);
+            crate::machine::custody::retain_cleanup(&mut result, cleanup);
         }
-        self.active.clear();
-        Ok(())
+        result
     }
     pub(crate) async fn answer(
         &mut self,
@@ -467,6 +479,73 @@ mod tests {
             Ok(u64::MAX)
         }
     }
+
+    #[tokio::test]
+    async fn rule8_cleanup_preserves_session_error_and_attempts_every_reservation()
+    -> Result<(), Error> {
+        let machine = query_machine()?;
+        let temp = tempfile::tempdir()?;
+        let mut store = Handle::start(
+            temp.path().join("cleanup-failure.db"),
+            analyte_store::Limits {
+                reserve_bytes: 1024,
+                database_bytes: 100_000_000,
+                record_bytes: 65_536,
+                page_rows: 100,
+                busy_timeout: Duration::from_millis(20),
+            },
+            Box::new(Space),
+            4,
+            crate::test_startup_deadline()?,
+        )
+        .await?;
+        let key = analyte_store::MachineOrderKey {
+            destination: super::super::destination(&machine),
+            order: Identifier::new("order-1")?,
+            machine: machine.id.clone(),
+        };
+        let owner = Identifier::new("cleanup-owner")?;
+        reserve_original_connection(&store, &key, &owner).await?;
+        let lookup = key.clone();
+        let good = store
+            .request(deadline(), move |store| store.machine_order(&lookup))
+            .await?
+            .ok_or("order")?;
+        let mut missing = good.clone();
+        missing.key.order = Identifier::new("missing")?;
+        let options = machine
+            .snapshot
+            .effective()
+            .hl7_options()
+            .ok_or("options")?;
+        let mut connection = Connection::new(options)?;
+        connection.owner = owner;
+        connection.active = vec![missing, good];
+        let mut result = Err(invalid("original wire failure"));
+        crate::machine::custody::retain_cleanup(
+            &mut result,
+            connection
+                .close(
+                    &store,
+                    &intake::Connection::new(&machine)?,
+                    "HL7-DSR-session-error",
+                )
+                .await,
+        );
+        let error = result.expect_err("cleanup fails");
+        assert!(error.to_string().contains("original wire failure"));
+        assert!(error.to_string().contains("dialog effect failed"));
+        assert!(error.source().is_some());
+        let current = store
+            .request(deadline(), move |store| store.machine_order(&key))
+            .await?
+            .ok_or("reservation")?;
+        assert_eq!(current.state, analyte_model::OrderState::Uncertain);
+        assert!(connection.active.is_empty());
+        store.shutdown(deadline()).await?;
+        Ok(())
+    }
+
     #[tokio::test]
     async fn adr0003_rule8_cancelled_query_cleanup_never_claims_another_connection()
     -> Result<(), Error> {

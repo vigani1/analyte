@@ -448,26 +448,29 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
 
         Ok(())
     }
-    async fn close(&mut self, result: Result<(), Error>) -> Result<(), Error> {
+    async fn close(&mut self, mut result: Result<(), Error>) -> Result<(), Error> {
         for order in self.active_orders.drain(..) {
-            crate::orders::sending::uncertain(
+            let cleanup = crate::orders::sending::uncertain(
                 self.store,
                 &order,
                 "connection-ended-before-transfer-confirmation",
             )
-            .await?;
+            .await;
+            super::custody::retain_cleanup(&mut result, cleanup);
         }
         if let Some(transfer) = self.transfer.take() {
-            finish_incomplete(self.store, transfer).await?;
+            let cleanup = finish_incomplete(self.store, transfer).await;
+            super::custody::retain_cleanup(&mut result, cleanup);
         }
         if !self.partial.is_empty() {
-            intake::park_bytes(
+            let cleanup = intake::park_bytes(
                 self.store,
                 self.machine,
                 std::mem::take(&mut self.partial),
                 "incomplete ASTM frame when session stopped",
             )
-            .await?;
+            .await;
+            super::custody::retain_cleanup(&mut result, cleanup);
         }
         result
     }

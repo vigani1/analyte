@@ -9,7 +9,7 @@ pub(crate) mod interpretation;
 mod poll_custody;
 pub use interpretation::reprocess;
 mod connection_input;
-mod custody;
+pub(crate) mod custody;
 pub(crate) mod hl7_response;
 mod law;
 mod poct;
