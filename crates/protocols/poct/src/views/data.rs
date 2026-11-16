@@ -450,6 +450,13 @@ fn validate_attributes(element: &Element, kind: Kind) -> Result<(), DataError> {
         }
     }
     if kind == Kind::Code
+        && ["S", "SN", "SV"]
+            .iter()
+            .any(|key| attr(element, key).is_some_and(str::is_empty))
+    {
+        return Err(DataError::Code);
+    }
+    if kind == Kind::Code
         && (attr(element, "S").is_some() || attr(element, "SV").is_some())
         && attr(element, "SN").is_none()
     {

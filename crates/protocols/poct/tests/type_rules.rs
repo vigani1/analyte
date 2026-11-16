@@ -106,3 +106,81 @@ fn poct01_b_5_13_encoding_declaration_has_four_characters() {
         assert_eq!(Message::parse(raw.as_bytes(), limits()).is_ok(), valid);
     }
 }
+
+// POCT01-A2 B 5.4, 5.19 and clarification p.285 supersede the old element DTD lot type.
+#[test]
+fn poct01_b_5_4_clarification_p285_material_lots_are_cs() -> Result<(), MessageError> {
+    for (field, raw) in [
+        ("CTC.lot_number", observation("o", false, "<OBS.value V=\"1\" U=\"mg/L\"/>").replace("<CTC.name V=\"synthetic-control\"/>", "<CTC.name V=\"synthetic-control\"/><CTC.lot_number V=\"lot-01\" T=\"CS\"/>")),
+        ("RGT.lot_number", observation("o", true, "<OBS.value V=\"1\" U=\"mg/L\"/>").replace("</PT>", "</PT><RGT><RGT.name V=\"reagent\"/><RGT.lot_number V=\"lot-01\" T=\"CS\"/><RGT.expiration_date V=\"2027-01-01\"/></RGT>")),
+    ] {
+        Message::parse(raw.as_bytes(), limits())?;
+        assert!(Message::parse(raw.replace("T=\"CS\"", "T=\"CV\"").as_bytes(), limits()).is_err());
+        let qualified = raw.replace(&format!("<{field} V="), &format!("<{field} SN=\"local\" V="));
+        assert!(Message::parse(qualified.as_bytes(), limits()).is_err());
+    }
+    Ok(())
+}
+
+// POCT01-A2 B 8.4 and default tables 14/21/25/28/45/54/57.
+#[test]
+fn poct01_b_8_4_default_codes_and_qualified_extensions() -> Result<(), MessageError> {
+    for (field, valid, raw) in [
+        ("DST.condition_cd", "R", status("s", "0")),
+        ("DSC.topics_supported_cd", "D_EV", hello("h")),
+        (
+            "EOT.topic_cd",
+            "OBS",
+            peer_messages::message("EOT.R01", "e", "<EOT><EOT.topic_cd V=\"OBS\"/></EOT>"),
+        ),
+        (
+            "REQ.request_cd",
+            "ROBS",
+            peer_messages::message("REQ.R01", "r", "<REQ><REQ.request_cd V=\"ROBS\"/></REQ>"),
+        ),
+        (
+            "TRM.reason_cd",
+            "NRM",
+            peer_messages::message("END.R01", "t", "<TRM><TRM.reason_cd V=\"NRM\"/></TRM>"),
+        ),
+        (
+            "ACK.error_detail_cd",
+            "202",
+            peer_messages::message(
+                "ACK.R01",
+                "a",
+                "<ACK><ACK.type_cd V=\"AE\"/><ACK.ack_control_id V=\"x\"/><ACK.error_detail_cd V=\"202\"/></ACK>",
+            ),
+        ),
+    ] {
+        Message::parse(raw.as_bytes(), limits())?;
+        let unknown = raw.replace(
+            &format!("<{field} V=\"{valid}\""),
+            &format!("<{field} V=\"local-code\""),
+        );
+        assert!(Message::parse(unknown.as_bytes(), limits()).is_err());
+        for (system, accepted) in [("local", true), ("POCT01", false), ("", false)] {
+            let qualified = unknown.replace(
+                &format!("<{field} V="),
+                &format!("<{field} SN=\"{system}\" V="),
+            );
+            assert_eq!(
+                Message::parse(qualified.as_bytes(), limits()).is_ok(),
+                accepted
+            );
+        }
+    }
+    Ok(())
+}
+
+// POCT01-A2 B 8.13: display spelling does not make the same coded member distinct.
+#[test]
+fn poct01_b_8_13_advertised_sets_have_unique_members() -> Result<(), MessageError> {
+    for field in ["DSC.topics_supported_cd", "DSC.directives_supported_cd"] {
+        let raw = hello("h").replace("<DSC.max_message_sz", &format!("<{field} V=\"custom\" SN=\"local\"/><{field} V=\"custom\" SN=\"local\" DN=\"label\"/><DSC.max_message_sz"));
+        assert!(Message::parse(raw.as_bytes(), limits()).is_err());
+        let distinct = raw.replace("SN=\"local\" DN=", "SN=\"other\" DN=");
+        Message::parse(distinct.as_bytes(), limits())?;
+    }
+    Ok(())
+}

@@ -320,7 +320,6 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "SPC.specimen_id"
         | "SPC.source_cd"
         | "SPC.type_cd"
-        | "CTC.lot_number"
         | "CTC.level_cd"
         | "DSC.topics_supported_cd"
         | "DSC.directives_supported_cd"
@@ -332,9 +331,10 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "REQ.request_cd"
         | "TRANSLTN"
         | "NOTE"
-        | "CONFID"
-        | "RGT.lot_number" => Kind::Code,
-        "DSC.connection_profile_cd"
+        | "CONFID" => Kind::Code,
+        "CTC.lot_number"
+        | "RGT.lot_number"
+        | "DSC.connection_profile_cd"
         | "SVC.role_cd"
         | "SVC.status_cd"
         | "SVC.reason_cd"
@@ -448,6 +448,31 @@ fn validate_codes(element: &Element) -> Result<(), MessageError> {
     let Some(value) = data::attr(element, "V") else {
         return Ok(());
     };
+    let foreign = data::attr(element, "SN").is_some_and(|name| name != "POCT01");
+    if !foreign {
+        let standard = match element.name() {
+            "DSC.topics_supported_cd" => matches!(
+                value,
+                "D_EV" | "DTV" | "OP_LST" | "OP_LST_I" | "PT_LST" | "PT_LST_I"
+            ),
+            "DSC.directives_supported_cd" => matches!(
+                value,
+                "SET_TIME" | "LOCK" | "UNLOCK" | "GOTO_STANDBY" | "GOTO_READY" | "START_CONTINUOUS"
+            ),
+            "DST.condition_cd" => matches!(value, "B" | "L" | "P" | "R" | "S"),
+            "EOT.topic_cd" => matches!(value, "EVS" | "OBS" | "OPL" | "PTL"),
+            "REQ.request_cd" => matches!(value, "ROBS" | "RDEV"),
+            "TRM.reason_cd" => matches!(value, "NRM" | "ABN" | "USR" | "UNK"),
+            "ACK.error_detail_cd" => matches!(
+                value,
+                "0" | "100" | "101" | "102" | "103" | "200" | "201" | "202"
+            ),
+            _ => true,
+        };
+        if !standard {
+            return Err(MessageError::Data(data::DataError::Code));
+        }
+    }
     let legal = match element.name() {
         "ACK.type_cd" => matches!(value, "AA" | "AE"),
         "ESC.detail_cd" => matches!(value, "OTH" | "TOP" | "CNC"),
