@@ -34,6 +34,12 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
                 .starts_with("HTTP/1.1 403")
         );
     }
+    let oversized = format!("{form}&padding={}", "x".repeat(1024));
+    assert!(
+        request(&host, &path, &post_auth, Some(&oversized))
+            .await?
+            .starts_with("HTTP/1.1 413")
+    );
     let original_program = std::fs::read_to_string(&config_path)?;
     std::fs::create_dir(root.join("other"))?;
     std::fs::write(
@@ -213,6 +219,13 @@ async fn assert_resend_audit_atomicity(
             );
             let audits = s.audits(0)?;
             assert_eq!(audits.len(), 2);
+            assert_eq!(audits[0].1.action.as_str(), "receipt-reprocess");
+            assert_eq!(audits[1].1.action.as_str(), "delivery-resend");
+            assert!(
+                audits
+                    .iter()
+                    .all(|(_, audit)| audit.reason.as_str() == "mapping repaired")
+            );
             assert!(
                 audits
                     .iter()
@@ -313,6 +326,18 @@ async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result
     )
     .await?;
     assert!(refused.starts_with("HTTP/1.1 403"));
+    let database = program.data_directory().join("analyte.db");
+    rusqlite::Connection::open(&database)?.execute_batch("CREATE TRIGGER refuse_hold_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
+    let refused = request(&host, "/retention", &post_auth, Some(&form)).await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    store
+        .request(fixture_deadline()?, move |store| {
+            assert!(!store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
+            assert!(store.audits(0)?.is_empty());
+            Ok(())
+        })
+        .await?;
+    rusqlite::Connection::open(&database)?.execute_batch("DROP TRIGGER refuse_hold_audit;")?;
     let placed = request(&host, "/retention", &post_auth, Some(&form)).await?;
     assert!(placed.starts_with("HTTP/1.1 200"), "{placed}");
     store
@@ -334,7 +359,12 @@ async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result
     store
         .request(fixture_deadline()?, move |store| {
             assert!(!store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
-            assert_eq!(store.audits(0)?.len(), 2);
+            let audits = store.audits(0)?;
+            assert_eq!(audits.len(), 2);
+            assert_eq!(audits[1].1.action.as_str(), "retention-hold-release");
+            assert_eq!(audits[1].1.reason.as_str(), "review required");
+            assert_eq!(audits[0].1.actor, audits[1].1.actor);
+            assert!(audits[0].1.actor.as_str().starts_with("admin-session-"));
             Ok(())
         })
         .await?;
