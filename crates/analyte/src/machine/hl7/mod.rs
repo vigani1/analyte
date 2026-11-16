@@ -534,5 +534,4 @@ fn transport_failure_as_empty_input() -> Vec<u8> {
 }
 
 #[cfg(test)]
-#[path = "hl7_tests.rs"]
 mod tests;

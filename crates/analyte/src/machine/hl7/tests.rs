@@ -14,7 +14,8 @@ fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Err
     std::fs::write(root.join("machine.toml"), definition)?;
     std::fs::write(
         root.join("site.toml"),
-        include_str!("../../../core/config/examples/site.toml").replace("127.0.0.1:5600", endpoint),
+        include_str!("../../../../core/config/examples/site.toml")
+            .replace("127.0.0.1:5600", endpoint),
     )?;
     let path = root.join("program.toml");
     std::fs::write(
@@ -30,10 +31,11 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
     for orders in [false, true] {
         for cancel in [false, true] {
             let temp = crate::admin::private_tempdir()?;
-            let mut definition = include_str!("../../../core/config/examples/hl7.toml").to_owned();
+            let mut definition =
+                include_str!("../../../../core/config/examples/hl7.toml").to_owned();
             if orders {
                 definition.push_str(include_str!(
-                    "../../../core/config/examples/hl7_orders.toml"
+                    "../../../../core/config/examples/hl7_orders.toml"
                 ));
             }
             let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
