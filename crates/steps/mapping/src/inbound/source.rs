@@ -35,9 +35,10 @@ impl Source<'_> {
     }
 
     pub(crate) fn has_analysis_time(&self, config: &analyte_config::Validated) -> bool {
-        self.base_version(config).is_some_and(|version| {
-            version != analyte_hl7::Version::V231 && !version.uses_compatibility_contract()
-        })
+        crate::is_law(config)
+            || self.base_version(config).is_some_and(|version| {
+                version != analyte_hl7::Version::V231 && !version.uses_compatibility_contract()
+            })
     }
 
     pub(crate) fn uses_dtm(&self, config: &analyte_config::Validated) -> bool {
@@ -452,6 +453,7 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
             });
         }
     };
+    super::grammar::validate(message, oul)?;
     hl7_segments(
         message,
         if oul {

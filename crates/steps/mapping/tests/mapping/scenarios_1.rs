@@ -587,31 +587,3 @@ fn plan6_notes_keep_parent_paths_even_without_a_result() -> TestResult {
     );
     Ok(())
 }
-
-// HL7 2.5.1 section 7.4.3.17: DR endpoints contain independent TS precision.
-#[test]
-fn hl7_251_s7_4_3_17_collection_range_is_not_ts_precision() -> TestResult {
-    let cfg = config(HL7_CONFIG)?;
-    for range in ["20261116^20261117", "20261116&D", "20261116&D^20261117&D"] {
-        let mut spm = [""; 17];
-        spm[0] = "1";
-        spm[16] = range;
-        let raw = format!(
-            "MSH|^~\\&|SYN||||20261116||OUL^R22^OUL_R22|MSG|P|2.5.1\rSPM|{}\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r",
-            spm.join("|")
-        );
-        let message = analyte_hl7::Message::parse(
-            raw.as_bytes(),
-            cfg.effective().hl7_options().ok_or("options")?,
-        )?;
-        assert!(matches!(
-            map_hl7(&message, &cfg, input()),
-            Err(analyte_mapping::Error::Structure {
-                reason: "SPM-17 collection range or nested precision is unsupported; retain interval for review",
-                ..
-            })
-        ));
-        assert_eq!(message.encode(), raw.as_bytes());
-    }
-    Ok(())
-}

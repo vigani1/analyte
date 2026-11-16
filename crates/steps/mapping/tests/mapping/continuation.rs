@@ -33,3 +33,53 @@ fn hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result() -> T
     }
     Ok(())
 }
+
+// HL7 2.3.1 section 7.2.1; 2.5.1 sections 7.3.1 and 7.3.7.
+#[test]
+fn hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused() -> TestResult {
+    let cfg = config(HL7_CONFIG)?;
+    for (kind, body) in [
+        ("ORU^R01^ORU_R01", "ORC|RE\r"),
+        ("ORU^R01^ORU_R01", "ORC|RE\rORC|RE\rOBR|1\r"),
+        ("ORU^R01^ORU_R01", "PID|1\rPV2|1\rOBR|1\r"),
+        ("OUL^R22^OUL_R22", "PID|1\rPID|2\rSPM|1\rOBR|1\r"),
+        ("OUL^R22^OUL_R22", "SPM|1\rSPM|2\rOBR|1\r"),
+    ] {
+        let raw = format!("MSH|^~\\&|SYN||||20261116||{kind}|MSG|P|2.5.1\r{body}");
+        let message = analyte_hl7::Message::parse(
+            raw.as_bytes(),
+            cfg.effective().hl7_options().ok_or("options")?,
+        )?;
+        assert!(map_hl7(&message, &cfg, input()).is_err());
+        assert_eq!(message.encode(), raw.as_bytes());
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 section 7.4.3.17: DR endpoints contain independent TS precision.
+#[test]
+fn hl7_251_s7_4_3_17_collection_range_is_not_ts_precision() -> TestResult {
+    let cfg = config(HL7_CONFIG)?;
+    for range in ["20261116^20261117", "20261116&D", "20261116&D^20261117&D"] {
+        let mut spm = [""; 17];
+        spm[0] = "1";
+        spm[16] = range;
+        let raw = format!(
+            "MSH|^~\\&|SYN||||20261116||OUL^R22^OUL_R22|MSG|P|2.5.1\rSPM|{}\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r",
+            spm.join("|")
+        );
+        let message = analyte_hl7::Message::parse(
+            raw.as_bytes(),
+            cfg.effective().hl7_options().ok_or("options")?,
+        )?;
+        assert!(matches!(
+            map_hl7(&message, &cfg, input()),
+            Err(analyte_mapping::Error::Structure {
+                reason: "SPM-17 collection range or nested precision is unsupported; retain interval for review",
+                ..
+            })
+        ));
+        assert_eq!(message.encode(), raw.as_bytes());
+    }
+    Ok(())
+}
