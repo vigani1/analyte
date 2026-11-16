@@ -4,7 +4,7 @@ use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn definition() -> String {
-    include_str!("../../../config/examples/law.toml").to_owned()
+    include_str!("../../../core/config/examples/law.toml").to_owned()
 }
 
 pub(super) fn result(id: &str, awos: &str, filler: &str, value: &str, status: &str) -> String {

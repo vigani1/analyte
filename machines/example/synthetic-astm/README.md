@@ -36,6 +36,6 @@ All real-machine and clinical qualification is outside this example's scope.
 
 ## Sources
 
-The original synthetic crates/config/examples/astm.toml definition and
-crates/sim/recordings/astm.rec.jsonl recording. Protocol requirements are traced
+The original synthetic crates/core/config/examples/astm.toml definition and
+crates/testing/sim/recordings/astm.rec.jsonl recording. Protocol requirements are traced
 in docs/protocols/astm; no vendor manual or patient capture was used.

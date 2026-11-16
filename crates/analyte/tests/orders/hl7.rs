@@ -35,7 +35,7 @@ async fn setup_with_freshness(
         format!(
             "{definition}
 {}",
-            include_str!("../../../config/examples/hl7_orders.toml")
+            include_str!("../../../core/config/examples/hl7_orders.toml")
                 .replace(
                     "acknowledgment_ms = 500",
                     &format!("acknowledgment_ms = {ack_ms}")

@@ -13,14 +13,14 @@ use tokio::{
 fn definition() -> String {
     format!(
         "{}\n{}",
-        include_str!("../../../config/examples/law.toml")
+        include_str!("../../../core/config/examples/law.toml")
             .replace(
                 "operation_timeout_ms = 10000",
                 "operation_timeout_ms = 60000"
             )
             .replace("response_ms = 1500", "response_ms = 30000")
             .replace("query_deadline_ms = 1500", "query_deadline_ms = 30000"),
-        include_str!("../../../config/examples/law_orders.toml")
+        include_str!("../../../core/config/examples/law_orders.toml")
     )
 }
 fn order(

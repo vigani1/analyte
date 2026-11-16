@@ -29,7 +29,7 @@ identity or clinical meaning. See the checklist for current evidence gaps.
 
 ## Implemented grammar rule owner
 
-`crates/hl7/src/version.rs` owns edition selection and the grammar difference
+`crates/protocols/hl7/src/version.rs` owns edition selection and the grammar difference
 table. The refactor preserves existing acceptance, including the shared
 timestamp precision forms and the explicit LAW and UTF-8 policies.
 

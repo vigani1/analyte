@@ -1,7 +1,7 @@
 //! Synthetic program-to-peer custody tests, ADR 0003 and documented vendor scopes.
 #[path = "support/guard.rs"]
 mod guard;
-#[path = "../../poct/tests/peer_messages.rs"]
+#[path = "../../protocols/poct/tests/peer_messages.rs"]
 mod poct_peer;
 use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_store::FreeSpace;
@@ -88,7 +88,7 @@ impl Running {
         std::fs::write(root.join("machine.toml"), definition)?;
         std::fs::write(
             root.join("site.toml"),
-            include_str!("../../config/examples/site.toml")
+            include_str!("../../core/config/examples/site.toml")
                 .replace("127.0.0.1:5600", &address.to_string()),
         )?;
         let path = root.join("program.toml");
@@ -432,7 +432,10 @@ fn vidas_config() -> Result<analyte_framing::vidas::Config, Error> {
 #[tokio::test]
 async fn vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery()
 -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/vidas_literal.toml")).await?;
+    let mut run = Running::start(include_str!(
+        "../../core/config/examples/vidas_literal.toml"
+    ))
+    .await?;
     run.peer.write_all(&[5]).await?;
     assert_eq!(byte(&mut run.peer).await?, 6);
     let packet = vidas_config()?
@@ -452,7 +455,7 @@ async fn vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_del
 #[tokio::test]
 async fn poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery() -> Result<(), Error>
 {
-    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/poct.toml")).await?;
     let hello = poct_peer::hello("hello");
     run.peer.write_all(hello.as_bytes()).await?;
     assert!(String::from_utf8(xml(&mut run.peer).await?)?.contains("ACK.type_cd V=\"AA\""));
@@ -506,7 +509,7 @@ async fn poll(peer: &mut TcpStream, expected: u8) -> Result<(), Error> {
 #[tokio::test]
 async fn autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l()
 -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/autolyser.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
     let good = report()?;
     let mut corrupt = good.clone();
@@ -532,9 +535,9 @@ async fn autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l(
 #[tokio::test]
 async fn adr0003_vendor_storage_failure_never_acknowledges_data() -> Result<(), Error> {
     for definition in [
-        include_str!("../../config/examples/vidas_literal.toml"),
-        include_str!("../../config/examples/poct.toml"),
-        include_str!("../../config/examples/autolyser.toml"),
+        include_str!("../../core/config/examples/vidas_literal.toml"),
+        include_str!("../../core/config/examples/poct.toml"),
+        include_str!("../../core/config/examples/autolyser.toml"),
     ] {
         let mut run = Running::start(definition).await?;
         let raw = if definition.contains("[vidas]") {
@@ -570,7 +573,7 @@ async fn adr0003_vendor_storage_failure_never_acknowledges_data() -> Result<(), 
 #[tokio::test]
 async fn autolyser_rev18_p175_adr0003_uncertain_r_blocks_restart_until_operator_reconciliation()
 -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/autolyser.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
     // No response: neither timeout nor disconnect proves that R did not advance.
     let mut run = run.restart().await?;
@@ -585,7 +588,10 @@ async fn autolyser_rev18_p175_adr0003_uncertain_r_blocks_restart_until_operator_
 
 #[tokio::test]
 async fn vidas_literal_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/vidas_literal.toml")).await?;
+    let mut run = Running::start(include_str!(
+        "../../core/config/examples/vidas_literal.toml"
+    ))
+    .await?;
     run.peer.write_all(&[5]).await?;
     assert_eq!(byte(&mut run.peer).await?, 6);
     let packet = vidas_config()?.encode(b"mtrsl|pi|si|ci00012a|rtMISS|tt|td|qlpositive|qn<0.1|")?;
@@ -602,7 +608,7 @@ async fn vidas_literal_rule2_unknown_test_is_unmapped_and_operator_visible() -> 
 async fn autolyser_rev18_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error>
 {
     use analyte_autolyser::syntax::{Field, Report};
-    let mut run = Running::start(include_str!("../../config/examples/autolyser.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
     let mut report = Report::parse(&report()?, false)?;
     report.values.first_mut().ok_or("fixture value")?.code = Field::new(b"MISS")?;
@@ -623,7 +629,7 @@ async fn autolyser_rev18_rule2_unknown_test_is_unmapped_and_operator_visible() -
 
 #[tokio::test]
 async fn poct01_b6_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/poct.toml")).await?;
     run.peer
         .write_all(poct_peer::hello("hello").as_bytes())
         .await?;
@@ -646,7 +652,10 @@ async fn poct01_b6_rule2_unknown_test_is_unmapped_and_operator_visible() -> Resu
 // AGENTS.md safety rule 2; VIDAS BCI-A chapter 3: interrupted transfers require reconciliation.
 #[tokio::test]
 async fn adr0003_rule2_vidas_disconnect_executes_park_action() -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/vidas_literal.toml")).await?;
+    let mut run = Running::start(include_str!(
+        "../../core/config/examples/vidas_literal.toml"
+    ))
+    .await?;
     run.peer.write_all(&[5]).await?;
     assert_eq!(byte(&mut run.peer).await?, 6);
     run.peer.shutdown().await?;
@@ -660,7 +669,7 @@ async fn adr0003_rule2_vidas_disconnect_executes_park_action() -> Result<(), Err
 // AGENTS.md safety rule 2; POCT01-A2 dialog abnormal closure is a retained operator outcome.
 #[tokio::test]
 async fn adr0003_rule2_poct_disconnect_executes_close_action() -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/poct.toml")).await?;
     run.peer
         .write_all(poct_peer::hello("hello").as_bytes())
         .await?;
@@ -674,7 +683,7 @@ async fn adr0003_rule2_poct_disconnect_executes_close_action() -> Result<(), Err
 // AGENTS.md safety rules 1/2; Autolyser Rev18 storage failure must park, never acknowledge.
 #[tokio::test]
 async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/autolyser.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
     let raw = report()?;
     let encoded = raw.iter().map(|b| format!("{b:02x}")).collect::<String>();
@@ -720,7 +729,7 @@ async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Resul
 // CLSI POCT01-A2 Appendix B section 5.7, p.96: the advertised capacity bounds host replies.
 #[tokio::test]
 async fn poct01_b5_7_host_never_sends_beyond_device_capacity() -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/poct.toml")).await?;
     let hello = poct_peer::hello("hello").replace(
         "<DSC.max_message_sz NULL=\"PINF\"/>",
         "<DSC.max_message_sz V=\"1\"/>",
@@ -773,7 +782,7 @@ async fn poct_deliveries(run: &Running, expected: i64) -> Result<(), Error> {
 // CLSI POCT01-A2 Appendix B 3.2 pp.71-72, 5.5 p.95, 5.21 Tables 46/49 p.105; ADR 0003.
 #[tokio::test]
 async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Result<(), Error> {
-    let definition = include_str!("../../config/examples/poct.toml").replace(
+    let definition = include_str!("../../core/config/examples/poct.toml").replace(
         "[poct]",
         "[poct]\nidentity = { sequence_number = true, processing = \"Production\" }",
     );
@@ -966,7 +975,7 @@ async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> 
             "POCT syntax",
         ),
     ] {
-        let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+        let mut run = Running::start(include_str!("../../core/config/examples/poct.toml")).await?;
         run.peer.write_all(raw.as_bytes()).await?;
         let ack = xml(&mut run.peer).await?;
         let ack = analyte_poct::Message::parse(&ack, poct_peer::limits())?;
@@ -1008,7 +1017,7 @@ async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> 
 #[tokio::test]
 async fn poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack()
 -> Result<(), Error> {
-    let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+    let mut run = Running::start(include_str!("../../core/config/examples/poct.toml")).await?;
     let raw = poct_peer::hello("one").replace(
         "<HDR.control_id V=\"one\"/>",
         "<HDR.control_id V=\"one\"/><HDR.control_id V=\"two\"/>",
@@ -1028,7 +1037,7 @@ async fn poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_
 #[tokio::test]
 async fn poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes() -> Result<(), Error> {
     for reused in ["observation", "status"] {
-        let mut run = Running::start(include_str!("../../config/examples/poct.toml")).await?;
+        let mut run = Running::start(include_str!("../../core/config/examples/poct.toml")).await?;
         poct_start(&mut run, &poct_peer::hello("hello")).await?;
         let first =
             poct_peer::observation("observation", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>");

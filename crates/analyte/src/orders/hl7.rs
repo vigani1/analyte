@@ -535,12 +535,15 @@ mod tests {
     fn query_machine() -> Result<Machine, Error> {
         let definition = format!(
             "{}\n{}",
-            include_str!("../../../config/examples/hl7.toml"),
-            include_str!("../../../config/examples/hl7_orders.toml")
+            include_str!("../../../core/config/examples/hl7.toml"),
+            include_str!("../../../core/config/examples/hl7_orders.toml")
         );
         let snapshot = analyte_config::Draft::load(
             ("machine", &definition),
-            ("site", include_str!("../../../config/examples/site.toml")),
+            (
+                "site",
+                include_str!("../../../core/config/examples/site.toml"),
+            ),
             ("overrides", "schema_version=1"),
         )?
         .validate()?;

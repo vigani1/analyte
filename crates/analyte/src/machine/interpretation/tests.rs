@@ -30,7 +30,8 @@ fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Err
     std::fs::write(root.join("machine.toml"), definition)?;
     std::fs::write(
         root.join("site.toml"),
-        include_str!("../../../../config/examples/site.toml").replace("127.0.0.1:5600", endpoint),
+        include_str!("../../../../core/config/examples/site.toml")
+            .replace("127.0.0.1:5600", endpoint),
     )?;
     let path = root.join("program.toml");
     std::fs::write(
@@ -43,12 +44,12 @@ fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Err
 #[tokio::test]
 async fn plan11_adr0003_mapping_repaired_once_retransmission_conflict_and_original_retained_rule8_no_machine_io()
 -> Result<(), Error> {
-    let hl7 =
-        include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
+    let hl7 = include_str!("../../../../core/config/examples/hl7.toml")
+        .replace("tcp_server", "tcp_client");
     let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
     let raw = analyte_framing::mllp::encode(raw, analyte_framing::mllp::Limit::new(1048576)?)?;
     exercise(&hl7, raw).await?;
-    let astm = include_str!("../../../../config/examples/astm.toml")
+    let astm = include_str!("../../../../core/config/examples/astm.toml")
         .replace("kind = \"serial\"", "kind = \"tcp_client\"")
         .replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "")
         .replace("transport = \"serial\"", "transport = \"tcp_client\"");
@@ -237,7 +238,7 @@ async fn assert_retransmission_and_conflict(
     Ok(())
 }
 
-#[path = "../../../../poct/tests/peer_messages.rs"]
+#[path = "../../../../protocols/poct/tests/peer_messages.rs"]
 mod poct_peer;
 
 #[tokio::test]
@@ -259,15 +260,15 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
     analyte_poct::Message::parse(poct.as_bytes(), poct_peer::limits())?;
     let cases = [
         (
-            include_str!("../../../../config/examples/vidas_literal.toml"),
+            include_str!("../../../../core/config/examples/vidas_literal.toml"),
             None,
         ),
         (
-            include_str!("../../../../config/examples/autolyser.toml"),
+            include_str!("../../../../core/config/examples/autolyser.toml"),
             Some(report),
         ),
         (
-            include_str!("../../../../config/examples/poct.toml"),
+            include_str!("../../../../core/config/examples/poct.toml"),
             Some(poct.into_bytes()),
         ),
     ];
@@ -281,8 +282,8 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
 #[tokio::test]
 async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
-    let definition =
-        include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
+    let definition = include_str!("../../../../core/config/examples/hl7.toml")
+        .replace("tcp_server", "tcp_client");
     let old = program(temp.path(), &definition, "127.0.0.1:5600")?;
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let original = old.machines().first().ok_or("missing machine")?;
@@ -352,8 +353,8 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
 #[test]
 fn rule9_destination_config_sets_operational_freshness_and_rejects_zero() -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
-    let definition =
-        include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
+    let definition = include_str!("../../../../core/config/examples/hl7.toml")
+        .replace("tcp_server", "tcp_client");
     let loaded = program(temp.path(), &definition, "127.0.0.1:5600")?;
     assert_eq!(
         loaded.machines()[0].destination_limits.freshness.as_secs(),

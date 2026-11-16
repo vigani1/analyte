@@ -33,12 +33,12 @@ Every protocol, standard or vendor, uses the same places:
 
 | Concern | Place |
 | --- | --- |
-| Message boundaries and checksums | `crates/framing/src/<key>.rs`, when the protocol has its own framing |
-| Conversation state, deadlines, acknowledgment choice | `crates/dialog/src/<key>.rs` |
-| Grammar: bytes to structure and back | `crates/<key>/src/syntax.rs` (a profile: `crates/hl7/src/<key>/`) |
+| Message boundaries and checksums | `crates/steps/framing/src/<key>.rs`, when the protocol has its own framing |
+| Conversation state, deadlines, acknowledgment choice | `crates/steps/dialog/src/<key>.rs` |
+| Grammar: bytes to structure and back | `crates/<key>/src/syntax.rs` (a profile: `crates/protocols/hl7/src/<key>/`) |
 | Typed named-field access | `crates/<key>/src/views.rs` |
 | Version rules | `crates/<key>/src/version.rs` |
-| Machine terms to the common model and back | `crates/mapping/src/<key>.rs` |
+| Machine terms to the common model and back | `crates/steps/mapping/src/<key>.rs` |
 | Connection driving (I/O, store calls, timers) | `crates/analyte/src/machine/<key>.rs` |
 | Order sending | `crates/analyte/src/orders/<key>.rs` |
 
@@ -147,7 +147,7 @@ A new crate joins one kind, or the plan gets a new kind through this ADR.
   one `machines/` folder and no code.
 - POCT, VIDAS and Autolyser move their framing, dialog and mapping into the
   layer crates. The plan's crate table changes with them.
-- `crates/config/examples/` keeps synthetic teaching configs. Real machines
+- `crates/core/config/examples/` keeps synthetic teaching configs. Real machines
   live only in `machines/`.
 - Existing protocol notes move into the four-file shape without losing
   content.

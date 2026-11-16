@@ -5,7 +5,7 @@ confirmed interface settings and evidence that identifiers, values and orders
 survive the journey unchanged. Analyte moves data; the lab app makes clinical
 decisions. Unknown information is a reason to stop and investigate.
 
-Read the [plan](plan.md), [config reference](../crates/config/README.md) and
+Read the [plan](plan.md), [config reference](../crates/core/config/README.md) and
 [config-first decision](adr/0002-config-first.md) alongside this guide.
 
 ## Choose the stack
@@ -16,14 +16,14 @@ edition; a family name or an Ethernet socket does not establish a protocol.
 
 | Machine interface | Read first | Starting point |
 | --- | --- | --- |
-| ASTM LIS01/LIS02 | [ASTM scope](protocols/astm/README.md) | [ASTM example](../crates/config/examples/astm.toml) |
-| HL7 v2 legacy over MLLP | [HL7 scope](protocols/hl7/README.md) | [HL7 example](../crates/config/examples/hl7.toml) |
-| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](protocols/law/README.md) | [LAW example](../crates/config/examples/law.toml) plus [query/work settings](../crates/config/examples/law_orders.toml); persistent TCP client/server or independent directional links |
-| POCT01-A2 | [POCT scope](protocols/poct/README.md) | [POCT example](../crates/config/examples/poct.toml), Observation Reviewer role |
-| VIDAS Literal or Autolyser | [Protocol index](protocols/README.md), then vendor interface rules | [VIDAS](../crates/config/examples/vidas_literal.toml) or [Autolyser](../crates/config/examples/autolyser.toml) |
+| ASTM LIS01/LIS02 | [ASTM scope](protocols/astm/README.md) | [ASTM example](../crates/core/config/examples/astm.toml) |
+| HL7 v2 legacy over MLLP | [HL7 scope](protocols/hl7/README.md) | [HL7 example](../crates/core/config/examples/hl7.toml) |
+| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](protocols/law/README.md) | [LAW example](../crates/core/config/examples/law.toml) plus [query/work settings](../crates/core/config/examples/law_orders.toml); persistent TCP client/server or independent directional links |
+| POCT01-A2 | [POCT scope](protocols/poct/README.md) | [POCT example](../crates/core/config/examples/poct.toml), Observation Reviewer role |
+| VIDAS Literal or Autolyser | [Protocol index](protocols/README.md), then vendor interface rules | [VIDAS](../crates/core/config/examples/vidas_literal.toml) or [Autolyser](../crates/core/config/examples/autolyser.toml) |
 
 There are no vendor-specific pages in that protocol index yet. Use the
-[config reference](../crates/config/README.md) and [order guide](../crates/analyte/ORDERS.md)
+[config reference](../crates/core/config/README.md) and [order guide](../crates/analyte/ORDERS.md)
 for their implemented policies. LAW supports two explicit topologies. Use
 `law.connection_mode = "persistent"` for one TCP client/server link carrying all
 three transactions. For the B.6 directional topology, select
@@ -85,8 +85,8 @@ Record unresolved items explicitly and withhold activation until resolved.
 
 All layers use TOML, a text format with named sections. Unknown keys fail.
 Sections and lists replace in full; overrides do not merge individual list
-entries and cannot change evidence. See the [schema](../crates/config/src/schema.rs)
-and [validation rules](../crates/config/src/validation.rs) before editing.
+entries and cannot change evidence. See the [schema](../crates/core/config/src/schema/mod.rs)
+and [validation rules](../crates/core/config/src/validation/mod.rs) before editing.
 
 ### Complete synthetic example
 
@@ -221,7 +221,7 @@ A namespace names the assigning system: use a confirmed fixed system or a
 source field. `sub_id = "none"` deliberately declares no sub-ID; `run = []`
 provides no run evidence. Missing evidence remains unresolved; changed content
 under one trusted identity is a conflict, not an inferred rerun. Receipt,
-delivery and result/revision identities stay separate. See [mapping behavior](../crates/mapping/README.md).
+delivery and result/revision identities stay separate. See [mapping behavior](../crates/steps/mapping/README.md).
 
 For ASTM only, an optional section can split one R.3 component into exact parts:
 
@@ -249,7 +249,7 @@ use `[codes]` test/unit tables rather than field-position `[mappings]`.
 ### Enable orders separately
 
 Receiving results does not enable queries or work lists. Append the complete
-[synthetic ASTM orders section](../crates/config/examples/orders.toml) only
+[synthetic ASTM orders section](../crates/core/config/examples/orders.toml) only
 when that behavior is confirmed. `[orders]` has independent outbound `tests`
 and `priorities`; it does not reverse the result table automatically.
 Each test maps an exact app `namespace`/`value` to `machine_components`,
@@ -263,10 +263,10 @@ locations. Optional `position` sends the supplied slot in O field 4;
 translates exact app namespace/value pairs. A configured destination requires
 that context: no default slot or specimen type is invented.
 
-For legacy HL7 queries, start from [hl7_orders.toml](../crates/config/examples/hl7_orders.toml).
+For legacy HL7 queries, start from [hl7_orders.toml](../crates/core/config/examples/hl7_orders.toml).
 It declares QRD filters and DSP layout, with an explicit ACK deadline; it requires
 `when_untrusted = "error"`. Send-ahead is a separate
-[hl7_send.toml](../crates/config/examples/hl7_send.toml) interface using
+[hl7_send.toml](../crates/core/config/examples/hl7_send.toml) interface using
 `placer_namespace` and `[orders.hl7_send]`. ORM and OML have different specimen
 and position support; do not treat them as LAW.
 
@@ -312,7 +312,7 @@ or resend orders. Reprocessing creates another interpretation of retained bytes.
 ## Capture, de-identify and replay
 
 Follow [ADR 0009](adr/0009-recording-format.md) and the
-[simulator guide](../crates/sim/README.md). Capture both directions and timing
+[simulator guide](../crates/testing/sim/README.md). Capture both directions and timing
 from a machine trace, lab-PC sniffer or hardware tap. Keep original captures
 with patient data protected, outside Git and ordinary logs.
 

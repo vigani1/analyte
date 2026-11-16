@@ -1,0 +1,57 @@
+[package]
+autotests = false
+name = "analyte-mapping"
+description = "Mapping from parsed ASTM and HL7 messages to the common model, driven by machine config."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+analyte-model.workspace = true
+analyte-poct.workspace = true
+analyte-contract.workspace = true
+analyte-config.workspace = true
+analyte-astm.workspace = true
+analyte-hl7.workspace = true
+analyte-vidas.workspace = true
+analyte-autolyser.workspace = true
+thiserror.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+quick-xml.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "field_syntax"
+path = "tests/field_syntax.rs"
+
+[[test]]
+name = "mapping"
+path = "tests/mapping.rs"
+
+[[test]]
+name = "orders"
+path = "tests/orders.rs"
+
+[[test]]
+name = "outbound_lookup"
+path = "tests/outbound_lookup.rs"
+
+[[test]]
+name = "poct"
+path = "tests/poct/mod.rs"
+
+[[test]]
+name = "vendor_mapping"
+path = "tests/vendor_mapping.rs"
+
+[[test]]
+name = "vidas"
+path = "tests/vidas.rs"

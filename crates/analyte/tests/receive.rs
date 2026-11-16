@@ -22,14 +22,14 @@ fn config(temp: &Path, astm: bool) -> Result<std::path::PathBuf, Error> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     let address = listener.local_addr()?;
     let definition = if astm {
-        include_str!("../../config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
+        include_str!("../../core/config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
     } else {
-        include_str!("../../config/examples/hl7.toml").to_owned()
+        include_str!("../../core/config/examples/hl7.toml").to_owned()
     };
     std::fs::write(temp.join("machine.toml"), definition)?;
     std::fs::write(
         temp.join("site.toml"),
-        include_str!("../../config/examples/site.toml")
+        include_str!("../../core/config/examples/site.toml")
             .replace("127.0.0.1:5600", &address.to_string()),
     )?;
     let path = temp.join("program.toml");
@@ -47,7 +47,7 @@ fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_start
     let path = config(temp.path(), false)?;
     std::fs::write(
         temp.path().join("machine.toml"),
-        include_str!("../../config/examples/law.toml"),
+        include_str!("../../core/config/examples/law.toml"),
     )?;
     let loaded = Program::load(&path)?;
     assert_eq!(
@@ -64,7 +64,7 @@ fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_start
     assert!(!temp.path().join("data").exists());
     std::fs::write(
         temp.path().join("machine.toml"),
-        include_str!("../../config/examples/law.toml")
+        include_str!("../../core/config/examples/law.toml")
             .replace("kind = \"tcp_server\"", "kind = \"tcp_client\""),
     )?;
     let loaded = Program::load(&path)?;
@@ -354,7 +354,7 @@ async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<()
     let occupied = std::net::TcpListener::bind("127.0.0.1:0")?;
     std::fs::write(
         temp.path().join("occupied-site.toml"),
-        include_str!("../../config/examples/site.toml")
+        include_str!("../../core/config/examples/site.toml")
             .replace("127.0.0.1:5600", &occupied.local_addr()?.to_string()),
     )?;
     let mut file = std::fs::read_to_string(&path)?;

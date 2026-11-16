@@ -109,14 +109,14 @@ async fn seed_parked_receipt(
     ),
     Error,
 > {
-    let definition = include_str!("../../../../../config/examples/hl7.toml");
+    let definition = include_str!("../../../../../core/config/examples/hl7.toml");
     std::fs::write(
         root.join("machine.toml"),
         definition.replace("machine_code=\"SYN\"", "machine_code=\"OTHER\""),
     )?;
     std::fs::write(
         root.join("site.toml"),
-        include_str!("../../../../../config/examples/site.toml"),
+        include_str!("../../../../../core/config/examples/site.toml"),
     )?;
     let config_path = root.join("program.toml");
     std::fs::write(

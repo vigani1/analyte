@@ -8,11 +8,11 @@ fn plan11_plan12_cli_prints_rotated_token_once_without_logging_it() -> Result<()
     let directory = tempfile::tempdir()?;
     std::fs::write(
         directory.path().join("machine.toml"),
-        include_str!("../../config/examples/hl7.toml"),
+        include_str!("../../core/config/examples/hl7.toml"),
     )?;
     std::fs::write(
         directory.path().join("site.toml"),
-        include_str!("../../config/examples/site.toml"),
+        include_str!("../../core/config/examples/site.toml"),
     )?;
     let config = directory.path().join("program.toml");
     std::fs::write(
