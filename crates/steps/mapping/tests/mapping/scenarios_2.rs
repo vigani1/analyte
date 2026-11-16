@@ -255,7 +255,7 @@ fn lis02_9_4_and_hl7_7_4_2_value_expectations_preserve_originals() -> TestResult
                     analyte_astm::parse(message.as_bytes(), analyte_astm::Limits::default())?;
                 map_astm(messages.first().ok_or("missing message")?, &config, input())?
             } else {
-                hl7(
+                qualified_hl7(
                     &format!("OBR|1||000AbC\rOBX|1|NM|SYN^Name^synthetic||{raw}||||||F\r"),
                     &definition,
                 )?

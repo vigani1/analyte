@@ -86,3 +86,21 @@ const SITE: &str = include_str!("../../../../core/config/examples/site.toml");
 const LAW_RESULT: &[u8] = b"MSH|^~\\&|A|AF|M|MF|20261115120000+0000||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01&99LAB||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||000tube\rOBR||awos-1||SYN^Synthetic^99LAB\rORC|SC||||CM\rOBX|1|NM|SYN^Synthetic^99LAB|1^1^1|1|mg/L^mg/L^UCUM||N^Normal^HL70078|||F|||||operator||instrument^99LAB~module^99LAB|20261115120000||||||||||RSLT\r";
 
 mod continuation;
+
+// Supplies explicit synthetic report context for tests of unrelated value/QC rules.
+fn qualified_hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error>> {
+    let mut qualified = String::new();
+    for segment in body.split_terminator('\r') {
+        if segment.starts_with("OBR|") {
+            let mut fields = segment.split('|').map(str::to_owned).collect::<Vec<_>>();
+            fields.resize(26, String::new());
+            fields[4] = "SYN^Synthetic^synthetic".into();
+            fields[25] = "F".into();
+            qualified.push_str(&fields.join("|"));
+        } else {
+            qualified.push_str(segment);
+        }
+        qualified.push('\r');
+    }
+    hl7(&qualified, definition)
+}

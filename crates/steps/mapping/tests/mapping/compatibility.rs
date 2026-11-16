@@ -26,7 +26,7 @@ fn hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity
             config.effective().hl7_options().ok_or("options")?,
         )?;
         let output = map_hl7(&message, &config, input())?;
-        assert!(!output.requires_parking(), "{output:?}");
+        assert!(output.requires_parking(), "{output:?}");
         let part = first(&output)?;
         assert_eq!(
             part.values

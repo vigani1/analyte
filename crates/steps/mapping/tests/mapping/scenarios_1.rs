@@ -59,7 +59,7 @@ fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() 
     );
     let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
     let output = map_hl7(&message, &config, input())?;
-    assert!(!output.requires_parking());
+    assert!(output.requires_parking());
     let result = output.results.first().ok_or("result")?;
     assert_eq!(
         result.content.sample.as_ref().ok_or("sample")?.id.as_str(),
@@ -259,7 +259,7 @@ fn hl7_7_4_2_5_and_11_same_key_obxs_form_one_replacement_unit() -> TestResult {
     assert!(
         matches!(&result.content.identity, IdentityStatus::Resolved(id) if id.revision == Revision(7) && id.observation.run.as_str().is_empty())
     );
-    assert!(!output.requires_parking());
+    assert!(output.requires_parking());
     Ok(())
 }
 
@@ -460,7 +460,7 @@ fn hl7_7_3_7_oul_specimen_order_orc_and_result_ownership() -> TestResult {
             .collect::<Vec<_>>(),
         ["MSH", "PID", "SPM", "OBR", "ORC", "OBX"]
     );
-    assert!(!output.requires_parking());
+    assert!(output.requires_parking());
     Ok(())
 }
 

@@ -83,3 +83,65 @@ fn hl7_251_s7_4_3_17_collection_range_is_not_ts_precision() -> TestResult {
     }
     Ok(())
 }
+
+// HL7 2.3.1 section 7.3.2.11; 2.5.1+ sections 7.4.2.11 and 7.4.1.25;
+// 2.8.2/2.9.1 section 7.4.1.22 requires report time when report status is populated.
+#[test]
+fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResult {
+    for (edition, wire) in [
+        ("v231", "2.3.1"),
+        ("v251", "2.5.1"),
+        ("v26", "2.6"),
+        ("v282", "2.8.2"),
+        ("v291", "2.9.1"),
+    ] {
+        let cfg =
+            config(&HL7_CONFIG.replace("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
+        for (segment, field, value) in [
+            ("OBX", 11, ""),
+            ("OBX", 11, "\"\""),
+            ("OBX", 11, "UNKNOWN"),
+            ("OBR", 4, ""),
+            ("OBR", 25, ""),
+            ("OBR", 25, "\"\""),
+            ("OBR", 25, "UNKNOWN"),
+            ("OBR", 22, ""),
+        ] {
+            let mut obr = [""; 25];
+            obr[0] = "1";
+            obr[2] = "000AbC";
+            obr[3] = "SYN^Synthetic^synthetic^^^^v1";
+            obr[21] = "20261116120000";
+            obr[24] = "F";
+            let mut obx = [""; 11];
+            obx[0] = "1";
+            obx[1] = "NM";
+            obx[2] = "SYN^Synthetic^synthetic^^^^v1";
+            obx[4] = "1";
+            obx[10] = "F";
+            if segment == "OBR" {
+                obr[field - 1] = value;
+            } else {
+                obx[field - 1] = value;
+            }
+            let raw = format!(
+                "MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|{wire}\rOBR|{}\rOBX|{}\r",
+                obr.join("|"),
+                obx.join("|")
+            );
+            let message = analyte_hl7::Message::parse(
+                raw.as_bytes(),
+                cfg.effective().hl7_options().ok_or("options")?,
+            )?;
+            let output = map_hl7(&message, &cfg, input())?;
+            let must_park = field != 22 || matches!(edition, "v282" | "v291");
+            assert_eq!(
+                output.requires_parking(),
+                must_park,
+                "{edition} {segment}-{field} {value}"
+            );
+            assert_eq!(message.encode(), raw.as_bytes());
+        }
+    }
+    Ok(())
+}
