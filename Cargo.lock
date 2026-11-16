@@ -140,6 +140,7 @@ dependencies = [
  "analyte-autolyser",
  "analyte-config",
  "analyte-contract",
+ "analyte-framing",
  "analyte-hl7",
  "analyte-model",
  "analyte-poct",

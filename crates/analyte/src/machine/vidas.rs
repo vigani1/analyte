@@ -50,7 +50,7 @@ impl ConnectionState {
         settings: &analyte_config::VidasStack,
     ) -> Result<Self, Error> {
         let installed = &settings.policy();
-        let config = super::interpretation::vidas_config(machine)?;
+        let config = analyte_mapping::read::vidas_config(&machine.snapshot)?;
         let policy = Policy {
             acknowledgment: ms(installed.acknowledgment_ms),
             interbyte: ms(installed.interbyte_ms),

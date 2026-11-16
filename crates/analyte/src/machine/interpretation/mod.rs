@@ -33,311 +33,61 @@ pub async fn reprocess(
     )
 }
 
-// Recover the source Hello from durable connection evidence for live receive and replay alike.
+// Read source context from durable evidence; every stack then uses the same layer-owned reader.
 pub(crate) async fn map_retained(
     store: &Handle,
     machine: &Machine,
     receipt: &analyte_store::Receipt,
 ) -> Result<analyte_mapping::Output, Error> {
-    if let Stack::Poct(settings) = machine.snapshot.effective().stack() {
+    let hello = if matches!(machine.snapshot.effective().stack(), Stack::Poct(_)) {
         let machine_id = receipt.metadata.machine.clone();
         let connection = receipt.metadata.connection.clone();
-        let first = store
+        store
             .request(deadline(), move |s| {
                 s.first_interpreted_connection_receipt(&machine_id, &connection)
             })
-            .await?;
-        let hello = first
-            .as_ref()
-            .map(|first| analyte_poct::Message::parse(&first.raw, poct_limits(settings)))
-            .transpose()?;
-        let device = hello.as_ref().and_then(|hello| match hello.body() {
-            analyte_poct::Body::Hello { device_id, .. } => Some(device_id.as_str()),
-            analyte_poct::Body::Status { .. }
-            | analyte_poct::Body::PatientObservations(_)
-            | analyte_poct::Body::NonPatientObservations(_)
-            | analyte_poct::Body::EndTopic(_)
-            | analyte_poct::Body::Terminate(_)
-            | analyte_poct::Body::Acknowledgement { .. }
-            | analyte_poct::Body::Escape { .. }
-            | analyte_poct::Body::KeepAlive
-            | analyte_poct::Body::Request(_) => None,
-        });
-        let message = analyte_poct::Message::parse(&receipt.raw, poct_limits(settings))?;
-        return Ok(analyte_mapping::map_poct(
-            &machine.snapshot,
-            receipt.metadata.id,
-            &message,
-            receipt.metadata.received_at,
-            device,
-        )?);
-    }
-    map(
-        machine,
-        receipt.metadata.id,
-        receipt.metadata.received_at,
+            .await?
+    } else {
+        None
+    };
+    Ok(analyte_mapping::read::read(
+        &machine.snapshot,
+        analyte_mapping::Input {
+            receipt: receipt.metadata.id,
+            received_at: receipt.metadata.received_at,
+            revision: Revision(0),
+        },
         &receipt.raw,
-    )
+        hello.as_ref().map(|receipt| receipt.raw.as_slice()),
+    )?)
 }
 
 pub(crate) fn map(
     machine: &Machine,
     id: ReceiptId,
     time: jiff::Timestamp,
-    payload: &[u8],
+    raw: &[u8],
 ) -> Result<analyte_mapping::Output, Error> {
-    let payload = unpack(machine, payload)?;
-    let payload = payload.as_ref();
-    let effective = machine.snapshot.effective();
-    let input = analyte_mapping::Input {
-        receipt: id,
-        received_at: time,
-        revision: Revision(0),
-    };
-    match effective.stack() {
-        Stack::Poct(settings) => {
-            let message = analyte_poct::Message::parse(payload, poct_limits(settings))?;
-            Ok(analyte_mapping::map_poct(
-                &machine.snapshot,
-                id,
-                &message,
-                time,
-                None,
-            )?)
-        }
-        Stack::VidasLiteral(settings) => {
-            let packet = analyte_framing::vidas::decode(payload, vidas_config(machine)?)?;
-            let message = analyte_vidas::syntax::Message::parse(
-                std::str::from_utf8(&packet.body)?,
-                match settings.policy().sample_limit {
-                    analyte_config::VidasSampleLimit::Twelve => {
-                        analyte_vidas::syntax::SampleLimit::Twelve
-                    }
-                    analyte_config::VidasSampleLimit::Seventeen => {
-                        analyte_vidas::syntax::SampleLimit::Seventeen
-                    }
-                },
-            )?;
-            Ok(analyte_mapping::map_vidas(
-                &machine.snapshot,
-                id,
-                &message,
-                time,
-            )?)
-        }
-        Stack::Autolyser(settings) => {
-            let report = analyte_autolyser::syntax::Report::parse(
-                analyte_framing::autolyser::verified(payload)?,
-                settings.policy().controls,
-            )?;
-            Ok(analyte_mapping::map_autolyser(
-                &machine.snapshot,
-                id,
-                &report,
-                time,
-            )?)
-        }
-        Stack::Astm(analyte_config::RecordTransport::Stream(settings)) => {
-            map_astm(machine, payload, input, settings.syntax())
-        }
-        Stack::Astm(analyte_config::RecordTransport::Folder(settings)) => {
-            map_astm(machine, payload, input, settings.syntax())
-        }
-        Stack::Hl7(analyte_config::RecordTransport::Stream(settings)) => {
-            map_hl7(machine, payload, input, settings.syntax())
-        }
-        Stack::Hl7(analyte_config::RecordTransport::Folder(settings)) => {
-            map_hl7(machine, payload, input, settings.syntax())
-        }
-        Stack::Law(settings) => {
-            let message = analyte_hl7::law::parse_message(payload, settings.options())?;
-            let results = analyte_hl7::law::receive_results(&message)?;
-            Ok(analyte_mapping::map_law(
-                &results,
-                &machine.snapshot,
-                input,
-            )?)
-        }
-    }
-}
-
-fn map_astm(
-    machine: &Machine,
-    payload: &[u8],
-    input: analyte_mapping::Input,
-    syntax: &analyte_config::AstmSyntax,
-) -> Result<analyte_mapping::Output, Error> {
-    let messages = analyte_astm::parse_with(payload, syntax.parser_limits(), |bytes| match syntax
-        .encoding()
-    {
-        analyte_config::Encoding::Ascii => bytes
-            .is_ascii()
-            .then(|| String::from_utf8_lossy(bytes).into_owned()),
-        analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
-        analyte_config::Encoding::Utf8 => std::str::from_utf8(bytes).ok().map(str::to_owned),
-    })?;
-    // A transfer may contain multiple messages; the host must retain every one.
-    if messages.len() != 1 {
-        return Err(invalid(
-            "ASTM transfer does not contain exactly one message; operator review required",
-        ));
-    }
-    Ok(analyte_mapping::map_astm(
-        messages
-            .first()
-            .ok_or_else(|| invalid("ASTM message missing"))?,
+    Ok(analyte_mapping::read::read(
         &machine.snapshot,
-        input,
-    )?)
-}
-
-fn map_hl7(
-    machine: &Machine,
-    payload: &[u8],
-    input: analyte_mapping::Input,
-    syntax: &analyte_config::Hl7Syntax,
-) -> Result<analyte_mapping::Output, Error> {
-    let message = analyte_hl7::Message::parse(payload, syntax.options())?;
-    Ok(analyte_mapping::map_hl7(
-        &message,
-        &machine.snapshot,
-        input,
-    )?)
-}
-
-pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Error> {
-    use analyte_framing::vidas::{Checksum, Config, Mode};
-    let settings = match machine.snapshot.effective().stack() {
-        Stack::VidasLiteral(settings) => settings,
-        Stack::Astm(analyte_config::RecordTransport::Stream(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Stream(_))
-        | Stack::Law(_)
-        | Stack::Poct(_)
-        | Stack::Autolyser(_)
-        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
-            return Err(invalid("VIDAS settings missing"));
-        }
-    };
-    let installed = &settings.policy();
-    Ok(Config::new(
-        if installed.ack_point == analyte_config::AckPoint::Etx {
-            Mode::Alternate
-        } else {
-            Mode::Literal
+        analyte_mapping::Input {
+            receipt: id,
+            received_at: time,
+            revision: Revision(0),
         },
-        installed.chunk,
-        settings.frame_limit(),
-        &installed.suffix,
-        Checksum {
-            include_stx: installed.include_stx.into(),
-            include_suffix: installed.include_suffix.into(),
-            hex: analyte_framing::vidas::HexOptions {
-                uppercase: installed.hex_case.into(),
-                accept_either_case: installed.checksum_acceptance.into(),
-            },
-        },
+        raw,
+        None,
     )?)
 }
 
-pub(super) fn poct_limits(settings: &analyte_config::PoctStack) -> analyte_poct::Limits {
-    let policy = &settings.policy();
-    analyte_poct::Limits {
-        message_bytes: settings.frame_limit().min(settings.limits().bytes()),
-        depth: policy.depth,
-        elements: policy.elements,
-        attribute_bytes: policy.attribute_bytes,
-    }
-}
+pub(super) use analyte_mapping::read::poct_limits;
 
 #[cfg(test)]
-mod tests;
-
-// Stored ASTM receipts contain accepted frames, MLLP receipts contain one block,
-// and folder receipts contain syntax bytes. Never infer the envelope from content.
-pub(crate) fn unpack<'a>(
-    machine: &Machine,
-    raw: &'a [u8],
-) -> Result<std::borrow::Cow<'a, [u8]>, Error> {
-    match machine.snapshot.effective().stack() {
-        Stack::Astm(analyte_config::RecordTransport::Folder(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
-        | Stack::Poct(_)
-        | Stack::VidasLiteral(_)
-        | Stack::Autolyser(_) => Ok(raw.into()),
-        Stack::Hl7(analyte_config::RecordTransport::Stream(settings)) => {
-            unpack_mllp(raw, settings.frame_limit())
-        }
-        Stack::Law(settings) => unpack_mllp(raw, settings.frame_limit()),
-        Stack::Astm(analyte_config::RecordTransport::Stream(settings)) => {
-            use analyte_framing::astm::{Decoder, Event, Limit};
-            let mut decoder = Decoder::new(
-                Limit::new(settings.frame_limit())?,
-                settings.checksum_policy(),
-            );
-            let mut payload = Vec::new();
-            let mut final_frame = false;
-            for byte in raw {
-                if let Some(event) = decoder.push(*byte) {
-                    match event {
-                        Event::Frame(frame) => {
-                            if !settings
-                                .record_boundaries()
-                                .accepts(frame.text(), frame.is_final())
-                            {
-                                return Err(analyte_framing::astm::Error::RecordBoundary.into());
-                            }
-                            if payload
-                                .len()
-                                .checked_add(frame.text().len())
-                                .is_none_or(|n| n > settings.syntax().limits().bytes())
-                            {
-                                return Err(invalid("ASTM assembled receipt exceeds syntax bound"));
-                            }
-                            payload.extend_from_slice(frame.text());
-                            final_frame = frame.is_final();
-                        }
-                        Event::Rejected { error, .. } => return Err(error.into()),
-                        Event::Outside(_) => {
-                            return Err(invalid("receipt contains bytes outside ASTM frames"));
-                        }
-                    }
-                }
-            }
-            if decoder.finish().is_some() || !final_frame {
-                return Err(invalid("receipt contains incomplete ASTM transfer"));
-            }
-            Ok(payload.into())
-        }
-    }
+fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Error> {
+    Ok(analyte_mapping::read::vidas_config(&machine.snapshot)?)
 }
-
-fn unpack_mllp(raw: &[u8], frame_limit: usize) -> Result<std::borrow::Cow<'_, [u8]>, Error> {
-    use analyte_framing::hl7::{Decoder, Event, Limit};
-    let mut decoder = Decoder::new(Limit::new(frame_limit)?);
-    let mut complete = false;
-    for byte in raw {
-        if complete {
-            return Err(invalid(
-                "receipt contains multiple MLLP blocks or trailing bytes",
-            ));
-        }
-        if let Some(event) = decoder.push(*byte) {
-            match event {
-                Event::Block(_) => complete = true,
-                Event::Rejected { error, .. } => return Err(error.into()),
-            }
-        }
-    }
-    if !complete {
-        return Err(invalid("receipt contains incomplete MLLP block"));
-    }
-    Ok(analyte_framing::hl7::payload(raw)
-        .ok_or_else(|| invalid("MLLP payload"))?
-        .into())
-}
-
 pub(crate) mod departure_evidence;
-
 #[cfg(test)]
 mod departure_tests;
+#[cfg(test)]
+mod tests;

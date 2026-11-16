@@ -18,3 +18,16 @@
 - `autolyser`: Autolyser conversation rules.
 
 [Technical details and safety guidance](DETAILS.md).
+
+Every connection uses `Clock` with host-supplied monotonic elapsed time, starting
+at zero. Supply fresh time to `step(now, event)` for input, storage completion,
+ticks and disconnects. Each dialog owns its deadlines and reports the next
+absolute elapsed wake time through `next_deadline()`; `None` means wait for an
+event or cancellation. The host waits until that deadline rather than polling
+the protocol. Order-cache polling remains a separate host operation.
+
+ASTM returns its decoder's partial bytes on disconnect. VIDAS schedules its
+session, byte-gap, acknowledgment and commit timers internally; byte activity
+cannot extend the session or commit budget. Its `on` and arm/cancel reports
+remain available for existing untimed event consumers and observers; live hosts
+use `step` and `next_deadline`, and do not schedule those reports themselves.

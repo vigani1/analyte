@@ -171,22 +171,24 @@ fn compatibility(
 ) -> Result<(), Error> {
     let effective = machine.snapshot.effective();
     let hl7 = if effective.hl7_options().is_some() {
-        super::unpack(machine, raw).ok().and_then(|bytes| {
-            analyte_hl7::Message::parse(&bytes, effective.hl7_options()?)
-                .ok()
-                .map(|message| {
-                    let utf8 = message
-                        .segments()
-                        .next()
-                        .and_then(|msh| msh.field(18))
-                        .is_some_and(|f| f.raw() == b"UNICODE UTF-8");
-                    (
-                        message.raw().windows(2).any(|bytes| bytes == b"\r\n"),
-                        message.raw().contains(&b'\n'),
-                        utf8,
-                    )
-                })
-        })
+        analyte_mapping::read::payload(&machine.snapshot, raw)
+            .ok()
+            .and_then(|bytes| {
+                analyte_hl7::Message::parse(&bytes, effective.hl7_options()?)
+                    .ok()
+                    .map(|message| {
+                        let utf8 = message
+                            .segments()
+                            .next()
+                            .and_then(|msh| msh.field(18))
+                            .is_some_and(|f| f.raw() == b"UNICODE UTF-8");
+                        (
+                            message.raw().windows(2).any(|bytes| bytes == b"\r\n"),
+                            message.raw().contains(&b'\n'),
+                            utf8,
+                        )
+                    })
+            })
     } else {
         None
     };

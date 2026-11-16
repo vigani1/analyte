@@ -21,7 +21,7 @@ pub(super) async fn plan(
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
-    let Ok(payload) = crate::machine::interpretation::unpack(machine, &receipt.raw) else {
+    let Ok(payload) = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw) else {
         // The ordinary mapping failure still needs a durable interpretation and parking.
         return Ok(None);
     };

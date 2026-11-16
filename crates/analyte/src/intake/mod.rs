@@ -124,7 +124,7 @@ pub(crate) async fn interpret_with_location(
         .effective()
         .hl7_options()
         .and_then(|options| {
-            let payload = crate::machine::interpretation::unpack(machine, &receipt.raw).ok()?;
+            let payload = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw).ok()?;
             crate::machine::error_location::mapping_location(&mapping, &payload, options.terminator)
         });
     let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
