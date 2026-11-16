@@ -113,6 +113,13 @@ fn adr0003_poll_intent_pending_uncertain_confirmed_is_retained_and_blocks_cursor
     assert_eq!(store.audits(0)?.len(), 2);
     let next = store.begin_poll_intent(&machine, &original)?;
     assert_ne!(next, id);
+    verify_poll_evidence_is_immutable_and_has_no_deliveries(&store, id)
+}
+
+fn verify_poll_evidence_is_immutable_and_has_no_deliveries(
+    store: &Store,
+    id: PollIntentId,
+) -> TestResult {
     for table in ["outbox", "machine_orders"] {
         assert_eq!(
             store
