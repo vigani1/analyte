@@ -79,3 +79,125 @@ impl Control {
         self.decision.send_replace(Some(false));
     }
 }
+
+/// LAW host boundaries; absent gates have no effect, and this type is test-only.
+#[derive(Clone, Default)]
+pub struct LawGates {
+    /// Entry to the actual cache lookup, after QBP custody.
+    pub lookup: Option<Arc<Committed>>,
+    /// All reservations and retained commands have committed.
+    pub reserved: Option<Arc<Committed>>,
+    /// Candidate chosen, immediately before transactional cancellation admission.
+    pub cancel: Option<Arc<Committed>>,
+    /// Transactional cancellation admission has returned.
+    pub cancel_result: Option<Arc<Committed>>,
+    /// Queued followup owns reservations, before any RSP write.
+    pub handover: Option<Arc<Committed>>,
+    /// RSP write completed, before releasing outbound readiness.
+    pub rsp: Option<Arc<Committed>>,
+    /// Worker has received a queued followup but has not awaited RSP readiness.
+    pub queued: Option<Arc<Committed>>,
+    /// Injects an already-expired queued deadline after the worker gate is released.
+    pub expire_queued: bool,
+    /// First pending page collected on the store thread.
+    pub pages: Option<Arc<StoreGate>>,
+    /// Weak access to the running store for competing feed requests.
+    pub store: Option<Arc<StoreProbe>>,
+}
+impl Committed {
+    pub(crate) async fn operation(&self) -> Result<(), Error> {
+        let (_owner, mut stop) = watch::channel(false);
+        self.pause(&mut stop).await
+    }
+}
+/// Publishes a weak test reference; never keeps the service's store alive.
+#[derive(Default)]
+pub struct StoreProbe {
+    store: std::sync::Mutex<std::sync::Weak<analyte_store::Handle>>,
+    ready: Notify,
+}
+impl StoreProbe {
+    pub(crate) fn publish(&self, store: &Arc<analyte_store::Handle>) -> Result<(), Error> {
+        *self
+            .store
+            .lock()
+            .map_err(|_| invalid("test probe poisoned"))? = Arc::downgrade(store);
+        self.ready.notify_one();
+        Ok(())
+    }
+    /// Waits for the service store; caller must drop its reference before shutdown.
+    /// # Errors
+    /// Refuses missing startup within five seconds.
+    pub async fn get(&self) -> Result<Arc<analyte_store::Handle>, Error> {
+        tokio::time::timeout(std::time::Duration::from_secs(5), self.ready.notified()).await?;
+        self.store
+            .lock()
+            .map_err(|_| invalid("test probe poisoned"))?
+            .upgrade()
+            .ok_or_else(|| invalid("test store closed"))
+    }
+}
+/// One-shot bounded pause on the dedicated store thread, never a runtime thread.
+pub struct StoreGate {
+    armed: AtomicBool,
+    reached: Notify,
+    release: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+}
+/// Controls the store-thread pause without holding its receiver mutex.
+pub struct StoreControl {
+    gate: Arc<StoreGate>,
+    release: std::sync::mpsc::SyncSender<()>,
+}
+impl StoreGate {
+    /// Creates a store-thread gate and its owner.
+    #[must_use]
+    pub fn new() -> (Arc<Self>, StoreControl) {
+        let (release, receiver) = std::sync::mpsc::sync_channel(1);
+        let gate = Arc::new(Self {
+            armed: AtomicBool::new(true),
+            reached: Notify::new(),
+            release: std::sync::Mutex::new(receiver),
+        });
+        (gate.clone(), StoreControl { gate, release })
+    }
+    pub(crate) fn pause(&self) -> Result<(), analyte_store::Error> {
+        if self.armed.swap(false, Ordering::AcqRel) {
+            self.reached.notify_one();
+            self.release
+                .lock()
+                .map_err(|_| analyte_store::Error::Corruption)?
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .map_err(|_| analyte_store::Error::Timeout)?;
+        }
+        Ok(())
+    }
+}
+impl StoreControl {
+    /// Waits for the first collected page.
+    /// # Errors
+    /// Refuses an unreached boundary within five seconds.
+    pub async fn reached(&self) -> Result<(), Error> {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            self.gate.reached.notified(),
+        )
+        .await?;
+        Ok(())
+    }
+    /// Releases the paused collection.
+    pub fn resume(&self) {
+        let _ = self.release.try_send(());
+    }
+}
+
+pub(crate) fn publish_store_probes(
+    program: &crate::installation::config::Program,
+    store: &Arc<analyte_store::Handle>,
+) -> Result<(), Error> {
+    for machine in program.machines() {
+        if let Some(probe) = &machine.law_gates.store {
+            probe.publish(store)?;
+        }
+    }
+    Ok(())
+}

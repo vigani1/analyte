@@ -17,6 +17,8 @@ pub struct Machine {
     pub(crate) capture: bool,
     pub(crate) destination_limits: analyte_sink::Limits,
     #[cfg(feature = "test-hooks")]
+    pub(crate) law_gates: crate::runtime::test_hooks::LawGates,
+    #[cfg(feature = "test-hooks")]
     pub(crate) law_precommit: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     #[cfg(feature = "test-hooks")]
     pub(crate) law_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
@@ -157,6 +159,27 @@ impl Program {
             ));
         }
         machine.law_committed = Some(hook);
+        Ok(())
+    }
+    /// Installs LAW evidence gates on an injected loopback listener.
+    /// # Errors
+    /// Rejects non-LAW or non-test machines.
+    #[cfg(feature = "test-hooks")]
+    pub fn install_law_gates_for_test(
+        &mut self,
+        id: &str,
+        gates: crate::runtime::test_hooks::LawGates,
+    ) -> Result<(), Error> {
+        let machine = self.test_machine_mut(id)?;
+        if machine.listener.is_none()
+            || !matches!(
+                machine.snapshot.effective().stack(),
+                analyte_config::Stack::Law(_)
+            )
+        {
+            return Err(invalid("LAW gates require injected loopback listener"));
+        }
+        machine.law_gates = gates;
         Ok(())
     }
     /// Installs a one-shot pause immediately before LAW raw custody, on a test listener.
@@ -690,6 +713,8 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
         law_committed: None,
         #[cfg(feature = "test-hooks")]
         law_precommit: None,
+        #[cfg(feature = "test-hooks")]
+        law_gates: crate::runtime::test_hooks::LawGates::default(),
         #[cfg(feature = "test-hooks")]
         astm_committed: None,
         #[cfg(feature = "test-hooks")]
