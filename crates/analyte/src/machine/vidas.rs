@@ -120,7 +120,7 @@ impl ConnectionState {
                 store,
                 conn,
                 stop,
-                next.saturating_sub(self.start.elapsed()),
+                Some(next.saturating_sub(self.start.elapsed())),
             )
             .await?;
             self.end_code = "VIDAS-transfer-error";

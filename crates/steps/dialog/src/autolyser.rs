@@ -1,4 +1,4 @@
-//! Runs host-driven Autolyser conversations with host-owned I/O and deadlines.
+//! Runs host-driven Autolyser conversations with host-owned I/O and dialog-owned deadlines.
 use analyte_autolyser::syntax::{self as records, Report, Worklist};
 use std::time::Duration;
 use thiserror::Error;
@@ -255,7 +255,7 @@ enum State {
 pub struct Dialog {
     config: Config,
     state: State,
-    now: Duration,
+    clock: crate::Clock,
     deadline: Duration,
     next_token: u64,
     recovery: bool,
@@ -284,7 +284,7 @@ impl Dialog {
         Ok(Self {
             config,
             state: State::Idle,
-            now: Duration::ZERO,
+            clock: crate::Clock::default(),
             deadline: Duration::ZERO,
             next_token: 0,
             recovery: false,
@@ -292,12 +292,29 @@ impl Dialog {
         })
     }
 
+    /// Returns the next absolute wake time; manual recovery waits for an explicit event.
+    #[must_use]
+    pub fn next_deadline(&self) -> Option<Duration> {
+        if matches!(self.state, State::Closed)
+            || (matches!(self.state, State::Idle)
+                && self.recovery
+                && self.config.recovery == Recovery::ManualLast)
+        {
+            None
+        } else {
+            Some(self.deadline)
+        }
+    }
+
     fn after(&self, wait: Duration) -> Result<Duration, Error> {
-        self.now.checked_add(wait).ok_or(Error::Time)
+        self.clock.now().checked_add(wait).ok_or(Error::Time)
     }
 
     fn begin(&mut self, operation: Operation) -> Result<Vec<Action>, Error> {
-        if self.transport_ended || !matches!(self.state, State::Idle) || self.now < self.deadline {
+        if self.transport_ended
+            || !matches!(self.state, State::Idle)
+            || self.clock.now() < self.deadline
+        {
             return Err(Error::Busy);
         }
         if self.recovery && !matches!(operation, Operation::Poll(Request::Last)) {
@@ -337,10 +354,9 @@ impl Dialog {
     /// this dialog and retains unread transport bytes in its protected journal.
     #[must_use]
     pub fn step(&mut self, now: Duration, event: Event<'_>) -> Vec<Action> {
-        if now < self.now {
+        if self.clock.advance(now, Duration::ZERO).is_err() {
             return vec![Action::Refused(Error::Time)];
         }
-        self.now = now;
         match self.apply(event) {
             Ok(actions) => actions,
             Err(error) => vec![Action::Refused(error)],
@@ -348,7 +364,7 @@ impl Dialog {
     }
 
     fn apply(&mut self, event: Event<'_>) -> Result<Vec<Action>, Error> {
-        if !matches!(self.state, State::Idle | State::Closed) && self.now >= self.deadline {
+        if !matches!(self.state, State::Idle | State::Closed) && self.clock.now() >= self.deadline {
             return self.interrupt();
         }
         match event {
@@ -372,7 +388,7 @@ impl Dialog {
                 if self.recovery
                     && self.config.recovery == Recovery::LastOnPoll
                     && matches!(self.state, State::Idle)
-                    && self.now >= self.deadline
+                    && self.clock.now() >= self.deadline
                 {
                     self.begin(Operation::Poll(Request::Last))
                 } else {
@@ -397,7 +413,7 @@ impl Dialog {
                 insertion,
                 complete,
             } => {
-                if self.now >= self.deadline {
+                if self.clock.now() >= self.deadline {
                     return Ok(vec![
                         Action::Park(Error::Storage),
                         Action::Uncertain,
@@ -462,7 +478,8 @@ impl Dialog {
                     Ok(actions)
                 } else {
                     self.deadline = (*total).min(
-                        self.now
+                        self.clock
+                            .now()
                             .checked_add(self.config.inter_byte)
                             .ok_or(Error::Time)?,
                     );

@@ -12,7 +12,6 @@ use tokio::sync::watch;
 struct ConnectionState {
     dialog: Dialog,
     start: Instant,
-    wake: std::time::Duration,
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
     ready: bool,
     recovering: bool,
@@ -59,7 +58,6 @@ impl ConnectionState {
         Ok(Self {
             dialog,
             start: Instant::now(),
-            wake: std::time::Duration::ZERO,
             receipt: None,
             ready: false,
             recovering: false,
@@ -85,7 +83,9 @@ impl ConnectionState {
                 store,
                 conn,
                 stop,
-                self.wake.saturating_sub(self.start.elapsed()),
+                self.dialog
+                    .next_deadline()
+                    .map(|deadline| deadline.saturating_sub(self.start.elapsed())),
             )
             .await?;
             let ended = matches!(
@@ -144,9 +144,6 @@ impl ConnectionState {
                     } else {
                         if process(actions, self, machine, store, conn, policy).await? {
                             return Ok(());
-                        }
-                        if self.wake <= self.start.elapsed() {
-                            self.wake = self.start.elapsed().saturating_add(ms(policy.poll_ms));
                         }
                         Vec::new()
                     }
@@ -390,7 +387,7 @@ async fn process(
             }
             Action::Refused(error) => return Err(error.into()),
             Action::Close => close = true,
-            Action::Deadline(deadline) => state.wake = deadline,
+            Action::Deadline(_) => {}
         }
     }
     match failure {

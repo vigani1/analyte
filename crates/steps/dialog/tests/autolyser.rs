@@ -468,3 +468,22 @@ fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() 
     }
     Ok(())
 }
+
+#[test]
+fn adr0001_autolyser_manual_recovery_has_no_polling_wake() -> TestResult {
+    let mut dialog = Dialog::new(config())?;
+    assert_eq!(dialog.next_deadline(), Some(Duration::ZERO));
+    start(&mut dialog, Request::Next, 0);
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(2)));
+    receive(
+        &mut dialog,
+        b"TEST0042       TS002ALB 0004.21CRE 00087.5190\x04",
+        0,
+    );
+    let actions = dialog.step(Duration::ZERO, Event::Stored(1));
+    assert!(matches!(actions.first(), Some(Action::Park(_))));
+    assert_eq!(dialog.next_deadline(), None);
+    assert!(dialog.step(Duration::from_secs(10), Event::Tick).is_empty());
+    assert_eq!(dialog.next_deadline(), None);
+    Ok(())
+}

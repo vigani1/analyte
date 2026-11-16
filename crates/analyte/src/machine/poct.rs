@@ -86,7 +86,7 @@ impl ConnectionState {
                 store,
                 conn,
                 stop,
-                deadline.saturating_sub(self.start.elapsed()),
+                Some(deadline.saturating_sub(self.start.elapsed())),
             )
             .await?;
             // Incoming fragments must not postpone the absolute dialog deadline.

@@ -39,12 +39,15 @@ pub(super) async fn journaled(
     store: &Handle,
     conn: &mut Connection,
     stop: &mut watch::Receiver<bool>,
-    wait: Duration,
+    wait: Option<Duration>,
 ) -> Result<Input, Error> {
     let event = tokio::select! {
         biased;
         () = super::stopping(stop) => return Ok(Input::Closed(None)),
-        () = tokio::time::sleep(wait) => return Ok(Input::Tick),
+        () = async { match wait {
+            Some(wait) => tokio::time::sleep(wait).await,
+            None => std::future::pending().await,
+        } } => return Ok(Input::Tick),
         event = receive(conn) => event,
     };
     match event {
