@@ -152,3 +152,9 @@ in protected original bytes but do not authorize or reject a match. Specimen,
 container and test comparisons still reject conflicting returned work as a whole.
 Test: `law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match`.
 The combined receive/structure qualification row remains open.
+
+## Status-only LAB-29 restriction
+
+TF-2b section 3.29.4.1.2.1 permits IP without observations and SC/CA without RESULT groups. Analyte currently parks these valid notifications with `UnsupportedLawStatusOnly`, retaining the original receipt, delivering no fabricated result and issuing no work command. Durable status-only lifecycle support needs a representation decision and ADR.
+
+QPD-1 follows the 60-character field ceiling in section 3.27.4.1.2.3. The fixed informational-rack tuple exceeds that ceiling, so that optional form is currently refused pending clarification; shortened descriptions are not substitutes. Host positional support is unchanged.

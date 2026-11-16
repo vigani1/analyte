@@ -292,3 +292,9 @@ component description uses subcomponent separators. The exact conflict and
 required clarification are in versions.md. This is a source gate, not a claim
 that 2.9.1 lacks laboratory ordering. The existing O22/O53 distinction remains
 separate. Evidence: the source-named config refusal test and registry blocker.
+
+## Supported timezone offsets
+
+HL7 2.5.1 section 2.A.22 (inherited by TS section 2.A.77.1) restricts offsets to legally defined timezones. Our explicit support policy accepts -1200 through +1400, with minutes 00, 30 or 45 only. LAW MSH-7 (TF-2b C.4-6) uses the same check. Exact spelling, including signed zero, remains unchanged; no zone is inferred and no conversion is performed. Unsupported offsets are located failures and the raw receipt remains available.
+
+LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other schemes are refused until their lexical rules are implemented. Local-only identities remain supported.

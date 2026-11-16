@@ -76,7 +76,7 @@ fn law_tf2b_c9_pid_3_cx_id_and_assigning_authority_lengths_types_predicate() -> 
         "000Ab",
         "000Ab^^^Local",
         "000Ab^^^&1.2.3&ISO",
-        "000Ab^^^&urn:synthetic:lab&URI",
+        "000Ab^^^&2.25.1&ISO",
     ] {
         both("PID", &[(3, value)], true)?;
     }
@@ -96,18 +96,24 @@ fn law_tf2b_c9_pid_3_cx_id_and_assigning_authority_lengths_types_predicate() -> 
     both("PID", &[(3, &format!("id^^^{}", "x".repeat(21)))], false)?;
     both(
         "PID",
-        &[(3, &format!("id^^^&{}&URI", "x".repeat(199)))],
+        &[(
+            3,
+            &format!("id^^^&{}&ISO", format_args!("2.{}", "1".repeat(197))),
+        )],
         true,
     )?;
     both(
         "PID",
-        &[(3, &format!("id^^^&{}&URI", "x".repeat(200)))],
+        &[(
+            3,
+            &format!("id^^^&{}&ISO", format_args!("2.{}", "1".repeat(198))),
+        )],
         false,
     )?;
     for kind in [
         "DNS", "GUID", "HCD", "HL7", "ISO", "L", "M", "N", "Random", "URI", "UUID", "x400", "x500",
     ] {
-        both("PID", &[(3, &format!("id^^^&synthetic&{kind}"))], true)?;
+        both("PID", &[(3, &format!("id^^^&1.2.3&{kind}"))], kind == "ISO")?;
     }
     check(
         "PID",
@@ -406,14 +412,14 @@ fn law_tf2b_c9_c10_builder_and_receive_validate_profile() -> TestResult {
 #[test]
 fn law_tf2b_c9_pid_3_cx_hd_aggregate_limits_and_nested_x() -> TestResult {
     let namespace = "n".repeat(20);
-    let uid = "u".repeat(199);
+    let uid = format!("2.{}", "1".repeat(197));
     let bindings = [AuthorityBinding::new(
         namespace.as_bytes(),
         uid.as_bytes(),
-        b"Random",
+        b"ISO",
     )?];
     let profile = Profile::receive().with_authorities(&bindings);
-    let exact = format!("{}^^^{namespace}&{uid}&Random", "i".repeat(48));
+    let exact = format!("{}^^^{namespace}&{uid}&ISO", "i".repeat(50));
     check("PID", &[(3, &exact)], profile, ControlDirection::Send)?;
     assert!(
         check(

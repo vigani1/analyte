@@ -247,7 +247,7 @@ impl<'a> Query<'a> {
             return Err(content("RCP", 0));
         }
         validate_query_response_control(rcp)?;
-        let name = required(qpd, 1, 80)?;
+        let name = required(qpd, 1, 60)?;
         let mut name_parts = name.split(|b| *b == d.component);
         let kind = name_parts.next().unwrap_or_default();
         let description = name_parts.next().unwrap_or_default();
@@ -257,6 +257,7 @@ impl<'a> Query<'a> {
         {
             return Err(content("QPD", 1));
         }
+        validate_query_description(kind, description)?;
         required(qpd, 2, 32)?;
         let mandatory: &[usize] = match kind {
             b"WOS" => &[3],
@@ -300,6 +301,7 @@ impl<'a> Query<'a> {
             }
         }
         let location = (!raw(qpd, 8).is_empty()).then_some(raw(qpd, 8));
+        validate_query_location(location, d.component)?;
         let scope = match kind {
             b"WOS" => Scope::Container(Identity(raw(qpd, 3))),
             b"WOS_ALL" => Scope::AllPending,
@@ -498,6 +500,40 @@ fn validate_query_response_control(rcp: Segment<'_>) -> Result<(), Error> {
         // RCP-2 and fields after RCP-3 are excluded by the LAW static definition.
         if offset != 2 && !field.raw().is_empty() {
             return Err(content("RCP", 0));
+        }
+    }
+    Ok(())
+}
+
+fn validate_query_description(kind: &[u8], description: &[u8]) -> Result<(), Error> {
+    let expected_description: &[u8] = match kind {
+        b"WOS" => b"Work Order Step",
+        b"WOS_ALL" => b"Work Order Step All",
+        b"WOS_BY_RACK" => b"Work Order Step by Rack",
+        b"WOS_BY_TRAY" => b"Work Order Step by Tray",
+        b"WOS_BY_ISOLATE" => b"Work Order Step by Isolate",
+        b"WOS_INFORMATIONAL_RACK" => b"Query by WOS and Informational Rack",
+        _ => return Err(content("QPD", 1)),
+    };
+    if description != expected_description {
+        return Err(content("QPD", 1));
+    }
+    Ok(())
+}
+
+fn validate_query_location(location: Option<&[u8]>, component: u8) -> Result<(), Error> {
+    if let Some(location) = location {
+        let parts: Vec<_> = location.split(|b| *b == component).collect();
+        let part = |n: usize| parts.get(n).copied().unwrap_or_default();
+        fields::primitive(part(0), true, 20, content("QPD", 8))?;
+        fields::primitive(part(1), false, 199, content("QPD", 8))?;
+        if part(0).is_empty()
+            || part(2).len() != 5
+            || part(2).len() > 12
+            || !part(2).starts_with(b"99")
+            || !part(2).iter().all(u8::is_ascii_alphanumeric)
+        {
+            return Err(content("QPD", 8));
         }
     }
     Ok(())

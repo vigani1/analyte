@@ -1,6 +1,6 @@
 //! Validates LAW specimen and container segments (TF-2b C.11/C.12).
 use super::fields::{characters, component_error, excluded_fields, field, part, primitive, scalar};
-use super::patient::{coded, excluded, extras, universal_type};
+use super::patient::{coded, excluded, extras, universal_value};
 use super::{ControlDirection, Error, Profile, content, raw};
 use crate::Segment;
 
@@ -37,8 +37,8 @@ fn eip(value: &[u8], number: usize, direction: ControlDirection) -> Result<(), E
     primitive(namespace, false, 20, sub(number, 2))?;
     primitive(universal, false, 199, sub(number, 3))?;
     primitive(kind, false, 6, sub(number, 4))?;
-    if !kind.is_empty() {
-        universal_type(kind, sub(number, 4))?;
+    if !kind.is_empty() || !universal.is_empty() {
+        universal_value(universal, kind, sub(number, 3))?;
     }
     if namespace.is_empty() && (universal.is_empty() || kind.is_empty()) {
         return Err(sub(number, 2));

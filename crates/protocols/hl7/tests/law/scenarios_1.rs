@@ -20,20 +20,16 @@ fn law_tf2b_3_27_4_query_forms_and_conditional_fields() -> Result<(), Box<dyn st
     for (body, expected) in [
         ("QPD|WOS_ALL^Work Order Step All^IHELAW|tag", "all"),
         (
-            "QPD|WOS_BY_RACK^Work Order Step by rack^IHELAW|tag||rack|01",
+            "QPD|WOS_BY_RACK^Work Order Step by Rack^IHELAW|tag||rack|01",
             "rack",
         ),
         (
-            "QPD|WOS_BY_TRAY^Work Order Step by tray^IHELAW|tag||||tray|1^2",
+            "QPD|WOS_BY_TRAY^Work Order Step by Tray^IHELAW|tag||||tray|1^2",
             "tray",
         ),
         (
-            "QPD|WOS_BY_ISOLATE^Work Order Step by isolate^IHELAW|tag|child||||||parent",
+            "QPD|WOS_BY_ISOLATE^Work Order Step by Isolate^IHELAW|tag|child||||||parent",
             "isolate",
-        ),
-        (
-            "QPD|WOS_INFORMATIONAL_RACK^Query^IHELAW|tag|tube|rack|2",
-            "informational",
         ),
     ] {
         let message = query(body)?;
@@ -459,6 +455,16 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
             &sent
         };
         let parsed = WorkResponse::new(&message, request)?;
+        // TF-2b 3.28.4.1.2.2: mandatory container and completed specimen groups.
+        for invalid in [
+            incoming.replace("SAC|||tube\r", ""),
+            incoming.replace("SAC|||tube\r", "SAC|||tube\rSAC|||tube\r"),
+            format!("{incoming}SPM|2|||SER^Serum^HL70487|||||||P^^HL70369\r"),
+        ] {
+            let reply = Message::parse(invalid.as_bytes(), utf8_options())?;
+            assert!(WorkResponse::new(&reply, request).is_err());
+            assert_eq!(reply.raw(), invalid.as_bytes());
+        }
         let wrong_container = Message::parse(
             incoming
                 .replace("SAC|||tube", "SAC|||different-tube")

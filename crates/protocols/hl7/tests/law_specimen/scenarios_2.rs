@@ -99,7 +99,7 @@ fn law_tf2b_c11_c12_2_2_x_fields_composites_and_option_resolution() -> TestResul
         }
     }
     for (id, field, value) in [
-        ("SPM", 2, "id&Local&oid&ISO&ignored^filler"),
+        ("SPM", 2, "id&Local&1.2.3&ISO&ignored^filler"),
         ("SPM", 3, "id&Local^filler"),
         ("SPM", 4, "SER^^HL70487^ignored"),
         ("SPM", 11, "P^^HL70369^ignored"),
@@ -285,12 +285,11 @@ fn law_tf2b_3_28_4_1_2_1_negative_query_echoes_all_sac_identity_values() -> Test
         timestamp: b"20260101120000+0000",
     };
     for body in [
-        "QPD|WOS^Synthetic^IHELAW|tag|000tube",
-        "QPD|WOS_ALL^Synthetic^IHELAW|tag",
-        "QPD|WOS_BY_RACK^Synthetic^IHELAW|tag||rack-42|7|||room^Bench^99LAB",
-        "QPD|WOS_BY_TRAY^Synthetic^IHELAW|tag||||tray-73|3^8",
-        "QPD|WOS_BY_ISOLATE^Synthetic^IHELAW|tag|child-41||||||parent-92",
-        "QPD|WOS_INFORMATIONAL_RACK^Synthetic^IHELAW|tag|000tube|rack|2",
+        "QPD|WOS^Work Order Step^IHELAW|tag|000tube",
+        "QPD|WOS_ALL^Work Order Step All^IHELAW|tag",
+        "QPD|WOS_BY_RACK^Work Order Step by Rack^IHELAW|tag||rack-42|7|||room^Bench^99LAB",
+        "QPD|WOS_BY_TRAY^Work Order Step by Tray^IHELAW|tag||||tray-73|3^8",
+        "QPD|WOS_BY_ISOLATE^Work Order Step by Isolate^IHELAW|tag|child-41||||||parent-92",
     ] {
         let wire = format!(
             "MSH|^~\\&|A|L|M|L|20260101120000+0000||QBP^Q11^QBP_Q11|q1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\r{body}\rRCP|I||R^Real Time^HL70394\r"
