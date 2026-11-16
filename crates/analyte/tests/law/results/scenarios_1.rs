@@ -1,5 +1,6 @@
 //! Tests LAW result receipt and durable delivery.
 use super::*;
+use crate::support::step;
 
 #[tokio::test]
 async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c() -> Result<(), Error>
@@ -81,27 +82,43 @@ async fn law_tf2b_3_29_4_unsolicited_uses_explicit_analyzer_order_not_invented_a
         false,
     )
     .await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
-    let mut peer = connect(&path, "law").await?;
+    let running = step(
+        "start unsolicited service",
+        Running::start(&path, &reference.url, "synthetic-api"),
+    )
+    .await?;
+    let mut peer = step("connect unsolicited peer", connect(&path, "law")).await?;
     let message = result("unsolicited", "\"\"", "run-1^ANALYZER", "12.30", "F");
     assert!(
-        hl7(&mut peer, message.as_bytes())
-            .await?
-            .contains("MSA|AA|unsolicited")
+        step(
+            "receive unsolicited LAW AA",
+            hl7(&mut peer, message.as_bytes())
+        )
+        .await?
+        .contains("MSA|AA|unsolicited")
     );
-    check(&reference.event().await?, "run-1", "ANALYZER", 0, "12.30")?;
+    check(
+        &step("receive unsolicited delivery", reference.event()).await?,
+        "run-1",
+        "ANALYZER",
+        0,
+        "12.30",
+    )?;
     let unresolved = result("unresolved", "\"\"", "", "12.30", "F");
     assert!(
-        hl7(&mut peer, unresolved.as_bytes())
-            .await?
-            .contains("MSA|AE|unresolved")
+        step(
+            "receive unresolved LAW AE",
+            hl7(&mut peer, unresolved.as_bytes())
+        )
+        .await?
+        .contains("MSA|AE|unresolved")
     );
     assert!(count(&path, "parked")? > 0);
     assert_eq!(count(&path, "outbox")?, 1);
-    wait_state(&path, "done", 1).await?;
-    running.stop().await?;
+    step("commit unsolicited done", wait_state(&path, "done", 1)).await?;
+    step("stop unsolicited service", running.stop()).await?;
     assert_eq!(receiver_count(&receiver_path)?, 1);
-    reference.close().await?;
+    step("close unsolicited receiver", reference.close()).await?;
     Ok(())
 }
 

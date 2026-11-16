@@ -1,5 +1,7 @@
 //! Tests bounded synthetic peers and local test fixtures.
+mod deadline;
 mod guard;
+pub(crate) use deadline::step;
 pub(super) use guard::HANG_GUARD;
 
 use analyte::{Error, installation::config::Program, runtime::service};

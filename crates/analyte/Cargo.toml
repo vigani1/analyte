@@ -47,6 +47,7 @@ jiff = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["process", "test-util"] }
 analyte-sim = { workspace = true }
 analyte-receiver = { workspace = true }
 rusqlite = { workspace = true }
