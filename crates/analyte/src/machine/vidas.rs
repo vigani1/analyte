@@ -1,6 +1,7 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use super::connection_input::Input;
 use super::custody::{self, ms};
+use super::transfer_end::VidasEnd;
 use crate::{Error, intake, invalid};
 use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_framing::vidas::{Config, Decoder};
@@ -21,7 +22,7 @@ struct ConnectionState {
     requests: VecDeque<Message>,
     idle: bool,
     opened: bool,
-    end_code: &'static str,
+    end_code: VidasEnd,
     cursor: String,
     next_poll: Instant,
     config: Config,
@@ -71,7 +72,7 @@ impl ConnectionState {
             requests: VecDeque::new(),
             idle: true,
             opened: false,
-            end_code: "VIDAS-transfer-error",
+            end_code: VidasEnd::TransferError,
             cursor: String::new(),
             next_poll: Instant::now(),
             config,
@@ -102,7 +103,7 @@ impl ConnectionState {
                         .saturating_add(self.next_poll.saturating_duration_since(Instant::now())),
                 );
             }
-            self.end_code = "VIDAS-input-failed";
+            self.end_code = VidasEnd::InputFailed;
             let input = super::connection_input::journaled(
                 machine,
                 store,
@@ -111,7 +112,7 @@ impl ConnectionState {
                 Some(next.saturating_sub(self.start.elapsed())),
             )
             .await?;
-            self.end_code = "VIDAS-transfer-error";
+            self.end_code = VidasEnd::TransferError;
             match input {
                 Input::Opened { .. } => self.opened = true,
                 Input::Tick => {
@@ -120,9 +121,9 @@ impl ConnectionState {
                 }
                 Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
                     self.end_code = if *stop.borrow() {
-                        "VIDAS-transfer-cancelled"
+                        VidasEnd::TransferCancelled
                     } else {
-                        "VIDAS-transfer-disconnected"
+                        VidasEnd::TransferDisconnected
                     };
                     self.actions.extend(
                         self.dialog
@@ -162,7 +163,7 @@ impl ConnectionState {
                     Ok(Some(packet)) => Some(Event::Packet(packet)),
                     Ok(None) => None,
                     Err(error) => {
-                        self.end_code = "VIDAS-framing-error";
+                        self.end_code = VidasEnd::FramingError;
                         intake::park_bytes(
                             store,
                             machine,
@@ -175,7 +176,7 @@ impl ConnectionState {
                 }
             } else if let Some((control, index)) = self.suffix {
                 if installed.suffix.get(index) != Some(&byte) {
-                    self.end_code = "VIDAS-control-suffix-mismatch";
+                    self.end_code = VidasEnd::ControlSuffixMismatch;
                     intake::park_bytes(store, machine, vec![byte], "VIDAS control suffix mismatch")
                         .await?;
                     return Err(invalid("VIDAS control suffix mismatch"));
@@ -236,7 +237,8 @@ impl ConnectionState {
     }
     async fn close(&self, store: &Handle, mut result: Result<(), Error>) -> Result<(), Error> {
         if let Some(order) = self.active.as_ref() {
-            let cleanup = crate::orders::sending::uncertain(store, order, self.end_code).await;
+            let cleanup =
+                crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await;
             custody::retain_cleanup(&mut result, cleanup);
         }
         result
@@ -251,7 +253,7 @@ fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
     state.dialog = Dialog::download(state.config.clone(), state.policy.clone(), &request)?;
     state.start = Instant::now();
     state.idle = false;
-    state.end_code = "VIDAS-transfer-error";
+    state.end_code = VidasEnd::TransferError;
     state.actions.extend(state.dialog.start());
     Ok(())
 }
@@ -268,9 +270,9 @@ async fn process(
     while let Some(action) = state.actions.pop_front() {
         match action {
             Action::Send(bytes) => {
-                state.end_code = "VIDAS-write-failed";
+                state.end_code = VidasEnd::WriteFailed;
                 custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
-                state.end_code = "VIDAS-transfer-error";
+                state.end_code = VidasEnd::TransferError;
             }
             Action::Store(packet) => {
                 let id = ReceiptId::new();
@@ -294,13 +296,13 @@ async fn process(
             }
             Action::Arm(_, _) | Action::Cancel(_) => {}
             Action::Park => {
-                if state.end_code == "VIDAS-transfer-error" {
+                if state.end_code == VidasEnd::TransferError {
                     state.end_code = match state.dialog.expired_timer() {
-                        Some(Timer::Acknowledgment) => "VIDAS-acknowledgment-timeout",
-                        Some(Timer::Interbyte) => "VIDAS-interbyte-timeout",
-                        Some(Timer::Session) => "VIDAS-session-timeout",
-                        Some(Timer::Commit) => "VIDAS-commit-timeout",
-                        None => "VIDAS-transfer-refused-or-unexpected",
+                        Some(Timer::Acknowledgment) => VidasEnd::AcknowledgmentTimeout,
+                        Some(Timer::Interbyte) => VidasEnd::InterbyteTimeout,
+                        Some(Timer::Session) => VidasEnd::SessionTimeout,
+                        Some(Timer::Commit) => VidasEnd::CommitTimeout,
+                        None => VidasEnd::TransferRefusedOrUnexpected,
                     };
                 }
                 let parked = intake::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
@@ -320,7 +322,7 @@ async fn process(
                             store,
                             order,
                             analyte_model::OrderState::Sent,
-                            "VIDAS-transfer-confirmed",
+                            VidasEnd::TransferConfirmed.as_str(),
                         )
                         .await?;
                         state.active = None;
