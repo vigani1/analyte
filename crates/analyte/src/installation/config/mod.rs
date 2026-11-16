@@ -17,6 +17,8 @@ pub struct Machine {
     pub(crate) capture: bool,
     pub(crate) destination_limits: analyte_sink::Limits,
     #[cfg(feature = "test-hooks")]
+    pub(crate) law_precommit: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
+    #[cfg(feature = "test-hooks")]
     pub(crate) law_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     #[cfg(feature = "test-hooks")]
     pub(crate) astm_committed: Option<std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>>,
@@ -155,6 +157,21 @@ impl Program {
             ));
         }
         machine.law_committed = Some(hook);
+        Ok(())
+    }
+    /// Installs a one-shot pause immediately before LAW raw custody, on a test listener.
+    /// # Errors
+    /// Rejects the same non-loopback and non-LAW machines as the commit hook.
+    #[cfg(feature = "test-hooks")]
+    pub fn pause_law_precommit_for_test(
+        &mut self,
+        id: &str,
+        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
+    ) -> Result<(), Error> {
+        self.pause_law_committed_for_test(id, hook.clone())?;
+        let machine = self.test_machine_mut(id)?;
+        machine.law_committed = None;
+        machine.law_precommit = Some(hook);
         Ok(())
     }
     /// Stalls the store at shutdown with a 500 ms process deadline, for child-process tests only.
@@ -671,6 +688,8 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
         capture: entry.capture,
         #[cfg(feature = "test-hooks")]
         law_committed: None,
+        #[cfg(feature = "test-hooks")]
+        law_precommit: None,
         #[cfg(feature = "test-hooks")]
         astm_committed: None,
         #[cfg(feature = "test-hooks")]

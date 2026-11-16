@@ -165,7 +165,33 @@ async fn assert_repaired_mapping_preserves_receipt(
                     .is_some()
             );
             assert_eq!(s.deliveries(0)?.len(), 1);
-            assert_eq!(s.audits(0)?.len(), 2);
+            let audits = s.audits(0)?;
+            assert_eq!(audits.len(), 2);
+            let receipt: String = serde_json::from_str(&serde_json::to_string(&id)?)?;
+            for ((_, audit), (version, reason)) in audits.iter().zip([
+                (2, "repair LAW test mapping"),
+                (3, "verify retained result idempotency"),
+            ]) {
+                assert_eq!(audit.action.as_str(), "receipt-reprocess");
+                assert_eq!(audit.actor.as_str(), "synthetic-operator");
+                assert_eq!(audit.reason.as_str(), reason);
+                let mut targets = vec![
+                    receipt.clone(),
+                    format!("interpretation:{receipt}:{version}"),
+                    "reprocess:succeeded".into(),
+                ];
+                if version == 2 {
+                    targets.push(format!("parked:{parked}"));
+                }
+                assert_eq!(
+                    audit
+                        .targets
+                        .iter()
+                        .map(analyte_model::Identifier::as_str)
+                        .collect::<Vec<_>>(),
+                    targets
+                );
+            }
             Ok(())
         })
         .await?;
@@ -182,3 +208,29 @@ fn reprocess_deadline() -> Result<std::time::Instant, &'static str> {
 mod scenarios_1;
 
 mod scenarios_2;
+
+// ADR 0003: the failed interpretation owns exactly this operator audit.
+fn assert_conflict_audit(
+    s: &analyte_store::Store,
+    conflict_id: analyte_model::ReceiptId,
+) -> Result<(), analyte_store::Error> {
+    let audits = s.audits(0)?;
+    let audit = &audits.last().ok_or(analyte_store::Error::Corruption)?.1;
+    let receipt: String = serde_json::from_str(&serde_json::to_string(&conflict_id)?)?;
+    assert_eq!(audit.action.as_str(), "receipt-reprocess");
+    assert_eq!(audit.actor.as_str(), "synthetic-operator");
+    assert_eq!(audit.reason.as_str(), "review retained non-C conflict");
+    assert_eq!(
+        audit
+            .targets
+            .iter()
+            .map(analyte_model::Identifier::as_str)
+            .collect::<Vec<_>>(),
+        [
+            receipt.as_str(),
+            &format!("interpretation:{receipt}:2"),
+            "reprocess:parked"
+        ]
+    );
+    Ok(())
+}

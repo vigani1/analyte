@@ -69,6 +69,11 @@ impl Control {
     pub fn resume(&self) {
         self.decision.send_replace(Some(true));
     }
+    /// Arms the next boundary after the previous pause has resumed and completed.
+    pub fn arm_next(&self) {
+        self.decision.send_replace(None);
+        self.hook.armed.store(true, Ordering::Release);
+    }
     /// Stops the connection without generating the pending ACK.
     pub fn stop(&self) {
         self.decision.send_replace(Some(false));

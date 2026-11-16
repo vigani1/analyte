@@ -539,6 +539,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
                 3,
                 "exactly one additional audit despite conflict rollback"
             );
+            assert_conflict_audit(s, conflict_id)?;
             assert_eq!(s.deliveries(0)?.len(), 1);
             Ok(())
         })

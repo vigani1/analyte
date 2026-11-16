@@ -264,7 +264,10 @@ fn law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields()
     let work = awos
         .with_specimen_details(&specimen)
         .with_container_details(&container);
-    law::work_order(&[work], None, address, response, capabilities, options())?;
+    // PaLM TF-2b 2.2.4.11/12 and C.11/C.12: no unit or dilution conversion.
+    let output = law::work_order(&[work], None, address, response, capabilities, options())?;
+    preservation::assert_supplied_details(&output)?;
+    preservation::assert_optional_details_omitted(address, response, capabilities)?;
     validate_specimen_detail_cases(awos, address, response, capabilities, specimen)?;
     validate_container_detail_cases(awos, address, response, capabilities, container)?;
     Ok(())
