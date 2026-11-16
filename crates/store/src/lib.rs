@@ -1,42 +1,41 @@
-//! Durable evidence and transactional delivery state. No payloads are logged.
+//! Storage layer: owns durable evidence, revisions and delivery custody; never interprets clinical data or resends machine orders.
 #![forbid(unsafe_code)]
+mod operator;
+use operator::{alerts, parked, query};
+mod upkeep;
+use upkeep::{startup, worker};
+mod orders;
+use orders::{machine_orders, polls};
+mod delivery;
+use delivery::resend;
+mod results;
+use results::revisions;
+mod intake;
+use intake::{records, reprocess, transfers};
 
-mod alerts;
-mod backup;
-mod capacity;
-mod feed;
-mod open;
-mod startup;
 pub use startup::{DEFAULT_STARTUP_TIMEOUT, StartupStep};
-mod outbox;
-mod parked;
-mod polls;
+
 pub use polls::{PollIntent, PollIntentId, PollIntentState, PollOutcome};
-mod receipts;
+
 mod sql_types;
-mod transfers;
+
 pub use alerts::*;
 pub use transfers::{FrameSequence, TransferOutcome};
-mod machine_orders;
-mod migration;
-mod reprocess;
+
 pub use reprocess::Reprocess;
-mod resend;
-mod restore;
+
 pub use resend::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
 pub const SCHEMA_VERSION: i64 = 9;
 pub use machine_orders::*;
-#[cfg(test)]
-mod order_tests;
-mod revisions;
+
 pub use revisions::{InterpretationCommit, RevisionOutcome, StatusLifecycle};
-mod query;
+
 pub use query::{Frame, ParkedItem, Receipt};
-mod records;
+
 pub use records::*;
-mod worker;
+
 pub use worker::Handle;
 
 use analyte_model::Digest;
@@ -255,9 +254,6 @@ impl Store {
     }
 }
 
-#[cfg(test)]
-mod tests;
-
 /// Authoritative cache availability, distinct from an authoritative empty answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrderTrust {
@@ -285,3 +281,9 @@ impl OrderTrust {
         matches!(self, Self::Trusted { .. })
     }
 }
+
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+#[path = "lib/tests.rs"]
+mod tests;
