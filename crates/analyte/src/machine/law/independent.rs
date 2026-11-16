@@ -67,7 +67,9 @@ pub(in crate::machine) async fn run(
     let cleanup = match side {
         Finished::Stop => {
             let (inbound, outbound) = tokio::join!(&mut inbound, &mut outbound);
-            inbound.and(outbound)
+            let mut result = inbound;
+            super::super::custody::retain_cleanup(&mut result, outbound);
+            result
         }
         Finished::Inbound => outbound.await,
         Finished::Outbound => inbound.await,
@@ -75,7 +77,9 @@ pub(in crate::machine) async fn run(
     if *stop.borrow() {
         closing.after_commits().await?;
     }
-    result.and(cleanup)
+    let mut result = result;
+    super::super::custody::retain_cleanup(&mut result, cleanup);
+    result
 }
 
 async fn server(

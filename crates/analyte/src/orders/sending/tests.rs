@@ -172,6 +172,7 @@ async fn adr0003_cleanup_attempts_every_key_and_retains_every_failure() -> Resul
         vec![key.clone(), key.clone(), key],
         &owner,
         "disconnect",
+        Settlement::Order,
     )
     .await
     .expect_err("closed store must reject each cleanup");

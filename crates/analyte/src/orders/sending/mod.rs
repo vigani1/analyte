@@ -294,6 +294,7 @@ pub(crate) async fn settle_owned(
     keys: Vec<MachineOrderKey>,
     owner: &analyte_model::Identifier,
     code: &str,
+    summary: Settlement,
 ) -> Result<(), Error> {
     let code = SourceText::new(code)?;
     let mut result = Ok(());
@@ -305,6 +306,16 @@ pub(crate) async fn settle_owned(
                 if let Some(record) = store.machine_order(&key)?
                     && (record.reserved_by(&owner) || record.cancel_requested_by(&owner))
                 {
+                    if record.state == OrderState::Sending && matches!(summary, Settlement::Order) {
+                        store.transition_order(
+                            record.id,
+                            OrderState::Uncertain,
+                            code,
+                            jiff::Timestamp::now().as_second(),
+                            super::event,
+                        )?;
+                        return Ok(());
+                    }
                     let outcomes = record
                         .items
                         .iter()
@@ -328,4 +339,11 @@ pub(crate) async fn settle_owned(
         crate::machine::custody::retain_cleanup(&mut result, cleanup);
     }
     result
+}
+
+/// Preserves the protocol's existing audit representation of an uncertain send.
+#[derive(Clone, Copy)]
+pub(crate) enum Settlement {
+    Order,
+    Items,
 }

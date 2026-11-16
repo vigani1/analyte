@@ -113,3 +113,38 @@ pub(super) async fn admit<T: Send + 'static>(
         })
         .await
 }
+
+/// Builds the durable machine-order identity in one place for both HL7 profiles.
+pub(super) fn key(
+    machine: &crate::installation::config::Machine,
+    order: analyte_model::Identifier,
+) -> MachineOrderKey {
+    MachineOrderKey {
+        destination: super::destination(machine),
+        order,
+        machine: machine.id.clone(),
+    }
+}
+
+/// Lists cancellation candidates only while the cached order feed is trusted.
+pub(super) async fn cancellations(
+    store: &Handle,
+    machine: &crate::installation::config::Machine,
+    until: Instant,
+) -> Result<Vec<(MachineOrder, analyte_store::CachedOrder)>, Error> {
+    let destination = super::destination(machine);
+    let target = machine.id.clone();
+    let freshness = machine.destination_limits.freshness.as_secs();
+    Ok(store
+        .request(until, move |store| {
+            let now = jiff::Timestamp::now().as_second();
+            if !store
+                .order_trust(&destination, now, freshness)?
+                .is_trusted()
+            {
+                return Ok(Vec::new());
+            }
+            store.cancel_candidates(&destination, &target, now, freshness)
+        })
+        .await?)
+}

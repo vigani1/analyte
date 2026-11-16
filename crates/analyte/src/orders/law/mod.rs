@@ -66,9 +66,10 @@ impl Connection {
     pub(crate) async fn close(&mut self, store: &Handle, code: &str) -> Result<(), Error> {
         let result = super::sending::settle_owned(
             store,
-            self.reserving.drain(..).collect(),
+            std::mem::take(&mut self.reserving),
             &self.owner,
             code,
+            super::sending::Settlement::Items,
         )
         .await;
         self.exchange = None;

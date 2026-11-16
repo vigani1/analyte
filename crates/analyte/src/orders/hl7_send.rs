@@ -60,24 +60,7 @@ async fn next_cancel(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let dest = super::destination(machine);
-    let target = machine.id.clone();
-    let cancels = store
-        .request(deadline(), move |store| {
-            if !store
-                .order_trust(&dest, jiff::Timestamp::now().as_second(), freshness)?
-                .is_trusted()
-            {
-                return Ok(Vec::new());
-            }
-            store.cancel_candidates(
-                &dest,
-                &target,
-                jiff::Timestamp::now().as_second(),
-                freshness,
-            )
-        })
-        .await?;
+    let cancels = super::reservation::cancellations(store, machine, deadline()).await?;
     for (record, cached) in cancels {
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
         let command = command(machine, &app, options)?;
@@ -119,11 +102,7 @@ async fn next_work(
         if !super::eligible(&app, machine) {
             continue;
         }
-        let key = MachineOrderKey {
-            destination: super::destination(machine),
-            order: cached.id,
-            machine: machine.id.clone(),
-        };
+        let key = super::reservation::key(machine, cached.id);
         let version = app.fields().version;
         let Some(command) = prepare_command(store, machine, &app, options, key.clone()).await?
         else {
