@@ -130,7 +130,7 @@ impl Version {
             Self::V231 | Self::V251 | Self::V26 | Self::V282 => None,
             // HL7 2.9.1 sections 4.4.7.1-2, 4.5.3.4 and 2A.2.13.7.
             Self::V291 => Some(
-                "2.9.1 order writers are not yet implemented: CWE revisions, withdrawn order fields and O22 versus O53 response qualification remain incomplete",
+                "2.9.1 order writers are not yet implemented: section 4.5.1.4 and the ORC table declare ORC-4 as EI but its component description uses subcomponent separators; group encoding needs authoritative clarification",
             ),
         }
     }

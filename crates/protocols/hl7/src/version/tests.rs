@@ -92,7 +92,7 @@ fn adr0012_s3_writer_qualification_is_separate_from_receiving() {
             Version::V25,
             "original 2.5 order field definitions are unavailable",
         ),
-        (Version::V291, "O22 versus O53 response qualification"),
+        (Version::V291, "section 4.5.1.4"),
     ] {
         assert!(version.supports_result_reception());
         assert!(version.order_sending_blocker().unwrap().contains(reason));

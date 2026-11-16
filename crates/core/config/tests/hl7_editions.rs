@@ -137,7 +137,7 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
 }
 
 #[test]
-fn adr0012_s3_modern_result_editions_do_not_enable_order_sending() -> Result<(), Error> {
+fn hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending() -> Result<(), Error> {
     {
         let edition = "v291";
         let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
@@ -149,7 +149,7 @@ fn adr0012_s3_modern_result_editions_do_not_enable_order_sending() -> Result<(),
         )?
         .validate();
         assert!(
-            matches!(result, Err(Error::Invalid { key, reason, .. }) if key == "orders.hl7_send" && reason.contains("not yet implemented"))
+            matches!(result, Err(Error::Invalid { key, reason, .. }) if key == "orders.hl7_send" && reason.contains("4.5.1.4"))
         );
     }
     Ok(())

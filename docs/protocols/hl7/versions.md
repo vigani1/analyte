@@ -31,7 +31,7 @@ these editions. Any config enabling the legacy query profile fails with
 `WithdrawnHl7Query`, naming the edition and withdrawing section, before runtime
 or typed-result qualification. No replacement query contract is selected;
 LAW's QBP path remains separate. Config enablement for results follows tested
-typed support; command writers remain a separate step-5 PR. Evidence stays documented.
+typed support; order qualification is listed separately below. Evidence stays documented.
 
 In 2.6, §5.10.2 (pp.95–96) retains original queries for backward compatibility;
 it does not withdraw them. Analyte keeps its bounded deferred display exchange.
@@ -73,14 +73,13 @@ Eligibility is read from the same rule registry, and a recognized edition withou
 a qualified profile still fails validation before activation.
 Unlisted values fail at the positioned TOML schema boundary with the bad value
 and the recognized choices. A missing edition is not defaulted.
-Later-edition message/datatype differences and command-writer integration
-remain separate steps. Enabling another edition in config
+Order writing remains separately qualified from receiving. Enabling another edition in config
 must accompany its implemented typed support and the corresponding tests.
 
 The registry tests retain exact wire identity for all eight editions. Config
 tests in `hl7_editions.rs` cover the eight supported selections and canonical
 snapshots (`adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`),
-withdrawn-query refusal and blocked writers for the modern result-only editions,
+withdrawn-query refusal and the source-blocked 2.9.1 writer,
 unlisted values and their diagnostics
 (`adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values`) and
 missing declarations (`adr0012_s3_missing_config_edition_is_not_defaulted`).
@@ -114,7 +113,7 @@ chapter; this does not justify applying the older edition's wording to 2.9.1.
 | 2.5.1 | Adds the selected OML/OUL/QBP transaction profiles; OBX-21 is reserved, not a trusted result identity | Existing scope and field evidence in [checklist](checklist.md) |
 | 2.3, 2.4, 2.5 | Implemented receiving compatibility profiles; exact edition retained, unresolved extensions remain raw or are refused | HL7 2.5.1 §§2.8–2.8.2, pp.2-20–22; errata and details below |
 | 2.6 | Bounded typed ORU/R01 and deferred query reception; bounded O21/O22 sending | Rules below |
-| 2.8.2, 2.9.1 | Bounded typed ORU/R01 result reception; legacy queries and command sending refused | Modern rules below |
+| 2.8.2, 2.9.1 | Bounded typed ORU/R01 result reception; legacy queries refused; sending qualified only for 2.8.2 | Modern rules below |
 
 ### 2.6 difference rules and evidence
 
@@ -166,7 +165,7 @@ original bytes; it never trims or converts a value to fit.
 Whole-edition progress in this PR: **2.6 bounded profile completed**.
 Part A / step 4 is complete for the selected receiving scopes. Part B / step 5
 2.6 order writing is qualified below; config still refuses sending for the
-three historical compatibility editions and the two modern result-only editions.
+three historical compatibility editions and 2.9.1.
 
 Writer source audit for that remaining part: OBR-4 uses CWE in 2.6
 §4.5.3.4 pp.4-41–42, 2.8.2 §4.5.3.4 pp.68–69 and 2.9.1 §4.5.3.4 pp.74–75.
@@ -183,7 +182,7 @@ Later patient-optional reply variants are not implicitly selected: 2.8.2
 §4.4.7.2 pp.16–17 uses the ORL_O41 structure, and 2.9.1 §4.4.7.2 pp.18–19
 uses ORL/O53.
 The existing O22 profile requires the patient response group for order decisions;
-no replacement family or patient information is invented here. The 2.6 writer is qualified below; the modern writers remain blocked.
+no replacement family or patient information is invented here. The 2.6 and 2.8.2 writers are qualified below; 2.9.1 remains blocked.
 
 ### Modern rule rows and tests
 
@@ -354,7 +353,7 @@ timestamp precision forms and the explicit LAW and UTF-8 policies.
 ## Order writer qualification
 
 2.6 and 2.8.2 are qualified for the bounded O21/O22 order profiles below. The historical
-blockers remain accepted; 2.9.1 remains pending its own qualification.
+blockers remain accepted; 2.9.1 remains blocked on the source conflict below.
 Evidence stays documented. Config reports edition-specific blockers.
 
 | Edition | Sending | Specific remaining qualification |
@@ -364,7 +363,7 @@ Evidence stays documented. Config reports edition-specific blockers.
 | 2.5 | Blocked | Original order-message and field definitions are unavailable; no patch-edition downgrade is justified by section 2.8. |
 | 2.6 | Enabled | Bounded OML/O21 and ORL/O22, with explicit test/specimen/priority revisions; see the rule matrix below. |
 | 2.8.2 | Enabled | Bounded O21/O22; EIP group identity, required patient identifier type, explicit coding revisions and withdrawn-field refusal. ORL_O41 is unselected. |
-| 2.9.1 | Blocked | Qualify the written fields, CWE revisions and withdrawn-field refusal. Section 4.4.7.1 selects patient-required O22; section 4.4.7.2's O53 transaction must not be accepted implicitly. |
+| 2.9.1 | Blocked | ORC-4 encoding is unresolved: the attribute table and 4.5.1.4 declare EI, but the component description uses subcomponent separators. Authoritative clarification is needed before writing a group authority. |
 
 Evidence: protocol `adr0012_s3_writer_qualification_is_separate_from_receiving`
 and config `adr0012_s3_config_reports_the_registry_writer_blocker` test the
@@ -395,7 +394,7 @@ OML uses TQ1 and SPM instead of writing legacy OBR-15/27 and ORC-7 content.
 
 Tests in `edition_orders.rs` name the source sections and assert exact bytes,
 missing-revision refusal, reply outcomes and bad control ID / MSA-5 refusal.
-Config `hl7_2_6_s4_4_6_s2_a_13_7_config_requires_explicit_revisions` checks the
+Config `hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions` checks the
 activation boundary. Program `hl7_send_cases` includes 2.6 in acceptance,
 rejection, cancellation, timeout/disconnect and restart-during-Sending cases.
 
@@ -418,7 +417,7 @@ and access-restriction groups remain unselected and fail visibly in replies.
 | --- | --- | --- |
 | MSH fields written by the 2.5.1 writer | Exact `2.8.2`; MSH-7 scalar DTM; standard charset declarations and no optional truncation declaration on generated orders | 2.14.9; 2.A.22 |
 | MSH-9 and ORL reply | OML/O21/OML_O21 with ORL/O22/ORL_O22; patient group required for decisions. Reject patient-optional ORL_O41 rather than substitute structures | 4.4.6; 4.4.7.1-2 |
-| ORC-1/2/3/4/6 | Controls/response flag retained; ORC-4 changes EI to EIP: placer group and authority use subcomponents (`g1&LAB`) | 4.5.1.1-6; 2.A.25 |
+| ORC-1/2/3/4/6 | Controls/response flag retained; ORC-4 changes EI to EIP: placer group and authority use subcomponents (`g1&LAB`) | 4.5.1.1-6; 2.A.26 |
 | PID-1/3/5 | SI/CX/XPN retained, but supplied CX.5 type is now required; a patient with no supplied type is refused. Identifier-only input still omits the optional request PID; reply patient minima are checked | 3.4.2; 2.A.14.5; 2.A.90 |
 | OBR-1/2/3/4 | SI/EI retained; test is CWE, with explicit named-system revision and 12-character coding-system name bound; modern extended tuples are not generated by this API | 4.5.3.1-4; 2.A.13 |
 | TQ1-1/7/8/9 | One SI timing window; scalar DTM and explicit priority CWE revision | 4.5.4.1/.7-9; 2.A.22 |
@@ -431,3 +430,27 @@ replies, wrong control ID, wrong reply structure and withdrawn-field refusal.
 Config revision tests and program `hl7_send_cases` include 2.8.2, including
 timeout/disconnect and crash/restart without retransmission. Evidence remains
 documented; no machine or simulator qualification is claimed.
+
+### 2.9.1 writer stop: conflicting ORC-4 encoding description
+
+The available September 2024 chapter 4 source changes ORC-4 back to EI in both
+its attribute table (4.5.1, p.56) and field definition (4.5.1.4, p.61). Unlike
+2.8.2's EIP, this names only a placer group identity. However, the component
+description on p.61 separates that EI's parts using subcomponent delimiters.
+Chapter 2A's EI datatype uses component delimiters for a top-level field. These
+would produce different bytes for the group authority that `order::context`
+actually writes. Analyte does not select one reading on the basis of an apparent
+editorial error. No 2.9.1 correction resolving this was found in the supplied
+errata directory (it contains only the historical 2.3.1/2.4 errata).
+
+Other inspected differences do not resolve that conflict: 4.4.6 retains O21;
+4.4.7.1 retains patient-required O22 while 4.4.7.2 selects the distinct O53
+patient-optional response. Section 4.5.3 withdraws additional provider and
+interpreter fields (16/28/32-35); 2A.2.14.5 still requires CX.5; 2A.2.22 retains
+the special UTC-without-civil-offset meaning of negative-zero offset. These
+facts are not a qualified 2.9.1 writer row. No writer or config activation is
+enabled for 2.9.1. An authoritative correction or explicit source-precedence
+resolution is needed for ORC-4 before qualification continues.
+
+Config test `hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending` and
+`adr0012_s3_config_reports_the_registry_writer_blocker` keep the refusal visible.

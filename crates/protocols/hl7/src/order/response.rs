@@ -1,4 +1,5 @@
 //! Interprets HL7 order acknowledgments.
+//! Kept whole: Validates one correlated order response and its bounded order-owned groups atomically.
 use super::{Control, Error, Family, OrderMessage, SpecimenResponse, invalid, laboratory, raw};
 use crate::{AckCode, Field, Message, Msa, Msh, Segment, Version};
 use std::collections::{BTreeMap, BTreeSet};

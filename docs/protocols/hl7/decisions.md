@@ -31,11 +31,13 @@
   §§2.4.5.3–4 pp.15–16; §§2.13.8–9 pp.67–72; §7.4.1 pp.49–57.
 - **tests**: The source-named rows in versions.md link protocol `modern.rs`,
   mapping `mapping/modern.rs`, config edition tests and the dialog custody test.
-  Evidence remains documented. Order writers are Part B and remain gated.
+  Evidence remains documented. Order sending is qualified for 2.6/2.8.2 below;
+  2.9.1 remains blocked at its source gate.
 
 ## Receive results without reviving withdrawn original queries
 
-- **what**: The selected scope for 2.8.2 and 2.9.1 is result reception only.
+- **what**: Both modern profiles receive results and refuse legacy queries. Order
+  sending is qualified separately below for 2.8.2; 2.9.1 stays blocked.
   A legacy-query configuration fails before activation with `WithdrawnHl7Query`;
   the diagnostic names the edition and its withdrawing section. This rule does
   not depend on whether the result profile has finished qualification.
@@ -77,8 +79,8 @@
   and `hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map`.
 - **remaining**: 2.8.2/2.9.1 now have bounded result profiles. Their original queries are withdrawn
   (2.8.2 §5.10.2; 2.9.1 §5.9.2); a modern query contract is not implicitly
-  selected; result-only scope is selected above. Step 5 order writers remain
-  a separate PR. Evidence: documented.
+  selected. The 2.6 and 2.8.2 bounded order writers are qualified below;
+  2.9.1 stays blocked. Evidence: documented.
 
 ## Bound compatibility to the established legacy receiving prefix
 
@@ -281,3 +283,12 @@ CX.5 identifier type (2.A.14.5); no type is inferred from a namespace. The
 contract-v1 mapper still omits the optional request PID when no name is supplied.
 The shared writer keeps conservative caps and explicit coding revisions.
 Evidence: edition order and host send/recovery tests listed in versions.md.
+
+## Stop 2.9.1 sending at the ORC-4 source conflict
+
+Keep 2.9.1 blocked rather than choosing separators for its group authority.
+Chapter 4 (September 2024) 4.5.1 and 4.5.1.4 declare EI while the field's
+component description uses subcomponent separators. The exact conflict and
+required clarification are in versions.md. This is a source gate, not a claim
+that 2.9.1 lacks laboratory ordering. The existing O22/O53 distinction remains
+separate. Evidence: the source-named config refusal test and registry blocker.
