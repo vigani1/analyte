@@ -1,5 +1,6 @@
 //! Constructs validated VIDAS protocol settings.
 use super::*;
+use crate::ParsedMachine;
 use analyte_model::Identifier;
 
 /// VIDAS work lists carry only supported outbound settings.
@@ -96,7 +97,7 @@ impl VidasStack {
 }
 
 pub(super) fn build(
-    machine: &MachineDocument,
+    machine: &ParsedMachine<'_>,
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<VidasStack, Error> {

@@ -1,5 +1,6 @@
 //! Constructs validated FILE protocol settings.
 use super::*;
+use crate::{ParsedMachine, StackChoice};
 
 /// Watched-folder records without any stream framing or acknowledgment policy.
 #[derive(Debug, Clone)]
@@ -36,12 +37,12 @@ pub struct FileHl7Stack {
 }
 
 pub(super) fn file_stack(
-    machine: &MachineDocument,
+    machine: &ParsedMachine<'_>,
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<Stack, Error> {
-    Ok(match machine.syntax.kind {
-        SyntaxKind::AstmLis02 => Stack::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
+    Ok(match machine.choice() {
+        StackChoice::FileAstm => Stack::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
             operation_timeout_ms: machine.transport.operation_timeout_ms,
             frame_limit: machine.framing.limit,
             timeouts,
@@ -56,7 +57,7 @@ pub(super) fn file_stack(
                 .map(|o| astm_orders(o, path))
                 .transpose()?,
         }))),
-        SyntaxKind::Hl7V2 => Stack::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
+        StackChoice::FileHl7 => Stack::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
             operation_timeout_ms: machine.transport.operation_timeout_ms,
             frame_limit: machine.framing.limit,
             timeouts,
@@ -71,7 +72,12 @@ pub(super) fn file_stack(
                 .map(|o| hl7_orders(o, path))
                 .transpose()?,
         }))),
-        SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
+        StackChoice::AstmLis02
+        | StackChoice::Hl7V2
+        | StackChoice::LawManager
+        | StackChoice::Poct
+        | StackChoice::VidasLiteral
+        | StackChoice::Autolyser => {
             return Err(Error::IncompatibleStack {
                 path: path.into(),
                 reason: "validated file pickup supports only LIS02 or HL7",

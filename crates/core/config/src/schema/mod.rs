@@ -57,60 +57,6 @@ pub enum FlowControl {
     Software,
 }
 
-/// Wire envelope.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FramingKind {
-    /// Explicit `AstmLis01` selection.
-    AstmLis01,
-    /// Explicit `Mllp` selection.
-    Mllp,
-    /// Explicit `None` selection.
-    None,
-    /// Documented Poct protocol layer.
-    Poct,
-    /// Documented VIDAS Literal protocol layer.
-    VidasLiteral,
-    /// Documented Autolyser protocol layer.
-    Autolyser,
-}
-
-/// Connection state machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DialogKind {
-    /// Explicit `AstmLink` selection.
-    AstmLink,
-    /// Explicit `Hl7Receiver` selection.
-    Hl7Receiver,
-    /// IHE LAW Analyzer Manager, using the LAW application acknowledgment rules.
-    LawManager,
-    /// Explicit `FilePickup` selection.
-    FilePickup,
-    /// Documented Poct protocol layer.
-    Poct,
-    /// Documented VIDAS Literal protocol layer.
-    VidasLiteral,
-    /// Documented Autolyser protocol layer.
-    Autolyser,
-}
-
-/// Record syntax.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SyntaxKind {
-    /// Explicit `AstmLis02` selection.
-    AstmLis02,
-    /// Explicit `Hl7V2` selection.
-    Hl7V2,
-    /// Documented Poct protocol layer.
-    Poct,
-    /// Documented VIDAS Literal protocol layer.
-    VidasLiteral,
-    /// Documented Autolyser protocol layer.
-    Autolyser,
-}
-
 /// LIS01 checksum compatibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -285,7 +231,8 @@ pub struct Transport {
 #[serde(deny_unknown_fields)]
 pub struct Framing {
     /// Envelope.
-    pub kind: FramingKind,
+    #[serde(deserialize_with = "crate::selection::framing")]
+    pub kind: String,
     /// Frame bytes including ASTM overhead, or payload bytes otherwise.
     pub limit: usize,
     /// Required only for LIS01.
@@ -297,7 +244,8 @@ pub struct Framing {
 #[serde(deny_unknown_fields)]
 pub struct Dialog {
     /// State machine.
-    pub kind: DialogKind,
+    #[serde(deserialize_with = "crate::selection::dialog")]
+    pub kind: String,
     /// Receive deadline.
     pub receive_timeout_ms: u32,
     /// Send deadline.
@@ -315,7 +263,8 @@ pub struct Dialog {
 #[serde(deny_unknown_fields)]
 pub struct Syntax {
     /// Syntax family.
-    pub kind: SyntaxKind,
+    #[serde(deserialize_with = "crate::selection::syntax")]
+    pub kind: String,
     /// Negotiated encoding.
     pub encoding: Encoding,
     /// Required only for HL7.
@@ -380,7 +329,8 @@ pub struct Evidence {
 #[serde(deny_unknown_fields)]
 pub(crate) struct MachineDocument {
     /// Protocol selection, independent of physical transport.
-    pub protocol: Protocol,
+    #[serde(deserialize_with = "crate::selection::protocol")]
+    pub protocol: String,
     /// Required only for the LAW Analyzer Manager stack.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub law: Option<Law>,
@@ -557,24 +507,6 @@ pub struct PoctIdentity {
     pub sequence_number: bool,
     /// Explicit installed processing mode; no source mode is inferred from Hello.
     pub processing: analyte_model::ProcessingMode,
-}
-
-/// Protocol family, independent of physical transport.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Protocol {
-    /// ASTM LIS02.
-    Astm,
-    /// Generic HL7 v2.
-    Hl7,
-    /// IHE LAW profile.
-    Law,
-    /// POCT reviewer.
-    Poct,
-    /// VIDAS Literal.
-    Vidas,
-    /// Autolyser polling.
-    Autolyser,
 }
 
 mod mappings;

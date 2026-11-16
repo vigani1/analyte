@@ -1,4 +1,5 @@
 //! Validates configuration mappings and protocol stacks.
+use crate::ParsedMachine;
 use crate::{Error, invalid, schema::*};
 
 pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> Result<(), Error> {
@@ -51,27 +52,28 @@ pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> R
 }
 
 pub(super) fn validate_machine(
-    m: &MachineDocument,
+    document: &MachineDocument,
     path: &str,
     reference_path: &str,
 ) -> Result<crate::Stack, Error> {
+    let parsed = ParsedMachine::parse(document, path)?;
+    let m = &parsed;
     validate(m, path)?;
     if let Some(orders) = &m.orders {
         orders.validate(m, path)?;
     }
     validate_transport(m, path)?;
     validate_stack(m, path)?;
-    validate_protocol_selection(m, path)?;
     validate_dialog_and_framing(m, path)?;
     validate_syntax(m, path)?;
     validate_departures(m, path, reference_path)?;
     validate_protocol(m, path)?;
     validate_mappings(m, path)?;
     validate_evidence(m, path)?;
-    crate::Stack::parse(m, path)
+    crate::Stack::from_parsed(m, path)
 }
 
-fn validate_evidence(m: &MachineDocument, path: &str) -> Result<(), Error> {
+fn validate_evidence(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     if m.deviations.len() > 128 || m.evidence.capabilities.len() > 128 {
         return Err(invalid(
             path,

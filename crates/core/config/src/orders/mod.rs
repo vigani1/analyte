@@ -1,5 +1,5 @@
 //! Holds explicit outbound order settings independently of result mappings.
-use crate::{Error, Field, Group, MachineDocument, SyntaxKind, invalid};
+use crate::{Error, Field, Group, invalid};
 use analyte_model::{Identifier, NamespacedId};
 use serde::{Deserialize, Serialize};
 

@@ -1,5 +1,6 @@
 //! Constructs validated AUTOLYSER protocol settings.
 use super::*;
+use crate::ParsedMachine;
 use analyte_model::Identifier;
 
 /// Autolyser work lists carry installed clone behavior and patient namespace.
@@ -96,7 +97,7 @@ impl AutolyserStack {
 }
 
 pub(super) fn build(
-    machine: &MachineDocument,
+    machine: &ParsedMachine<'_>,
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<AutolyserStack, Error> {

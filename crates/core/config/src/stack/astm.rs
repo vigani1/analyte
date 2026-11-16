@@ -1,5 +1,6 @@
 //! Constructs validated ASTM protocol settings.
 use super::*;
+use crate::ParsedMachine;
 
 /// LIS02 syntax settings, without HL7-only options.
 #[derive(Debug, Clone)]
@@ -171,7 +172,7 @@ impl AstmStack {
 }
 
 pub(super) fn build(
-    machine: &MachineDocument,
+    machine: &ParsedMachine<'_>,
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<AstmStack, Error> {

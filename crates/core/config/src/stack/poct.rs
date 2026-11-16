@@ -1,5 +1,6 @@
 //! Constructs validated POCT protocol settings.
 use super::*;
+use crate::ParsedMachine;
 
 /// Poct stack with its required installed policy.
 #[derive(Debug, Clone)]
@@ -52,7 +53,7 @@ impl PoctStack {
 }
 
 pub(super) fn build(
-    machine: &MachineDocument,
+    machine: &ParsedMachine<'_>,
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<PoctStack, Error> {

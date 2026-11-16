@@ -1,5 +1,6 @@
 //! Constructs validated HL7 protocol settings.
 use super::*;
+use crate::ParsedMachine;
 use analyte_model::Identifier;
 
 /// HL7 syntax settings with every required option present.
@@ -254,7 +255,7 @@ impl Hl7Stack {
 }
 
 pub(super) fn build(
-    machine: &MachineDocument,
+    machine: &ParsedMachine<'_>,
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<Hl7Stack, Error> {

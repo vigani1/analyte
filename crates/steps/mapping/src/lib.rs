@@ -58,8 +58,8 @@ impl TryFrom<SyntaxKind> for FieldSyntax {
 
     fn try_from(syntax: SyntaxKind) -> Result<Self, Self::Error> {
         match syntax {
-            SyntaxKind::AstmLis02 => Ok(Self::AstmLis02),
-            SyntaxKind::Hl7V2 => Ok(Self::Hl7V2),
+            SyntaxKind::AstmLis02 | SyntaxKind::FileAstm => Ok(Self::AstmLis02),
+            SyntaxKind::Hl7V2 | SyntaxKind::FileHl7 | SyntaxKind::LawManager => Ok(Self::Hl7V2),
             SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
                 Err(UnsupportedFieldSyntax(syntax))
             }

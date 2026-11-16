@@ -1,5 +1,6 @@
 //! Resolves bounded local recording references and checks per-rule evidence prerequisites.
 use super::*;
+use crate::ParsedMachine;
 use analyte_transport::recording::Evidence as RecordingEvidence;
 
 pub(super) struct Failure {
@@ -28,7 +29,7 @@ use std::{
 };
 
 pub(super) fn validate(
-    m: &MachineDocument,
+    m: &ParsedMachine<'_>,
     departure: &MachineDeparture,
     path: &str,
 ) -> Result<(), Failure> {
@@ -125,7 +126,7 @@ pub(super) fn validate(
 }
 
 fn exercised_capability(
-    m: &MachineDocument,
+    m: &ParsedMachine<'_>,
     departure: &MachineDeparture,
     file: &analyte_model::Identifier,
 ) -> bool {

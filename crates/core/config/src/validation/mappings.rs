@@ -1,14 +1,20 @@
 //! Checks configured field mappings and code tables.
 use super::*;
+use crate::{ParsedMachine, StackChoice};
 
-pub(super) fn field(field: &Field, syntax: SyntaxKind, path: &str, key: &str) -> Result<(), Error> {
+pub(super) fn field(
+    field: &Field,
+    syntax: StackChoice,
+    path: &str,
+    key: &str,
+) -> Result<(), Error> {
     let record = field.record.as_str();
     let valid_record = match syntax {
-        SyntaxKind::AstmLis02 => {
+        StackChoice::AstmLis02 | StackChoice::FileAstm => {
             matches!(record, "H" | "P" | "O" | "R" | "C" | "Q" | "L" | "M" | "S")
         }
-        SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => false,
-        SyntaxKind::Hl7V2 => {
+        StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser => false,
+        StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager => {
             record.len() == 3
                 && record
                     .bytes()
@@ -32,7 +38,7 @@ pub(super) fn field(field: &Field, syntax: SyntaxKind, path: &str, key: &str) ->
     Ok(())
 }
 
-pub(super) fn validate_mappings(m: &MachineDocument, path: &str) -> Result<(), Error> {
+pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     let Some(mapping) = &m.mappings else {
         let codes = m
             .codes
@@ -61,17 +67,17 @@ pub(super) fn validate_mappings(m: &MachineDocument, path: &str) -> Result<(), E
     }
     field(
         &mapping.sample.field,
-        m.syntax.kind,
+        m.choice(),
         path,
         "mappings.sample.field",
     )?;
     for rule in &mapping.qc {
-        field(&rule.field, m.syntax.kind, path, "mappings.qc.field")?;
+        field(&rule.field, m.choice(), path, "mappings.qc.field")?;
     }
     let identity = &mapping.identity;
     field(
         &identity.order_id,
-        m.syntax.kind,
+        m.choice(),
         path,
         "mappings.identity.order_id",
     )?;
@@ -79,17 +85,17 @@ pub(super) fn validate_mappings(m: &MachineDocument, path: &str) -> Result<(), E
         OrderNamespace::Fixed { fixed: _ } => {}
         OrderNamespace::Field { field: selected } => field(
             selected,
-            m.syntax.kind,
+            m.choice(),
             path,
             "mappings.identity.order_namespace.field",
         )?,
     }
     match &identity.sub_id {
-        SubId::Field(selected) => field(selected, m.syntax.kind, path, "mappings.identity.sub_id")?,
+        SubId::Field(selected) => field(selected, m.choice(), path, "mappings.identity.sub_id")?,
         SubId::None(NoSubId::None) => {}
     }
     for selected in &identity.run {
-        field(selected, m.syntax.kind, path, "mappings.identity.run")?;
+        field(selected, m.choice(), path, "mappings.identity.run")?;
     }
     let mut codes = std::collections::HashSet::new();
     for code in &identity.correction_status_codes {
@@ -105,12 +111,12 @@ pub(super) fn validate_mappings(m: &MachineDocument, path: &str) -> Result<(), E
 }
 
 pub(super) fn validate_component_parts(
-    m: &MachineDocument,
+    m: &ParsedMachine<'_>,
     mapping: &Mappings,
     path: &str,
 ) -> Result<(), Error> {
     if let Some(parts) = &mapping.component_parts {
-        if m.syntax.kind != SyntaxKind::AstmLis02 {
+        if !matches!(m.choice(), StackChoice::AstmLis02 | StackChoice::FileAstm) {
             return Err(invalid(
                 path,
                 "mappings.component_parts",
@@ -132,7 +138,7 @@ pub(super) fn validate_component_parts(
         if let Some(applied) = &parts.applied {
             field(
                 &applied.field,
-                m.syntax.kind,
+                m.choice(),
                 path,
                 "mappings.component_parts.applied.field",
             )?;
@@ -186,21 +192,46 @@ pub(super) fn validate_tables(
     Ok(())
 }
 
-pub(super) fn validate_mapping_family(m: &MachineDocument, path: &str) -> Result<(), Error> {
+pub(super) fn validate_mapping_family(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     // The permissive TOML document becomes exactly one table family at this boundary.
-    match (&m.mappings, &m.codes, m.syntax.kind) {
-        (Some(_), None, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
-        | (None, Some(_), SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser) => {}
+    match (&m.mappings, &m.codes, m.choice()) {
+        (
+            Some(_),
+            None,
+            StackChoice::AstmLis02
+            | StackChoice::FileAstm
+            | StackChoice::Hl7V2
+            | StackChoice::FileHl7
+            | StackChoice::LawManager,
+        )
+        | (None, Some(_), StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser) =>
+            {}
         (
             Some(_),
             Some(_) | None,
-            SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser,
+            StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser,
         )
-        | (None, None, SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser) => {
+        | (None, None, StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser) => {
             return Err(Error::VendorFieldMappings { path: path.into() });
         }
-        (None, Some(_) | None, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
-        | (Some(_), Some(_), SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2) => {
+        (
+            None,
+            Some(_) | None,
+            StackChoice::AstmLis02
+            | StackChoice::FileAstm
+            | StackChoice::Hl7V2
+            | StackChoice::FileHl7
+            | StackChoice::LawManager,
+        )
+        | (
+            Some(_),
+            Some(_),
+            StackChoice::AstmLis02
+            | StackChoice::FileAstm
+            | StackChoice::Hl7V2
+            | StackChoice::FileHl7
+            | StackChoice::LawManager,
+        ) => {
             return Err(invalid(
                 path,
                 "mappings",

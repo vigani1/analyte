@@ -1,5 +1,6 @@
 //! Constructs validated LAW protocol settings.
 use super::*;
+use crate::ParsedMachine;
 use analyte_model::Identifier;
 
 /// Validated LAW connection ownership, with no absent independent destination.
@@ -68,7 +69,7 @@ pub struct LawStack {
 }
 
 pub(super) fn law_stack(
-    machine: &MachineDocument,
+    machine: &ParsedMachine<'_>,
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<LawStack, Error> {
