@@ -1,5 +1,6 @@
 //! Selects each stack's validated order settings and whether orders are sent ahead.
-use crate::{Error, installation::config::Machine, invalid};
+use crate::installation::config::Machine;
+use crate::orders::OrderError as Error;
 use analyte_config::{AstmOrders, Hl7Orders, LawStack};
 
 pub(super) fn astm(machine: &Machine) -> Option<&AstmOrders> {
@@ -16,7 +17,7 @@ pub(super) fn law(machine: &Machine) -> Result<&LawStack, Error> {
         .effective()
         .stack()
         .law()
-        .ok_or_else(|| invalid("LAW settings absent"))
+        .ok_or_else(|| Error::LawSettingsAbsent)
 }
 
 pub(super) fn send_ahead(machine: &Machine) -> bool {

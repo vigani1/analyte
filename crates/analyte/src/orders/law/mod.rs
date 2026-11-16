@@ -1,9 +1,11 @@
 //! Drives LAW work exchanges with cached orders, reservations and item outcomes (TF-2b 3.27/3.28).
+use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
+use std::error::Error as _;
 mod sending;
 pub(crate) mod validation;
 mod work;
-use crate::{Error, deadline, installation::config::Machine, intake, invalid};
+use crate::{deadline, installation::config::Machine, intake};
 use analyte_hl7::{AckCode, AckError, Message, Options, Responsibility, law};
 use analyte_model::{Identifier, OrderState, ReceiptId, SampleId, SourceText};
 use analyte_store::{
@@ -148,7 +150,7 @@ impl Connection {
             .checked_add(Duration::from_millis(u64::from(
                 settings.query_deadline_ms(),
             )))
-            .ok_or("LAW query deadline overflow")?;
+            .ok_or(Error::LawQueryDeadlineOverflow)?;
         match self
             .prepare(store, machine, query, receipt, until, options)
             .await
@@ -186,16 +188,16 @@ impl Connection {
         let work = Arc::new(
             cfg.orders()
                 .as_ref()
-                .ok_or("LAW work layout absent")?
+                .ok_or(Error::LawWorkLayoutAbsent)?
                 .work()
                 .clone(),
         );
         let sample = match query.scope() {
             law::Scope::Container(id) => {
                 if !id.is_local_to(work.container_namespace.as_str().as_bytes()) {
-                    return Err(invalid(
-                        "LAW container assigning authority outside configured SampleId binding",
-                    ));
+                    return Err(
+                        Error::LawContainerAssigningAuthorityOutsideConfiguredSampleidBinding,
+                    );
                 }
                 Some(SampleId::new(std::str::from_utf8(id.value())?)?)
             }
@@ -204,24 +206,24 @@ impl Connection {
             | law::Scope::Tray { .. }
             | law::Scope::Isolate { .. }
             | law::Scope::InformationalRack { .. } => {
-                return Err(invalid("unsupported LAW query scope"));
+                return Err(Error::UnsupportedLawQueryScope);
             }
         };
         let cached = query_orders(store, machine, sample, until, options).await?;
         let prepared = self.reserve(store, machine, cached, until, options).await?;
         #[cfg(feature = "test-hooks")]
         if let Some(gate) = &machine.law_gates.reserved {
-            gate.operation().await?;
+            gate.operation().await.map_err(Error::TestHook)?;
         }
         if Instant::now() >= until {
-            return Err(invalid("LAW query deadline after reservation"));
+            return Err(Error::LawQueryDeadlineAfterReservation);
         }
         let followup = if prepared.is_empty() {
             crate::machine::hl7_response::response_metadata(
                 crate::machine::hl7_response::Profile::Law,
             )
             .build(|response| {
-                Ok(law::negative_work(
+                Ok::<_, Error>(law::negative_work(
                     query,
                     address(&work),
                     response,
@@ -241,10 +243,10 @@ impl Connection {
             law::CacheAnswer::WorkExists
         };
         let Reply::Response(response) = reply(query, answer, options)? else {
-            return Err(invalid("unexpected nested LAW followup"));
+            return Err(Error::UnexpectedNestedLawFollowup);
         };
         if Instant::now() >= until {
-            return Err(invalid("LAW query deadline during rendering"));
+            return Err(Error::LawQueryDeadlineDuringRendering);
         }
         let outgoing = Reply::Followup {
             response,
@@ -376,12 +378,12 @@ fn reject_query(message: &Message, error: &law::Failure, options: Options) -> Re
                 response,
                 error
                     .acknowledgment_code()
-                    .ok_or("query failure has no ACK outcome")?,
+                    .ok_or(Error::QueryFailureHasNoAckOutcome)?,
                 detail,
                 options,
             )?
             .map(Reply::Response)
-            .ok_or_else(|| invalid("LAW malformed query lacks recoverable correlation"))
+            .ok_or_else(|| Error::LawMalformedQueryLacksRecoverableCorrelation)
         })
 }
 
@@ -398,7 +400,7 @@ async fn query_orders(
     let bound = options.limits.segments;
     #[cfg(feature = "test-hooks")]
     if let Some(gate) = &machine.law_gates.lookup {
-        gate.operation().await?;
+        gate.operation().await.map_err(Error::TestHook)?;
     }
     #[cfg(feature = "test-hooks")]
     let pages_gate = machine.law_gates.pages.clone();

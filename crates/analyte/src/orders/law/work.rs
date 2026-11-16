@@ -1,5 +1,6 @@
 //! Supplies LAW order reservations and response metadata to the mapper.
-use crate::{Error, installation::config::Machine};
+use crate::installation::config::Machine;
+use crate::orders::OrderError as Error;
 use analyte_hl7::{Message, Options, law};
 pub(super) use analyte_mapping::{LawCommand as Command, law_address as address};
 use analyte_store::MachineOrder;

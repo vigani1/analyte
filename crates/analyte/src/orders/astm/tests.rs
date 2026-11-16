@@ -1,5 +1,6 @@
 //! Tests astm behavior with synthetic fixtures.
 use super::*;
+use crate::Error;
 use analyte_model::Identifier;
 use std::{path::Path, time::Duration};
 

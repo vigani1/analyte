@@ -239,7 +239,7 @@ impl ConnectionState {
         if let Some(order) = self.active.as_ref() {
             let cleanup =
                 crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await;
-            custody::retain_cleanup(&mut result, cleanup);
+            custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         }
         result
     }

@@ -55,7 +55,7 @@ async fn session_with_outbound(
         )
         .await;
     super::custody::retain_cleanup(&mut result, finished);
-    super::custody::retain_cleanup(&mut result, cleanup);
+    super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
     result
 }
 

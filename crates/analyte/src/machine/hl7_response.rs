@@ -1,5 +1,5 @@
 //! Creates response timestamps and IDs for host-generated HL7 replies.
-use crate::Error;
+use analyte_hl7::Error;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Profile {
@@ -36,10 +36,10 @@ impl Metadata {
             timestamp: self.timestamp.as_bytes(),
         })
     }
-    pub(crate) fn build<T>(
+    pub(crate) fn build<T, E: From<Error>>(
         &self,
-        build: impl FnOnce(analyte_hl7::Response<'_>) -> Result<T, Error>,
-    ) -> Result<T, Error> {
+        build: impl FnOnce(analyte_hl7::Response<'_>) -> Result<T, E>,
+    ) -> Result<T, E> {
         build(self.response()?)
     }
 }

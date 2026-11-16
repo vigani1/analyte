@@ -464,7 +464,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 "connection-ended-before-transfer-confirmation",
             )
             .await;
-            super::custody::retain_cleanup(&mut result, cleanup);
+            super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         }
         if let Some(transfer) = self.transfer.take() {
             let cleanup = finish_incomplete(self.store, transfer).await;

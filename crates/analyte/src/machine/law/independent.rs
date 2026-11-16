@@ -239,7 +239,7 @@ async fn worker(
                     match outgoing {
                         Ok(Some(message))=>{let result=exchange(&machine,&store,&settings,&mut idle_orders,&message,stop.clone(),capture.as_deref()).await;settle(&machine,&store,&mut idle_orders,result).await?;},
                         Ok(None)=>{},
-                        Err(error)=>{idle_orders.close(&store,Code::LawIndependentAdmissionFailed.as_str()).await?;report(&machine,Err(error));},
+                        Err(error)=>{idle_orders.close(&store,Code::LawIndependentAdmissionFailed.as_str()).await?;report(&machine,Err(error.into()));},
                     }
                 }
             }

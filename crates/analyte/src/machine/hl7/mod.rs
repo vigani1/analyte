@@ -537,7 +537,7 @@ impl ConnectionState {
                     },
                 )
                 .await;
-            super::custody::retain_cleanup(&mut result, cleanup);
+            super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         }
         result
     }

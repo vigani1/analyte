@@ -202,7 +202,7 @@ impl ConnectionState {
             && let Err(effect) =
                 crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await
         {
-            result = Err(custody::effect_failure(result.err(), effect));
+            result = Err(custody::effect_failure(result.err(), effect.into()));
         }
         result
     }

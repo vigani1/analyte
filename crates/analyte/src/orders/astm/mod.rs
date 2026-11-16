@@ -1,5 +1,6 @@
 //! Answers bounded ASTM specimen order queries without returning historical results (LIS02-A2 §11).
-use crate::{Error, installation::config::Machine, invalid};
+use crate::installation::config::Machine;
+use crate::orders::OrderError as Error;
 use analyte_astm::{Kind, Message, Query};
 use analyte_config::WhenUntrusted;
 use analyte_model::SampleId;
@@ -47,7 +48,7 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
         .snapshot
         .effective()
         .astm_limits()
-        .ok_or_else(|| invalid("ASTM limits missing"))?;
+        .ok_or_else(|| Error::AstmLimitsMissing)?;
     let messages = analyte_astm::parse(payload, limits)?;
     let queries: Vec<_> = messages
         .iter()
@@ -110,9 +111,7 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
             return Ok(Some(Request::Unsupported));
         }
         if sample.has_unsupported_escape() {
-            return Err(invalid(
-                "ASTM specimen selector contains unsupported escapes",
-            ));
+            return Err(Error::AstmSpecimenSelectorContainsUnsupportedEscapes);
         }
         samples.push(SampleId::new(sample.text())?);
     }
@@ -136,12 +135,12 @@ impl<'a> Pending<'a> {
     ) -> Result<Self, Error> {
         let query = super::settings::astm(machine)
             .and_then(|o| o.query().as_ref())
-            .ok_or_else(|| invalid("query capability absent"))?;
+            .ok_or_else(|| Error::QueryCapabilityAbsent)?;
         let until = started
             .checked_add(std::time::Duration::from_millis(u64::from(
                 query.deadline_ms,
             )))
-            .ok_or_else(|| invalid("query deadline overflow"))?;
+            .ok_or_else(|| Error::QueryDeadlineOverflow)?;
         let future = Box::pin(answer(store, machine, samples, until));
         Ok(Self { future, until })
     }
@@ -179,7 +178,7 @@ async fn answer(
                     bytes = bytes
                         .checked_add(cached.document.len())
                         .filter(|n| *n <= limits.bytes())
-                        .ok_or_else(|| invalid("query response byte limit exceeded"))?;
+                        .ok_or_else(|| Error::QueryResponseByteLimitExceeded)?;
                     let order: analyte_contract::Order =
                         analyte_contract::decode(cached.document.as_bytes())?;
                     let fields = order.fields();
