@@ -47,14 +47,14 @@ pub(super) fn validate_stack(m: &MachineDocument, path: &str) -> Result<(), Erro
     let t = &m.transport;
     let f = &m.framing;
     let d = &m.dialog;
-    if let Some(enabled) = d.enhanced_application_acknowledgments {
-        if m.syntax.edition != Some(Edition::V291) || enabled {
-            return Err(invalid(
-                path,
-                "dialog.enhanced_application_acknowledgments",
-                "HL7 2.9.1 enhanced application acknowledgments require an unsupported separate channel; only false is supported for v291",
-            ));
-        }
+    if let Some(enabled) = d.enhanced_application_acknowledgments
+        && (m.syntax.edition != Some(Edition::V291) || enabled)
+    {
+        return Err(invalid(
+            path,
+            "dialog.enhanced_application_acknowledgments",
+            "HL7 2.9.1 enhanced application acknowledgments require an unsupported separate channel; only false is supported for v291",
+        ));
     }
     let s = &m.syntax;
     let compatible = match d.kind {
