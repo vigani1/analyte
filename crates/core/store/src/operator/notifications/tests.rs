@@ -84,3 +84,113 @@ fn adr0014_v11_migration_preserves_local_alert_history_and_is_restart_safe() -> 
     assert_eq!(open(&path)?.alert_history(0)?.len(), 1);
     Ok(())
 }
+
+fn decoded(event: &PendingAlert) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::from_slice(&event.payload)
+}
+
+#[test]
+fn adr0014_raise_reminder_resolve_episodes_capacity_and_closed_payload() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("lifecycle.db");
+    let endpoint = Identifier::new("relay")?;
+    let mut store = open(&path)?;
+    store.register_alert_endpoint(&endpoint)?;
+    store.db.execute(
+        "INSERT INTO parked(evidence) VALUES(?1)",
+        ["PATIENT-SECRET SAMPLE-00012 RAW-MESSAGE https://private.invalid secret-token"],
+    )?;
+    store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), 100)?;
+    assert!(store.prepare_alert_event(&endpoint, 100, 60, 1)?);
+    assert!(!store.prepare_alert_event(&endpoint, 100, 60, 1)?);
+    assert!(store.alert_endpoint_status()?[0].queue_full);
+    let raise = store
+        .claim_alert_attempt(&endpoint, 100, 3, 5, 30)?
+        .ok_or("raise missing")?;
+    let raised = decoded(&raise)?;
+    assert_eq!(raised["event"], "raised");
+    let mut keys: Vec<_> = raised
+        .as_object()
+        .ok_or("not object")?
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        vec![
+            "condition_id",
+            "episode_at",
+            "episode_id",
+            "event",
+            "event_id",
+            "kind",
+            "machine_id",
+            "measurement",
+            "observed_at",
+            "responder",
+            "version"
+        ]
+    );
+    let text = String::from_utf8(raise.payload.clone())?;
+    for forbidden in [
+        "PATIENT-SECRET",
+        "SAMPLE-00012",
+        "RAW-MESSAGE",
+        "https://",
+        "secret-token",
+    ] {
+        assert!(!text.contains(forbidden));
+    }
+    store.complete_alert_attempt(&raise.id, 101)?;
+    assert!(!store.prepare_alert_event(&endpoint, 159, 60, 1)?);
+    drop(store);
+    let mut store = open(&path)?;
+    assert!(store.prepare_alert_event(&endpoint, 160, 60, 1)?);
+    let reminder = store
+        .claim_alert_attempt(&endpoint, 160, 3, 5, 30)?
+        .ok_or("reminder missing")?;
+    let reminded = decoded(&reminder)?;
+    assert_eq!(reminded["event"], "reminder");
+    assert_eq!(reminded["condition_id"], raised["condition_id"]);
+    assert_eq!(reminded["episode_id"], raised["episode_id"]);
+    assert_ne!(reminder.id, raise.id);
+    // Queue exhaustion must preserve the resolution transition until capacity returns.
+    store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", false, Some(0), 161)?;
+    assert!(!store.prepare_alert_event(&endpoint, 161, 60, 1)?);
+    store.complete_alert_attempt(&reminder.id, 162)?;
+    assert!(store.prepare_alert_event(&endpoint, 162, 60, 1)?);
+    let resolve = store
+        .claim_alert_attempt(&endpoint, 162, 3, 5, 30)?
+        .ok_or("resolve missing")?;
+    let resolved = decoded(&resolve)?;
+    assert_eq!(resolved["event"], "resolved");
+    assert_eq!(resolved["episode_id"], raised["episode_id"]);
+    store.complete_alert_attempt(&resolve.id, 163)?;
+    assert!(!store.prepare_alert_event(&endpoint, 1000, 60, 1)?);
+    store.evaluate_alert(&AlertKey::ParkedItems, "New officer", true, None, 1001)?;
+    assert!(store.prepare_alert_event(&endpoint, 1001, 60, 1)?);
+    let reraised = decoded(
+        &store
+            .claim_alert_attempt(&endpoint, 1001, 3, 5, 30)?
+            .ok_or("new raise")?,
+    )?;
+    assert_eq!(reraised["condition_id"], raised["condition_id"]);
+    assert_ne!(reraised["episode_id"], raised["episode_id"]);
+    assert!(reraised["measurement"]["value"].is_null());
+    Ok(())
+}
+
+#[test]
+fn adr0014_missed_intervals_generate_one_outstanding_reminder() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("reminders.db"))?;
+    let endpoint = Identifier::new("relay")?;
+    store.register_alert_endpoint(&endpoint)?;
+    store.evaluate_alert(&AlertKey::DiskReserve, "IT officer", true, Some(10), 100)?;
+    store.prepare_alert_event(&endpoint, 100, 60, 100)?;
+    assert!(store.prepare_alert_event(&endpoint, 10000, 60, 100)?);
+    assert!(!store.prepare_alert_event(&endpoint, 20000, 60, 100)?);
+    assert_eq!(store.alert_endpoint_status()?[0].pending, 2);
+    Ok(())
+}

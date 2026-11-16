@@ -1,4 +1,6 @@
 //! Stores webhook queues and attempt progress separately from clinical deliveries.
+mod admission;
+mod event;
 use crate::{Error, Store};
 use analyte_model::Identifier;
 use rusqlite::{OptionalExtension, params};
