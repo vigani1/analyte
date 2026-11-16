@@ -145,10 +145,7 @@ impl Document {
                         }
                     }
                     let (name, attributes) = parse_start(&start, limits)?;
-                    if let Some(parent) = stack.last().copied() {
-                        let parent: &mut Element = elements.get_mut(parent).ok_or(Error::Root)?;
-                        parent.text_ended = true;
-                    }
+                    end_initial_text(&mut elements, &stack)?;
                     let index = elements.len();
                     elements.push(Element {
                         name: name.to_owned(),
@@ -201,7 +198,9 @@ impl Document {
                 }
                 Event::DocType(_) => return Err(Error::Doctype),
                 Event::PI(_) => return Err(Error::ProcessingInstruction),
-                Event::Comment(_) => {}
+                Event::Comment(_) => {
+                    end_initial_text(&mut elements, &stack)?;
+                }
                 Event::Eof => break,
             }
         }
@@ -307,6 +306,14 @@ fn validate_declaration(
             .eq_ignore_ascii_case("UTF-8")
     {
         return Err(Error::Declaration);
+    }
+    Ok(())
+}
+
+// ED uses an initial text child only; element and comment nodes end that child.
+fn end_initial_text(elements: &mut [Element], stack: &[usize]) -> Result<(), Error> {
+    if let Some(index) = stack.last().copied() {
+        elements.get_mut(index).ok_or(Error::Root)?.text_ended = true;
     }
     Ok(())
 }

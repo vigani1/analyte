@@ -270,6 +270,19 @@ fn poct01_b_12_3_p181_encapsulation_uses_first_text_node() -> Result<(), Message
     };
     assert_eq!(data.text, "first&text");
     assert_eq!(parsed.document().raw(), raw.as_bytes());
+    let commented = raw.replace("first&amp;text", "<!--not a text node-->after-comment");
+    let parsed = Message::parse(commented.as_bytes(), limits())?;
+    let (index, _) = parsed
+        .document()
+        .elements()
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e.name() == "DCP.vendor_specific")
+        .ok_or(MessageError::Structure)?;
+    let Some(analyte_poct::Value::Encapsulated(data)) = parsed.value(index) else {
+        return Err(MessageError::Structure);
+    };
+    assert_eq!(data.text, "");
     Ok(())
 }
 
