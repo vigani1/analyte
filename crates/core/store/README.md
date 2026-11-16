@@ -6,7 +6,7 @@
 
 **Where it sits:** Saves data before Analyte tells a machine it has received it, and keeps it until the lab app can receive it.
 
-**What it must never do:** Discard evidence, overwrite originals, log payloads or send a reserved machine order again.
+**What it must never do:** Discard unfinished evidence, purge outside ADR 0013, overwrite originals, log payloads or send a reserved machine order again.
 
 **Main parts:**
 
@@ -14,7 +14,7 @@
 - `results`: Keeps result history, including corrections, without overwriting earlier results.
 - `delivery`: Keeps deliveries for the lab app and retries them with the same identity.
 - `orders`: Tracks orders and what happened to each one, so a retry cannot send it to a machine twice.
-- `upkeep`: Opens, checks, backs up and restores the store, and refuses new data when space runs low.
+- `upkeep`: Opens, checks, backs up and restores the store, purges eligible receipt bundles under ADR 0013, and refuses new data when space runs low.
 - `operator`: Shows staff what needs attention and records their decisions.
 
 [Technical details and safety guidance](DETAILS.md).

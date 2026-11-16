@@ -28,6 +28,7 @@ pub(super) struct Machine {
 }
 
 pub(super) struct Context {
+    pub(super) retention: Vec<(Identifier, Option<u16>)>,
     pub(super) config_path: std::path::PathBuf,
     token: Token,
     pub(super) sessions: Sessions,
@@ -75,6 +76,7 @@ pub(crate) async fn prepare(
         .collect();
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
+        retention: crate::runtime::retention::policies(program),
         config_path: program.source_path.clone(),
         token,
         sessions: Sessions::default(),
@@ -129,6 +131,10 @@ fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
         .route("/login", get(login_page).post(login))
+        .route(
+            "/retention",
+            get(super::retention::show).post(super::retention::hold),
+        )
         .route("/machines", get(super::pages::machines))
         .route("/parked", get(super::pages::parked))
         .route("/parked/{id}", get(super::pages::detail))

@@ -209,3 +209,11 @@ TCP client/server or watched-folder pickup. ASTM and HL7 support complete-file
 pickup with `framing.kind = "none"` and `dialog.kind = "file_pickup"`.
 LAW and POCT require TCP; VIDAS and Autolyser require serial or TCP.
 Incompatible protocol, framing, dialog and transport selections fail loading.
+
+## Site retention
+
+Every site layer includes `retention = 90` (recommended), a period from 1 to 3650
+days, or `retention = "keep"`. Missing retention is a specific validation failure;
+there is no default or override-layer fallback. Finite retention requires the
+host `retention-digest` credential. See the program guide for offline conversion,
+holds, backup rotation and key continuity (ADR 0013 items 1, 6 and 7).

@@ -24,6 +24,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Converts an existing store for incremental vacuum; stop the service first.
+    PrepareRetention,
     /// Places or releases an indefinite retention hold.
     Holds {
         #[command(subcommand)]
@@ -217,6 +219,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         .clone()
         .unwrap_or(Identifier::new("local-operator")?);
     match cli.command {
+        Command::PrepareRetention => service::prepare_retention(Program::load(&cli.config)?).await,
         Command::Holds { command } => {
             analyte::operator::holds::run(
                 &Program::load(&cli.config)?,

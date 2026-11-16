@@ -253,6 +253,7 @@ async fn start_action_server(
     let host = socket.local_addr()?.to_string();
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
+        retention: crate::runtime::retention::policies(program),
         config_path: config_path.to_owned(),
         token: Token::load(program.data_directory())?,
         sessions: Sessions::default(),
@@ -277,4 +278,70 @@ async fn start_action_server(
     let (stop, stopped) = watch::channel(false);
     let owner = tokio::spawn(server.run(stopped));
     Ok((state, stop, owner, host))
+}
+
+#[tokio::test]
+async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (program, store, receipt, _, config_path) = seed_parked_receipt(directory.path()).await?;
+    let bearer = super::super::super::rotate_token(program.data_directory())?;
+    let (state, stop, owner, host) = start_action_server(&config_path, &program, &store).await?;
+    let cookie = login(&host, &bearer).await?;
+    let auth = format!("Cookie: {cookie}\r\n");
+    let page = request(&host, "/retention", &auth, None).await?;
+    for text in [
+        "Policy",
+        "keep (never purge)",
+        "Last run",
+        "Oldest retained item",
+        "Holds have no expiry",
+    ] {
+        assert!(page.contains(text), "{text}");
+    }
+    let token = csrf(&page)?;
+    let post_auth = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
+    let form = format!(
+        "csrf={}&confirm=yes&scope=receipt&id={}&destination=&operation=place&reason=review%20required",
+        encode(&token),
+        uuid::Uuid::from(receipt)
+    );
+    let refused = request(
+        &host,
+        "/retention",
+        &post_auth,
+        Some(&form.replace("confirm=yes", "confirm=no")),
+    )
+    .await?;
+    assert!(refused.starts_with("HTTP/1.1 403"));
+    let placed = request(&host, "/retention", &post_auth, Some(&form)).await?;
+    assert!(placed.starts_with("HTTP/1.1 200"), "{placed}");
+    store
+        .request(fixture_deadline()?, move |store| {
+            assert!(store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
+            let audits = store.audits(0)?;
+            let audit = &audits.last().ok_or(analyte_store::Error::Corruption)?.1;
+            assert_eq!(audit.action.as_str(), "retention-hold-place");
+            assert_eq!(audit.reason.as_str(), "review required");
+            Ok(())
+        })
+        .await?;
+    let release = form.replace("operation=place", "operation=release");
+    assert!(
+        request(&host, "/retention", &post_auth, Some(&release))
+            .await?
+            .starts_with("HTTP/1.1 200")
+    );
+    store
+        .request(fixture_deadline()?, move |store| {
+            assert!(!store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
+            assert_eq!(store.audits(0)?.len(), 2);
+            Ok(())
+        })
+        .await?;
+    drop(state);
+    stop.send_replace(true);
+    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    let mut store = Arc::try_unwrap(store).map_err(|_| "admin retains store")?;
+    store.shutdown(fixture_deadline()?).await?;
+    Ok(())
 }
