@@ -105,3 +105,17 @@ matching machine capability whose `dialogs` lists the rule tag and whose
 Mirror enabled rules, their substitute meanings, exact scope, references and
 levels in the machine README's Departures section. The synthetic example selects
 none; it is not evidence for a real analyzer.
+
+Status interpretation also requires an explicit patient classification from the
+configured equality rules; unknown, control and calibration classifications do
+not inherit patient-only scope. Any final status derived from either omission
+parks under contract v1, with its specific contract-version reason and no
+outbox delivery. Received statuses stay untouched. Framing-only ASTM packing may
+use v1; its application remains in the protected interpretation ledger.
+
+Every declaration snapshot is bounded to 16384 UTF-8 bytes. New interpretations
+retain enabled and applied lists explicitly. An incomplete ledger is flagged and
+prevents delivery; a legacy absent ledger means unrecorded, not empty. The admin
+machine list links to receipt interpretation versions and shows active digests.
+Elevated departure evidence also requires a tested config digest, driver and
+platform in the matching capability, never `untested` or `unknown` placeholders.

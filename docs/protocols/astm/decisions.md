@@ -155,8 +155,9 @@ retention, not vendor field semantics. Evidence remains documented.
 
 LIS01 sections 3.3.2, 6.3.1.1 and 8.3.1.1 require LIS02 records to start
 in separate frames. The link rejects packed records with NAK and retains the
-rejected frame as evidence. No machine departure is enabled. Whether a future
-machine needs an explicit packing departure remains open.
+rejected frame as evidence. This remains the default. An installed machine may
+select only the evidenced packing departure described below; shipped synthetic
+machine definitions enable none.
 
 LIS02 sections 5.4.5 and 8.4.3: semantic selectors use decoded delimiter escapes;
 unknown, local, hexadecimal and formatting operations cannot become identity.
@@ -167,3 +168,33 @@ LIS02 section 6.10 describes receiver identification; section 4.1 allows fields
 that are not needed for record identification or parsing to be omitted. H-10
 therefore remains empty when no peer identity is agreed. Sites may configure
 `orders.astm.receiver` to fill it; a local machine name is not a peer identity.
+
+## Evidenced inbound record packing
+
+- **what**: [ADR 0015](../../adr/0015-named-machine-departures.md) permits the
+  typed `AstmPackedRecordsInFrame` policy only for the declared inbound result
+  scope. Verify original envelopes, checksum, sequence and bounds first. Commit
+  custody once for the whole frame before its single ACK; then emit actual
+  CR-ended records in wire order. Partial records continue across ETB frames
+  within the same bounds. Lost ACK retries do not emit records again. Later
+  LIS02 hierarchy/mapping failures park retained data without retracting custody.
+- **why**: Frame boundaries and record boundaries are different facts. TCP read
+  boundaries supply neither. Packing never supplies a missing record, sample,
+  result identity, unit or status. Outbound host traffic stays one record per
+  frame even when inbound packing is selected. Bad/missing checksums still NAK.
+- **evidence and delivery**: Interpretation ledgers retain enabled declarations
+  and actual packed-record applications with record ordinals and source byte
+  spans linking fragments to verified frames. An incomplete bounded ledger is
+  explicit and prevents delivery. The project lead's 2026-11-16 decision keeps
+  framing-only packed results on contract v1 unchanged; the applied departure
+  remains in the protected receipt interpretation and admin page. It changes no
+  clinical meaning and does not require a contract version in this task.
+- **source**: LIS01-A2 ??3.3.2, 6.3.1.1 and 8.3.1.1; custody under ADRs 0003
+  and 0010; named scope and evidence under ADR 0015. Manual or qualified ADR
+  0009 recording evidence must establish the installed packing mode; synthetic
+  tests do not qualify any machine.
+- **tests**: [paired strict/packed dialog cases](../../../crates/steps/dialog/tests/packed.rs)
+  cover frame custody, checksum failure, retries and ETB continuation.
+  [Stored interpretation cases](../../../crates/analyte/src/machine/interpretation/departure_tests.rs)
+  cover v1 delivery without semantic changes and evidence retained after bad
+  LIS02 hierarchy. Existing link/storage recovery fixtures remain unchanged.
