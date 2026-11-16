@@ -78,6 +78,9 @@ pub enum Error {
     /// Unexpected initialization reply.
     #[error("unexpected acknowledgment")]
     Ack,
+    /// Checksum envelope defect.
+    #[error(transparent)]
+    Framing(#[from] analyte_framing::autolyser::Error),
     /// Parsed record defect.
     #[error(transparent)]
     Record(#[from] records::Error),
@@ -369,7 +372,9 @@ impl Dialog {
         }
         match event {
             Event::Poll(request) => self.begin(Operation::Poll(request)),
-            Event::Download(item) => self.begin(Operation::Download(item.encode())),
+            Event::Download(item) => self.begin(Operation::Download(
+                analyte_framing::autolyser::finish(item.encode()),
+            )),
             Event::Byte(byte) => self.byte(byte),
             Event::Stored(token) => self.stored(token),
             Event::StoreFailed(token) => {
@@ -528,14 +533,17 @@ impl Dialog {
             // An empty L does not resolve a previously corrupt report.
             Action::Empty
         } else {
-            match Report::parse(&raw, self.config.controls) {
+            match analyte_framing::autolyser::verified(&raw)
+                .map_err(Error::Framing)
+                .and_then(|body| Report::parse(body, self.config.controls).map_err(Error::Record))
+            {
                 Ok(report) => {
                     self.recovery = false;
                     Action::Report(report)
                 }
                 Err(error) => {
                     self.recovery = true;
-                    Action::Park(Error::Record(error))
+                    Action::Park(error)
                 }
             }
         };

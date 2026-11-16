@@ -106,15 +106,7 @@ pub(crate) fn map(
             )?)
         }
         Stack::VidasLiteral(settings) => {
-            let mut decoder = analyte_framing::vidas::Decoder::new(vidas_config(machine)?);
-            let mut packet = None;
-            for byte in payload {
-                if packet.is_some() {
-                    return Err(invalid("VIDAS receipt contains trailing bytes"));
-                }
-                packet = decoder.push(*byte)?;
-            }
-            let packet = packet.ok_or_else(|| invalid("VIDAS receipt is incomplete"))?;
+            let packet = analyte_framing::vidas::decode(payload, vidas_config(machine)?)?;
             let message = analyte_vidas::syntax::Message::parse(
                 std::str::from_utf8(&packet.body)?,
                 match settings.policy().sample_limit {
@@ -134,8 +126,10 @@ pub(crate) fn map(
             )?)
         }
         Stack::Autolyser(settings) => {
-            let report =
-                analyte_autolyser::syntax::Report::parse(payload, settings.policy().controls)?;
+            let report = analyte_autolyser::syntax::Report::parse(
+                analyte_framing::autolyser::verified(payload)?,
+                settings.policy().controls,
+            )?;
             Ok(analyte_mapping::map_autolyser(
                 &machine.snapshot,
                 id,

@@ -433,17 +433,19 @@ fn vidas_config() -> Result<analyte_framing::vidas::Config, Error> {
 
 fn report() -> Result<Vec<u8>, Error> {
     use analyte_autolyser::syntax::{Field, List, PatientCode, Report, Sample, Value};
-    Ok(Report::build(
-        &PatientCode::from_eight(b"00012aBC")?,
-        List::Routine,
-        Sample::Serum,
-        None,
-        &[Value {
-            code: Field::new(b"SYN ")?,
-            text: Field::new(b"<0.1   ")?,
-        }],
-    )?
-    .raw)
+    Ok(analyte_framing::autolyser::finish(
+        Report::build(
+            &PatientCode::from_eight(b"00012aBC")?,
+            List::Routine,
+            Sample::Serum,
+            None,
+            &[Value {
+                code: Field::new(b"SYN ")?,
+                text: Field::new(b"<0.1   ")?,
+            }],
+        )?
+        .raw,
+    ))
 }
 
 async fn poll(peer: &mut TcpStream, expected: u8) -> Result<(), Error> {

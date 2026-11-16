@@ -154,6 +154,12 @@ pub enum Error {
     /// Packet sum does not match.
     #[error("checksum mismatch")]
     Checksum,
+    /// Stored receipt ended before an acceptance boundary.
+    #[error("VIDAS receipt is incomplete")]
+    Incomplete,
+    /// Bytes followed the single stored packet.
+    #[error("VIDAS receipt contains trailing bytes")]
+    Trailing,
     /// Decoder is stopped after a failure.
     #[error("decoder stopped; retain journal and start a new session")]
     Stopped,
@@ -304,4 +310,19 @@ impl Decoder {
             Ok(None)
         }
     }
+}
+
+/// Decodes exactly one retained acceptance boundary using the live decoder.
+/// # Errors
+/// Rejects incomplete packets, trailing bytes and every incremental framing defect.
+pub fn decode(raw: &[u8], config: Config) -> Result<Packet, Error> {
+    let mut decoder = Decoder::new(config);
+    let mut packet = None;
+    for byte in raw {
+        if packet.is_some() {
+            return Err(Error::Trailing);
+        }
+        packet = decoder.push(*byte)?;
+    }
+    packet.ok_or(Error::Incomplete)
 }
