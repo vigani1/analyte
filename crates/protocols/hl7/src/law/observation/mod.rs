@@ -352,7 +352,9 @@ fn equipment(value: &[u8], ordinal: usize, direction: ControlDirection) -> Resul
     if ordinal == 0 {
         primitive(part(value, 3), false, 199, location(18, 3))?;
         primitive(part(value, 4), false, 6, location(18, 4))?;
-        if !part(value, 4).is_empty() && part(value, 4) != b"ISO" {
+        if (!part(value, 3).is_empty() || !part(value, 4).is_empty())
+            && !crate::datatypes::universal_id(part(value, 3), part(value, 4))
+        {
             return Err(location(18, 4));
         }
     } else {

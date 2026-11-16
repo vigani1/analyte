@@ -60,11 +60,8 @@ fn date_time(value: &[u8]) -> Option<usize> {
         if zone.len() != 4 {
             return None;
         }
-        let hour = digits(zone.get(..2)?)?;
-        let minute = digits(zone.get(2..)?)?;
-        // Check HHMM spelling without guessing the sender's jurisdiction or
-        // applying today's timezone rules to a historical query timestamp.
-        if minute > 59 || hour > 23 {
+        let sign = *value.get(time.len())?;
+        if !timezone_offset(sign, zone) {
             return None;
         }
     }
@@ -504,6 +501,89 @@ mod tests {
             parts[field] = &beyond;
             assert!(coded_parts(&parts, false, Version::V231));
             assert!(!coded_parts(&parts, false, Version::V251));
+        }
+    }
+}
+
+// HL7 2.5.1 2.A.22: explicit supported offset policy; preserve the wire spelling.
+pub(crate) fn timezone_offset(sign: u8, zone: &[u8]) -> bool {
+    if zone.len() != 4 || !matches!(sign, b'+' | b'-') {
+        return false;
+    }
+    let Some(hour) = zone.get(..2).and_then(digits) else {
+        return false;
+    };
+    let Some(minute) = zone.get(2..).and_then(digits) else {
+        return false;
+    };
+    let maximum = if sign == b'-' { 12 } else { 14 };
+    matches!(minute, 0 | 30 | 45) && (hour < maximum || (hour == maximum && minute == 0))
+}
+
+// HL7 2.5.1 2.A.33.2: only ISO OIDs are supported universal identities.
+pub(crate) fn universal_id(value: &[u8], kind: &[u8]) -> bool {
+    if kind != b"ISO" || value.is_empty() || value.len() > 199 {
+        return false;
+    }
+    let mut arcs = value.split(|b| *b == b'.');
+    if !matches!(arcs.next(), Some(b"0" | b"1" | b"2")) {
+        return false;
+    }
+    let mut has_arc = false;
+    for arc in arcs {
+        if arc.is_empty()
+            || !arc.iter().all(u8::is_ascii_digit)
+            || (arc.len() > 1 && arc.first() == Some(&b'0'))
+        {
+            return false;
+        }
+        has_arc = true;
+    }
+    has_arc
+}
+
+#[cfg(test)]
+mod standards_pass_5 {
+    use super::*;
+    #[test]
+    fn hl7_251_2_a_33_2_law_supported_iso_uids_require_oid_syntax() {
+        for value in [b"1.2.3".as_slice(), b"0.0", b"2.999999999999999999999"] {
+            assert!(universal_id(value, b"ISO"));
+        }
+        for value in [
+            b"word".as_slice(),
+            b"1..2",
+            b"1.02",
+            b"3.1",
+            b"1.",
+            b".1",
+            b"1.a",
+            b"1",
+        ] {
+            assert!(!universal_id(value, b"ISO"));
+        }
+        assert!(!universal_id(b"1.2.3", b"URI"));
+    }
+    #[test]
+    fn hl7_251_2_a_22_supported_timezone_offsets() {
+        for value in [
+            b"20240229235959-1200".as_slice(),
+            b"20260101000000+1400",
+            b"20260101000000+0545",
+            b"20260101000000-0330",
+            b"20260101000000-0000",
+            b"20260101000000+0000",
+        ] {
+            assert!(date_time(value).is_some());
+        }
+        for value in [
+            b"20240229235959-2359".as_slice(),
+            b"20260101000000+2359",
+            b"20260101000000+1401",
+            b"20260101000000-1230",
+            b"20260101000000+0015",
+        ] {
+            assert!(date_time(value).is_none());
         }
     }
 }

@@ -245,6 +245,8 @@ pub enum Problem {
     ConflictingClassification,
     /// No source observation was present; retain the message for reconciliation.
     NoObservations,
+    /// Valid LAW status-only updates require a durable lifecycle representation.
+    UnsupportedLawStatusOnly,
     /// Source time could not be interpreted; original text survives.
     InvalidTime,
 }

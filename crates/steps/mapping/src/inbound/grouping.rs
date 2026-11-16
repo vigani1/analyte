@@ -140,7 +140,15 @@ pub(crate) fn message(
         )?;
     }
     if output.results.is_empty() && output.unmapped.is_empty() {
-        finding(&mut output, source.position(0, 0), Problem::NoObservations)?;
+        finding(
+            &mut output,
+            source.position(0, 0),
+            if law.is_some() {
+                Problem::UnsupportedLawStatusOnly
+            } else {
+                Problem::NoObservations
+            },
+        )?;
     }
     Ok(output)
 }
@@ -335,7 +343,8 @@ fn append_result(
                             | Problem::UnknownProcessing
                             | Problem::ConflictingClassification
                             | Problem::InvalidTime
-                            | Problem::NoObservations => None,
+                            | Problem::NoObservations
+                            | Problem::UnsupportedLawStatusOnly => None,
                         })
                         .unwrap_or_else(|| "unknown test mapping".into()),
                 )

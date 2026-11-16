@@ -20,7 +20,7 @@ impl<'a> AuthorityBinding<'a> {
         for (position, value, maximum) in [(1, namespace, 20), (2, universal, 199), (3, kind, 6)] {
             primitive(value, true, maximum, sub(4, position))?;
         }
-        universal_type(kind, sub(4, 3))?;
+        universal_value(universal, kind, sub(4, 2))?;
         Ok(Self {
             namespace,
             universal,
@@ -42,27 +42,12 @@ fn sub(component: usize, subcomponent: usize) -> Error {
     }
 }
 
-/// Recognizes HL7 2.5.1 2.A.33's case-sensitive universal-ID type codes.
-pub(super) fn universal_type(value: &[u8], error: Error) -> Result<(), Error> {
-    if !matches!(
-        value,
-        b"DNS"
-            | b"GUID"
-            | b"HCD"
-            | b"HL7"
-            | b"ISO"
-            | b"L"
-            | b"M"
-            | b"N"
-            | b"Random"
-            | b"URI"
-            | b"UUID"
-            | b"x400"
-            | b"x500"
-    ) {
-        return Err(error);
+pub(super) fn universal_value(value: &[u8], kind: &[u8], error: Error) -> Result<(), Error> {
+    if crate::datatypes::universal_id(value, kind) {
+        Ok(())
+    } else {
+        Err(error)
     }
-    Ok(())
 }
 
 /// Omits unsupported elements when sending, and ignores them when receiving.
@@ -215,7 +200,7 @@ pub(super) fn authority_value(
         excluded(kind, direction, location(3))?;
     } else {
         primitive(kind, true, 6, location(3))?;
-        universal_type(kind, location(3))?;
+        universal_value(universal, kind, location(2))?;
     }
     if !namespace.is_empty() && !universal.is_empty() {
         let known = profile

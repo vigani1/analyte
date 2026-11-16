@@ -70,12 +70,12 @@ fn law_tf2b_c12_spm_2_3_eip_ei_identity_namespace_predicate_lengths_and_repetiti
         // The enclosing 80-character field remains a hard limit.
         both(
             "SPM",
-            &[(field, &format!("id&&{}&URI", "u".repeat(72)))],
+            &[(field, &format!("id&&2.{}&ISO", "1".repeat(70)))],
             true,
         )?;
         both(
             "SPM",
-            &[(field, &format!("id&&{}&URI", "u".repeat(73)))],
+            &[(field, &format!("id&&2.{}&ISO", "1".repeat(71)))],
             false,
         )?;
         both("SPM", &[(field, "id&Local~other&Local")], field == 3)?;

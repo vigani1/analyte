@@ -427,7 +427,10 @@ pub(super) fn timestamp(value: &[u8], zone: bool) -> bool {
         if !matches!(value.get(14), Some(b'+' | b'-')) {
             return false;
         }
-        if part(15, 17).is_none_or(|v| v > 23) || part(17, 19).is_none_or(|v| v > 59) {
+        if !crate::datatypes::timezone_offset(
+            value.get(14).copied().unwrap_or_default(),
+            value.get(15..19).unwrap_or_default(),
+        ) {
             return false;
         }
     }

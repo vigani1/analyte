@@ -301,3 +301,7 @@ config validation and pure profile tests remain listed in earlier rows.
 
 
 The shared reprocessing path preserves original evidence and never sends machine work.
+
+| State | Source | Restriction |
+| --- | --- | --- |
+| Open restriction | TF-2b section 3.29.4.1.2.1 | Status-only IP/SC/CA is retained and specifically parked; durable lifecycle registration awaits an ADR. |

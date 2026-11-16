@@ -47,7 +47,7 @@ fn law_tf2b_c4_msh_3_4_5_6_re_hd_namespace_usage_length_type_cardinality() -> Te
 
 #[test]
 fn law_tf2b_c4_msh_7_m_ts_precision_calendar_timezone_and_singleton() -> TestResult {
-    for value in ["20240229235959-2359", "20260101000000+0000"] {
+    for value in ["20240229235959-1200", "20260101000000+0000"] {
         both("query", &[(7, value)], "", true)?;
     }
     for value in [
