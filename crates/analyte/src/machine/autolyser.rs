@@ -1,4 +1,4 @@
-//! Polls Autolyser connections and blocks R after corrupt reports until L recovery.
+//! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::{Error, intake, invalid};
