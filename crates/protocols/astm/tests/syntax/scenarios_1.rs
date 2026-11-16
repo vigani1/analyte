@@ -295,3 +295,33 @@ fn lis02_sections_6_through_14_read_only_field_positions() -> Result<(), Error> 
     check_terminator(records)?;
     Ok(())
 }
+
+// LIS02-A2 sections 4.1 and 5.6.7: contextual level changes reset numbering.
+#[test]
+fn lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence() -> Result<(), Error> {
+    let wire = b"H|\\^&|\rP|1\rC|1|I|patient\rM|1|vendor\rC|1|I|manufacturer\rL|1\r";
+    let messages = parse(wire, Limits::default())?;
+    let records = messages
+        .first()
+        .map(analyte_astm::Message::records)
+        .unwrap_or_default();
+    assert_eq!(
+        records.get(3).and_then(analyte_astm::Record::parent),
+        Some(2)
+    );
+    assert_eq!(
+        records.get(4).and_then(analyte_astm::Record::parent),
+        Some(3)
+    );
+    assert!(matches!(
+        parse(
+            b"H|\\^&|\rP|1\rC|1|I|patient\rM|1|vendor\rC|2|I|manufacturer\rL|1\r",
+            Limits::default()
+        ),
+        Err(Error::Sequence {
+            record: 5,
+            expected: 1
+        })
+    ));
+    Ok(())
+}

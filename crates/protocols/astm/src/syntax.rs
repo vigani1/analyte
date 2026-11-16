@@ -341,6 +341,7 @@ pub fn parse_with(
     let mut current: Option<Message> = None;
     let mut ancestors: Vec<usize> = Vec::new();
     let mut counts: Vec<(Kind, usize, usize)> = Vec::new();
+    let mut levels: Vec<usize> = Vec::new();
     for (index, raw) in bytes
         .strip_suffix(b"\r")
         .unwrap_or_default()
@@ -381,6 +382,7 @@ pub fn parse_with(
             });
             ancestors.clear();
             counts.clear();
+            levels.clear();
         }
         let message = current.as_mut().ok_or(Error::Hierarchy {
             record: number,
@@ -391,8 +393,15 @@ pub fn parse_with(
             return Err(Error::Delimiters { record: number });
         }
         let fields = parse_fields(raw, kind, d, limits, number, &decode)?;
-        let level = kind.level().unwrap_or(ancestors.len());
         let parent = record_parent(kind, &ancestors, message, number)?;
+        let level = kind.level().unwrap_or_else(|| {
+            parent
+                .and_then(|i| levels.get(i))
+                .copied()
+                .unwrap_or(0)
+                .saturating_add(1)
+        });
+        levels.push(level);
         let sequence = parse_sequence(&fields, kind, level, &mut counts, number)?;
         if kind.level().is_some() {
             ancestors.truncate(level);
@@ -484,7 +493,9 @@ fn parse_sequence(
     counts: &mut Vec<(Kind, usize, usize)>,
     number: usize,
 ) -> Result<Option<usize>, Error> {
-    counts.retain(|(_, old_level, _)| *old_level <= level);
+    counts.retain(|(old_kind, old_level, _)| {
+        *old_level <= level && (*old_kind != kind || *old_level == level)
+    });
     let sequence = if kind == Kind::Header {
         None
     } else {

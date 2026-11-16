@@ -136,3 +136,7 @@ inspected. Identify affected receipts in the protected store and reprocess the
 original bytes with the fixed parser and recorded config. Reprocessing adds a
 new interpretation version, preserving the raw receipt and old interpretations;
 review prior deliveries for reconciliation rather than overwriting their history.
+
+Contextual C/M levels are tracked independently of P/O/R ancestry. Section
+5.6.7 resets the counter when the same type changes level or a lower numbered
+level intervenes. Regression: `lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence`.
