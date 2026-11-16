@@ -174,3 +174,93 @@ fn outcome_spellings_are_compatible() {
         assert_eq!(code.as_str(), expected);
     }
 }
+
+/// Closed families of outcome codes carrying retained diagnostic details.
+pub(crate) enum Detail {
+    AutolyserFraming(String),
+    AutolyserRecord(String),
+    Hl7OrderPreflight(String),
+    Hl7InvalidOrderResponse(String),
+    Hl7Ua(String),
+    Hl7Uc(String),
+    Hl7DisplayMapping(String),
+    LawInvalidOrl(String),
+    LawOrderPreflight(String),
+    LawIndependentFailure(String),
+    LawApplication(analyte_hl7::AckCode),
+}
+impl std::fmt::Display for Detail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AutolyserFraming(detail) => write!(f, "Autolyser-parked-framing-{detail}"),
+            Self::AutolyserRecord(detail) => write!(f, "Autolyser-parked-record-{detail}"),
+            Self::Hl7OrderPreflight(detail) => write!(f, "HL7-order-preflight:{detail}"),
+            Self::Hl7InvalidOrderResponse(detail) => {
+                write!(f, "HL7-invalid-order-response:{detail}")
+            }
+            Self::Hl7Ua(detail) => write!(f, "HL7-UA:{detail}"),
+            Self::Hl7Uc(detail) => write!(f, "HL7-UC:{detail}"),
+            Self::Hl7DisplayMapping(detail) => write!(f, "HL7-display-mapping: {detail}"),
+            Self::LawInvalidOrl(detail) => write!(f, "LAW-invalid-ORL:{detail}"),
+            Self::LawOrderPreflight(detail) => write!(f, "LAW-order-preflight:{detail}"),
+            Self::LawIndependentFailure(detail) => write!(f, "LAW-independent-failure:{detail}"),
+            Self::LawApplication(code) => write!(
+                f,
+                "LAW-ORL-application-{}",
+                super::acceptance::acceptance(*code)
+            ),
+        }
+    }
+}
+
+#[test]
+fn detailed_outcome_spellings_are_compatible() {
+    for (value, expected) in [
+        (
+            Detail::AutolyserFraming("detail".into()),
+            "Autolyser-parked-framing-detail",
+        ),
+        (
+            Detail::AutolyserRecord("detail".into()),
+            "Autolyser-parked-record-detail",
+        ),
+        (
+            Detail::Hl7OrderPreflight("detail".into()),
+            "HL7-order-preflight:detail",
+        ),
+        (
+            Detail::Hl7InvalidOrderResponse("detail".into()),
+            "HL7-invalid-order-response:detail",
+        ),
+        (Detail::Hl7Ua("detail".into()), "HL7-UA:detail"),
+        (Detail::Hl7Uc("detail".into()), "HL7-UC:detail"),
+        (
+            Detail::Hl7DisplayMapping("detail".into()),
+            "HL7-display-mapping: detail",
+        ),
+        (
+            Detail::LawInvalidOrl("detail".into()),
+            "LAW-invalid-ORL:detail",
+        ),
+        (
+            Detail::LawOrderPreflight("detail".into()),
+            "LAW-order-preflight:detail",
+        ),
+        (
+            Detail::LawIndependentFailure("detail".into()),
+            "LAW-independent-failure:detail",
+        ),
+    ] {
+        assert_eq!(value.to_string(), expected);
+    }
+    for (code, expected) in [
+        (analyte_hl7::AckCode::Aa, "LAW-ORL-application-Aa"),
+        (analyte_hl7::AckCode::Ae, "LAW-ORL-application-Ae"),
+        (analyte_hl7::AckCode::Ar, "LAW-ORL-application-Ar"),
+        (analyte_hl7::AckCode::Ca, "LAW-ORL-application-Ca"),
+        (analyte_hl7::AckCode::Ce, "LAW-ORL-application-Ce"),
+        (analyte_hl7::AckCode::Cr, "LAW-ORL-application-Cr"),
+    ] {
+        assert_eq!(Detail::LawApplication(code).to_string(), expected);
+    }
+}

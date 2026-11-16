@@ -200,3 +200,65 @@ fn insertion_rejection_spellings_are_compatible() {
         assert_eq!(insertion_rejection(error), expected);
     }
 }
+
+/// Encodes each closed insertion response family with its historical stable prefix.
+pub(super) fn insertion(reception: analyte_dialog::autolyser::Reception) -> String {
+    use analyte_dialog::autolyser::Reception;
+    match reception {
+        Reception::Accepted(position) => {
+            format!("Autolyser-insertion-confirmed-position-{position:02X}")
+        }
+        Reception::Rejected(error) => format!(
+            "Autolyser-insertion-rejected-{}",
+            insertion_rejection(error)
+        ),
+        Reception::Other(prefix, detail) => {
+            format!("Autolyser-insertion-unknown-{prefix:02X}-{detail:02X}")
+        }
+    }
+}
+impl AutolyserEnd {
+    pub(super) fn incomplete(self) -> String {
+        format!("{}-incomplete", self.as_str())
+    }
+}
+#[test]
+fn insertion_and_incomplete_code_spellings_are_compatible() {
+    use analyte_dialog::autolyser::{InsertionError, Reception};
+    for (value, expected) in [
+        (
+            Reception::Accepted(3),
+            "Autolyser-insertion-confirmed-position-03",
+        ),
+        (
+            Reception::Rejected(InsertionError::Position),
+            "Autolyser-insertion-rejected-Position",
+        ),
+        (
+            Reception::Rejected(InsertionError::Other(255)),
+            "Autolyser-insertion-rejected-Other(255)",
+        ),
+        (
+            Reception::Other(0x3f, 3),
+            "Autolyser-insertion-unknown-3F-03",
+        ),
+    ] {
+        assert_eq!(insertion(value), expected);
+    }
+    for (value, expected) in [
+        (
+            AutolyserEnd::TransferTimeout,
+            "Autolyser-transfer-timeout-incomplete",
+        ),
+        (
+            AutolyserEnd::TransferDisconnected,
+            "Autolyser-transfer-disconnected-incomplete",
+        ),
+        (
+            AutolyserEnd::TransferCancelled,
+            "Autolyser-transfer-cancelled-incomplete",
+        ),
+    ] {
+        assert_eq!(value.incomplete(), expected);
+    }
+}

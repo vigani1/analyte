@@ -502,12 +502,12 @@ fn item_outcomes(
             }
             Ok(response) => (
                 ItemDecision::Uncertain,
-                format!(
-                    "LAW-ORL-application-{}",
-                    super::acceptance::acceptance(response.acceptance())
-                ),
+                crate::orders::outcome::Detail::LawApplication(response.acceptance()).to_string(),
             ),
-            Err(error) => (ItemDecision::Uncertain, format!("LAW-invalid-ORL:{error}")),
+            Err(error) => (
+                ItemDecision::Uncertain,
+                crate::orders::outcome::Detail::LawInvalidOrl(error.to_string()).to_string(),
+            ),
         };
         let code = if let Ok(response) = response {
             response

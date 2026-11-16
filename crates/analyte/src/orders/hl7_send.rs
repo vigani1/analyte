@@ -162,7 +162,8 @@ async fn next_work(
                     store,
                     key,
                     version,
-                    &format!("HL7-order-preflight:{error}"),
+                    &crate::orders::outcome::Detail::Hl7OrderPreflight(error.to_string())
+                        .to_string(),
                     freshness,
                 )
                 .await?;
@@ -210,12 +211,13 @@ pub(super) async fn finish(
                             }
                             Outcome::Rejected { reason } => (
                                 ItemDecision::Rejected,
-                                format!(
-                                    "HL7-UA:{}",
+                                crate::orders::outcome::Detail::Hl7Ua(
                                     reason
                                         .map_or(b"".as_slice(), |field| field.raw())
                                         .escape_ascii()
-                                ),
+                                        .to_string(),
+                                )
+                                .to_string(),
                             ),
                             Outcome::CancelAccepted => (
                                 ItemDecision::CancelConfirmed,
@@ -223,12 +225,13 @@ pub(super) async fn finish(
                             ),
                             Outcome::UnableToCancel { reason } => (
                                 ItemDecision::CancelRefused,
-                                format!(
-                                    "HL7-UC:{}",
+                                crate::orders::outcome::Detail::Hl7Uc(
                                     reason
                                         .map_or(b"".as_slice(), |field| field.raw())
                                         .escape_ascii()
-                                ),
+                                        .to_string(),
+                                )
+                                .to_string(),
                             ),
                             Outcome::NotReported => (
                                 ItemDecision::Uncertain,
@@ -248,7 +251,12 @@ pub(super) async fn finish(
                     outcomes.push(ItemOutcome {
                         index: item.index,
                         decision: ItemDecision::Uncertain,
-                        code: SourceText::new(&format!("HL7-invalid-order-response:{error}"))?,
+                        code: SourceText::new(
+                            &crate::orders::outcome::Detail::Hl7InvalidOrderResponse(
+                                error.to_string(),
+                            )
+                            .to_string(),
+                        )?,
                     });
                 }
             }

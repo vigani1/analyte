@@ -267,7 +267,9 @@ async fn settle(
 ) -> Result<(), Error> {
     let reason = result.as_ref().err().map_or_else(
         || Code::LawIndependentExchangeEnded.as_str().to_owned(),
-        |error| format!("LAW-independent-failure:{error}"),
+        |error| {
+            crate::orders::outcome::Detail::LawIndependentFailure(error.to_string()).to_string()
+        },
     );
     orders.close(store, &reason).await?;
     report(machine, result);

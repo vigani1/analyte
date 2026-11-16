@@ -354,9 +354,12 @@ impl Connection {
                             Err(error) => {
                                 let identity = super::reservation::key(machine, cached.id);
                                 let version = fields.version;
-                                let reason = analyte_model::SourceText::new(&format!(
-                                    "HL7-display-mapping: {error}"
-                                ))?;
+                                let reason = analyte_model::SourceText::new(
+                                    &crate::orders::outcome::Detail::Hl7DisplayMapping(
+                                        error.to_string(),
+                                    )
+                                    .to_string(),
+                                )?;
                                 let rejected = super::reservation::reject(
                                     store, until, identity, version, freshness, reason,
                                 )

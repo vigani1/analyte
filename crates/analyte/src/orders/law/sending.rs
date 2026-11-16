@@ -134,7 +134,10 @@ impl Connection {
                                 | analyte_store::Error::ItemIdentityTooLong
                         )
                     ) {
-                        let reason = SourceText::new(&format!("LAW-order-preflight:{error}"))?;
+                        let reason = SourceText::new(
+                            &crate::orders::outcome::Detail::LawOrderPreflight(error.to_string())
+                                .to_string(),
+                        )?;
                         store
                             .request(until, move |store| {
                                 store.reject_unsent(

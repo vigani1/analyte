@@ -287,22 +287,13 @@ impl ConnectionState {
             .active
             .as_ref()
             .ok_or_else(|| invalid("unexpected Autolyser insertion outcome"))?;
-        let (outcome, code) = match reception {
-            analyte_dialog::autolyser::Reception::Accepted(position) => (
-                analyte_model::OrderState::Sent,
-                format!("Autolyser-insertion-confirmed-position-{position:02X}"),
-            ),
-            analyte_dialog::autolyser::Reception::Rejected(error) => (
-                analyte_model::OrderState::Uncertain,
-                format!(
-                    "Autolyser-insertion-rejected-{}",
-                    super::transfer_end::insertion_rejection(error)
-                ),
-            ),
-            analyte_dialog::autolyser::Reception::Other(prefix, detail) => (
-                analyte_model::OrderState::Uncertain,
-                format!("Autolyser-insertion-unknown-{prefix:02X}-{detail:02X}"),
-            ),
+        let code = super::transfer_end::insertion(reception);
+        let outcome = match reception {
+            analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,
+            analyte_dialog::autolyser::Reception::Rejected(_)
+            | analyte_dialog::autolyser::Reception::Other(_, _) => {
+                analyte_model::OrderState::Uncertain
+            }
         };
         crate::orders::sending::complete(store, order, outcome, &code).await?;
         self.active = None;
@@ -350,7 +341,7 @@ async fn process(
                                 | AutolyserEnd::TransferDisconnected
                                 | AutolyserEnd::TransferCancelled
                         ) {
-                        format!("{}-incomplete", state.end_code)
+                        state.end_code.incomplete()
                     } else {
                         park_code(&error)
                     };
@@ -415,7 +406,11 @@ fn park_code(error: &analyte_dialog::autolyser::Error) -> String {
         Error::Storage => Code::AutolyserParkedStorage.as_str().into(),
         Error::Stale => Code::AutolyserParkedStale.as_str().into(),
         Error::Ack => Code::AutolyserParkedAck.as_str().into(),
-        Error::Framing(cause) => format!("Autolyser-parked-framing-{cause}"),
-        Error::Record(cause) => format!("Autolyser-parked-record-{cause}"),
+        Error::Framing(cause) => {
+            crate::orders::outcome::Detail::AutolyserFraming(cause.to_string()).to_string()
+        }
+        Error::Record(cause) => {
+            crate::orders::outcome::Detail::AutolyserRecord(cause.to_string()).to_string()
+        }
     }
 }
