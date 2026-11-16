@@ -33,6 +33,7 @@ pub use vidas::{
     ResultEvidence as VidasResultEvidence, map as map_vidas, map_evidence as vidas_evidence,
 };
 
+mod evidence_display;
 mod inbound;
 mod orders;
 
@@ -146,7 +147,7 @@ pub enum Error {
     #[error("configuration syntax does not match the parsed message")]
     Syntax,
     /// A bound was reached before producing a partial success.
-    #[error("{position:?}: {resource} limit exceeded")]
+    #[error("{position}: {resource} limit exceeded")]
     Limit {
         /// Source location.
         position: Position,
@@ -154,7 +155,7 @@ pub enum Error {
         resource: &'static str,
     },
     /// Source structure cannot safely establish field ownership.
-    #[error("{position:?}: {reason}")]
+    #[error("{position}: {reason}")]
     Structure {
         /// Source location.
         position: Position,
@@ -162,13 +163,13 @@ pub enum Error {
         reason: &'static str,
     },
     /// Bytes cannot be represented as source text in the declared encoding.
-    #[error("{position:?}: invalid source encoding")]
+    #[error("{position}: invalid source encoding")]
     Encoding {
         /// Source location.
         position: Position,
     },
     /// A common-model text constraint failed.
-    #[error("{position:?}: {source}")]
+    #[error("{position}: {source}")]
     Text {
         /// Source location.
         position: Position,
@@ -176,7 +177,7 @@ pub enum Error {
         source: TextError,
     },
     /// HL7 control validation failed.
-    #[error("{position:?}: {source}")]
+    #[error("{position}: {source}")]
     Hl7 {
         /// Source location.
         position: Position,
