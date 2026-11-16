@@ -34,7 +34,7 @@ path = "tests/field_syntax.rs"
 
 [[test]]
 name = "mapping"
-path = "tests/mapping.rs"
+path = "tests/mapping/mod.rs"
 
 [[test]]
 name = "orders"
@@ -55,3 +55,4 @@ path = "tests/vendor_mapping.rs"
 [[test]]
 name = "vidas"
 path = "tests/vidas.rs"
+

@@ -1,5 +1,6 @@
 //! upkeep/open regression tests kept beside the storage behavior they guard.
 use super::*;
+use crate::startup::Progress;
 use crate::test_support::{Space, TestResult, limits};
 use std::{
     sync::{
@@ -398,7 +399,7 @@ fn mutation_plan11_startup_progress_names_and_completed_steps_are_visible() -> T
     ] {
         assert_eq!(step.to_string(), expected);
     }
-    use crate::startup::Progress;
+
     let events = Arc::new(std::sync::Mutex::new(Vec::new()));
     let observed = events.clone();
     let elapsed = Arc::new(AtomicU64::new(0));

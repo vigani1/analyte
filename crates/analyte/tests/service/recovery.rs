@@ -1,6 +1,7 @@
 //! Plan §11, ADR 0003 crash recovery and AGENTS concurrency: real forced process exit.
 use super::*;
 use crate::support::HANG_GUARD;
+use std::io::Read as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const ROOT: &str = "ANALYTE_FORCED_EXIT_TEST_ROOT";
@@ -124,7 +125,6 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
             loop {
                 if let Some(status) = child.0.try_wait()? {
                     let mut log = String::new();
-                    use std::io::Read as _;
                     child.0.stderr.take().ok_or("missing child log")?.read_to_string(&mut log)?;
                     return Err::<(), Error>(format!("child exited before receiver commit ({status}): {log}").into());
                 }
@@ -197,7 +197,6 @@ async fn assert_forced_shutdown(child: &mut Child, root: &Path) -> Result<(), Er
     assert_eq!(status.code(), Some(3));
     assert!(shutdown_started.elapsed() < Duration::from_secs(3));
     let mut log = String::new();
-    use std::io::Read as _;
     child
         .0
         .stderr

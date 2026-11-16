@@ -249,20 +249,7 @@ fn mutation_adr0003_query_pages_preserve_evidence_and_resume_after_the_cursor() 
     assert!([first.id, second.id].contains(&rows[0].id));
     assert!([first.id, second.id].contains(&next[0].id));
     assert!(store.receipts(&key(&next[0].id)?)?.is_empty());
-    let rows = store.parked(0)?;
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].details()?.reason.as_str(), "first parked");
-    let next = store.parked(rows[0].id)?;
-    assert_eq!(next.len(), 1);
-    assert_eq!(next[0].details()?.reason.as_str(), "second parked");
-    assert!(store.parked(next[0].id)?.is_empty());
-    let rows = store.audits(0)?;
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].1.reason.as_str(), "first review");
-    let next = store.audits(rows[0].0)?;
-    assert_eq!(next.len(), 1);
-    assert_eq!(next[0].1.reason.as_str(), "second review");
-    assert!(store.audits(next[0].0)?.is_empty());
+    verify_parked_and_audit_pages(&store)?;
     Ok(())
 }
 
@@ -299,5 +286,23 @@ fn mutation_rule8_query_order_events_are_deliveries_and_reset_invalidates_only_t
     assert_eq!(count, 0);
     store.reset_orders(&app)?;
     assert!(store.cursor(&app)?.is_none());
+    Ok(())
+}
+
+fn verify_parked_and_audit_pages(store: &Store) -> TestResult {
+    let rows = store.parked(0)?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].details()?.reason.as_str(), "first parked");
+    let next = store.parked(rows[0].id)?;
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].details()?.reason.as_str(), "second parked");
+    assert!(store.parked(next[0].id)?.is_empty());
+    let rows = store.audits(0)?;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].1.reason.as_str(), "first review");
+    let next = store.audits(rows[0].0)?;
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].1.reason.as_str(), "second review");
+    assert!(store.audits(next[0].0)?.is_empty());
     Ok(())
 }

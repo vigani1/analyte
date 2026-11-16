@@ -75,6 +75,14 @@ unused_must_use = "deny"
 unused_qualifications = "warn"
 
 [workspace.lints.clippy]
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+fn_params_excessive_bools = "warn"
+struct_excessive_bools = "warn"
+items_after_statements = "warn"
+module_name_repetitions = "warn"
+similar_names = "warn"
+
 # Selected pedantic lints (AGENTS.md: no blanket groups).
 cast_lossless = "warn"
 cast_possible_truncation = "warn"
