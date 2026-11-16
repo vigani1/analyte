@@ -189,12 +189,10 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
             }
         }
     }
-    toml::Value::Table(value)
-        .try_into()
-        .map_err(|source| Error::Schema {
-            path: path.into(),
-            source,
-        })
+    toml::from_str(text).map_err(|source| Error::Schema {
+        path: path.into(),
+        source,
+    })
 }
 
 /// Parsed layers awaiting semantic validation; cannot be activated.
