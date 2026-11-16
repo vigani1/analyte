@@ -1,3 +1,4 @@
+//! Query storage operations owned by operator.
 use crate::{Error, Interpretation, Store, key};
 use analyte_model::{Identifier, ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};

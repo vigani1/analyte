@@ -1,3 +1,4 @@
+//! Migration storage operations owned by upkeep.
 use crate::{Error, Store};
 use rusqlite::Connection;
 

@@ -1,4 +1,4 @@
-//! Durable evidence and transactional delivery state. No payloads are logged.
+//! Storage layer: owns durable evidence, revisions and delivery custody; never interprets clinical data or resends machine orders.
 #![forbid(unsafe_code)]
 mod operator;
 use operator::{alerts, parked, query};

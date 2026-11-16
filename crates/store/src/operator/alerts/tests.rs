@@ -1,3 +1,4 @@
+//! operator/alerts regression tests kept beside the storage behavior they guard.
 use crate::test_support::*;
 use crate::*;
 

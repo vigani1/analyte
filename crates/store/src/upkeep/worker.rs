@@ -1,3 +1,4 @@
+//! Worker storage operations owned by upkeep.
 use crate::{Error, FreeSpace, Limits, Store};
 use std::{
     path::PathBuf,

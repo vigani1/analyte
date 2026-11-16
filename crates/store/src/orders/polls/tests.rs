@@ -1,3 +1,4 @@
+//! orders/polls regression tests kept beside the storage behavior they guard.
 use super::*;
 use crate::test_support::{TestResult, open};
 

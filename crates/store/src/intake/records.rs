@@ -1,3 +1,4 @@
+//! Records storage operations owned by intake.
 use analyte_model::{DeliveryId, Identifier, Reason, ResultContent, SampleId};
 use serde::{Deserialize, Serialize};
 
