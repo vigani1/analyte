@@ -164,14 +164,14 @@ impl<'a> Worker<'a> {
                     conflict_detail
                         .as_deref()
                         .unwrap_or("app reported delivery identity conflict"),
-                )?),
+                )),
                 DeliveryOutcome::Parked,
             ),
             ResponseAction::Parked { reason: detail } => {
-                (Attempt::Parked(reason(&detail)?), DeliveryOutcome::Parked)
+                (Attempt::Parked(reason(&detail)), DeliveryOutcome::Parked)
             }
             ResponseAction::PauseForSetup => (
-                Attempt::Paused(reason("destination credentials require operator repair")?),
+                Attempt::Paused(reason("destination credentials require operator repair")),
                 DeliveryOutcome::Paused,
             ),
             ResponseAction::Retry { after } => {
@@ -312,9 +312,31 @@ impl<'a> Worker<'a> {
     }
 }
 
-fn reason(text: &str) -> Result<analyte_model::Reason, Error> {
-    analyte_model::Reason::new(text)
-        .map_err(|_| Error::Document(analyte_contract::DocumentError::Field("response reason")))
+// App diagnostics must never terminate the delivery owner.
+pub(crate) fn reason(text: &str) -> analyte_model::Reason {
+    const LIMIT: usize = 1024;
+    const MARKER: &str = "\u{2026} [truncated]";
+    let mut safe = String::new();
+    for ch in text.chars() {
+        let token = if ch.is_control() {
+            ch.escape_default().to_string()
+        } else {
+            ch.to_string()
+        };
+        if safe.len().saturating_add(token.len()) > LIMIT {
+            while safe.len() > LIMIT.saturating_sub(MARKER.len()) {
+                safe.pop();
+            }
+            safe.push_str(MARKER);
+            break;
+        }
+        safe.push_str(&token);
+    }
+    if safe.is_empty() {
+        safe.push_str("app supplied an empty diagnostic");
+    }
+    analyte_model::Reason::new(&safe)
+        .expect("bounded nonempty diagnostic contains no control characters")
 }
 
 fn backoff(destination: &Destination, attempts: u64, after: Option<u64>) -> u64 {
