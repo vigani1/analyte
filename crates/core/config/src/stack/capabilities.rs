@@ -109,3 +109,34 @@ impl Stack {
         }
     }
 }
+
+impl Stack {
+    /// Returns the stable receipt driver namespace.
+    #[must_use]
+    pub fn driver_namespace(&self) -> &'static str {
+        match self {
+            Stack::Astm(RecordTransport::Stream(_)) | Stack::Astm(RecordTransport::Folder(_)) => {
+                "analyte-astm"
+            }
+            Stack::Hl7(RecordTransport::Stream(_))
+            | Stack::Hl7(RecordTransport::Folder(_))
+            | Stack::Law(_) => "analyte-hl7",
+            Stack::Poct(_) => "analyte-poct",
+            Stack::VidasLiteral(_) => "analyte-vidas",
+            Stack::Autolyser(_) => "analyte-autolyser",
+        }
+    }
+
+    /// Returns whether each POCT reading has independent custody.
+    #[must_use]
+    pub fn independent_readings(&self) -> bool {
+        match self {
+            Self::Poct(_) => true,
+            Self::Astm(_)
+            | Self::Hl7(_)
+            | Self::Law(_)
+            | Self::VidasLiteral(_)
+            | Self::Autolyser(_) => false,
+        }
+    }
+}

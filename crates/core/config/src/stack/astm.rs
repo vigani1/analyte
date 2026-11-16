@@ -52,20 +52,16 @@ pub(super) fn astm_syntax(syntax: &Syntax) -> AstmSyntax {
     }
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-pub(super) fn astm_orders(orders: &Orders) -> AstmOrders {
-    AstmOrders {
+pub(super) fn astm_orders(orders: &Orders, path: &str) -> Result<AstmOrders, Error> {
+    Ok(AstmOrders {
         tables: order_tables(orders),
         query: orders.query.clone(),
         send_ahead: orders.send_ahead,
         layout: orders
             .astm
             .clone()
-            .expect("validated ASTM orders require O-record layout"),
-    }
+            .ok_or_else(|| invalid(path, "orders.astm", "ASTM orders require O-record layout"))?,
+    })
 }
 
 impl AstmSyntax {
@@ -174,10 +170,13 @@ impl AstmStack {
     }
 }
 
-#[expect(clippy::expect_used, reason = "conversion follows semantic validation")]
-pub(super) fn build(machine: &MachineDocument, timeouts: DialogTimeouts) -> AstmStack {
-    AstmStack {
-        transport: stream(&machine.transport),
+pub(super) fn build(
+    machine: &MachineDocument,
+    timeouts: DialogTimeouts,
+    path: &str,
+) -> Result<AstmStack, Error> {
+    Ok(AstmStack {
+        transport: stream(&machine.transport, path)?,
         frame_limit: machine.framing.limit,
         record_boundaries: if machine
             .deviations
@@ -189,19 +188,29 @@ pub(super) fn build(machine: &MachineDocument, timeouts: DialogTimeouts) -> Astm
             analyte_framing::astm::RecordBoundaries::Separate
         },
         timeouts,
-        checksum_hex: machine
-            .framing
-            .checksum_hex
-            .expect("validated LIS01 framing requires checksum policy"),
-        contention_priority: machine
-            .dialog
-            .contention_priority
-            .expect("validated LIS01 dialog requires contention priority"),
+        checksum_hex: machine.framing.checksum_hex.ok_or_else(|| {
+            invalid(
+                path,
+                "framing.checksum_hex",
+                "LIS01 framing requires checksum policy",
+            )
+        })?,
+        contention_priority: machine.dialog.contention_priority.ok_or_else(|| {
+            invalid(
+                path,
+                "dialog.contention_priority",
+                "LIS01 dialog requires contention priority",
+            )
+        })?,
         syntax: astm_syntax(&machine.syntax),
         mappings: machine
             .mappings
             .clone()
-            .expect("validated record stack requires mappings"),
-        orders: machine.orders.as_ref().map(astm_orders),
-    }
+            .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
+        orders: machine
+            .orders
+            .as_ref()
+            .map(|o| astm_orders(o, path))
+            .transpose()?,
+    })
 }

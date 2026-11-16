@@ -428,7 +428,7 @@ pub struct Destination {
     /// Destination identity.
     pub name: Identifier,
     /// HTTPS base URL without user info, query or fragment.
-    pub base_url: String,
+    pub base_url: crate::HttpsUrl,
     /// Host credential reference.
     pub api_key_name: Identifier,
     /// Host signing credential reference.

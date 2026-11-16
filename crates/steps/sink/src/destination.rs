@@ -67,6 +67,18 @@ impl Destination {
         Self::construct(id, base, secrets, limits, false)
     }
 
+    /// Accepts an HTTPS endpoint already parsed by configuration.
+    /// # Errors
+    /// Rejects invalid operational bounds or TLS initialization failures.
+    pub fn from_url(
+        id: Identifier,
+        base: &analyte_config::HttpsUrl,
+        secrets: Identifier,
+        limits: Limits,
+    ) -> Result<Self, Error> {
+        Self::from_parsed(id, base.url().clone(), secrets, limits)
+    }
+
     /// Allows literal loopback HTTP solely for local synthetic reference-peer tests.
     /// This explicit opt-in never disables TLS verification for HTTPS.
     /// # Errors
@@ -90,7 +102,7 @@ impl Destination {
         if base.len() > 4096 {
             return Err(Error::Configuration);
         }
-        let mut base = reqwest::Url::parse(base).map_err(|_| Error::Configuration)?;
+        let base = reqwest::Url::parse(base).map_err(|_| Error::Configuration)?;
         let loopback = base.host_str().is_some_and(|h| {
             h.trim_start_matches('[')
                 .trim_end_matches(']')
@@ -103,7 +115,19 @@ impl Destination {
             || base.query().is_some()
             || base.fragment().is_some()
             || !(base.scheme() == "https" || (test && base.scheme() == "http" && loopback))
-            || limits.request_timeout.is_zero()
+        {
+            return Err(Error::Configuration);
+        }
+        Self::from_parsed(id, base, secrets, limits)
+    }
+
+    fn from_parsed(
+        id: Identifier,
+        mut base: reqwest::Url,
+        secrets: Identifier,
+        limits: Limits,
+    ) -> Result<Self, Error> {
+        if limits.request_timeout.is_zero()
             || limits.request_timeout > Duration::from_secs(300)
             || limits.store_timeout.is_zero()
             || limits.store_timeout > Duration::from_secs(300)

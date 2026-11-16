@@ -39,27 +39,29 @@ pub enum Stack {
 }
 
 impl Stack {
-    // This is called only after both original and effective layers pass validation.
-    pub(crate) fn from_validated(machine: &MachineDocument) -> Self {
+    // Conversion returns required settings as types, never relying on validation to prevent a panic.
+    pub(crate) fn parse(machine: &MachineDocument, path: &str) -> Result<Self, Error> {
         let timeouts = DialogTimeouts {
             receive_timeout_ms: machine.dialog.receive_timeout_ms,
             send_timeout_ms: machine.dialog.send_timeout_ms,
         };
-        match machine.dialog.kind {
+        Ok(match machine.dialog.kind {
             DialogKind::AstmLink => Self::Astm(RecordTransport::Stream(Box::new(astm::build(
-                machine, timeouts,
-            )))),
+                machine, timeouts, path,
+            )?))),
             DialogKind::Hl7Receiver => Self::Hl7(RecordTransport::Stream(Box::new(hl7::build(
-                machine, timeouts,
-            )))),
-            DialogKind::LawManager => Self::Law(Box::new(law_stack(machine, timeouts))),
-            DialogKind::Poct => Self::Poct(Box::new(poct::build(machine, timeouts))),
+                machine, timeouts, path,
+            )?))),
+            DialogKind::LawManager => Self::Law(Box::new(law_stack(machine, timeouts, path)?)),
+            DialogKind::Poct => Self::Poct(Box::new(poct::build(machine, timeouts, path)?)),
             DialogKind::VidasLiteral => {
-                Self::VidasLiteral(Box::new(vidas::build(machine, timeouts)))
+                Self::VidasLiteral(Box::new(vidas::build(machine, timeouts, path)?))
             }
-            DialogKind::Autolyser => Self::Autolyser(Box::new(autolyser::build(machine, timeouts))),
-            DialogKind::FilePickup => file_stack(machine, timeouts),
-        }
+            DialogKind::Autolyser => {
+                Self::Autolyser(Box::new(autolyser::build(machine, timeouts, path)?))
+            }
+            DialogKind::FilePickup => file_stack(machine, timeouts, path)?,
+        })
     }
 }
 
@@ -183,15 +185,11 @@ impl Stack {
     }
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-fn code_tables(machine: &MachineDocument) -> CodeTables {
+fn code_tables(machine: &MachineDocument, path: &str) -> Result<CodeTables, Error> {
     machine
         .codes
         .clone()
-        .expect("validated vendor stack requires code tables")
+        .ok_or_else(|| invalid(path, "codes", "vendor stack requires code tables"))
 }
 
 mod transport;

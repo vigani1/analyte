@@ -95,28 +95,44 @@ impl AutolyserStack {
     }
 }
 
-#[expect(clippy::expect_used, reason = "conversion follows semantic validation")]
-pub(super) fn build(machine: &MachineDocument, timeouts: DialogTimeouts) -> AutolyserStack {
-    AutolyserStack {
-        transport: stream(&machine.transport),
+pub(super) fn build(
+    machine: &MachineDocument,
+    timeouts: DialogTimeouts,
+    path: &str,
+) -> Result<AutolyserStack, Error> {
+    Ok(AutolyserStack {
+        transport: stream(&machine.transport, path)?,
         frame_limit: machine.framing.limit,
         timeouts,
         limits: limits(&machine.syntax),
-        codes: code_tables(machine),
+        codes: code_tables(machine, path)?,
         policy: machine
             .autolyser
             .clone()
-            .expect("validated Autolyser stack requires policy"),
-        orders: machine.orders.as_ref().map(|orders| AutolyserOrders {
-            tables: order_tables(orders),
-            patient_namespace: orders
-                .patient_namespace
-                .clone()
-                .expect("validated Autolyser orders require patient namespace"),
-            clone: orders
-                .clone
-                .expect("validated Autolyser orders require clone behavior"),
-            send_ahead: orders.send_ahead,
-        }),
-    }
+            .ok_or_else(|| invalid(path, "autolyser", "Autolyser stack requires policy"))?,
+        orders: machine
+            .orders
+            .as_ref()
+            .map(|orders| {
+                Ok::<_, Error>(AutolyserOrders {
+                    tables: order_tables(orders),
+                    patient_namespace: orders.patient_namespace.clone().ok_or_else(|| {
+                        invalid(
+                            path,
+                            "orders.patient_namespace",
+                            "Autolyser orders require patient namespace",
+                        )
+                    })?,
+                    clone: orders.clone.ok_or_else(|| {
+                        invalid(
+                            path,
+                            "orders.clone",
+                            "Autolyser orders require clone behavior",
+                        )
+                    })?,
+                    send_ahead: orders.send_ahead,
+                })
+            })
+            .transpose()?,
+    })
 }

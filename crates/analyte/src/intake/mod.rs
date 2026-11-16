@@ -40,18 +40,7 @@ fn config_version(machine: &Machine) -> Result<Identifier, Error> {
 
 pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
     Ok(NamespacedId {
-        namespace: Identifier::new(match machine.snapshot.effective().stack() {
-            analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
-            | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_)) => {
-                "analyte-astm"
-            }
-            analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
-            | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_))
-            | analyte_config::Stack::Law(_) => "analyte-hl7",
-            analyte_config::Stack::Poct(_) => "analyte-poct",
-            analyte_config::Stack::VidasLiteral(_) => "analyte-vidas",
-            analyte_config::Stack::Autolyser(_) => "analyte-autolyser",
-        })?,
+        namespace: Identifier::new(machine.snapshot.effective().stack().driver_namespace())?,
         value: Identifier::new(env!("CARGO_PKG_VERSION"))?,
     })
 }
@@ -132,10 +121,7 @@ pub(crate) async fn interpret_with_location(
 }
 
 fn poct_edits(machine: &Machine) -> bool {
-    matches!(
-        machine.snapshot.effective().stack(),
-        analyte_config::Stack::Poct(_)
-    )
+    machine.snapshot.effective().stack().independent_readings()
 }
 
 fn reading_evidence(

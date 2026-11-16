@@ -47,21 +47,6 @@ pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> R
         }
         TransportKind::Serial => {}
     }
-    let url = &site.destination.base_url;
-    let authority = url
-        .strip_prefix("https://")
-        .and_then(|rest| rest.split('/').next());
-    if url.len() > 2048
-        || url.chars().any(|c| c.is_whitespace() || c.is_control())
-        || url.contains(['@', '?', '#', '\\'])
-        || authority.is_none_or(|a| a.is_empty() || a.starts_with(':'))
-    {
-        return Err(invalid(
-            path,
-            "site.destination.base_url",
-            "use an HTTPS URL with a host, without credentials, query or fragment",
-        ));
-    }
     Ok(())
 }
 
@@ -69,7 +54,7 @@ pub(super) fn validate_machine(
     m: &MachineDocument,
     path: &str,
     reference_path: &str,
-) -> Result<(), Error> {
+) -> Result<crate::Stack, Error> {
     validate(m, path)?;
     if let Some(orders) = &m.orders {
         orders.validate(m, path)?;
@@ -83,7 +68,7 @@ pub(super) fn validate_machine(
     validate_protocol(m, path)?;
     validate_mappings(m, path)?;
     validate_evidence(m, path)?;
-    Ok(())
+    crate::Stack::parse(m, path)
 }
 
 fn validate_evidence(m: &MachineDocument, path: &str) -> Result<(), Error> {

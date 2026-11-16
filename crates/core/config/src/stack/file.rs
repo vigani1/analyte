@@ -35,12 +35,12 @@ pub struct FileHl7Stack {
     pub(super) orders: Option<Hl7Orders>,
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-pub(super) fn file_stack(machine: &MachineDocument, timeouts: DialogTimeouts) -> Stack {
-    match machine.syntax.kind {
+pub(super) fn file_stack(
+    machine: &MachineDocument,
+    timeouts: DialogTimeouts,
+    path: &str,
+) -> Result<Stack, Error> {
+    Ok(match machine.syntax.kind {
         SyntaxKind::AstmLis02 => Stack::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
             operation_timeout_ms: machine.transport.operation_timeout_ms,
             frame_limit: machine.framing.limit,
@@ -49,24 +49,35 @@ pub(super) fn file_stack(machine: &MachineDocument, timeouts: DialogTimeouts) ->
             mappings: machine
                 .mappings
                 .clone()
-                .expect("validated record stack requires mappings"),
-            orders: machine.orders.as_ref().map(astm_orders),
+                .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
+            orders: machine
+                .orders
+                .as_ref()
+                .map(|o| astm_orders(o, path))
+                .transpose()?,
         }))),
         SyntaxKind::Hl7V2 => Stack::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
             operation_timeout_ms: machine.transport.operation_timeout_ms,
             frame_limit: machine.framing.limit,
             timeouts,
-            syntax: hl7_syntax(&machine.syntax),
+            syntax: hl7_syntax(&machine.syntax, path)?,
             mappings: machine
                 .mappings
                 .clone()
-                .expect("validated record stack requires mappings"),
-            orders: machine.orders.as_ref().map(hl7_orders),
+                .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
+            orders: machine
+                .orders
+                .as_ref()
+                .map(|o| hl7_orders(o, path))
+                .transpose()?,
         }))),
         SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
-            unreachable!("validated file pickup supports only LIS02 or HL7")
+            return Err(Error::IncompatibleStack {
+                path: path.into(),
+                reason: "validated file pickup supports only LIS02 or HL7",
+            });
         }
-    }
+    })
 }
 
 impl FileAstmStack {

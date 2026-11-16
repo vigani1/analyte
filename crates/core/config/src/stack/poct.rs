@@ -51,17 +51,20 @@ impl PoctStack {
     }
 }
 
-#[expect(clippy::expect_used, reason = "conversion follows semantic validation")]
-pub(super) fn build(machine: &MachineDocument, timeouts: DialogTimeouts) -> PoctStack {
-    PoctStack {
-        transport: tcp(&machine.transport),
+pub(super) fn build(
+    machine: &MachineDocument,
+    timeouts: DialogTimeouts,
+    path: &str,
+) -> Result<PoctStack, Error> {
+    Ok(PoctStack {
+        transport: tcp(&machine.transport, path)?,
         frame_limit: machine.framing.limit,
         timeouts,
         limits: limits(&machine.syntax),
-        codes: code_tables(machine),
+        codes: code_tables(machine, path)?,
         policy: machine
             .poct
             .clone()
-            .expect("validated POCT stack requires policy"),
-    }
+            .ok_or_else(|| invalid(path, "poct", "POCT stack requires policy"))?,
+    })
 }

@@ -1,6 +1,8 @@
 //! Loads bounded configuration and validates settings and local evidence without connection I/O.
 #![forbid(unsafe_code)]
 
+mod https;
+pub use https::HttpsUrl;
 mod orders;
 mod retention;
 pub use retention::Retention;
@@ -187,10 +189,12 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
             }
         }
     }
-    toml::from_str(text).map_err(|source| Error::Schema {
-        path: path.into(),
-        source,
-    })
+    toml::Value::Table(value)
+        .try_into()
+        .map_err(|source| Error::Schema {
+            path: path.into(),
+            source,
+        })
 }
 
 /// Parsed layers awaiting semantic validation; cannot be activated.
@@ -329,13 +333,12 @@ impl Draft {
             self.site.destination = v;
         }
         let path = self.paths.get(2).map_or("overrides", String::as_str);
-        validate_machine(
+        let stack = validate_machine(
             &self.machine,
             path,
             self.paths.first().map_or("machine", String::as_str),
         )?;
         validate_site(&self.site, &self.machine.transport, path)?;
-        let stack = Stack::from_validated(&self.machine);
         // Preserve the existing sorted TOML layout, including explicit input settings
         // that have no runtime role. Runtime consumers cannot access this document.
         let document = toml::Value::try_from(Canonical {

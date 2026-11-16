@@ -95,26 +95,38 @@ impl VidasStack {
     }
 }
 
-#[expect(clippy::expect_used, reason = "conversion follows semantic validation")]
-pub(super) fn build(machine: &MachineDocument, timeouts: DialogTimeouts) -> VidasStack {
-    VidasStack {
-        transport: stream(&machine.transport),
+pub(super) fn build(
+    machine: &MachineDocument,
+    timeouts: DialogTimeouts,
+    path: &str,
+) -> Result<VidasStack, Error> {
+    Ok(VidasStack {
+        transport: stream(&machine.transport, path)?,
         frame_limit: machine.framing.limit,
         timeouts,
         limits: limits(&machine.syntax),
-        codes: code_tables(machine),
+        codes: code_tables(machine, path)?,
         policy: machine
             .vidas
             .clone()
-            .expect("validated VIDAS stack requires policy"),
-        orders: machine.orders.as_ref().map(|orders| VidasOrders {
-            tests: orders.tests.clone(),
-            priorities: orders.priorities.clone(),
-            patient_namespace: orders
-                .patient_namespace
-                .clone()
-                .expect("validated VIDAS orders require patient namespace"),
-            send_ahead: orders.send_ahead,
-        }),
-    }
+            .ok_or_else(|| invalid(path, "vidas", "VIDAS stack requires policy"))?,
+        orders: machine
+            .orders
+            .as_ref()
+            .map(|orders| {
+                Ok::<_, Error>(VidasOrders {
+                    tests: orders.tests.clone(),
+                    priorities: orders.priorities.clone(),
+                    patient_namespace: orders.patient_namespace.clone().ok_or_else(|| {
+                        invalid(
+                            path,
+                            "orders.patient_namespace",
+                            "VIDAS orders require patient namespace",
+                        )
+                    })?,
+                    send_ahead: orders.send_ahead,
+                })
+            })
+            .transpose()?,
+    })
 }
