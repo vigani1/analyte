@@ -47,15 +47,65 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
     let client = reqwest::Client::builder().timeout(HANG_GUARD).build()?;
     let body = include_bytes!("../../../docs/contract/vectors/decoded-text.json");
     let id = "019ab000-0000-7000-8000-000000000001";
+    check_nested_validation(&client, &url, body, id).await?;
+    check_delivery_and_auth(&client, &url, body, id).await?;
+    check_order_events(&client, &url, &receiver).await?;
+    let (base, cursor) = check_snapshot(&client, &url, &receiver).await?;
+    let read_page = |cursor: String| {
+        client
+            .get(format!("{url}/orders?limit=1{cursor}"))
+            .bearer_auth("key")
+    };
+    let connection = rusqlite::Connection::open(&database)?;
+    connection.execute("UPDATE cursors SET expires=0", [])?;
+    assert_eq!(
+        read_page(format!("&cursor={cursor}"))
+            .send()
+            .await?
+            .status(),
+        410
+    );
+    let (stored, digest): (Vec<u8>, Vec<u8>) = connection.query_row(
+        "SELECT body,digest FROM deliveries WHERE id=?1",
+        [id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(stored, body);
+    assert_eq!(digest, analyte_contract::content_digest(body));
+    drop(connection);
+    // Seed retries do not add feed entries; regressing versions are rejected.
+    let old: Order = serde_json::from_value(base)?;
+    assert!(receiver.seed(vec![old]).await.is_err());
+    stop.send(()).map_err(|()| "server stopped")?;
+    server.await??;
+    receiver.shutdown().map_err(|_| "worker panicked")?;
+    let receiver = Receiver::open(&database, "key".into(), SigningSecret::parse(SECRET)?)?;
+    let connection = rusqlite::Connection::open(&database)?;
+    let count: i64 =
+        connection.query_row("SELECT COUNT(*) FROM deliveries", [], |row| row.get(0))?;
+    assert_eq!(count, 2);
+    receiver.shutdown().map_err(|_| "worker panicked")?;
+    Ok(())
+}
+
+async fn check_nested_validation(
+    client: &reqwest::Client,
+    url: &str,
+    body: &[u8],
+    id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut unsupported: Value = serde_json::from_slice(include_bytes!(
         "../../../docs/contract/vectors/unsupported-formatting.json"
     ))?;
-    unsupported["results"][0]["parts"][0]["values"][0]["decoded_text"] =
-        json!("partially interpreted");
+    unsupported
+        .pointer_mut("/results/0/parts/0/values/0")
+        .and_then(Value::as_object_mut)
+        .ok_or("fixture value missing")?
+        .insert("decoded_text".into(), json!("partially interpreted"));
     assert_eq!(
         post(
-            &client,
-            &url,
+            client,
+            url,
             "results",
             &serde_json::to_vec(&unsupported)?,
             id,
@@ -67,11 +117,13 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
     );
     // The contract owns evidence validation; invalid nested input must not reach storage.
     let mut invalid: Value = serde_json::from_slice(body)?;
-    invalid["results"][0]["parts"] = json!([]);
+    *invalid
+        .pointer_mut("/results/0/parts")
+        .ok_or("fixture field missing")? = json!([]);
     assert_eq!(
         post(
-            &client,
-            &url,
+            client,
+            url,
             "results",
             &serde_json::to_vec(&invalid)?,
             id,
@@ -81,33 +133,42 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
         .status(),
         422
     );
+    Ok(())
+}
+
+async fn check_delivery_and_auth(
+    client: &reqwest::Client,
+    url: &str,
+    body: &[u8],
+    id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Discard the first response: retry must observe the durable ID.
     assert_eq!(
-        post(&client, &url, "results", body, id, "key")
+        post(client, url, "results", body, id, "key")
             .await?
             .status(),
         200
     );
-    let response = post(&client, &url, "results", body, id, "key").await?;
+    let response = post(client, url, "results", body, id, "key").await?;
     assert_eq!(response.status(), 200);
     let value: Value = serde_json::from_slice(&response.bytes().await?)?;
     assert_eq!(value.get("status"), Some(&json!("duplicate")));
-    let mut changed = body.to_vec();
-    changed.push(b' ');
+    let mut conflicting_body = body.to_vec();
+    conflicting_body.push(b' ');
     assert_eq!(
-        post(&client, &url, "results", &changed, id, "key")
+        post(client, url, "results", &conflicting_body, id, "key")
             .await?
             .status(),
         409
     );
     assert_eq!(
-        post(&client, &url, "results", body, id, "wrong")
+        post(client, url, "results", body, id, "wrong")
             .await?
             .status(),
         401
     );
     assert_eq!(
-        post(&client, &url, "results", b"{}", id, "key")
+        post(client, url, "results", b"{}", id, "key")
             .await?
             .status(),
         422
@@ -144,8 +205,8 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
     );
     assert_eq!(
         post(
-            &client,
-            &url,
+            client,
+            url,
             "results",
             include_bytes!("../../../docs/contract/vectors/invalid-version.json"),
             id,
@@ -178,11 +239,19 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
             .status(),
         400
     );
+    Ok(())
+}
+
+async fn check_order_events(
+    client: &reqwest::Client,
+    url: &str,
+    receiver: &Receiver,
+) -> Result<(), Box<dyn std::error::Error>> {
     let event = include_bytes!("../../../docs/contract/vectors/event.json");
     assert_eq!(
         post(
-            &client,
-            &url,
+            client,
+            url,
             "order-events",
             event,
             "019ab000-0000-7000-8000-000000000002",
@@ -209,9 +278,15 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
         .and_then(Value::as_str)
         .ok_or("cursor")?;
     let mut tombstone = order;
-    tombstone["version"] = json!(2);
-    tombstone["tombstone"] = json!(true);
-    tombstone["state"] = json!("cancel_confirmed");
+    *tombstone
+        .pointer_mut("/version")
+        .ok_or("fixture field missing")? = json!(2);
+    *tombstone
+        .pointer_mut("/tombstone")
+        .ok_or("fixture field missing")? = json!(true);
+    *tombstone
+        .pointer_mut("/state")
+        .ok_or("fixture field missing")? = json!("cancel_confirmed");
     receiver
         .seed(vec![serde_json::from_value(tombstone)?])
         .await?;
@@ -241,13 +316,21 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
         400
     );
 
+    Ok(())
+}
+
+async fn check_snapshot(
+    client: &reqwest::Client,
+    url: &str,
+    receiver: &Receiver,
+) -> Result<(Value, String), Box<dyn std::error::Error>> {
     // A paged snapshot must not absorb a newly changed order mid-traversal.
     let base: Value =
         serde_json::from_slice(include_bytes!("../../../docs/contract/vectors/order.json"))?;
     let mut second = base.clone();
-    second["id"] = json!("order-2");
+    *second.pointer_mut("/id").ok_or("fixture field missing")? = json!("order-2");
     let mut third = base.clone();
-    third["id"] = json!("order-3");
+    *third.pointer_mut("/id").ok_or("fixture field missing")? = json!("order-3");
     receiver
         .seed(vec![
             serde_json::from_value(second)?,
@@ -263,7 +346,7 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
         serde_json::from_slice(&read_page(String::new()).send().await?.bytes().await?)?;
     assert_eq!(first.get("complete"), Some(&json!(false)));
     let mut fourth = base.clone();
-    fourth["id"] = json!("order-4");
+    *fourth.pointer_mut("/id").ok_or("fixture field missing")? = json!("order-4");
     receiver.seed(vec![serde_json::from_value(fourth)?]).await?;
     let mut cursor = first
         .get("next_cursor")
@@ -308,34 +391,5 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
             .await?,
     )?;
     assert_eq!(changes.pointer("/orders/0/id"), Some(&json!("order-4")));
-    let connection = rusqlite::Connection::open(&database)?;
-    connection.execute("UPDATE cursors SET expires=0", [])?;
-    assert_eq!(
-        read_page(format!("&cursor={cursor}"))
-            .send()
-            .await?
-            .status(),
-        410
-    );
-    let (stored, digest): (Vec<u8>, Vec<u8>) = connection.query_row(
-        "SELECT body,digest FROM deliveries WHERE id=?1",
-        [id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
-    assert_eq!(stored, body);
-    assert_eq!(digest, analyte_contract::content_digest(body));
-    drop(connection);
-    // Seed retries do not add feed entries; regressing versions are rejected.
-    let old: Order = serde_json::from_value(base)?;
-    assert!(receiver.seed(vec![old]).await.is_err());
-    stop.send(()).map_err(|()| "server stopped")?;
-    server.await??;
-    receiver.shutdown().map_err(|_| "worker panicked")?;
-    let receiver = Receiver::open(&database, "key".into(), SigningSecret::parse(SECRET)?)?;
-    let connection = rusqlite::Connection::open(&database)?;
-    let count: i64 =
-        connection.query_row("SELECT COUNT(*) FROM deliveries", [], |row| row.get(0))?;
-    assert_eq!(count, 2);
-    receiver.shutdown().map_err(|_| "worker panicked")?;
-    Ok(())
+    Ok((base, cursor))
 }

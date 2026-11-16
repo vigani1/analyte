@@ -421,8 +421,10 @@ fn vidas_config() -> Result<analyte_framing::vidas::Config, Error> {
         Checksum {
             include_stx: false,
             include_suffix: false,
-            uppercase: true,
-            accept_either_case: false,
+            hex: analyte_framing::vidas::HexOptions {
+                uppercase: true,
+                accept_either_case: false,
+            },
         },
     )?)
 }

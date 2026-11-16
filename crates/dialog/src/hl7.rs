@@ -374,6 +374,128 @@ impl Dialog {
         Ok(out)
     }
 
+    fn send(&mut self, raw: &[u8], out: &mut Vec<Action>) -> Result<(), Error> {
+        if (self.pending.is_some() || self.malformed.is_some())
+            || self.sending.is_some()
+            || !self.decoder.pending().is_empty()
+        {
+            return Err(Error::Busy);
+        }
+        let message = Message::parse(raw, self.config.options)?;
+        let msh = Msh::new(&message)?;
+        let id = msh.control_id().to_vec();
+        let waiting = match msh.mode() {
+            AckMode::Original => Some(Waiting::Application(Condition::Always)),
+            AckMode::Enhanced {
+                accept,
+                application,
+            } => {
+                let application = application.filter(|c| *c != Condition::Never);
+                if let Some(condition) = accept.filter(|c| *c != Condition::Never) {
+                    Some(Waiting::Accept {
+                        condition,
+                        application,
+                    })
+                } else {
+                    application.map(Waiting::Application)
+                }
+            }
+        };
+        let wire = mllp::encode(raw, self.config.limit)?;
+        out.push(Action::Write(wire));
+        if let Some(waiting) = waiting {
+            self.sending = Some(Sending { id, waiting });
+        } else {
+            out.push(Action::Sent(id, Outcome::NotRequested));
+        }
+        Ok(())
+    }
+
+    fn committed(&mut self, id: ReceiptId, out: &mut Vec<Action>) -> Result<(), Error> {
+        if self.complete_order_commit(id, out)? {
+            return Ok(());
+        }
+        if self.complete_malformed(id, out)? {
+            return Ok(());
+        }
+        let pending = self.pending.as_mut().ok_or(Error::Stale)?;
+        if pending.id != id || !matches!(pending.phase, Phase::Commit) {
+            return Err(Error::Stale);
+        }
+        pending.responsibility = Responsibility::Stored;
+        pending.phase = Phase::Interpret;
+        if matches!(Msh::new(&pending.message)?.mode(), AckMode::Enhanced { .. }) {
+            pending.codes.push_back(AckCode::Ca);
+            pending.phase = Phase::Respond;
+            out.push(Action::ResponseNeeded(id, AckCode::Ca));
+        } else {
+            out.push(Action::Interpret(id, pending.message.raw().to_vec()));
+        }
+        self.deadline = None;
+        Ok(())
+    }
+
+    fn commit_failed(&mut self, id: ReceiptId, out: &mut Vec<Action>) -> Result<(), Error> {
+        if self
+            .orders
+            .as_mut()
+            .is_some_and(|orders| orders.failed_commit(id))
+        {
+            out.push(Action::Refused(Error::Syntax(
+                analyte_hl7::Error::NotStored,
+            )));
+            return Ok(());
+        }
+        if !self.complete_malformed(id, out)? {
+            if !self
+                .pending
+                .as_ref()
+                .is_some_and(|p| p.id == id && matches!(p.phase, Phase::Commit))
+            {
+                return Err(Error::Stale);
+            }
+            self.finish_host(id, false, true, None, out)?;
+        }
+        Ok(())
+    }
+
+    fn respond(
+        &mut self,
+        id: ReceiptId,
+        response: Response<'_>,
+        out: &mut Vec<Action>,
+    ) -> Result<(), Error> {
+        let pending = self.pending.as_mut().ok_or(Error::Stale)?;
+        if pending.id != id || !matches!(pending.phase, Phase::Respond) {
+            return Err(Error::Stale);
+        }
+        let code = pending.codes.front().copied().ok_or(Error::Stale)?;
+        let error = self.error.as_ref().map(OwnedError::view);
+        if let Some(message) = analyte_hl7::acknowledgment(
+            &pending.message,
+            response,
+            code,
+            pending.responsibility,
+            error,
+            self.config.options,
+        )? {
+            out.push(Action::Write(mllp::encode(
+                message.raw(),
+                self.config.limit,
+            )?));
+        }
+        pending.codes.pop_front();
+        if code == AckCode::Ca {
+            pending.phase = Phase::Interpret;
+            out.push(Action::Interpret(id, pending.message.raw().to_vec()));
+        } else {
+            self.pending = None;
+            self.error = None;
+        }
+        self.deadline = None;
+        Ok(())
+    }
+
     fn input(&mut self, event: Event<'_>, out: &mut Vec<Action>) -> Result<(), Error> {
         if self.closed {
             return Err(Error::Busy);
@@ -391,83 +513,13 @@ impl Dialog {
                 }
             }
             Event::Send(raw) => {
-                if (self.pending.is_some() || self.malformed.is_some())
-                    || self.sending.is_some()
-                    || !self.decoder.pending().is_empty()
-                {
-                    return Err(Error::Busy);
-                }
-                let message = Message::parse(raw, self.config.options)?;
-                let msh = Msh::new(&message)?;
-                let id = msh.control_id().to_vec();
-                let waiting = match msh.mode() {
-                    AckMode::Original => Some(Waiting::Application(Condition::Always)),
-                    AckMode::Enhanced {
-                        accept,
-                        application,
-                    } => {
-                        let application = application.filter(|c| *c != Condition::Never);
-                        if let Some(condition) = accept.filter(|c| *c != Condition::Never) {
-                            Some(Waiting::Accept {
-                                condition,
-                                application,
-                            })
-                        } else {
-                            application.map(Waiting::Application)
-                        }
-                    }
-                };
-                let wire = mllp::encode(raw, self.config.limit)?;
-                out.push(Action::Write(wire));
-                if let Some(waiting) = waiting {
-                    self.sending = Some(Sending { id, waiting });
-                } else {
-                    out.push(Action::Sent(id, Outcome::NotRequested));
-                }
+                self.send(raw, out)?;
             }
             Event::Committed(id) => {
-                if self.complete_order_commit(id, out)? {
-                    return Ok(());
-                }
-                if self.complete_malformed(id, out)? {
-                    return Ok(());
-                }
-                let pending = self.pending.as_mut().ok_or(Error::Stale)?;
-                if pending.id != id || !matches!(pending.phase, Phase::Commit) {
-                    return Err(Error::Stale);
-                }
-                pending.responsibility = Responsibility::Stored;
-                pending.phase = Phase::Interpret;
-                if matches!(Msh::new(&pending.message)?.mode(), AckMode::Enhanced { .. }) {
-                    pending.codes.push_back(AckCode::Ca);
-                    pending.phase = Phase::Respond;
-                    out.push(Action::ResponseNeeded(id, AckCode::Ca));
-                } else {
-                    out.push(Action::Interpret(id, pending.message.raw().to_vec()));
-                }
-                self.deadline = None;
+                self.committed(id, out)?;
             }
             Event::CommitFailed(id) => {
-                if self
-                    .orders
-                    .as_mut()
-                    .is_some_and(|orders| orders.failed_commit(id))
-                {
-                    out.push(Action::Refused(Error::Syntax(
-                        analyte_hl7::Error::NotStored,
-                    )));
-                    return Ok(());
-                }
-                if !self.complete_malformed(id, out)? {
-                    if !self
-                        .pending
-                        .as_ref()
-                        .is_some_and(|p| p.id == id && matches!(p.phase, Phase::Commit))
-                    {
-                        return Err(Error::Stale);
-                    }
-                    self.finish_host(id, false, true, None, out)?;
-                }
+                self.commit_failed(id, out)?;
             }
             Event::Interpreted(id) => self.finish_host(id, true, false, None, out)?,
             Event::NotInterpretable(id, error, reject) => {
@@ -481,34 +533,7 @@ impl Dialog {
                 self.finish_host(id, false, reject, Some(error), out)?;
             }
             Event::Respond(id, response) => {
-                let pending = self.pending.as_mut().ok_or(Error::Stale)?;
-                if pending.id != id || !matches!(pending.phase, Phase::Respond) {
-                    return Err(Error::Stale);
-                }
-                let code = pending.codes.front().copied().ok_or(Error::Stale)?;
-                let error = self.error.as_ref().map(OwnedError::view);
-                if let Some(message) = analyte_hl7::acknowledgment(
-                    &pending.message,
-                    response,
-                    code,
-                    pending.responsibility,
-                    error,
-                    self.config.options,
-                )? {
-                    out.push(Action::Write(mllp::encode(
-                        message.raw(),
-                        self.config.limit,
-                    )?));
-                }
-                pending.codes.pop_front();
-                if code == AckCode::Ca {
-                    pending.phase = Phase::Interpret;
-                    out.push(Action::Interpret(id, pending.message.raw().to_vec()));
-                } else {
-                    self.pending = None;
-                    self.error = None;
-                }
-                self.deadline = None;
+                self.respond(id, response, out)?;
             }
             Event::Disconnect => {
                 if let Some(sending) = self.sending.take() {

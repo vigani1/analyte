@@ -359,6 +359,38 @@ impl Dialog {
         Ok(())
     }
 
+    fn sending_control(
+        &mut self,
+        byte: u8,
+        current: Vec<u8>,
+        rest: VecDeque<Vec<u8>>,
+        failures: u8,
+        out: &mut Vec<Action>,
+    ) {
+        if byte == ACK || byte == EOT {
+            if byte == EOT && self.config.honor_interrupt {
+                self.end_send(End::Interrupt, out);
+                self.state = State::Holdoff;
+                self.set_timer(Duration::from_secs(15));
+            } else {
+                self.start_frame(rest, out);
+            }
+        } else {
+            let failures = failures.saturating_add(1);
+            if failures >= 6 {
+                self.end_send(End::Abort, out);
+            } else {
+                out.push(Action::Write(current.clone()));
+                self.state = State::Sending {
+                    current,
+                    rest,
+                    failures,
+                };
+                self.set_timer(self.config.timers.frame);
+            }
+        }
+    }
+
     fn control(&mut self, byte: u8, out: &mut Vec<Action>) -> Result<(), Error> {
         let state = std::mem::replace(&mut self.state, State::Neutral);
         match state {
@@ -399,28 +431,7 @@ impl Dialog {
                 rest,
                 failures,
             } => {
-                if byte == ACK || byte == EOT {
-                    if byte == EOT && self.config.honor_interrupt {
-                        self.end_send(End::Interrupt, out);
-                        self.state = State::Holdoff;
-                        self.set_timer(Duration::from_secs(15));
-                    } else {
-                        self.start_frame(rest, out);
-                    }
-                } else {
-                    let failures = failures.saturating_add(1);
-                    if failures >= 6 {
-                        self.end_send(End::Abort, out);
-                    } else {
-                        out.push(Action::Write(current.clone()));
-                        self.state = State::Sending {
-                            current,
-                            rest,
-                            failures,
-                        };
-                        self.set_timer(self.config.timers.frame);
-                    }
-                }
+                self.sending_control(byte, current, rest, failures, out);
             }
             State::Receiving(receive) => {
                 if byte == EOT {

@@ -237,8 +237,10 @@ pub(super) fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::
         Checksum {
             include_stx: installed.include_stx.into(),
             include_suffix: installed.include_suffix.into(),
-            uppercase: installed.hex_case.into(),
-            accept_either_case: installed.checksum_acceptance.into(),
+            hex: analyte_framing::vidas::HexOptions {
+                uppercase: installed.hex_case.into(),
+                accept_either_case: installed.checksum_acceptance.into(),
+            },
         },
     )?)
 }
