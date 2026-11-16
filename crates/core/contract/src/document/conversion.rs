@@ -12,10 +12,17 @@ impl From<&analyte_model::NumericValue> for NumericValue {
 
 impl From<&analyte_model::ResultValue> for ResultValue {
     fn from(v: &analyte_model::ResultValue) -> Self {
-        Self {
-            decoded_text: v.decoded_text.as_ref().map(Into::into),
-            original: (&v.original).into(),
-            parsed: (&v.parsed).into(),
+        match v.parsed() {
+            analyte_model::ValueInterpretation::Text => {
+                Self::text((&v.original).into(), v.decoded_text().map(Into::into))
+            }
+            parsed @ (analyte_model::ValueInterpretation::Numeric(_)
+            | analyte_model::ValueInterpretation::Coded(_)
+            | analyte_model::ValueInterpretation::StructuredNumeric(_)
+            | analyte_model::ValueInterpretation::Attachment(_)
+            | analyte_model::ValueInterpretation::Unsupported { .. }) => {
+                Self::new((&v.original).into(), parsed.into())
+            }
         }
     }
 }

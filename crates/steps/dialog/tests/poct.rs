@@ -308,7 +308,7 @@ fn poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline() -> Result<(), Dia
         "minimal",
         &format!(
             "<DEV>{}</DEV>",
-            peer_messages::field("DEV.device_id", "synthetic-device")
+            peer_messages::field("DEV.device_id", "01-02-03-04-05-06-07-08")
         ),
     );
     step(&mut minimal, received(&raw)?)?;

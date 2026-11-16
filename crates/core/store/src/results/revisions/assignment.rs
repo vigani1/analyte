@@ -16,6 +16,7 @@ pub(super) struct Reconciliation<'a, 'db> {
     pub(super) limit: usize,
     pub(super) rows: usize,
     pub(super) lifecycle: Option<StatusLifecycle<'a>>,
+    pub(super) edit_guard: Option<&'a str>,
 }
 
 impl Reconciliation<'_, '_> {
@@ -74,14 +75,22 @@ impl Reconciliation<'_, '_> {
             &content,
             &batch.revisions,
         )?;
-        if let Some(revision) = same {
+        let previous = self.previous_revision(&identity_key, &batch.revisions)?;
+        if correction && let Some(reason) = self.edit_guard {
+            if same.is_some() && same == previous {
+                result.identity = IdentityStatus::Unresolved(
+                    analyte_model::Reason::new(reason).map_err(|_| Error::InvalidInput)?,
+                );
+                batch.outcomes.push(RevisionOutcome::Unresolved);
+                return Ok(());
+            }
+        } else if let Some(revision) = same {
             identity.revision = Revision(u64::try_from(revision).map_err(|_| Error::Corruption)?);
             batch
                 .outcomes
                 .push(RevisionOutcome::Retransmission(identity.revision));
             return Ok(());
         }
-        let previous = self.previous_revision(&identity_key, &batch.revisions)?;
         let progression = self.permits_progression(
             &identity_key,
             &candidate,

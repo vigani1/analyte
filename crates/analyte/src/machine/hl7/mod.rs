@@ -42,8 +42,7 @@ struct ConnectionState {
     wake: Option<Duration>,
     pending: BTreeMap<(u64, u64), ReceiptId>,
     queries: Option<crate::orders::hl7::Connection>,
-    enabled: bool,
-    input_evidence: Vec<u8>,
+    input_evidence: connection_input::Custody,
     write_error: Option<analyte_transport::Error>,
 }
 
@@ -72,7 +71,7 @@ impl ConnectionState {
         if enabled {
             dialog.enable_orders(settings.syntax().edition().into())?;
         }
-        let input_evidence = Vec::new();
+        let input_evidence = connection_input::Custody::default();
         let write_error = None;
         Ok(Self {
             dialog,
@@ -80,7 +79,6 @@ impl ConnectionState {
             wake,
             pending,
             queries,
-            enabled,
             input_evidence,
             write_error,
         })
@@ -128,7 +126,7 @@ impl ConnectionState {
             {
                 return Ok(());
             }
-            self.input_evidence.clear();
+            self.input_evidence.complete();
             if let Some(query) = &mut self.queries {
                 tokio::select! {biased; ()=super::stopping(stop)=>break,result=query.idle(store,machine,conn,&mut self.dialog,self.start)=>result?,}
             }
@@ -144,13 +142,16 @@ impl ConnectionState {
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
     ) -> Result<bool, Error> {
-        self.input_evidence = bytes.clone();
+        self.input_evidence.begin(&bytes);
         let events = if bytes.is_empty() {
             vec![Event::Tick]
         } else {
             bytes.into_iter().map(Event::Byte).collect()
         };
         for event in events {
+            if matches!(event, Event::Byte(_)) {
+                self.input_evidence.fed();
+            }
             if self.process(event, machine, store, conn, stop).await? {
                 return Ok(true);
             }
@@ -500,25 +501,26 @@ impl ConnectionState {
         &mut self,
         machine: &intake::Connection<'_>,
         store: &Handle,
-        result: Result<(), Error>,
+        mut result: Result<(), Error>,
     ) -> Result<(), Error> {
+        let cleanup = self.input_evidence.retain(store, machine).await;
+        super::custody::retain_cleanup(&mut result, cleanup);
         // A cancelled or failed host operation must expose partial input as well.
-        for action in self.dialog.step(self.start.elapsed(), Event::Disconnect)? {
+        let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnect) {
+            Ok(actions) => actions,
+            Err(error) => {
+                super::custody::retain_cleanup(&mut result, Err(error.into()));
+                Vec::new()
+            }
+        };
+        for action in actions {
             if let Action::Rejected(error, bytes) = action {
-                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                let cleanup = intake::park_bytes(store, machine, bytes, &error.to_string()).await;
+                super::custody::retain_cleanup(&mut result, cleanup);
             }
         }
-        if self.enabled && !self.input_evidence.is_empty() {
-            intake::park_bytes(
-                store,
-                machine,
-                std::mem::take(&mut self.input_evidence),
-                "HL7 input processing interrupted",
-            )
-            .await?;
-        }
         if let Some(query) = &mut self.queries {
-            query
+            let cleanup = query
                 .close(
                     store,
                     machine,
@@ -528,7 +530,8 @@ impl ConnectionState {
                         "HL7-DSR-disconnect"
                     },
                 )
-                .await?;
+                .await;
+            super::custody::retain_cleanup(&mut result, cleanup);
         }
         result
     }
@@ -539,3 +542,6 @@ impl ConnectionState {
 fn transport_failure_as_empty_input() -> Vec<u8> {
     Vec::new()
 }
+
+#[cfg(test)]
+mod tests;

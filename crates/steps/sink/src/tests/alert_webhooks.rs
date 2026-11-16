@@ -20,7 +20,7 @@ async fn alert(store: &Handle, now: i64) -> Result<PendingAlert, Box<dyn std::er
 async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = store(&temp.path().join("store.db")).await?;
-    let receiver = analyte_receiver::Receiver::open(
+    let mut receiver = analyte_receiver::Receiver::open(
         &temp.path().join("receiver.db"),
         "key".into(),
         analyte_contract::SigningSecret::parse(SECRET)?,
@@ -90,7 +90,7 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
     }
     stop.send_replace(true);
     server.await??;
-    receiver.shutdown().map_err(|_| "receiver worker")?;
+    receiver.shutdown().await.map_err(|_| "receiver worker")?;
     store.shutdown(until()?).await?;
     Ok(())
 }
@@ -127,7 +127,7 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
             .await?
             .is_none()
     );
-    let receiver = analyte_receiver::Receiver::open(
+    let mut receiver = analyte_receiver::Receiver::open(
         &temp.path().join("receiver.db"),
         "key".into(),
         analyte_contract::SigningSecret::parse(SECRET)?,
@@ -165,7 +165,7 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     );
     stop.send_replace(true);
     server.await??;
-    receiver.shutdown().map_err(|_| "receiver worker")?;
+    receiver.shutdown().await.map_err(|_| "receiver worker")?;
     store.shutdown(until()?).await?;
     Ok(())
 }

@@ -356,7 +356,7 @@ impl Running {
         self.close_with_deliveries(0).await
     }
 
-    async fn close_with_deliveries(self, deliveries: u64) -> Result<(), Error> {
+    async fn close_with_deliveries(mut self, deliveries: u64) -> Result<(), Error> {
         self.stop.send(()).map_err(|()| "service ended early")?;
         tokio::time::timeout(HANG_GUARD, self.task).await???;
         let requests = self.result_requests.load(Ordering::Acquire);
@@ -377,6 +377,7 @@ impl Running {
         tokio::time::timeout(HANG_GUARD, self.receiver_task).await???;
         self.receiver
             .shutdown()
+            .await
             .map_err(|_| "reference worker panicked")?;
         drop(self.listener);
         Ok(())
@@ -606,4 +607,5 @@ async fn assert_missing_device_retained(run: &mut Running, hello: &str) -> Resul
 
 mod scenarios_1;
 
+mod edits;
 mod identity;

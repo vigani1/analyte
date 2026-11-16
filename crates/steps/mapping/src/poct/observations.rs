@@ -264,11 +264,10 @@ fn map_value(
         | Value::Interval(Nullable::Value(_))
         | Value::Encapsulated(_) => return Err(analyte_poct::MessageError::ObservationValue.into()),
     };
-    Ok(model::ResultValue {
-        decoded_text: None,
-        original: model::SourceText::new(&original)?,
+    Ok(model::ResultValue::new(
+        model::SourceText::new(&original)?,
         parsed,
-    })
+    ))
 }
 
 fn unsupported(kind: &str, reason: &str) -> Result<model::ValueInterpretation, model::TextError> {
@@ -280,18 +279,7 @@ fn unsupported(kind: &str, reason: &str) -> Result<model::ValueInterpretation, m
 
 fn map_time(time: &Timestamp) -> Result<model::SourceTime, MappingError> {
     let original = time.original();
-    let local = if time.offset_seconds().is_some() {
-        original
-            .get(
-                ..original
-                    .len()
-                    .checked_sub(6)
-                    .ok_or(analyte_poct::MessageError::Structure)?,
-            )
-            .ok_or(analyte_poct::MessageError::Structure)?
-    } else {
-        original
-    };
+    let local = time.local();
     let precision = if local.contains('.') {
         model::TimePrecision::FractionalSecond
     } else {

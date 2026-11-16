@@ -48,6 +48,8 @@ pub enum ReceiverError {
     OrderVersion,
 }
 enum Command {
+    #[cfg(test)]
+    Panic,
     Delivery {
         id: String,
         kind: &'static str,
@@ -78,12 +80,94 @@ enum StoreError {
 struct Inner {
     key: String,
     secret: SigningSecret,
-    sender: mpsc::Sender<Command>,
+    sender: std::sync::Mutex<Option<mpsc::Sender<Command>>>,
 }
-/// Owns the database worker. Dropping all routers closes its bounded queue.
+/// Owns the database worker and its bounded admission queue.
+/// Keep the fallback guard outside the runtime (as the reference binary does),
+/// or call `shutdown().await` before dropping it from async code. Explicit shutdown
+/// closes admission independently of router clones and reports the worker result.
 pub struct Receiver {
     state: Arc<Inner>,
-    worker: std::thread::JoinHandle<()>,
+    worker: WorkerGuard,
+}
+#[cfg(test)]
+fn synthetic_panic() -> ! {
+    panic!("synthetic worker panic")
+}
+
+struct WorkerGuard {
+    state: Arc<Inner>,
+    worker: Option<std::thread::JoinHandle<Result<(), rusqlite::Error>>>,
+}
+impl Inner {
+    fn try_send(&self, command: Command) -> Result<(), ReceiverError> {
+        self.sender
+            .lock()
+            .map_err(|_| ReceiverError::Worker)?
+            .as_ref()
+            .ok_or(ReceiverError::Queue)?
+            .try_send(command)
+            .map_err(|_| ReceiverError::Queue)
+    }
+    fn close(&self) {
+        if let Ok(mut sender) = self.sender.lock() {
+            sender.take();
+        }
+    }
+}
+impl WorkerGuard {
+    async fn close(&mut self) -> Result<(), ReceiverError> {
+        self.state.close();
+        let deadline = tokio::time::Instant::now()
+            .checked_add(Duration::from_secs(5))
+            .ok_or(ReceiverError::Deadline)?;
+        while self
+            .worker
+            .as_ref()
+            .is_some_and(|worker| !worker.is_finished())
+        {
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ReceiverError::Deadline);
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        if let Some(worker) = self.worker.take() {
+            worker.join().map_err(|_| ReceiverError::Worker)??;
+        }
+        Ok(())
+    }
+}
+impl Drop for WorkerGuard {
+    fn drop(&mut self) {
+        use std::io::Write as _;
+        self.state.close();
+        if let Some(worker) = self.worker.take() {
+            // Fallback owner lives outside the runtime in the binary; normal async
+            // paths call close first and surface the join result to their caller.
+            let deadline = std::time::Instant::now()
+                .checked_add(Duration::from_secs(5))
+                .unwrap_or_else(std::time::Instant::now);
+            while !worker.is_finished() {
+                if std::time::Instant::now() >= deadline {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "receiver storage shutdown exceeded five seconds"
+                    );
+                    std::process::exit(3);
+                }
+                std::thread::park_timeout(Duration::from_millis(1));
+            }
+            match worker.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    let _ = writeln!(std::io::stderr(), "receiver storage close failed: {error}");
+                }
+                Err(_) => {
+                    let _ = writeln!(std::io::stderr(), "receiver storage worker panicked");
+                }
+            }
+        }
+    }
 }
 impl Receiver {
     /// Opens durable SQLite storage and starts its dedicated worker.
@@ -107,6 +191,8 @@ impl Receiver {
                 let mut connection = connection;
                 while let Some(command) = receiver.blocking_recv() {
                     match command {
+                        #[cfg(test)]
+                        Command::Panic => synthetic_panic(),
                         Command::Delivery {
                             id,
                             kind,
@@ -127,14 +213,19 @@ impl Receiver {
                         }
                     }
                 }
+                connection.close().map_err(|(_, error)| error)
             })?;
+        let state = Arc::new(Inner {
+            key,
+            secret,
+            sender: std::sync::Mutex::new(Some(sender)),
+        });
         Ok(Self {
-            state: Arc::new(Inner {
-                key,
-                secret,
-                sender,
-            }),
-            worker,
+            state: state.clone(),
+            worker: WorkerGuard {
+                state,
+                worker: Some(worker),
+            },
         })
     }
 
@@ -148,7 +239,6 @@ impl Receiver {
         }
         let (reply, response) = oneshot::channel();
         self.state
-            .sender
             .try_send(Command::Seed { orders, reply })
             .map_err(|_| ReceiverError::Queue)?;
         tokio::time::timeout(Duration::from_secs(5), response)
@@ -194,13 +284,15 @@ impl Receiver {
             .layer(axum::middleware::from_fn(deadline))
             .with_state(Arc::clone(&self.state))
     }
-    /// Joins the owned storage worker after the server and all router clones are dropped.
+    /// Closes admission, drains queued work and joins the storage worker asynchronously.
+    /// Cancellation or timeout retains worker ownership; queued writes may still commit.
+    /// Retry shutdown on this owner and retain the original delivery identity.
     ///
     /// # Errors
-    /// Returns an error if the worker panicked.
-    pub fn shutdown(self) -> std::thread::Result<()> {
-        drop(self.state);
-        self.worker.join()
+    /// Returns an error if the worker panicked or exceeded five seconds.
+    /// Closes admission even when router clones survive; queued writes are drained.
+    pub async fn shutdown(&mut self) -> Result<(), ReceiverError> {
+        self.worker.close().await
     }
 }
 fn store(
@@ -379,7 +471,6 @@ async fn receive(
     }
     let (reply, response) = oneshot::channel();
     if state
-        .sender
         .try_send(Command::Delivery {
             id: document_id,
             kind,
@@ -421,7 +512,6 @@ async fn orders(
     }
     let (reply, response) = oneshot::channel();
     if state
-        .sender
         .try_send(Command::Orders {
             cursor: query.cursor,
             limit,
@@ -478,3 +568,6 @@ async fn deadline(request: axum::extract::Request, next: axum::middleware::Next)
         Err(_) => failure(StatusCode::REQUEST_TIMEOUT, "request_deadline"),
     }
 }
+
+#[cfg(test)]
+mod tests;

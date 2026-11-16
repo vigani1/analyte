@@ -1,4 +1,5 @@
 //! Checks POCT message object structure (Appendix B 6, 8 and 12).
+//! Kept whole: object rules and field constraints define one supported wire vocabulary.
 //! Rules are executable checks, not copied schema documents.
 use crate::{
     Document, Element,
@@ -114,8 +115,29 @@ pub(crate) fn validate(document: &Document) -> Result<Vec<Option<Value>>, Messag
             {
                 return Err(MessageError::Structure);
             }
-            let value = data::parse(element, kind).map_err(MessageError::Data)?;
+            let mut value = data::parse(element, kind).map_err(MessageError::Data)?;
+            if element.name() == "THUMBNAIL"
+                && let Some(Some(Value::Encapsulated(parent))) =
+                    element.parent().and_then(|p| values.get(p))
+                && let Value::Encapsulated(thumbnail) = &mut value
+            {
+                if data::attr(element, "ENC").is_none() {
+                    thumbnail.encoding = parent.encoding;
+                }
+                if data::attr(element, "COMPN").is_none() {
+                    thumbnail.compression.clone_from(&parent.compression);
+                }
+                if data::attr(element, "MT").is_none() {
+                    thumbnail.media_type.clone_from(&parent.media_type);
+                }
+                if data::attr(element, "IC").is_none() {
+                    thumbnail
+                        .integrity_check
+                        .clone_from(&parent.integrity_check);
+                }
+            }
             validate_codes(element)?;
+            validate_field_format(element)?;
             values.push(Some(value));
         }
     }
@@ -311,6 +333,7 @@ fn object_rules(name: &str, patient: bool) -> Option<Vec<Rule>> {
 
 fn field_kind(name: &str) -> Option<Kind> {
     Some(match name {
+        "TRANSLTN" | "MODIFIER" => Kind::Concept,
         "DCP.vendor_specific" | "THUMBNAIL" | "ORIGTXT" => Kind::Encapsulated,
         "PT.name" | "OPR.name" => Kind::Person,
         "OBS.observation_id"
@@ -320,7 +343,6 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "SPC.specimen_id"
         | "SPC.source_cd"
         | "SPC.type_cd"
-        | "CTC.lot_number"
         | "CTC.level_cd"
         | "DSC.topics_supported_cd"
         | "DSC.directives_supported_cd"
@@ -330,11 +352,11 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "TRM.reason_cd"
         | "ACK.error_detail_cd"
         | "REQ.request_cd"
-        | "TRANSLTN"
         | "NOTE"
-        | "CONFID"
-        | "RGT.lot_number" => Kind::Code,
-        "DSC.connection_profile_cd"
+        | "CONFID" => Kind::Code,
+        "CTC.lot_number"
+        | "RGT.lot_number"
+        | "DSC.connection_profile_cd"
         | "SVC.role_cd"
         | "SVC.status_cd"
         | "SVC.reason_cd"
@@ -408,6 +430,15 @@ fn validate_field_children(
     kind: Kind,
     equivalents: bool,
 ) -> Result<(), MessageError> {
+    let element = document
+        .elements()
+        .get(parent)
+        .ok_or(MessageError::Structure)?;
+    let mixed = kind == Kind::Text
+        && !matches!(
+            element.name(),
+            "DEV.manufacturer_name" | "GIV" | "MID" | "FAM" | "PFX" | "SFX" | "DEL" | "REF"
+        );
     let mut last = 0usize;
     let mut singleton = std::collections::BTreeSet::new();
     for (_, element) in children(document, parent) {
@@ -417,20 +448,32 @@ fn validate_field_children(
             }
             return Err(MessageError::Structure);
         }
-        let (rank, many) = match element.name() {
-            "ORIGTXT" if kind == Kind::Code => (0, false),
-            "TRANSLTN" if equivalents => (1, true),
-            "GIV" | "MID" | "FAM" | "PFX" | "SFX" | "DEL" if kind == Kind::Person => (0, true),
-            "NOTE" => (2, kind == Kind::Text),
-            "CONFID" => (3, kind == Kind::Text),
-            _ => return Err(MessageError::Structure),
+        let (rank, many) = if kind == Kind::Concept {
+            match element.name() {
+                "TRANSLTN" => (0, true),
+                "ORIGTXT" => (1, false),
+                "MODIFIER" => (2, true),
+                "NOTE" => (3, false),
+                "CONFID" => (4, false),
+                _ => return Err(MessageError::Structure),
+            }
+        } else {
+            match element.name() {
+                "ORIGTXT" if kind == Kind::Code => (0, false),
+                "TRANSLTN" if equivalents => (1, true),
+                "GIV" | "MID" | "FAM" | "PFX" | "SFX" | "DEL" if kind == Kind::Person => (0, true),
+                "NOTE" => (2, mixed),
+                "CONFID" => (3, mixed),
+                _ => return Err(MessageError::Structure),
+            }
         };
-        if (kind != Kind::Text && rank < last) || (!many && !singleton.insert(rank)) {
+        if (!mixed && rank < last) || (!many && !singleton.insert(rank)) {
             return Err(MessageError::Structure);
         }
         last = rank;
     }
-    if !matches!(kind, Kind::Text | Kind::Encapsulated)
+    if !mixed
+        && kind != Kind::Encapsulated
         && !document
             .elements()
             .get(parent)
@@ -448,6 +491,31 @@ fn validate_codes(element: &Element) -> Result<(), MessageError> {
     let Some(value) = data::attr(element, "V") else {
         return Ok(());
     };
+    let foreign = data::attr(element, "SN").is_some_and(|name| name != "POCT01");
+    if !foreign {
+        let standard = match element.name() {
+            "DSC.topics_supported_cd" => matches!(
+                value,
+                "D_EV" | "DTV" | "OP_LST" | "OP_LST_I" | "PT_LST" | "PT_LST_I"
+            ),
+            "DSC.directives_supported_cd" => matches!(
+                value,
+                "SET_TIME" | "LOCK" | "UNLOCK" | "GOTO_STANDBY" | "GOTO_READY" | "START_CONTINUOUS"
+            ),
+            "DST.condition_cd" => matches!(value, "B" | "L" | "P" | "R" | "S"),
+            "EOT.topic_cd" => matches!(value, "EVS" | "OBS" | "OPL" | "PTL"),
+            "REQ.request_cd" => matches!(value, "ROBS" | "RDEV"),
+            "TRM.reason_cd" => matches!(value, "NRM" | "ABN" | "USR" | "UNK"),
+            "ACK.error_detail_cd" => matches!(
+                value,
+                "0" | "100" | "101" | "102" | "103" | "200" | "201" | "202"
+            ),
+            _ => true,
+        };
+        if !standard {
+            return Err(MessageError::Data(data::DataError::Code));
+        }
+    }
     let legal = match element.name() {
         "ACK.type_cd" => matches!(value, "AA" | "AE"),
         "ESC.detail_cd" => matches!(value, "OTH" | "TOP" | "CNC"),
@@ -468,4 +536,33 @@ fn validate_codes(element: &Element) -> Result<(), MessageError> {
         return Err(MessageError::Data(data::DataError::Code));
     }
     Ok(())
+}
+
+// POCT01-A2 B 5.2, 5.5, 5.9 and 5.13: object constraints beyond ST/INT.
+fn validate_field_format(element: &Element) -> Result<(), MessageError> {
+    let Some(value) = data::attr(element, "V") else {
+        return Ok(());
+    };
+    let valid = match element.name() {
+        "DEV.device_id" | "AP.ap_id" => {
+            value.len() == 23
+                && value.split('-').count() == 8
+                && value
+                    .split('-')
+                    .all(|octet| octet.len() == 2 && octet.bytes().all(|b| b.is_ascii_hexdigit()))
+        }
+        "HDR.encoding_chars" => value.chars().count() == 4,
+        "DST.new_observations_qty" | "DST.new_events_qty" | "AP.port_nbr" => {
+            !value.starts_with('-')
+                || value
+                    .get(1..)
+                    .is_some_and(|digits| digits.bytes().all(|b| b == b'0'))
+        }
+        _ => true,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(MessageError::Data(data::DataError::Code))
+    }
 }

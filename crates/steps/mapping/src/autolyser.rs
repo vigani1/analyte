@@ -17,11 +17,10 @@ pub fn map(
     let mut output = Output::default();
     for (index, value) in report.values.iter().enumerate() {
         let code = std::str::from_utf8(value.code.bytes())?;
-        let value = ResultValue {
-            decoded_text: None,
-            original: SourceText::new(std::str::from_utf8(value.text.bytes())?)?,
-            parsed: ValueInterpretation::Text,
-        };
+        let value = ResultValue::new(
+            SourceText::new(std::str::from_utf8(value.text.bytes())?)?,
+            ValueInterpretation::Text,
+        );
         let Some(test) = map_test(machine, code, None) else {
             output.unmapped_test(
                 Position {

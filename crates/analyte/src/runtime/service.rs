@@ -242,11 +242,7 @@ async fn serve_with(
         start_delivery(destinations, &store, &secrets, &watchdog);
     let (shutdown, stopping) = watch::channel(false);
     let mut alert_owners = start_alerts(&program, &store, &stopping, &watchdog);
-    let Machines {
-        mut owners,
-        ready_to_close,
-        close_transports,
-    } = start_machines(&mut program, &store, &stopping, &admin_states, &watchdog);
+    let mut machines = start_machines(&mut program, &store, &stopping, &admin_states, &watchdog);
     if let Some(ready) = ready {
         let _ = ready.send(());
     }
@@ -255,7 +251,7 @@ async fn serve_with(
         &mut alert_owners,
         &mut admin_owners,
         &mut delivery_owners,
-        &mut owners,
+        &mut machines.owners,
     )
     .await;
     watchdog.arm();
@@ -277,10 +273,11 @@ async fn serve_with(
         alert_owners,
         admin_owners,
         delivery_owners,
-        owners,
-        ready_to_close,
+        owners: machines.owners,
+        ready_to_close: machines.ready_to_close,
         delivery_stop,
-        close_transports,
+        close_transports: machines.close_transports,
+        captures: machines.captures,
     }
     .finish(store, store_component)
     .await?;
@@ -288,6 +285,7 @@ async fn serve_with(
 }
 
 struct Machines {
+    captures: Vec<Arc<machine::capture::Capture>>,
     owners: JoinSet<()>,
     ready_to_close: Vec<watch::Receiver<bool>>,
     close_transports: watch::Sender<bool>,
@@ -301,6 +299,7 @@ fn start_machines(
     watchdog: &crate::runtime::shutdown::Watchdog,
 ) -> Machines {
     let mut owners = JoinSet::new();
+    let mut captures = Vec::new();
     let mut ready_to_close = Vec::new();
     let (close_transports, transports_closing) = watch::channel(false);
     for machine in std::mem::take(&mut program.machines) {
@@ -309,6 +308,10 @@ fn start_machines(
             &program.data_directory,
             program.store_limits.reserve_bytes,
         );
+        let capture = capture.map(Arc::new);
+        if let Some(owner) = &capture {
+            captures.push(owner.clone());
+        }
         let admin_state = AdminOwner(admin_states.get(machine.id.as_str()).cloned());
         let store = store.clone();
         let stop = stopping.clone();
@@ -336,6 +339,7 @@ fn start_machines(
         });
     }
     Machines {
+        captures,
         owners,
         ready_to_close,
         close_transports,
@@ -343,6 +347,7 @@ fn start_machines(
 }
 
 struct Draining {
+    captures: Vec<Arc<machine::capture::Capture>>,
     alert_owners: JoinSet<Result<(), Error>>,
     admin_owners: JoinSet<Result<(), Error>>,
     delivery_owners: JoinSet<Result<(), analyte_sink::Error>>,
@@ -366,6 +371,7 @@ impl Draining {
             mut ready_to_close,
             delivery_stop,
             close_transports,
+            captures,
         } = self;
         let until = tokio::time::Instant::now()
             .checked_add(Duration::from_secs(15))
@@ -423,6 +429,11 @@ impl Draining {
         if !matches!(drained, Ok(Ok(()))) {
             owners.abort_all();
             while owners.join_next().await.is_some() {}
+        }
+        for capture in captures {
+            let mut capture = Arc::try_unwrap(capture)
+                .map_err(|_| invalid("capture ownership retained after machine shutdown"))?;
+            capture.close().await;
         }
         close_store(store).await?;
         drop(store_component);

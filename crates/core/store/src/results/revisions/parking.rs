@@ -28,9 +28,9 @@ pub(super) fn park_outcomes(
     version: i64,
     evidence: &Interpretation,
     outcomes: &[RevisionOutcome],
-    context: (bool, bool),
+    context: (bool, bool, Option<&str>),
 ) -> Result<(), Error> {
-    let (reprocessing, findings_empty) = context;
+    let (reprocessing, findings_empty, edit_guard) = context;
     match &evidence.outcome {
         Reading::Failed(reason) => {
             tx.execute(
@@ -67,7 +67,14 @@ pub(super) fn park_outcomes(
                         [crate::parked::evidence(
                             "result_reconciliation",
                             &serde_json::from_str::<String>(receipt_key)?,
-                            &format!("result reconciliation: {outcome:?}"),
+                            &match (&result.identity, edit_guard) {
+                                (IdentityStatus::Unresolved(reason), Some(guard))
+                                    if reason.as_str() == guard =>
+                                {
+                                    guard.to_owned()
+                                }
+                                _ => format!("result reconciliation: {outcome:?}"),
+                            },
                             Some(crate::parked::ParkingContext::Result {
                                 version: Some(version),
                                 index,

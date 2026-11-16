@@ -141,7 +141,7 @@ async fn seed_parked_receipt(
     );
     let machine = program.machines().first().ok_or("machine missing")?;
     let receipt = analyte_model::ReceiptId::new();
-    let raw = analyte_framing::hl7::encode(b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r", analyte_framing::hl7::Limit::new(1048576)?)?;
+    let raw = analyte_framing::hl7::encode(b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r", analyte_framing::hl7::Limit::new(1048576)?)?;
     crate::intake::receive(
         &store,
         &crate::intake::Connection::new(machine)?,

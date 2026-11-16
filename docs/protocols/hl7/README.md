@@ -37,8 +37,9 @@ not implemented transactions. Named tests below must pass before handoff.
 
 ## Scope decisions to confirm at phase start
 
-- **Not all of HL7.** Analyte supports the encoding and control rules of both
-  editions completely, plus a declared list of laboratory transactions. The
+- **Not all of HL7.** Analyte implements the selected encoding and control subset for both
+  native editions, with open obligations and explicit refusals tracked in
+  [the checklist](checklist.md), plus a declared list of laboratory transactions. The
   first list: ORU^R01 with ACK (both editions); ORM^O01 and ORR^O02 (both editions);
   non-LAW OML^O21 and ORL^O22 (2.5.1);
   OML^O33 and ORL^O34, OUL^R22 and ACK^R22, QBP^Q11 and RSP^K11 (2.5.1, also

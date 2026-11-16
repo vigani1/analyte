@@ -203,7 +203,27 @@ fn source_times(
             _ => &[],
         };
         for field in fields {
-            if node.name == "OBX" && *field == 19 && source.uses_compatibility_contract(config) {
+            if node.name == "SPM"
+                && *field == 17
+                && let crate::inbound::source::Record::Hl7(segment) = node.record
+                && segment.field(17).is_some_and(|field| {
+                    field.repetitions().any(|range| {
+                        range.components().enumerate().any(|(index, endpoint)| {
+                            (index > 0 && !endpoint.raw().is_empty())
+                                || endpoint
+                                    .subcomponents()
+                                    .skip(1)
+                                    .any(|precision| !precision.is_empty())
+                        })
+                    })
+                })
+            {
+                return Err(Error::Structure {
+                    position: source.position(*ancestor, 17),
+                    reason: "SPM-17 collection range or nested precision is unsupported; retain interval for review",
+                });
+            }
+            if node.name == "OBX" && *field == 19 && !source.has_analysis_time(config) {
                 continue;
             }
             if let Some(raw) = present(source.component(*ancestor, *field, 1, 1)?) {

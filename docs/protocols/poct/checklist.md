@@ -59,7 +59,28 @@ reconciliation and marks every repeated derived identity unresolved. Both
 observations and specific reasons are retained; neither revisions nor outbox
 rows are created. XML positions remain evidence locations, never result keys.
 
-The broader correction claim remains open: clinical source-context changes
-that do not change common content can still be suppressed as retransmissions
-(P12). A durable protocol-evidence comparison needs a reviewed persistence
-choice; the current common model and revision history store no such digest.
+P12 now uses conservative parking for EDT with unchanged latest common
+content rather than silently suppressing it. Patient context is not delivered
+downstream today. A precise protocol-context comparison still requires a
+future ADR; no stored format or common model was changed.
+## Source-backed type and edit regressions
+
+`crates/protocols/poct/tests/type_rules.rs` covers numeric fixed metadata
+(B 12.3 p.189), DML device/AP identifiers, nonnegative counts, the four-character
+encoding declaration, CS lot fields (including the p.285 clarification),
+default CV tables and qualified extensions, unique advertised sets, CD
+translations/modifiers, restricted auxiliary child models, thumbnail property
+inheritance, initial ED text and integral trailing-point REAL/PQ literals.
+These selected regressions do not close the full vocabulary/type matrix.
+The object definitions and published lot clarification take precedence over
+the older element DTD's CV lot spelling.
+
+Mapping tests cover UTC Z versus signed/absent offsets with original spelling
+and precision, and retain trailing-point quantity text. The program test
+`poct01_b_5_21_table49_patient_and_metadata_edits_are_not_retransmissions`
+checks conservative receipt-specific parking for patient, method, critical
+range, normal-range unit, coded-version and specimen-namespace edits. Changed
+common content still corrects; NEW/RES reuploads still deduplicate. Repeated
+EDTs after a lost ACK park independently without duplicate delivery. See the
+explicit patient-context limitation and policy in [decisions.md](decisions.md).
+Evidence remains documented and the broader conformance gate remains open.

@@ -72,15 +72,14 @@ pub fn map_evidence(
                 .get("rt")
                 .ok_or_else(|| analyte_vidas::syntax::Error::Field("rt".into()))?,
         )?,
-        value: ResultValue {
-            decoded_text: None,
-            original: SourceText::new(
+        value: ResultValue::new(
+            SourceText::new(
                 message
                     .get("qn")
                     .ok_or_else(|| analyte_vidas::syntax::Error::Field("qn".into()))?,
             )?,
-            parsed: ValueInterpretation::Text,
-        },
+            ValueInterpretation::Text,
+        ),
         call: SourceText::new(
             message
                 .get("ql")

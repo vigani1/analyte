@@ -271,7 +271,7 @@ for OBR-4 and scalar DTM for timing. A test revision is carried in component 7;
 priority table 0485 and specimen coding revisions are supplied separately.
 Requiring revisions for all named systems avoids guessing table ownership from
 an HL7 prefix. Sources and the field matrix are in versions.md; protocol
-`edition_orders.rs`, config edition tests and program `hl7_send_cases` establish
+`edition_orders.rs`, config edition tests and program `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items` establish
 the bounded behavior. Evidence remains documented; no retransmission is added.
 
 ## Keep the 2.8.2 writer on the patient-required O22 response
@@ -298,3 +298,143 @@ separate. Evidence: the source-named config refusal test and registry blocker.
 HL7 2.5.1 section 2.A.22 (inherited by TS section 2.A.77.1) restricts offsets to legally defined timezones. Our explicit support policy accepts -1200 through +1400, with minutes 00, 30 or 45 only. LAW MSH-7 (TF-2b C.4-6) uses the same check. Exact spelling, including signed zero, remains unchanged; no zone is inferred and no conversion is performed. Unsupported offsets are located failures and the raw receipt remains available.
 
 LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other schemes are refused until their lexical rules are implemented. Local-only identities remain supported.
+
+## Park reports until required context is established
+
+- **what**: Park results with missing OBR-4/25 or OBX-3/11, an unsupported
+  report or observation status, or a populated value without its value type.
+  Require OBR-22 report time in the selected 2.8.2/2.9.1 report profile.
+  Keep original fields and any mapped evidence; do not supply a final status.
+  A real machine that omits OBR-25 or OBX-11 will have its results parked until
+  a named machine departure allows that omission.
+- **why**: Successful value decoding or identity selection does not establish
+  report completion. The generic profile must not infer omitted context or
+  silently apply a machine-specific default.
+- **source**: HL7 2.3.1 section 7.3.2; 2.5.1/2.6/2.8.2/2.9.1 sections
+  7.4.1 and 7.4.2, especially 7.4.1.25 and 7.4.2.11; modern 7.4.1.22;
+  ADR 0003, retaining and parking unqualified input.
+- **tests**: `hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks`,
+  `hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked`.
+
+## Refuse continuation and sequence protocols that are not negotiated
+
+- **what**: Refuse populated MSH-14 and DSC fragments independently, including
+  a final fragment received alone after reconnect. Refuse populated MSH-13;
+  the generic receiver does not negotiate sequence-number processing. Retain
+  exact receipts with specific reasons instead of delivering partial reports.
+- **why**: Fragment-local message identities do not establish a complete logical
+  report. A header option cannot activate assembly, sequencing or correlation
+  state that Analyte has not implemented and selected.
+- **source**: HL7 2.5.1 sections 2.10.1 and 2.10.2.2; 2.6/2.8.2 section
+  2.10.2; 2.9.1 section 2.9.2; ADR 0003, original evidence and result identity.
+- **tests**: `hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result`,
+  `hl7_251_s2_10_1_unnegotiated_sequence_number_is_refused`,
+  `hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked`.
+
+## Refuse enhanced 2.9.1 application exchanges without a separate channel
+
+- **what**: Refuse configuration that enables enhanced 2.9.1 application
+  acknowledgments. Commit and park incoming requests for that exchange without
+  interpreting them or writing an application response on the receiving channel.
+  Keep original-mode and enhanced accept-only exchanges in the selected scope.
+- **why**: The required separate application-response channel has no owner in
+  the generic receiver. Sending the response on the initiating channel would
+  claim support for a different exchange.
+- **source**: HL7 2.9.1 section 2.8.3.2 and its channel note; ADR 0007,
+  explicit supported scope.
+- **tests**: `hl7_291_s2_8_3_2_separate_application_channel_cannot_be_enabled`,
+  `hl7_291_s2_8_3_2_enhanced_application_ack_requires_separate_channel`.
+
+## Refuse enhanced observation grouping until its identity contract is selected
+
+- **what**: In 2.8.2/2.9.1, accept legacy OG.1 but refuse populated enhanced
+  OBX-4 grouping components before selector-based identity mapping.
+- **why**: Selecting only a group, or no sub-ID, could collapse distinct
+  group/sequence observations into one replacement identity. The bounded
+  profile does not select the full enhanced grouping contract.
+- **source**: HL7 2.8.2 sections 2.A.50 and 7.4.2.4; 2.9.1 sections
+  2A.2.50 and 7.4.2.4; ADR 0003, result identity.
+- **test**: `hl7_282_s2_a_50_291_s7_4_2_4_enhanced_og_requires_full_grouping_contract`.
+
+## Keep native 2.3.1 interpretation within its own field inventory
+
+- **what**: Refuse native 2.3.1 specimen/container extensions and leave OBX-19
+  raw rather than assigning later analysis-time meaning. LAW retains its
+  separately selected compatible-VID analysis-time contract.
+- **why**: An unknown tail field or familiar segment cannot acquire clinical
+  meaning from a later edition without an evidenced, named machine departure.
+- **source**: HL7 2.3.1 sections 7.2.1 and 7.3.2; compare 2.5.1 section
+  7.4.2.19; ADR 0007, standards before machine departures.
+- **tests**: `hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning`,
+  `law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time`.
+
+## Refuse new patient-related ORM when mandatory PID cannot be supplied
+
+- **what**: For native 2.3.1 new patient work, require PID regardless of the
+  optional config flag. Contract-v1 lacks the mandatory name, so reject before
+  reservation or Sending. The pure writer also refuses identifier-only new
+  patient work. Keep nonpatient work and cancellations separate.
+- **why**: A known patient cannot become unspecified merely because required
+  patient content is unavailable. Inventing a name or omitting PID would hide
+  the missing contract information.
+- **source**: HL7 2.3.1 sections 4.2.1.1(d) and 3.3.2; ADR 0003,
+  order lifecycle and no invented data.
+- **tests**: `hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing_name`,
+  `hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel`,
+  `hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context`.
+
+## Validate patient content whenever an order reply includes PID
+
+- **what**: Require a present reply PID to contain a non-null identifier and
+  surname independently of modern identifier-type requiredness. Modern CX.5 is
+  an additional check, not the switch for all patient validation. A malformed
+  reply does not establish machine acceptance.
+- **why**: An optional group does not make its required fields optional when
+  present. Order correlation cannot substitute for patient content, and the
+  receiver must not infer demographics to complete a reply.
+- **source**: HL7 2.5.1/2.6 sections 3.4.2 and 4.4.7; 2.8.2 sections
+  3.3.2 and 4.4.7.1; ADR 0003, uncertain order outcomes.
+- **tests**: `hl7_251_26_s4_4_7_required_pid_content_in_order_reply`,
+  `hl7_251_s3_4_2_present_reply_pid_requires_identifier_and_name`.
+
+## Refuse collection intervals the selected time mapping cannot represent
+
+- **what**: Preserve point-collection handling, but specifically refuse SPM-17
+  ranges or nested endpoint precision before scalar time interpretation.
+- **why**: A DR endpoint is not a scalar TS precision indicator. The current
+  mapping cannot faithfully represent those interval forms; keeping and parking
+  the receipt avoids assigning the end time as the start time's precision.
+- **source**: HL7 2.5.1 sections 7.4.3.17-19; ADR 0003, exact source values.
+- **tests**: `hl7_251_s7_4_3_17_collection_range_is_not_ts_precision`,
+  `rule3_hl7_source_path_keeps_statuses_sequences_and_specimen_times`.
+
+## Validate the selected bounded result grammar before assigning ownership
+
+- **what**: Check group order, selected cardinality and unfinished groups before
+  constructing ORU/OUL ownership. Refuse unselected or misplaced segments,
+  including an ORU header NTE; preserve OUL's separately defined header note.
+- **why**: A whitelist and most-recent-parent pointers can assign valid-looking
+  observations to malformed groups. A bounded grammar is sufficient for the
+  selected profile and does not imply a general HL7 schema engine.
+- **source**: HL7 2.3.1 section 7.2.1; 2.5.1 sections 7.3.1 and 7.3.7;
+  later ORU section 7.3.1; ADR 0007, explicit supported scope.
+- **tests**: `hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused`,
+  `plan6_notes_keep_parent_paths_even_without_a_result`.
+
+## Control boundary regressions (standards pass 2)
+
+Response timestamps use the calendar and precision parser in every edition,
+including TS editions (2.5.1 §2.15.9.7 and §2.A.77). The selected ACK output
+profile writes the time component only; it does not emit a TS precision component.
+
+ERR-3 uses table 0357; zero requires informational severity (2.5.1 §2.15.5.3–4).
+The error-only ACK renderer refuses zero. Fatal severity starts with the selected
+2.6 profile; code 104 starts with the selected 2.8.2 profile. Unknown codes are
+refused, with local application codes carried separately. Tests are in
+[standards_pass2.rs](../../../crates/protocols/hl7/tests/standards_pass2.rs).
+
+The strict modern withdrawal profile refuses explicit null as well as other
+nonempty encodings in withdrawn MSA/ERR fields (2.8.2 §2.14.8 and 2.9.1 §2.13.8).
+This is the declared profile's refusal policy, not a claim that explicit null
+carries clinical content. View regressions and the O22 response regressions in
+[edition_orders.rs](../../../crates/protocols/hl7/tests/edition_orders.rs) cover it.
