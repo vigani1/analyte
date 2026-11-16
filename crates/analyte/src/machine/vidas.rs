@@ -45,196 +45,240 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let installed = &settings.policy();
-    let config = super::interpretation::vidas_config(machine)?;
-    let policy = Policy {
-        acknowledgment: ms(installed.acknowledgment_ms),
-        interbyte: ms(installed.interbyte_ms),
-        session: ms(installed.session_ms),
-        commit: ms(installed.commit_ms),
-        retries: installed.retries,
-        backoff: ms(installed.backoff_ms),
-    };
-    let dialog = Dialog::upload(config.clone(), policy.clone())?;
-    let actions = dialog.start().into();
-    let mut state = ConnectionState {
-        dialog,
-        decoder: None,
-        suffix: None,
-        timers: [None; 4],
-        start: Instant::now(),
-        actions,
-        active: None,
-        requests: VecDeque::new(),
-        idle: true,
-        opened: false,
-        end_code: "VIDAS-transfer-error",
-        cursor: String::new(),
-        next_poll: Instant::now(),
-        config: config.clone(),
-        policy,
-    };
+    let mut state = ConnectionState::open(machine, settings)?;
     // Cancellation after reservation leaves Sending for restart recovery. Every
     // observed non-normal end is committed Uncertain before this owner returns.
-    let result = async {
+    let result = state
+        .receive_loop(machine, store, conn, &mut stop, settings.policy())
+        .await;
+    state.close(store, result).await
+}
+
+impl ConnectionState {
+    fn open(
+        machine: &evidence::Connection<'_>,
+        settings: &analyte_config::VidasStack,
+    ) -> Result<Self, Error> {
+        let installed = &settings.policy();
+        let config = super::interpretation::vidas_config(machine)?;
+        let policy = Policy {
+            acknowledgment: ms(installed.acknowledgment_ms),
+            interbyte: ms(installed.interbyte_ms),
+            session: ms(installed.session_ms),
+            commit: ms(installed.commit_ms),
+            retries: installed.retries,
+            backoff: ms(installed.backoff_ms),
+        };
+        let dialog = Dialog::upload(config.clone(), policy.clone())?;
+        let actions = dialog.start().into();
+        Ok(Self {
+            dialog,
+            decoder: None,
+            suffix: None,
+            timers: [None; 4],
+            start: Instant::now(),
+            actions,
+            active: None,
+            requests: VecDeque::new(),
+            idle: true,
+            opened: false,
+            end_code: "VIDAS-transfer-error",
+            cursor: String::new(),
+            next_poll: Instant::now(),
+            config,
+            policy,
+        })
+    }
+    async fn receive_loop(
+        &mut self,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+        installed: &analyte_config::Vidas,
+    ) -> Result<(), Error> {
         loop {
-            if state.idle && state.opened && Instant::now() >= state.next_poll {
-                state.next_poll = Instant::now()
-                    .checked_add(ms(1000))
-                    .ok_or_else(|| invalid("VIDAS order poll deadline overflow"))?;
-                if let Some(reserved) =
-                    crate::orders::sending::next(store, machine, &mut state.cursor).await?
-                {
-                    state.active = Some(reserved.order);
-                    let analyte_mapping::MachineOrder::Vidas(requests) = reserved.payload else {
-                        return Err(invalid("VIDAS received another stack's order"));
-                    };
-                    state.requests = requests.into();
-                    start_download(&mut state)?;
-                }
-            }
-            if process_inline(&mut state, machine, store, conn, installed).await? {
+            self.poll_orders(machine, store).await?;
+            if process(self, machine, store, conn, installed).await? {
                 return Ok(());
             }
-            let mut next = state.timers.iter().flatten().copied().min().unwrap_or(
-                state
-                    .start
+            let mut next = self.timers.iter().flatten().copied().min().unwrap_or(
+                self.start
                     .elapsed()
                     .saturating_add(ms(installed.session_ms)),
             );
-            if state.idle && state.opened {
+            if self.idle && self.opened {
                 next = next.min(
-                    state
-                        .start
+                    self.start
                         .elapsed()
-                        .saturating_add(state.next_poll.saturating_duration_since(Instant::now())),
+                        .saturating_add(self.next_poll.saturating_duration_since(Instant::now())),
                 );
             }
-            state.end_code = "VIDAS-input-failed";
+            self.end_code = "VIDAS-input-failed";
             let input = super::connection_input::journaled(
                 machine,
                 store,
                 conn,
-                &mut stop,
-                next.saturating_sub(state.start.elapsed()),
+                stop,
+                next.saturating_sub(self.start.elapsed()),
             )
             .await?;
-            state.end_code = "VIDAS-transfer-error";
+            self.end_code = "VIDAS-transfer-error";
             match input {
-                Input::Opened { .. } => state.opened = true,
+                Input::Opened { .. } => self.opened = true,
                 Input::Tick => {
-                    for timer in [
-                        Timer::Session,
-                        Timer::Commit,
-                        Timer::Acknowledgment,
-                        Timer::Interbyte,
-                    ] {
-                        if state
-                            .timers
-                            .get(timer_index(timer))
-                            .copied()
-                            .flatten()
-                            .is_some_and(|d| d <= state.start.elapsed())
-                        {
-                            state.end_code = match timer {
-                                Timer::Acknowledgment => "VIDAS-acknowledgment-timeout",
-                                Timer::Interbyte => "VIDAS-interbyte-timeout",
-                                Timer::Session => "VIDAS-session-timeout",
-                                Timer::Commit => "VIDAS-commit-timeout",
-                            };
-                            state.actions.extend(state.dialog.on(Event::Expired(timer)));
-                            break;
-                        }
-                    }
+                    self.tick();
                 }
                 Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
-                    state.end_code = if *stop.borrow() {
+                    self.end_code = if *stop.borrow() {
                         "VIDAS-transfer-cancelled"
                     } else {
                         "VIDAS-transfer-disconnected"
                     };
-                    state.actions.extend(state.dialog.on(Event::Disconnected));
-                    process_inline(&mut state, machine, store, conn, installed).await?;
+                    self.actions.extend(self.dialog.on(Event::Disconnected));
+                    process(self, machine, store, conn, installed).await?;
                     return Ok(());
                 }
                 Input::Bytes { bytes } => {
-                    state.idle = false;
-                    for byte in bytes {
-                        if let Some(deadline) = state.timers.get_mut(timer_index(Timer::Interbyte))
-                        {
-                            *deadline = Some(
-                                state
-                                    .start
-                                    .elapsed()
-                                    .saturating_add(ms(installed.interbyte_ms)),
-                            );
-                        }
-                        let event = if let Some(decoder) = &mut state.decoder {
-                            match Decoder::push(decoder, byte) {
-                                Ok(Some(packet)) => Some(Event::Packet(packet)),
-                                Ok(None) => None,
-                                Err(error) => {
-                                    state.end_code = "VIDAS-framing-error";
-                                    evidence::park_bytes(
-                                        store,
-                                        machine,
-                                        vec![byte],
-                                        &format!("VIDAS framing: {error}"),
-                                    )
-                                    .await?;
-                                    return Err(error.into());
-                                }
-                            }
-                        } else if let Some((control, index)) = state.suffix {
-                            if installed.suffix.get(index) != Some(&byte) {
-                                state.end_code = "VIDAS-control-suffix-mismatch";
-                                evidence::park_bytes(
-                                    store,
-                                    machine,
-                                    vec![byte],
-                                    "VIDAS control suffix mismatch",
-                                )
-                                .await?;
-                                return Err(invalid("VIDAS control suffix mismatch"));
-                            }
-                            if index.saturating_add(1) == installed.suffix.len() {
-                                state.suffix = None;
-                                Some(Event::Control(control))
-                            } else {
-                                state.suffix = Some((control, index.saturating_add(1)));
-                                None
-                            }
-                        } else if byte == 2 {
-                            let mut next = Decoder::new(config.clone());
-                            next.push(byte)?;
-                            state.decoder = Some(next);
-                            None
-                        } else if installed.suffix.is_empty() {
-                            Some(Event::Control(byte))
-                        } else {
-                            state.suffix = Some((byte, 0usize));
-                            None
-                        };
-                        if let Some(event) = event {
-                            if matches!(event, Event::Packet(_)) {
-                                state.decoder = None;
-                            }
-                            state.actions.extend(state.dialog.on(event));
-                            // Process Store before consuming a merged ETX/EOT following it.
-                            if process_inline(&mut state, machine, store, conn, installed).await? {
-                                return Ok(());
-                            }
-                        }
+                    if self
+                        .receive_bytes(bytes, machine, store, conn, installed)
+                        .await?
+                    {
+                        return Ok(());
                     }
                 }
             }
         }
     }
-    .await;
-    if let Some(order) = state.active.as_ref() {
-        crate::orders::sending::uncertain(store, order, state.end_code).await?;
+    async fn receive_bytes(
+        &mut self,
+        bytes: Vec<u8>,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        conn: &mut analyte_transport::Connection,
+        installed: &analyte_config::Vidas,
+    ) -> Result<bool, Error> {
+        self.idle = false;
+        for byte in bytes {
+            if let Some(deadline) = self.timers.get_mut(timer_index(Timer::Interbyte)) {
+                *deadline = Some(
+                    self.start
+                        .elapsed()
+                        .saturating_add(ms(installed.interbyte_ms)),
+                );
+            }
+            let event = if let Some(decoder) = &mut self.decoder {
+                match Decoder::push(decoder, byte) {
+                    Ok(Some(packet)) => Some(Event::Packet(packet)),
+                    Ok(None) => None,
+                    Err(error) => {
+                        self.end_code = "VIDAS-framing-error";
+                        evidence::park_bytes(
+                            store,
+                            machine,
+                            vec![byte],
+                            &format!("VIDAS framing: {error}"),
+                        )
+                        .await?;
+                        return Err(error.into());
+                    }
+                }
+            } else if let Some((control, index)) = self.suffix {
+                if installed.suffix.get(index) != Some(&byte) {
+                    self.end_code = "VIDAS-control-suffix-mismatch";
+                    evidence::park_bytes(
+                        store,
+                        machine,
+                        vec![byte],
+                        "VIDAS control suffix mismatch",
+                    )
+                    .await?;
+                    return Err(invalid("VIDAS control suffix mismatch"));
+                }
+                if index.saturating_add(1) == installed.suffix.len() {
+                    self.suffix = None;
+                    Some(Event::Control(control))
+                } else {
+                    self.suffix = Some((control, index.saturating_add(1)));
+                    None
+                }
+            } else if byte == 2 {
+                let mut next = Decoder::new(self.config.clone());
+                next.push(byte)?;
+                self.decoder = Some(next);
+                None
+            } else if installed.suffix.is_empty() {
+                Some(Event::Control(byte))
+            } else {
+                self.suffix = Some((byte, 0usize));
+                None
+            };
+            if let Some(event) = event {
+                if matches!(event, Event::Packet(_)) {
+                    self.decoder = None;
+                }
+                self.actions.extend(self.dialog.on(event));
+                // Process Store before consuming a merged ETX/EOT following it.
+                if process(self, machine, store, conn, installed).await? {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
-    result
+    async fn poll_orders(
+        &mut self,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+    ) -> Result<(), Error> {
+        if self.idle && self.opened && Instant::now() >= self.next_poll {
+            self.next_poll = Instant::now()
+                .checked_add(ms(1000))
+                .ok_or_else(|| invalid("VIDAS order poll deadline overflow"))?;
+            if let Some(reserved) =
+                crate::orders::sending::next(store, machine, &mut self.cursor).await?
+            {
+                self.active = Some(reserved.order);
+                let analyte_mapping::MachineOrder::Vidas(requests) = reserved.payload else {
+                    return Err(invalid("VIDAS received another stack's order"));
+                };
+                self.requests = requests.into();
+                start_download(self)?;
+            }
+        }
+        Ok(())
+    }
+    fn tick(&mut self) {
+        for timer in [
+            Timer::Session,
+            Timer::Commit,
+            Timer::Acknowledgment,
+            Timer::Interbyte,
+        ] {
+            if self
+                .timers
+                .get(timer_index(timer))
+                .copied()
+                .flatten()
+                .is_some_and(|d| d <= self.start.elapsed())
+            {
+                self.end_code = match timer {
+                    Timer::Acknowledgment => "VIDAS-acknowledgment-timeout",
+                    Timer::Interbyte => "VIDAS-interbyte-timeout",
+                    Timer::Session => "VIDAS-session-timeout",
+                    Timer::Commit => "VIDAS-commit-timeout",
+                };
+                self.actions.extend(self.dialog.on(Event::Expired(timer)));
+                break;
+            }
+        }
+    }
+    async fn close(&self, store: &Handle, result: Result<(), Error>) -> Result<(), Error> {
+        if let Some(order) = self.active.as_ref() {
+            crate::orders::sending::uncertain(store, order, self.end_code).await?;
+        }
+        result
+    }
 }
 
 fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
@@ -251,7 +295,7 @@ fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
     Ok(())
 }
 
-async fn process_inline(
+async fn process(
     state: &mut ConnectionState,
     machine: &evidence::Connection<'_>,
     store: &Handle,

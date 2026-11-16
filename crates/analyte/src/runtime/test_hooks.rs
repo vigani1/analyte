@@ -1,11 +1,11 @@
-//! Test-only commit/ACK boundary control. Never enable `test-hooks` in release builds.
+//! Test-only host-boundary control. Never enable `test-hooks` in release builds.
 use crate::{Error, invalid};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::{Notify, watch};
-/// One-shot pause after machine bytes are durable, before interpretation or ACK.
+/// One-shot pause after a configured host boundary has completed.
 /// It cannot inspect/modify bytes or bypass storage. Dropping control stops the connection.
 pub struct Committed {
     armed: AtomicBool,
@@ -54,7 +54,7 @@ impl Committed {
     }
 }
 impl Control {
-    /// Waits until durable storage has completed and the connection is paused.
+    /// Waits until the configured host boundary has completed and its owner is paused.
     /// # Errors
     /// Fails after five seconds if the named boundary was never reached.
     pub async fn reached(&self) -> Result<(), Error> {

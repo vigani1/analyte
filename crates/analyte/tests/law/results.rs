@@ -578,80 +578,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     std::fs::write(temp.path().join("hl7.toml"), definition())?;
     let current = program(&path, &reference.url)?;
     let mut store = analyte::open_system_store(&current).await?;
-    let until = || {
-        std::time::Instant::now()
-            .checked_add(Duration::from_secs(5))
-            .ok_or("deadline")
-    };
-    let (parked, original, version1) = store
-        .request(until()?, move |s| {
-            let parked = s
-                .parked(0)?
-                .first()
-                .ok_or(analyte_store::Error::Corruption)?
-                .id;
-            let original = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
-            let version1 = serde_json::to_string(
-                &s.interpretation(id, 1)?
-                    .ok_or(analyte_store::Error::Corruption)?,
-            )?;
-            Ok((parked, original, version1))
-        })
-        .await?;
-    let commit = analyte::operator::recovery::reprocess(
-        &store,
-        &current,
-        analyte::operator::recovery::ReprocessTarget::Parked(parked),
-        analyte_model::Identifier::new("synthetic-operator")?,
-        analyte_model::Reason::new("repair LAW test mapping")?,
-    )
-    .await?;
-    assert_eq!(commit.version, 2);
-    assert!(matches!(
-        commit.outcomes.as_slice(),
-        [analyte_store::RevisionOutcome::New(_)]
-    ));
-    let repeated = analyte::operator::recovery::reprocess(
-        &store,
-        &current,
-        analyte::operator::recovery::ReprocessTarget::Receipt(id),
-        analyte_model::Identifier::new("synthetic-operator")?,
-        analyte_model::Reason::new("verify retained result idempotency")?,
-    )
-    .await?;
-    assert_eq!(repeated.version, 3);
-    assert!(matches!(
-        repeated.outcomes.as_slice(),
-        [analyte_store::RevisionOutcome::Retransmission(_)]
-    ));
-    store
-        .request(until()?, move |s| {
-            let retained = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
-            assert_eq!(retained.raw, original.raw);
-            assert_eq!(retained.config, original.config);
-            assert_eq!(
-                serde_json::to_string(&retained.metadata)?,
-                serde_json::to_string(&original.metadata)?
-            );
-            assert_eq!(
-                serde_json::to_string(
-                    &s.interpretation(id, 1)?
-                        .ok_or(analyte_store::Error::Corruption)?
-                )?,
-                version1
-            );
-            assert!(
-                s.parked_item(parked)?
-                    .ok_or(analyte_store::Error::Corruption)?
-                    .resolution
-                    .is_some()
-            );
-            assert_eq!(s.deliveries(0)?.len(), 1);
-            assert_eq!(s.audits(0)?.len(), 2);
-            Ok(())
-        })
-        .await?;
-    store.shutdown(until()?).await?;
+    assert_repaired_mapping_preserves_receipt(&mut store, &current, id).await?;
     let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
     check(&reference.event().await?, "awos-1", "LAB", 0, "12.30")?;
@@ -695,7 +622,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     assert_eq!(rejected.version, 2);
     assert!(rejected.outcomes.is_empty());
     store
-        .request(until()?, move |s| {
+        .request(reprocess_deadline()?, move |s| {
             assert!(matches!(
                 s.interpretation(conflict_id, 2)?
                     .ok_or(analyte_store::Error::Corruption)?
@@ -712,7 +639,7 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
         })
         .await?;
     assert_eq!(count(&path, "observation_revisions")?, 1);
-    store.shutdown(until()?).await?;
+    store.shutdown(reprocess_deadline()?).await?;
     reference.close().await?;
     Ok(())
 }
@@ -898,4 +825,87 @@ async fn law_adr0011_c7_only_one_final_run_in_history_or_batch() -> Result<(), E
         reference.close().await?;
     }
     Ok(())
+}
+
+async fn assert_repaired_mapping_preserves_receipt(
+    store: &mut analyte_store::Handle,
+    current: &Program,
+    id: analyte_model::ReceiptId,
+) -> Result<(), Error> {
+    let (parked, original, version1) = store
+        .request(reprocess_deadline()?, move |s| {
+            let parked = s
+                .parked(0)?
+                .first()
+                .ok_or(analyte_store::Error::Corruption)?
+                .id;
+            let original = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
+            let version1 = serde_json::to_string(
+                &s.interpretation(id, 1)?
+                    .ok_or(analyte_store::Error::Corruption)?,
+            )?;
+            Ok((parked, original, version1))
+        })
+        .await?;
+    let commit = analyte::operator::recovery::reprocess(
+        store,
+        current,
+        analyte::operator::recovery::ReprocessTarget::Parked(parked),
+        analyte_model::Identifier::new("synthetic-operator")?,
+        analyte_model::Reason::new("repair LAW test mapping")?,
+    )
+    .await?;
+    assert_eq!(commit.version, 2);
+    assert!(matches!(
+        commit.outcomes.as_slice(),
+        [analyte_store::RevisionOutcome::New(_)]
+    ));
+    let repeated = analyte::operator::recovery::reprocess(
+        store,
+        current,
+        analyte::operator::recovery::ReprocessTarget::Receipt(id),
+        analyte_model::Identifier::new("synthetic-operator")?,
+        analyte_model::Reason::new("verify retained result idempotency")?,
+    )
+    .await?;
+    assert_eq!(repeated.version, 3);
+    assert!(matches!(
+        repeated.outcomes.as_slice(),
+        [analyte_store::RevisionOutcome::Retransmission(_)]
+    ));
+    store
+        .request(reprocess_deadline()?, move |s| {
+            let retained = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
+            assert_eq!(retained.raw, original.raw);
+            assert_eq!(retained.config, original.config);
+            assert_eq!(
+                serde_json::to_string(&retained.metadata)?,
+                serde_json::to_string(&original.metadata)?
+            );
+            assert_eq!(
+                serde_json::to_string(
+                    &s.interpretation(id, 1)?
+                        .ok_or(analyte_store::Error::Corruption)?
+                )?,
+                version1
+            );
+            assert!(
+                s.parked_item(parked)?
+                    .ok_or(analyte_store::Error::Corruption)?
+                    .resolution
+                    .is_some()
+            );
+            assert_eq!(s.deliveries(0)?.len(), 1);
+            assert_eq!(s.audits(0)?.len(), 2);
+            Ok(())
+        })
+        .await?;
+    store.shutdown(reprocess_deadline()?).await?;
+    Ok(())
+}
+
+fn reprocess_deadline() -> Result<std::time::Instant, &'static str> {
+    std::time::Instant::now()
+        .checked_add(Duration::from_secs(5))
+        .ok_or("deadline")
 }

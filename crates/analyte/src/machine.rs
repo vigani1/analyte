@@ -98,7 +98,8 @@ pub(crate) async fn run(
         } => loop {
             let (conn, side) = recorded_connection(limits, capture.as_ref());
             let cancel = conn.cancellation();
-            let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
+            let transport =
+                analyte_transport::tcp::client_session(endpoint.parse()?, side, retry()?);
             let (result, transport) = tokio::join!(
                 drive(&machine, session, &store, conn, stop.clone(), &mut closing),
                 transport
@@ -208,6 +209,10 @@ async fn drive(
     closing: &mut Closing,
 ) -> Result<(), Error> {
     let result = session(machine, selected, store, &mut conn, stop.clone()).await;
+    #[cfg(feature = "test-hooks")]
+    if let Some(hook) = &machine.connection_closing {
+        hook.pause(&mut stop.clone()).await?;
+    }
     if *stop.borrow() {
         closing.after_commits().await?;
     }

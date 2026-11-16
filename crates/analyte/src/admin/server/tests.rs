@@ -1,26 +1,10 @@
 //! Admin HTTP tests exercise authentication and audited operator actions.
 use super::*;
 use analyte_model::{OrderState, Reason};
-use std::{io::Write, sync::Mutex};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
 mod pages;
-
-#[derive(Clone)]
-struct Capture(Arc<Mutex<Vec<u8>>>);
-impl Write for Capture {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .map_err(|_| std::io::Error::other("log capture poisoned"))?
-            .extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
 
 struct Space;
 impl analyte_store::FreeSpace for Space {
@@ -123,16 +107,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
         None,
     ));
     let host = address.to_string();
-    tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            if tokio::net::TcpStream::connect(&host).await.is_ok() {
-                break;
-            }
-            // This externally started listener has no readiness channel; the enclosing timeout bounds probes.
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await?;
+    wait_for_service_listener(&host).await?;
     let response = request(
         &host,
         "/",
@@ -184,13 +159,7 @@ fn headers_present(response: &str) {
 // bounded metadata reads, honest health and no credential/payload in logs.
 #[tokio::test(flavor = "multi_thread")]
 async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(), Error> {
-    let logs = Capture(Arc::new(Mutex::new(Vec::new())));
-    let writer = logs.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_writer(move || writer.clone())
-        .finish();
-    tracing::subscriber::set_global_default(subscriber)?;
+    let logs = crate::test_tracing::init();
     let directory = crate::admin::private_tempdir()?;
     #[cfg(unix)]
     {
@@ -216,49 +185,153 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
         .await
         .map_err(|error| format!("admin overview fixture migration: {error}"))?,
     );
+    seed_overview(&store).await?;
+    let (state, stop, owner, host) = start_overview_server(directory.path(), &store).await?;
+    let wrong = "wrong-secret-never-log-this";
+    assert_overview_refuses_auth(&host, wrong).await?;
+    assert_overview_health(&host, &bearer).await?;
+    let (session, form) = assert_overview_login(&host, &bearer).await?;
+    assert_overview_rejects_login_and_missing_route(&host, &bearer, &form).await?;
+    // A peer that never finishes its headers must not prevent bounded shutdown.
+    let mut slow = tokio::net::TcpStream::connect(&host).await?;
+    slow.write_all(b"GET / HTTP/1.1\r\n").await?;
+    drop(state);
+    stop.send_replace(true);
+    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    drop(slow);
+    let mut store = Arc::try_unwrap(store).map_err(|_| "admin retained store after shutdown")?;
+    store.shutdown(fixture_deadline()?).await?;
+    let captured = logs.lock().map_err(|_| "log capture poisoned")?;
+    let captured = String::from_utf8_lossy(&captured);
+    assert!(captured.contains("admin authentication refused"));
+    for secret in [
+        wrong,
+        "wrong-cookie-secret",
+        "wrong-login-secret",
+        &bearer,
+        &session,
+        "hostile",
+        "protected-raw-never-log",
+        "protected-payload-never-log",
+    ] {
+        assert!(!captured.contains(secret));
+    }
+    Ok(())
+}
+
+// AGENTS ownership: HTTP completion can precede the last router state destructor.
+#[tokio::test]
+async fn plan11_admin_drain_waits_for_router_state_release() -> Result<(), Error> {
+    use std::{future::Future as _, task::Poll};
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let mut drain = Box::pin(drain_server(std::future::ready(Ok(())), released));
+    // Poll HTTP completion synchronously while the final state owner is held.
+    // No scheduler, socket timing or elapsed-time assertion determines the verdict.
+    let poll = std::future::poll_fn(|cx| Poll::Ready(drain.as_mut().poll(cx))).await;
+    assert!(
+        poll.is_pending(),
+        "HTTP completion must not precede state release"
+    );
+    drop(release);
+    drain.await?;
+    Ok(())
+}
+
+async fn wait_for_service_listener(host: &str) -> Result<(), Error> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if tokio::net::TcpStream::connect(&host).await.is_ok() {
+                break;
+            }
+            // This externally started listener has no readiness channel; the enclosing timeout bounds probes.
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await?;
+    Ok(())
+}
+
+async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
     store
         .request(fixture_deadline()?, move |store| {
-            store.evaluate_alert(&analyte_store::AlertKey::RestorePaused,
-                "<script>responder('duty')&</script>", true, Some(1), 100)?;
-            store.evaluate_alert(&analyte_store::AlertKey::MachineSilent(
-                Identifier::new("<busy&machine>").map_err(|_| analyte_store::Error::InvalidInput)?),
-                "analyzer operator", true, None, 100)?;
-            store.evaluate_alert(&analyte_store::AlertKey::ParkedItems,
-                "cleared alert responder", true, Some(1), 100)?;
-            store.evaluate_alert(&analyte_store::AlertKey::ParkedItems,
-                "cleared alert responder", false, Some(0), 101)?;
+            store.evaluate_alert(
+                &analyte_store::AlertKey::RestorePaused,
+                "<script>responder('duty')&</script>",
+                true,
+                Some(1),
+                100,
+            )?;
+            store.evaluate_alert(
+                &analyte_store::AlertKey::MachineSilent(
+                    Identifier::new("<busy&machine>")
+                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                ),
+                "analyzer operator",
+                true,
+                None,
+                100,
+            )?;
+            store.evaluate_alert(
+                &analyte_store::AlertKey::ParkedItems,
+                "cleared alert responder",
+                true,
+                Some(1),
+                100,
+            )?;
+            store.evaluate_alert(
+                &analyte_store::AlertKey::ParkedItems,
+                "cleared alert responder",
+                false,
+                Some(0),
+                101,
+            )?;
             // Synthetic read fixtures: two pages ensure the overview does not report
             // a first-page count as a total. No machine commands are invoked.
-            let id = |value| Identifier::new(value).map_err(|_| analyte_store::Error::InvalidInput);
             for order in ["first", "second"] {
-                let raw = b"protected-raw-never-log";
-                let config = b"synthetic-config";
-                store.receive(
-                    &analyte_model::ReceiptMetadata {
-                        id: analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        raw_digest: analyte_model::Digest(analyte_contract::content_digest(raw)),
-                        connection: id("synthetic")?,
-                        machine: id("<script>alert('hostile')&\"</script>")?,
-                        driver: analyte_model::NamespacedId {
-                            namespace: id("synthetic")?,
-                            value: id("1")?,
-                        },
-                        config_version: id("1")?,
-                        config_digest: analyte_model::Digest(analyte_contract::content_digest(
-                            config,
-                        )),
-                        received_at: jiff::Timestamp::from_second(if order == "first" {
-                            100
-                        } else {
-                            200
-                        })
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
-                    },
-                    raw,
-                    config,
-                )?;
-                store.order_page(&analyte_store::OrderPage {
+                seed_overview_order(store, order)?;
+            }
+            let id = |value| Identifier::new(value).map_err(|_| analyte_store::Error::InvalidInput);
+            store.audit(&analyte_store::Audit {
+                actor: id("operator")?,
+                action: id("store-restore")?,
+                targets: Vec::new(),
+                time: 103,
+                reason: Reason::new("synthetic restore")
+                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+            })?;
+            Ok(())
+        })
+        .await?;
+    Ok(())
+}
+
+fn seed_overview_order(
+    store: &mut analyte_store::Store,
+    order: &str,
+) -> Result<(), analyte_store::Error> {
+    let id = |value| Identifier::new(value).map_err(|_| analyte_store::Error::InvalidInput);
+    let raw = b"protected-raw-never-log";
+    let config = b"synthetic-config";
+    store.receive(
+        &analyte_model::ReceiptMetadata {
+            id: analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())
+                .map_err(|_| analyte_store::Error::InvalidInput)?,
+            raw_digest: analyte_model::Digest(analyte_contract::content_digest(raw)),
+            connection: id("synthetic")?,
+            machine: id("<script>alert('hostile')&\"</script>")?,
+            driver: analyte_model::NamespacedId {
+                namespace: id("synthetic")?,
+                value: id("1")?,
+            },
+            config_version: id("1")?,
+            config_digest: analyte_model::Digest(analyte_contract::content_digest(config)),
+            received_at: jiff::Timestamp::from_second(if order == "first" { 100 } else { 200 })
+                .map_err(|_| analyte_store::Error::InvalidInput)?,
+        },
+        raw,
+        config,
+    )?;
+    store.order_page(&analyte_store::OrderPage {
                     destination: id("app")?,
                     cursor: id(order)?,
                     complete: true,
@@ -273,100 +346,59 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
                         expiry: 200,
                     }],
                 })?;
-                let key = analyte_store::MachineOrderKey {
-                    destination: id("app")?,
-                    order: id(order)?,
-                    machine: id("machine")?,
-                };
-                let reserved = store
-                    .reserve_send(&analyte_store::OrderReservation { identity: &key, version: std::num::NonZeroU64::MIN, now: 101, freshness: 30 }, analyte_store::ReserveOptions::default())?
-                    .map_err(|_| analyte_store::Error::Conflict)?;
-                store.transition_order(
-                    reserved.id,
-                    OrderState::Uncertain,
-                    analyte_model::SourceText::new("timeout")
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
-                    102,
-                    |order| {
-                        Ok(analyte_store::OrderEventDelivery {
-                            id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7())
-                                .map_err(|_| analyte_store::Error::InvalidInput)?,
-                            destination: order.key.destination.clone(),
-                            order_id: order.key.order.clone(),
-                            payload: b"protected-payload-never-log".to_vec(),
-                            contract_version: 1,
-                        })
-                    },
-                )?;
-            }
-            store.audit(&analyte_store::Audit {
-                actor: id("operator")?,
-                action: id("store-restore")?,
-                targets: Vec::new(),
-                time: 103,
-                reason: Reason::new("synthetic restore")
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
-            })?;
-            Ok(())
-        })
-        .await?;
-    let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let host = socket.local_addr()?.to_string();
-    let (released, release) = tokio::sync::oneshot::channel();
-    let state = Arc::new(Context {
-        config_path: directory.path().join("program.toml"),
-        token: Token::load(directory.path())?,
-        sessions: Sessions::default(),
-        origin: format!("http://{host}"),
-        host: host.clone(),
-        store: store.clone(),
-        machines: vec![Machine {
-            id: Identifier::new("<script>alert('hostile')&\"</script>")?,
-            running: Arc::new(AtomicBool::new(false)),
-        }],
-        destinations: vec![analyte_sink::Destination::for_loopback_test(
-            Identifier::new("app")?,
-            "http://127.0.0.1:1",
-            Identifier::new("app")?,
-            analyte_sink::Limits {
-                request_timeout: Duration::from_secs(1),
-                store_timeout: Duration::from_secs(1),
-                backoff_min: Duration::from_secs(1),
-                backoff_max: Duration::from_secs(1),
-                freshness: Duration::from_secs(30),
-                poll_interval: Duration::from_secs(5),
-                page_size: 1,
-                max_pages: 1,
-            },
-        )?],
-        directory: directory.path().to_owned(),
-        reserve: 1,
-        _released: released,
-    });
-    let server = Server {
-        listener: Listener {
-            socket,
-            slots: Arc::new(Semaphore::new(32)),
-        },
-        app: router(state.clone()),
-        released: release,
-        owners: BTreeMap::new(),
+    let key = analyte_store::MachineOrderKey {
+        destination: id("app")?,
+        order: id(order)?,
+        machine: id("machine")?,
     };
-    let (stop, stopped) = watch::channel(false);
-    let owner = tokio::spawn(server.run(stopped));
-    let wrong = "wrong-secret-never-log-this";
+    let reserved = store
+        .reserve_send(
+            &analyte_store::OrderReservation {
+                identity: &key,
+                version: std::num::NonZeroU64::MIN,
+                now: 101,
+                freshness: 30,
+            },
+            analyte_store::ReserveOptions::default(),
+        )?
+        .map_err(|_| analyte_store::Error::Conflict)?;
+    store.transition_order(
+        reserved.id,
+        OrderState::Uncertain,
+        analyte_model::SourceText::new("timeout")
+            .map_err(|_| analyte_store::Error::InvalidInput)?,
+        102,
+        |order| {
+            Ok(analyte_store::OrderEventDelivery {
+                id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7())
+                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+                destination: order.key.destination.clone(),
+                order_id: order.key.order.clone(),
+                payload: b"protected-payload-never-log".to_vec(),
+                contract_version: 1,
+            })
+        },
+    )?;
+    Ok(())
+}
+
+async fn assert_overview_refuses_auth(host: &str, wrong: &str) -> Result<(), Error> {
     for auth in [
         String::new(),
         format!("Authorization: Bearer {wrong}\r\n"),
         "Cookie: analyte_session=wrong-cookie-secret\r\n".into(),
     ] {
-        let response = request(&host, "/", &auth, None).await?;
+        let response = request(host, "/", &auth, None).await?;
         assert!(response.starts_with("HTTP/1.1 401"));
         assert!(!response.contains(wrong));
         headers_present(&response);
     }
+    Ok(())
+}
+
+async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     let response = request(
-        &host,
+        host,
         "/",
         &format!("Authorization: Bearer {bearer}\r\n"),
         None,
@@ -398,7 +430,11 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     assert!(!response.contains("protected-payload-never-log"));
     assert!(!response.contains("<script>sample</script>"));
     assert!(response.contains("Free disk bytes"));
-    let challenge = request(&host, "/login", "", None).await?;
+    Ok(())
+}
+
+async fn assert_overview_login(host: &str, bearer: &str) -> Result<(String, String), Error> {
+    let challenge = request(host, "/login", "", None).await?;
     let csrf = challenge
         .split("name=\"csrf\" type=\"hidden\" value=\"")
         .nth(1)
@@ -420,7 +456,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
             .replace('=', "%3D")
     );
     let login = request(
-        &host,
+        host,
         "/login",
         &format!("Cookie: {challenge_cookie}\r\nOrigin: http://{host}\r\nContent-Type: application/x-www-form-urlencoded\r\n"),
         Some(&form),
@@ -438,9 +474,17 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     assert!(!cookie.contains("Secure"));
     assert!(Token::session()?.cookie(true).contains("; Secure"));
     let session = cookie.split(';').next().ok_or("cookie missing value")?;
-    let response = request(&host, "/", &format!("Cookie: {session}\r\n"), None).await?;
+    let response = request(host, "/", &format!("Cookie: {session}\r\n"), None).await?;
     assert!(response.starts_with("HTTP/1.1 200"));
-    let challenge = request(&host, "/login", "", None).await?;
+    Ok((session.to_owned(), form))
+}
+
+async fn assert_overview_rejects_login_and_missing_route(
+    host: &str,
+    bearer: &str,
+    form: &str,
+) -> Result<(), Error> {
+    let challenge = request(host, "/login", "", None).await?;
     let csrf = challenge
         .split("name=\"csrf\" type=\"hidden\" value=\"")
         .nth(1)
@@ -452,7 +496,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
         .and_then(|s| s.split(';').next())
         .ok_or("challenge cookie missing")?;
     let bad_login = request(
-        &host,
+        host,
         "/login",
         &format!(
             "Cookie: {challenge_cookie}\r\nContent-Type: application/x-www-form-urlencoded\r\n"
@@ -468,15 +512,15 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     assert!(bad_login.starts_with("HTTP/1.1 401"));
     headers_present(&bad_login);
     let cross_origin = request(
-        &host,
+        host,
         "/login",
         "Origin: https://attacker.invalid\r\nContent-Type: application/x-www-form-urlencoded\r\n",
-        Some(&form),
+        Some(form),
     )
     .await?;
     assert!(cross_origin.starts_with("HTTP/1.1 401"));
     let missing = request(
-        &host,
+        host,
         "/missing",
         &format!("Authorization: Bearer {bearer}\r\n"),
         None,
@@ -484,47 +528,64 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     .await?;
     assert!(missing.starts_with("HTTP/1.1 404"));
     headers_present(&missing);
-    // A peer that never finishes its headers must not prevent bounded shutdown.
-    let mut slow = tokio::net::TcpStream::connect(&host).await?;
-    slow.write_all(b"GET / HTTP/1.1\r\n").await?;
-    drop(state);
-    stop.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
-    drop(slow);
-    let mut store = Arc::try_unwrap(store).map_err(|_| "admin retained store after shutdown")?;
-    store.shutdown(fixture_deadline()?).await?;
-    let captured = logs.0.lock().map_err(|_| "log capture poisoned")?;
-    let captured = String::from_utf8_lossy(&captured);
-    assert!(captured.contains("admin authentication refused"));
-    for secret in [
-        wrong,
-        "wrong-cookie-secret",
-        "wrong-login-secret",
-        &bearer,
-        session,
-        "hostile",
-        "protected-raw-never-log",
-        "protected-payload-never-log",
-    ] {
-        assert!(!captured.contains(secret));
-    }
     Ok(())
 }
 
-// AGENTS ownership: HTTP completion can precede the last router state destructor.
-#[tokio::test]
-async fn plan11_admin_drain_waits_for_router_state_release() -> Result<(), Error> {
-    use std::{future::Future as _, task::Poll};
-    let (release, released) = tokio::sync::oneshot::channel::<()>();
-    let mut drain = Box::pin(drain_server(std::future::ready(Ok(())), released));
-    // Poll HTTP completion synchronously while the final state owner is held.
-    // No scheduler, socket timing or elapsed-time assertion determines the verdict.
-    let poll = std::future::poll_fn(|cx| Poll::Ready(drain.as_mut().poll(cx))).await;
-    assert!(
-        poll.is_pending(),
-        "HTTP completion must not precede state release"
-    );
-    drop(release);
-    drain.await?;
-    Ok(())
+async fn start_overview_server(
+    root: &std::path::Path,
+    store: &Arc<analyte_store::Handle>,
+) -> Result<
+    (
+        Arc<Context>,
+        watch::Sender<bool>,
+        tokio::task::JoinHandle<Result<(), Error>>,
+        String,
+    ),
+    Error,
+> {
+    let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let host = socket.local_addr()?.to_string();
+    let (released, release) = tokio::sync::oneshot::channel();
+    let state = Arc::new(Context {
+        config_path: root.join("program.toml"),
+        token: Token::load(root)?,
+        sessions: Sessions::default(),
+        origin: format!("http://{host}"),
+        host: host.clone(),
+        store: store.clone(),
+        machines: vec![Machine {
+            id: Identifier::new("<script>alert('hostile')&\"</script>")?,
+            running: Arc::new(AtomicBool::new(false)),
+        }],
+        destinations: vec![analyte_sink::Destination::for_loopback_test(
+            Identifier::new("app")?,
+            "http://127.0.0.1:1",
+            Identifier::new("app")?,
+            analyte_sink::Limits {
+                request_timeout: Duration::from_secs(1),
+                store_timeout: Duration::from_secs(1),
+                backoff_min: Duration::from_secs(1),
+                backoff_max: Duration::from_secs(1),
+                freshness: Duration::from_secs(30),
+                poll_interval: Duration::from_secs(5),
+                page_size: 1,
+                max_pages: 1,
+            },
+        )?],
+        directory: root.to_owned(),
+        reserve: 1,
+        _released: released,
+    });
+    let server = Server {
+        listener: Listener {
+            socket,
+            slots: Arc::new(Semaphore::new(32)),
+        },
+        app: router(state.clone()),
+        released: release,
+        owners: BTreeMap::new(),
+    };
+    let (stop, stopped) = watch::channel(false);
+    let owner = tokio::spawn(server.run(stopped));
+    Ok((state, stop, owner, host))
 }

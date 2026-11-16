@@ -124,7 +124,7 @@ impl Reference {
             "synthetic-api".into(),
             analyte_contract::SigningSecret::parse(SECRET)?,
         )?;
-        let (events, received) = mpsc::channel(16);
+        let (events, captured_events) = mpsc::channel(16);
         let capture = Arc::new(Capture {
             events,
             hold_once: AtomicBool::new(hold),
@@ -148,7 +148,7 @@ impl Reference {
         });
         Ok(Self {
             receiver,
-            events: received,
+            events: captured_events,
             capture,
             stop,
             task,
@@ -184,6 +184,15 @@ impl AppOutage {
         let socket = tokio::net::TcpSocket::new_v4()?;
         socket.bind("127.0.0.1:0".parse()?)?;
         let address = socket.local_addr()?;
+        // ADR 0008: another reference receiver must not claim this endpoint during the outage.
+        assert_eq!(
+            TcpListener::bind(address)
+                .await
+                .err()
+                .ok_or("outage endpoint was not reserved")?
+                .kind(),
+            std::io::ErrorKind::AddrInUse
+        );
         let outage = if refused {
             let error = tokio::time::timeout(HANG_GUARD, tokio::net::TcpStream::connect(address))
                 .await?
@@ -401,7 +410,9 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
     let path = config(directory.path(), false)?;
     // A real outage refuses connections; an unserved listener would instead
     // queue half-finished attempts that the receiver later answers first.
-    let address = TcpListener::bind("127.0.0.1:0").await?.local_addr()?;
+    let socket = tokio::net::TcpSocket::new_v4()?;
+    socket.bind("127.0.0.1:0".parse()?)?;
+    let address = socket.local_addr()?;
     let service = Running::start(&path, &format!("http://{address}"), "synthetic-api").await?;
     let mut peer = connect(&path, "hl7").await?;
     assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
@@ -422,7 +433,7 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
         }
     })
     .await??;
-    let listener = TcpListener::bind(address).await?;
+    let listener = socket.listen(1024)?;
     let mut reference =
         Reference::start(&directory.path().join("reference.db"), listener, false).await?;
     let event = reference.event().await?;
@@ -835,18 +846,7 @@ async fn failure_recording_case(name: &str, completes: bool) -> Result<(), Error
     let interpretations: i64 = db.query_row("SELECT count(*) FROM outbox", [], |r| r.get(0))?;
     assert_eq!(interpretations, i64::from(completes));
     if completes {
-        let (_, original) = recording("astm")?;
-        let expected = &original.get(2).ok_or("frame absent")?.bytes;
-        assert_eq!(
-            recording_frames(&path)?,
-            vec![expected.clone()],
-            "repeated frame must not be journaled twice in one transfer"
-        );
-        let raw: Vec<u8> =
-            db.query_row("SELECT raw FROM receipts WHERE raw=?1", [expected], |r| {
-                r.get(0)
-            })?;
-        assert_eq!(&raw, expected);
+        assert_completed_recording_retained(&path, &db)?;
     } else {
         assert!(
             recording_frames(&path)?.is_empty(),
@@ -935,7 +935,22 @@ async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_reta
     );
     service.stop().await?;
     assert_eq!(recording_frames(&path)?, vec![expected.clone()]);
-    assert_eq!(receiver_count(&receiver_path)?, 0);
+    let received = receiver_count(&receiver_path)?;
+    let details = if received == 0 {
+        Vec::new()
+    } else {
+        let db = rusqlite::Connection::open(&receiver_path)?;
+        let mut statement = db.prepare("SELECT kind,body FROM deliveries LIMIT 2")?;
+        statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    assert_eq!(
+        received, 0,
+        "unexpected delivery after stopping before ACK: {details:?}"
+    );
     drop(peer);
     let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
@@ -1213,5 +1228,23 @@ async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and
     drop(db);
     service.stop().await?;
     reference.close().await?;
+    Ok(())
+}
+
+fn assert_completed_recording_retained(
+    path: &Path,
+    db: &rusqlite::Connection,
+) -> Result<(), Error> {
+    let (_, original) = recording("astm")?;
+    let expected = &original.get(2).ok_or("frame absent")?.bytes;
+    assert_eq!(
+        recording_frames(path)?,
+        vec![expected.clone()],
+        "repeated frame must not be journaled twice in one transfer"
+    );
+    let raw: Vec<u8> = db.query_row("SELECT raw FROM receipts WHERE raw=?1", [expected], |r| {
+        r.get(0)
+    })?;
+    assert_eq!(&raw, expected);
     Ok(())
 }

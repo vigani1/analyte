@@ -19,7 +19,14 @@ async fn open(path: &Path) -> Result<Handle, Error> {
         page_rows: 100,
         busy_timeout: Duration::from_millis(20),
     };
-    Ok(Handle::start(path.to_owned(), limits, Box::new(Space), 4, deadline()).await?)
+    Ok(Handle::start(
+        path.to_owned(),
+        limits,
+        Box::new(Space),
+        4,
+        crate::test_startup_deadline()?,
+    )
+    .await?)
 }
 
 #[tokio::test]
@@ -94,6 +101,16 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
     let mut store = open(&path).await?;
     recover(&store).await?;
     recover(&store).await?;
+    assert_recovered_outcomes(&store, completed_key, interrupted_key).await?;
+    store.shutdown(deadline()).await?;
+    Ok(())
+}
+
+async fn assert_recovered_outcomes(
+    store: &Handle,
+    completed_key: MachineOrderKey,
+    interrupted_key: MachineOrderKey,
+) -> Result<(), Error> {
     store
         .request(deadline(), move |store| {
             let rows = store.machine_orders(&analyte_store::MachineOrderFilter {
@@ -136,6 +153,5 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
             Ok(())
         })
         .await?;
-    store.shutdown(deadline()).await?;
     Ok(())
 }

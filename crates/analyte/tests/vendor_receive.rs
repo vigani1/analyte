@@ -421,8 +421,10 @@ fn vidas_config() -> Result<analyte_framing::vidas::Config, Error> {
         Checksum {
             include_stx: false,
             include_suffix: false,
-            uppercase: true,
-            accept_either_case: false,
+            hex: analyte_framing::vidas::HexOptions {
+                uppercase: true,
+                accept_either_case: false,
+            },
         },
     )?)
 }
@@ -828,6 +830,16 @@ async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Resu
                 .get::<_, i64>(0))?,
         1
     );
+    assert_missing_identity_and_conflict_retained(&mut run, &resent, &original).await?;
+    assert_missing_device_retained(&mut run, &hello).await?;
+    run.close_with_deliveries(2).await
+}
+
+async fn assert_missing_identity_and_conflict_retained(
+    run: &mut Running,
+    resent: &str,
+    original: &str,
+) -> Result<(), Error> {
     let missing_time = resent.replace("resent", "missing-time").replace(
         "<SVC.observation_dttm V=\"2026-03-12T09:35:00+01:00\"/>",
         "<SVC.observation_dttm NULL=\"UNK\"/>",
@@ -882,6 +894,10 @@ async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Resu
     );
     drop(statement);
     drop(db);
+    Ok(())
+}
+
+async fn assert_missing_device_retained(run: &mut Running, hello: &str) -> Result<(), Error> {
     run.peer = TcpStream::connect(run.listener.local_addr()?).await?;
     let missing_device = hello.replace("<DEV.device_id V=\"A1-B2-C3-D4-E5-F6-07-08\"/>", "");
     run.peer.write_all(missing_device.as_bytes()).await?;
@@ -914,7 +930,7 @@ async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Resu
             |r| r.get::<_, i64>(0)
         )? >= 1
     );
-    run.close_with_deliveries(2).await
+    Ok(())
 }
 
 // POCT01-A2 Appendix B 4.1.2 p.78, 3.4.1 p.73: error ACK precedes abnormal END.

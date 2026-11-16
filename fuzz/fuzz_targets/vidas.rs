@@ -1,3 +1,4 @@
+//! Hostile VIDAS packet bytes exercise bounded framing and syntax parsing.
 #![no_main]
 #![forbid(unsafe_code)]
 use libfuzzer_sys::fuzz_target;
@@ -12,8 +13,10 @@ fuzz_target!(|data: &[u8]| {
         Checksum {
             include_stx: false,
             include_suffix: false,
-            uppercase: true,
-            accept_either_case: true,
+            hex: analyte_framing::vidas::HexOptions {
+                uppercase: true,
+                accept_either_case: true,
+            },
         },
     ) else {
         // Nonzero 80-byte chunks, <=1920-byte messages, and an allowed empty suffix.

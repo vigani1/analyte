@@ -19,6 +19,8 @@ pub struct Machine {
     pub(crate) law_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     #[cfg(feature = "test-hooks")]
     pub(crate) astm_committed: Option<std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>>,
+    #[cfg(feature = "test-hooks")]
+    pub(crate) connection_closing: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     /// Unique installation identity, independent of the shipped definition name.
     pub(crate) id: analyte_model::Identifier,
     /// Exact reproducible machine configuration.
@@ -195,6 +197,33 @@ impl Program {
             ));
         }
         machine.astm_committed = Some(hook);
+        Ok(())
+    }
+
+    /// Pauses a loopback client's closing owner after protocol cleanup, before transport release.
+    /// # Errors
+    /// Rejects unknown machines and endpoints that are not loopback TCP clients.
+    #[cfg(feature = "test-hooks")]
+    pub fn pause_connection_closing_for_test(
+        &mut self,
+        id: &str,
+        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
+    ) -> Result<(), Error> {
+        let machine = self.test_machine_mut(id)?;
+        if machine.snapshot.effective().stack().transport_kind()
+            != analyte_config::TransportKind::TcpClient
+            || !machine
+                .snapshot
+                .effective()
+                .site()
+                .endpoint
+                .parse::<std::net::SocketAddr>()?
+                .ip()
+                .is_loopback()
+        {
+            return Err(invalid("closing hook requires a loopback TCP client"));
+        }
+        machine.connection_closing = Some(hook);
         Ok(())
     }
 
@@ -572,6 +601,8 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
         law_committed: None,
         #[cfg(feature = "test-hooks")]
         astm_committed: None,
+        #[cfg(feature = "test-hooks")]
+        connection_closing: None,
         destination_limits: crate::runtime::delivery::limits(
             snapshot.effective().site().destination.freshness_seconds,
         ),

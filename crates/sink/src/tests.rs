@@ -263,9 +263,6 @@ impl Peer {
                 value.get("executable")?.as_str().map(str::to_owned)
             })
             .ok_or("receiver artifact missing")?;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let address = listener.local_addr()?;
-        drop(listener);
         let seed = directory.join("seed.json");
         std::fs::write(
             &seed,
@@ -274,34 +271,37 @@ impl Peer {
                 include_str!("../../../docs/contract/vectors/order.json")
             ),
         )?;
-        let child = tokio::process::Command::new(executable)
-            .args(["--listen", &address.to_string(), "--database"])
+        let mut child = tokio::process::Command::new(executable)
+            .args(["--listen", "127.0.0.1:0", "--database"])
             .arg(directory.join("receiver.db"))
             .arg("--seed")
             .arg(seed)
             .env("ANALYTE_API_KEY", "key")
             .env("ANALYTE_SIGNING_SECRET", SECRET)
             .kill_on_drop(true)
-            .stdout(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .spawn()?;
-        let mut peer = Self {
+        // This address comes from our child after it has seeded and bound its own
+        // socket. Another process cannot satisfy readiness on a released port.
+        use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or("receiver startup output missing")?;
+        let mut output = tokio::io::BufReader::new(stdout.take(128));
+        let mut line = String::new();
+        if tokio::time::timeout(HANG_GUARD, output.read_line(&mut line)).await?? == 0 {
+            return Err("receiver exited before reporting its bound address".into());
+        }
+        let address: std::net::SocketAddr = line.trim().parse()?;
+        if !address.ip().is_loopback() || address.port() == 0 {
+            return Err("receiver did not report a bound loopback address".into());
+        }
+        Ok(Self {
             child,
             url: format!("http://{address}"),
-        };
-        tokio::time::timeout(HANG_GUARD, async {
-            loop {
-                if peer.child.try_wait()?.is_some() {
-                    return Err(std::io::Error::other("receiver exited before readiness"));
-                }
-                if tokio::net::TcpStream::connect(address).await.is_ok() {
-                    return Ok(());
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
         })
-        .await??;
-        Ok(peer)
     }
 
     async fn stop(mut self) -> TestResult {
@@ -357,104 +357,9 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     let destination = destinations.first().ok_or("destination missing")?;
     let secrets = Secrets("key");
     let worker = Worker::new(&store, &destinations, &secrets);
-    let metadata = receipt()?;
-    let original = make_result(metadata.id, "accepted-run")?;
-    let delivery = build_delivery(
-        &original,
-        &metadata,
-        Identifier::new("app")?,
-        jiff::Timestamp::now(),
-    )?;
-    let bytes = delivery.payload.clone();
-    let id = delivery.id;
-    enqueue(&store, metadata, original, delivery).await?;
-    assert_eq!(
-        worker.deliver_once().await?,
-        DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
-    );
-    assert_eq!(
-        post(&peer, &bytes, id).await?,
-        analyte_contract::DeliveryStatus::Duplicate
-    );
+    check_delivery_conflicts(&store, &worker, &peer).await?;
 
-    // Commit an original to the app before enqueueing different bytes with its ID.
-    let metadata = receipt()?;
-    let original = make_result(metadata.id, "conflict-run")?;
-    let mut conflicting = build_delivery(
-        &original,
-        &metadata,
-        Identifier::new("app")?,
-        jiff::Timestamp::now(),
-    )?;
-    let conflict_id = conflicting.id;
-    assert_eq!(
-        post(&peer, &conflicting.payload, conflict_id).await?,
-        analyte_contract::DeliveryStatus::Accepted
-    );
-    conflicting.payload.push(b' ');
-    enqueue(&store, metadata, original, conflicting).await?;
-    assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Parked);
-    let parked = store.request(until()?, |s| s.parked(0)).await?;
-    assert!(parked.iter().any(|p| p.evidence.contains("conflict")));
-    assert!(parked.iter().any(|p| p.evidence.contains("\"conflict\"")));
-
-    let metadata = receipt()?;
-    let mut correction = make_result(metadata.id, "conflict-run")?;
-    if let IdentityStatus::Resolved(identity) = &mut correction.identity {
-        identity.revision = Revision(1);
-    }
-    corrected_content(&mut correction)?;
-    let delivery = build_delivery(
-        &correction,
-        &metadata,
-        Identifier::new("app")?,
-        jiff::Timestamp::now(),
-    )?;
-    enqueue(&store, metadata, correction, delivery).await?;
-    assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Idle);
-    let mut metadata = receipt()?;
-    metadata.machine = Identifier::new("other-machine")?;
-    let other = make_result(metadata.id, "conflict-run")?;
-    let delivery = build_delivery(
-        &other,
-        &metadata,
-        Identifier::new("app")?,
-        jiff::Timestamp::now(),
-    )?;
-    enqueue(&store, metadata, other, delivery).await?;
-    assert_eq!(
-        worker.deliver_once().await?,
-        DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
-    );
-
-    let rotating = RotatingSecrets;
-    let event_worker = Worker::new(&store, &destinations, &rotating);
-    let mut event: analyte_contract::EventFields =
-        serde_json::from_slice(include_bytes!("../../../docs/contract/vectors/event.json"))?;
-    for state in [
-        analyte_contract::evidence::OrderState::Sent,
-        analyte_contract::evidence::OrderState::Accepted,
-        analyte_contract::evidence::OrderState::Rejected,
-        analyte_contract::evidence::OrderState::Done,
-        analyte_contract::evidence::OrderState::CancelConfirmed,
-        analyte_contract::evidence::OrderState::Uncertain,
-    ] {
-        event.delivery_id = analyte_contract::Text::try_from(uuid::Uuid::now_v7().to_string())?;
-        event.state = state;
-        let delivery = build_order_event(
-            &analyte_contract::OrderEvent::try_from(event.clone())?,
-            Identifier::new("app")?,
-        )?;
-        store
-            .request(until()?, move |s| {
-                s.enqueue_order_event(&delivery, jiff::Timestamp::now().as_second())
-            })
-            .await?;
-        assert_eq!(
-            event_worker.deliver_once().await?,
-            DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
-        );
-    }
+    check_order_events(&store, &destinations).await?;
 
     let poller = Poller::new(&store, destination, &secrets);
     poller.poll_once().await?;
@@ -484,13 +389,150 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
         analyte_store::Lookup::NotTrusted
     ));
 
+    check_cache_changes(directory.path(), &store, destination, &poller).await?;
+
+    check_pause_and_resume(&store, &destinations, destination, &worker).await?;
+
+    // Closing the owner signal interrupts idle and active loops within a bound.
+    let (stop, stopped) = watch::channel(false);
+    let work = worker.run(stopped.clone());
+    let poll = poller.run(stopped);
+    let cancel = async {
+        // join! polls both owners before this branch closes their signal.
+        drop(stop);
+    };
+    tokio::time::timeout(HANG_GUARD, async {
+        let (w, p, ()) = tokio::join!(work, poll, cancel);
+        w?;
+        p?;
+        Ok::<_, Error>(())
+    })
+    .await??;
+    store.shutdown(until()?).await?;
+    peer.stop().await?;
+    Ok(())
+}
+
+async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Peer) -> TestResult {
+    let metadata = receipt()?;
+    let original = make_result(metadata.id, "accepted-run")?;
+    let delivery = build_delivery(
+        &original,
+        &metadata,
+        Identifier::new("app")?,
+        jiff::Timestamp::now(),
+    )?;
+    let bytes = delivery.payload.clone();
+    let id = delivery.id;
+    enqueue(store, metadata, original, delivery).await?;
+    assert_eq!(
+        worker.deliver_once().await?,
+        DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
+    );
+    assert_eq!(
+        post(peer, &bytes, id).await?,
+        analyte_contract::DeliveryStatus::Duplicate
+    );
+
+    // Commit an original to the app before enqueueing different bytes with its ID.
+    let metadata = receipt()?;
+    let original = make_result(metadata.id, "conflict-run")?;
+    let mut conflicting = build_delivery(
+        &original,
+        &metadata,
+        Identifier::new("app")?,
+        jiff::Timestamp::now(),
+    )?;
+    let conflict_id = conflicting.id;
+    assert_eq!(
+        post(peer, &conflicting.payload, conflict_id).await?,
+        analyte_contract::DeliveryStatus::Accepted
+    );
+    conflicting.payload.push(b' ');
+    enqueue(store, metadata, original, conflicting).await?;
+    assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Parked);
+    let parked = store.request(until()?, |s| s.parked(0)).await?;
+    assert!(parked.iter().any(|p| p.evidence.contains("conflict")));
+    assert!(parked.iter().any(|p| p.evidence.contains("\"conflict\"")));
+
+    let metadata = receipt()?;
+    let mut correction = make_result(metadata.id, "conflict-run")?;
+    if let IdentityStatus::Resolved(identity) = &mut correction.identity {
+        identity.revision = Revision(1);
+    }
+    corrected_content(&mut correction)?;
+    let delivery = build_delivery(
+        &correction,
+        &metadata,
+        Identifier::new("app")?,
+        jiff::Timestamp::now(),
+    )?;
+    enqueue(store, metadata, correction, delivery).await?;
+    assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Idle);
+    let mut metadata = receipt()?;
+    metadata.machine = Identifier::new("other-machine")?;
+    let other = make_result(metadata.id, "conflict-run")?;
+    let delivery = build_delivery(
+        &other,
+        &metadata,
+        Identifier::new("app")?,
+        jiff::Timestamp::now(),
+    )?;
+    enqueue(store, metadata, other, delivery).await?;
+    assert_eq!(
+        worker.deliver_once().await?,
+        DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
+    );
+
+    Ok(())
+}
+
+async fn check_order_events(store: &Handle, destinations: &[Destination]) -> TestResult {
+    let rotating = RotatingSecrets;
+    let event_worker = Worker::new(store, destinations, &rotating);
+    let mut event: analyte_contract::EventFields =
+        serde_json::from_slice(include_bytes!("../../../docs/contract/vectors/event.json"))?;
+    for state in [
+        analyte_contract::evidence::OrderState::Sent,
+        analyte_contract::evidence::OrderState::Accepted,
+        analyte_contract::evidence::OrderState::Rejected,
+        analyte_contract::evidence::OrderState::Done,
+        analyte_contract::evidence::OrderState::CancelConfirmed,
+        analyte_contract::evidence::OrderState::Uncertain,
+    ] {
+        event.delivery_id = analyte_contract::Text::try_from(uuid::Uuid::now_v7().to_string())?;
+        event.state = state;
+        let delivery = build_order_event(
+            &analyte_contract::OrderEvent::try_from(event.clone())?,
+            Identifier::new("app")?,
+        )?;
+        store
+            .request(until()?, move |s| {
+                s.enqueue_order_event(&delivery, jiff::Timestamp::now().as_second())
+            })
+            .await?;
+        assert_eq!(
+            event_worker.deliver_once().await?,
+            DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
+        );
+    }
+
+    Ok(())
+}
+
+async fn check_cache_changes(
+    directory: &Path,
+    store: &Handle,
+    destination: &Destination,
+    poller: &Poller<'_>,
+) -> TestResult {
     let first = store
         .request(until()?, |s| {
             s.cursor(&Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?)
         })
         .await?;
     let receiver = analyte_receiver::Receiver::open(
-        &directory.path().join("receiver.db"),
+        &directory.join("receiver.db"),
         "key".into(),
         analyte_contract::SigningSecret::parse(SECRET)?,
     )?;
@@ -550,18 +592,27 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     ));
     assert!(
         !destination
-            .health(&store, jiff::Timestamp::now().as_second())
+            .health(store, jiff::Timestamp::now().as_second())
             .await?
             .cache_trusted
     );
     poller.poll_once().await?;
     assert!(
         destination
-            .health(&store, jiff::Timestamp::now().as_second())
+            .health(store, jiff::Timestamp::now().as_second())
             .await?
             .cache_trusted
     );
 
+    Ok(())
+}
+
+async fn check_pause_and_resume(
+    store: &Handle,
+    destinations: &[Destination],
+    destination: &Destination,
+    worker: &Worker<'_>,
+) -> TestResult {
     let wrong = Secrets("wrong");
     let metadata = receipt()?;
     let original = make_result(metadata.id, "conflict-run")?;
@@ -576,16 +627,16 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     let pause_id = delivery.id;
     let mut metadata = metadata;
     metadata.machine = Identifier::new("pause-machine")?;
-    enqueue(&store, metadata, original, delivery).await?;
+    enqueue(store, metadata, original, delivery).await?;
     assert_eq!(
-        Worker::new(&store, &destinations, &wrong)
+        Worker::new(store, destinations, &wrong)
             .deliver_once()
             .await?,
         DeliveryOutcome::Paused
     );
     assert!(
         destination
-            .health(&store, jiff::Timestamp::now().as_second())
+            .health(store, jiff::Timestamp::now().as_second())
             .await?
             .paused
     );
@@ -604,7 +655,7 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
         .await?;
     assert!(
         !destination
-            .health(&store, jiff::Timestamp::now().as_second())
+            .health(store, jiff::Timestamp::now().as_second())
             .await?
             .paused
     );
@@ -613,23 +664,6 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
         DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
     );
 
-    // Closing the owner signal interrupts idle and active loops within a bound.
-    let (stop, stopped) = watch::channel(false);
-    let work = worker.run(stopped.clone());
-    let poll = poller.run(stopped);
-    let cancel = async {
-        // join! polls both owners before this branch closes their signal.
-        drop(stop);
-    };
-    tokio::time::timeout(HANG_GUARD, async {
-        let (w, p, ()) = tokio::join!(work, poll, cancel);
-        w?;
-        p?;
-        Ok::<_, Error>(())
-    })
-    .await??;
-    store.shutdown(until()?).await?;
-    peer.stop().await?;
     Ok(())
 }
 
@@ -824,19 +858,7 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
                 .ok_or("retry timestamp overflow")?
         );
         if lose_response {
-            let metadata = receipt()?;
-            let mut correction = make_result(metadata.id, "retry-run")?;
-            if let IdentityStatus::Resolved(identity) = &mut correction.identity {
-                identity.revision = Revision(1);
-            }
-            corrected_content(&mut correction)?;
-            let delivery = build_delivery(
-                &correction,
-                &metadata,
-                Identifier::new("app")?,
-                jiff::Timestamp::now(),
-            )?;
-            enqueue(&store, metadata, correction, delivery).await?;
+            enqueue_retry_correction(&store).await?;
         }
         assert_eq!(
             worker.deliver_once_with_clock(&now).await?,
@@ -1582,5 +1604,22 @@ async fn mutation_rule7_owner_loops_and_cancellation_wait_for_their_signal() -> 
         ));
     }
     store.shutdown(until()?).await?;
+    Ok(())
+}
+
+async fn enqueue_retry_correction(store: &Handle) -> TestResult {
+    let metadata = receipt()?;
+    let mut correction = make_result(metadata.id, "retry-run")?;
+    if let IdentityStatus::Resolved(identity) = &mut correction.identity {
+        identity.revision = Revision(1);
+    }
+    corrected_content(&mut correction)?;
+    let delivery = build_delivery(
+        &correction,
+        &metadata,
+        Identifier::new("app")?,
+        jiff::Timestamp::now(),
+    )?;
+    enqueue(store, metadata, correction, delivery).await?;
     Ok(())
 }
