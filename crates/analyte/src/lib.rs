@@ -30,3 +30,6 @@ pub async fn open_system_store(
 ) -> Result<analyte_store::Handle, Error> {
     runtime::service::open_store(program, Box::new(runtime::space::Volume)).await
 }
+
+#[cfg(test)]
+mod test_tracing;
