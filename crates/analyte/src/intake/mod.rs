@@ -128,6 +128,13 @@ pub(crate) async fn interpret_with_location(
     Ok((accepted, location))
 }
 
+fn poct_edits(machine: &Machine) -> bool {
+    matches!(
+        machine.snapshot.effective().stack(),
+        analyte_config::Stack::Poct(_)
+    )
+}
+
 pub(crate) async fn persist_mapping(
     store: &Handle,
     machine: &Machine,
@@ -135,11 +142,8 @@ pub(crate) async fn persist_mapping(
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
+    let poct_edit_guard = poct_edits(machine);
     let atomic = atomic_batch(machine);
-    let poct_edit_guard = matches!(
-        machine.snapshot.effective().stack(),
-        analyte_config::Stack::Poct(_)
-    );
     let lifecycle = atomic.then_some(law_lifecycle());
     let work_conflict = work_conflict(store, machine, id).await?;
     let mapping = if work_conflict.is_some() {
