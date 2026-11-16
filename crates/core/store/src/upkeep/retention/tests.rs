@@ -121,7 +121,7 @@ fn adr0013_item3_migration_from_v9_preserves_evidence() -> TestResult {
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
     let id = finished(&mut store)?;
-    store.db.execute_batch("DROP TABLE retention_results; DROP TABLE retention_deliveries; DROP TABLE retention_tombstones; DROP TABLE retention_key; DROP TABLE retention_holds; PRAGMA user_version=9;")?;
+    store.db.execute_batch("DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; DROP TABLE retention_results; DROP TABLE retention_deliveries; DROP TABLE retention_tombstones; DROP TABLE retention_key; DROP TABLE retention_holds; PRAGMA user_version=9;")?;
     drop(store);
     let store = open(&path)?;
     assert_eq!(store.raw(id)?.ok_or("missing raw")?, b"synthetic");
@@ -129,7 +129,7 @@ fn adr0013_item3_migration_from_v9_preserves_evidence() -> TestResult {
     let version: i64 = store
         .db
         .query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    assert_eq!(version, 10);
+    assert_eq!(version, crate::SCHEMA_VERSION);
     Ok(())
 }
 

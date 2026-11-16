@@ -1,5 +1,10 @@
 //! Purges at most sixteen eligible receipts in one deadline-bound, audited transaction.
 use super::{eligibility, tombstones};
+#[derive(Clone, Copy)]
+enum Scope {
+    Receipts(Option<ReceiptId>),
+    Orders(Option<i64>),
+}
 use crate::{Error, Store, key};
 use analyte_model::{Identifier, ReceiptId};
 use rusqlite::{OptionalExtension, params};
@@ -9,6 +14,15 @@ use std::{fs::File, path::Path, time::Instant};
 /// Nonclinical outcome of one bounded retention run (ADR 0013 item 4).
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PurgeRun {
+    /// Completed machine orders removed in this run.
+    #[serde(default)]
+    pub orders: usize,
+    /// Order journal cursor, absent after a completed scan.
+    #[serde(default)]
+    pub order_after: Option<i64>,
+    /// Purged local order identity range, with no source identifiers.
+    #[serde(default)]
+    pub order_range: Option<(i64, i64)>,
     /// Delivery payloads removed in this committed batch.
     pub deliveries: usize,
     /// Result revisions retained as keyed duplicate evidence.
@@ -67,6 +81,29 @@ impl Store {
         now: i64,
         deadline: Instant,
     ) -> Result<PurgeRun, Error> {
+        self.run_batch(machine, days, Scope::Receipts(after), now, deadline)
+    }
+    /// Purges a bounded page of finished machine orders, preserving keyed replay guards.
+    /// # Errors
+    /// Refuses missing keys, invalid periods, deadlines and database failures atomically.
+    pub fn purge_order_batch(
+        &mut self,
+        machine: &Identifier,
+        days: Option<u16>,
+        after: Option<i64>,
+        now: i64,
+        deadline: Instant,
+    ) -> Result<PurgeRun, Error> {
+        self.run_batch(machine, days, Scope::Orders(after), now, deadline)
+    }
+    fn run_batch(
+        &mut self,
+        machine: &Identifier,
+        days: Option<u16>,
+        scope: Scope,
+        now: i64,
+        deadline: Instant,
+    ) -> Result<PurgeRun, Error> {
         if Instant::now() >= deadline {
             return Err(Error::Timeout);
         }
@@ -96,7 +133,7 @@ impl Store {
                 .busy_timeout
                 .min(deadline.saturating_duration_since(Instant::now())),
         )?;
-        let result = self.purge_transaction(machine, days, after, now, paused);
+        let result = self.purge_transaction(machine, days, scope, now, paused);
         self.db.progress_handler(0, None::<fn() -> bool>)?;
         self.db.busy_timeout(self.limits.busy_timeout)?;
         let result = if interrupted.load(std::sync::atomic::Ordering::Acquire) {
@@ -106,6 +143,9 @@ impl Store {
         };
         if result.is_err() {
             let failure = PurgeRun {
+                orders: 0,
+                order_after: None,
+                order_range: None,
                 deliveries: 0,
                 results: 0,
                 failed: true,
@@ -116,7 +156,10 @@ impl Store {
                 purged: 0,
                 first: None,
                 last: None,
-                after,
+                after: match scope {
+                    Scope::Receipts(after) => after,
+                    Scope::Orders(_) => None,
+                },
                 paused,
             };
             self.db.busy_timeout(
@@ -138,11 +181,14 @@ impl Store {
         &mut self,
         machine: &Identifier,
         days: Option<u16>,
-        after: Option<ReceiptId>,
+        scope: Scope,
         now: i64,
         paused: bool,
     ) -> Result<PurgeRun, Error> {
         let mut run = PurgeRun {
+            orders: 0,
+            order_after: None,
+            order_range: None,
             deliveries: 0,
             results: 0,
             failed: false,
@@ -166,29 +212,43 @@ impl Store {
         if let (Some(days), Some(credential)) = (days, credential)
             && !paused
         {
-            let candidates = candidates(&tx, machine, after, self.limits.page_rows.min(16))?;
-            run.examined = candidates.len();
-            run.after = candidates.last().copied();
-            let guards = tombstones::remove_delete_guards(&tx)?;
-            for receipt in candidates {
-                if eligibility::eligible(&tx, receipt, days, now, &self.limits)? {
-                    let (deliveries, results) =
-                        tombstones::purge(&tx, credential, receipt, now, self.limits.record_bytes)?;
-                    run.deliveries = run
-                        .deliveries
-                        .checked_add(deliveries)
-                        .ok_or(Error::InvalidInput)?;
-                    run.results = run
-                        .results
-                        .checked_add(results)
-                        .ok_or(Error::InvalidInput)?;
-                    run.first.get_or_insert(receipt);
-                    run.last = Some(receipt);
-                    run.purged = run.purged.checked_add(1).ok_or(Error::InvalidInput)?;
+            match scope {
+                Scope::Receipts(after) => {
+                    let candidates =
+                        candidates(&tx, machine, after, self.limits.page_rows.min(16))?;
+                    run.examined = candidates.len();
+                    run.after = candidates.last().copied();
+                    let guards = tombstones::remove_delete_guards(&tx)?;
+                    for receipt in candidates {
+                        if eligibility::eligible(&tx, receipt, days, now, &self.limits)? {
+                            let (deliveries, results) = tombstones::purge(
+                                &tx,
+                                credential,
+                                receipt,
+                                now,
+                                self.limits.record_bytes,
+                            )?;
+                            run.deliveries = run
+                                .deliveries
+                                .checked_add(deliveries)
+                                .ok_or(Error::InvalidInput)?;
+                            run.results = run
+                                .results
+                                .checked_add(results)
+                                .ok_or(Error::InvalidInput)?;
+                            run.first.get_or_insert(receipt);
+                            run.last = Some(receipt);
+                            run.purged = run.purged.checked_add(1).ok_or(Error::InvalidInput)?;
+                        }
+                    }
+                    for sql in guards {
+                        tx.execute_batch(&sql)?;
+                    }
                 }
-            }
-            for sql in guards {
-                tx.execute_batch(&sql)?;
+                Scope::Orders(after) => {
+                    run.order_after = after;
+                    super::orders::batch(&tx, credential, &mut run, &self.limits)?;
+                }
             }
         }
         let encoded = audit_evidence(&run)?;
