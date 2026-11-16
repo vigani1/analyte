@@ -249,7 +249,4 @@ pub enum ValidationError {
     /// Preserves the original comparison failure.
     #[error(transparent)]
     Hl7(#[from] analyte_hl7::Error),
-    /// Preserves the original comparison failure.
-    #[error(transparent)]
-    Law(#[from] law::Error),
 }

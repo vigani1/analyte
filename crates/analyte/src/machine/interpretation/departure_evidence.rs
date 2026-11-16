@@ -301,14 +301,5 @@ pub enum EvidenceError {
     Config(#[from] analyte_config::Error),
     /// Preserves the original evidence failure.
     #[error(transparent)]
-    Read(#[from] analyte_mapping::read::Error),
-    /// Preserves the original evidence failure.
-    #[error(transparent)]
     Astm(#[from] analyte_framing::astm::Error),
-    /// Preserves the original evidence failure.
-    #[error(transparent)]
-    Receipt(#[from] analyte_framing::astm::ReceiptError),
-    /// Preserves the original evidence failure.
-    #[error(transparent)]
-    Hl7(#[from] analyte_hl7::Error),
 }
