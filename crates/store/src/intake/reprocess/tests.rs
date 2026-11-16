@@ -61,6 +61,24 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
     store
         .db
         .execute_batch("DROP TRIGGER fail_reprocess_audit;")?;
+    verify_reprocessed_provenance_and_resolution(
+        &mut store,
+        metadata.id,
+        parked,
+        current,
+        action,
+        &before,
+    )
+}
+
+fn verify_reprocessed_provenance_and_resolution(
+    store: &mut Store,
+    receipt_id: ReceiptId,
+    parked: i64,
+    mut current: Interpretation,
+    action: Reprocess,
+    before: &str,
+) -> TestResult {
     let commit =
         store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![]))?;
     assert_eq!(commit.version, 2);
@@ -69,7 +87,7 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
         [RevisionOutcome::New(_)]
     ));
     let retained = store
-        .interpretation(metadata.id, 2)?
+        .interpretation(receipt_id, 2)?
         .ok_or("missing version")?;
     assert_eq!(retained.driver, current.driver);
     assert_eq!(retained.config_version, current.config_version);
@@ -90,7 +108,7 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
     )?;
     assert_eq!(before, after);
     assert_eq!(
-        store.receipt(metadata.id)?.ok_or("missing receipt")?.raw,
+        store.receipt(receipt_id)?.ok_or("missing receipt")?.raw,
         b"original"
     );
     assert_eq!(store.audits(0)?.len(), 1);
