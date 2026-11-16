@@ -463,3 +463,7 @@ For 2.9.1 the generic TCP receiver supports original mode and enhanced accept-on
 exchanges. Enhanced application responses require a separate channel (2.8.3.2),
 which is unsupported. Config cannot enable that capability; incoming requests
 are durably retained and parked before any response or interpretation.
+
+The generic result receiver does not negotiate the sequence-number protocol or
+assemble continuation messages. Populated MSH-13, populated MSH-14 and DSC
+are refused with specific reasons; exact receipts remain retained.

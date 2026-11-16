@@ -399,6 +399,19 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
         },
         source,
     })?;
+    if msh
+        .segment()
+        .field(13)
+        .is_some_and(|field| !field.raw().is_empty() && !field.is_null())
+    {
+        return Err(Error::Structure {
+            position: Position {
+                record: 1,
+                field: 13,
+            },
+            reason: "HL7 sequence-number negotiation is unsupported; retain receipt for review",
+        });
+    }
     // HL7 2.5.1 section 2.10.2.2: either marker identifies an incomplete logical message.
     for (index, segment) in message.segments().enumerate() {
         let pointer = segment.id() == b"MSH"

@@ -146,3 +146,21 @@ fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResu
     }
     Ok(())
 }
+
+// HL7 2.5.1 section 2.10.1: a sequence number does not negotiate a sequence protocol.
+#[test]
+fn hl7_251_s2_10_1_unnegotiated_sequence_number_is_refused() -> TestResult {
+    let cfg = config(HL7_CONFIG)?;
+    let raw=b"MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|2.5.1|1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
+    let message =
+        analyte_hl7::Message::parse(raw, cfg.effective().hl7_options().ok_or("options")?)?;
+    assert!(matches!(
+        map_hl7(&message, &cfg, input()),
+        Err(analyte_mapping::Error::Structure {
+            reason: "HL7 sequence-number negotiation is unsupported; retain receipt for review",
+            ..
+        })
+    ));
+    assert_eq!(message.encode(), raw);
+    Ok(())
+}
