@@ -341,6 +341,8 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
+        #[cfg(not(feature = "test-hooks"))]
+        let _ = stop;
         let machine = self.machine;
         let store = self.store;
         let settings = self.settings;
