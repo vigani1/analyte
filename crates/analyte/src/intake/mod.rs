@@ -135,6 +135,20 @@ fn poct_edits(machine: &Machine) -> bool {
     )
 }
 
+fn reading_evidence(
+    machine: &Machine,
+    outcome: Reading,
+    departures: analyte_model::DepartureEvidence,
+) -> Result<Interpretation, Error> {
+    Ok(Interpretation {
+        driver: driver(machine)?,
+        config_version: config_version(machine)?,
+        config: machine.snapshot.canonical().as_bytes().to_vec(),
+        outcome,
+        departures: Some(departures),
+    })
+}
+
 pub(crate) async fn persist_mapping(
     store: &Handle,
     machine: &Machine,
@@ -142,6 +156,10 @@ pub(crate) async fn persist_mapping(
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
+    let (mapping, departures) = super::machine::interpretation::departure_evidence::for_receipt(
+        store, machine, id, mapping,
+    )
+    .await?;
     let poct_edit_guard = poct_edits(machine);
     let atomic = atomic_batch(machine);
     let lifecycle = atomic.then_some(law_lifecycle());
@@ -159,15 +177,11 @@ pub(crate) async fn persist_mapping(
         corrections,
         findings,
     } = prepare_reading(map_reading(mapping)?, atomic)?;
-    let interpretation = Interpretation {
-        driver: driver(machine)?,
-        config_version: config_version(machine)?,
-        config: machine.snapshot.canonical().as_bytes().to_vec(),
-        outcome: reading,
-    };
+    let interpretation = reading_evidence(machine, reading, departures)?;
     let destination = machine.snapshot.effective().site().destination.name.clone();
     let conflict = if atomic {
         Some(Interpretation {
+            departures: interpretation.departures.clone(),
             driver: interpretation.driver.clone(),
             config_version: interpretation.config_version.clone(),
             config: interpretation.config.clone(),
@@ -401,8 +415,11 @@ pub(crate) async fn park_bytes(
     reason: &str,
 ) -> Result<(), Error> {
     let id = ReceiptId::new();
+    let departures =
+        super::machine::interpretation::departure_evidence::collect(machine, &bytes, &[])?;
     receive(store, machine, id, bytes).await?;
     let evidence = Interpretation {
+        departures: Some(departures),
         driver: driver(machine)?,
         config_version: config_version(machine)?,
         config: machine.snapshot.canonical().as_bytes().to_vec(),

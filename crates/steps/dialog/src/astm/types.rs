@@ -42,6 +42,7 @@ impl Default for Timers {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub(super) limit: Limit,
+    pub(super) checksum_hex: astm::HexPolicy,
     pub(super) record_boundaries: astm::RecordBoundaries,
     pub(super) timers: Timers,
     pub(super) role: Role,
@@ -51,6 +52,12 @@ pub struct Config {
 }
 
 impl Config {
+    /// Selects checksum digit case only; every checksum must still verify.
+    #[must_use]
+    pub fn with_checksum_hex(mut self, policy: astm::HexPolicy) -> Self {
+        self.checksum_hex = policy;
+        self
+    }
     /// Selects an evidenced inbound policy; outbound encoding remains record-per-frame.
     #[must_use]
     pub fn with_record_boundaries(mut self, policy: astm::RecordBoundaries) -> Self {
@@ -85,6 +92,7 @@ impl Config {
         Ok(Self {
             limit,
             record_boundaries: astm::RecordBoundaries::Separate,
+            checksum_hex: astm::HexPolicy::Strict,
             timers,
             role,
             bytes,
@@ -99,6 +107,7 @@ impl Default for Config {
         Self {
             limit: Limit::default(),
             record_boundaries: astm::RecordBoundaries::Separate,
+            checksum_hex: astm::HexPolicy::Strict,
             timers: Timers::default(),
             role: Role::Computer,
             bytes: 16_777_216,

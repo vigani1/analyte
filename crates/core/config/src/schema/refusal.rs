@@ -3,6 +3,9 @@
 /// Distinct load-time refusals from ADR 0015; never a generic tolerance failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum DepartureRefusal {
+    /// The exact declaration cannot fit the bounded interpretation evidence field.
+    #[error("declaration snapshot exceeds 16384 UTF-8 bytes")]
+    SnapshotLimit,
     /// Legacy name/key/reason declarations require explicit migration with scope and qualifying evidence.
     #[error(
         "legacy name/key/reason declarations require explicit migration with scope and qualifying evidence"

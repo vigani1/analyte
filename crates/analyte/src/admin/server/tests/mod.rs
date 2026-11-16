@@ -556,6 +556,7 @@ async fn start_overview_server(
         host: host.clone(),
         store: store.clone(),
         machines: vec![Machine {
+            departure_html: String::new(),
             id: Identifier::new("<script>alert('hostile')&\"</script>")?,
             running: Arc::new(AtomicBool::new(false)),
         }],

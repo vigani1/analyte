@@ -159,9 +159,40 @@ impl MachineDeparture {
         analyte_model::SourceText::new(&encoded).map_err(|source| crate::Error::Departure {
             path: "effective config".into(),
             rule: self.tag().into(),
-            reason: super::DepartureRefusal::EvidenceLimit,
+            reason: super::DepartureRefusal::SnapshotLimit,
             source: Some(Box::new(source)),
         })
+    }
+
+    /// Describes the fixed substitute meaning for operator review, never for execution.
+    #[must_use]
+    pub fn meaning(&self) -> &'static str {
+        match self {
+            Self::Hl7AbsentObr25MeansFinal(_) => {
+                "Only absent OBR-25 means a complete final report; observation statuses are independent."
+            }
+            Self::Hl7AbsentObx11MeansFinal(_) => {
+                "Only absent OBX-11 means a final observation; report completion is independent."
+            }
+            Self::AstmPackedRecordsInFrame(_) => {
+                "Verified inbound frames may contain several CR-ended records; semantic content is unchanged."
+            }
+            Self::Hl7Utf8InV231(_) => "The later UTF-8 designation is accepted in HL7 2.3.1.",
+            Self::Hl7CrLfTerminators(_) => "CRLF separates source segments.",
+            Self::Hl7LfTerminators(_) => "LF separates source segments.",
+            Self::Hl7PreserveUnsupportedEscapes(_) => {
+                "Unsupported escapes remain original evidence and cannot provide identity."
+            }
+            Self::AstmFrameLimit(_) => "The declared bounded nondefault frame limit is selected.",
+            Self::AstmReceiveTimeout(_) => "The declared bounded receive deadline is selected.",
+            Self::AstmSendTimeout(_) => "The declared bounded send deadline is selected.",
+            Self::AstmHostContentionPriority(_) => {
+                "The host wins simultaneous establishment contention."
+            }
+            Self::AstmLowercaseChecksumHex(_) => {
+                "Lowercase checksum digits are allowed only when the checksum verifies."
+            }
+        }
     }
 
     /// Returns the declaration without interpreting descriptive text.

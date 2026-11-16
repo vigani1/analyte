@@ -1,5 +1,6 @@
 //! Serves protected local administration pages and actions with host-owned credentials.
 mod actions;
+mod departures;
 mod listener;
 mod overview;
 mod pages;

@@ -134,6 +134,14 @@ impl AstmStack {
     pub fn record_boundaries(&self) -> analyte_framing::astm::RecordBoundaries {
         self.record_boundaries
     }
+    /// Returns the selected digit-case policy without relaxing checksum correctness.
+    #[must_use]
+    pub fn checksum_policy(&self) -> analyte_framing::astm::HexPolicy {
+        match self.checksum_hex {
+            ChecksumHex::Strict => analyte_framing::astm::HexPolicy::Strict,
+            ChecksumHex::AcceptLowercase => analyte_framing::astm::HexPolicy::AcceptLowercase,
+        }
+    }
     /// Returns the validated checksum hex setting.
     #[must_use]
     pub fn checksum_hex(&self) -> ChecksumHex {

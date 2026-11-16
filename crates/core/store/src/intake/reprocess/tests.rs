@@ -317,3 +317,24 @@ fn mutation_adr0003_reprocessing_never_resolves_failure_empty_unresolved_or_flag
     }
     Ok(())
 }
+
+#[test]
+fn adr0015_interpretation_ledgers_are_explicit_and_legacy_absence_is_unknown() -> TestResult {
+    let mut current = interpretation()?;
+    current.departures = Some(analyte_model::DepartureEvidence::default());
+    let encoded = serde_json::to_value(&current)?;
+    assert_eq!(
+        encoded.get("departures").and_then(|d| d.get("applied")),
+        Some(&serde_json::json!([]))
+    );
+    let roundtrip: Interpretation = serde_json::from_value(encoded.clone())?;
+    assert_eq!(roundtrip.departures, current.departures);
+    let mut legacy = encoded;
+    legacy.as_object_mut().ok_or("object")?.remove("departures");
+    assert!(
+        serde_json::from_value::<Interpretation>(legacy)?
+            .departures
+            .is_none()
+    );
+    Ok(())
+}

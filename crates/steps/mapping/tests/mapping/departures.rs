@@ -90,3 +90,49 @@ fn adr0015_hl7_s74211_derived_summary_preserves_absence_and_identity_units() -> 
     }
     Ok(())
 }
+
+#[test]
+fn adr0015_hl7_report_omission_never_proves_completion_from_partial_observations() -> TestResult {
+    let definition = definition("hl7_absent_obr25_means_final", "absent_obr25_final");
+    for status in ["P", "R", "C", "X", "D", "\"\"", "UNKNOWN", ""] {
+        let mapped = report("", status, &definition)?;
+        assert!(mapped.applied_departures.is_empty(), "{status}");
+        assert!(
+            mapped
+                .findings
+                .iter()
+                .any(|f| f.problem == Problem::UnqualifiedHl7Report && f.position.field == 25)
+        );
+        assert!(mapped.requires_parking());
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0015_hl7_two_omissions_require_both_separate_guarantees() -> TestResult {
+    let mut definition = definition("hl7_absent_obr25_means_final", "absent_obr25_final");
+    let fixture = include_str!("../../../../core/config/tests/fixtures/departure.toml");
+    let second = fixture
+        .lines()
+        .find(|line| line.starts_with("deviations = ["))
+        .and_then(|line| line.strip_prefix("deviations = ["))
+        .and_then(|line| line.strip_suffix(']'))
+        .ok_or("declaration fixture")?
+        .replace("astm_frame_limit", "hl7_absent_obx11_means_final")
+        .replace("compatibility", "absent_obx11_final")
+        .replace("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
+        .replace("astm_results", "oru_r01_patient");
+    definition = definition.replace("deviations = [", &format!("deviations = [{second},"));
+    let mapped = report("", "", &definition)?;
+    assert_eq!(mapped.applied_departures.len(), 2);
+    assert!(
+        !mapped
+            .findings
+            .iter()
+            .any(|f| f.problem == Problem::UnqualifiedHl7Report
+                && matches!(f.position.field, 11 | 25))
+    );
+    assert_eq!(first(&mapped)?.source_status.as_str(), "");
+    assert!(mapped.requires_parking());
+    Ok(())
+}

@@ -65,4 +65,7 @@ pub struct DepartureEvidence {
     pub enabled: EvidenceList<SourceText>,
     /// Rules actually exercised while interpreting these particular source bytes.
     pub applied: EvidenceList<AppliedDeparture>,
+    /// A bounded ledger failure means this applied list is incomplete and delivery must stop.
+    #[serde(default)]
+    pub incomplete: Option<crate::Reason>,
 }

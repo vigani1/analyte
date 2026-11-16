@@ -1,5 +1,5 @@
 //! Runs ASTM stop-and-wait connections over serial or TCP (LIS01-A2 6/8).
-use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, HexPolicy, NAK};
+use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, NAK};
 use std::{collections::VecDeque, time::Duration};
 
 mod types;
@@ -55,7 +55,7 @@ impl Dialog {
     /// Creates a neutral connection with capacity disabled.
     #[must_use]
     pub fn new(config: Config, epoch: Epoch) -> Self {
-        let decoder = Decoder::new(config.limit, HexPolicy::Strict);
+        let decoder = Decoder::new(config.limit, config.checksum_hex);
         Self {
             config,
             epoch,

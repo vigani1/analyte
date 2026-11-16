@@ -54,9 +54,11 @@ pub(super) fn apply(
         if let Some(declaration) = selected {
             let position = Position { record, field };
             let raw = segment.field(field).map_or(&[][..], |f| f.raw());
-            if raw.is_empty() {
+            if raw.is_empty()
+                && (field != 25 || report_can_be_final(message, record, obx.is_some()))
+            {
                 discharge(output, declaration, position, offset..end)?;
-            } else if raw != b"F" {
+            } else if !raw.is_empty() && raw != b"F" {
                 finding(output, position, Problem::DepartureConflict)?;
             }
         }
@@ -82,6 +84,23 @@ pub(super) fn apply(
         }
     }
     Ok(())
+}
+
+// This only rejects contradictory/unknown observation evidence. The documented
+// OBR omission guarantee, never a count of received observations, supplies completion.
+fn report_can_be_final(message: &Message, record: usize, missing_observation_final: bool) -> bool {
+    for segment in message.segments().skip(record) {
+        if segment.id() == b"OBR" {
+            break;
+        }
+        if segment.id() == b"OBX" {
+            let status = segment.field(11).map_or(&[][..], |field| field.raw());
+            if status != b"F" && !(status.is_empty() && missing_observation_final) {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn patient_scope(output: &Output, record: usize, kind: &str) -> bool {

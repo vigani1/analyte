@@ -176,6 +176,7 @@ async fn enqueue(
             s.interpret_reconciled(
                 metadata.id,
                 analyte_store::Interpretation {
+                    departures: None,
                     driver: metadata.driver,
                     config_version: metadata.config_version,
                     config: b"config".to_vec(),
