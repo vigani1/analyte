@@ -268,9 +268,10 @@ impl ConnectionState {
             }
         }
     }
-    async fn close(&self, store: &Handle, result: Result<(), Error>) -> Result<(), Error> {
+    async fn close(&self, store: &Handle, mut result: Result<(), Error>) -> Result<(), Error> {
         if let Some(order) = self.active.as_ref() {
-            crate::orders::sending::uncertain(store, order, self.end_code).await?;
+            let cleanup = crate::orders::sending::uncertain(store, order, self.end_code).await;
+            custody::retain_cleanup(&mut result, cleanup);
         }
         result
     }

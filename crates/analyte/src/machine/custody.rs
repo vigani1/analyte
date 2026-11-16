@@ -48,3 +48,19 @@ pub(crate) fn retain_cleanup(result: &mut Result<(), Error>, cleanup: Result<(),
         ));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adr0003_cleanup_preserves_session_retention_and_settlement_errors() {
+        let mut result = Err(invalid("session failure"));
+        retain_cleanup(&mut result, Err(invalid("retention failure")));
+        retain_cleanup(&mut result, Err(invalid("settlement failure")));
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "session failure; dialog effect failed: retention failure; dialog effect failed: settlement failure"
+        );
+    }
+}

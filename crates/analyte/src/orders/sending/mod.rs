@@ -286,3 +286,46 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     }
     Ok(())
 }
+
+/// Settles every owned in-flight reservation, preserving every independent failure.
+/// Cleanup never issues a command and never changes an already confirmed outcome.
+pub(crate) async fn settle_owned(
+    store: &Handle,
+    keys: Vec<MachineOrderKey>,
+    owner: &analyte_model::Identifier,
+    code: &str,
+) -> Result<(), Error> {
+    let code = SourceText::new(code)?;
+    let mut result = Ok(());
+    for key in keys {
+        let owner = owner.clone();
+        let code = code.clone();
+        let cleanup = store
+            .request(deadline(), move |store| {
+                if let Some(record) = store.machine_order(&key)?
+                    && (record.reserved_by(&owner) || record.cancel_requested_by(&owner))
+                {
+                    let outcomes = record
+                        .items
+                        .iter()
+                        .map(|item| analyte_store::ItemOutcome {
+                            index: item.index,
+                            decision: analyte_store::ItemDecision::Uncertain,
+                            code: code.clone(),
+                        })
+                        .collect::<Vec<_>>();
+                    store.finish_order_items(
+                        record.id,
+                        &outcomes,
+                        jiff::Timestamp::now().as_second(),
+                        super::event,
+                    )?;
+                }
+                Ok(())
+            })
+            .await
+            .map_err(Into::into);
+        crate::machine::custody::retain_cleanup(&mut result, cleanup);
+    }
+    result
+}

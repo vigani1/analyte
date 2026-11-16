@@ -40,10 +40,10 @@ async fn session_with_outbound(
         Link::Inbound,
     )?;
     host.outbound = outbound;
-    let result = host.inbound().await;
+    let mut result = host.inbound().await;
     // Failed evidence retention must not bypass reserved-item settlement.
     let finished = host.finish().await;
-    orders
+    let cleanup = orders
         .close(
             store,
             if result.is_err() {
@@ -52,8 +52,9 @@ async fn session_with_outbound(
                 "LAW-disconnect"
             },
         )
-        .await?;
-    finished?;
+        .await;
+    super::custody::retain_cleanup(&mut result, finished);
+    super::custody::retain_cleanup(&mut result, cleanup);
     result
 }
 

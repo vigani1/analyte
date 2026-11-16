@@ -64,38 +64,15 @@ impl Connection {
     /// Cancellation can leave an owned reservation committed. Cleanup queries every key
     /// registered before submission; the store owner serializes cleanup after that commit.
     pub(crate) async fn close(&mut self, store: &Handle, code: &str) -> Result<(), Error> {
-        for key in &self.reserving {
-            let key = key.clone();
-            let owner = self.owner.clone();
-            let code = SourceText::new(code)?;
-            store
-                .request(deadline(), move |store| {
-                    if let Some(record) = store.machine_order(&key)?
-                        && (record.reserved_by(&owner) || record.cancel_requested_by(&owner))
-                    {
-                        let outcomes = record
-                            .items
-                            .iter()
-                            .map(|item| ItemOutcome {
-                                index: item.index,
-                                decision: ItemDecision::Uncertain,
-                                code: code.clone(),
-                            })
-                            .collect::<Vec<_>>();
-                        store.finish_order_items(
-                            record.id,
-                            &outcomes,
-                            jiff::Timestamp::now().as_second(),
-                            super::event,
-                        )?;
-                    }
-                    Ok(())
-                })
-                .await?;
-        }
-        self.reserving.clear();
+        let result = super::sending::settle_owned(
+            store,
+            self.reserving.drain(..).collect(),
+            &self.owner,
+            code,
+        )
+        .await;
         self.exchange = None;
-        Ok(())
+        result
     }
 
     pub(crate) async fn answer(

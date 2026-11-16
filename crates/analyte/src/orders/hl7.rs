@@ -97,24 +97,14 @@ impl Connection {
         code: &str,
     ) -> Result<(), Error> {
         let mut result = Ok(());
-        for identity in self.reserving.drain(..) {
-            let loaded = store
-                .request(deadline(), move |store| store.machine_order(&identity))
-                .await;
-            let order = match loaded {
-                Ok(Some(order)) => order,
-                Ok(None) => continue,
-                Err(error) => {
-                    crate::machine::custody::retain_cleanup(&mut result, Err(error.into()));
-                    continue;
-                }
-            };
-            if (order.reserved_by(&self.owner) || order.cancel_requested_by(&self.owner))
-                && !self.active.iter().any(|active| active.id == order.id)
-            {
-                self.active.push(order);
-            }
-        }
+        let cleanup = super::sending::settle_owned(
+            store,
+            self.reserving.drain(..).collect(),
+            &self.owner,
+            code,
+        )
+        .await;
+        crate::machine::custody::retain_cleanup(&mut result, cleanup);
         if let Some(exchange) = &self.exchange {
             let cleanup = super::hl7_send::finish(
                 store,
