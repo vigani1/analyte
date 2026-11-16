@@ -1,20 +1,33 @@
 //! Stores machine receipts and interpretation outcomes independently of vendor dialogs.
-use crate::{Error, invalid};
+use crate::Error;
+#[cfg(test)]
+use crate::invalid;
 use std::time::Duration;
+
+/// Distinguishes an unstarted write, an uncertain deadline and a transport failure.
+#[derive(Debug, thiserror::Error)]
+pub(super) enum WriteError {
+    #[error("vendor write deadline overflow")]
+    DeadlineOverflow,
+    #[error("vendor write deadline exceeded; outcome uncertain")]
+    Deadline(#[source] analyte_transport::Error),
+    #[error(transparent)]
+    Transport(#[from] analyte_transport::Error),
+}
 
 pub(super) async fn write(
     conn: &mut analyte_transport::Connection,
     bytes: &[u8],
     budget: Duration,
-) -> Result<(), Error> {
+) -> Result<(), WriteError> {
     let until = tokio::time::Instant::now()
         .checked_add(budget)
-        .ok_or_else(|| invalid("vendor write deadline overflow"))?;
+        .ok_or(WriteError::DeadlineOverflow)?;
     conn.write_all(bytes, Some(until)).await.map_err(|error| {
         if matches!(error, analyte_transport::Error::Deadline("write all")) {
-            invalid("vendor write deadline exceeded; outcome uncertain")
+            WriteError::Deadline(error)
         } else {
-            error.into()
+            WriteError::Transport(error)
         }
     })
 }
@@ -80,6 +93,21 @@ pub(crate) fn budget(machine: &crate::installation::config::Machine) -> Duration
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vendor_write_errors_keep_recovery_kind_and_original_cause() {
+        use std::error::Error as _;
+        let deadline = WriteError::Deadline(analyte_transport::Error::Deadline("write all"));
+        assert_eq!(
+            deadline.to_string(),
+            "vendor write deadline exceeded; outcome uncertain"
+        );
+        assert!(deadline.source().unwrap().is::<analyte_transport::Error>());
+        assert_eq!(
+            WriteError::DeadlineOverflow.to_string(),
+            "vendor write deadline overflow"
+        );
+    }
 
     #[tokio::test(start_paused = true)]
     async fn adr0010_store_budget_refuses_uncertain_custody() {
