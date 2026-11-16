@@ -57,8 +57,9 @@ Validated snapshots expose immutable settings, canonical TOML and its SHA-256.
 Schema 1 canonicalization serializes a sorted TOML value tree with the pinned
 TOML serializer, UTF-8 and LF endings; list order is significant. Persist the
 returned bytes, rather than reconstructing them with a different serializer.
-Only a validated snapshot can be activated. The host must enforce the
-between-conversations switch and persist the snapshot beside receipts.
+Only a validated snapshot can be activated. Hosts replacing a live snapshot must switch between conversations and persist
+it beside receipts. The Analyte service currently loads snapshots at startup;
+applying changed files requires a restart, with no operator hot-reload command.
 Activation itself performs no I/O, changes no queued delivery and sends no order.
 
 Evidence references are declarations checked for structure, not verified files.
