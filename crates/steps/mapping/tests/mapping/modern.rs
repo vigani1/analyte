@@ -2,7 +2,8 @@
 use super::*;
 
 #[test]
-fn hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_results_deliver_exact_values() -> TestResult {
+fn hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_incomplete_reports_keep_exact_values_parked()
+-> TestResult {
     for (edition, wire) in [("v282", "2.8.2"), ("v291", "2.9.1")] {
         let config =
             config(&HL7_CONFIG.replace("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
@@ -20,7 +21,7 @@ fn hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_results_deliver_exact_values() -> Te
                 config.effective().hl7_options().ok_or("options")?,
             )?;
             let output = map_hl7(&message, &config, input())?;
-            assert!(!output.requires_parking(), "{output:?}");
+            assert!(output.requires_parking(), "{output:?}");
             let value_out = first(&output)?.values.as_slice().first().ok_or("value")?;
             assert_eq!(value_out.original.as_str(), value);
             if let Some(decoded) = decoded {
@@ -68,7 +69,7 @@ fn hl7_2_9_1_s2a_2_22_utc_without_known_civil_offset_remains_raw() -> TestResult
             let interpreted = edition != "v291" || zone != "-0000";
             assert_eq!(time.time.parsed.is_some(), interpreted);
             assert_eq!(time.time.offset.is_some(), interpreted);
-            assert!(!output.requires_parking(), "{output:?}");
+            assert!(output.requires_parking(), "{output:?}");
         }
     }
     Ok(())

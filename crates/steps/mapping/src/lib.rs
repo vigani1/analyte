@@ -216,6 +216,9 @@ pub struct Input {
 /// A problem requiring host review; contains positions rather than patient data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problem {
+    /// A required HL7 report field or supported observation state is not established.
+    UnqualifiedHl7Report,
+
     /// Source value does not fit the configured test expectation.
     ValueKindMismatch {
         /// Required interpretation.

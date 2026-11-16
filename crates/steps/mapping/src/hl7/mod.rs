@@ -4,6 +4,7 @@ use crate::{Error, Input, Output, Position, hl7_edition, is_law};
 use analyte_config::Validated;
 mod display;
 mod orders;
+mod report;
 pub use display::map as map_display;
 pub use orders::Command;
 /// Maps ORU R01 or OUL R22 (2.5.1 only), with group-relative selectors.
@@ -80,5 +81,7 @@ fn map_checked(
         });
     }
     source.attach_comments()?;
-    grouping::message(&source, config, input, None)
+    let mut output = grouping::message(&source, config, input, None)?;
+    report::qualify(message, &mut output)?;
+    Ok(output)
 }

@@ -103,7 +103,7 @@ fn lis02_6_14_8_4_7_9_10_9_12_9_13_timestamps_keep_role_and_original() -> TestRe
 fn rule2_conflicting_explicit_qc_classification_is_unknown_and_parked() -> TestResult {
     for (second, conflict) in [("patient", false), ("control", true)] {
         let definition=HL7_CONFIG.replace("qc = []",&format!("qc = [{{field={{group='order',record='OBR',field=3,component=1,repetition=1}},value='001',classification='patient'}},{{field={{group='order',record='OBR',field=3,component=1,repetition=1}},value='001',classification='{second}'}}]"));
-        let mapped = hl7(
+        let mapped = qualified_hl7(
             "OBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r",
             &definition,
         )?;

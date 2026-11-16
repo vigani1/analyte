@@ -349,12 +349,22 @@ fn hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context() ->
     if let Order::New { specimen, .. } = &mut request {
         specimen.source = None;
     }
+    // HL7 2.3.1 section 4.2.1.1(d): known-patient new work cannot omit PID.
+    assert!(
+        order::orm(
+            &[request],
+            Subject::Identifier {
+                identifier: b"000Patient",
+                namespace: b"LAB"
+            },
+            header(Version::V231)?,
+            Options::default()
+        )
+        .is_err()
+    );
     let built = order::orm(
         &[request],
-        Subject::Identifier {
-            identifier: b"000Patient",
-            namespace: b"LAB",
-        },
+        Subject::NonPatient,
         header(Version::V231)?,
         Options::default(),
     )?;
@@ -449,5 +459,28 @@ fn hl7_231_4_3_1_4_251_4_5_1_4_group_ei_authority_and_complete_field_limit() -> 
             ));
         }
     }
+    Ok(())
+}
+
+// HL7 2.5.1 section 3.4.2 and 4.4.2: optional PID has required contents when present.
+#[test]
+fn hl7_251_s3_4_2_present_reply_pid_requires_identifier_and_name() -> Result<(), Error> {
+    let sent = sent(Version::V251)?;
+    for pid in [
+        b"PID\r".as_slice(),
+        b"PID|1||P1\r",
+        b"PID|1||\"\"||Synthetic\r",
+        b"PID|1||P1||\"\"\r",
+    ] {
+        let mut body = pid.to_vec();
+        body.extend_from_slice(b"ORC|OK|001^LAB\r");
+        assert!(OrderResponse::new(&reply(Version::V251, b"AA", &body)?, &sent).is_err());
+    }
+    let message = reply(
+        Version::V251,
+        b"AA",
+        b"PID|1||P1^^^LAB||Synthetic\rORC|OK|001^LAB\r",
+    )?;
+    OrderResponse::new(&message, &sent)?;
     Ok(())
 }

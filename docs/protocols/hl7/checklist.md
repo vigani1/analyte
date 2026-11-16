@@ -2,6 +2,63 @@
 
 ## Checklist
 
+### Bounded result safety and edition-specific regression evidence (documented)
+
+These rows cover the selected profile and its explicit refusals, not general HL7
+schema conformance. Evidence remains documented; no analyzer or simulator
+qualification is claimed. Choices and reasons are in [decisions](decisions.md).
+
+- [x] H7 - Enhanced 2.9.1 application ACK declares NE/NE, while immediate accept
+  ACK and original mode retain their own rules. Source: 2.9.1 section 2.8.3.2.
+  Test: `hl7_291_s2_8_3_2_application_ack_declares_ne_without_recursion`.
+- [x] H8 - Refuse unsupported separate-channel enhanced application exchanges
+  in config and retain/park incoming requests without a response on the receiving
+  channel. Source: 2.9.1 section 2.8.3.2 and its channel note.
+  Tests: `hl7_291_s2_8_3_2_separate_application_channel_cannot_be_enabled`,
+  `hl7_291_s2_8_3_2_enhanced_application_ack_requires_separate_channel`.
+- [x] H9 - Keep point collection and explicitly refuse DR ranges/nested endpoint
+  precision before scalar interpretation. Source: 2.5.1 sections 7.4.3.17-19.
+  Tests: `hl7_251_s7_4_3_17_collection_range_is_not_ts_precision`,
+  `rule3_hl7_source_path_keeps_statuses_sequences_and_specimen_times`.
+- [x] H10 - Park missing required OBR-4/25, OBX-3/11 or populated-value type,
+  unsupported statuses and missing modern report time. Sources: 2.3.1 section
+  7.3.2; 2.5.1/2.6/2.8.2/2.9.1 sections 7.4.1 and 7.4.2, especially
+  7.4.1.25/7.4.2.11; modern 7.4.1.22.
+  Tests: `hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks`,
+  `hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked`.
+- [x] H11 - Validate bounded group transitions, ordering and unfinished groups
+  before constructing ownership. Sources: 2.3.1 section 7.2.1;
+  2.5.1 sections 7.3.1/7.3.7; later ORU section 7.3.1.
+  Tests: `hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused`,
+  `plan6_notes_keep_parent_paths_even_without_a_result`.
+- [x] H12 - Refuse enhanced OG components before identity mapping; retain legacy
+  OG.1. Sources: 2.8.2 sections 2.A.50/7.4.2.4;
+  2.9.1 sections 2A.2.50/7.4.2.4.
+  Test: `hl7_282_s2_a_50_291_s7_4_2_4_enhanced_og_requires_full_grouping_contract`.
+- [x] H13 - Native 2.3.1 does not interpret later specimen/container groups or
+  OBX-19 analysis time. Keep LAW's separately selected contract.
+  Sources: 2.3.1 sections 7.2.1/7.3.2; compare 2.5.1 section 7.4.2.19.
+  Tests: `hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning`,
+  `law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time`.
+- [x] H14 - Patient-related new native ORM requires PID; missing mandatory name
+  refuses before reservation regardless of the optional flag. Keep cancellation
+  behavior separate. Sources: 2.3.1 sections 4.2.1.1(d)/3.3.2.
+  Tests: `hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing_name`,
+  `hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel`,
+  `hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context`.
+- [x] H15 - Refuse MSH-14/DSC fragments independently and unnegotiated MSH-13;
+  keep raw evidence and never deliver a fragment as a complete report.
+  Sources: 2.5.1 sections 2.10.1/2.10.2.2; 2.6/2.8.2 section 2.10.2;
+  2.9.1 section 2.9.2.
+  Tests: `hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result`,
+  `hl7_251_s2_10_1_unnegotiated_sequence_number_is_refused`,
+  `hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked`.
+- [x] H16 - Present reply PID requires identifier/name independently of the
+  modern identifier-type requirement. Sources: 2.5.1/2.6 sections 3.4.2/4.4.7;
+  2.8.2 sections 3.3.2/4.4.7.1.
+  Tests: `hl7_251_26_s4_4_7_required_pid_content_in_order_reply`,
+  `hl7_251_s3_4_2_present_reply_pid_requires_identifier_and_name`.
+
 ### Later-edition truncation groundwork (documented)
 
 - [x] 2.8.2 / 2.9.1 — Preserve the optional fifth encoding character and require
