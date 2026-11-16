@@ -4,7 +4,6 @@ use analyte_framing::hl7 as mllp;
 use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};
 use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
-
 /// Link role; independent outbound links accept only the correlated ORL transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Link {
@@ -533,6 +532,7 @@ impl Dialog {
             }
             analyte_hl7::Error::Limit { .. }
             | analyte_hl7::Error::Encoding
+            | analyte_hl7::Error::Truncated { .. }
             | analyte_hl7::Error::Truncation
             | analyte_hl7::Error::Terminator
             | analyte_hl7::Error::Segment(_)

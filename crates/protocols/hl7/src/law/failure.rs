@@ -69,6 +69,7 @@ impl Failure {
             | Error::Syntax(
                 crate::Error::Limit { .. }
                 | crate::Error::Encoding
+                | crate::Error::Truncated { .. }
                 | crate::Error::Truncation
                 | crate::Error::Terminator
                 | crate::Error::Segment(_)
