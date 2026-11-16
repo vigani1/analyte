@@ -126,6 +126,21 @@ there. Per-protocol files (`astm.rs`, `hl7.rs`, ...) stay side by side, since
 the protocol key already explains them. Small folders stay flat. Domain terms (receipt, delivery, revision, custody, parked item and so
 on) are defined once in `docs/glossary.md`.
 
+### 10. Crates are grouped by kind, and each kind has one inner layout
+
+`crates/` holds one folder per kind; every crate of a kind lays out its `src/`
+the same way, and its `README.md` states the kind first.
+
+| Kind | Folder | Crates | Inside `src/` |
+| --- | --- | --- | --- |
+| Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`), one file per protocol inside |
+| Steps | `crates/steps/` | transport, framing, dialog, mapping, sink | One file or folder per protocol key, plus shared pieces named for what they hold |
+| Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file per job: `syntax`, `views`, `version`, `encoder`; a profile (LAW) is a folder |
+| Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |
+| Testing | `crates/testing/` | receiver, sim | Stand-ins used only by tests |
+
+A new crate joins one kind, or the plan gets a new kind through this ADR.
+
 ## Consequences
 
 - Adding a protocol means filling the same template; adding a machine means
