@@ -216,13 +216,17 @@ pub(super) async fn astm(peer: &mut TcpStream, message: &[u8]) -> Result<(), Err
     tokio::time::timeout(HANG_GUARD, async {
         peer.write_all(b"\x05").await?;
         assert_eq!(peer.read_u8().await?, 6);
-        for frame in analyte_framing::astm::encode(
-            message,
-            analyte_framing::astm::FrameNumber::FIRST,
-            analyte_framing::astm::Limit::new(64000)?,
-        )? {
-            peer.write_all(&frame).await?;
-            assert_eq!(peer.read_u8().await?, 6);
+        let mut number = analyte_framing::astm::FrameNumber::FIRST;
+        for record in message.split_inclusive(|b| *b == b'\r') {
+            for frame in analyte_framing::astm::encode(
+                record,
+                number,
+                analyte_framing::astm::Limit::new(64000)?,
+            )? {
+                number = number.next();
+                peer.write_all(&frame).await?;
+                assert_eq!(peer.read_u8().await?, 6);
+            }
         }
         peer.write_all(b"\x04").await?;
         Ok::<_, Error>(())

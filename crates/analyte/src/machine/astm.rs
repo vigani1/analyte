@@ -192,6 +192,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         let events = if let Some(reserved) = outgoing {
             self.active_orders.push(reserved.order);
             vec![Event::Send(crate::orders::astm::envelope(
+                machine,
                 vec![reserved.payload.record()?.to_vec()],
                 b'N',
             ))]

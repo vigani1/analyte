@@ -378,3 +378,42 @@ fn lis02_10_consecutive_comments_share_noncomment_owner() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn lis02_6_12_composite_processing_id_never_authorizes_production() -> TestResult {
+    for mode in ["P^T", "P\\T", "P&F&", "UNKNOWN"] {
+        assert!(astm("R|1|^^^SYN|1|mg/L||||F\r", mode).is_err());
+    }
+    Ok(())
+}
+
+#[test]
+fn lis02_5_4_5_8_4_3_escaped_specimen_matches_decoded_identity() -> TestResult {
+    let definition = config(ASTM_CONFIG)?;
+    for (raw_id, decoded) in [
+        ("A&F&B", "A|B"),
+        ("A&S&B", "A^B"),
+        ("A&R&B", "A\\B"),
+        ("A&E&B", "A&B"),
+    ] {
+        let raw = format!(
+            "H|\\^&||||||||||P|LIS2-A2\rP|1\rO|1|{raw_id}\rR|1|^^^SYN|1|mg/L||||F\rL|1|N\r"
+        );
+        let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
+        let output = map_astm(&messages[0], &definition, input())?;
+        let sample = output.results[0].content.sample.as_ref().ok_or("sample")?;
+        assert_eq!(sample.id.as_str(), decoded);
+        assert_eq!(messages[0].encode(), raw.as_bytes());
+    }
+    Ok(())
+}
+
+#[test]
+fn lis02_5_4_5_unagreed_identity_escape_is_refused() -> TestResult {
+    let definition = config(ASTM_CONFIG)?;
+    let raw = b"H|\\^&||||||||||P|LIS2-A2\rP|1\rO|1|A&Zlocal&B\rR|1|^^^SYN|1|mg/L||||F\rL|1|N\r";
+    let messages = analyte_astm::parse(raw, analyte_astm::Limits::default())?;
+    assert!(map_astm(&messages[0], &definition, input()).is_err());
+    assert_eq!(messages[0].encode(), raw);
+    Ok(())
+}

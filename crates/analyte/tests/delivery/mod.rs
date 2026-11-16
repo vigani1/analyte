@@ -452,16 +452,21 @@ fn assert_completed_recording_retained(
     db: &rusqlite::Connection,
 ) -> Result<(), Error> {
     let (_, original) = recording("astm")?;
-    let expected = &original.get(2).ok_or("frame absent")?.bytes;
+    let frames: Vec<_> = original
+        .iter()
+        .filter(|event| event.bytes.first() == Some(&2))
+        .map(|event| event.bytes.clone())
+        .collect();
+    let expected = frames.concat();
     assert_eq!(
         recording_frames(path)?,
-        vec![expected.clone()],
+        frames,
         "repeated frame must not be journaled twice in one transfer"
     );
-    let raw: Vec<u8> = db.query_row("SELECT raw FROM receipts WHERE raw=?1", [expected], |r| {
+    let raw: Vec<u8> = db.query_row("SELECT raw FROM receipts WHERE raw=?1", [&expected], |r| {
         r.get(0)
     })?;
-    assert_eq!(&raw, expected);
+    assert_eq!(raw, expected);
     Ok(())
 }
 
@@ -486,7 +491,7 @@ fn assert_failure_recording_retained(
         );
         let expected = &events.get(2).ok_or("bad input absent")?.bytes;
         let raw: Vec<u8> =
-            db.query_row("SELECT raw FROM receipts WHERE raw=?1", [expected], |r| {
+            db.query_row("SELECT raw FROM receipts WHERE raw=?1", [&expected], |r| {
                 r.get(0)
             })?;
         assert_eq!(&raw, expected, "rejected wire bytes must be retained");

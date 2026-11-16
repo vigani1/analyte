@@ -8,6 +8,20 @@ use analyte_config::Validated;
 use analyte_model::*;
 
 fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode, Error> {
+    if source.syntax == FieldSyntax::AstmLis02 {
+        use analyte_astm::ProcessingId;
+        let raw = source.raw(0, 12)?.unwrap_or_default();
+        return match ProcessingId::from_bytes(raw.as_bytes()) {
+            ProcessingId::Production => Ok(ProcessingMode::Production),
+            ProcessingId::Training => Ok(ProcessingMode::Training),
+            ProcessingId::Debug => Ok(ProcessingMode::Debug),
+            ProcessingId::QualityControl => Ok(ProcessingMode::QualityControl),
+            ProcessingId::Other(_) => Err(Error::Structure {
+                position: source.position(0, 12),
+                reason: "unknown processing mode",
+            }),
+        };
+    }
     let field = match source.syntax {
         FieldSyntax::AstmLis02 => 12,
         FieldSyntax::Hl7V2 => 11,

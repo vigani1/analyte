@@ -150,3 +150,20 @@ and parsed result view (`lis02_9_9_each_wire_code_has_specified_meaning`).
 Manufacturer evidence checks all eight fixture positions, sequence and exact
 round-trip (`lis02_14_all_manufacturer_positions_are_retained`); this proves
 retention, not vendor field semantics. Evidence remains documented.
+
+## Strict records and semantic selectors (standards pass 3)
+
+LIS01 sections 3.3.2, 6.3.1.1 and 8.3.1.1 require LIS02 records to start
+in separate frames. The link rejects packed records with NAK and retains the
+rejected frame as evidence. No machine departure is enabled. Whether a future
+machine needs an explicit packing departure remains open.
+
+LIS02 sections 5.4.5 and 8.4.3: semantic selectors use decoded delimiter escapes;
+unknown, local, hexadecimal and formatting operations cannot become identity.
+The original record bytes remain alongside interpretations. H-12 is recognized
+as one exact ProcessingId code (section 6.12).
+
+LIS02 section 6.10 describes receiver identification; section 4.1 allows fields
+that are not needed for record identification or parsing to be omitted. H-10
+therefore remains empty when no peer identity is agreed. Sites may configure
+`orders.astm.receiver` to fill it; a local machine name is not a peer identity.

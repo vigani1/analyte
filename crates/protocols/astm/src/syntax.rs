@@ -195,8 +195,15 @@ pub enum Presence {
 pub struct Component {
     raw: Vec<u8>,
     text: String,
+    unsupported_escape: bool,
 }
 impl Component {
+    /// Whether an operation lacks a supported semantic interpretation.
+    #[must_use]
+    pub fn has_unsupported_escape(&self) -> bool {
+        self.unsupported_escape
+    }
+
     /// Exact component bytes, including optional or unknown escapes.
     #[must_use]
     pub fn raw(&self) -> &[u8] {
@@ -726,6 +733,7 @@ fn parse_fields(
             vec![vec![Component {
                 raw: part.to_vec(),
                 text: latin1(part).unwrap_or_default(),
+                unsupported_escape: false,
             }]]
         } else {
             let mut repeats = Vec::new();
@@ -754,6 +762,9 @@ fn parse_fields(
                     })?;
                     components.push(Component {
                         raw: component.to_vec(),
+                        unsupported_escape: component.split(|b| *b == d.escape).enumerate().any(
+                            |(i, body)| i % 2 == 1 && !matches!(body, b"F" | b"S" | b"R" | b"E"),
+                        ),
                         text,
                     });
                 }

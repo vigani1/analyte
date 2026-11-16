@@ -185,11 +185,22 @@ impl Source<'_> {
             return Ok(None);
         };
         let bytes = match node.record {
-            Record::Astm(record) => record
-                .field(field)
-                .and_then(|f| f.repeats().get(repetition))
-                .and_then(|r| r.get(component))
-                .map(analyte_astm::Component::raw),
+            Record::Astm(record) => {
+                return record
+                    .field(field)
+                    .and_then(|f| f.repeats().get(repetition))
+                    .and_then(|r| r.get(component))
+                    .map(|part| {
+                        if part.has_unsupported_escape() {
+                            return Err(Error::Structure {
+                                position: self.position(index, field),
+                                reason: "selected text contains unsupported ASTM escapes",
+                            });
+                        }
+                        Ok(part.text().to_owned())
+                    })
+                    .transpose();
+            }
             Record::Hl7(segment) => segment
                 .field(field)
                 .and_then(|f| f.repetitions().nth(repetition))

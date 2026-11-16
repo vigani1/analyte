@@ -381,13 +381,14 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
     assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     tokio::time::sleep(Duration::from_millis(40)).await;
     let request = b"H|\\^&|||SYN|||||||P|1\rQ|1|^000Ab12||ALL||||||||O\rL|1|N\r";
-    for frame in analyte_framing::astm::encode(
-        request,
-        analyte_framing::astm::FrameNumber::FIRST,
-        analyte_framing::astm::Limit::new(64000)?,
-    )? {
-        peer.write_all(&frame).await?;
-        assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
+    let mut number = analyte_framing::astm::FrameNumber::FIRST;
+    let limit = analyte_framing::astm::Limit::new(64000)?;
+    for record in request.split_inclusive(|b| *b == b'\r') {
+        for frame in analyte_framing::astm::encode(record, number, limit)? {
+            number = number.next();
+            peer.write_all(&frame).await?;
+            assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
+        }
     }
     peer.write_all(b"\x04").await?;
     assert!(receive_orders(&mut peer).await?.ends_with(b"L|1|Q\r"));
