@@ -68,6 +68,7 @@ impl Failure {
             Error::AtSegment { .. }
             | Error::Syntax(
                 crate::Error::EditionRules(_)
+                | crate::Error::WithdrawnQuery { .. }
                 | crate::Error::Limit { .. }
                 | crate::Error::Encoding
                 | crate::Error::Truncated { .. }

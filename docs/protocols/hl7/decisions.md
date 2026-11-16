@@ -1,5 +1,38 @@
 # HL7 decisions
 
+## Keep the modern receiving profile bounded without losing source distinctions
+
+- **what**: Receive the same ORU/R01 core as the 2.6 profile for 2.8.2 and 2.9.1,
+  using their actual CWE/DTM, withdrawal and acknowledgment rules. Refuse
+  withdrawn fields visibly, including OBR-14; it no longer supplies a specimen
+  receipt time. Leave unselected participation, device and specimen groups
+  outside this profile. Legacy query is refused; LAW remains separate.
+- **coding**: Accept all 22 CWE components under the explicit 16,384-byte
+  operational composite bound. Treat conformance lengths as receiver capacities,
+  not universal maxima; enforce the normative coding-system name bound. Retain
+  OID, value-set and alternate-tuple metadata raw, without registry lookup or
+  inventing a named namespace. Do not reject a coded value merely because value-set
+  metadata is present or absent. The named primary tuple is the current mapping
+  contract; OID-only or alternate-only identities stay unresolved for an operator.
+  Named coding systems retain the explicit-version policy selected for 2.6.
+- **time**: For 2.9.1 `-0000`, retain the full original time and precision but
+  leave the optional parsed local time and civil offset empty. The source
+  establishes UTC without establishing the sender's civil offset; the current
+  common model must not claim one. `+0000` keeps its known-zero interpretation.
+  2.8.2 treats both spellings as zero-offset times. No data-model field is added.
+- **control**: 2.9.1 requires paired MSH-15/16 requests; this profile refuses
+  explicit nulls rather than treating them as an empty pair. Control identifiers
+  retain the existing delimiter-free contract, extended to the declared truncation
+  marker. Generic data text supports literal `\P\`; a sender truncation marker
+  still parks the receipt. Outgoing values are never shortened.
+- **source**: 2.8.2 §§2.A.13/.22/.88 pp.24–32, 38–39, 89–94;
+  §§2.5.5.3–4 pp.13–14; §§2.14.8–9 pp.57–62; §7.4.1 pp.36–47.
+  2.9.1 §§2A.2.13/.22/.88 pp.25–33, 39–40, 92–96;
+  §§2.4.5.3–4 pp.15–16; §§2.13.8–9 pp.67–72; §7.4.1 pp.49–57.
+- **tests**: The source-named rows in versions.md link protocol `modern.rs`,
+  mapping `mapping/modern.rs`, config edition tests and the dialog custody test.
+  Evidence remains documented. Order writers are Part B and remain gated.
+
 ## Receive results without reviving withdrawn original queries
 
 - **what**: The selected scope for 2.8.2 and 2.9.1 is result reception only.
@@ -42,8 +75,7 @@
 - **tests**: protocol `receiving.rs`; mapping
   `hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity`
   and `hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map`.
-- **remaining**: 2.8.2/2.9.1 typed result profiles stay unfinished and fail
-  config validation. Their original queries are withdrawn
+- **remaining**: 2.8.2/2.9.1 now have bounded result profiles. Their original queries are withdrawn
   (2.8.2 §5.10.2; 2.9.1 §5.9.2); a modern query contract is not implicitly
   selected; result-only scope is selected above. Step 5 order writers remain
   a separate PR. Evidence: documented.
@@ -82,9 +114,10 @@
 - **source**: ADR 0007 and ADR 0012 §3; HL7 2.5.1 §2.8, pp.2-20–22.
 - **test**: the eight edition cases in `version/tests.rs`; existing 2.3.1 and
   2.5.1 conformance tests continue to guard their implemented field rules.
-  `adr0012_s3_recognized_editions_without_typed_support_fail_config_validation`
-  checks that all six other editions fail before activation with an actionable
-  diagnostic naming the edition and the supported alternatives.
+  `adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`
+  now checks all eight qualified receiving editions. The earlier unsupported-profile
+  regression was replaced as the final two received their typed paths; modern
+  legacy-query and unqualified-writer refusal tests remain active.
 
 ## Sender-marked truncation
 

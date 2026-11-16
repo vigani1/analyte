@@ -161,7 +161,7 @@ pub(super) fn coded(parts: &[Component<'_>], version: Version) -> bool {
             &parts.iter().map(|p| p.raw()).collect::<Vec<_>>(),
             version
                 .rules()
-                .is_some_and(|rules| rules.coded_components == 9),
+                .is_some_and(|rules| rules.coded_components >= 9),
             version,
         )
 }
@@ -187,7 +187,14 @@ fn coded_parts(parts: &[&[u8]], extended: bool, version: Version) -> bool {
     let Some(rules) = version.rules() else {
         return false;
     };
-    if !simple_parts(parts, if extended { 9 } else { 6 }) {
+    if !simple_parts(
+        parts,
+        if extended {
+            rules.coded_components.max(9)
+        } else {
+            6
+        },
+    ) {
         return false;
     }
     if !lengths(parts, rules.coded_lengths) {
@@ -196,7 +203,17 @@ fn coded_parts(parts: &[&[u8]], extended: bool, version: Version) -> bool {
     // A local CWE code remains opaque, but its non-HL7 coding system needs
     // a supplied version. Never invent a version for the sending application.
     if extended {
-        for (code, system, revision) in [(1, 3, 7), (4, 6, 8)] {
+        for (code, system, revision, oid) in [(1, 3, 7, 14), (4, 6, 8, 17), (10, 12, 13, 20)]
+            .into_iter()
+            .take(if rules.coded_components == 22 { 3 } else { 2 })
+        {
+            if rules.coded_components == 22
+                && !at(parts, code).is_empty()
+                && at(parts, system).is_empty()
+                && at(parts, oid).is_empty()
+            {
+                return false;
+            }
             let system = at(parts, system);
             if !system.is_empty()
                 && at(parts, revision).is_empty()
@@ -293,7 +310,7 @@ pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
                         || (!at(&parts, 1).is_empty() && lengths(&parts, rules.family_lengths)))
             }
             9 | 14 => hd(&parts, version),
-            16 => coded_parts(&parts, rules.coded_components == 9, version),
+            16 => coded_parts(&parts, rules.coded_components >= 9, version),
             // DR nested in XCN has no sub-subcomponent delimiter; its two
             // date/time values are demoted scalar DTM values (2.A.86.17 erratum).
             17 => {

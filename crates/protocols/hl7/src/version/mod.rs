@@ -96,7 +96,7 @@ const EDITIONS: [EditionRules; 8] = [
         required_timestamp: true,
         // HL7 2.8.2 chapter 5 section 5.10.2: withdrawn since 2.7.
         legacy_query_withdrawal: Some("5.10.2"),
-        grammar: None,
+        grammar: Some(&GRAMMAR_282),
     },
     // HL7 2.9.1 sections 2.13.9.2/.7/.12, pp.69-71.
     EditionRules {
@@ -106,7 +106,7 @@ const EDITIONS: [EditionRules; 8] = [
         required_timestamp: true,
         // HL7 2.9.1 chapter 5 section 5.9.2: withdrawn since 2.7.
         legacy_query_withdrawal: Some("5.9.2"),
-        grammar: None,
+        grammar: Some(&GRAMMAR_291),
     },
 ];
 
@@ -167,6 +167,19 @@ impl Version {
             .is_some_and(|rules| rules.time_format == TimeFormat::Dtm)
     }
 
+    /// Reports whether this edition has a qualified bounded result profile.
+    #[must_use]
+    pub fn supports_result_reception(self) -> bool {
+        self.rules().is_some()
+    }
+
+    /// Reports UTC-without-civil-offset spelling that must remain raw in the common model.
+    #[must_use]
+    pub fn keeps_utc_without_civil_offset_raw(self) -> bool {
+        self.rules()
+            .is_some_and(|rules| rules.zero_offset == ZeroOffset::UtcOnly)
+    }
+
     // Table 0211 can change under section 2.8.2; do not assume that a later
     // character-set code was already defined in an unavailable earlier edition.
     pub(crate) fn standard_utf8(raw: &[u8]) -> bool {
@@ -209,8 +222,27 @@ pub(crate) enum CodingVersions {
     Explicit,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ZeroOffset {
+    Known,
+    UtcOnly,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AckPair {
+    Independent,
+    Paired,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Rules {
+    pub observation_authority: Option<usize>,
+    pub observation_dependencies: &'static [(usize, usize)],
+    pub zero_offset: ZeroOffset,
+    pub ack_pair: AckPair,
+    pub withdrawn_obr: &'static [usize],
+    pub withdrawn_msa: &'static [usize],
+    pub withdrawn_err: &'static [usize],
+    pub coded_field_bytes: usize,
     // HL7 2.6 section 7.3.1; Analyte's selected core group scope (ADR 0007).
     pub core_groups_only: bool,
     pub result_fields: &'static [ResultField],
@@ -247,6 +279,14 @@ pub(crate) struct Rules {
 
 const GRAMMARS: [Rules; 2] = [
     Rules {
+        observation_authority: None,
+        observation_dependencies: &[],
+        zero_offset: ZeroOffset::Known,
+        ack_pair: AckPair::Independent,
+        withdrawn_obr: &[],
+        withdrawn_msa: &[],
+        withdrawn_err: &[],
+        coded_field_bytes: 705,
         core_groups_only: false,
         result_fields: &[],
         time_format: TimeFormat::Ts,
@@ -271,6 +311,14 @@ const GRAMMARS: [Rules; 2] = [
         timing_lengths: &[],
     },
     Rules {
+        observation_authority: None,
+        observation_dependencies: &[],
+        zero_offset: ZeroOffset::Known,
+        ack_pair: AckPair::Independent,
+        withdrawn_obr: &[],
+        withdrawn_msa: &[],
+        withdrawn_err: &[],
+        coded_field_bytes: 705,
         core_groups_only: false,
         result_fields: &[],
         time_format: TimeFormat::Ts,
@@ -324,6 +372,36 @@ const GRAMMAR_26: Rules = Rules {
         15, 194, 30, 30, 20, 20, 5, 4, 227, 1, 4, 3, 5, 227, 1, 705, 49, 1, 24, 24, 199, 705, 705,
     ],
     ..GRAMMARS[1]
+};
+
+// HL7 2.8.2 sections 2.A.13 (pp.24-32), 2.5.5.3-4 (pp.13-14),
+// 2.14.5.1/.8.3/.5/.6 and 7.4.1.5/.6/.14/.15/.27.
+// Composite bytes are an operational cap, not a normative HL7 composite maximum.
+const GRAMMAR_282: Rules = Rules {
+    // Section 7.4.2.3 and chapter 2A CWE authority rules: selected named-primary
+    // mapping contract; OID-only authority stays unresolved without a registry.
+    observation_authority: Some(3),
+    // Both editions section 7.4.2.12: effective range date requires a reference range.
+    observation_dependencies: &[(12, 7)],
+    coded_components: 22,
+    coded_field_bytes: 16384,
+    coded_lengths: &[
+        16384, 16384, 12, 16384, 16384, 12, 16384, 16384, 16384, 16384, 16384, 12, 16384, 16384,
+        16384, 24, 16384, 16384, 24, 16384, 16384, 24,
+    ],
+    withdrawn_obr: &[5, 6, 14, 15, 27],
+    withdrawn_msa: &[3, 5, 6],
+    withdrawn_err: &[1],
+    ..GRAMMAR_26
+};
+
+// HL7 2.9.1 sections 2A.2.13 (pp.25-33), 2A.2.22 (pp.39-40),
+// 2.13.9.15-16 (pp.71-72), 7.4.1.16/.28/.32-.35.
+const GRAMMAR_291: Rules = Rules {
+    zero_offset: ZeroOffset::UtcOnly,
+    ack_pair: AckPair::Paired,
+    withdrawn_obr: &[5, 6, 14, 15, 16, 27, 28, 32, 33, 34, 35],
+    ..GRAMMAR_282
 };
 
 mod result;

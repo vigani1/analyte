@@ -1,4 +1,4 @@
-# HL7 v2.3.1 and v2.5.1, with MLLP Release 1
+# HL7 v2 editions, with MLLP Release 1
 
 Evidence level: documented. Phase 3.
 
@@ -10,10 +10,15 @@ extensions. Command sending stays blocked in config for those three editions
 until writer integration. The bounded 2.6 receiving/query profile uses its own
 DTM/CWE/XCN rules in the shared table, with deprecated and unselected elements
 kept raw or refused visibly. Command sending also remains blocked for 2.6.
-Typed 2.8.2 and 2.9.1 support is unfinished and config refuses those editions.
+The bounded 2.8.2 and 2.9.1 profiles receive ORU/R01 results with the modern
+typed rules; legacy queries remain refused by edition and withdrawing section.
+Their order sending also remains blocked pending writer qualification.
 See [versions](versions.md) for the precise differences,
 source sections, errata items and limitations; this is not full historical-schema
 conformance or simulator qualification.
+
+The transaction list below describes the two native profiles. The versions
+matrix bounds the receiving extensions for the other six editions.
 
 Draft conformance checklist, written in our own words from the standard and
 checked in an independent review on 2026-11-15. Chapter, section and PDF page
