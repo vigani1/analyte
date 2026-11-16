@@ -150,7 +150,6 @@ pub fn map_order(
             priority: first.priority,
             ..law::Capabilities::default().instructions
         },
-        ..law::Capabilities::default()
     };
     Ok(law::work_order(
         &awos,
