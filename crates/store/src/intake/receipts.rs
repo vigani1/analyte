@@ -40,3 +40,6 @@ impl Store {
             .optional()?)
     }
 }
+
+#[cfg(test)]
+mod tests;

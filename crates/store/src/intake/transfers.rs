@@ -151,3 +151,6 @@ impl Store {
         self.frame(transfer, sequence, raw)
     }
 }
+
+#[cfg(test)]
+mod tests;

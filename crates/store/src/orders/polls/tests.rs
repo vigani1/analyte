@@ -1,6 +1,5 @@
-//! ADR 0003 rules 2/3/8: cursor custody is retained before transmission and never replayed.
 use super::*;
-use crate::tests::{TestResult, open};
+use crate::test_support::{TestResult, open};
 
 fn audit(id: PollIntentId, reason: &str) -> Result<Audit, analyte_model::TextError> {
     Ok(Audit {
@@ -231,8 +230,8 @@ fn adr0003_poll_capacity_refusal_never_admits_or_reconciles_a_cursor_movement() 
     let reason = Reason::new("poll may move cursor")?;
     let mut store = Store::open(
         &path,
-        crate::tests::limits(),
-        Box::new(crate::tests::Space(0)),
+        crate::test_support::limits(),
+        Box::new(crate::test_support::Space(0)),
     )?;
     assert!(matches!(
         store.begin_poll_intent(&machine, &reason),
@@ -250,8 +249,8 @@ fn adr0003_poll_capacity_refusal_never_admits_or_reconciles_a_cursor_movement() 
     drop(store);
     let mut store = Store::open(
         &path,
-        crate::tests::limits(),
-        Box::new(crate::tests::Space(0)),
+        crate::test_support::limits(),
+        Box::new(crate::test_support::Space(0)),
     )?;
     let audit = audit(id, "operator evidence")?;
     for outcome in [PollOutcome::Uncertain, PollOutcome::Confirmed] {
@@ -358,7 +357,7 @@ fn mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit
     let evidence = audit(id, "retained operator evidence")?;
     assert!(crate::key(&evidence)?.len() > 2);
     // Two available bytes above the reserve cannot hold even one retained audit.
-    store.space = Box::new(crate::tests::Space(
+    store.space = Box::new(crate::test_support::Space(
         store.limits.reserve_bytes.checked_add(2).ok_or("space")?,
     ));
     for outcome in [PollOutcome::Uncertain, PollOutcome::Confirmed] {

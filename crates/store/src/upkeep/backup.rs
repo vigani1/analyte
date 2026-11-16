@@ -33,3 +33,6 @@ impl Store {
         Self::integrity(&copy)
     }
 }
+
+#[cfg(test)]
+mod tests;

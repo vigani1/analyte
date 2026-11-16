@@ -597,3 +597,6 @@ mod item_transition_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

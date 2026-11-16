@@ -134,3 +134,6 @@ impl Startup {
         self.step.subscribe()
     }
 }
+
+#[cfg(test)]
+mod tests;

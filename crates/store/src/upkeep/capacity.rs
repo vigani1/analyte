@@ -78,3 +78,6 @@ impl Store {
         self.capacity(expected_bytes)
     }
 }
+
+#[cfg(test)]
+mod tests;

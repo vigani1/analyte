@@ -1,6 +1,5 @@
-//! ADR 0003 rule 7: bounded startup, with atomic, resumable migrations.
 use super::*;
-use crate::tests::{Space, TestResult, limits};
+use crate::test_support::{Space, TestResult, limits};
 use std::{
     sync::{
         Arc,
@@ -287,7 +286,7 @@ fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_gua
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("upgrade.db");
         let mut db = Connection::open(&path)?;
-        let metadata = crate::tests::receipt(b"original bytes")?;
+        let metadata = crate::test_support::receipt(b"original bytes")?;
         if version >= 1 {
             db.execute_batch(include_str!("../schema.sql"))?;
             db.execute(
@@ -390,7 +389,7 @@ fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_gua
 #[test]
 fn mutation_adr0003_startup_interrupts_sqlite_once_then_allows_cleanup() -> TestResult {
     let base = Instant::now();
-    let mut startup = Startup::new(base + crate::tests::HANG_GUARD);
+    let mut startup = Startup::new(base + crate::test_support::HANG_GUARD);
     startup.clock = Some(Arc::new(move || base));
     let mut db = Connection::open_in_memory()?;
     startup.install(&mut db)?;
@@ -442,7 +441,7 @@ fn mutation_plan11_startup_progress_names_and_completed_steps_are_visible() -> T
         .with_writer(move || TraceWriter(sink.clone()))
         .finish();
     let base = Instant::now();
-    let mut startup = Startup::new(base + crate::tests::HANG_GUARD);
+    let mut startup = Startup::new(base + crate::test_support::HANG_GUARD);
     startup.clock = Some(Arc::new(move || base));
     tracing::subscriber::with_default(subscriber, || -> Result<(), Error> {
         startup.run(StartupStep::Opening, || Ok(()))?;

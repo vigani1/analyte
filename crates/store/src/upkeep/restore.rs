@@ -171,3 +171,6 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

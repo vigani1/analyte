@@ -255,3 +255,6 @@ pub struct FrameProvenance {
     /// Exact effective configuration, without secrets.
     pub config: Vec<u8>,
 }
+
+#[cfg(test)]
+mod tests;

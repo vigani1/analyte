@@ -218,5 +218,4 @@ fn parking(encoded: &str) -> Result<String, Error> {
 }
 
 #[cfg(test)]
-#[path = "../migration_tests.rs"]
 mod tests;

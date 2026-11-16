@@ -369,7 +369,7 @@ impl Store {
 #[cfg(test)]
 mod operator_read_tests {
     use super::*;
-    use crate::tests::{TestResult, open};
+    use crate::test_support::{TestResult, open};
     use analyte_model::{Digest, NamespacedId, Reason, SampleId};
 
     // Plan section 11: exact metadata reads do not expose receipt bytes, and
@@ -443,3 +443,6 @@ mod operator_read_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -597,3 +597,6 @@ fn same_retained_content(
     }
     Ok(None)
 }
+
+#[cfg(test)]
+mod tests;

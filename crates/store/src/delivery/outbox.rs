@@ -148,3 +148,6 @@ impl Store {
         Ok(ids.len())
     }
 }
+
+#[cfg(test)]
+mod tests;

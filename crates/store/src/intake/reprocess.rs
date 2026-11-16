@@ -67,3 +67,6 @@ pub(crate) fn audit_evidence(
         reason: action.audit.reason.clone(),
     })
 }
+
+#[cfg(test)]
+mod tests;

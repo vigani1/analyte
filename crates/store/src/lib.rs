@@ -29,8 +29,6 @@ pub use resend::{DeliveryState, StoredDelivery};
 /// before using tables added by the latest migration.
 pub const SCHEMA_VERSION: i64 = 9;
 pub use machine_orders::*;
-#[cfg(test)]
-mod order_tests;
 
 pub use revisions::{InterpretationCommit, RevisionOutcome, StatusLifecycle};
 
@@ -256,9 +254,6 @@ impl Store {
     }
 }
 
-#[cfg(test)]
-mod tests;
-
 /// Authoritative cache availability, distinct from an authoritative empty answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrderTrust {
@@ -286,3 +281,9 @@ impl OrderTrust {
         matches!(self, Self::Trusted { .. })
     }
 }
+
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+#[path = "lib/tests.rs"]
+mod tests;

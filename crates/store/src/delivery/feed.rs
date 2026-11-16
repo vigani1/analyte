@@ -124,3 +124,6 @@ impl Store {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

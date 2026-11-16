@@ -149,35 +149,4 @@ impl Drop for Handle {
 }
 
 #[cfg(test)]
-mod mutation_tests {
-    use super::*;
-    use crate::tests::{HANG_GUARD, Space, TestResult, limits};
-
-    #[test]
-    fn mutation_rule7_worker_finished_owner_shutdown_does_not_require_more_time() -> TestResult {
-        let temp = tempfile::tempdir()?;
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()?;
-        runtime.block_on(async {
-            let mut handle = Handle::start(
-                temp.path().join("store.db"),
-                limits(),
-                Box::new(Space(u64::MAX)),
-                1,
-                Instant::now() + HANG_GUARD,
-            )
-            .await?;
-            handle.sender.take();
-            let guard = Instant::now() + HANG_GUARD;
-            while !handle.thread.as_ref().ok_or(Error::Closed)?.is_finished() {
-                assert!(Instant::now() < guard, "closed worker did not finish");
-                tokio::task::yield_now().await;
-            }
-            handle.shutdown(Instant::now()).await?;
-            assert!(handle.thread.is_none());
-            Ok::<_, Error>(())
-        })?;
-        Ok(())
-    }
-}
+mod tests;

@@ -1,6 +1,5 @@
-//! ADR 0004 and safety rule 8: atomic reservation and no automatic replay.
-use super::*;
-use crate::tests::{TestResult, open};
+use crate::test_support::{TestResult, open};
+use crate::*;
 use analyte_model::{OrderState, SourceText};
 use std::num::NonZeroU64;
 
@@ -456,7 +455,7 @@ fn plan11_schema3_to6_preserves_rows_and_triggers() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("legacy.db");
     let mut db = Connection::open(&path)?;
-    db.execute_batch(include_str!("upkeep/schema.sql"))?;
+    db.execute_batch(include_str!("../../upkeep/schema.sql"))?;
     Store::migrate_v2(&mut db)?;
     Store::migrate_v3(&mut db, 65_536)?;
     db.execute("INSERT INTO audit(evidence) VALUES ('legacy-evidence')", [])?;
@@ -813,10 +812,10 @@ fn adr0003_v4_migration_preserves_orders_and_flags_unrecoverable_coverage() -> T
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("legacy.db");
     let mut db = Connection::open(&path)?;
-    db.execute_batch(include_str!("upkeep/schema.sql"))?;
+    db.execute_batch(include_str!("../../upkeep/schema.sql"))?;
     Store::migrate_v2(&mut db)?;
     Store::migrate_v3(&mut db, 65_536)?;
-    db.execute_batch(include_str!("upkeep/migration_v4.sql"))?;
+    db.execute_batch(include_str!("../../upkeep/migration_v4.sql"))?;
     db.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app','order','machine','1',?1,101,101,'reserved')",[key(&OrderState::Sending)?])?;
     db.execute("INSERT INTO machine_order_history(machine_order,evidence) VALUES (1,?1)",[serde_json::json!({"id":1,"key":{"destination":"app","order":"order","machine":"machine"},"version":1,"state":"Sending","created_at":101,"updated_at":101,"source_code":"reserved"}).to_string()])?;
     drop(db);
@@ -1037,7 +1036,7 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
     let backup = temp.path().join("backup.db");
     let mut store = open(&path)?;
     store.order_page(&page(1, "requested", false, 200)?)?;
-    store.backup(&backup, Instant::now() + tests::HANG_GUARD)?;
+    store.backup(&backup, Instant::now() + test_support::HANG_GUARD)?;
     let order = store
         .reserve_send(
             &OrderReservation {
@@ -1061,10 +1060,10 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
         Store::restore(
             &path,
             &backup,
-            tests::limits(),
-            Box::new(tests::Space(u64::MAX)),
+            test_support::limits(),
+            Box::new(test_support::Space(u64::MAX)),
             &audit,
-            Instant::now() + tests::HANG_GUARD
+            Instant::now() + test_support::HANG_GUARD
         ),
         Err(Error::InUse)
     ));
@@ -1072,10 +1071,10 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
     let kept = Store::restore(
         &path,
         &backup,
-        tests::limits(),
-        Box::new(tests::Space(u64::MAX)),
+        test_support::limits(),
+        Box::new(test_support::Space(u64::MAX)),
         &audit,
-        Instant::now() + tests::HANG_GUARD,
+        Instant::now() + test_support::HANG_GUARD,
     )?;
     assert!(kept.exists());
     let old = open(&kept)?;
