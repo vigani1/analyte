@@ -311,7 +311,7 @@ negotiated profile even when its compatible MSH-12 is `2.5` or another accepted
 
 `hl7_2_5_1_s2_8_and_s5_10_legacy_query_unavailable_is_not_empty` checks query
 correlation and AE replies. The dialog regression
-`hl7_2_5_1_s2_8_and_s2_9_2_legacy_original_ack_requires_store_and_interpretation`
+`hl7_2_5_1_s2_8_and_2_6_2_8_2_2_9_1_s2_9_2_original_ack_requires_store_and_interpretation`
 checks the store-before-ACK boundary for all three editions. Evidence remains
 **documented**, with synthetic tests only.
 
@@ -395,7 +395,7 @@ OML uses TQ1 and SPM instead of writing legacy OBR-15/27 and ORC-7 content.
 Tests in `edition_orders.rs` name the source sections and assert exact bytes,
 missing-revision refusal, reply outcomes and bad control ID / MSA-5 refusal.
 Config `hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions` checks the
-activation boundary. Program `hl7_send_cases` includes 2.6 in acceptance,
+activation boundary. Program `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items` includes 2.6 in acceptance,
 rejection, cancellation, timeout/disconnect and restart-during-Sending cases.
 
 For 2.6 outbound tests, `machine_components` is exactly seven entries:
@@ -427,7 +427,7 @@ and access-restriction groups remain unselected and fail visibly in replies.
 Evidence: `hl7_2_8_2_s4_4_6_7_s4_5_1_4_s2_a_14_5_order_qualification`
 asserts exact bytes, EIP grouping, patient type, revisions, accepted/rejected
 replies, wrong control ID, wrong reply structure and withdrawn-field refusal.
-Config revision tests and program `hl7_send_cases` include 2.8.2, including
+Config revision tests and program `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items` include 2.8.2, including
 timeout/disconnect and crash/restart without retransmission. Evidence remains
 documented; no machine or simulator qualification is claimed.
 

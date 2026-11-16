@@ -57,3 +57,54 @@ pub(super) async fn journaled(
         Err(error) => Err(error.into()),
     }
 }
+
+/// Bounded by one transport read. Fed bytes can overlap dialog receipts after
+/// interruption; the untouched tail has never entered the dialog.
+#[derive(Default)]
+pub(super) struct Custody {
+    bytes: Vec<u8>,
+    pub(super) fed: usize,
+}
+impl Custody {
+    pub(super) fn begin(&mut self, bytes: &[u8]) {
+        self.bytes = bytes.to_vec();
+        self.fed = 0;
+    }
+    pub(super) fn fed(&mut self) {
+        self.fed = self.fed.saturating_add(1);
+    }
+    pub(super) fn complete(&mut self) {
+        self.bytes.clear();
+        self.fed = 0;
+    }
+    pub(super) async fn retain(
+        &mut self,
+        store: &Handle,
+        machine: &intake::Connection<'_>,
+    ) -> Result<(), Error> {
+        let Some((prefix, tail)) = self.bytes.split_at_checked(self.fed) else {
+            intake::park_bytes(
+                store,
+                machine,
+                self.bytes.clone(),
+                "Interrupted input: ownership uncertain; possible duplicates",
+            )
+            .await?;
+            self.complete();
+            return Ok(());
+        };
+        for (bytes, reason) in [
+            (
+                prefix,
+                "Interrupted input: fed prefix; possible duplicate of dialog receipts",
+            ),
+            (tail, "Interrupted input: untouched transport tail"),
+        ] {
+            if !bytes.is_empty() {
+                intake::park_bytes(store, machine, bytes.to_vec(), reason).await?;
+            }
+        }
+        self.complete();
+        Ok(())
+    }
+}

@@ -351,7 +351,7 @@ impl<'a> Msa<'a> {
         for field in rules.withdrawn_msa {
             if segment
                 .field(*field)
-                .is_some_and(|value| !value.raw().is_empty() && !value.is_null())
+                .is_some_and(|value| !value.raw().is_empty())
             {
                 return Err(Error::Control {
                     segment: "MSA",
@@ -446,7 +446,7 @@ impl<'a> ErrView<'a> {
         for field in version.require_rules()?.withdrawn_err {
             if segment
                 .field(*field)
-                .is_some_and(|value| !value.raw().is_empty() && !value.is_null())
+                .is_some_and(|value| !value.raw().is_empty())
             {
                 return Err(Error::Control {
                     segment: "ERR",
@@ -458,15 +458,36 @@ impl<'a> ErrView<'a> {
             Version::V23 | Version::V231 | Version::V24 => Ok(Self::V231(get(1)?)),
             Version::V25 | Version::V251 | Version::V26 | Version::V282 | Version::V291 => {
                 let severity = get(4)?;
-                if !matches!(severity.raw(), b"W" | b"I" | b"E" | b"F") {
+                if !matches!(severity.raw(), b"W" | b"I" | b"E")
+                    && !(matches!(version, Version::V26 | Version::V282 | Version::V291)
+                        && severity.raw() == b"F")
+                    || (get(3)?
+                        .repetitions()
+                        .flat_map(crate::Repetition::components)
+                        .next()
+                        .is_some_and(|c| c.raw() == b"0")
+                        && severity.raw() != b"I")
+                {
                     return Err(Error::Control {
                         segment: "ERR",
                         field: 4,
                     });
                 }
+                let code = get(3)?;
+                if !code
+                    .repetitions()
+                    .flat_map(crate::Repetition::components)
+                    .next()
+                    .is_some_and(|c| error_code(c.raw(), version))
+                {
+                    return Err(Error::Control {
+                        segment: "ERR",
+                        field: 3,
+                    });
+                }
                 Ok(Self::V251 {
                     locations: segment.field(2),
-                    code: get(3)?,
+                    code,
                     severity,
                     application: segment.field(5),
                     segment,
@@ -545,4 +566,24 @@ fn validate_message_type(segment: Segment<'_>, version: Version) -> Result<(), E
         });
     }
     Ok(())
+}
+
+// HL7 table 0357, shared by the selected editions; local codes belong in ERR-5.
+pub(crate) fn error_code(code: &[u8], version: Version) -> bool {
+    (matches!(version, Version::V282 | Version::V291) && code == b"104")
+        || matches!(
+            code,
+            b"0" | b"100"
+                | b"101"
+                | b"102"
+                | b"103"
+                | b"200"
+                | b"201"
+                | b"202"
+                | b"203"
+                | b"204"
+                | b"205"
+                | b"206"
+                | b"207"
+        )
 }
