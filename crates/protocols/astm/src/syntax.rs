@@ -341,6 +341,7 @@ pub fn parse_with(
     let mut current: Option<Message> = None;
     let mut ancestors: Vec<usize> = Vec::new();
     let mut counts: Vec<(Kind, usize, usize)> = Vec::new();
+    let mut levels: Vec<usize> = Vec::new();
     for (index, raw) in bytes
         .strip_suffix(b"\r")
         .unwrap_or_default()
@@ -381,6 +382,7 @@ pub fn parse_with(
             });
             ancestors.clear();
             counts.clear();
+            levels.clear();
         }
         let message = current.as_mut().ok_or(Error::Hierarchy {
             record: number,
@@ -391,8 +393,15 @@ pub fn parse_with(
             return Err(Error::Delimiters { record: number });
         }
         let fields = parse_fields(raw, kind, d, limits, number, &decode)?;
-        let level = kind.level().unwrap_or(ancestors.len());
         let parent = record_parent(kind, &ancestors, message, number)?;
+        let level = kind.level().unwrap_or_else(|| {
+            parent
+                .and_then(|i| levels.get(i))
+                .copied()
+                .unwrap_or(0)
+                .saturating_add(1)
+        });
+        levels.push(level);
         let sequence = parse_sequence(&fields, kind, level, &mut counts, number)?;
         if kind.level().is_some() {
             ancestors.truncate(level);
@@ -429,7 +438,11 @@ fn record_parent(
     let parent = match kind {
         Kind::Header => None,
 
-        Kind::Comment | Kind::Manufacturer => message.records.len().checked_sub(1),
+        Kind::Comment => message
+            .records
+            .iter()
+            .rposition(|r| r.kind != Kind::Comment),
+        Kind::Manufacturer => message.records.len().checked_sub(1),
         Kind::Terminator | Kind::Patient | Kind::Query | Kind::Scientific => Some(0),
         Kind::Order => ancestors.get(1).copied().filter(|i| {
             message
@@ -480,7 +493,9 @@ fn parse_sequence(
     counts: &mut Vec<(Kind, usize, usize)>,
     number: usize,
 ) -> Result<Option<usize>, Error> {
-    counts.retain(|(_, old_level, _)| *old_level <= level);
+    counts.retain(|(old_kind, old_level, _)| {
+        *old_level <= level && (*old_kind != kind || *old_level == level)
+    });
     let sequence = if kind == Kind::Header {
         None
     } else {
@@ -724,6 +739,14 @@ fn parse_fields(
                     number,
                     position,
                 )? {
+                    if component.iter().any(|byte| {
+                        !matches!(byte, 32..=126 | 128..=254) && !d.bytes().contains(byte)
+                    }) {
+                        return Err(Error::Decode {
+                            record: number,
+                            field: position,
+                        });
+                    }
                     let expanded = expand(component, d);
                     let text = decode(&expanded).ok_or(Error::Decode {
                         record: number,

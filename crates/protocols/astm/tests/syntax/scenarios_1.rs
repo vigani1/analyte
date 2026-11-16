@@ -295,3 +295,111 @@ fn lis02_sections_6_through_14_read_only_field_positions() -> Result<(), Error> 
     check_terminator(records)?;
     Ok(())
 }
+
+// LIS02-A2 sections 4.1 and 5.6.7: contextual level changes reset numbering.
+#[test]
+fn lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence() -> Result<(), Error> {
+    let wire = b"H|\\^&|\rP|1\rC|1|I|patient\rM|1|vendor\rC|1|I|manufacturer\rL|1\r";
+    let messages = parse(wire, Limits::default())?;
+    let records = messages
+        .first()
+        .map(analyte_astm::Message::records)
+        .unwrap_or_default();
+    assert_eq!(
+        records.get(3).and_then(analyte_astm::Record::parent),
+        Some(2)
+    );
+    assert_eq!(
+        records.get(4).and_then(analyte_astm::Record::parent),
+        Some(3)
+    );
+    assert!(matches!(
+        parse(
+            b"H|\\^&|\rP|1\rC|1|I|patient\rM|1|vendor\rC|2|I|manufacturer\rL|1\r",
+            Limits::default()
+        ),
+        Err(Error::Sequence {
+            record: 5,
+            expected: 1
+        })
+    ));
+    Ok(())
+}
+
+// LIS02-A2 section 5.1: text components exclude literal control characters.
+#[test]
+fn lis02_5_1_literal_controls_rejected_in_text_components() {
+    for control in [7, 9, 11, 12] {
+        let mut wire = b"H|\\^&|\rP|1|name".to_vec();
+        wire.push(control);
+        wire.extend_from_slice(b"text\rL|1\r");
+        assert!(matches!(
+            parse(&wire, Limits::default()),
+            Err(Error::Decode {
+                record: 2,
+                field: 3
+            })
+        ));
+    }
+}
+
+// LIS02-A2 section 9.9: wire codes carry prescribed meanings.
+#[test]
+fn lis02_9_9_each_wire_code_has_specified_meaning() -> Result<(), Error> {
+    for (code, expected) in [
+        ("C", ResultStatus::Correction),
+        ("P", ResultStatus::Preliminary),
+        ("F", ResultStatus::Final),
+        ("X", ResultStatus::CannotPerform),
+        ("I", ResultStatus::Pending),
+        ("S", ResultStatus::Partial),
+        ("M", ResultStatus::Mic),
+        ("R", ResultStatus::PreviouslySent),
+        ("N", ResultStatus::NewOrder),
+        ("Q", ResultStatus::QueryResponse),
+        ("V", ResultStatus::Verified),
+        ("W", ResultStatus::Warning),
+    ] {
+        assert_eq!(ResultStatus::from_bytes(code.as_bytes()), expected);
+        let wire = format!("H|\\^&|\rP|1\rO|1\rR|1|test|value|||||{code}\rL|1\r");
+        let messages = parse(wire.as_bytes(), Limits::default())?;
+        let view = messages
+            .first()
+            .and_then(|m| m.records().get(3))
+            .and_then(analyte_astm::Result::new);
+        assert_eq!(
+            view.and_then(analyte_astm::Result::status_code),
+            Some(expected)
+        );
+    }
+    Ok(())
+}
+
+// LIS02-A2 section 14: manufacturer-defined positions remain opaque and exact.
+#[test]
+fn lis02_14_all_manufacturer_positions_are_retained() -> Result<(), Error> {
+    let wire = b"H|\\^&|\rP|1\rM|1|3|4|5|6|7|8\rL|1\r";
+    let messages = parse(wire, Limits::default())?;
+    let record = messages
+        .first()
+        .and_then(|m| m.records().get(2))
+        .expect("manufacturer");
+    let view = analyte_astm::Manufacturer::new(record).expect("manufacturer view");
+    assert_eq!(record.sequence(), Some(1));
+    assert_eq!(
+        view.sequence().map(analyte_astm::Field::raw),
+        Some(b"1".as_slice())
+    );
+    for (index, expected) in ["M", "1", "3", "4", "5", "6", "7", "8"].iter().enumerate() {
+        assert_eq!(
+            view.field(index + 1).map(analyte_astm::Field::raw),
+            Some(expected.as_bytes())
+        );
+    }
+    assert!(view.field(9).is_none());
+    assert_eq!(
+        messages.first().map(analyte_astm::Message::encode),
+        Some(wire.to_vec())
+    );
+    Ok(())
+}

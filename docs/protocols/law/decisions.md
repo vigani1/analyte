@@ -134,3 +134,10 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   that is not reportable or treating the final result as a conflict.
 - **source**: [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
 - **test**: `law_adr0011_c7_all_status_moves_and_unverified_delivery`.
+
+## Complete observation identities
+
+TF-2b C.7 Table C.7-4 requires distinct observations under one OBR. Results
+validation rejects a repeated primary code/system and complete OG before
+returning any observations, locating OBX-4 at its whole-message occurrence.
+Test: `law_tf2b_c7_repeated_observation_requires_unique_complete_og`.
