@@ -1,4 +1,5 @@
 //! Checks POCT message object structure (Appendix B 6, 8 and 12).
+//! Kept whole: object rules and field constraints define one supported wire vocabulary.
 //! Rules are executable checks, not copied schema documents.
 use crate::{
     Document, Element,
@@ -114,7 +115,27 @@ pub(crate) fn validate(document: &Document) -> Result<Vec<Option<Value>>, Messag
             {
                 return Err(MessageError::Structure);
             }
-            let value = data::parse(element, kind).map_err(MessageError::Data)?;
+            let mut value = data::parse(element, kind).map_err(MessageError::Data)?;
+            if element.name() == "THUMBNAIL"
+                && let Some(Some(Value::Encapsulated(parent))) =
+                    element.parent().and_then(|p| values.get(p))
+                && let Value::Encapsulated(thumbnail) = &mut value
+            {
+                if data::attr(element, "ENC").is_none() {
+                    thumbnail.encoding = parent.encoding;
+                }
+                if data::attr(element, "COMPN").is_none() {
+                    thumbnail.compression.clone_from(&parent.compression);
+                }
+                if data::attr(element, "MT").is_none() {
+                    thumbnail.media_type.clone_from(&parent.media_type);
+                }
+                if data::attr(element, "IC").is_none() {
+                    thumbnail
+                        .integrity_check
+                        .clone_from(&parent.integrity_check);
+                }
+            }
             validate_codes(element)?;
             validate_field_format(element)?;
             values.push(Some(value));
@@ -311,6 +332,7 @@ fn object_rules(name: &str, patient: bool) -> Option<Vec<Rule>> {
 
 fn field_kind(name: &str) -> Option<Kind> {
     Some(match name {
+        "TRANSLTN" | "MODIFIER" => Kind::Concept,
         "DCP.vendor_specific" | "THUMBNAIL" | "ORIGTXT" => Kind::Encapsulated,
         "PT.name" | "OPR.name" => Kind::Person,
         "OBS.observation_id"
@@ -329,7 +351,6 @@ fn field_kind(name: &str) -> Option<Kind> {
         | "TRM.reason_cd"
         | "ACK.error_detail_cd"
         | "REQ.request_cd"
-        | "TRANSLTN"
         | "NOTE"
         | "CONFID" => Kind::Code,
         "CTC.lot_number"
@@ -408,6 +429,15 @@ fn validate_field_children(
     kind: Kind,
     equivalents: bool,
 ) -> Result<(), MessageError> {
+    let element = document
+        .elements()
+        .get(parent)
+        .ok_or(MessageError::Structure)?;
+    let mixed = kind == Kind::Text
+        && !matches!(
+            element.name(),
+            "DEV.manufacturer_name" | "GIV" | "MID" | "FAM" | "PFX" | "SFX" | "DEL" | "REF"
+        );
     let mut last = 0usize;
     let mut singleton = std::collections::BTreeSet::new();
     for (_, element) in children(document, parent) {
@@ -417,20 +447,32 @@ fn validate_field_children(
             }
             return Err(MessageError::Structure);
         }
-        let (rank, many) = match element.name() {
-            "ORIGTXT" if kind == Kind::Code => (0, false),
-            "TRANSLTN" if equivalents => (1, true),
-            "GIV" | "MID" | "FAM" | "PFX" | "SFX" | "DEL" if kind == Kind::Person => (0, true),
-            "NOTE" => (2, kind == Kind::Text),
-            "CONFID" => (3, kind == Kind::Text),
-            _ => return Err(MessageError::Structure),
+        let (rank, many) = if kind == Kind::Concept {
+            match element.name() {
+                "TRANSLTN" => (0, true),
+                "ORIGTXT" => (1, false),
+                "MODIFIER" => (2, true),
+                "NOTE" => (3, false),
+                "CONFID" => (4, false),
+                _ => return Err(MessageError::Structure),
+            }
+        } else {
+            match element.name() {
+                "ORIGTXT" if kind == Kind::Code => (0, false),
+                "TRANSLTN" if equivalents => (1, true),
+                "GIV" | "MID" | "FAM" | "PFX" | "SFX" | "DEL" if kind == Kind::Person => (0, true),
+                "NOTE" => (2, mixed),
+                "CONFID" => (3, mixed),
+                _ => return Err(MessageError::Structure),
+            }
         };
-        if (kind != Kind::Text && rank < last) || (!many && !singleton.insert(rank)) {
+        if (!mixed && rank < last) || (!many && !singleton.insert(rank)) {
             return Err(MessageError::Structure);
         }
         last = rank;
     }
-    if !matches!(kind, Kind::Text | Kind::Encapsulated)
+    if !mixed
+        && kind != Kind::Encapsulated
         && !document
             .elements()
             .get(parent)

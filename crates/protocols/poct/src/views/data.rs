@@ -124,7 +124,7 @@ pub struct Quantity {
 pub struct Timestamp {
     original: String,
     offset_seconds: Option<i32>,
-    local_bytes: usize,
+    local: String,
 }
 
 impl Timestamp {
@@ -192,7 +192,7 @@ impl Timestamp {
         Ok(Self {
             original: value.to_owned(),
             offset_seconds,
-            local_bytes: local.len(),
+            local: local.to_owned(),
         })
     }
 
@@ -205,9 +205,7 @@ impl Timestamp {
     /// Returns the validated local calendar text, excluding the supplied offset.
     #[must_use]
     pub fn local(&self) -> &str {
-        self.original
-            .get(..self.local_bytes)
-            .expect("validated timestamp boundary")
+        &self.local
     }
 
     /// Offset explicitly supplied by the source; never inferred from the host.
@@ -253,6 +251,7 @@ pub(crate) enum Kind {
     Text,
     Code,
     SimpleCode,
+    Concept,
     Quantity,
     Time,
     Integer,
@@ -274,7 +273,7 @@ pub(crate) fn parse(element: &Element, kind: Kind) -> Result<Value, DataError> {
     validate_attributes(element, kind)?;
     if kind == Kind::Encapsulated {
         return Ok(Value::Encapsulated(EncapsulatedData {
-            text: element.text().to_owned(),
+            text: element.first_text().to_owned(),
             encoding: if attr(element, "ENC") == Some("B64") {
                 Encoding::Base64
             } else {
@@ -306,7 +305,7 @@ pub(crate) fn parse(element: &Element, kind: Kind) -> Result<Value, DataError> {
     let text = literal.unwrap_or("");
     Ok(match kind {
         Kind::Text | Kind::Person => Value::Text(nullable!(text.to_owned())),
-        Kind::Code | Kind::SimpleCode => Value::Code(nullable!(Code {
+        Kind::Code | Kind::SimpleCode | Kind::Concept => Value::Code(nullable!(Code {
             value: text.to_owned(),
             display: attr(element, "DN").map(str::to_owned),
             system: attr(element, "S").map(str::to_owned),
@@ -385,8 +384,9 @@ fn validate_attributes(element: &Element, kind: Kind) -> Result<(), DataError> {
         }
         let allowed = matches!(key.as_str(), "NULL" | "VT" | "PROB" | "T")
             || (kind != Kind::Encapsulated && key == "V")
-            || (matches!(kind, Kind::Code | Kind::SimpleCode) && key == "DN")
-            || (kind == Kind::Code && matches!(key.as_str(), "S" | "SN" | "SV" | "ORIGTXT"))
+            || (matches!(kind, Kind::Code | Kind::SimpleCode | Kind::Concept) && key == "DN")
+            || (matches!(kind, Kind::Code | Kind::Concept)
+                && matches!(key.as_str(), "S" | "SN" | "SV" | "ORIGTXT"))
             || (matches!(kind, Kind::Quantity | Kind::Interval) && key == "U")
             || (kind == Kind::Encapsulated
                 && matches!(key.as_str(), "ENC" | "COMPN" | "IC" | "MT"))
@@ -426,6 +426,7 @@ fn validate_attributes(element: &Element, kind: Kind) -> Result<(), DataError> {
             }
             Kind::Person => t == "PN",
             Kind::SimpleCode => t == "CS",
+            Kind::Concept => matches!(t, "CD" | "CE" | "CV" | "CS"),
             Kind::Code => {
                 matches!(t, "CS" | "CV")
                     || (t == "CE"
@@ -449,14 +450,14 @@ fn validate_attributes(element: &Element, kind: Kind) -> Result<(), DataError> {
             return Err(DataError::Attribute);
         }
     }
-    if kind == Kind::Code
+    if matches!(kind, Kind::Code | Kind::Concept)
         && ["S", "SN", "SV"]
             .iter()
             .any(|key| attr(element, key).is_some_and(str::is_empty))
     {
         return Err(DataError::Code);
     }
-    if kind == Kind::Code
+    if matches!(kind, Kind::Code | Kind::Concept)
         && (attr(element, "S").is_some() || attr(element, "SV").is_some())
         && attr(element, "SN").is_none()
     {
@@ -538,15 +539,14 @@ fn value_type(element: &Element, kind: Kind) -> Option<&'static str> {
                 "ST"
             }
         }
-        Kind::Person | Kind::Time => "ST",
-        Kind::Integer | Kind::Real => "ST",
+        Kind::Person | Kind::Time | Kind::Integer | Kind::Real => "ST",
         Kind::Quantity | Kind::Interval => "REAL",
-        Kind::Code | Kind::SimpleCode | Kind::Encapsulated => return None,
+        Kind::Code | Kind::SimpleCode | Kind::Concept | Kind::Encapsulated => return None,
     })
 }
 
 fn fixed_attribute<'a>(element: &Element, kind: Kind, key: &'a str) -> Option<&'a str> {
-    let code = matches!(kind, Kind::Code | Kind::SimpleCode);
+    let code = matches!(kind, Kind::Code | Kind::SimpleCode | Kind::Concept);
     match key {
         "V-T" | "DN-T" if code => Some("ST"),
         "V-T" => value_type(element, kind),
@@ -566,12 +566,12 @@ fn fixed_attribute<'a>(element: &Element, kind: Kind, key: &'a str) -> Option<&'
         "PROB-T" => Some("REAL"),
         "PROB-HL7_NAME" => Some("probability"),
         "DN-HL7_NAME" if code => Some("displayName"),
-        "S-T" | "SV-T" if kind == Kind::Code => Some("OID"),
-        "S-HL7_NAME" if kind == Kind::Code => Some("codeSystem"),
-        "SN-T" | "ORIGTXT-T" if kind == Kind::Code => Some("ST"),
-        "SN-HL7_NAME" if kind == Kind::Code => Some("codeSystemName"),
-        "SV-HL7_NAME" if kind == Kind::Code => Some("codeSystemVersion"),
-        "ORIGTXT-HL7_NAME" if kind == Kind::Code => Some("originalText"),
+        "S-T" | "SV-T" if matches!(kind, Kind::Code | Kind::Concept) => Some("OID"),
+        "S-HL7_NAME" if matches!(kind, Kind::Code | Kind::Concept) => Some("codeSystem"),
+        "SN-T" | "ORIGTXT-T" if matches!(kind, Kind::Code | Kind::Concept) => Some("ST"),
+        "SN-HL7_NAME" if matches!(kind, Kind::Code | Kind::Concept) => Some("codeSystemName"),
+        "SV-HL7_NAME" if matches!(kind, Kind::Code | Kind::Concept) => Some("codeSystemVersion"),
+        "ORIGTXT-HL7_NAME" if matches!(kind, Kind::Code | Kind::Concept) => Some("originalText"),
         "U-T" if matches!(kind, Kind::Quantity | Kind::Interval) => Some("CS"),
         "U-HL7_NAME" if matches!(kind, Kind::Quantity | Kind::Interval) => Some("unit"),
         _ => content_attribute(element, kind, key),

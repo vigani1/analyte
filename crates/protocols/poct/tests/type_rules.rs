@@ -184,3 +184,91 @@ fn poct01_b_8_13_advertised_sets_have_unique_members() -> Result<(), MessageErro
     }
     Ok(())
 }
+
+// POCT01-A2 B 12.3 p.196: translations use CD and retain modifier children.
+#[test]
+fn poct01_b_12_3_p196_translation_uses_cd() -> Result<(), MessageError> {
+    let raw = observation("o", true, "<OBS.value V=\"1.20\" U=\"mg/L\"/>").replace("<TRANSLTN V=\"alternate\" SN=\"alternate-system\"/>", "<TRANSLTN T=\"CD\" V=\"alternate\" SN=\"alternate-system\"><MODIFIER T=\"CD\" V=\"modifier\" SN=\"local\"/></TRANSLTN>");
+    Message::parse(raw.as_bytes(), limits())?;
+    assert!(Message::parse(raw.replace("T=\"CD\"", "T=\"PQ\"").as_bytes(), limits()).is_err());
+    let reordered = raw.replace("</TRANSLTN>", "<ORIGTXT>original</ORIGTXT></TRANSLTN>");
+    assert!(Message::parse(reordered.as_bytes(), limits()).is_err());
+    Ok(())
+}
+
+// POCT01-A2 B 12.3 pp.184-188: restricted text types use ordered singleton metadata.
+#[test]
+fn poct01_b_12_3_p188_organization_child_model() -> Result<(), MessageError> {
+    for (field, raw) in [
+        ("DEV.manufacturer_name", hello("h").replace("<DCP>", "<DEV.manufacturer_name V=\"Synthetic\"/><DCP>")),
+        ("GIV", observation("o", true, "<OBS.value V=\"1\" U=\"mg/L\"/>").replace("<PT.patient_id V=\"000xyz\"/>", "<PT.patient_id V=\"000xyz\"/><PT.name V=\"Synthetic\"><GIV V=\"Synthetic\"/></PT.name>")),
+        ("REF", hello("h").replace("</DCP>", "<DCP.vendor_specific><REF V=\"https://invalid.example/inert\"/></DCP.vendor_specific></DCP>")),
+    ] {
+        Message::parse(raw.as_bytes(), limits())?;
+        let opening = format!("<{field} V=");
+        let begin = raw.find(&opening).ok_or(MessageError::Structure)?;
+        let end = raw.get(begin..).and_then(|s| s.find("/>")).and_then(|n| begin.checked_add(n)).ok_or(MessageError::Structure)?;
+        let prefix = raw.get(..end).ok_or(MessageError::Structure)?;
+        let suffix = raw.get(end+2..).ok_or(MessageError::Structure)?;
+        for (children, valid) in [("<NOTE V=\"note\"/><CONFID V=\"confidence\"/>",true), ("mixed-text",false), ("<NOTE V=\"one\"/><NOTE V=\"two\"/>",false), ("<CONFID V=\"confidence\"/><NOTE V=\"note\"/>",false)] {
+            let modified = format!("{prefix}>{children}</{field}>{suffix}");
+            assert_eq!(Message::parse(modified.as_bytes(), limits()).is_ok(), valid);
+        }
+    }
+    Ok(())
+}
+
+// POCT01-A2 B 12.3 pp.195-196: effective thumbnail properties come from its parent.
+#[test]
+fn poct01_b_12_3_p195_thumbnail_inherits_encapsulation() -> Result<(), MessageError> {
+    let raw = hello("h").replace("</DCP>", "<DCP.vendor_specific ENC=\"B64\" COMPN=\"GZ\" MT=\"image/png\"><THUMBNAIL>synthetic</THUMBNAIL><THUMBNAIL ENC=\"TXT\" MT=\"text/plain\">override</THUMBNAIL></DCP.vendor_specific></DCP>");
+    let parsed = Message::parse(raw.as_bytes(), limits())?;
+    let thumbnails = parsed
+        .document()
+        .elements()
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.name() == "THUMBNAIL")
+        .collect::<Vec<_>>();
+    assert_eq!(thumbnails.len(), 2);
+    for (n, (i, _)) in thumbnails.iter().enumerate() {
+        let Some(analyte_poct::Value::Encapsulated(data)) = parsed.value(*i) else {
+            return Err(MessageError::Structure);
+        };
+        assert_eq!(
+            data.encoding,
+            if n == 0 {
+                analyte_poct::Encoding::Base64
+            } else {
+                analyte_poct::Encoding::Text
+            }
+        );
+        assert_eq!(data.compression.as_deref(), Some("GZ"));
+        assert_eq!(
+            data.media_type,
+            if n == 0 { "image/png" } else { "text/plain" }
+        );
+    }
+    Ok(())
+}
+
+// POCT01-A2 B 12.3 p.181: trailing text after a child is not initial ED content.
+#[test]
+fn poct01_b_12_3_p181_encapsulation_uses_first_text_node() -> Result<(), MessageError> {
+    let raw = hello("h").replace("</DCP>", "<DCP.vendor_specific>first&amp;text<REF V=\"https://invalid.example/inert\"/>later<NOTE V=\"note\"/>last</DCP.vendor_specific></DCP>");
+    let parsed = Message::parse(raw.as_bytes(), limits())?;
+    let (i, e) = parsed
+        .document()
+        .elements()
+        .iter()
+        .enumerate()
+        .find(|(_, e)| e.name() == "DCP.vendor_specific")
+        .ok_or(MessageError::Structure)?;
+    assert_eq!(e.text(), "first&textlaterlast");
+    let Some(analyte_poct::Value::Encapsulated(data)) = parsed.value(i) else {
+        return Err(MessageError::Structure);
+    };
+    assert_eq!(data.text, "first&text");
+    assert_eq!(parsed.document().raw(), raw.as_bytes());
+    Ok(())
+}
