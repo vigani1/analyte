@@ -293,7 +293,10 @@ impl ConnectionState {
             ),
             analyte_dialog::autolyser::Reception::Rejected(error) => (
                 analyte_model::OrderState::Uncertain,
-                format!("Autolyser-insertion-rejected-{error:?}"),
+                format!(
+                    "Autolyser-insertion-rejected-{}",
+                    super::transfer_end::insertion_rejection(error)
+                ),
             ),
             analyte_dialog::autolyser::Reception::Other(prefix, detail) => (
                 analyte_model::OrderState::Uncertain,

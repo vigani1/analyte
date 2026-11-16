@@ -134,3 +134,69 @@ fn autolyser_stored_spellings_are_compatible() {
         assert_eq!(code.to_string(), expected);
     }
 }
+
+/// Writes historical insertion rejection evidence; unknown byte values remain decimal.
+pub(super) fn insertion_rejection(error: analyte_dialog::autolyser::InsertionError) -> String {
+    use analyte_dialog::autolyser::InsertionError;
+    match error {
+        InsertionError::Checksum => "Checksum".to_owned(),
+        InsertionError::UnknownCommand => "UnknownCommand".to_owned(),
+        InsertionError::List => "List".to_owned(),
+        InsertionError::Sample => "Sample".to_owned(),
+        InsertionError::Clone => "Clone".to_owned(),
+        InsertionError::Position => "Position".to_owned(),
+        InsertionError::CountField => "CountField".to_owned(),
+        InsertionError::CountMismatch => "CountMismatch".to_owned(),
+        InsertionError::Executing => "Executing".to_owned(),
+        InsertionError::CannotClone => "CannotClone".to_owned(),
+        InsertionError::Duplicate => "Duplicate".to_owned(),
+        InsertionError::UnknownAnalysis => "UnknownAnalysis".to_owned(),
+        InsertionError::AnalysisOffTray => "AnalysisOffTray".to_owned(),
+        InsertionError::TooManyAnalyses => "TooManyAnalyses".to_owned(),
+        InsertionError::Constant => "Constant".to_owned(),
+        InsertionError::Variable => "Variable".to_owned(),
+        InsertionError::AnalysisVariable => "AnalysisVariable".to_owned(),
+        InsertionError::NoRepeatPatient => "NoRepeatPatient".to_owned(),
+        InsertionError::RepeatSampleMismatch => "RepeatSampleMismatch".to_owned(),
+        InsertionError::RepeatListFull => "RepeatListFull".to_owned(),
+        InsertionError::RepeatListMismatch => "RepeatListMismatch".to_owned(),
+        InsertionError::PositionOccupied => "PositionOccupied".to_owned(),
+        InsertionError::ExtraListPatient => "ExtraListPatient".to_owned(),
+        InsertionError::RepeatDisabled => "RepeatDisabled".to_owned(),
+        InsertionError::Other(byte) => format!("Other({byte})"),
+    }
+}
+
+#[test]
+fn insertion_rejection_spellings_are_compatible() {
+    use analyte_dialog::autolyser::InsertionError;
+    for (error, expected) in [
+        (InsertionError::Checksum, "Checksum"),
+        (InsertionError::UnknownCommand, "UnknownCommand"),
+        (InsertionError::List, "List"),
+        (InsertionError::Sample, "Sample"),
+        (InsertionError::Clone, "Clone"),
+        (InsertionError::Position, "Position"),
+        (InsertionError::CountField, "CountField"),
+        (InsertionError::CountMismatch, "CountMismatch"),
+        (InsertionError::Executing, "Executing"),
+        (InsertionError::CannotClone, "CannotClone"),
+        (InsertionError::Duplicate, "Duplicate"),
+        (InsertionError::UnknownAnalysis, "UnknownAnalysis"),
+        (InsertionError::AnalysisOffTray, "AnalysisOffTray"),
+        (InsertionError::TooManyAnalyses, "TooManyAnalyses"),
+        (InsertionError::Constant, "Constant"),
+        (InsertionError::Variable, "Variable"),
+        (InsertionError::AnalysisVariable, "AnalysisVariable"),
+        (InsertionError::NoRepeatPatient, "NoRepeatPatient"),
+        (InsertionError::RepeatSampleMismatch, "RepeatSampleMismatch"),
+        (InsertionError::RepeatListFull, "RepeatListFull"),
+        (InsertionError::RepeatListMismatch, "RepeatListMismatch"),
+        (InsertionError::PositionOccupied, "PositionOccupied"),
+        (InsertionError::ExtraListPatient, "ExtraListPatient"),
+        (InsertionError::RepeatDisabled, "RepeatDisabled"),
+        (InsertionError::Other(255), "Other(255)"),
+    ] {
+        assert_eq!(insertion_rejection(error), expected);
+    }
+}

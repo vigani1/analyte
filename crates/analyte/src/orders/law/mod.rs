@@ -291,7 +291,7 @@ impl Connection {
             let correlated = response.is_ok();
             let code = response
                 .as_ref()
-                .map(|r| format!("{:?}", r.acceptance()))
+                .map(|r| super::acceptance::acceptance(r.acceptance()).to_owned())
                 .unwrap_or_else(|_| "invalid".into());
             let actor = machine.id.clone();
             store
@@ -496,7 +496,10 @@ fn item_outcomes(
             }
             Ok(response) => (
                 ItemDecision::Uncertain,
-                format!("LAW-ORL-application-{:?}", response.acceptance()),
+                format!(
+                    "LAW-ORL-application-{}",
+                    super::acceptance::acceptance(response.acceptance())
+                ),
             ),
             Err(error) => (ItemDecision::Uncertain, format!("LAW-invalid-ORL:{error}")),
         };
