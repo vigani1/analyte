@@ -34,6 +34,8 @@ produce specific errors. Nested start begins a new block; other defects reset
 to idle. Only CR and bytes above 0x1F are valid payload (Release 1 §1.2).
 UTF-16/32 cannot be used; character encoding agreement belongs above framing.
 
-Vendor framing, line framing, persistence, dialog behavior and text decoding are
-intentionally excluded. Synthetic tests provide documented evidence only;
+The `vidas` and `autolyser` modules own vendor checksum envelopes; `poct`
+finds bounded XML root boundaries. Their syntax and conversation policy live in
+the protocol and dialog crates. Line framing, persistence, dialog behavior and
+text decoding are excluded. Synthetic tests provide documented evidence only;
 there are no real-machine recordings or official simulator results here.

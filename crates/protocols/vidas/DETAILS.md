@@ -5,8 +5,9 @@ Evidence level: **documented**. The implementation was built from
 161150-486 revisions A/B and VIDAS PC User Manual F. Synthetic property tests
 are not simulator evidence.
 
-Pure vendor framing, tagged syntax and one-transfer conversations; no I/O or
-clock. Only the VIDAS PC Literal family is supported, not ASTM, XML/FTP, mini
+This crate owns tagged syntax; `analyte-framing` owns packet envelopes and
+`analyte-dialog` owns one-transfer conversations. These layers perform no I/O or
+clock reads. Only the VIDAS PC Literal family is supported, not ASTM, XML/FTP, mini
 VIDAS or VIDAS 3 extensions. Work lists are one validated request per session;
 multiple-packet download sessions are deliberately outside this API.
 
@@ -107,8 +108,9 @@ ordinary logs contain no patient data.
 
 Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
 parking, operator visibility, zero reference-receiver result deliveries and storage
-failure. They do not raise the documented evidence level. No current vendor
-crate path supplies a resolved result identity for a delivery test.
+failure. They do not raise the documented evidence level. The VIDAS receive
+path does not supply a resolved result identity for a delivery test; POCT has a
+separate configured identity path and delivery coverage.
 
 Conversation state and deadline policy live in `analyte-dialog`, in `src/vidas.rs`.
 Conversation tests live in `crates/steps/dialog/tests/vidas.rs`.

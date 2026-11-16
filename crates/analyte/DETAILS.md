@@ -112,15 +112,15 @@ An uninterruptible operating-system flush cannot be cancelled within a worker;
 owner destructors join rather than detach. The process watchdog enforces the
 overall stop deadline even when such a join blocks; see Running as a service.
 
-The capacity probe invokes Windows PowerShell `Get-Volume -FilePath` or GNU `df
---output=avail --block-size=1` on Linux, with a three-second deadline and bounded
-output. Paths are passed as data, never interpolated into executable scripts.
-Missing utilities, permission errors and invalid output refuse admission.
-Installing a faster native probe later does not change the storage boundary.
+The capacity probe uses native free-space APIs through `fs4`: `statvfs` on
+Linux and `GetDiskFreeSpaceExW` on Windows. It starts no subprocess. Probe errors
+refuse admission; the store also checks its configured reserve and size limits.
 
-Admin actions are implemented below. Retention and real machine validation
-remain open. Serial hardware and Linux runtime
-verification remain CI/lab work; localhost integration tests run on Windows here.
+Retention is implemented under ADR 0013: supervised bounded purges, explicit
+holds, keyed tombstones and offline conversion for existing stores. See
+[Retention and holds](#retention-and-holds-adr-0013) below. Real machine validation
+remains open. Serial hardware and Linux runtime verification remain CI/lab work;
+localhost integration tests run on Windows here.
 
 Credentials are loaded by the host at startup from `ANALYTE_SECRET_<NAME>`:
 uppercase ASCII letters and digits are retained, all other characters become
@@ -136,7 +136,10 @@ oldest pending age in seconds, pause state, last successful poll (Unix seconds)
 and cache trust under the freshness policy. It also prints each machine's last
 receipt timestamp, or unknown when none exists. It reads bounded metadata pages
 with a five-second overall receipt-scan deadline, and prints no clinical payloads
-or credentials. This command works while the service runs and needs no secrets.
+or credentials. This command works while the service runs. It opens the store and requires
+`ANALYTE_SECRET_RETENTION_DIGEST` for finite retention periods or a retained key
+fingerprint (including existing keyed tombstones), even if all policies now use
+`keep`. It does not require destination API or signing credentials.
 
 Phase 1 tests in `tests/delivery.rs` run the reference receiver library on random
 loopback ports. Synthetic TCP ASTM and MLLP HL7 peers cover signed durable
@@ -159,8 +162,10 @@ exact test and unit translations as the record mapper.
 Vendor input is durably journaled before the dialog sees it. Complete receipts
 and interpretations keep driver/config versions. Unresolved identity is preserved
 and parked, never replaced with a generated run ID. `parked list` exposes its
-specific reason. No current vendor crate yields a resolved result identity, so
-vendor receive tests assert no reference-receiver result delivery.
+specific reason. VIDAS and Autolyser receive tests assert no result delivery
+because their identities remain unresolved. POCT can resolve identity through
+explicit device/time/analyte settings and durably retained Hello context; its
+reference-receiver test covers delivery, retransmission and correction.
 
 VIDAS work-list sending uses the shared order mapper, durable `reserve_send`
 and lifecycle APIs; see [ORDERS.md](ORDERS.md). The download permission alone
