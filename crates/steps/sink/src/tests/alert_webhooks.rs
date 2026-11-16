@@ -52,14 +52,14 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
         })
         .await?
         .ok_or("retry missing")?;
-    assert_eq!(retry.id, first.id);
-    assert_eq!(retry.payload, first.payload);
+    assert_eq!(retry.id(), first.id());
+    assert_eq!(retry.payload(), first.payload());
     sender
         .send(&retry, "key")
         .await
         .map_err(|_| "duplicate rejected")?;
     store
-        .request(until()?, move |s| s.complete_alert_attempt(&retry.id, 105))
+        .request(until()?, move |s| s.complete_alert_attempt(retry.id(), 105))
         .await?;
     for (now, active, event_kind) in [(160, true, "reminder"), (161, false, "resolved")] {
         let event = store
@@ -78,14 +78,14 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
                     .ok_or(analyte_store::Error::InvalidInput)
             })
             .await?;
-        let body: serde_json::Value = serde_json::from_slice(&event.payload)?;
+        let body: serde_json::Value = serde_json::from_slice(event.payload())?;
         assert_eq!(body["event"], event_kind);
         sender
             .send(&event, "key")
             .await
             .map_err(|_| "lifecycle rejected")?;
         store
-            .request(until()?, move |s| s.complete_alert_attempt(&event.id, now))
+            .request(until()?, move |s| s.complete_alert_attempt(event.id(), now))
             .await?;
     }
     stop.send_replace(true);
@@ -109,7 +109,7 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     let first = alert(&store, 100).await?;
     let failed = sender.send(&first, "key").await;
     assert!(matches!(failed, Err(AlertFailure::Network)));
-    let id = first.id.clone();
+    let id = first.id().clone();
     store
         .request(until()?, move |s| {
             s.fail_alert_attempt(&id, AlertFailure::Network)
@@ -147,14 +147,14 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
         })
         .await?
         .ok_or("retry missing")?;
-    assert_eq!(retry.id, first.id);
-    assert_eq!(retry.payload, first.payload);
+    assert_eq!(retry.id(), first.id());
+    assert_eq!(retry.payload(), first.payload());
     sender
         .send(&retry, "key")
         .await
         .map_err(|_| "recovery rejected")?;
     store
-        .request(until()?, move |s| s.complete_alert_attempt(&retry.id, 105))
+        .request(until()?, move |s| s.complete_alert_attempt(retry.id(), 105))
         .await?;
     assert_eq!(
         store

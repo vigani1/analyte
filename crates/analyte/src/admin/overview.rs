@@ -287,7 +287,7 @@ mod webhook_tests {
                 let event = s
                     .claim_alert_attempt(&endpoint, 100, 1, 5, 10)?
                     .ok_or(analyte_store::Error::Corruption)?;
-                s.fail_alert_attempt(&event.id, analyte_store::AlertFailure::Network)
+                s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)
             })
             .await?;
         let mut html = String::new();

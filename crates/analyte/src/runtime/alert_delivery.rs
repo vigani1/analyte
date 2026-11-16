@@ -83,14 +83,14 @@ async fn cycle(
         Ok(()) => {
             store
                 .request(deadline(), move |s| {
-                    s.complete_alert_attempt(&event.id, now)
+                    s.complete_alert_attempt(event.id(), now)
                 })
                 .await?;
         }
         Err(failure) => {
             store
                 .request(deadline(), move |s| {
-                    s.fail_alert_attempt(&event.id, failure)
+                    s.fail_alert_attempt(event.id(), failure)
                 })
                 .await?;
         }
@@ -241,7 +241,7 @@ mod tests {
             })
             .await?
             .ok_or("cancelled event lost")?;
-        assert_eq!(retry.attempts, 2);
+        assert_eq!(retry.attempts(), 2);
         drop(peer);
         store.shutdown(deadline()).await?;
         Ok(())

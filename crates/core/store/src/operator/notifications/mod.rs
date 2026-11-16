@@ -20,11 +20,29 @@ impl AlertEventId {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PendingAlert {
     /// Stable across retries and restart, including uncertain acceptance.
-    pub id: AlertEventId,
+    id: AlertEventId,
     /// Original JSON bytes; never log these bytes.
-    pub payload: Vec<u8>,
+    payload: Vec<u8>,
     /// Completed or reserved attempts, including interrupted attempts.
-    pub attempts: u32,
+    attempts: u32,
+}
+
+impl PendingAlert {
+    /// Borrows the persisted event identity used on every retry.
+    #[must_use]
+    pub fn id(&self) -> &AlertEventId {
+        &self.id
+    }
+    /// Borrows original event bytes without permitting mutation under the same identity.
+    #[must_use]
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+    /// Returns the durable attempt reservation count.
+    #[must_use]
+    pub fn attempts(&self) -> u32 {
+        self.attempts
+    }
 }
 
 /// Fixed operational failure categories; remote text is never stored here.
@@ -117,7 +135,7 @@ impl Store {
         }
         let tx = self.db.transaction()?;
         let row: Option<(String, Vec<u8>, u32)> = tx.query_row(
-            "SELECT e.id,e.payload,p.attempts FROM alert_events e JOIN alert_progress p ON p.event=e.id WHERE e.endpoint=?1 AND p.exhausted=0 AND p.next_attempt<=?2 ORDER BY e.observed,e.id LIMIT 1",
+            "SELECT e.id,e.payload,p.attempts FROM alert_events e JOIN alert_progress p ON p.event=e.id WHERE e.endpoint=?1 AND p.exhausted=0 AND p.next_attempt<=?2 AND NOT EXISTS(SELECT 1 FROM alert_events earlier WHERE earlier.endpoint=e.endpoint AND earlier.condition=e.condition AND earlier.rowid<e.rowid) ORDER BY e.rowid LIMIT 1",
             params![endpoint.as_str(),now], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
         let Some((id, payload, previous)) = row else {
             return Ok(None);

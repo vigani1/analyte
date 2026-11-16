@@ -23,7 +23,7 @@ fn adr0014_migration_restart_attempt_identity_budget_and_immutable_bytes() -> Te
     let first = store
         .claim_alert_attempt(&endpoint, 100, 2, 5, 10)?
         .ok_or("no first attempt")?;
-    assert_eq!(first.attempts, 1);
+    assert_eq!(first.attempts(), 1);
     assert!(
         store
             .claim_alert_attempt(&endpoint, 104, 2, 5, 10)?
@@ -40,20 +40,20 @@ fn adr0014_migration_restart_attempt_identity_budget_and_immutable_bytes() -> Te
     let second = store
         .claim_alert_attempt(&endpoint, 105, 2, 5, 10)?
         .ok_or("retry lost")?;
-    assert_eq!(first.id, second.id);
-    assert_eq!(first.payload, second.payload);
-    assert_eq!(second.attempts, 2);
+    assert_eq!(first.id(), second.id());
+    assert_eq!(first.payload(), second.payload());
+    assert_eq!(second.attempts(), 2);
     assert!(
         store
             .claim_alert_attempt(&endpoint, 200, 2, 5, 10)?
             .is_none()
     );
-    store.fail_alert_attempt(&second.id, AlertFailure::Network)?;
+    store.fail_alert_attempt(second.id(), AlertFailure::Network)?;
     let status = store.alert_endpoint_status()?;
     assert_eq!(status[0].exhausted, 1);
     assert_eq!(status[0].failed, 1);
     assert_eq!(status[0].pending, 1);
-    store.complete_alert_attempt(&second.id, 201)?;
+    store.complete_alert_attempt(second.id(), 201)?;
     assert_eq!(store.alert_endpoint_status()?[0].last_success, Some(201));
     assert_eq!(store.alert_endpoint_status()?[0].pending, 0);
     let due: i64 = store
@@ -86,7 +86,7 @@ fn adr0014_v11_migration_preserves_local_alert_history_and_is_restart_safe() -> 
 }
 
 fn decoded(event: &PendingAlert) -> Result<serde_json::Value, serde_json::Error> {
-    serde_json::from_slice(&event.payload)
+    serde_json::from_slice(event.payload())
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn adr0014_raise_reminder_resolve_episodes_capacity_and_closed_payload() -> Test
             "version"
         ]
     );
-    let text = String::from_utf8(raise.payload.clone())?;
+    let text = String::from_utf8(raise.payload().to_vec())?;
     for forbidden in [
         "PATIENT-SECRET",
         "SAMPLE-00012",
@@ -142,7 +142,7 @@ fn adr0014_raise_reminder_resolve_episodes_capacity_and_closed_payload() -> Test
     ] {
         assert!(!text.contains(forbidden));
     }
-    store.complete_alert_attempt(&raise.id, 101)?;
+    store.complete_alert_attempt(raise.id(), 101)?;
     assert!(!store.prepare_alert_event(&endpoint, 159, 60, 1)?);
     drop(store);
     let mut store = open(&path)?;
@@ -154,11 +154,11 @@ fn adr0014_raise_reminder_resolve_episodes_capacity_and_closed_payload() -> Test
     assert_eq!(reminder_body["event"], "reminder");
     assert_eq!(reminder_body["condition_id"], raised["condition_id"]);
     assert_eq!(reminder_body["episode_id"], raised["episode_id"]);
-    assert_ne!(reminder.id, raise.id);
+    assert_ne!(reminder.id(), raise.id());
     // Queue exhaustion must preserve the resolution transition until capacity returns.
     store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", false, Some(0), 161)?;
     assert!(!store.prepare_alert_event(&endpoint, 161, 60, 1)?);
-    store.complete_alert_attempt(&reminder.id, 162)?;
+    store.complete_alert_attempt(reminder.id(), 162)?;
     assert!(store.prepare_alert_event(&endpoint, 162, 60, 1)?);
     let resolve = store
         .claim_alert_attempt(&endpoint, 162, 3, 5, 30)?
@@ -166,7 +166,7 @@ fn adr0014_raise_reminder_resolve_episodes_capacity_and_closed_payload() -> Test
     let resolved = decoded(&resolve)?;
     assert_eq!(resolved["event"], "resolved");
     assert_eq!(resolved["episode_id"], raised["episode_id"]);
-    store.complete_alert_attempt(&resolve.id, 163)?;
+    store.complete_alert_attempt(resolve.id(), 163)?;
     assert!(!store.prepare_alert_event(&endpoint, 1000, 60, 1)?);
     store.evaluate_alert(&AlertKey::ParkedItems, "New officer", true, None, 1001)?;
     assert!(store.prepare_alert_event(&endpoint, 1001, 60, 1)?);
@@ -242,7 +242,7 @@ fn adr0014_operator_retry_is_audited_and_preserves_original_event() -> TestResul
     let first = store
         .claim_alert_attempt(&endpoint, 100, 1, 5, 10)?
         .ok_or("first attempt")?;
-    store.fail_alert_attempt(&first.id, AlertFailure::Http)?;
+    store.fail_alert_attempt(first.id(), AlertFailure::Http)?;
     let audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("alert-retry")?,
@@ -255,8 +255,47 @@ fn adr0014_operator_retry_is_audited_and_preserves_original_event() -> TestResul
     let retry = store
         .claim_alert_attempt(&endpoint, 200, 1, 5, 10)?
         .ok_or("retry missing")?;
-    assert_eq!(first.id, retry.id);
-    assert_eq!(first.payload, retry.payload);
+    assert_eq!(first.id(), retry.id());
+    assert_eq!(first.payload(), retry.payload());
     assert_eq!(store.audits(0)?.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn adr0014_resolution_never_overtakes_failed_raise_even_in_same_second() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("ordering.db"))?;
+    let endpoint = Identifier::new("relay")?;
+    store.register_alert_endpoint(&endpoint)?;
+    store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), 100)?;
+    store.prepare_alert_event(&endpoint, 100, 60, 10)?;
+    let raise = store
+        .claim_alert_attempt(&endpoint, 100, 3, 5, 10)?
+        .ok_or("raise")?;
+    store.fail_alert_attempt(raise.id(), AlertFailure::Network)?;
+    store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", false, Some(0), 100)?;
+    store.prepare_alert_event(&endpoint, 101, 60, 10)?;
+    assert!(
+        store
+            .claim_alert_attempt(&endpoint, 101, 3, 5, 10)?
+            .is_none()
+    );
+    // An unrelated condition remains deliverable while the earlier raise waits.
+    store.evaluate_alert(&AlertKey::DiskReserve, "IT officer", true, Some(1), 101)?;
+    store.prepare_alert_event(&endpoint, 101, 60, 10)?;
+    let disk = store
+        .claim_alert_attempt(&endpoint, 101, 3, 5, 10)?
+        .ok_or("unrelated condition blocked")?;
+    assert_eq!(decoded(&disk)?["kind"], "disk_reserve");
+    store.complete_alert_attempt(disk.id(), 101)?;
+    let retry = store
+        .claim_alert_attempt(&endpoint, 105, 3, 5, 10)?
+        .ok_or("raise retry")?;
+    assert_eq!(raise.id(), retry.id());
+    store.complete_alert_attempt(retry.id(), 105)?;
+    let resolution = store
+        .claim_alert_attempt(&endpoint, 105, 3, 5, 10)?
+        .ok_or("resolution lost")?;
+    assert_eq!(decoded(&resolution)?["event"], "resolved");
     Ok(())
 }
