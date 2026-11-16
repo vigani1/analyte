@@ -1,4 +1,4 @@
-//! Tests vidas bci a ch3 5 all assays confirm once sent survives restart; vidas bci a ch3 adr0004 ack timeout is uncertain never resends.
+//! Tests VIDAS result uploads and work downloads.
 use super::vendor_support::*;
 use super::*;
 use crate::support::HANG_GUARD;

@@ -1,4 +1,4 @@
-//! Tests half written file is claimed only after stability and recovers; folder delivery records every exact chunk and preserves archive.
+//! Tests file claims, completion and crash recovery.
 
 use analyte_transport::{Event, Limits, Reason, connection, folder::Watcher, recording::recording};
 use std::{error::Error, time::Duration};

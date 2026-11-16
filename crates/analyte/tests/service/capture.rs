@@ -1,4 +1,4 @@
-//! Tests plan10 adr0009 capture preserves tcp bytes and failure does not change delivery.
+//! Tests protected wire capture and delivery behavior.
 use super::*;
 use crate::support::HANG_GUARD;
 use analyte_transport::recording::{self, Direction, Evidence};

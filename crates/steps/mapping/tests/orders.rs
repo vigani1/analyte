@@ -1,4 +1,4 @@
-//! Tests rule7 outbound selected component at configured ceiling is preserved; rule7 display text bound is inclusive and refuses delimiter injection.
+//! Tests configured outgoing orders and code mappings.
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError, map_order};
 use analyte_model::{Identifier, NamespacedId, SampleId};

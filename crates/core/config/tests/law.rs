@@ -1,4 +1,4 @@
-//! Tests law tf2b 2 2 config selects mllp 251 manager and explicit peer options; law tf2b 2 2 config rejects impossible stack combinations.
+//! Tests LAW message validation and host exchanges.
 use analyte_config::{Draft, Error, EvidenceLevel, LawQueryForm};
 
 const LAW: &str = include_str!("../examples/law.toml");

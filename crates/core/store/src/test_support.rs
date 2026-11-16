@@ -1,4 +1,4 @@
-//! Supplies synthetic store fixtures and bounded test waits.
+//! Tests test support behavior with synthetic fixtures.
 use crate::*;
 
 /// Upper bound so a broken test cannot hang; never part of the behaviour under test.

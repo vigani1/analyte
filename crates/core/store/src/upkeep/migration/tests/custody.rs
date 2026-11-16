@@ -1,4 +1,4 @@
-//! Tests adr0003 v6 every state owner and parking shape migrates without losing meaning; adr0003 v8 custody migration keeps every parked row and reconciles typed machine intents.
+//! Tests retained evidence and durable acknowledgment ordering.
 use super::*;
 
 #[test]

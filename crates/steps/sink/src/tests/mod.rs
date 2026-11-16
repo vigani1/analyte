@@ -1,4 +1,4 @@
-//! Supplies synthetic tests test fixtures and scenarios.
+//! Tests src behavior with synthetic fixtures.
 //! Kept whole: Shared receiver, proxy and store fixtures keep delivery scenarios on the same controlled HTTP harness.
 #[path = "../../../../analyte/tests/support/guard.rs"]
 mod guard;

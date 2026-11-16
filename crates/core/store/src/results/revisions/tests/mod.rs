@@ -1,3 +1,3 @@
-//! Supplies synthetic tests test fixtures and scenarios.
+//! Tests result revisions and caller-supplied status policies.
 mod identity;
 mod lifecycle;

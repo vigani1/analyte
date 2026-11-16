@@ -1,4 +1,4 @@
-//! Tests adr0003 rule7 startup budget is inclusive and cancellation is sticky.
+//! Tests startup progress and cancellation.
 use crate::test_support::*;
 use crate::*;
 

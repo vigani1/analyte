@@ -1,4 +1,4 @@
-//! Tests plan11 admin reprocess resend confirmation csrf actor and audit failure atomicity.
+//! Tests operator action confirmation, CSRF checks and audit writes.
 use super::pages::{csrf, encode, login};
 use super::*;
 

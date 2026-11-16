@@ -1,4 +1,4 @@
-//! Tests law tf2b 3 27 3 28 found query reserves per awos and finishes each orl outcome; law tf2b 3 27 4 trusted empty uses restricted negative and correlated orl without items.
+//! Tests LAW order queries and query-triggered work downloads.
 use super::*;
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-//! Supplies synthetic receive test fixtures and scenarios.
+//! Tests machine receipt storage and acknowledgment ordering.
 #[path = "../support/guard.rs"]
 mod guard;
 use analyte::{Error, installation::config::Program, runtime::service};

@@ -1,4 +1,4 @@
-//! Tests adr0003 committed frames survive restart; adr0003 complete and aborted transfers keep all evidence.
+//! Tests durable transfer chunks and acknowledgment evidence.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

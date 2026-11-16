@@ -1,4 +1,4 @@
-//! Tests hl7 251 2 15 5 2 unknown location stays unvalued; hl7 251 2 7 6 formatting command grammar.
+//! Tests HL7 control fields and acknowledgments.
 //! Kept whole: Control acknowledgment validation cases share the same synthetic message builders.
 use analyte_hl7::*;
 use proptest::prelude::*;

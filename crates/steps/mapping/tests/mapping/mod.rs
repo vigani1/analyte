@@ -1,4 +1,4 @@
-//! Supplies synthetic mapping test fixtures and scenarios.
+//! Tests machine field mapping and exact value retention.
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{Input, Output, Problem, map_astm, map_hl7};
 use analyte_model::*;

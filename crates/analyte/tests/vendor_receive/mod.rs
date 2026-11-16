@@ -1,4 +1,4 @@
-//! Supplies synthetic vendor receive test fixtures and scenarios.
+//! Tests vendor receipt custody.
 #[path = "../support/guard.rs"]
 mod guard;
 #[path = "../../../protocols/poct/tests/peer_messages.rs"]

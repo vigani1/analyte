@@ -1,4 +1,4 @@
-//! Tests plan11 adr0008 resend preserves identity bytes and atomic audit; plan11 adr0003 superseded resend requires explicit delivery.
+//! Tests delivery listing, audit and resend identity.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

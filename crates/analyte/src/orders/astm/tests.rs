@@ -1,4 +1,4 @@
-//! Tests lis02 section11 adr0004 missed deadline is query error or silence never no information; lis02 section11 cancel is distinct and unsupported filters are not empty orders.
+//! Tests astm behavior with synthetic fixtures.
 use super::*;
 use analyte_model::Identifier;
 use std::{path::Path, time::Duration};

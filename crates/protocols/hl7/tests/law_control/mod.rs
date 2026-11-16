@@ -1,4 +1,4 @@
-//! Tests LAW MSH, MSA and ERR validation with synthetic messages (TF-2b C.1/C.3/C.4 and 2.2.1?2.2.3; HL7 2.5.1 ch.2A).
+//! Tests LAW MSH, MSA and ERR segment validation.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection},

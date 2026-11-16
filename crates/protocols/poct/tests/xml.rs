@@ -1,4 +1,4 @@
-//! Tests poct01 b 8 xml preserves bytes and decodes attributes; poct01 project security rejects dtd without resolution.
+//! Tests POCT XML limits and source preservation.
 use analyte_poct::{Document, Error, Limits};
 use proptest::prelude::*;
 

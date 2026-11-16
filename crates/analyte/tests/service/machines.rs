@@ -1,4 +1,4 @@
-//! Tests adr0012 5 adr0009 every machine validates and replays.
+//! Tests shipped machine definitions and recorded conversations.
 use super::*;
 use analyte_config::{Draft, EvidenceLevel};
 use std::path::PathBuf;

@@ -1,4 +1,4 @@
-//! Tests rule7 overlimit repetitions and parts fail before partial success; hl7 231 oru and declared ts precision are kept.
+//! Tests machine field mapping and exact value retention.
 use super::*;
 
 #[test]

@@ -1,4 +1,4 @@
-//! Tests autolyser rev18 p179 checksum is decimal sum; autolyser rev18 p178 controls are explicit and values stay written.
+//! Tests Autolyser polling, checksums and order exchanges.
 use analyte_autolyser::syntax::*;
 use analyte_dialog::autolyser::{
     Action, Config, Dialog, Error as DialogError, Event, InsertionError, Reception, Recovery,

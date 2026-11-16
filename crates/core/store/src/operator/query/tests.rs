@@ -1,4 +1,4 @@
-//! Tests mutation adr0003 query parked receipt requires one retained unresolved target; mutation adr0003 query connection lookup requires interpretation and exact scope.
+//! Tests protected evidence queries.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

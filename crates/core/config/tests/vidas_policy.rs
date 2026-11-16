@@ -1,4 +1,4 @@
-//! Tests adr0002 vidas bci a ch4 ack and checksum choices keep boolean toml.
+//! Tests VIDAS acknowledgment and checksum policy settings.
 use analyte_config::{Draft, Stack};
 
 #[test]

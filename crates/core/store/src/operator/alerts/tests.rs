@@ -1,4 +1,4 @@
-//! Tests mutation plan11 alerts validate responders and destination count at the boundary; mutation plan11 alerts pages and history keep raise and clear times distinct.
+//! Tests alert states and transition history.
 use crate::test_support::*;
 use crate::*;
 

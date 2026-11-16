@@ -1,4 +1,4 @@
-//! Supplies synthetic order test fixtures and scenarios.
+//! Tests HL7 order messages and acknowledgments.
 use analyte_hl7::order::{
     self, Code, Control, Error, Header, Order, OrderId, OrderMessage, OrderResponse, Outcome,
     Patient, Priority, Processing, SampleField, SampleId, Specimen, Subject, Timestamp, Timing,

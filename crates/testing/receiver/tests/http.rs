@@ -1,4 +1,4 @@
-//! Tests adr0008 durable retry conflict auth snapshot tombstone and reset.
+//! Tests reference receiver HTTP contract requests.
 #![forbid(unsafe_code)]
 #[path = "../../../analyte/tests/support/guard.rs"]
 mod guard;

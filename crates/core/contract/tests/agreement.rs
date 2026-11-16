@@ -1,4 +1,4 @@
-//! Tests adr0008 sampleid validation agrees; adr0008 identifier validation agrees.
+//! Tests agreement between frozen contract validators and current documents.
 use analyte_contract::evidence as wire;
 use analyte_model as model;
 use proptest::prelude::*;

@@ -1,4 +1,4 @@
-//! Supplies synthetic results test fixtures and scenarios.
+//! Tests LAW result receipt and durable delivery.
 use super::*;
 use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

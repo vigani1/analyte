@@ -1,4 +1,4 @@
-//! Tests adr0003 poll intent pending uncertain confirmed is retained and blocks cursor replay; adr0003 poll admission outcome and operator resolution roll back all evidence on failure.
+//! Tests order poll cursors and reconciliation.
 use super::*;
 use crate::test_support::{TestResult, open};
 

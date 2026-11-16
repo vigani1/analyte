@@ -1,4 +1,4 @@
-//! Tests law tf2b b7 6 returned work must match downloaded awos; law tf2b b7 1 b7 2 host correlates errors without ack loops.
+//! Tests LAW order queries and query-triggered work downloads.
 use super::*;
 
 #[tokio::test]

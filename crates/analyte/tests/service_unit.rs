@@ -1,4 +1,4 @@
-//! Tests plan11 agents systemd unit structure and shutdown margin.
+//! Tests portable service installation settings.
 use std::collections::BTreeMap;
 
 #[test]

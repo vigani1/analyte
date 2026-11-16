@@ -1,4 +1,4 @@
-//! Tests adr0008 seeded patient specimen and position survive the feed.
+//! Tests optional order context without normalization.
 #[path = "../../../analyte/tests/support/guard.rs"]
 mod guard;
 use analyte_contract::{Order, SigningSecret, decode};

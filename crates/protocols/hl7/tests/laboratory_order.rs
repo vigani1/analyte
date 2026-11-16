@@ -1,4 +1,4 @@
-//! Tests hl7 251 4 4 6 builds order owned timing specimen and cancel; hl7 251 4 4 7 correlates typed decisions and specimen container groups.
+//! Tests HL7 O21 and O22 laboratory orders.
 //! Kept whole: Laboratory order validation cases form one message-family conformance matrix.
 use analyte_hl7::order::{
     self, Code, Error, Header, Order, OrderId, OrderMessage, OrderResponse, Outcome, Patient,

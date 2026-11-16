@@ -1,4 +1,4 @@
-//! Tests lis02 section11 fresh cache orders empty and untrusted are distinct on wire; rule8 query response reserves without event then disconnect emits one uncertain.
+//! Tests ASTM query and send-ahead order exchanges.
 //! Kept whole: ASTM order context cases share one query and send-ahead exchange fixture.
 use super::*;
 use crate::support::HANG_GUARD;

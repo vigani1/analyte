@@ -1,4 +1,4 @@
-//! Tests plan11 status reports health and last receipt without payloads or secrets; plan11 cli reprocess receipt parked and bounded delivery list require actor reason.
+//! Tests machine receipt storage and acknowledgment ordering.
 use super::*;
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-//! Tests plan11 adr0008 restored outbox retries same id bytes as duplicate; plan11 alert evaluator keeps receive delivery and shutdown bounded.
+//! Tests HTTP delivery retries and stable delivery identities.
 use super::*;
 
 #[tokio::test]

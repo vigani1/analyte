@@ -1,4 +1,4 @@
-//! Tests contract v1 rule7 text and document byte ceilings are inclusive; contract v1 rule4 envelope uuid timestamps and digests validate independently.
+//! Tests input limits and clinical data retention.
 #![forbid(unsafe_code)]
 use analyte_contract::*;
 use serde_json::{Value, json};

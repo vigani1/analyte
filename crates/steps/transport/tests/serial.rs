@@ -1,4 +1,4 @@
-//! Tests vanished port reopens same name and cancels; serial write and read are recorded without modification.
+//! Tests serial settings and bounded fake I/O.
 
 use analyte_transport::{Backoff, Event, Limits, Reason, connection, serial};
 use std::{

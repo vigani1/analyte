@@ -1,4 +1,4 @@
-//! Supplies synthetic query validation test fixtures and scenarios.
+//! Tests HL7 QRD and QRF field validation.
 use analyte_hl7::{Error, Message, Options, query::Request};
 
 fn fixture(

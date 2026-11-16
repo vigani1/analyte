@@ -1,4 +1,4 @@
-//! Supplies synthetic vendor support test fixtures and scenarios.
+//! Tests vendor order exchange assertions.
 use super::*;
 use crate::support::HANG_GUARD;
 use tokio::{io::AsyncReadExt, net::TcpStream};

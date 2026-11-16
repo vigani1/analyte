@@ -1,4 +1,4 @@
-//! Tests plan11 service admin missing token and owned lifecycle; plan11 plan12 overview auth headers escaping and shutdown.
+//! Tests server behavior with synthetic fixtures.
 use super::*;
 use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};

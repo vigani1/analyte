@@ -1,4 +1,4 @@
-//! Tests hl7 231 251 send ahead accepted rejected and mixed items; hl7 251 no reply disconnect and restart never resend.
+//! Tests HL7 unsolicited orders and cancellations.
 use super::vendor_support::state;
 use super::*;
 use crate::support::HANG_GUARD;

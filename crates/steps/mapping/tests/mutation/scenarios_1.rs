@@ -1,4 +1,4 @@
-//! Tests rule2 uninterpreted numeric comparator never becomes equality; rule2 configured coded kind refuses empty or numeric text without guessing.
+//! Tests rejection of malformed inputs without losing evidence.
 use super::*;
 
 #[test]

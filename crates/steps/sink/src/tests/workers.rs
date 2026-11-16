@@ -1,4 +1,4 @@
-//! Tests rule7 active delivery and order poll cancel without waiting for http deadline; mutation rule7 draining closed or set stop does not claim.
+//! Tests delivery worker cancellation and retry ownership.
 use super::*;
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-//! Tests adr0003 uuid validation survives deserialization; rule5 sample identity rejects controls empty and overlong on deserialize.
+//! Tests identity, value and dilution preservation.
 use analyte_model::OrderTransition;
 use analyte_model::*;
 use proptest::prelude::*;

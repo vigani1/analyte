@@ -1,4 +1,4 @@
-//! Supplies synthetic messages test fixtures and scenarios.
+//! Tests typed POCT Basic Profile messages.
 use analyte_poct::Limits;
 
 pub(crate) fn limits() -> Limits {

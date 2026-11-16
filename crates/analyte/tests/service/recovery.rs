@@ -1,4 +1,4 @@
-//! Tests forced exit child; plan11 adr0003 agents forced exit preserves receipts delivery and uncertain orders.
+//! Tests store recovery after forced process exit.
 use super::*;
 use crate::support::HANG_GUARD;
 use std::io::Read as _;

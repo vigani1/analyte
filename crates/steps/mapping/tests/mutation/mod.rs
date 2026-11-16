@@ -1,4 +1,4 @@
-//! Supplies synthetic mutation test fixtures and scenarios.
+//! Tests rejection of malformed inputs without losing evidence.
 use super::*;
 
 fn segment(name: &str, count: usize, values: &[(usize, &str)]) -> Result<String, &'static str> {

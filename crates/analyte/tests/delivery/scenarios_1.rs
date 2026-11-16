@@ -1,4 +1,4 @@
-//! Tests plan13 adr0008 astm and hl7 deliver once retransmission and correction; adr0008 receiver outage retries immutable delivery when it returns.
+//! Tests HTTP delivery retries and stable delivery identities.
 use super::*;
 
 #[tokio::test]

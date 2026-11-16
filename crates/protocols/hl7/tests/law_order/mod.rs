@@ -1,4 +1,4 @@
-//! Supplies synthetic law order test fixtures and scenarios.
+//! Tests LAW order, timing and test-detail segments.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection, Error, OrderControl, OrderStatus, Profile},

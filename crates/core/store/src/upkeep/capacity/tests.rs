@@ -1,4 +1,4 @@
-//! Tests adr0003 admission check matches the write guard without writing; adr0003 capacity guard refuses receipts and frames.
+//! Tests disk reserve and storage capacity refusal.
 use crate::test_support::*;
 use crate::*;
 

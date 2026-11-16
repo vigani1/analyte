@@ -1,4 +1,4 @@
-//! Tests hl7 251 2 7 4 decoding retains negotiated characters; hl7 251 2 7 4 decodes selected identifiers and values keeps wire originals.
+//! Tests machine field mapping and exact value retention.
 use super::*;
 
 #[test]

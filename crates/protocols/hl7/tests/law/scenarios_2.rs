@@ -1,4 +1,4 @@
-//! Tests law tf2b 3 29 4 unsolicited null awos and external reference are not invented; law tf2b 3 29 4 ack r22 requires complete interpretation and durability.
+//! Tests LAW message validation and host exchanges.
 use super::*;
 
 #[test]

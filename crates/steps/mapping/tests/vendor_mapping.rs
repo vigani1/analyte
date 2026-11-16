@@ -1,4 +1,4 @@
-//! Tests autolyser rev18 p186 rule5 explicit patient code and download context are preserved; rule7 autolyser download refuses missing context and bounds before output.
+//! Tests vendor outgoing orders and configured bounds.
 //! These assertions do not claim vendor conformance; no vendor evidence level changes.
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{AppOrder, AppOrderPriority, MachineOrder, OrderMappingError, map_order};

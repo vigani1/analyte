@@ -1,4 +1,4 @@
-//! Tests adr0004 order cache distinguishes empty stale reset and tombstones; adr0004 reset snapshot excludes orders absent from replacement.
+//! Tests order-change feed storage and pagination.
 use crate::test_support::*;
 use crate::*;
 

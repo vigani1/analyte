@@ -1,4 +1,4 @@
-//! Tests rule8 cancel refusal requires cancellation and retained state.
+//! Tests allowed and forbidden order lifecycle transitions.
 use analyte_model::OrderState::{self, *};
 use analyte_model::OrderTransition;
 

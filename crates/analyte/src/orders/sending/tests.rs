@@ -1,4 +1,4 @@
-//! Tests rule8 sending is internal and only interrupted transfer recovers uncertain.
+//! Tests sending behavior with synthetic fixtures.
 use super::*;
 use analyte_model::{Identifier, SampleId};
 use std::{path::Path, time::Duration};

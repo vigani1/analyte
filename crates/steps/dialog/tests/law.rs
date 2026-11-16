@@ -1,4 +1,4 @@
-//! Tests law tf2b 3 29 adr0003 ack choice follows durable interpretation; law tf2b b7 adr0003 failed or late store never produces acceptance.
+//! Tests LAW message validation and host exchanges.
 use analyte_dialog::law::*;
 use analyte_hl7::{Charset, ControlId, Options, Response, law};
 use std::time::Duration;

@@ -1,4 +1,4 @@
-//! Reads and validates LAW queries with documented evidence (PaLM TF-2b 3.27.4).
+//! Reads and validates LAW queries with documented evidence (`PaLM` TF-2b 3.27.4).
 //!
 //! These views borrow the original message. A validation error never consumes it.
 //! Query responses, work downloads and results have separate pure APIs. Full

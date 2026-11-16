@@ -1,4 +1,4 @@
-//! Tests law tf2b c12 spm 1 m si length type and message sequence; law tf2b c12 spm 2 3 eip ei identity namespace predicate lengths and repetitions.
+//! Tests LAW specimen and container segments.
 use super::*;
 
 #[test]

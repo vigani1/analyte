@@ -1,4 +1,4 @@
-//! Tests law tf2b b6 single persistent manager accepts client and server without startup io; hl7 251 2 15 5 2 adr0003 ae reports actual mapping location.
+//! Tests machine receipt storage and acknowledgment ordering.
 use super::*;
 
 #[test]

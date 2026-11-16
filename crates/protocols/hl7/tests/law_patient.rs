@@ -1,4 +1,4 @@
-//! Tests law tf2b c9 pid 3 5 r singleton null when not applicable; law tf2b c9 pid 3 cx id and assigning authority lengths types predicate.
+//! Tests LAW patient and visit segments.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, AuthorityBinding, Capabilities, ControlDirection, Error, Profile},

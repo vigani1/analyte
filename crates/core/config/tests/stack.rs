@@ -1,4 +1,4 @@
-//! Tests adr0002 every example maps to its documented stack; adr0002 stack is built after overrides and keeps serial settings.
+//! Tests validated protocol stack construction.
 use analyte_config::{Draft, Stack, StreamKind, TcpRole};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;

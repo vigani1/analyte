@@ -1,4 +1,4 @@
-//! Tests adr0003 rule7 sqlite lock failures remain specific timeouts; adr0003 storage failures distinguish full corrupt conflict and unknown.
+//! Tests src behavior with synthetic fixtures.
 use crate::test_support::*;
 use crate::*;
 

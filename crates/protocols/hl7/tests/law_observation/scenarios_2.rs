@@ -1,4 +1,4 @@
-//! Tests law tf2b c7 obx 11 closed status and explicit correction only; law tf2b c7 obx 14 19 seconds timestamps and direction.
+//! Tests LAW OBX, NTE and INV segment validation.
 use super::*;
 
 #[test]

@@ -1,4 +1,4 @@
-//! Tests plan11 empty database migrates and newer schema is refused; plan11 v1 migration preserves rows triggers and retry history.
+//! Tests legacy database migration.
 use super::*;
 
 #[test]

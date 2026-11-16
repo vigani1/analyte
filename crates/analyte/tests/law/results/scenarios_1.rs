@@ -1,4 +1,4 @@
-//! Tests law tf2b 3 29 4 b3 results deliver once retransmit and correct only c; law tf2b 3 29 4 unsolicited uses explicit analyzer order not invented awos.
+//! Tests LAW result receipt and durable delivery.
 use super::*;
 
 #[tokio::test]

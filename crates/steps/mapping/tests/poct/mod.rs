@@ -1,4 +1,4 @@
-//! Tests poct01 b 5 15 mapping keeps written values codes units and comparators; poct01 b 6 10 nonpatient qc and null are never patient or zero.
+//! Tests POCT reviewer conversations and timeouts.
 #[path = "messages.rs"]
 mod messages;
 use analyte_mapping::poct::map_observations;

@@ -1,4 +1,4 @@
-//! Tests plan11 raw audit csrf pagination orders and restore pause.
+//! Tests read-only operator pages and retained evidence.
 use super::*;
 use analyte_model::{Digest, NamespacedId, ReceiptId, ReceiptMetadata, SampleId};
 use analyte_store::{Audit, CachedOrder, OrderPage, Parked};

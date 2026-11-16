@@ -1,4 +1,4 @@
-//! Tests gazelle lab28 live.
+//! Tests manual LAW exchanges with the Gazelle simulator.
 use super::*;
 use crate::support::HANG_GUARD;
 use std::sync::{Mutex, atomic::AtomicUsize};

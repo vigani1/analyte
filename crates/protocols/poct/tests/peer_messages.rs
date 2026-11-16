@@ -1,4 +1,4 @@
-//! Supplies synthetic peer messages test fixtures and scenarios.
+//! Tests independent synthetic POCT peer messages.
 use analyte_poct::Limits;
 
 pub(crate) fn limits() -> Limits {

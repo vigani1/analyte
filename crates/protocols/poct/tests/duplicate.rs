@@ -1,4 +1,4 @@
-//! Tests poct01 b 3 2 duplicate is independent of receipt and delivery; poct01 b 3 2 correction rerun and unresolved are distinct.
+//! Tests POCT duplicate comparison and observation identity.
 mod peer_messages;
 use analyte_model::{
     Identifier, IdentityStatus, NamespacedId, ObservationIdentity, Reason, ResultIdentity,

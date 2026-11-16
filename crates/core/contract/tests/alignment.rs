@@ -1,4 +1,4 @@
-//! Tests rule5 decoded text preserves original and never accompanies unsupported; adr0008 published result vectors convert without loss.
+//! Tests model evidence conversion to contract documents.
 #![forbid(unsafe_code)]
 
 use analyte_contract::{Delivery, ResultDocument, decode};

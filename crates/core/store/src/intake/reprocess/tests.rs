@@ -1,4 +1,4 @@
-//! Tests plan11 adr0003 reprocess provenance resolution failure and audit rollback; mutation adr0003 adr0011 lifecycle reprocessing requires audit and keeps original.
+//! Tests receipt reprocessing and immutable originals.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

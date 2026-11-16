@@ -1,4 +1,4 @@
-//! Supplies synthetic tests test fixtures and scenarios.
+//! Tests schema migration and retained evidence.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

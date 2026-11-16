@@ -1,4 +1,4 @@
-//! Supplies synthetic law test fixtures and scenarios.
+//! Tests LAW message validation and host exchanges.
 use analyte_hl7::{
     Message, Options,
     law::{Error, Query, Scope},

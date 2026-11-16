@@ -1,4 +1,4 @@
-//! Tests adr0002 field syntax rejects every vendor family.
+//! Tests configured field selectors and vendor syntax rejection.
 use analyte_config::SyntaxKind;
 use analyte_mapping::{FieldSyntax, UnsupportedFieldSyntax};
 

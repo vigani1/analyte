@@ -1,4 +1,4 @@
-//! Supplies synthetic queries test fixtures and scenarios.
+//! Tests LAW order queries and query-triggered work downloads.
 use super::*;
 use crate::support::HANG_GUARD;
 #[path = "../connections.rs"]

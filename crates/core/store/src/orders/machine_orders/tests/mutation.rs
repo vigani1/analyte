@@ -1,4 +1,4 @@
-//! Tests mutation adr0003 rule8 order clock allows equal time and refuses regression atomically; mutation adr0003 rule8 order reconciliation checks target and outcome independently.
+//! Tests rejection of malformed inputs without losing evidence.
 use super::*;
 
 #[test]

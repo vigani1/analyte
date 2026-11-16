@@ -1,4 +1,4 @@
-//! Tests adr 0002 and 0005 examples validate without promoting evidence; adr 0002 schema rejects versions unknown keys and secrets.
+//! Tests configuration loading and validation.
 use analyte_config::{Draft, Error, EvidenceLevel};
 use sha2::{Digest, Sha256};
 const ASTM: &str = include_str!("../examples/astm.toml");

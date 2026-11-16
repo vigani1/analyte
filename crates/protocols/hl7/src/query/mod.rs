@@ -1,4 +1,4 @@
-//! Reads legacy HL7 display queries with documented evidence (2.3.1 ?2.18 and 2.5.1 ?5.10).
+//! Reads legacy HL7 display queries with documented evidence (2.3.1 section 2.18 and 2.5.1 section 5.10).
 //!
 //! These pure views do not schedule responses or access the host's order cache.
 //! Unsupported filters remain available to the host; they must never be ignored.

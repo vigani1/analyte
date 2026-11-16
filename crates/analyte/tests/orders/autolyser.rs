@@ -1,4 +1,4 @@
-//! Tests autolyser rev18 ch23 confirmed insertion carries explicit clone and stays sent on restart; autolyser rev18 ch23 unanswered initial poll never reserves or sends order.
+//! Tests Autolyser polling, checksums and order exchanges.
 use super::vendor_support::*;
 use super::*;
 use crate::support::HANG_GUARD;

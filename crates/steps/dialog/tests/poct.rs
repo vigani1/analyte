@@ -1,4 +1,4 @@
-//! Tests poct01 b 4 1 2 startup and rejection in sequence; poct01 b 3 2 adr0003 commit gate orders asynchronous acks.
+//! Tests POCT reviewer conversations and timeouts.
 use analyte_dialog::poct::{
     CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent, Error as DialogError,
 };

@@ -1,4 +1,4 @@
-//! Tests rule7 worker roundtrip expired requests and shutdown joins; plan11 worker open reports newer schema specifically.
+//! Tests bounded storage worker requests and shutdown.
 use crate::test_support::*;
 use crate::*;
 

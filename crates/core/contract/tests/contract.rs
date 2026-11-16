@@ -1,4 +1,4 @@
-//! Tests standard webhooks published rust test sign vector; adr0008 vectors do not drift.
+//! Tests versioned integration documents.
 #![forbid(unsafe_code)]
 use analyte_contract::*;
 use serde_json::Value;

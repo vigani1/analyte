@@ -1,4 +1,4 @@
-//! Supplies synthetic delivery test fixtures and scenarios.
+//! Tests HTTP delivery retries and stable delivery identities.
 #[path = "../orders/autolyser.rs"]
 mod autolyser_cases;
 #[path = "../service/capture.rs"]

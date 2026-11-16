@@ -1,4 +1,4 @@
-//! Tests adr0004 outbound test requires exact namespace case and code; adr0004 outbound specimen absent table or code never defaults.
+//! Tests explicit outgoing code tables without inferred mappings.
 use analyte_config::{
     MachinePriority, OrderPriority, OutboundSpecimen, OutboundTest, PriorityCode,
 };

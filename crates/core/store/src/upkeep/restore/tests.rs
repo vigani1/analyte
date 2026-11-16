@@ -1,4 +1,4 @@
-//! Tests plan11 restore refuses corrupt and newer backup without changing current; plan11 interrupted restore staging refuses startup without deleting evidence.
+//! Tests offline restore and displaced database retention.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

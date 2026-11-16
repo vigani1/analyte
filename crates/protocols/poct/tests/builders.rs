@@ -1,4 +1,4 @@
-//! Tests poct01 b 6 reviewer builders round trip and correlate; poct01 project builder limits and explicit offset.
+//! Tests POCT reviewer XML message output.
 mod peer_messages;
 use analyte_poct::{
     AckKind, ApplicationError, Body, ControlId, EscapeReason, Header, Message, MessageError,

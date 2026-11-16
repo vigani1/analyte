@@ -1,4 +1,4 @@
-//! Tests law tf2b 3 27 4 container preserves leading zero and raw; law tf2b 3 27 4 query forms and conditional fields.
+//! Tests LAW message validation and host exchanges.
 use super::*;
 
 #[test]

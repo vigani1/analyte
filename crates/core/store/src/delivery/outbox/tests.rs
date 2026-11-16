@@ -1,4 +1,4 @@
-//! Tests adr0008 outbox and interpretation rollback together; adr0008 parked head blocks correction but not other machine.
+//! Tests outgoing delivery bytes and attempt outcomes.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

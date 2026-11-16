@@ -1,4 +1,4 @@
-//! Tests law tf2b 3 27 4 pending pages filter targets without false empty and never replay; adr0004 reserve transition outbox and restart never resend.
+//! Tests allowed lifecycle transitions and retained states.
 use super::*;
 
 #[test]

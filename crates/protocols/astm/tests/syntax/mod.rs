@@ -1,4 +1,4 @@
-//! Supplies synthetic syntax test fixtures and scenarios.
+//! Tests message grammar and input size limits.
 //! Kept whole: Shared synthetic record fixtures and malformed grammar tables support the child scenarios.
 use analyte_astm::{Delimiters, Error, Kind, Limits, Presence, ResultStatus, parse, parse_with};
 use proptest::prelude::*;

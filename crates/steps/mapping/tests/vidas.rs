@@ -1,4 +1,4 @@
-//! Tests vidas bci a 4 exact identity unknown tags and values.
+//! Tests VIDAS result uploads and work downloads.
 use analyte_vidas::syntax::{Message, SampleLimit};
 
 #[test]

@@ -1,4 +1,4 @@
-//! Tests adr0009 round trip; adr0009 arbitrary input never panics.
+//! Tests JSONL recording limits and exact byte preservation.
 use analyte_transport::recording::*;
 use proptest::prelude::*;
 fn header() -> Header {

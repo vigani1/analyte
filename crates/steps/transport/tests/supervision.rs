@@ -1,4 +1,4 @@
-//! Tests client reconnects and cancels with ordered sessions; failed connect reports kind and cancels during backoff.
+//! Tests TCP connection supervision, failures and recordings.
 
 use analyte_transport::{Backoff, Cancellation, Event, Limits, Reason, connection, tcp};
 use std::{error::Error, io, time::Duration};

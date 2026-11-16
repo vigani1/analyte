@@ -1,4 +1,4 @@
-//! Tests hl7 231 2 7 and 251 2 5 4 response delimiters are independent; hl7 231 4 3 1 5 and 251 4 5 1 5 snapshot does not change request outcome.
+//! Tests HL7 order messages and acknowledgments.
 use super::*;
 
 #[test]

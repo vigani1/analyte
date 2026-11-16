@@ -1,4 +1,4 @@
-//! Tests startup failure reaches caller before any peer or cache wait.
+//! Tests bounded synthetic peers and local test fixtures.
 mod guard;
 pub(super) use guard::HANG_GUARD;
 

@@ -1,4 +1,4 @@
-//! Tests lis01 6 3 3 checksum sums raw digit through etx; lis01 6 3 2 number rollover.
+//! Tests protocol framing and checksums.
 use analyte_framing::{astm as a, hl7 as m};
 use proptest::prelude::*;
 

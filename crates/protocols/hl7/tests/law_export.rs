@@ -1,4 +1,4 @@
-//! Tests law tf2b appendix c export messages reparse.
+//! Tests synthetic LAW message exports.
 #[path = "../examples/law_messages.rs"]
 mod law_messages;
 

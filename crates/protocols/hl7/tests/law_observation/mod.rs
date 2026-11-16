@@ -1,4 +1,4 @@
-//! Supplies synthetic law observation test fixtures and scenarios.
+//! Tests LAW OBX, NTE and INV segment validation.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection, Error, Profile, ResultStatus},

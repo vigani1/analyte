@@ -1,4 +1,4 @@
-//! Tests adr0008 reference peer delivery conflict pause ordering events and adr0004 cache; adr0008 lost response retry reuses id and bytes and 503 honours retry after.
+//! Tests HTTP delivery retries and stable delivery identities.
 use super::*;
 
 #[tokio::test]

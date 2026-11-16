@@ -1,4 +1,4 @@
-//! Tests adr0002 every example keeps legacy canonical bytes.
+//! Tests src behavior with synthetic fixtures.
 use super::*;
 const SITE: &str = include_str!("../examples/site.toml");
 const ASTM: &str = include_str!("../examples/astm.toml");

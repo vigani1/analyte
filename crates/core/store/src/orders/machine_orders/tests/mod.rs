@@ -1,4 +1,4 @@
-//! Supplies synthetic tests test fixtures and scenarios.
+//! Tests durable machine order reservations and outcomes.
 use crate::test_support::{TestResult, open};
 use crate::*;
 use analyte_model::{OrderState, SourceText};

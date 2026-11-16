@@ -1,4 +1,4 @@
-//! Tests adr0002 0003 receipts and reinterpretations are immutable; rule3 random operations never lose or change receipt bytes.
+//! Tests receipt durability and retained raw bytes.
 use crate::test_support::*;
 use crate::*;
 use proptest::prelude::*;

@@ -1,4 +1,4 @@
-//! Tests law tf2b b5 b6 declared single persistent link carries all transactions in both directions; law tf2b b6 single persistent client reconnects without replaying work.
+//! Tests LAW connection ownership and reconnect behavior.
 //! This is host integration evidence, not independent-link conformance.
 use super::*;
 use crate::support::HANG_GUARD;

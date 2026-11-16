@@ -1,4 +1,4 @@
-//! Tests poct01 b 6 mandatory message bodies and control ids; poct01 b 6 10 patient and nonpatient values are explicit.
+//! Tests typed POCT Basic Profile messages.
 mod peer_messages;
 use analyte_poct::{Body, DataError, Message, MessageError, Nullable, Timestamp, Value};
 use peer_messages::{field, hello, limits, message, observation, status};

@@ -1,4 +1,4 @@
-//! Supplies synthetic law specimen test fixtures and scenarios.
+//! Tests LAW specimen and container segments.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, Capabilities, ControlDirection, Profile},

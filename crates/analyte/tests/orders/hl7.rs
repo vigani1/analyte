@@ -1,4 +1,4 @@
-//! Tests hl7 231 251 query found reserves before dsr ack aa sends once; hl7 251 qck trusted empty nf untrusted stale and unknown filter ae.
+//! Tests HL7 messages, acknowledgments and failure handling.
 use super::vendor_support::{event, no_event, state};
 use super::*;
 use crate::support::HANG_GUARD;
