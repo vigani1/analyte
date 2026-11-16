@@ -77,6 +77,8 @@ fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> 
         ("v25", Edition::V25, "2.5"),
         ("v251", Edition::V251, "2.5.1"),
         ("v26", Edition::V26, "2.6"),
+        ("v282", Edition::V282, "2.8.2"),
+        ("v291", Edition::V291, "2.9.1"),
     ] {
         let config = draft(config_id)?.validate()?;
         let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
@@ -97,24 +99,6 @@ fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> 
         );
     }
     Ok(())
-}
-
-#[test]
-fn adr0012_s3_recognized_editions_without_typed_support_fail_config_validation() {
-    for (config_id, wire) in [("v282", "2.8.2"), ("v291", "2.9.1")] {
-        assert_eq!(Version::parse(wire.as_bytes()).unwrap().as_str(), wire);
-        let error = draft(config_id).unwrap().validate().unwrap_err();
-        assert!(
-            matches!(&error, Error::UnsupportedHl7Edition { path, edition }
-            if path == "synthetic.toml" && *edition == wire)
-        );
-        assert_eq!(
-            error.to_string(),
-            format!(
-                "synthetic.toml: syntax.edition: HL7 {wire} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6"
-            )
-        );
-    }
 }
 
 #[test]
@@ -150,6 +134,24 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
     )
     .unwrap();
     assert!(draft.validate().is_err());
+}
+
+#[test]
+fn adr0012_s3_modern_result_editions_do_not_enable_order_sending() -> Result<(), Error> {
+    for edition in ["v282", "v291"] {
+        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let machine = format!("{base}\n{}", include_str!("../examples/hl7_send.toml"));
+        let result = Draft::load(
+            ("synthetic.toml", &machine),
+            ("site.toml", SITE),
+            ("local.toml", "schema_version=1"),
+        )?
+        .validate();
+        assert!(
+            matches!(result, Err(Error::Invalid { key, reason, .. }) if key == "orders.hl7_send" && reason.contains("not yet implemented"))
+        );
+    }
+    Ok(())
 }
 
 #[test]

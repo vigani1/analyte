@@ -1,6 +1,6 @@
 # HL7 versions
 
-## 2.8.2 and 2.9.1 receiving source review
+## 2.8.2 and 2.9.1 bounded result reception
 
 Part A qualifies the existing bounded ORU/R01 profile, without selecting the
 optional participation, device, access-restriction or specimen groups in
@@ -12,8 +12,8 @@ pp.13–14; 2.9.1 §2.4.5.3–4 pp.15–16).
 OBR-14 and other old fields are withdrawn (§7.4.1 in both editions), so their
 earlier typed meanings cannot be inherited. DTM remains scalar; 2.9.1's
 negative-zero zone distinguishes UTC from a known civil zero offset
-(§2A.2.22 pp.39–40). These differences require explicit receiving rules and
-tests before either result edition is enabled. Legacy query stays refused.
+(§2A.2.22 pp.39–40). These differences have explicit receiving rules and source-named tests. Both
+editions are enabled for the bounded result profile. Legacy query stays refused.
 
 ## Later-edition receiving profiles
 
@@ -45,16 +45,13 @@ it does not withdraw them. Analyte keeps its bounded deferred display exchange.
 **2.3.1 and 2.5.1** have native typed profiles; **2.3, 2.4 and 2.5** have
 bounded receiving compatibility profiles described below. MLLP Release 1 is the framing
 profile. **2.6** has the bounded ORU/R01 receiving and deferred display-query
-profile described below. Evidence remains documented. Typed support for 2.8.2
-and 2.9.1 remains unfinished.
+profile described below. The bounded 2.8.2 and 2.9.1 profiles receive results
+only. Evidence remains documented.
 
-The lossless syntax layer now also reads 2.8.2 and 2.9.1 envelopes to retain
-their declared truncation character and marker evidence. This is grammar
-groundwork, not typed edition support: `Version` recognizes all eight requested
-editions, but typed message views still refuse 2.8.2 and 2.9.1 with
-an edition-specific `EditionRules` error. No earlier edition is
-silently upgraded. Truncated input is refused before result mapping, while
-its exact bytes and the field/component marker flags remain available.
+The lossless syntax layer retains the declared truncation character and marker
+flags. All eight editions have typed receiving rules; none is silently upgraded.
+Truncated input is refused before result mapping, while its exact bytes remain
+available. Unselected extension fields stay raw or are explicitly refused.
 
 | Grammar rule | Source | Test |
 | --- | --- | --- |
@@ -71,9 +68,9 @@ whether its typed field profile exists. Recognition never aliases a new edition
 to 2.5.1: absent field profiles refuse interpretation and writing while syntax
 retains the original bytes. Configuration parsing recognizes `v23`, `v231`,
 `v24`, `v25`, `v251`, `v26`, `v282` and `v291`, which map to the exact wire IDs
-below. Validation accepts **`v23`, `v231`, `v24`, `v25`, `v251` and `v26`** for the
-declared receiving profiles. The other two return `UnsupportedHl7Edition` before activation;
-the diagnostic names the requested edition and the currently supported editions.
+below. Validation accepts all eight for their declared receiving profiles.
+Eligibility is read from the same rule registry, and a recognized edition without
+a qualified profile still fails validation before activation.
 Unlisted values fail at the positioned TOML schema boundary with the bad value
 and the recognized choices. A missing edition is not defaulted.
 Later-edition message/datatype differences and command-writer integration
@@ -81,10 +78,9 @@ remain separate steps. Enabling another edition in config
 must accompany its implemented typed support and the corresponding tests.
 
 The registry tests retain exact wire identity for all eight editions. Config
-tests in `hl7_editions.rs` cover the six supported selections and canonical
+tests in `hl7_editions.rs` cover the eight supported selections and canonical
 snapshots (`adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`),
-refusal and actionable diagnostics for the other two
-(`adr0012_s3_recognized_editions_without_typed_support_fail_config_validation`),
+withdrawn-query refusal and blocked writers for the modern result-only editions,
 unlisted values and their diagnostics
 (`adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values`) and
 missing declarations (`adr0012_s3_missing_config_edition_is_not_defaulted`).
@@ -118,7 +114,7 @@ chapter; this does not justify applying the older edition's wording to 2.9.1.
 | 2.5.1 | Adds the selected OML/OUL/QBP transaction profiles; OBX-21 is reserved, not a trusted result identity | Existing scope and field evidence in [checklist](checklist.md) |
 | 2.3, 2.4, 2.5 | Implemented receiving compatibility profiles; exact edition retained, unresolved extensions remain raw or are refused | HL7 2.5.1 §§2.8–2.8.2, pp.2-20–22; errata and details below |
 | 2.6 | Bounded typed ORU/R01 and deferred query reception; command sending disabled | Rules below |
-| 2.8.2, 2.9.1 | Typed differences remain unfinished; config refuses activation | [Plan](../../plan.md) scope and ADR 0012 section 3 |
+| 2.8.2, 2.9.1 | Bounded typed ORU/R01 result reception; legacy queries and command sending refused | Modern rules below |
 
 ### 2.6 difference rules and evidence
 
@@ -136,17 +132,17 @@ All tests in the next table are in protocol `tests/receiving.rs` unless noted.
 | --- | --- | --- |
 | MSH-7 is required scalar DTM, with digit precision and at most four fractional digits; no TS precision component | §2.14.9.7 p.57; §2.A.22 pp.2-129–131 | `hl7_2_6_s2_14_9_7_and_s2_a_22_dtm_precision_and_scalar_structure` |
 | MSH-10/MSA-2 permit 199 bytes; ACK retains exact edition and ID, uses the expanded ERR shape | §§2.14.8.2, 2.14.9.10 pp.54, 57; §§2.14.5.1–5 pp.48–50 | `hl7_2_6_s2_14_8_2_and_s2_14_9_10_control_lengths_ack_and_err` |
-| CE and TS value-type declarations are withdrawn and refused; CWE and DTM are qualified instead | §§2.A.6, 2.A.77 pp.2-107?108, 2-182 | `hl7_2_6_s2_a_6_77_withdrawn_ce_ts_are_refused` |
+| CE and TS value-type declarations are withdrawn and refused; CWE and DTM are qualified instead | §§2.A.6, 2.A.77 pp.2-107–108, 2-182 | `hl7_2_6_s2_a_6_77_withdrawn_ce_ts_are_refused` |
 | OBX-3/6 and CWE-valued OBX-5 use nine components and field/component limits; local coding-system versions are supplied, never invented | §§7.4.2.3/.5/.6 pp.7-40–44; §2.A.13 pp.2-115–119 | `hl7_2_6_s7_4_2_3_6_and_s2_a_13_cwe_components_lengths_and_versions`, `hl7_2_6_s2_a_13_all_cwe_component_length_boundaries` |
 | Interpreted OBR-7/8/14/22 and OBX-12/14/19 timestamps use scalar DTM | §§7.4.1.7/.8/.14/.22 pp.7-23–28; §§7.4.2.12/.14/.19 pp.7-46–50 | `hl7_2_6_s7_4_1_7_8_14_22_and_s7_4_2_12_14_19_result_dtm` |
 | QRD/QRF use DTM and CWE, QRD-8 uses 23-component XCN with changed check-digit, name-context and time limits; nonempty XCN-17 is refused | §5.10.4 pp.97–102; §§2.A.20, 2.A.86 pp.2-129, 2-190–193 | `hl7_2_6_s2_a_86_xcn_check_digit_cwe_dtm_and_deprecated_range`, `hl7_2_6_s5_10_4_1_2_qrd_qrf_dtm_cwe_and_deprecated_tq` |
 | Nonempty deprecated QRF-9 TQ is refused rather than ignoring its scheduling constraints; QRF-10 remains validated NM | §5.10.4.2.9–10 p.102 | Same QRD/QRF test |
 | OBX-21 EI remains raw and is not a laboratory result identity; nonempty OBX-22 mood is refused | §§7.4.2.21–22 p.7-51 | Same result-DTM test; mapping `hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity` |
-| Original/enhanced ACK custody rules and exact request edition remain independent of successful parsing | §§2.9.2–3 pp.23–26; §§2.14.9.15–16 pp.58–59 | Dialog `hl7_2_5_1_s2_8_and_2_6_s2_9_2_legacy_original_ack_requires_store_and_interpretation` |
+| Original/enhanced ACK custody rules and exact request edition remain independent of successful parsing | §§2.9.2–3 pp.23–26; §§2.14.9.15–16 pp.58–59 | Dialog `hl7_2_5_1_s2_8_and_2_6_2_8_2_2_9_1_s2_9_2_original_ack_requires_store_and_interpretation` |
 
 Escape and charset rules are exercised by
 `hl7_2_6_s2_7_1_and_s2_14_9_18_charset_and_literal_escapes`
-(2.6 ??2.7.1, 2.14.9.18, pp.17, 59?61); enhanced custody conditions by
+(2.6 §§2.7.1, 2.14.9.18, pp.17, 59–61); enhanced custody conditions by
 `hl7_2_6_s2_9_3_and_s2_14_9_15_16_enhanced_ack_custody`.
 
 The bounded CWE rule requires an explicit version whenever either coding-system
@@ -168,11 +164,54 @@ unselected CNE) remain unsupported and cause parking. Field refusal retains the
 original bytes; it never trims or converts a value to fit.
 
 Whole-edition progress in this PR: **2.6 bounded profile completed**.
-Remaining step 4: qualify 2.8.2 and 2.9.1 result/message/datatype rules, including
-withdrawals and newer coded components. Their scope is result reception only;
-legacy-query refusal is implemented and tested now. Both result profiles remain
-refused in config pending qualification. Step 5 order writers remain a separate
-PR for all non-native editions.
+Part A / step 4 is complete for the selected receiving scopes. Part B / step 5
+order writers remain separate; config still refuses sending for the six
+non-native editions.
+
+### Modern rule rows and tests
+
+Production differences live in the shared edition table. Tests below are in
+protocol `modern.rs`, with mapping tests in `mapping/modern.rs`. There are no
+per-edition parser or mapping copies.
+
+| Rule / selected behavior | Source | Source-named test |
+| --- | --- | --- |
+| Up to 22 CWE components; named authority or supplied OID for each populated code; explicit named-system revisions; preserve all tuples and metadata | 2.8.2 §2.A.13 pp.24–32; 2.9.1 §2A.2.13 pp.25–33 | `hl7_2_8_2_s2_a_13_and_2_9_1_s2a_2_13_third_tuple_metadata_stays_exact`; `hl7_2_8_2_s2_a_13_3_7_12_and_2_9_1_s2a_2_13_coding_authority_not_guessed` |
+| Coding-system names retain their normative 12-character bound; conformance capacities are not maxima; composite bytes have an explicit 16,384-byte operational cap | Same CWE sections; 2.8.2 §§2.5.5.3–4 pp.13–14; 2.9.1 §§2.4.5.3–4 pp.15–16 | `hl7_2_8_2_s2_5_5_3_and_2_9_1_s2_4_5_3_conformance_is_not_a_maximum` |
+| Scalar DTM remains bounded to 24 bytes; CE/TS declarations remain withdrawn and refused | 2.8.2 §§2.A.6/.22/.79 pp.7, 38–39, 82; 2.9.1 §§2A.2.6/.22/.79 pp.8, 39–40, 84 | `hl7_2_8_2_s2_a_22_and_2_9_1_s2a_2_22_scalar_dtm_and_withdrawn_value_types` |
+| 2.9.1 negative-zero UTC has no known civil offset; retain that time raw instead of claiming parsed local time or an explicit civil offset | 2.9.1 §2A.2.22 pp.39–40; comparison with 2.8.2 §2.A.22 pp.38–39 | Mapping `hl7_2_9_1_s2a_2_22_utc_without_known_civil_offset_remains_raw` |
+| Nonempty withdrawn OBR-5/6/14/15/27 refused in both; 2.9.1 also refuses OBR-16/28/32–35 | 2.8.2 §7.4.1 pp.36–47; 2.9.1 §7.4.1 pp.49–57 | `hl7_2_8_2_and_2_9_1_s7_4_1_withdrawn_obr_fields_are_refused` |
+| Nonempty withdrawn MSA-3/5/6 and ERR-1 refused | 2.8.2 §§2.14.8/.5 pp.53–59; 2.9.1 §§2.13.8/.5 pp.61–68 | `hl7_2_8_2_s2_14_8_and_2_9_1_s2_13_8_withdrawn_msa_err_fields` |
+| 2.9.1 MSH-15/16 must be populated together or both empty; explicit nulls are refused in this profile | 2.9.1 §§2.13.9.15–16 pp.71–72 | `hl7_2_9_1_s2_13_9_15_16_ack_requests_are_paired` |
+| ACK retains edition, delimiter declaration and MSA correlation; 199-byte control bounds; reserved delimiter characters cannot occur literally in control IDs | 2.8.2 §§2.14.8.2/.9.2/.9.10 pp.58–61; 2.9.1 §§2.13.8.2/.9.2/.9.10 pp.67–71; selected control-ID safety bound | `hl7_2_8_2_s2_14_9_and_2_9_1_s2_13_9_ack_preserves_exact_edition`; `hl7_2_8_2_s2_14_9_10_and_2_9_1_s2_13_9_10_control_profile_limits` |
+| An effective reference-range date requires the reference range | Both editions §7.4.2.12; 2.8.2 pp.60–61, 2.9.1 pp.70–71 | `hl7_2_8_2_and_2_9_1_s7_4_2_12_range_date_requires_reference_range` |
+| Original query views remain unavailable even though control views now exist | 2.8.2 §5.10.2 p.104; 2.9.1 §5.9.2 p.80 | `hl7_2_8_2_s5_10_2_and_2_9_1_s5_9_2_no_typed_legacy_query`; config refusal tests above |
+| Observation identifiers use the selected named-primary authority contract; OID-only authority is refused without guessing a configured namespace | 2.8.2 §§7.4.2.3, 2.A.13 pp.53–54, 24–32; 2.9.1 §§7.4.2.3, 2A.2.13 pp.63–64, 25–33; bounded profile decision | Mapping `hl7_2_8_2_s2_a_13_and_2_9_1_s2a_2_13_oid_authority_never_uses_code_only_fallback` |
+| UTF-8 remains a single explicit charset; literal `\P\` data and copied encoded header values stay exact | 2.8.2 §§2.14.9.18, 2.7.1–2 pp.62–63, 20–21; 2.9.1 §§2.13.9.18, 2.6.1–2 pp.72–73, 22–23; chapter 2C table 0211 pp.99–100 and 209–210 respectively | `hl7_2_8_2_s2_14_9_18_and_2_9_1_s2_13_9_18_utf8_and_literal_p` |
+| Extended XCN in unselected 2.8.2 provider fields stays raw, including new security components; no typed XCN or clinician identity is claimed | 2.8.2 §2.A.88 pp.89–94; 2.9.1 §2A.2.88 pp.92–96 (provider fields withdrawn) | `hl7_2_8_2_s2_a_88_and_2_9_1_s2a_2_88_unselected_xcn_extensions_stay_raw` |
+
+The profile continues to reject unselected SPM/SAC, participation, device,
+access-restriction and software segments rather than attach them to guessed
+owners (both editions §7.3.1). Mapping tests
+`hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_results_deliver_exact_values` and
+`hl7_2_8_2_and_2_9_1_s7_3_1_unselected_groups_and_withdrawn_fields_do_not_map`
+exercise actual mapping and raw retention. Existing store-before-ACK dialog
+tests also exercise both modern editions.
+
+Only the named primary coded tuple is mapped today. Alternate/third tuples,
+OIDs and value-set metadata are retained exactly, without OID lookup, namespace
+invention, or interpreting a value set as the code's meaning. OID-only observation authority
+is refused by the selected named-primary receiving profile; its bytes remain
+protected. OID-only coded values cannot acquire a guessed namespace and are parked. Unselected value types, including CNE,
+remain unsupported and parked. OBX-21 stays raw and OBX-22 remains refused.
+The bounded explicit revision policy from 2.6 continues for named systems.
+
+A sender marker still parks the receipt before clinical mapping. Declared
+`\P\` is a literal, not a truncation flag: the mapping text inspector now honors
+that declaration. Both cases have source-named protocol and mapping tests.
+Generic text writing escapes literal markers; ACK control identifiers keep the
+existing delimiter-free safety contract, extended to the declared marker.
+Analyte does not truncate any outgoing value.
 
 ## Compatibility rule
 

@@ -102,9 +102,11 @@ pub(crate) fn acknowledgment_with_msh(
             return crate::law::control_id(raw).map(|_| ());
         }
         if raw.len() > maximum
-            || raw
-                .iter()
-                .any(|b| !b.is_ascii_graphic() || delimiters.bytes().contains(b))
+            || raw.iter().any(|b| {
+                !b.is_ascii_graphic()
+                    || delimiters.bytes().contains(b)
+                    || delimiters.truncation == Some(*b)
+            })
         {
             return Err(Error::Control {
                 segment: "MSH",
@@ -277,9 +279,6 @@ fn encode_error(
     raw.extend_from_slice(b"ERR");
     raw.push(field);
     match version {
-        Version::V282 | Version::V291 => {
-            return Err(Error::EditionRules(version.as_str()));
-        }
         Version::V23 | Version::V231 | Version::V24 => {
             if unlocated {
                 location.extend_from_slice(&[component, component]);
@@ -288,7 +287,7 @@ fn encode_error(
             raw.push(component);
             raw.extend_from_slice(error.code);
         }
-        Version::V25 | Version::V251 | Version::V26 => {
+        Version::V25 | Version::V251 | Version::V26 | Version::V282 | Version::V291 => {
             raw.push(field);
             raw.extend_from_slice(&location);
             raw.push(field);
@@ -310,7 +309,10 @@ fn encode_message_type(msh: Msh<'_>, component: u8) -> Vec<u8> {
         message_type.push(component);
         message_type.extend_from_slice(trigger);
     }
-    if matches!(msh.version(), Version::V25 | Version::V251 | Version::V26) {
+    if matches!(
+        msh.version(),
+        Version::V25 | Version::V251 | Version::V26 | Version::V282 | Version::V291
+    ) {
         message_type.push(component);
         message_type.extend_from_slice(b"ACK");
     }

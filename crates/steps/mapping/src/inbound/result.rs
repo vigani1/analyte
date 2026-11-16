@@ -208,6 +208,12 @@ fn source_times(
             }
             if let Some(raw) = present(source.component(*ancestor, *field, 1, 1)?) {
                 let mut time = time::parse(&raw, source.position(*ancestor, *field))?;
+                // 2.9.1 section 2A.2.22: UTC does not establish a known civil offset.
+                // Keep the exact spelling without claiming a parsed local date/time.
+                if source.keeps_utc_without_civil_offset_raw(config) && raw.ends_with("-0000") {
+                    time.parsed = None;
+                    time.offset = None;
+                }
                 if let Some(original) = source.raw(*ancestor, *field)? {
                     time.original = text(&original, source.position(*ancestor, *field))?;
                 }
