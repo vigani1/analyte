@@ -2,7 +2,6 @@
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
-use proptest::prelude::*;
 
 #[test]
 fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -> TestResult {

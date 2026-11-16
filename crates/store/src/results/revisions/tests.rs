@@ -2,7 +2,6 @@
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
-use proptest::prelude::*;
 
 #[test]
 fn adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart() -> TestResult {

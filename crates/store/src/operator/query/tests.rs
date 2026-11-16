@@ -2,7 +2,6 @@
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
-use proptest::prelude::*;
 
 #[test]
 fn mutation_adr0003_query_parked_receipt_requires_one_retained_unresolved_target() -> TestResult {
