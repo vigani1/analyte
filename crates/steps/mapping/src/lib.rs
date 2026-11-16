@@ -9,6 +9,8 @@ pub mod astm;
 pub mod autolyser;
 /// HL7 terms to common results and explicit outgoing orders.
 pub mod hl7;
+/// Reads retained wire receipts through framing, syntax and mapping without I/O.
+pub mod read;
 
 /// LAW terms to common results and explicit outgoing work.
 pub mod law;

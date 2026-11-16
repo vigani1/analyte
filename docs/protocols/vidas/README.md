@@ -49,8 +49,10 @@ only a matching durable commit may produce `Stored`. A commit failure never
 emits packet ACK. Normal Literal then waits for ETX and EOT; Alternate already
 consumed ETX. Preserve incomplete durable receipts across disconnect/restart;
 never infer that timeout means the peer received nothing. Host owns bounded
-shutdown, timer generations and suffix validation of control events. Cancel
-stale timers and enforce the whole-session timer independently of progress.
+shutdown and suffix validation of control events. The dialog owns all timers,
+reports its next absolute deadline and expires it before accepting new input.
+Journaled byte activity refreshes only the byte-gap timer; the whole-session
+and durable-commit deadlines remain independent of progress.
 
 Unknown tags survive. Required fields, known-tag order, documented field length
 limits and direction are checked. Dates, calls and dilution remain exact text;

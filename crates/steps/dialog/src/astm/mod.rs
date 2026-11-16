@@ -45,10 +45,11 @@ pub struct Dialog {
     request: u64,
     state: State,
     decoder: Decoder,
-    now: Duration,
+    clock: crate::Clock,
     deadline: Option<Duration>,
     capacity: bool,
     interrupt: bool,
+    closed: bool,
 }
 
 impl Dialog {
@@ -63,10 +64,11 @@ impl Dialog {
             request: 0,
             state: State::Neutral,
             decoder,
-            now: Duration::ZERO,
+            clock: crate::Clock::default(),
             deadline: None,
             capacity: false,
             interrupt: false,
+            closed: false,
         }
     }
 
@@ -77,37 +79,52 @@ impl Dialog {
     /// Rejects reversed or unrepresentable time before mutation. Other refused events
     /// produce `Action::Refused`, preserving any preceding timeout effects.
     pub fn step(&mut self, now: Duration, event: Event) -> Result<Vec<Action>, Error> {
-        if now < self.now {
-            return Err(Error::TimeReversed);
-        }
-        // Reserve representable headroom before changing state.
-        for budget in [
+        let headroom = [
             self.config.timers.establish,
             self.config.timers.contention,
             self.config.timers.frame,
             self.config.timers.receive,
             self.config.timers.commit,
             Duration::from_secs(15),
-        ] {
-            now.checked_add(budget).ok_or(Error::Exhausted)?;
-        }
-        self.now = now;
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(Duration::ZERO);
+        self.clock
+            .advance(now, headroom)
+            .map_err(|error| match error {
+                crate::ClockError::Reversed => Error::TimeReversed,
+                crate::ClockError::Exhausted => Error::Exhausted,
+            })?;
         let mut out = Vec::new();
+        if matches!(event, Event::Disconnect) {
+            self.disconnect(&mut out);
+            out.push(Action::Deadline(None));
+            return Ok(out);
+        }
+        if self.closed {
+            return Ok(vec![Action::Refused(Error::Busy), Action::Deadline(None)]);
+        }
         if self.deadline.is_some_and(|d| now >= d) {
             self.expire(&mut out);
         }
         let result = (|| {
             match event {
-                Event::Tick => {}
+                Event::Tick | Event::Disconnect => {}
                 Event::Capacity(value) => self.capacity = value,
                 Event::Interrupt(value) => self.interrupt = value,
                 Event::Byte(byte) => {
-                    if matches!(self.state, State::Receiving(_) | State::Commit { .. }) {
-                        if let Some(event) = self.decoder.push(byte) {
-                            self.wire(event, &mut out)?;
+                    if let Some(event) = self.decoder.push(byte) {
+                        self.wire(event, &mut out)?;
+                    }
+                    // Unsolicited partial frames still belong to the dialog and
+                    // must be bounded and returned as evidence on timeout/EOF.
+                    if matches!(self.state, State::Neutral) {
+                        if self.decoder.pending().is_empty() {
+                            self.deadline = None;
+                        } else if self.deadline.is_none() {
+                            self.set_timer(self.config.timers.receive);
                         }
-                    } else {
-                        self.control(byte, &mut out)?;
                     }
                 }
                 Event::Committed(id) => self.commit(id, true, &mut out)?,
@@ -131,8 +148,36 @@ impl Dialog {
         Ok(out)
     }
 
+    /// Returns the next absolute connection-clock wake time, or none when idle/closed.
+    #[must_use]
+    pub fn next_deadline(&self) -> Option<Duration> {
+        self.deadline
+    }
+
+    fn disconnect(&mut self, out: &mut Vec<Action>) {
+        if self.closed {
+            return;
+        }
+        self.closed = true;
+        self.deadline = None;
+        if let Some(astm::Event::Rejected { error, raw }) = self.decoder.finish() {
+            out.push(Action::Rejected(error, raw));
+        }
+        let state = std::mem::replace(&mut self.state, State::Neutral);
+        match state {
+            State::Establish(_) | State::Busy(_) | State::Priority(_) | State::Sending { .. } => {
+                out.push(Action::Sent(End::Incomplete));
+                out.push(Action::Ended(End::Incomplete));
+            }
+            State::Receiving(_) | State::Commit { .. } | State::Contention => {
+                out.push(Action::Ended(End::Incomplete));
+            }
+            State::Neutral | State::Holdoff => {}
+        }
+    }
+
     fn set_timer(&mut self, budget: Duration) {
-        self.deadline = self.now.checked_add(budget);
+        self.deadline = self.clock.now().checked_add(budget);
     }
 
     fn encode(&self, records: &[Vec<u8>]) -> Result<VecDeque<Vec<u8>>, Error> {

@@ -30,11 +30,9 @@ struct ConnectionState<'a, 'm> {
     config: Config,
     dialog: Dialog,
     start: Instant,
-    wake: Option<Duration>,
     transfer: Option<Identifier>,
     raw: Vec<u8>,
     payload: Vec<u8>,
-    partial: Vec<u8>,
     input_evidence: connection_input::Custody,
     pending: Option<Pending<'a>>,
     response: Option<crate::orders::astm::Reply>,
@@ -74,11 +72,9 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         let epoch = Epoch(uuid::Uuid::now_v7().as_u128());
         let dialog = Dialog::new(config.clone(), epoch);
         let start = Instant::now();
-        let wake = None;
         let transfer: Option<Identifier> = None;
         let raw = Vec::new();
         let payload = Vec::new();
-        let partial = Vec::new();
         let pending: Option<Pending<'_>> = None;
         let response: Option<crate::orders::astm::Reply> = None;
         let response_deadline = None;
@@ -93,11 +89,9 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             config,
             dialog,
             start,
-            wake,
             transfer,
             raw,
             payload,
-            partial,
             input_evidence: connection_input::Custody::default(),
             pending,
             response,
@@ -118,8 +112,8 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             let event = tokio::select! {
                 biased;
                 () = super::stopping(stop) => break,
-                () = std::future::ready(()), if self.response.is_some() && self.wake.is_none() => None,
-                () = tokio::time::sleep(self.wake.map_or(Duration::from_secs(1), |d: Duration| d.saturating_sub(self.start.elapsed()))) => None,
+                () = std::future::ready(()), if self.response.is_some() && self.dialog.next_deadline().is_none() => None,
+                () = tokio::time::sleep(self.dialog.next_deadline().map_or(Duration::from_secs(1), |d: Duration| d.saturating_sub(self.start.elapsed()))) => None,
                 event = connection_input::receive(conn) => match event {
                     Ok(event) => Some(event),
                     Err(analyte_transport::Error::Deadline(_)) => None,
@@ -159,21 +153,11 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
     ) -> Result<(), Error> {
-        let settings = self.settings;
         self.input_evidence.begin(&bytes);
         let events = self.outgoing_events(bytes).await?;
         for event in events {
-            if let Event::Byte(byte) = &event {
+            if let Event::Byte(_) = &event {
                 self.input_evidence.fed();
-                if *byte == analyte_framing::astm::STX {
-                    self.partial.clear();
-                }
-                if *byte == analyte_framing::astm::STX || !self.partial.is_empty() {
-                    if self.partial.len() > settings.frame_limit() {
-                        return Err(invalid("ASTM partial frame bound exceeded"));
-                    }
-                    self.partial.push(*byte);
-                }
             }
             self.process(event, conn, stop).await?;
         }
@@ -184,7 +168,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         let machine = self.machine;
         let store = self.store;
         let outgoing = if bytes.is_empty()
-            && self.wake.is_none()
+            && self.dialog.next_deadline().is_none()
             && self.response.is_none()
             && self.pending.is_none()
             && Instant::now() >= self.next_order_poll
@@ -203,7 +187,10 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 vec![reserved.payload.record()?.to_vec()],
                 b'N',
             ))]
-        } else if bytes.is_empty() && self.response.is_some() && self.wake.is_none() {
+        } else if bytes.is_empty()
+            && self.response.is_some()
+            && self.dialog.next_deadline().is_none()
+        {
             if self
                 .response_deadline
                 .is_some_and(|until| Instant::now() >= until)
@@ -285,9 +272,6 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         let store = self.store;
         match action {
             Action::Write(bytes) => {
-                if bytes.as_slice() == [analyte_framing::astm::ACK] {
-                    self.partial.clear();
-                }
                 conn.write(bytes).await?;
             }
             Action::Commit(id, number, bytes) => {
@@ -310,7 +294,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Action::Ended(end) => {
                 self.end_transfer(end).await?;
             }
-            Action::Deadline(next) => self.wake = next,
+            Action::Deadline(_) => {}
             Action::Refused(error) => return Err(error.into()),
             Action::Conflict(bytes) => {
                 intake::park_bytes(
@@ -325,9 +309,6 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 intake::park_bytes(store, machine, bytes, "unsolicited ASTM frame").await?;
             }
             Action::Rejected(error, bytes) => {
-                if self.partial.len() != 1 {
-                    self.partial.clear();
-                }
                 intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
             Action::CommitFailed(_) | Action::LimitReached => {
@@ -458,6 +439,22 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         Ok(())
     }
     async fn close(&mut self, mut result: Result<(), Error>) -> Result<(), Error> {
+        // Disconnect drains the dialog-owned decoder on every exit, including failed
+        // host effects. Transfer and order identities are reconciled below even if
+        // parking one piece of framing evidence fails.
+        match self.dialog.step(self.start.elapsed(), Event::Disconnect) {
+            Ok(actions) => {
+                for action in actions {
+                    if let Action::Rejected(error, bytes) = action {
+                        let cleanup =
+                            intake::park_bytes(self.store, self.machine, bytes, &error.to_string())
+                                .await;
+                        super::custody::retain_cleanup(&mut result, cleanup);
+                    }
+                }
+            }
+            Err(error) => super::custody::retain_cleanup(&mut result, Err(error.into())),
+        }
         let cleanup = self.input_evidence.retain(self.store, self.machine).await;
         super::custody::retain_cleanup(&mut result, cleanup);
         for order in self.active_orders.drain(..) {
@@ -473,16 +470,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             let cleanup = finish_incomplete(self.store, transfer).await;
             super::custody::retain_cleanup(&mut result, cleanup);
         }
-        if !self.partial.is_empty() {
-            let cleanup = intake::park_bytes(
-                self.store,
-                self.machine,
-                std::mem::take(&mut self.partial),
-                "incomplete ASTM frame when session stopped",
-            )
-            .await;
-            super::custody::retain_cleanup(&mut result, cleanup);
-        }
+
         result
     }
 }

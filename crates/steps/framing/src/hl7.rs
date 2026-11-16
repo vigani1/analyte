@@ -190,3 +190,40 @@ pub fn encode(payload: &[u8], limit: Limit) -> Result<Vec<u8>, Error> {
     raw.extend_from_slice(&[EB, CR]);
     Ok(raw)
 }
+
+/// A retained receipt must contain exactly one complete MLLP block.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ReceiptError {
+    /// The live decoder refused the envelope.
+    #[error(transparent)]
+    Frame(#[from] Error),
+    /// Another block or bytes followed the first complete block.
+    #[error("receipt contains multiple MLLP blocks or trailing bytes")]
+    Trailing,
+    /// The receipt did not reach its acceptance boundary.
+    #[error("receipt contains incomplete MLLP block")]
+    Incomplete,
+}
+
+/// Verifies one retained block with the live decoder and borrows its exact payload.
+/// # Errors
+/// Rejects incomplete, malformed, excessive or multiple blocks and trailing bytes.
+pub fn decode(raw: &[u8], limit: Limit) -> Result<&[u8], ReceiptError> {
+    let mut decoder = Decoder::new(limit);
+    let mut complete = false;
+    for byte in raw {
+        if complete {
+            return Err(ReceiptError::Trailing);
+        }
+        if let Some(event) = decoder.push(*byte) {
+            match event {
+                Event::Block(_) => complete = true,
+                Event::Rejected { error, .. } => return Err(error.into()),
+            }
+        }
+    }
+    if !complete {
+        return Err(ReceiptError::Incomplete);
+    }
+    payload(raw).ok_or(ReceiptError::Incomplete)
+}

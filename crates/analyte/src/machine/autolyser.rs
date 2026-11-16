@@ -12,7 +12,6 @@ use tokio::sync::watch;
 struct ConnectionState {
     dialog: Dialog,
     start: Instant,
-    wake: std::time::Duration,
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
     ready: bool,
     recovering: bool,
@@ -59,7 +58,6 @@ impl ConnectionState {
         Ok(Self {
             dialog,
             start: Instant::now(),
-            wake: std::time::Duration::ZERO,
             receipt: None,
             ready: false,
             recovering: false,
@@ -85,7 +83,9 @@ impl ConnectionState {
                 store,
                 conn,
                 stop,
-                self.wake.saturating_sub(self.start.elapsed()),
+                self.dialog
+                    .next_deadline()
+                    .map(|deadline| deadline.saturating_sub(self.start.elapsed())),
             )
             .await?;
             let ended = matches!(
@@ -144,9 +144,6 @@ impl ConnectionState {
                     } else {
                         if process(actions, self, machine, store, conn, policy).await? {
                             return Ok(());
-                        }
-                        if self.wake <= self.start.elapsed() {
-                            self.wake = self.start.elapsed().saturating_add(ms(policy.poll_ms));
                         }
                         Vec::new()
                     }
@@ -248,15 +245,19 @@ impl ConnectionState {
     }
     async fn interpret_report(
         &mut self,
-        raw: &[u8],
         machine: &intake::Connection<'_>,
         store: &Handle,
     ) -> Result<(), Error> {
-        let (id, time) = self
+        let (id, _) = self
             .receipt
             .take()
             .ok_or_else(|| invalid("Autolyser report receipt missing"))?;
-        match super::interpretation::map(machine, id, time, raw) {
+        let receipt = store
+            .request(crate::deadline(), move |s| {
+                s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+            })
+            .await?;
+        match super::interpretation::map_retained(store, machine, &receipt).await {
             Ok(reading) => intake::vendor_reading(store, machine, id, reading).await?,
             Err(error) => {
                 intake::failed_reading(
@@ -332,8 +333,8 @@ async fn process(
                     failure = Some(error);
                 }
             }
-            Action::Report(report) => {
-                state.interpret_report(&report.raw, machine, store).await?;
+            Action::Report(_) => {
+                state.interpret_report(machine, store).await?;
             }
             Action::Park(error) => {
                 if let Some(order) = state.active.as_ref() {
@@ -390,7 +391,7 @@ async fn process(
             }
             Action::Refused(error) => return Err(error.into()),
             Action::Close => close = true,
-            Action::Deadline(deadline) => state.wake = deadline,
+            Action::Deadline(_) => {}
         }
     }
     match failure {
@@ -409,6 +410,7 @@ fn park_code(error: &analyte_dialog::autolyser::Error) -> String {
         Error::Storage => "Autolyser-parked-storage".into(),
         Error::Stale => "Autolyser-parked-stale".into(),
         Error::Ack => "Autolyser-parked-ack".into(),
+        Error::Framing(cause) => format!("Autolyser-parked-framing-{cause}"),
         Error::Record(cause) => format!("Autolyser-parked-record-{cause}"),
     }
 }

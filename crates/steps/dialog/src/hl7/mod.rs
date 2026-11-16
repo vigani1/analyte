@@ -312,7 +312,7 @@ pub struct Dialog {
     queue: VecDeque<(Vec<u8>, Duration)>,
     sending: Option<Sending>,
     error: Option<OwnedError>,
-    now: Duration,
+    clock: crate::Clock,
     deadline: Option<Duration>,
     closed: bool,
     orders: Option<Orders>,
@@ -332,7 +332,7 @@ impl Dialog {
             queue: VecDeque::new(),
             sending: None,
             error: None,
-            now: Duration::ZERO,
+            clock: crate::Clock::default(),
             deadline: None,
             closed: false,
             orders: None,
@@ -344,11 +344,13 @@ impl Dialog {
     /// # Errors
     /// Reversed or overflowing time is rejected before mutation; other errors are actions.
     pub fn step(&mut self, now: Duration, event: Event<'_>) -> Result<Vec<Action>, Error> {
-        if now < self.now {
-            return Err(Error::TimeReversed);
-        }
+        self.clock
+            .advance(now, self.config.wait)
+            .map_err(|error| match error {
+                crate::ClockError::Reversed => Error::TimeReversed,
+                crate::ClockError::Exhausted => Error::Exhausted,
+            })?;
         let end = now.checked_add(self.config.wait).ok_or(Error::Exhausted)?;
-        self.now = now;
         let mut out = Vec::new();
         if let Some(orders) = &mut self.orders {
             orders.expire(now, &mut out);
@@ -513,7 +515,7 @@ impl Dialog {
             Event::QueryWritten(part) => self.reply_written(part, out)?,
             Event::QueryWriteFailed(part) => self.reply_failed(part, out)?,
             Event::Byte(byte) => {
-                self.frame_started.get_or_insert(self.now);
+                self.frame_started.get_or_insert(self.clock.now());
                 if let Some(event) = self.decoder.push(byte) {
                     self.wire(event, out);
                     self.frame_started = None;
@@ -613,7 +615,7 @@ impl Dialog {
                 {
                     if self.queue.len() < self.config.queued {
                         self.queue
-                            .push_back((raw, self.frame_started.unwrap_or(self.now)));
+                            .push_back((raw, self.frame_started.unwrap_or(self.clock.now())));
                     } else {
                         out.push(Action::QueueFull(raw));
                     }
