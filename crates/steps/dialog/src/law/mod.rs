@@ -231,7 +231,7 @@ pub struct Dialog {
     link: Link,
     decoder: mllp::Decoder,
     state: State,
-    now: Duration,
+    clock: crate::Clock,
     started: Option<Duration>,
     until: Option<Duration>,
     next: u64,
@@ -258,7 +258,7 @@ impl Dialog {
             link,
             decoder: mllp::Decoder::new(limit),
             state: State::Idle,
-            now: Duration::ZERO,
+            clock: crate::Clock::default(),
             started: None,
             until: None,
             next: 0,
@@ -273,6 +273,12 @@ impl Dialog {
             self.until
         }
     }
+    /// Returns the next absolute connection-clock wake time, including issuance.
+    #[must_use]
+    pub fn next_deadline(&self) -> Option<Duration> {
+        self.deadline()
+    }
+
     /// Whether a partial received block prevents initiating new work.
     #[must_use]
     pub fn receiving(&self) -> bool {
@@ -282,13 +288,16 @@ impl Dialog {
     /// # Errors
     /// Rejects reversed time before mutation. Fatal protocol failures are actions.
     pub fn step(&mut self, now: Duration, event: Event<'_>) -> Result<Vec<Action>, Error> {
-        if now < self.now {
-            return Err(Error::TimeReversed);
-        }
-        now.checked_add(self.receive)
-            .and_then(|n| n.checked_add(self.send))
+        let headroom = self
+            .receive
+            .checked_add(self.send)
             .ok_or(Error::Exhausted)?;
-        self.now = now;
+        self.clock
+            .advance(now, headroom)
+            .map_err(|error| match error {
+                crate::ClockError::Reversed => Error::TimeReversed,
+                crate::ClockError::Exhausted => Error::Exhausted,
+            })?;
         let mut out = Vec::new();
         if self.deadline().is_some_and(|until| now >= until) && !matches!(event, Event::Disconnect)
         {
@@ -326,9 +335,14 @@ impl Dialog {
         if !matches!(self.state, State::Idle) {
             return Err(Error::Busy);
         }
-        self.started.get_or_insert(self.now);
+        self.started.get_or_insert(self.clock.now());
         if self.until.is_none() {
-            self.until = Some(self.now.checked_add(self.receive).ok_or(Error::Exhausted)?);
+            self.until = Some(
+                self.clock
+                    .now()
+                    .checked_add(self.receive)
+                    .ok_or(Error::Exhausted)?,
+            );
         }
         if let Some(event) = self.decoder.push(byte) {
             match event {
@@ -410,7 +424,7 @@ impl Dialog {
                 self.reply(id, reply, reserved_until, out)?;
             }
             Event::Send(message, until) => {
-                if self.link == Link::WorkResponse && self.now >= until {
+                if self.link == Link::WorkResponse && self.clock.now() >= until {
                     return Err(Error::Deadline("LAW outbound work expired before issuance"));
                 }
                 if !matches!(self.state, State::Idle) || self.receiving() {
@@ -473,9 +487,12 @@ impl Dialog {
         if let Some(message) = remaining.pop_front() {
             let send_until = match completion {
                 Completion::Work => until,
-                Completion::Reply(_) => {
-                    until.min(self.now.checked_add(self.send).ok_or(Error::Exhausted)?)
-                }
+                Completion::Reply(_) => until.min(
+                    self.clock
+                        .now()
+                        .checked_add(self.send)
+                        .ok_or(Error::Exhausted)?,
+                ),
             };
             out.push(Action::Write(
                 mllp::encode(message.raw(), self.limit)?,

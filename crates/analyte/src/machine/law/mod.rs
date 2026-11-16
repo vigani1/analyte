@@ -130,7 +130,7 @@ impl<'a, 'm> Host<'a, 'm> {
         while let Some(action) = actions.pop_front() {
             let end = self
                 .dialog
-                .deadline()
+                .next_deadline()
                 .map(|until| self.absolute(until))
                 .transpose()?;
             let mut stop = self.stop.clone();
@@ -436,7 +436,7 @@ impl<'a, 'm> Host<'a, 'm> {
             let due = self.orders.due();
             let end = self
                 .dialog
-                .deadline()
+                .next_deadline()
                 .map(|until| self.absolute(until))
                 .transpose()?;
             let event = tokio::select! {
