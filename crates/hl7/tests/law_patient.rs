@@ -384,8 +384,11 @@ fn law_tf2b_c9_c10_builder_and_receive_validate_profile() -> TestResult {
         timestamp: b"20260101120000+0000",
     };
     let capabilities = Capabilities {
-        patient: true,
-        specimen: true,
+        content: law::PeerContent {
+            patient: true,
+            specimen: true,
+            ..Capabilities::default().content
+        },
         ..Capabilities::default()
     };
     law::work_order(
@@ -396,6 +399,50 @@ fn law_tf2b_c9_c10_builder_and_receive_validate_profile() -> TestResult {
         capabilities,
         options(),
     )?;
+    validate_patient_builder_cases(awos, patient, address, response, capabilities)?;
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c9_pid_3_cx_hd_aggregate_limits_and_nested_x() -> TestResult {
+    let namespace = "n".repeat(20);
+    let uid = "u".repeat(199);
+    let bindings = [AuthorityBinding::new(
+        namespace.as_bytes(),
+        uid.as_bytes(),
+        b"Random",
+    )?];
+    let profile = Profile::receive().with_authorities(&bindings);
+    let exact = format!("{}^^^{namespace}&{uid}&Random", "i".repeat(48));
+    check("PID", &[(3, &exact)], profile, ControlDirection::Send)?;
+    assert!(
+        check(
+            "PID",
+            &[(3, &format!("i{exact}"))],
+            profile,
+            ControlDirection::Send
+        )
+        .is_err()
+    );
+    for value in [
+        "id^^^Local&&&ignored",
+        "id^^^^ignored",
+        "id^^^&1.2.3&ISO&ignored",
+    ] {
+        check("PID", &[(3, value)], profile, ControlDirection::Receive)?;
+        assert!(check("PID", &[(3, value)], profile, ControlDirection::Send).is_err());
+    }
+    Ok(())
+}
+
+fn validate_patient_builder_cases(
+    awos: law::Awos<'_>,
+    patient: law::PatientInfo<'_>,
+    address: law::Address<'_>,
+    response: analyte_hl7::Response<'_>,
+    capabilities: Capabilities,
+) -> TestResult {
+    use law::{PatientInfo, Visit};
     for invalid in [
         PatientInfo {
             birth: Some(b"20230229"),
@@ -461,37 +508,5 @@ fn law_tf2b_c9_c10_builder_and_receive_validate_profile() -> TestResult {
         options(),
     )?;
     assert!(law::Results::with_profile(&bad, profile).is_err());
-    Ok(())
-}
-
-#[test]
-fn law_tf2b_c9_pid_3_cx_hd_aggregate_limits_and_nested_x() -> TestResult {
-    let namespace = "n".repeat(20);
-    let uid = "u".repeat(199);
-    let bindings = [AuthorityBinding::new(
-        namespace.as_bytes(),
-        uid.as_bytes(),
-        b"Random",
-    )?];
-    let profile = Profile::receive().with_authorities(&bindings);
-    let exact = format!("{}^^^{namespace}&{uid}&Random", "i".repeat(48));
-    check("PID", &[(3, &exact)], profile, ControlDirection::Send)?;
-    assert!(
-        check(
-            "PID",
-            &[(3, &format!("i{exact}"))],
-            profile,
-            ControlDirection::Send
-        )
-        .is_err()
-    );
-    for value in [
-        "id^^^Local&&&ignored",
-        "id^^^^ignored",
-        "id^^^&1.2.3&ISO&ignored",
-    ] {
-        check("PID", &[(3, value)], profile, ControlDirection::Receive)?;
-        assert!(check("PID", &[(3, value)], profile, ControlDirection::Send).is_err());
-    }
     Ok(())
 }

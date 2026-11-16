@@ -66,13 +66,19 @@ impl LawPeer {
     #[must_use]
     pub fn capabilities(&self) -> analyte_hl7::law::Capabilities {
         analyte_hl7::law::Capabilities {
-            patient: self.patient.into(),
-            container: self.container.into(),
-            specimen: self.specimen.into(),
-            dilution: self.dilution.into(),
-            manager_repeat: self.manager_repeat.into(),
-            repeat_control: self.repeat_control.into(),
-            priority: self.priority.into(),
+            content: analyte_hl7::law::PeerContent {
+                patient: self.patient.into(),
+                container: self.container.into(),
+                specimen: self.specimen.into(),
+            },
+            instructions: analyte_hl7::law::PeerInstructions {
+                dilution: self.dilution.into(),
+                priority: self.priority.into(),
+                repeat: analyte_hl7::law::PeerRepeat {
+                    manager_repeat: self.manager_repeat.into(),
+                    repeat_control: self.repeat_control.into(),
+                },
+            },
         }
     }
 }

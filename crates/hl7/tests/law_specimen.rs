@@ -454,94 +454,7 @@ fn law_tf2b_c11_sac_10_11_13_14_carrier_tray_predicates_na_axes_and_limits() -> 
                 false,
             )?;
         }
-        both(
-            "SAC",
-            &[
-                (3, ""),
-                (4, "parent"),
-                (identity, "rack"),
-                (position, "1234567890123456"),
-            ],
-            true,
-        )?;
-        both(
-            "SAC",
-            &[
-                (3, ""),
-                (4, "parent"),
-                (identity, "rack"),
-                (position, "12345678901234567"),
-            ],
-            false,
-        )?;
-        both(
-            "SAC",
-            &[
-                (3, ""),
-                (4, "parent"),
-                (identity, "rack"),
-                (position, "1^12345678901234567"),
-            ],
-            false,
-        )?;
-        assert!(
-            check(
-                "SAC",
-                &[(3, ""), (4, "parent"), (identity, "rack")],
-                Profile::receive(),
-                ControlDirection::Send
-            )
-            .is_err()
-        );
-        check(
-            "SAC",
-            &[(3, ""), (4, "parent"), (identity, "rack")],
-            Profile::receive(),
-            ControlDirection::Receive,
-        )?;
-        assert!(
-            check(
-                "SAC",
-                &[(position, "1")],
-                Profile::receive(),
-                ControlDirection::Send
-            )
-            .is_err()
-        );
-        check(
-            "SAC",
-            &[(position, "1")],
-            Profile::receive(),
-            ControlDirection::Receive,
-        )?;
-        let exact = format!(
-            "{}^{}^{}^{}^{}",
-            "1".repeat(16),
-            "2".repeat(16),
-            "3".repeat(16),
-            "4".repeat(16),
-            "5".repeat(12)
-        );
-        both(
-            "SAC",
-            &[
-                (3, ""),
-                (4, "parent"),
-                (identity, "rack"),
-                (position, &exact),
-            ],
-            true,
-        )?;
-        both(
-            "SAC",
-            &[
-                (3, ""),
-                (4, "parent"),
-                (identity, "rack"),
-                (position, &format!("{exact}1")),
-            ],
-            false,
-        )?;
+        validate_carrier_axis_limits(identity, position)?;
     }
     Ok(())
 }
@@ -903,8 +816,11 @@ fn law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields()
         timestamp: b"20260101120000+0000",
     };
     let capabilities = Capabilities {
-        specimen: true,
-        container: true,
+        content: law::PeerContent {
+            specimen: true,
+            container: true,
+            ..Capabilities::default().content
+        },
         ..Capabilities::default()
     };
     // C.11: fail before a caller can reserve work using this render result.
@@ -961,96 +877,8 @@ fn law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields()
         .with_specimen_details(&specimen)
         .with_container_details(&container);
     law::work_order(&[work], None, address, response, capabilities, options())?;
-    for invalid in [
-        SpecimenDetails {
-            parents: Some(b"unqualified"),
-            ..specimen
-        },
-        SpecimenDetails {
-            source_modifier: Some(b"id^^99LAB~other^^99LAB"),
-            ..specimen
-        },
-        SpecimenDetails {
-            collection_time: Some(b"20230229120000"),
-            ..specimen
-        },
-        SpecimenDetails {
-            risk: Some(b"id^^OTHER"),
-            ..specimen
-        },
-    ] {
-        assert!(
-            law::work_order(
-                &[awos.with_specimen_details(&invalid)],
-                None,
-                address,
-                response,
-                capabilities,
-                options()
-            )
-            .is_err()
-        );
-    }
-    for invalid in [
-        ContainerDetails {
-            carrier_position: None,
-            ..container
-        },
-        ContainerDetails {
-            tray_position: Some(b"1.5"),
-            ..container
-        },
-        ContainerDetails {
-            container_volume: Some(b"1e3"),
-            ..container
-        },
-        ContainerDetails {
-            volume_units: Some(b"mL^Units^OTHER"),
-            ..container
-        },
-        ContainerDetails {
-            dilution: Some(b"^1^:^0"),
-            ..container
-        },
-    ] {
-        assert!(
-            law::work_order(
-                &[awos.with_container_details(&invalid)],
-                None,
-                address,
-                response,
-                capabilities,
-                options()
-            )
-            .is_err()
-        );
-    }
-    // Carrier/parent identity is base information, not gated by LAW_CONTAINER.
-    let base_details = ContainerDetails {
-        parent: Some(b"parent"),
-        carrier: Some(b"rack"),
-        carrier_position: Some(b"1"),
-        ..ContainerDetails::default()
-    };
-    law::work_order(
-        &[awos.with_container_details(&base_details)],
-        None,
-        address,
-        response,
-        Capabilities::default(),
-        options(),
-    )?;
-    assert!(
-        law::work_order(
-            &[awos.with_container_details(&container)],
-            None,
-            address,
-            response,
-            Capabilities::default(),
-            options()
-        )
-        .is_err()
-    );
+    validate_specimen_detail_cases(awos, address, response, capabilities, specimen)?;
+    validate_container_detail_cases(awos, address, response, capabilities, container)?;
     Ok(())
 }
 
@@ -1233,7 +1061,10 @@ fn law_tf2b_c11_c12_explicit_profile_cannot_enlarge_peer_send_capabilities() -> 
         .is_err()
     );
     let supported = Capabilities {
-        container: true,
+        content: law::PeerContent {
+            container: true,
+            ..Capabilities::default().content
+        },
         ..Capabilities::default()
     };
     law::work_order_with_profile(
@@ -1253,7 +1084,10 @@ fn law_tf2b_c11_am_carrier_tray_only_without_sac3_with_sac4() -> TestResult {
     let failing = law::parse_message(b"MSH|^~\\&|ANALYTE|ANALYTE-TEST|SYN-ANALYZER|ANALYTE-TEST|20260101120000+0000||OML^O33^OML_O33|SYN-OML1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-28^IHE~LAW_SPECIMEN^IHE\rSPM|1|SYN-0001&ANALYTE-TEST||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||SYN-0001|||||||SYN-RACK1|1||||||||||||||||||\rORC|NW||||||||20260101120000||||||||||||\rOBR||SYN-AWOS1||SYN-TEST^Synthetic test^99SYN|||||||||||||||||||||||||||||||||||||||||||||\r", options())?;
     assert_eq!(
         Profile::for_peer(Capabilities {
-            specimen: true,
+            content: law::PeerContent {
+                specimen: true,
+                ..Capabilities::default().content
+            },
             ..Capabilities::default()
         })
         .validate_message(&failing, ControlDirection::Send),
@@ -1282,5 +1116,209 @@ fn law_tf2b_c11_am_carrier_tray_only_without_sac3_with_sac4() -> TestResult {
             .is_err()
         );
     }
+    Ok(())
+}
+
+fn validate_carrier_axis_limits(identity: usize, position: usize) -> TestResult {
+    both(
+        "SAC",
+        &[
+            (3, ""),
+            (4, "parent"),
+            (identity, "rack"),
+            (position, "1234567890123456"),
+        ],
+        true,
+    )?;
+    both(
+        "SAC",
+        &[
+            (3, ""),
+            (4, "parent"),
+            (identity, "rack"),
+            (position, "12345678901234567"),
+        ],
+        false,
+    )?;
+    both(
+        "SAC",
+        &[
+            (3, ""),
+            (4, "parent"),
+            (identity, "rack"),
+            (position, "1^12345678901234567"),
+        ],
+        false,
+    )?;
+    assert!(
+        check(
+            "SAC",
+            &[(3, ""), (4, "parent"), (identity, "rack")],
+            Profile::receive(),
+            ControlDirection::Send
+        )
+        .is_err()
+    );
+    check(
+        "SAC",
+        &[(3, ""), (4, "parent"), (identity, "rack")],
+        Profile::receive(),
+        ControlDirection::Receive,
+    )?;
+    assert!(
+        check(
+            "SAC",
+            &[(position, "1")],
+            Profile::receive(),
+            ControlDirection::Send
+        )
+        .is_err()
+    );
+    check(
+        "SAC",
+        &[(position, "1")],
+        Profile::receive(),
+        ControlDirection::Receive,
+    )?;
+    let exact = format!(
+        "{}^{}^{}^{}^{}",
+        "1".repeat(16),
+        "2".repeat(16),
+        "3".repeat(16),
+        "4".repeat(16),
+        "5".repeat(12)
+    );
+    both(
+        "SAC",
+        &[
+            (3, ""),
+            (4, "parent"),
+            (identity, "rack"),
+            (position, &exact),
+        ],
+        true,
+    )?;
+    both(
+        "SAC",
+        &[
+            (3, ""),
+            (4, "parent"),
+            (identity, "rack"),
+            (position, &format!("{exact}1")),
+        ],
+        false,
+    )?;
+    Ok(())
+}
+
+fn validate_specimen_detail_cases(
+    awos: law::Awos<'_>,
+    address: law::Address<'_>,
+    response: analyte_hl7::Response<'_>,
+    capabilities: Capabilities,
+    specimen: law::SpecimenDetails<'_>,
+) -> TestResult {
+    use law::SpecimenDetails;
+    for invalid in [
+        SpecimenDetails {
+            parents: Some(b"unqualified"),
+            ..specimen
+        },
+        SpecimenDetails {
+            source_modifier: Some(b"id^^99LAB~other^^99LAB"),
+            ..specimen
+        },
+        SpecimenDetails {
+            collection_time: Some(b"20230229120000"),
+            ..specimen
+        },
+        SpecimenDetails {
+            risk: Some(b"id^^OTHER"),
+            ..specimen
+        },
+    ] {
+        assert!(
+            law::work_order(
+                &[awos.with_specimen_details(&invalid)],
+                None,
+                address,
+                response,
+                capabilities,
+                options()
+            )
+            .is_err()
+        );
+    }
+    Ok(())
+}
+
+fn validate_container_detail_cases(
+    awos: law::Awos<'_>,
+    address: law::Address<'_>,
+    response: analyte_hl7::Response<'_>,
+    capabilities: Capabilities,
+    container: law::ContainerDetails<'_>,
+) -> TestResult {
+    use law::ContainerDetails;
+    for invalid in [
+        ContainerDetails {
+            carrier_position: None,
+            ..container
+        },
+        ContainerDetails {
+            tray_position: Some(b"1.5"),
+            ..container
+        },
+        ContainerDetails {
+            container_volume: Some(b"1e3"),
+            ..container
+        },
+        ContainerDetails {
+            volume_units: Some(b"mL^Units^OTHER"),
+            ..container
+        },
+        ContainerDetails {
+            dilution: Some(b"^1^:^0"),
+            ..container
+        },
+    ] {
+        assert!(
+            law::work_order(
+                &[awos.with_container_details(&invalid)],
+                None,
+                address,
+                response,
+                capabilities,
+                options()
+            )
+            .is_err()
+        );
+    }
+    // Carrier/parent identity is base information, not gated by LAW_CONTAINER.
+    let base_details = ContainerDetails {
+        parent: Some(b"parent"),
+        carrier: Some(b"rack"),
+        carrier_position: Some(b"1"),
+        ..ContainerDetails::default()
+    };
+    law::work_order(
+        &[awos.with_container_details(&base_details)],
+        None,
+        address,
+        response,
+        Capabilities::default(),
+        options(),
+    )?;
+    assert!(
+        law::work_order(
+            &[awos.with_container_details(&container)],
+            None,
+            address,
+            response,
+            Capabilities::default(),
+            options()
+        )
+        .is_err()
+    );
     Ok(())
 }

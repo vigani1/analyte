@@ -35,7 +35,10 @@ fn analyzer(
 }
 fn capabilities() -> Capabilities {
     Capabilities {
-        specimen: true,
+        content: law::PeerContent {
+            specimen: true,
+            ..Capabilities::default().content
+        },
         ..Capabilities::default()
     }
 }
@@ -84,25 +87,8 @@ pub(crate) fn generate(directory: &Path) -> ExportResult<()> {
         carrier_position: Some(b"1"),
         ..ContainerDetails::default()
     };
-    let work = |action, id: &'static [u8], container_id: &'static [u8]| -> ExportResult<Message> {
-        let awos = Awos::new(
-            b"SYN-AWOS1",
-            b"SYN-0001&ANALYTE-TEST",
-            b"SER^Serum^HL70487",
-            b"P",
-            container_id,
-            b"SYN-TEST^Synthetic test^99SYN",
-            action,
-        )?
-        .with_container_details(&container);
-        Ok(law::work_order(
-            &[awos],
-            None,
-            address,
-            metadata(id)?,
-            capabilities(),
-            options(),
-        )?)
+    let work = |action, id: &'static [u8], container_id: &'static [u8]| {
+        synthetic_work(action, id, container_id, address, &container)
     };
     let new = work(WorkAction::New, b"SYN-OML1", b"SYN-0001")?;
     let cancel = work(WorkAction::Cancel, b"SYN-OML2", b"SYN-0001")?;
@@ -113,14 +99,56 @@ pub(crate) fn generate(directory: &Path) -> ExportResult<()> {
         metadata(b"SYN-OML3")?,
         options(),
     )?;
-    let accepted = analyzer(
-        "ORL^O34^ORL_O42",
-        "SYN-ORL1",
-        "LAB-28",
-        false,
-        "MSA|AA|SYN-OML1\rSPM|1|SYN-0001&ANALYTE-TEST||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||SYN-0001\rORC|OK|SYN-AWOS1|||SC\r",
-    )?;
+    let accepted = accepted_work()?;
     WorkResponse::new(&accepted, &new)?;
+    let (result, aa, ae) = result_scenarios()?;
+    std::fs::create_dir_all(directory)?;
+    for (name, message, direction) in [
+        ("rsp_k11_found.hl7", found.message(), ControlDirection::Send),
+        ("rsp_k11_empty.hl7", empty.message(), ControlDirection::Send),
+        ("oml_o33_new.hl7", &new, ControlDirection::Send),
+        ("oml_o33_cancel.hl7", &cancel, ControlDirection::Send),
+        (
+            "oml_o33_new_parent_carrier.hl7",
+            &parent,
+            ControlDirection::Send,
+        ),
+        ("oml_o33_negative.hl7", &negative, ControlDirection::Send),
+        ("ack_r22_aa.hl7", &aa, ControlDirection::Send),
+        ("ack_r22_ae.hl7", &ae, ControlDirection::Send),
+        ("qbp_q11_specimen.hl7", &specimen, ControlDirection::Receive),
+        (
+            "qbp_q11_all_pending.hl7",
+            &pending,
+            ControlDirection::Receive,
+        ),
+        ("orl_o34_accept.hl7", &accepted, ControlDirection::Receive),
+        ("oul_r22.hl7", &result, ControlDirection::Receive),
+    ] {
+        let reparsed = law::parse_message(message.raw(), options())?;
+        law::validate_control(&reparsed, direction)?;
+        if name.starts_with("oml_") {
+            Profile::for_peer(capabilities()).validate_message(&reparsed, direction)?;
+        }
+        std::fs::write(directory.join(name), reparsed.raw())?;
+        writeln!(
+            std::io::stdout(),
+            "{name}: {} bytes, locally validated",
+            reparsed.raw().len()
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(not(test))]
+fn main() -> ExportResult<()> {
+    let directory = std::env::args_os()
+        .nth(1)
+        .ok_or("usage: law_messages <directory>")?;
+    generate(Path::new(&directory))
+}
+
+fn result_scenarios() -> ExportResult<(Message, Message, Message)> {
     let mut obx = vec![""; 29];
     for (position, value) in [
         (1_usize, "1"),
@@ -182,48 +210,43 @@ pub(crate) fn generate(directory: &Path) -> ExportResult<()> {
     .ok_or("AE suppressed")?;
     law::receive_acknowledgment(&aa, &result)?;
     law::receive_acknowledgment(&ae, &result)?;
-    std::fs::create_dir_all(directory)?;
-    for (name, message, direction) in [
-        ("rsp_k11_found.hl7", found.message(), ControlDirection::Send),
-        ("rsp_k11_empty.hl7", empty.message(), ControlDirection::Send),
-        ("oml_o33_new.hl7", &new, ControlDirection::Send),
-        ("oml_o33_cancel.hl7", &cancel, ControlDirection::Send),
-        (
-            "oml_o33_new_parent_carrier.hl7",
-            &parent,
-            ControlDirection::Send,
-        ),
-        ("oml_o33_negative.hl7", &negative, ControlDirection::Send),
-        ("ack_r22_aa.hl7", &aa, ControlDirection::Send),
-        ("ack_r22_ae.hl7", &ae, ControlDirection::Send),
-        ("qbp_q11_specimen.hl7", &specimen, ControlDirection::Receive),
-        (
-            "qbp_q11_all_pending.hl7",
-            &pending,
-            ControlDirection::Receive,
-        ),
-        ("orl_o34_accept.hl7", &accepted, ControlDirection::Receive),
-        ("oul_r22.hl7", &result, ControlDirection::Receive),
-    ] {
-        let reparsed = law::parse_message(message.raw(), options())?;
-        law::validate_control(&reparsed, direction)?;
-        if name.starts_with("oml_") {
-            Profile::for_peer(capabilities()).validate_message(&reparsed, direction)?;
-        }
-        std::fs::write(directory.join(name), reparsed.raw())?;
-        writeln!(
-            std::io::stdout(),
-            "{name}: {} bytes, locally validated",
-            reparsed.raw().len()
-        )?;
-    }
-    Ok(())
+    Ok((result, aa, ae))
 }
 
-#[cfg(not(test))]
-fn main() -> ExportResult<()> {
-    let directory = std::env::args_os()
-        .nth(1)
-        .ok_or("usage: law_messages <directory>")?;
-    generate(Path::new(&directory))
+fn accepted_work() -> ExportResult<Message> {
+    let accepted = analyzer(
+        "ORL^O34^ORL_O42",
+        "SYN-ORL1",
+        "LAB-28",
+        false,
+        "MSA|AA|SYN-OML1\rSPM|1|SYN-0001&ANALYTE-TEST||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||SYN-0001\rORC|OK|SYN-AWOS1|||SC\r",
+    )?;
+    Ok(accepted)
+}
+
+fn synthetic_work(
+    action: WorkAction,
+    id: &'static [u8],
+    container_id: &'static [u8],
+    address: Address<'_>,
+    container: &ContainerDetails<'_>,
+) -> ExportResult<Message> {
+    let awos = Awos::new(
+        b"SYN-AWOS1",
+        b"SYN-0001&ANALYTE-TEST",
+        b"SER^Serum^HL70487",
+        b"P",
+        container_id,
+        b"SYN-TEST^Synthetic test^99SYN",
+        action,
+    )?
+    .with_container_details(container);
+    Ok(law::work_order(
+        &[awos],
+        None,
+        address,
+        metadata(id)?,
+        capabilities(),
+        options(),
+    )?)
 }

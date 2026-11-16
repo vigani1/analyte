@@ -315,9 +315,14 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
         .is_err()
     );
     let enabled = Capabilities {
-        dilution: true,
-        repeat_control: true,
-        priority: true,
+        instructions: analyte_hl7::law::PeerInstructions {
+            dilution: true,
+            priority: true,
+            repeat: analyte_hl7::law::PeerRepeat {
+                repeat_control: true,
+                ..work_capabilities().instructions.repeat
+            },
+        },
         ..work_capabilities()
     };
     let message = work_order(
@@ -949,7 +954,10 @@ fn law_tf2b_b7_invalid_ack_and_inconsistent_orl_fail_without_ack_loop()
 
 fn work_capabilities() -> analyte_hl7::law::Capabilities {
     analyte_hl7::law::Capabilities {
-        specimen: true,
+        content: analyte_hl7::law::PeerContent {
+            specimen: true,
+            ..analyte_hl7::law::Capabilities::default().content
+        },
         ..analyte_hl7::law::Capabilities::default()
     }
 }
@@ -1023,8 +1031,8 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
         )
         .is_err()
     );
-    capabilities.patient = true;
-    capabilities.container = true;
+    capabilities.content.patient = true;
+    capabilities.content.container = true;
     let message = work_order(
         &[awos],
         Some(patient),
@@ -1284,7 +1292,10 @@ fn law_tf2b_c6_c7_c9_typed_work_fields_preserve_wire() -> Result<(), Box<dyn std
             address(),
             response_metadata().expect("synthetic metadata"),
             analyte_hl7::law::Capabilities {
-                priority: true,
+                instructions: analyte_hl7::law::PeerInstructions {
+                    priority: true,
+                    ..work_capabilities().instructions
+                },
                 ..work_capabilities()
             },
             utf8_options(),

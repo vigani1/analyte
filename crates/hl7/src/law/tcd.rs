@@ -124,7 +124,7 @@ impl<'a> TestDetail<'a> {
             segment,
             direction,
             adjustment: profile.result_adjustment,
-            dilution_supported: profile.dilution,
+            dilution_supported: profile.dilution.supported(),
         }
     }
 
@@ -331,7 +331,8 @@ pub(super) fn validate(
     field(segment, "TCD", 1, true, false)?;
     test_code(raw(segment, 1), "TCD", 1, direction)?;
     for number in [2, 3, 5] {
-        let supported = profile.dilution && (number == 2 || direction == ControlDirection::Send);
+        let supported =
+            profile.dilution.supported() && (number == 2 || direction == ControlDirection::Send);
         if enabled(segment, number, supported, false, direction)? {
             factor_value(raw(segment, number), number, direction)?;
         }
@@ -341,7 +342,7 @@ pub(super) fn validate(
         if enabled(
             segment,
             number,
-            manager && profile.repeat_control,
+            manager && profile.repeat.repeat_control,
             true,
             direction,
         )? {
@@ -354,7 +355,7 @@ pub(super) fn validate(
     if enabled(
         segment,
         8,
-        manager && profile.manager_repeat,
+        manager && profile.repeat.manager_repeat,
         true,
         direction,
     )? {
@@ -381,20 +382,26 @@ pub(super) fn validate(
     if enabled(segment, 9, manager, false, direction)? {
         consumption(raw(segment, 9), direction)?;
     }
-    if enabled(segment, 10, profile.pooling_analyzer, true, direction)? {
+    if enabled(
+        segment,
+        10,
+        profile.workflow.pooling_analyzer,
+        true,
+        direction,
+    )? {
         scalar(segment, "TCD", 10, true, 16)?;
         let value = raw(segment, 10);
         if !value.iter().all(u8::is_ascii_digit) || value.iter().all(|b| *b == b'0') {
             return Err(content("TCD", 10));
         }
     }
-    if enabled(segment, 11, profile.dilution, false, direction)? {
+    if enabled(segment, 11, profile.dilution.supported(), false, direction)? {
         coded(raw(segment, 11), "TCD", 11, b"", direction)?;
     }
-    if profile.dilution_required && raw(segment, 2).is_empty() && raw(segment, 11).is_empty() {
+    if profile.dilution.required() && raw(segment, 2).is_empty() && raw(segment, 11).is_empty() {
         return Err(content("TCD", 2));
     }
-    if profile.dilution {
+    if profile.dilution.supported() {
         bound_pair(segment, profile)?;
     }
     Ok(())

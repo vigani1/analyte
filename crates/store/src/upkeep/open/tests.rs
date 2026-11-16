@@ -308,30 +308,7 @@ fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_gua
                 [],
             )?;
         }
-        if version >= 2 {
-            Store::migrate_v2(&mut db)?;
-        }
-        if version >= 3 {
-            Store::migrate_v3(&mut db, 65_536)?;
-        }
-        if version >= 4 {
-            db.execute_batch(include_str!("../migration_v4.sql"))?;
-        }
-        if version >= 5 {
-            db.execute_batch(include_str!("../migration_v5.sql"))?;
-        }
-        if version >= 6 {
-            db.execute_batch(include_str!("../migration_v6.sql"))?;
-        }
-        if version >= 7 {
-            Store::migrate_v7(&mut db, 65_536)?;
-        }
-        if version >= 8 {
-            db.execute_batch(include_str!("../migration_v8.sql"))?;
-        }
-        if version >= 9 {
-            Store::migrate_v9(&mut db, 65_536)?;
-        }
+        migrate_fixture_to_version(&mut db, version)?;
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
             version
@@ -497,5 +474,33 @@ fn mutation_adr0003_startup_foreign_key_corruption_refuses_without_rewriting_raw
         db.query_row("SELECT raw FROM frames", [], |r| r.get::<_, Vec<u8>>(0))?,
         vec![1, 2, 3]
     );
+    Ok(())
+}
+
+fn migrate_fixture_to_version(db: &mut Connection, version: i64) -> TestResult {
+    if version >= 2 {
+        Store::migrate_v2(db)?;
+    }
+    if version >= 3 {
+        Store::migrate_v3(db, 65_536)?;
+    }
+    if version >= 4 {
+        db.execute_batch(include_str!("../migration_v4.sql"))?;
+    }
+    if version >= 5 {
+        db.execute_batch(include_str!("../migration_v5.sql"))?;
+    }
+    if version >= 6 {
+        db.execute_batch(include_str!("../migration_v6.sql"))?;
+    }
+    if version >= 7 {
+        Store::migrate_v7(db, 65_536)?;
+    }
+    if version >= 8 {
+        db.execute_batch(include_str!("../migration_v8.sql"))?;
+    }
+    if version >= 9 {
+        Store::migrate_v9(db, 65_536)?;
+    }
     Ok(())
 }
