@@ -482,7 +482,7 @@ mod tests {
             },
             Box::new(Space),
             4,
-            deadline(),
+            crate::test_startup_deadline()?,
         )
         .await?;
         let key = analyte_store::MachineOrderKey {

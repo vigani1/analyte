@@ -325,7 +325,7 @@ mod tests {
                 },
                 Box::new(Full),
                 4,
-                deadline(),
+                crate::test_startup_deadline()?,
             )
             .await?;
             let (_stop, stop) = watch::channel(false);

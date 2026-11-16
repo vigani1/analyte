@@ -33,3 +33,15 @@ pub async fn open_system_store(
 
 #[cfg(test)]
 mod test_tracing;
+
+#[cfg(test)]
+#[path = "../tests/support/guard.rs"]
+mod test_guard;
+
+/// Fixture migrations use the existing test wait bound, not a production operation budget.
+#[cfg(test)]
+pub(crate) fn test_startup_deadline() -> Result<std::time::Instant, Error> {
+    std::time::Instant::now()
+        .checked_add(test_guard::HANG_GUARD)
+        .ok_or_else(|| invalid("test startup deadline overflow"))
+}

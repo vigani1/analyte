@@ -200,7 +200,7 @@ mod tests {
             limits(),
             Box::new(Space(space.clone())),
             8,
-            deadline(),
+            crate::test_startup_deadline()?,
         )
         .await?;
         let db = rusqlite::Connection::open(&path)?;
@@ -243,7 +243,7 @@ mod tests {
             limits(),
             Box::new(Space(space.clone())),
             8,
-            deadline(),
+            crate::test_startup_deadline()?,
         )
         .await?;
         evaluate(&store, &policies, &destinations, 101).await?;
@@ -342,7 +342,7 @@ mod tests {
                 limits(),
                 Box::new(Space(Arc::new(AtomicU64::new(u64::MAX)))),
                 8,
-                deadline(),
+                crate::test_startup_deadline()?,
             )
             .await?,
         ))
