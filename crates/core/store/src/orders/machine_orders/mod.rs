@@ -106,6 +106,16 @@ pub struct MachineOrderItem {
     pub source_code: SourceText,
 }
 
+impl MachineOrderItem {
+    /// True only for retained analyzer-origin cancellation, independent of command state.
+    #[must_use]
+    pub fn analyzer_cancelled(&self) -> bool {
+        self.execution
+            .as_ref()
+            .is_some_and(|p| p.state == analyte_model::AwosExecution::AnalyzerCancelled)
+    }
+}
+
 /// One explicit application outcome at exchange completion.
 pub struct ItemOutcome {
     /// Stable one-based item index.
@@ -314,6 +324,14 @@ impl Store {
                 (None, Some((version, freshness)))
             }
         };
+        if cancel_version.is_some()
+            && record
+                .items
+                .iter()
+                .any(MachineOrderItem::analyzer_cancelled)
+        {
+            return Err(Error::AnalyzerCancelled);
+        }
         if let Some((version, freshness)) = cancel_version {
             if !Self::order_trust_on(&tx, &record.key.destination, now, freshness)?.is_trusted() {
                 return Err(Error::Conflict);

@@ -85,7 +85,8 @@ impl Store {
                 let order = load(&self.db, id)?;
                 let cached: CachedOrder = serde_json::from_str(&evidence)?;
                 let fields: CachedFields = serde_json::from_str(&cached.document)?;
-                if matches!(order.state, OrderState::Sent | OrderState::Accepted)
+                if !order.items.iter().any(MachineOrderItem::analyzer_cancelled)
+                    && matches!(order.state, OrderState::Sent | OrderState::Accepted)
                     && cached.expiry > now
                     && fields
                         .state

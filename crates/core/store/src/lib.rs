@@ -59,6 +59,10 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Analyzer cancellation requires visible reconciliation before any new cancel admission.
+    #[error("AWOS is analyzer-cancelled; app cancellation intent requires reconciliation")]
+    AnalyzerCancelled,
+
     /// Another process currently owns a backup or retention maintenance operation.
     #[error("retention maintenance is busy; retry after the active batch or backup")]
     MaintenanceBusy,
