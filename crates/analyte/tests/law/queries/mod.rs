@@ -289,3 +289,7 @@ async fn wait_audit(path: &Path) -> Result<(), Error> {
 mod scenarios_1;
 
 mod scenarios_2;
+
+#[cfg(feature = "test-hooks")]
+#[path = "../gates/mod.rs"]
+mod gates;

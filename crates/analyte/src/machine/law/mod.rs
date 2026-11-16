@@ -235,12 +235,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Ok(Vec::new());
             }
             Action::Done => {
-                self.completed = true;
-                self.receipt = None;
-                self.stored = false;
-                if let Some(ready) = self.ready.take() {
-                    let _ = ready.send(());
-                }
+                self.complete_response().await?;
                 return Ok(Vec::new());
             }
             Action::Unconsumed(byte) => {
@@ -267,6 +262,21 @@ impl<'a, 'm> Host<'a, 'm> {
             Action::Deadline(_) => return Ok(Vec::new()),
         };
         Ok(self.dialog.step(self.clock.elapsed(), event)?)
+    }
+    async fn complete_response(&mut self) -> Result<(), Error> {
+        self.completed = true;
+        self.receipt = None;
+        self.stored = false;
+        if self.ready.is_some() {
+            #[cfg(feature = "test-hooks")]
+            if let Some(gate) = &self.machine.law_gates.rsp {
+                gate.pause(&mut self.stop).await?;
+            }
+        }
+        if let Some(ready) = self.ready.take() {
+            let _ = ready.send(());
+        }
+        Ok(())
     }
     async fn answer_query(
         &mut self,
@@ -303,6 +313,10 @@ impl<'a, 'm> Host<'a, 'm> {
                 ));
             }
             self.ready = Some(notify);
+            #[cfg(feature = "test-hooks")]
+            if let Some(gate) = &self.machine.law_gates.handover {
+                gate.pause(&mut self.stop).await?;
+            }
             reply = Reply::Response(response.clone());
         }
         Ok(self
