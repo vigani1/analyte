@@ -321,3 +321,47 @@ async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Er
 }
 
 // IHE PaLM TF-2b Rev 11 B.3.1 pp.63-64 and B.7.6 p.82.
+
+// PaLM TF-2b B.6 / ADR 0003: wire expiry cannot cancel raw custody.
+#[cfg(feature = "test-hooks")]
+#[tokio::test]
+async fn law_tf2b_b6_adr0003_wire_deadline_does_not_cancel_raw_custody() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let settings = definition().replace("receive_timeout_ms = 30000", "receive_timeout_ms = 50");
+    let path = vendor_config(temp.path(), "law", &settings)?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let mut loaded = program(&path, &reference.url)?;
+    let (hook, control) = analyte::runtime::test_hooks::Committed::new();
+    loaded.pause_law_precommit_for_test("law", hook)?;
+    let running = Running::start_program(loaded, "synthetic-api").await?;
+    let mut peer = connect(&path, "law").await?;
+    let request = query(CONTAINER, "custody-expiry");
+    send(&mut peer, request.as_bytes()).await?;
+    control.reached().await?;
+    // The existing no-bytes observation spans the 50 ms wire deadline while
+    // custody is gated. Closing here would cancel the uncommitted receipt.
+    quiet(&mut peer).await?;
+    assert_eq!(count(&path, "receipts")?, 0);
+    control.resume();
+    assert_eq!(
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut [0])).await??,
+        0
+    );
+    let raw: Vec<u8> = database(&path)?.query_row("SELECT raw FROM receipts", [], |r| r.get(0))?;
+    assert_eq!(
+        raw,
+        analyte_framing::hl7::encode(
+            request.as_bytes(),
+            analyte_framing::hl7::Limit::new(1048576)?
+        )?
+    );
+    assert_eq!(count(&path, "machine_order_items")?, 0);
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

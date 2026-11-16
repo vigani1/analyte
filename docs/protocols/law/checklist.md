@@ -261,7 +261,7 @@ Evidence remains documented; no open qualification row is promoted.
 - L11: negative follow-up tests compare exact retained ORL frames and audit actor, correlation, acceptance and both receipt targets. `law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix` checks audit action, actor, reason and receipt/version targets for success, repeated interpretation and conflict rollback.
 - L12: the specimen/priority intersection test also enables peer repeat options and asserts empty TCD-6/7/8 and ORC-8 without app authorization.
 - L13: independent successful query, negative work and send-ahead peers remain open until manager-owned EOF. Send-ahead is exercised before any inbound establishment. Gated RSP-to-dial handover, queued expiry and shutdown during handover remain untested.
-- L14: `law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect` selects the exact partial frame, its receipt and incomplete-block parking reason with an unrelated receipt present, then checks the same receipt after restart and absence of replay.
+- L14: `law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect` selects the exact partial frame, its receipt and incomplete-block parking reason with an unrelated receipt present, then checks the same receipt after restart and absence of replay. It waits for the exact frame and linked parking reason rather than inferring custody from EOF. `law_tf2b_b6_adr0003_wire_deadline_does_not_cancel_raw_custody` holds custody across wire expiry and requires the original frame to survive without positive output.
 
 ### Program end-to-end evidence index
 

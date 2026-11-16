@@ -148,10 +148,13 @@ impl<'a, 'm> Host<'a, 'm> {
             };
             let operation = async {
                 match end {
-                    Some(end) => tokio::time::timeout_at(end.into(), self.effect(action))
-                        .await
-                        .map_err(|_| invalid(timeout_reason))?,
-                    None => self.effect(action).await,
+                    Some(end) if !protects_raw => {
+                        tokio::time::timeout_at(end.into(), self.effect(action))
+                            .await
+                            .map_err(|_| invalid(timeout_reason))?
+                    }
+                    // Custody uses bounded store deadlines, even after the wire budget expires.
+                    Some(_) | None => self.effect(action).await,
                 }
             };
             let effects = if protects_raw {
