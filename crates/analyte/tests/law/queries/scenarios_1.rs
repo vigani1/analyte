@@ -196,12 +196,17 @@ async fn law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work() -> Resu
     )
     .await?;
     for form in [
-        "WOS_BY_RACK^Work Order Step by rack^IHELAW|tag||rack|01",
-        "WOS_BY_TRAY^Work Order Step by tray^IHELAW|tag||||tray|1^2",
-        "WOS_BY_ISOLATE^Work Order Step by isolate^IHELAW|tag|child||||||parent",
-        "WOS_INFORMATIONAL_RACK^Query^IHELAW|tag|000Ab12|rack|2",
+        "WOS_BY_RACK^Work Order Step by Rack^IHELAW|tag||rack|01",
+        "WOS_BY_TRAY^Work Order Step by Tray^IHELAW|tag||||tray|1^2",
+        "WOS_BY_RACK^Work Order Step by Rack^IHELAW|tag||rack|01|||room^Bench^99LAB",
+        "WOS_BY_TRAY^Work Order Step by Tray^IHELAW|tag||||tray|1^2|room^Bench^99LAB",
+        "WOS_BY_ISOLATE^Work Order Step by Isolate^IHELAW|tag|child||||||parent",
     ] {
-        send(&mut peer, query(form, "unsupported").as_bytes()).await?;
+        // TF-2b 3.27.4.1.2.3: reach host option refusal only after profile validation.
+        let bytes = query(form, "unsupported");
+        let request = analyte_hl7::law::parse_message(bytes.as_bytes(), options())?;
+        analyte_hl7::law::Query::new(&request)?;
+        send(&mut peer, bytes.as_bytes()).await?;
         let rsp = packet(&mut peer).await?;
         assert_eq!(field(&rsp, b"QAK", 2)?, b"AR");
         assert!(
@@ -523,6 +528,53 @@ async fn law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_
     assert_eq!(count(&path, "outbox")?, 0);
     assert!(count(&path, "parked")? > 0);
     quiet(&mut peer).await?;
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn law_tf2b_3_27_4_1_2_3_malformed_query_tuple_is_located_never_no_work() -> Result<(), Error>
+{
+    let (_temp, path, reference, running, mut peer) = setup(
+        vec![order("order-1", "000Ab12", None, 1)?],
+        &definition(),
+        false,
+    )
+    .await?;
+    // Informational rack is refused under the documented 60-character field ceiling;
+    // shortening its fixed description cannot turn it into a supported query tuple.
+    for (form, position) in [
+        ("WOS_BY_RACK^Work Order Step by rack^IHELAW|tag||rack|01", 1),
+        ("WOS_INFORMATIONAL_RACK^Query^IHELAW|tag|000Ab12|rack|2", 1),
+        (
+            "WOS_INFORMATIONAL_RACK^Query by WOS and Informational Rack^IHELAW|tag|000Ab12|rack|2",
+            1,
+        ),
+        (
+            "WOS_BY_RACK^Work Order Step by Rack^IHELAW|tag||rack|01|||room^Bench",
+            8,
+        ),
+    ] {
+        let bytes = query(form, "malformed");
+        let request = analyte_hl7::law::parse_message(bytes.as_bytes(), options())?;
+        assert!(
+            matches!(analyte_hl7::law::Query::new(&request), Err(analyte_hl7::law::Error::Content {segment:"QPD",field}) if field == position)
+        );
+        send(&mut peer, bytes.as_bytes()).await?;
+        let ack = packet(&mut peer).await?;
+        assert_eq!(field(&ack, b"MSA", 1)?, b"AE");
+        assert_eq!(
+            field(&ack, b"ERR", 2)?,
+            format!("QPD^1^{position}").as_bytes()
+        );
+        assert!(
+            !ack.segments()
+                .any(|s| matches!(s.id(), b"QAK" | b"SPM" | b"SAC" | b"ORC"))
+        );
+        quiet(&mut peer).await?;
+    }
+    assert_eq!(count(&path, "machine_orders")?, 0);
     running.stop().await?;
     reference.close().await?;
     Ok(())
