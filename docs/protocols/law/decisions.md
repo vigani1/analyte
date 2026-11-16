@@ -160,3 +160,9 @@ HL7 2.5.1 sections 2.7.1, 2.7.2 and 2.7.6 apply at each supported LAW text leaf.
 NTE-3 FT accepts literal component separators as line syntax (section 2.7.6 and 2.A.31), including the historical spacing form. No formatting is executed or rewritten. Mapping retains the complete comment and marks line syntax or formatting escapes UnsupportedFormatting, preventing automatic delivery. Escaped S remains a literal separator, not a layout instruction. Authoring indentation commands (.in/.ti) is explicitly unsupported until placement checking is implemented; incoming instructions remain original evidence.
 
 ERL repetition requires a field position (section 2.A.28.4); omitted repetition with a field retains its implicit-first meaning without adding bytes. OBX SN with a second numeric component requires its separator (section 2.A.70); no relationship is inferred. Separate dilution profiles remain unchanged.
+
+## Status-only LAB-29 restriction
+
+TF-2b section 3.29.4.1.2.1 permits IP without observations and SC/CA without RESULT groups. Analyte currently parks these valid notifications with `UnsupportedLawStatusOnly`, retaining the original receipt, delivering no fabricated result and issuing no work command. Durable status-only lifecycle support needs a representation decision and ADR.
+
+QPD-1 follows the 60-character field ceiling in section 3.27.4.1.2.3. The fixed informational-rack tuple exceeds that ceiling, so that optional form is currently refused pending clarification; shortened descriptions are not substitutes. Host positional support is unchanged.

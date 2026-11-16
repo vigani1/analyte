@@ -304,3 +304,35 @@ fn adr0003_unmapped_evidence_alone_requires_parking() -> TestResult {
     assert!(output.requires_parking());
     Ok(())
 }
+
+#[test]
+fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_specifically_parked() -> TestResult {
+    let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
+    let original = std::str::from_utf8(LAW_RESULT)?;
+    let prefix = original.split("OBX|").next().ok_or("fixture")?;
+    for status in ["IP", "SC", "CA"] {
+        let wire = prefix.replace("ORC|SC||||CM", &format!("ORC|SC||||{status}"));
+        let message = analyte_hl7::Message::parse(
+            wire.as_bytes(),
+            cfg.effective().hl7_options().ok_or("options")?,
+        )?;
+        let results = analyte_hl7::law::Results::new(&message)?;
+        let output = analyte_mapping::map_law(&results, &cfg, input())?;
+        assert!(output.requires_parking());
+        assert!(output.results.is_empty());
+        assert!(
+            output
+                .findings
+                .iter()
+                .any(|f| f.problem == Problem::UnsupportedLawStatusOnly)
+        );
+        assert!(
+            !output
+                .findings
+                .iter()
+                .any(|f| f.problem == Problem::NoObservations)
+        );
+        assert_eq!(message.raw(), wire.as_bytes());
+    }
+    Ok(())
+}
