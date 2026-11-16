@@ -8,28 +8,44 @@ use analyte_config::Validated;
 use analyte_model::*;
 
 fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode, Error> {
-    let field = match source.syntax {
-        FieldSyntax::AstmLis02 => 12,
-        FieldSyntax::Hl7V2 => 11,
-    };
-    match source.component(0, field, 1, 1)?.as_deref() {
-        Some("P") => Ok(ProcessingMode::Production),
-        Some("T") => Ok(ProcessingMode::Training),
-        Some("D") => Ok(ProcessingMode::Debug),
-        Some("Q") if source.syntax == FieldSyntax::AstmLis02 => Ok(ProcessingMode::QualityControl),
-        _ => {
-            finding(
-                output,
-                source.position(0, field),
-                Problem::UnknownProcessing,
-            )?;
-            // These record standards require an explicit mode; Unknown is not a fallback.
-            Err(Error::Structure {
-                position: source.position(0, field),
-                reason: "unknown processing mode",
-            })
+    let (field, mode) = match source.syntax {
+        // LIS02 section 6.12: H-12 is one whole code, so a composite or
+        // repeated label never counts as its first component.
+        FieldSyntax::AstmLis02 => {
+            use analyte_astm::ProcessingId;
+            let raw = source.raw(0, 12)?.unwrap_or_default();
+            let mode = match ProcessingId::from_bytes(raw.as_bytes()) {
+                ProcessingId::Production => Some(ProcessingMode::Production),
+                ProcessingId::Training => Some(ProcessingMode::Training),
+                ProcessingId::Debug => Some(ProcessingMode::Debug),
+                ProcessingId::QualityControl => Some(ProcessingMode::QualityControl),
+                ProcessingId::Other(_) => None,
+            };
+            (12, mode)
         }
+        FieldSyntax::Hl7V2 => {
+            let mode = match source.component(0, 11, 1, 1)?.as_deref() {
+                Some("P") => Some(ProcessingMode::Production),
+                Some("T") => Some(ProcessingMode::Training),
+                Some("D") => Some(ProcessingMode::Debug),
+                _ => None,
+            };
+            (11, mode)
+        }
+    };
+    if let Some(mode) = mode {
+        return Ok(mode);
     }
+    finding(
+        output,
+        source.position(0, field),
+        Problem::UnknownProcessing,
+    )?;
+    // These record standards require an explicit mode; Unknown is not a fallback.
+    Err(Error::Structure {
+        position: source.position(0, field),
+        reason: "unknown processing mode",
+    })
 }
 
 pub(crate) fn message(

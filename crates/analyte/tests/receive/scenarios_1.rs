@@ -139,11 +139,20 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     peer.write_all(b"\x05").await?;
     assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     let payload = b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
-    let frames = analyte_framing::astm::encode(
-        payload,
-        analyte_framing::astm::FrameNumber::FIRST,
-        analyte_framing::astm::Limit::new(64000)?,
-    )?;
+    let mut frames = Vec::new();
+    let mut number = analyte_framing::astm::FrameNumber::FIRST;
+    for record in payload.split_inclusive(|b| *b == b'\r') {
+        let encoded: Vec<_> = analyte_framing::astm::encode(
+            record,
+            number,
+            analyte_framing::astm::Limit::new(64000)?,
+        )?
+        .collect();
+        for _ in &encoded {
+            number = number.next();
+        }
+        frames.extend(encoded);
+    }
     let mut wire = Vec::new();
     for frame in frames {
         wire.extend_from_slice(&frame);

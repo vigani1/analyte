@@ -172,7 +172,14 @@ fn lis01_6_2_6_6_5_2_1_3_busy_and_reply_timeouts() {
     assert!(!step(&mut d, 9, Event::Tick).contains(&Action::Write(vec![ENQ])));
     assert!(step(&mut d, 10, Event::Tick).contains(&Action::Write(vec![ENQ])));
     feed(&mut d, 24, b"ignored");
-    assert!(step(&mut d, 25, Event::Tick).contains(&Action::Sent(End::Timeout)));
+    let timeout = step(&mut d, 25, Event::Tick);
+    assert!(timeout.contains(&Action::Sent(End::Timeout)));
+    assert!(timeout.contains(&Action::Write(vec![EOT])));
+    assert!(
+        feed(&mut d, 25, &[ACK])
+            .iter()
+            .all(|a| !matches!(a, Action::Write(_)))
+    );
     step(&mut d, 25, Event::Send(vec![b"O\r".to_vec()]));
     feed(&mut d, 25, &[ACK]);
     assert!(step(&mut d, 40, Event::Tick).contains(&Action::Sent(End::Timeout)));
@@ -217,6 +224,9 @@ fn lis01_6_3_5_interrupt_honor_ignore_and_issue() -> TestResult {
         feed(&mut d, 0, &[ACK]);
         let a = feed(&mut d, 0, &[EOT]);
         assert_eq!(a.contains(&Action::Sent(End::Interrupt)), honor);
+        if !honor {
+            assert!(a.contains(&Action::Write(b"\x022L\r\x038E\r\n".to_vec())));
+        }
         if honor {
             assert!(
                 step(&mut d, 14, Event::Send(vec![vec![]])).contains(&Action::Refused(Error::Busy))
@@ -285,7 +295,7 @@ fn lis01_6_3_1_6_3_2_6_3_3_6_6_large_records_rollover_separate_records() -> Test
     step(
         &mut d,
         0,
-        Event::Send(vec![vec![b'X'; 27], b"Y\r".to_vec()]),
+        Event::Send(vec![vec![b'X'; 26], b"Y\r".to_vec()]),
     );
     let mut frames = Vec::new();
     for _ in 0..10 {
@@ -295,7 +305,7 @@ fn lis01_6_3_1_6_3_2_6_3_3_6_6_large_records_rollover_separate_records() -> Test
             }
         }
     }
-    let expected = wire(&[b'X'; 27], FrameNumber::FIRST, Limit::new(10)?)?;
+    let expected = wire(&[b'X'; 26], FrameNumber::FIRST, Limit::new(10)?)?;
     assert_eq!(frames.get(..9), Some(expected.as_slice()));
     assert!(frames.iter().all(|raw| raw.len() <= 10));
     assert_eq!(frames.get(7).and_then(|f| f.get(1)), Some(&b'0'));
@@ -461,6 +471,23 @@ fn lis01_6_5_2_4_8_5_2_4_nak_at_29_expires_at_59() -> TestResult {
         assert!(!step(&mut d, 30, Event::Tick).contains(&Action::Ended(End::Timeout)));
         assert!(!step(&mut d, 58, Event::Tick).contains(&Action::Ended(End::Timeout)));
         assert!(step(&mut d, 59, Event::Tick).contains(&Action::Ended(End::Timeout)));
+    }
+    Ok(())
+}
+
+#[test]
+fn lis01_6_3_1_1_8_3_1_1_separate_records_never_share_strict_frame() -> TestResult {
+    for payload in [b"H|x\rL|1\r".as_slice(), b"H|x\rL".as_slice()] {
+        let mut d = receiver();
+        let frames = wire(payload, FrameNumber::FIRST, Limit::default())?;
+        let actions = feed(&mut d, 0, &frames[0]);
+        assert!(actions.contains(&Action::Write(vec![NAK])));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Commit(..))));
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, Action::Rejected(_, raw) if raw == &frames[0]))
+        );
     }
     Ok(())
 }
