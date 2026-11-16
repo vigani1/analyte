@@ -1,6 +1,7 @@
 //! Migrates stored schemas while retaining existing evidence.
 use crate::{Error, Store};
 use rusqlite::Connection;
+mod revisions;
 
 impl Store {
     pub(crate) fn migrate_v2(db: &mut Connection) -> Result<(), Error> {
@@ -10,6 +11,7 @@ impl Store {
         let result = (|| {
             let tx = db.transaction()?;
             tx.execute_batch(include_str!("../migration_v2.sql"))?;
+            Self::integrity(&tx)?;
             tx.commit()?;
             Ok::<_, Error>(())
         })();
@@ -45,7 +47,7 @@ impl Store {
             migrate_rows(&tx, "parked", "id", limit, |id, encoded| {
                 let canonical = parking(encoded)?;
                 if canonical.len() > limit {
-                    return Err(Error::InvalidInput);
+                    return Err(Error::InvalidMaintenanceInput);
                 }
                 tx.execute(
                     "UPDATE parked SET original_evidence=evidence,evidence=?2 WHERE id=?1",
@@ -81,11 +83,11 @@ impl Store {
             }
             let (resolved, resolution): (bool, Option<String>) = tx.query_row(
                 "SELECT resolution IS NOT NULL,CASE WHEN length(CAST(resolution AS BLOB))<=?2 THEN resolution END FROM parked WHERE id=?1",
-                rusqlite::params![id,i64::try_from(limit).map_err(|_| Error::InvalidInput)?],
+                rusqlite::params![id,i64::try_from(limit).map_err(|_| Error::InvalidMaintenanceInput)?],
                 |row| Ok((row.get(0)?,row.get(1)?)),
             )?;
             if resolved && resolution.is_none() {
-                return Err(Error::InvalidInput);
+                return Err(Error::InvalidMaintenanceInput);
             }
             let state = if resolution.is_some() {
                 crate::PollIntentState::Confirmed
@@ -135,14 +137,14 @@ fn migrate_rows(
                 sql,
                 rusqlite::params![
                     after,
-                    i64::try_from(limit).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(limit).map_err(|_| Error::InvalidMaintenanceInput)?
                 ],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
         let Some((id, encoded)) = row else { break };
         let converted = encoded
-            .ok_or(Error::InvalidInput)
+            .ok_or(Error::InvalidMaintenanceInput)
             .and_then(|encoded| convert(id, &encoded));
         converted.map_err(|cause| Error::MigrationEvidence {
             table,
@@ -220,3 +222,52 @@ fn parking(encoded: &str) -> Result<String, Error> {
 
 #[cfg(test)]
 mod tests;
+
+/// Each entry advances exactly one version; SQL and evidence conversions share the same checks.
+enum Step {
+    Sql(&'static str),
+    Evidence(fn(&mut Connection, usize) -> Result<(), Error>),
+}
+
+const MIGRATIONS: &[(i64, i64, Step)] = &[
+    (0, 1, Step::Sql(include_str!("../schema.sql"))),
+    (1, 2, Step::Evidence(|db, _| Store::migrate_v2(db))),
+    (2, 3, Step::Evidence(Store::migrate_v3)),
+    (3, 4, Step::Sql(include_str!("../migration_v4.sql"))),
+    (4, 5, Step::Sql(include_str!("../migration_v5.sql"))),
+    (5, 6, Step::Sql(include_str!("../migration_v6.sql"))),
+    (6, 7, Step::Evidence(Store::migrate_v7)),
+    (7, 8, Step::Sql(include_str!("../migration_v8.sql"))),
+    (8, 9, Step::Evidence(Store::migrate_v9)),
+    (9, 10, Step::Sql(include_str!("../migration_v10.sql"))),
+    (10, 11, Step::Sql(include_str!("../migration_v11.sql"))),
+    (11, 12, Step::Sql(include_str!("../migration_v12.sql"))),
+    (12, 13, Step::Sql(include_str!("../migration_v13.sql"))),
+    (13, 14, Step::Sql(include_str!("../migration_v14.sql"))),
+];
+
+pub(super) fn apply(
+    db: &mut Connection,
+    startup: &crate::startup::Startup,
+    version: i64,
+    limit: usize,
+) -> Result<(), Error> {
+    for &(from, to, ref step) in MIGRATIONS {
+        if to <= version {
+            continue;
+        }
+        startup.run(crate::StartupStep::Migration { from, to }, || {
+            match step {
+                Step::Sql(sql) => {
+                    let tx = db.transaction()?;
+                    tx.execute_batch(sql)?;
+                    Store::integrity(&tx)?;
+                    tx.commit()?;
+                }
+                Step::Evidence(convert) => convert(db, limit)?,
+            }
+            Store::integrity(db)
+        })?;
+    }
+    Ok(())
+}

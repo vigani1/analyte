@@ -14,7 +14,7 @@ impl FrameSequence {
     /// Refuses a value above that maximum without writing any evidence.
     pub fn new(number: u8, maximum: u8) -> Result<Self, Error> {
         if number > maximum {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidReceiptInput);
         }
         Ok(Self(number))
     }
@@ -110,7 +110,7 @@ impl Store {
             .query_map(
                 params![
                     after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidReceiptInput)?
                 ],
                 |r| r.get(0),
             )?

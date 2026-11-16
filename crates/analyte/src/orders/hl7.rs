@@ -707,20 +707,19 @@ mod tests {
                 let now = jiff::Timestamp::now().as_second();
                 store.order_page(&analyte_store::OrderPage {
                     destination: identity.destination.clone(),
-                    cursor: Identifier::new("page")
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    cursor: Identifier::new("page").map_err(analyte_store::Error::Text)?,
                     complete: true,
                     polled: now,
                     orders: vec![analyte_store::CachedOrder {
                         id: identity.order.clone(),
                         sample: SampleId::new("000Ab12")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(|_| analyte_store::Error::InvalidHostInput)?,
                         document: include_str!("../../../../docs/contract/vectors/order.json")
                             .replace("order-1", identity.order.as_str()),
                         tombstone: false,
                         expiry: now
                             .checked_add(100)
-                            .ok_or(analyte_store::Error::InvalidInput)?,
+                            .ok_or(analyte_store::Error::InvalidHostInput)?,
                     }],
                 })?;
                 store

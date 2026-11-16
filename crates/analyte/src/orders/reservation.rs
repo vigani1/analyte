@@ -95,10 +95,11 @@ pub(super) async fn admit<T: Send + 'static>(
                     },
                     owner: Some(&admission.owner),
                     prepare: Some(&mut |record| {
-                        rendered =
-                            Some(encode.take().ok_or(analyte_store::Error::InvalidInput)?(
-                                record,
-                            )?);
+                        rendered = Some(encode
+                            .take()
+                            .ok_or(analyte_store::Error::InvalidHostInput)?(
+                            record
+                        )?);
                         Ok(())
                     }),
                 },
@@ -106,7 +107,7 @@ pub(super) async fn admit<T: Send + 'static>(
             match reserved {
                 Ok(record) => Ok(Ok((
                     record,
-                    rendered.ok_or(analyte_store::Error::InvalidInput)?,
+                    rendered.ok_or(analyte_store::Error::InvalidHostInput)?,
                 ))),
                 Err(refusal) => Ok(Err(refusal)),
             }

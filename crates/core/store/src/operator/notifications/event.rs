@@ -80,7 +80,9 @@ pub(super) fn build(
         measurement,
     })?;
     if bytes.len() > 16384 {
-        return Err(Error::InvalidInput);
+        return Err(Error::LimitExceeded {
+            what: "record_bytes",
+        });
     }
     Ok(bytes)
 }

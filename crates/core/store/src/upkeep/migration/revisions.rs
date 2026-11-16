@@ -1,9 +1,12 @@
 //! Migrates legacy revision history in a separate startup transaction.
-use super::*;
+use crate::results::revisions::content::clinical_digest;
+use crate::{Error, Interpretation, Reading, Store, key};
+use analyte_model::IdentityStatus;
+use rusqlite::{OptionalExtension, params};
 impl Store {
     pub(crate) fn migrate_v3(db: &mut rusqlite::Connection, limit: usize) -> Result<(), Error> {
         let tx = db.transaction()?;
-        tx.execute_batch(include_str!("../../upkeep/migration_v3.sql"))?;
+        tx.execute_batch(include_str!("../migration_v3.sql"))?;
         let mut after = 0_i64;
         loop {
             let mut statement = tx.prepare("SELECT i.rowid,i.receipt,i.version,i.evidence,r.metadata FROM interpretations i JOIN receipts r ON r.id=i.receipt WHERE i.rowid>?1 ORDER BY i.rowid LIMIT 64")?;
@@ -23,7 +26,9 @@ impl Store {
             }
             for (rowid, receipt, version, evidence, metadata) in rows {
                 if evidence.len() > limit || metadata.len() > limit {
-                    return Err(Error::InvalidInput);
+                    return Err(Error::LimitExceeded {
+                        what: "record_bytes",
+                    });
                 }
                 let evidence: Interpretation = serde_json::from_str(&evidence)?;
                 let metadata: analyte_model::ReceiptMetadata = serde_json::from_str(&metadata)?;
@@ -59,6 +64,7 @@ impl Store {
                 after = rowid;
             }
         }
+        Self::integrity(&tx)?;
         tx.commit()?;
         Ok(())
     }

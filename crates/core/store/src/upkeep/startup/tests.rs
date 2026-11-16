@@ -22,12 +22,22 @@ fn adr0003_rule7_startup_budget_is_inclusive_and_cancellation_is_sticky() -> Tes
     assert!(!startup.expired());
     startup.cancel();
     assert!(startup.expired());
-    assert!(
-        startup
-            .run::<()>(StartupStep::Finalizing, || panic!(
-                "cancelled startup must not run work"
-            ))
-            .is_err()
-    );
+    {
+        let refusal = startup
+            .run::<()>(StartupStep::Finalizing, || {
+                panic!("cancelled startup must not run work")
+            })
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(
+                &refusal,
+                Error::StartupTimeout {
+                    step: StartupStep::Opening
+                }
+            ),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }

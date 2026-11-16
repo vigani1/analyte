@@ -133,7 +133,15 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
         ("local.toml", "schema_version=1"),
     )
     .unwrap();
-    assert!(draft.validate().is_err());
+    {
+        let Err(refusal) = draft.validate() else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
 }
 
 #[test]
@@ -246,7 +254,15 @@ fn hl7_291_s2_8_3_2_separate_application_channel_cannot_be_enabled() -> Result<(
             ("local", "schema_version=1"),
         )?
         .validate();
-        assert_eq!(result.is_err(), enabled);
+        if enabled {
+            assert!(
+                matches!(&result, Err(Error::Invalid { key, .. }) if key == "dialog.enhanced_application_acknowledgments")
+            );
+        } else {
+            result
+                .as_ref()
+                .expect("disabled separate channel is supported");
+        }
         if let Err(error) = result {
             assert!(error.to_string().contains("unsupported separate channel"));
         }

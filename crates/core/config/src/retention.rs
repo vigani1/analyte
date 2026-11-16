@@ -73,7 +73,15 @@ mod tests {
             load_site("site", &site.replace("\"keep\"", period))?;
         }
         for period in ["0", "3651", "-1", "\"forever\""] {
-            assert!(load_site("site", &site.replace("\"keep\"", period)).is_err());
+            {
+                let Err(refusal) = load_site("site", &site.replace("\"keep\"", period)) else {
+                    panic!("input must be refused")
+                };
+                assert!(
+                    matches!(&refusal, crate::Error::Schema { .. }),
+                    "unexpected refusal: {refusal:?}"
+                );
+            }
         }
         let missing = site.replace("retention = \"keep\"", "");
         assert!(

@@ -42,7 +42,7 @@ impl Reconciliation<'_, '_> {
         batch: &mut RevisionBatch,
     ) -> Result<(), Error> {
         if result.receipt != receipt {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidInterpretationInput);
         }
         let candidate = result.clone();
         let content = clinical_digest(result)?;
@@ -64,7 +64,7 @@ impl Reconciliation<'_, '_> {
         {
             result.identity = IdentityStatus::Unresolved(
                 analyte_model::Reason::new("multiple final runs under the same order and test")
-                    .map_err(|_| Error::InvalidInput)?,
+                    .map_err(Error::Text)?,
             );
             batch.outcomes.push(RevisionOutcome::Conflict);
             return Ok(());
@@ -79,7 +79,7 @@ impl Reconciliation<'_, '_> {
         if correction && let Some(reason) = self.edit_guard {
             if same.is_some() && same == previous {
                 result.identity = IdentityStatus::Unresolved(
-                    analyte_model::Reason::new(reason).map_err(|_| Error::InvalidInput)?,
+                    analyte_model::Reason::new(reason).map_err(Error::Text)?,
                 );
                 batch.outcomes.push(RevisionOutcome::Unresolved);
                 return Ok(());
@@ -121,11 +121,11 @@ impl Reconciliation<'_, '_> {
                     analyte_model::Reason::new(
                         "conflicting content under retained observation identity",
                     )
-                    .map_err(|_| Error::InvalidInput)?,
+                    .map_err(Error::Text)?,
                 );
             }
             RevisionOutcome::Retransmission(_) | RevisionOutcome::Unresolved => {
-                return Err(Error::InvalidInput);
+                return Err(Error::InvalidInterpretationInput);
             }
         }
         batch.outcomes.push(outcome);

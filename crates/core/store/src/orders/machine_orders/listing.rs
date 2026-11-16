@@ -42,7 +42,7 @@ impl Store {
                     filter.after,
                     filter.machine.as_ref().map(Identifier::as_str),
                     state,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOrderInput)?
                 ],
                 |r| r.get::<_, i64>(0),
             )?
@@ -74,7 +74,8 @@ impl Store {
                         destination.as_str(),
                         machine.as_str(),
                         after,
-                        i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                        i64::try_from(self.limits.page_rows)
+                            .map_err(|_| Error::InvalidOrderInput)?
                     ],
                     |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
                 )?
@@ -111,7 +112,7 @@ impl Store {
                 return Ok(candidates);
             }
         }
-        Err(Error::InvalidInput)
+        Err(Error::InvalidOrderInput)
     }
 }
 

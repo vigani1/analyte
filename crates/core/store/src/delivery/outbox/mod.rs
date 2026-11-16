@@ -71,7 +71,7 @@ impl Store {
                             Attempt::Done
                             | Attempt::Interrupted
                             | Attempt::RetryAt(_)
-                            | Attempt::Paused(_) => return Err(Error::InvalidInput),
+                            | Attempt::Paused(_) => return Err(Error::InvalidDeliveryInput),
                         },
                         &serde_json::from_str::<String>(&id)?,
                         reason.as_str(),
@@ -106,7 +106,8 @@ impl Store {
             query
                 .query_map(
                     params![
-                        i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?,
+                        i64::try_from(self.limits.page_rows)
+                            .map_err(|_| Error::InvalidDeliveryInput)?,
                         DeliveryState::InFlight
                     ],
                     |row| row.get::<_, String>(0),
@@ -125,7 +126,9 @@ impl Store {
             };
             let encoded = crate::document(&entry)?;
             if encoded.len() > self.limits.record_bytes {
-                return Err(Error::InvalidInput);
+                return Err(Error::LimitExceeded {
+                    what: "record_bytes",
+                });
             }
             let outcome = crate::document(&Attempt::Interrupted)?;
             required = required

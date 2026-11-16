@@ -678,7 +678,7 @@ pub async fn prepare_retention(program: Program) -> Result<(), Error> {
             Box::new(Volume),
             Instant::now()
                 .checked_add(analyte_store::DEFAULT_STARTUP_TIMEOUT)
-                .ok_or(analyte_store::Error::InvalidInput)?,
+                .ok_or(analyte_store::Error::InvalidHostInput)?,
         )
     })
     .await??)

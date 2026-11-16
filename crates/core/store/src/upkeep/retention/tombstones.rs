@@ -34,7 +34,7 @@ pub(super) fn purge(
     limit: usize,
 ) -> Result<(usize, usize), Error> {
     let receipt_key = key(&receipt)?;
-    let metadata: String = db.query_row("SELECT CASE WHEN length(CAST(metadata AS BLOB))<=?2 THEN metadata END FROM receipts WHERE id=?1", params![receipt_key,i64::try_from(limit).map_err(|_|Error::InvalidInput)?], |r|r.get(0))?;
+    let metadata: String = db.query_row("SELECT CASE WHEN length(CAST(metadata AS BLOB))<=?2 THEN metadata END FROM receipts WHERE id=?1", params![receipt_key,i64::try_from(limit).map_err(|_|Error::InvalidMaintenanceInput)?], |r|r.get(0))?;
     let metadata: ReceiptMetadata = serde_json::from_str(&metadata)?;
     let acknowledged: i64 = db.query_row("SELECT max(a.time) FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE o.receipt=?1 AND a.outcome='\"Done\"'", [&receipt_key], |r|r.get(0))?;
     db.execute(
@@ -93,7 +93,7 @@ fn retain_results(
     let mut statement = db.prepare("SELECT CASE WHEN length(CAST(evidence AS BLOB))<=?2 THEN evidence END FROM interpretations WHERE receipt=?1 ORDER BY version")?;
     let mut rows = statement.query(params![
         receipt,
-        i64::try_from(limit).map_err(|_| Error::InvalidInput)?
+        i64::try_from(limit).map_err(|_| Error::InvalidMaintenanceInput)?
     ])?;
     while let Some(row) = rows.next()? {
         let encoded: String = row.get(0)?;

@@ -40,17 +40,11 @@ fn adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart() -
         revised_receipt(&mut store, "004", true, "correction-without-original")?,
         RevisionOutcome::New(Revision(0))
     );
-    assert!(
+    assert_constraint(store.db.execute("DELETE FROM observation_revisions", []));
+    assert_constraint(
         store
             .db
-            .execute("DELETE FROM observation_revisions", [])
-            .is_err()
-    );
-    assert!(
-        store
-            .db
-            .execute("UPDATE observation_revisions SET revision=10", [])
-            .is_err()
+            .execute("UPDATE observation_revisions SET revision=10", []),
     );
     Ok(())
 }
@@ -65,9 +59,9 @@ fn adr0003_revision_builder_failure_rolls_back_interpretation_and_history() -> T
     evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
     assert!(matches!(
         store.interpret_reconciled(metadata.id, evidence, &[false], &[], |_, _| Err(
-            Error::InvalidInput
+            Error::InvalidInterpretationInput
         )),
-        Err(Error::InvalidInput)
+        Err(Error::InvalidInterpretationInput)
     ));
     assert!(store.interpretation(metadata.id, 1)?.is_none());
     assert_eq!(
@@ -181,7 +175,7 @@ fn mutation_adr0003_reconciliation_rejects_each_provenance_mismatch_without_inte
         }
         assert!(matches!(
             store.interpret_reconciled(metadata.id, evidence, &[], &[], |_, _| Ok(vec![])),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidInterpretationInput)
         ));
         assert!(store.interpretation(metadata.id, 1)?.is_none());
         assert!(store.parked(0)?.is_empty());
@@ -202,7 +196,7 @@ fn mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_c
         evidence.outcome = Reading::Results(vec![production_result(owner)?]);
         assert!(matches!(
             store.interpret_reconciled(metadata.id, evidence, &corrections, &[], |_, _| Ok(vec![])),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidInterpretationInput)
         ));
         assert!(store.interpretation(metadata.id, 1)?.is_none());
         assert_eq!(
@@ -231,7 +225,7 @@ fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independent
         store.interpret_reconciled(metadata.id, evidence, &[false, false], &[], |_, _| Ok(
             vec![]
         )),
-        Err(Error::InvalidInput)
+        Err(Error::InvalidInterpretationInput)
     ));
     assert!(store.interpretation(metadata.id, 1)?.is_none());
     let finding = Parked {
@@ -249,7 +243,7 @@ fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independent
             &[finding.clone(), finding.clone()],
             |_, _| Ok(vec![])
         ),
-        Err(Error::InvalidInput)
+        Err(Error::InvalidInterpretationInput)
     ));
     assert!(store.interpretation(metadata.id, 1)?.is_none());
     assert!(store.parked(0)?.is_empty());
@@ -348,7 +342,7 @@ fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -
         if delta == 0 {
             assert_eq!(result?.version, 2);
         } else {
-            assert!(matches!(result, Err(Error::InvalidInput)));
+            assert!(matches!(result, Err(Error::InvalidInterpretationInput)));
         }
     }
     Ok(())
@@ -379,19 +373,19 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
         let result =
             store.interpret_reconciled(metadata.id, evidence, &[false], &[], |evidence, _| {
                 let Reading::Results(results) = &evidence.outcome else {
-                    return Err(Error::InvalidInput);
+                    return Err(Error::InvalidInterpretationInput);
                 };
                 let Some(analyte_model::IdentityStatus::Resolved(identity)) =
                     results.first().map(|r| &r.identity)
                 else {
-                    return Err(Error::InvalidInput);
+                    return Err(Error::InvalidInterpretationInput);
                 };
                 Ok(vec![Delivery {
                     id,
-                    destination: Identifier::new("app").map_err(|_| Error::InvalidInput)?,
+                    destination: Identifier::new("app").map_err(Error::Text)?,
                     ordering_key: OrderingKey {
                         machine: if wrong_machine {
-                            Identifier::new("wrong-machine").map_err(|_| Error::InvalidInput)?
+                            Identifier::new("wrong-machine").map_err(Error::Text)?
                         } else {
                             metadata.machine.clone()
                         },
@@ -407,7 +401,7 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
             assert_eq!(claim.id, id);
             assert_eq!(claim.payload, vec![b'x'; length]);
         } else {
-            assert!(matches!(result, Err(Error::InvalidInput)));
+            assert!(matches!(result, Err(Error::InvalidInterpretationInput)));
             assert!(store.interpretation(metadata.id, 1)?.is_none());
             assert!(store.claim(0)?.is_none());
             assert_eq!(

@@ -299,18 +299,18 @@ impl Connection {
                     store.audit(&analyte_store::Audit {
                         actor,
                         action: Identifier::new("LAW-negative-query-ORL")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(analyte_store::Error::Text)?,
                         targets: vec![
                             Identifier::new(&uuid::Uuid::from(receipt).to_string())
-                                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                                .map_err(analyte_store::Error::Text)?,
                             Identifier::new(&uuid::Uuid::from(query).to_string())
-                                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                                .map_err(analyte_store::Error::Text)?,
                         ],
                         time: jiff::Timestamp::now().as_second(),
                         reason: analyte_model::Reason::new(&format!(
                             "negative followup ORL correlated={correlated} acceptance={code}"
                         ))
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        .map_err(analyte_store::Error::Text)?,
                     })
                 })
                 .await?;
@@ -440,7 +440,7 @@ async fn query_orders(
                                 .checked_add(orders.len())
                                 .is_none_or(|count| count > bound)
                             {
-                                return Err(analyte_store::Error::InvalidInput);
+                                return Err(analyte_store::Error::InvalidHostInput);
                             }
                             found.extend(orders);
                             #[cfg(feature = "test-hooks")]
@@ -454,7 +454,7 @@ async fn query_orders(
                         }
                     }
                     if page.checked_add(1) == Some(bound) {
-                        return Err(analyte_store::Error::InvalidInput);
+                        return Err(analyte_store::Error::InvalidHostInput);
                     }
                 }
             }

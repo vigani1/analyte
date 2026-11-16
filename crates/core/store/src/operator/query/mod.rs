@@ -208,7 +208,8 @@ impl Store {
                 params![
                     transfer.as_str(),
                     after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(self.limits.page_rows)
+                        .map_err(|_| Error::InvalidOperatorInput)?
                 ],
                 |r| {
                     Ok(Frame {
@@ -253,7 +254,8 @@ impl Store {
             .query_map(
                 params![
                     after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(self.limits.page_rows)
+                        .map_err(|_| Error::InvalidOperatorInput)?
                 ],
                 |r| {
                     Ok(ParkedItem {
@@ -341,7 +343,7 @@ impl Store {
         let rows = statement.query_map(
             params![
                 after,
-                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOperatorInput)?
             ],
             |row| row.get::<_, String>(0),
         )?;
@@ -361,7 +363,7 @@ impl Store {
         let rows = statement.query_map(
             params![
                 after,
-                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOperatorInput)?
             ],
             |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
         )?;
@@ -468,7 +470,7 @@ impl Store {
             params![
                 after,
                 machine.as_str(),
-                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOperatorInput)?
             ],
             |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
         )?;

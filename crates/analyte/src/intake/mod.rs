@@ -231,7 +231,7 @@ pub(crate) async fn persist_mapping(
                     id,
                     interpretation.clone(),
                     (&corrections, &findings),
-                    lifecycle.ok_or(analyte_store::Error::InvalidInput)?,
+                    lifecycle.ok_or(analyte_store::Error::InvalidHostInput)?,
                     (custody, action.as_ref()),
                     build,
                 )
@@ -251,7 +251,8 @@ pub(crate) async fn persist_mapping(
                 Err(analyte_store::Error::DeliveryBuild(error))
                     if error.is::<LawBatchConflict>() =>
                 {
-                    let rejected_evidence = conflict.ok_or(analyte_store::Error::InvalidInput)?;
+                    let rejected_evidence =
+                        conflict.ok_or(analyte_store::Error::InvalidHostInput)?;
                     let rejected = if let Some(mut custody) = custody.clone() {
                         custody.rejection = Some(analyte_store::LawRejection {
                             occurrence: 1,
@@ -261,7 +262,7 @@ pub(crate) async fn persist_mapping(
                             id,
                             rejected_evidence,
                             (&[], &findings),
-                            lifecycle.ok_or(analyte_store::Error::InvalidInput)?,
+                            lifecycle.ok_or(analyte_store::Error::InvalidHostInput)?,
                             (&custody, action.as_ref()),
                             |_, _| Ok(Vec::new()),
                         )?
@@ -355,13 +356,11 @@ fn park_findings(
         .into_iter()
         .map(|finding| {
             Ok(analyte_store::Parked {
-                kind: Identifier::new("mapping_finding")
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
-                reason: analyte_model::Reason::new(&finding)
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+                kind: Identifier::new("mapping_finding").map_err(analyte_store::Error::Text)?,
+                reason: analyte_model::Reason::new(&finding).map_err(analyte_store::Error::Text)?,
                 targets: vec![
                     Identifier::new(&uuid::Uuid::from(id).to_string())
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        .map_err(analyte_store::Error::Text)?,
                 ],
             })
         })

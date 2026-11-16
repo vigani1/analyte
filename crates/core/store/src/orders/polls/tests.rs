@@ -1,5 +1,6 @@
 //! Tests order poll cursors and reconciliation.
 use super::*;
+use crate::test_support::assert_constraint;
 use crate::test_support::{TestResult, open};
 
 fn audit(id: PollIntentId, reason: &str) -> Result<Audit, analyte_model::TextError> {
@@ -44,7 +45,7 @@ fn adr0003_poll_intent_pending_uncertain_confirmed_is_retained_and_blocks_cursor
     unrelated.targets.clear();
     assert!(matches!(
         store.record_poll_outcome(id, PollOutcome::Confirmed, &unrelated),
-        Err(Error::InvalidInput)
+        Err(Error::AuditMismatch)
     ));
     let uncertain = store.record_poll_outcome(
         id,
@@ -129,28 +130,17 @@ fn verify_poll_evidence_is_immutable_and_has_no_deliveries(
             0
         );
     }
-    assert!(
+    assert_constraint(store.db.execute(
+        "UPDATE poll_intents SET state='pending' WHERE id=?1",
+        [id.0],
+    ));
+    assert_constraint(store.db.execute("DELETE FROM poll_intents", []));
+    assert_constraint(
         store
             .db
-            .execute(
-                "UPDATE poll_intents SET state='pending' WHERE id=?1",
-                [id.0]
-            )
-            .is_err()
+            .execute("UPDATE poll_intent_history SET reason='changed'", []),
     );
-    assert!(store.db.execute("DELETE FROM poll_intents", []).is_err());
-    assert!(
-        store
-            .db
-            .execute("UPDATE poll_intent_history SET reason='changed'", [])
-            .is_err()
-    );
-    assert!(
-        store
-            .db
-            .execute("DELETE FROM poll_intent_history", [])
-            .is_err()
-    );
+    assert_constraint(store.db.execute("DELETE FROM poll_intent_history", []));
     Ok(())
 }
 
@@ -162,7 +152,16 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
     let machine = Identifier::new("machine")?;
     let reason = Reason::new("cursor may move")?;
     store.db.execute_batch("CREATE TRIGGER fail_poll_history BEFORE INSERT ON poll_intent_history BEGIN SELECT RAISE(ABORT,'synthetic history failure'); END;")?;
-    assert!(store.begin_poll_intent(&machine, &reason).is_err());
+    {
+        let refusal = store
+            .begin_poll_intent(&machine, &reason)
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::ConstraintViolation(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     for table in ["parked", "poll_intents", "poll_intent_history"] {
         assert_eq!(
             store
@@ -181,7 +180,16 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
     let evidence = audit(id, "operator reconciled cursor custody")?;
     store.db.execute_batch("CREATE TRIGGER fail_poll_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
     for outcome in [PollOutcome::Uncertain, PollOutcome::Confirmed] {
-        assert!(store.record_poll_outcome(id, outcome, &evidence).is_err());
+        {
+            let refusal = store
+                .record_poll_outcome(id, outcome, &evidence)
+                .map(|_| ())
+                .expect_err("input must be refused");
+            assert!(
+                matches!(&refusal, Error::ConstraintViolation(_)),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
         assert_eq!(
             store
                 .unconfirmed_poll_intent(&machine)?
@@ -197,7 +205,16 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
                 .is_none()
         );
     }
-    assert!(store.resolve(parked, &evidence).is_err());
+    {
+        let refusal = store
+            .resolve(parked, &evidence)
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::ConstraintViolation(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert!(
         store
             .parked_item(parked)?

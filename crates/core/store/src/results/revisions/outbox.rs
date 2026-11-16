@@ -18,7 +18,7 @@ impl Reconciliation<'_, '_> {
                 || delivery.ordering_key.machine != *self.machine
                 || delivery.payload.len() > self.limit
             {
-                return Err(Error::InvalidInput);
+                return Err(Error::InvalidInterpretationInput);
             }
             self.tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version,crate::DeliveryState::Pending])?;
         }

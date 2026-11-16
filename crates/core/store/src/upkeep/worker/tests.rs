@@ -21,7 +21,7 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
             deadline,
         )
         .await?;
-        let metadata = receipt(b"raw").map_err(|_| Error::InvalidInput)?;
+        let metadata = receipt(b"raw").map_err(|_| Error::InvalidMaintenanceInput)?;
         let id = metadata.id;
         handle
             .request(deadline, move |store| {
@@ -89,7 +89,7 @@ fn mutation_rule7_worker_capacity_bounds_are_inclusive() -> TestResult {
                 let mut handle = result?;
                 handle.shutdown(deadline).await?;
             } else {
-                assert!(matches!(result, Err(Error::InvalidInput)));
+                assert!(matches!(result, Err(Error::InvalidMaintenanceInput)));
             }
         }
         Ok::<_, Error>(())

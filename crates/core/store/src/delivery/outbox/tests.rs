@@ -12,13 +12,18 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
     // A deliberately failing trigger simulates an outbox constraint failure after
     // interpretation insertion, proving that the whole transaction rolls back.
     store.db.execute_batch("CREATE TRIGGER reject_interpretation AFTER INSERT ON interpretations BEGIN INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('x',NEW.receipt,NEW.version,'d','k',x'00',x'00',1,'invalid',0); END;")?;
-    assert!(
-        store
-            .interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| Ok(
-                Vec::new()
-            ))
-            .is_err()
-    );
+    {
+        let refusal = store
+            .interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
+                Ok(Vec::new())
+            })
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::ConstraintViolation(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert_eq!(
         store
             .db
@@ -79,7 +84,7 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
             observation: match production_result(metadata.id)?.identity {
                 analyte_model::IdentityStatus::Resolved(id) => id.observation,
                 analyte_model::IdentityStatus::Unresolved(_) => {
-                    return Err(Error::InvalidInput.into());
+                    return Err(Error::InvalidDeliveryInput.into());
                 }
             },
         },
@@ -104,23 +109,28 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
             .map(|commit| commit.version)?,
         1
     );
-    assert!(
-        store
-            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| Ok(
-                vec![Delivery {
+    {
+        let refusal = store
+            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
+                Ok(vec![Delivery {
                     id: delivery.id,
                     destination: delivery.destination.clone(),
                     ordering_key: OrderingKey {
                         machine: delivery.ordering_key.machine.clone(),
-                        observation: delivery.ordering_key.observation.clone()
+                        observation: delivery.ordering_key.observation.clone(),
                     },
                     payload: delivery.payload.clone(),
                     contract_version: delivery.contract_version,
-                }]
-            ))
+                }])
+            })
             .map(|commit| commit.version)
-            .is_err()
-    );
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::InvalidInterpretationInput),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert!(store.interpretation(metadata.id, 2)?.is_none());
     let first = store.claim(0)?.ok_or(Error::Corruption)?;
     store.attempted(id, &Attempt::RetryAt(10), 0)?;
@@ -128,12 +138,7 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
     let retry = store.claim(10)?.ok_or(Error::Corruption)?;
     assert_eq!(first.id, retry.id);
     assert_eq!(first.payload, retry.payload);
-    assert!(
-        store
-            .db
-            .execute("UPDATE outbox SET payload=x'00'", [])
-            .is_err()
-    );
+    assert_constraint(store.db.execute("UPDATE outbox SET payload=x'00'", []));
     store.attempted(id, &Attempt::Done, 10)?;
     assert!(store.claim(20)?.is_none());
     Ok(())
@@ -153,7 +158,16 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
         contract_version: 1,
     };
     store.enqueue_order_event(&event, 10)?;
-    assert!(store.enqueue_order_event(&event, 10).is_err());
+    {
+        let refusal = store
+            .enqueue_order_event(&event, 10)
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::ConstraintViolation(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     let second = OrderEventDelivery {
         id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
         ..event
@@ -212,8 +226,8 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
     assert!(store.health(&destination, 21, 30)?.paused);
     assert!(store.claim(21)?.is_none());
     // CHECK constraints reject both kinds carrying the other's provenance.
-    assert!(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','order_event','receipt',1,'o','app','o',x'00',x'00',1,'pending',0)",[]).is_err());
-    assert!(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','result',NULL,NULL,'o','app','o',x'00',x'00',1,'pending',0)",[]).is_err());
+    assert_constraint(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','order_event','receipt',1,'o','app','o',x'00',x'00',1,'pending',0)",[]));
+    assert_constraint(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','result',NULL,NULL,'o','app','o',x'00',x'00',1,'pending',0)",[]));
     Ok(())
 }
 
@@ -247,19 +261,23 @@ fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing(
             &[],
             |evidence, outcomes| {
                 let Reading::Results(results) = &evidence.outcome else {
-                    return Err(Error::InvalidInput);
+                    return Err(Error::LimitExceeded {
+                        what: "record_bytes",
+                    });
                 };
                 if matches!(outcomes.first(), Some(RevisionOutcome::Retransmission(_))) {
                     return Ok(Vec::new());
                 }
                 let Some(IdentityStatus::Resolved(identity)) = results.first().map(|r| &r.identity)
                 else {
-                    return Err(Error::InvalidInput);
+                    return Err(Error::LimitExceeded {
+                        what: "record_bytes",
+                    });
                 };
                 Ok(vec![Delivery {
                     id: DeliveryId::try_from(uuid::Uuid::now_v7())
-                        .map_err(|_| Error::InvalidInput)?,
-                    destination: Identifier::new("app").map_err(|_| Error::InvalidInput)?,
+                        .map_err(|_| Error::InvalidDeliveryInput)?,
+                    destination: Identifier::new("app").map_err(Error::Text)?,
                     ordering_key: OrderingKey {
                         machine: metadata.machine.clone(),
                         observation: identity.observation.clone(),
@@ -391,7 +409,12 @@ fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_clai
             assert_eq!(claim.earlier_attempts, 1);
             assert_eq!(store.audits(0)?.len(), 1);
         } else {
-            assert!(matches!(result, Err(Error::InvalidInput)));
+            assert!(matches!(
+                result,
+                Err(Error::LimitExceeded {
+                    what: "record_bytes"
+                })
+            ));
             assert_eq!(state, DeliveryState::InFlight);
             assert!(store.audits(0)?.is_empty());
             assert_eq!(

@@ -6,7 +6,9 @@ use std::path::Path;
 impl Store {
     pub(crate) fn bound(&self, bytes: &[u8]) -> Result<(), Error> {
         if bytes.len() > self.limits.record_bytes {
-            return Err(Error::InvalidInput);
+            return Err(Error::LimitExceeded {
+                what: "record_bytes",
+            });
         }
         Ok(())
     }

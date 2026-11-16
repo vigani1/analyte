@@ -1,5 +1,6 @@
 //! Tests individual machine order outcomes.
 use super::*;
+use crate::test_support::assert_constraint;
 
 #[test]
 fn adr0003_0004_items_are_atomic_retained_and_never_reserved_again() -> TestResult {
@@ -32,7 +33,7 @@ fn adr0003_0004_items_are_atomic_retained_and_never_reserved_again() -> TestResu
         "DELETE FROM machine_order_item_history",
         "UPDATE machine_order_item_history SET evidence='{}'",
     ] {
-        assert!(store.db.execute(sql, []).is_err());
+        assert_constraint(store.db.execute(sql, []));
     }
     drop(store);
     let mut store = open(&path)?;
@@ -103,11 +104,16 @@ fn adr0008_every_item_aggregation_row_is_atomic_and_emits_one_event() -> TestRes
                 })
             })
             .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
-        assert!(
-            store
-                .finish_order_items(record.id, &outcomes, 102, |_| Err(Error::InvalidInput))
-                .is_err()
-        );
+        {
+            let refusal = store
+                .finish_order_items(record.id, &outcomes, 102, |_| Err(Error::InvalidOrderInput))
+                .map(|_| ())
+                .expect_err("input must be refused");
+            assert!(
+                matches!(&refusal, Error::InvalidOrderInput),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
         assert_eq!(
             store
                 .db
@@ -294,7 +300,7 @@ fn mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_h
             ));
         } else {
             assert!(
-                matches!(result, Err(Error::InvalidInput)),
+                matches!(result, Err(Error::InvalidOrderInput)),
                 "case {count}/{shape}"
             );
             assert!(store.machine_order(&key)?.is_none());
@@ -346,7 +352,7 @@ fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_s
             .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
         let result = store.finish_order_items(record.id, &outcomes, now, event);
         if now == 100 {
-            assert!(matches!(result, Err(Error::InvalidInput)));
+            assert!(matches!(result, Err(Error::InvalidOrderInput)));
             assert_eq!(
                 store
                     .machine_order(&record.key)?
@@ -376,7 +382,7 @@ fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_s
             }];
             assert!(matches!(
                 store.finish_order_items(record.id, &late, 103, event),
-                Err(Error::InvalidInput)
+                Err(Error::InvalidOrderInput)
             ));
             assert_eq!(
                 store
@@ -415,7 +421,7 @@ fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index(
             .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
         assert!(matches!(
             store.finish_order_items(record.id, &outcomes, 102, event),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidOrderInput)
         ));
         assert_eq!(
             store
@@ -546,9 +552,9 @@ fn palm_tf2b_c8_adr0003_0011_projection_restart_keeps_command_state_and_no_resul
         "UPDATE awos_execution_history SET state='Scheduled'",
         "DELETE FROM awos_execution_history",
     ] {
-        assert!(store.db.execute(sql, []).is_err());
+        assert_constraint(store.db.execute(sql, []));
     }
-    assert!(store.db.execute("INSERT INTO awos_execution_history(machine_order,item_index,receipt,interpretation,state,recorded_at,cancel_outstanding) VALUES (?1,1,?2,1,'AnalyzerCancelled',105,1)",params![record.id,key(&metadata.id)?]).is_err());
+    assert_constraint(store.db.execute("INSERT INTO awos_execution_history(machine_order,item_index,receipt,interpretation,state,recorded_at,cancel_outstanding) VALUES (?1,1,?2,1,'AnalyzerCancelled',105,1)",params![record.id,key(&metadata.id)?]));
     drop(store);
     let store = open(&path)?;
     let restored = store.machine_order(&identity()?)?.ok_or("missing")?;

@@ -142,8 +142,7 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
                 if case != "unknown" {
                     s.order_page(&analyte_store::OrderPage {
                         destination,
-                        cursor: Identifier::new("c")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        cursor: Identifier::new("c").map_err(analyte_store::Error::Text)?,
                         complete: case != "incomplete",
                         polled: jiff::Timestamp::now().as_second()
                             - if case == "paused" { 0 } else { 50 },
@@ -152,14 +151,13 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
                 }
                 if case == "paused" {
                     s.audit(&analyte_store::Audit {
-                        actor: Identifier::new("operator")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        actor: Identifier::new("operator").map_err(analyte_store::Error::Text)?,
                         action: Identifier::new("store-restore")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(analyte_store::Error::Text)?,
                         targets: Vec::new(),
                         time: 0,
                         reason: analyte_model::Reason::new("synthetic restore")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(analyte_store::Error::Text)?,
                     })?;
                 }
                 Ok(())

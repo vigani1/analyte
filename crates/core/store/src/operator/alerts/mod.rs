@@ -65,7 +65,8 @@ impl Store {
             .query_map(
                 params![
                     after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(self.limits.page_rows)
+                        .map_err(|_| Error::InvalidOperatorInput)?
                 ],
                 |row| row.get::<_, String>(0),
             )?
@@ -124,7 +125,7 @@ impl Store {
             || responder.len() > 256
             || responder.chars().any(char::is_control)
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOperatorInput);
         }
         let value = value.map(|value| value.to_string());
         // Like audit records, bounded safety history may use the admission reserve.
@@ -166,7 +167,7 @@ impl Store {
         let mut stmt = self.db.prepare("SELECT sequence,key,responder,active,time,value FROM alert_history WHERE sequence>?1 ORDER BY sequence LIMIT ?2")?;
         let mut rows = stmt.query(params![
             after,
-            i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+            i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOperatorInput)?
         ])?;
         let mut result = Vec::new();
         while let Some(row) = rows.next()? {
@@ -203,7 +204,7 @@ impl Store {
         destinations: &[(Identifier, u64)],
     ) -> Result<Option<u64>, Error> {
         if destinations.len() > 128 {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOperatorInput);
         }
         let scalar: Option<i64> = match identity {
             AlertKey::OldestUndelivered => self

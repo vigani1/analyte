@@ -82,7 +82,7 @@ pub(super) fn admit(
     reprocessing: bool,
 ) -> Result<Admission, Error> {
     if custody.work.len() > rows {
-        return Err(Error::InvalidInput);
+        return Err(Error::InvalidInterpretationInput);
     }
     if !reprocessing {
         let exact: Option<String> = tx.query_row("SELECT disposition FROM law_messages WHERE scope=?1 AND message=?2 AND digest=?3 ORDER BY rowid LIMIT 1", params![custody.scope.as_str(),custody.message.as_str(),receipt.metadata.raw_digest.0.as_slice()], |r|r.get(0)).optional()?;

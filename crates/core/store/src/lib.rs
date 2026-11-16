@@ -140,7 +140,7 @@ pub enum Error {
     OrderTransition(#[from] analyte_model::TransitionError),
     /// SQLite reported a full disk.
     #[error("disk full")]
-    DiskFull,
+    DiskFull(#[source] rusqlite::Error),
     /// A bounded operation expired; a submitted write may have committed.
     #[error("storage deadline expired; reconcile using the original identity")]
     Timeout,
@@ -150,15 +150,55 @@ pub enum Error {
     /// The generated local command identity exceeds the caller's byte budget.
     #[error("command identity exceeds caller byte limit")]
     ItemIdentityTooLong,
-    /// Input exceeds a configured bound or violates its declared provenance.
-    #[error("invalid or oversized storage input")]
-    InvalidInput,
+    /// Limits cannot establish bounded store operations.
+    #[error("invalid storage limits")]
+    InvalidLimits,
+    /// Receipt bytes, provenance or transfer evidence do not agree.
+    #[error("invalid receipt input")]
+    InvalidReceiptInput,
+    /// Delivery construction or attempt evidence is inconsistent.
+    #[error("invalid delivery input")]
+    InvalidDeliveryInput,
+    /// Machine-order input violates its declared ownership or item structure.
+    #[error("invalid machine-order input")]
+    InvalidOrderInput,
+    /// Interpretation input does not agree with its receipt or result identity.
+    #[error("invalid interpretation input")]
+    InvalidInterpretationInput,
+    /// Operator or notification input cannot authorize the requested operation.
+    #[error("invalid operator input")]
+    InvalidOperatorInput,
+    /// Restore, retention or startup input cannot authorize maintenance.
+    #[error("invalid maintenance input")]
+    InvalidMaintenanceInput,
+    /// The host could not construct its submitted store command.
+    #[error("invalid host command input")]
+    InvalidHostInput,
+    /// An operator action or target does not match the operation being authorized.
+    #[error("audit action or target mismatch")]
+    AuditMismatch,
+    /// A configured input bound was exceeded before storage.
+    #[error("storage input exceeds {what}")]
+    LimitExceeded {
+        /// Configured bound that refused admission.
+        what: &'static str,
+    },
+    /// SQLite refused execution because another connection holds a lock.
+    /// This failure did not commit; retry with the original identity.
+    #[error("SQLite is busy: {0}")]
+    Busy(#[source] rusqlite::Error),
+    /// SQLite refused a constraint; this is not an application identity conflict.
+    #[error("SQLite constraint violation: {0}")]
+    ConstraintViolation(#[source] rusqlite::Error),
+    /// Bounded model text could not be constructed; the exact reason is retained.
+    #[error("invalid bounded storage text: {0}")]
+    Text(#[source] analyte_model::TextError),
     /// A filesystem operation failed.
     #[error("filesystem operation failed")]
     Io(#[from] std::io::Error),
     /// SQLite failed; its original cause is preserved.
     #[error("SQLite operation failed: {0}")]
-    Sqlite(rusqlite::Error),
+    Sqlite(#[source] rusqlite::Error),
     /// The host's transactional delivery builder refused construction; the cause is retained.
     #[error("delivery construction failed")]
     DeliveryBuild(#[source] Box<dyn std::error::Error + Send + Sync>),
@@ -175,13 +215,15 @@ impl From<rusqlite::Error> for Error {
                 reason = "SQLite error codes are external and non-exhaustive; unknown failures retain their cause"
             )]
             match code.code {
-                rusqlite::ErrorCode::DiskFull => return Self::DiskFull,
+                rusqlite::ErrorCode::DiskFull => return Self::DiskFull(error),
                 rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase => {
                     return Self::Corruption;
                 }
-                rusqlite::ErrorCode::ConstraintViolation => return Self::Conflict,
+                rusqlite::ErrorCode::ConstraintViolation => {
+                    return Self::ConstraintViolation(error);
+                }
                 rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked => {
-                    return Self::Timeout;
+                    return Self::Busy(error);
                 }
                 _ => {} // Other SQLite errors retain their diagnostic cause.
             }
@@ -221,7 +263,7 @@ impl Limits {
             || self.busy_timeout.is_zero()
             || self.busy_timeout > Duration::from_secs(30)
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidLimits);
         }
         Ok(())
     }

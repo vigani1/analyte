@@ -20,7 +20,7 @@ impl Store {
         self.start_order(
             candidate,
             OrderState::Sending,
-            SourceText::new(&code).map_err(|_| Error::InvalidInput)?,
+            SourceText::new(&code).map_err(Error::Text)?,
             options,
             None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
         )
@@ -164,7 +164,7 @@ impl Store {
         self.capacity(self.limits.record_bytes)?;
         let limit = self.limits.record_bytes;
         if bytes.is_empty() || bytes.len() > limit {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOrderInput);
         }
         let record = self.machine_order(identity)?.ok_or(Error::Conflict)?;
         if !record.reserved_by(owner) || record.original_command.is_some() {

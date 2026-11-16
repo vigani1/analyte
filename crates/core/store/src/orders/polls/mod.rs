@@ -81,7 +81,7 @@ impl Store {
         reason: &Reason,
     ) -> Result<PollIntentId, Error> {
         let details = Parked {
-            kind: Identifier::new("poll_intent").map_err(|_| Error::InvalidInput)?,
+            kind: Identifier::new("poll_intent").map_err(Error::Text)?,
             reason: reason.clone(),
             targets: vec![machine.clone()],
         };
@@ -154,7 +154,7 @@ impl Store {
         let encoded = self.encode(audit)?;
         let target = format!("poll:{id}");
         if !audit.targets.iter().any(|named| named.as_str() == target) {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         let tx = self
             .db

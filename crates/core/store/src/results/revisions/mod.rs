@@ -4,7 +4,6 @@ mod assignment;
 pub(crate) mod content;
 mod history;
 pub(crate) mod law;
-mod migration;
 mod outbox;
 mod parking;
 mod progression;
@@ -92,7 +91,7 @@ impl Store {
         F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
     {
         if action.audit.action.as_str() != "receipt-reprocess" {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         self.reconcile(
             action.receipt,
@@ -143,7 +142,7 @@ impl Store {
         F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
     {
         if action.audit.action.as_str() != "receipt-reprocess" {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         self.reconcile(
             action.receipt,
@@ -174,7 +173,7 @@ impl Store {
         if action
             .is_some_and(|a| a.receipt != receipt || a.audit.action.as_str() != "receipt-reprocess")
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         self.reconcile(
             receipt,
@@ -207,7 +206,7 @@ impl Store {
         if action
             .is_some_and(|a| a.receipt != receipt || a.audit.action.as_str() != "receipt-reprocess")
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         self.reconcile(
             receipt,
@@ -285,7 +284,7 @@ impl Store {
                         "LAW {:?} at OBR occurrence {}",
                         reason.reason, reason.occurrence
                     ))
-                    .map_err(|_| Error::InvalidInput)?,
+                    .map_err(Error::Text)?,
                 );
             } else if admission.replay {
                 evidence.outcome = Reading::Results(Vec::new());
@@ -303,11 +302,13 @@ impl Store {
         let batch = reconciliation.assign_revisions(&mut evidence, receipt, corrections)?;
         let deliveries = build(&evidence, &batch.outcomes)?;
         if deliveries.len() > count {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidInterpretationInput);
         }
         let encoded = crate::document(&evidence)?;
         if encoded.len() > limit {
-            return Err(Error::InvalidInput);
+            return Err(Error::LimitExceeded {
+                what: "record_bytes",
+            });
         }
         let successful = admission
             .as_ref()

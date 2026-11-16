@@ -108,7 +108,7 @@ impl Store {
             return Err(Error::Timeout);
         }
         if days.is_some_and(|days| !(1..=3650).contains(&days)) {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidMaintenanceInput);
         }
         if days.is_some() {
             self.retention_space_ready()?;
@@ -231,14 +231,17 @@ impl Store {
                             run.deliveries = run
                                 .deliveries
                                 .checked_add(deliveries)
-                                .ok_or(Error::InvalidInput)?;
+                                .ok_or(Error::InvalidMaintenanceInput)?;
                             run.results = run
                                 .results
                                 .checked_add(results)
-                                .ok_or(Error::InvalidInput)?;
+                                .ok_or(Error::InvalidMaintenanceInput)?;
                             run.first.get_or_insert(receipt);
                             run.last = Some(receipt);
-                            run.purged = run.purged.checked_add(1).ok_or(Error::InvalidInput)?;
+                            run.purged = run
+                                .purged
+                                .checked_add(1)
+                                .ok_or(Error::InvalidMaintenanceInput)?;
                         }
                     }
                     for sql in guards {
@@ -253,7 +256,9 @@ impl Store {
         }
         let encoded = audit_evidence(&run)?;
         if encoded.len() > self.limits.record_bytes {
-            return Err(Error::InvalidInput);
+            return Err(Error::LimitExceeded {
+                what: "record_bytes",
+            });
         }
         tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [encoded])?;
         tx.commit()?;
@@ -290,7 +295,7 @@ fn candidates(
         params![
             machine.as_str(),
             after.map(|id| key(&id)).transpose()?,
-            i64::try_from(limit).map_err(|_| Error::InvalidInput)?
+            i64::try_from(limit).map_err(|_| Error::InvalidMaintenanceInput)?
         ],
         |r| r.get::<_, String>(0),
     )?;
@@ -304,12 +309,12 @@ fn audit_evidence(run: &PurgeRun) -> Result<String, Error> {
         .chain(run.last)
         .map(|id| {
             let text: String = serde_json::from_str(&key(&id)?)?;
-            Identifier::new(&text).map_err(|_| Error::InvalidInput)
+            Identifier::new(&text).map_err(Error::Text)
         })
         .collect::<Result<Vec<_>, Error>>()?;
     let audit = crate::Audit {
-        actor: Identifier::new("retention-worker").map_err(|_| Error::InvalidInput)?,
-        action: Identifier::new("retention-purge").map_err(|_| Error::InvalidInput)?,
+        actor: Identifier::new("retention-worker").map_err(Error::Text)?,
+        action: Identifier::new("retention-purge").map_err(Error::Text)?,
         targets,
         time: run.time,
         reason: analyte_model::Reason::new(if run.failed {
@@ -317,12 +322,12 @@ fn audit_evidence(run: &PurgeRun) -> Result<String, Error> {
         } else {
             "finished-data retention run"
         })
-        .map_err(|_| Error::InvalidInput)?,
+        .map_err(Error::Text)?,
     };
     let mut evidence = serde_json::to_value(audit)?;
     evidence
         .as_object_mut()
-        .ok_or(Error::InvalidInput)?
+        .ok_or(Error::InvalidMaintenanceInput)?
         .insert("retention".into(), serde_json::to_value(run)?);
     crate::document(&evidence)
 }

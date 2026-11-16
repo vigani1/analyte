@@ -241,7 +241,15 @@ fn mutation_adr0003_migration_bounds_metadata_and_interpretation_independently_a
                 1
             );
         } else {
-            assert!(matches!(result, Err(Error::InvalidInput)), "case {case}");
+            assert!(
+                matches!(
+                    result,
+                    Err(Error::LimitExceeded {
+                        what: "record_bytes"
+                    })
+                ),
+                "case {case}"
+            );
             assert_eq!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
                 2

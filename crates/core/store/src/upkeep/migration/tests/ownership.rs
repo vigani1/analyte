@@ -2,6 +2,10 @@
 use super::*;
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "One retained-evidence scenario checks refusals and rollback alongside its successful lifecycle"
+)]
 fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_bounds()
 -> TestResult {
     let temp = tempfile::tempdir()?;
@@ -29,13 +33,28 @@ fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_
         "INSERT INTO frames(transfer,number,raw) VALUES ('legacy',1,?1),('legacy',7,?2)",
         params![b"first exact frame", b"second exact frame"],
     )?;
-    assert!(
-        db.execute(
-            "INSERT INTO frames(transfer,number,raw) VALUES ('legacy',8,x'00')",
-            []
-        )
-        .is_err()
-    );
+    {
+        let refusal = db
+            .execute(
+                "INSERT INTO frames(transfer,number,raw) VALUES ('legacy',8,x'00')",
+                [],
+            )
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(
+                &refusal,
+                rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error {
+                        code: rusqlite::ErrorCode::ConstraintViolation,
+                        ..
+                    },
+                    _
+                )
+            ),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     db.execute("UPDATE sqlite_sequence SET seq=900 WHERE name='frames'", [])?;
     db.execute("UPDATE machine_activity SET time=123", [])?;
     let before = snapshot(&db)?;
@@ -46,11 +65,11 @@ fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_
     assert_eq!(after.remove("poll_intents"), Some(Vec::new()));
     assert_eq!(after.remove("poll_intent_history"), Some(Vec::new()));
     assert_eq!(after, before);
-    assert!(store.db.execute("UPDATE frames SET raw=x'00'", []).is_err());
-    assert!(store.db.execute("DELETE FROM frames", []).is_err());
+    assert_constraint(store.db.execute("UPDATE frames SET raw=x'00'", []));
+    assert_constraint(store.db.execute("DELETE FROM frames", []));
     assert!(matches!(
         FrameSequence::new(32, 31),
-        Err(Error::InvalidInput)
+        Err(Error::InvalidReceiptInput)
     ));
     let transfer = Identifier::new("legacy")?;
     assert_eq!(
@@ -165,17 +184,35 @@ fn adr0003_v7_bad_owner_rolls_back_and_unknown_sql_values_are_never_defaulted() 
         6
     );
     assert_eq!(snapshot(&db)?, before);
-    assert!(
-        db.query_row("SELECT 'unknown'", [], |row| row.get::<_, DeliveryState>(0))
-            .is_err()
-    );
-    assert!(
-        db.query_row("SELECT 'unknown'", [], |row| row.get::<_, DeliveryKind>(0))
-            .is_err()
-    );
-    assert!(
-        db.query_row("SELECT 'unknown'", [], |row| row.get::<_, SqlOrderState>(0))
-            .is_err()
-    );
+    {
+        let refusal = db
+            .query_row("SELECT 'unknown'", [], |row| row.get::<_, DeliveryState>(0))
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, rusqlite::Error::FromSqlConversionFailure(_, _, _)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+    {
+        let refusal = db
+            .query_row("SELECT 'unknown'", [], |row| row.get::<_, DeliveryKind>(0))
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, rusqlite::Error::FromSqlConversionFailure(_, _, _)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+    {
+        let refusal = db
+            .query_row("SELECT 'unknown'", [], |row| row.get::<_, SqlOrderState>(0))
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, rusqlite::Error::FromSqlConversionFailure(_, _, _)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }

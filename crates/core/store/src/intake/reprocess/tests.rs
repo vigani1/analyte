@@ -37,11 +37,16 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
         },
     };
     store.db.execute_batch("CREATE TRIGGER fail_reprocess_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
-    assert!(
-        store
+    {
+        let refusal = store
             .reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![]))
-            .is_err()
-    );
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::ConstraintViolation(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert!(store.interpretation(metadata.id, 2)?.is_none());
     assert!(
         store
@@ -198,7 +203,7 @@ fn mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_orig
             policy,
             |_, _| Ok(vec![])
         ),
-        Err(Error::InvalidInput)
+        Err(Error::AuditMismatch)
     ));
     assert!(store.interpretation(metadata.id, 2)?.is_none());
     assert!(store.audits(0)?.is_empty());

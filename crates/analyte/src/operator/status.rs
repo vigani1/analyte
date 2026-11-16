@@ -160,7 +160,7 @@ mod tests {
                 store.evaluate_alert(
                     &analyte_store::AlertKey::MachineSilent(
                         analyte_model::Identifier::new("busy")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(analyte_store::Error::Text)?,
                     ),
                     "analyzer operator",
                     true,

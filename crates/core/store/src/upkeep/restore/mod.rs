@@ -41,7 +41,7 @@ impl Store {
         deadline: Instant,
     ) -> Result<PathBuf, Error> {
         if audit.action.as_str() != "store-restore" {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         limits.validate()?;
         let lock = Self::lock(path, true)?;
@@ -156,7 +156,7 @@ impl Store {
     /// Refuses a wrong audit action or a store that is not paused.
     pub fn resume_after_restore(&mut self, audit: &Audit) -> Result<(), Error> {
         if audit.action.as_str() != "orders-resume-after-restore" {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         let encoded = self.encode(audit)?;
         self.capacity(encoded.len())?;

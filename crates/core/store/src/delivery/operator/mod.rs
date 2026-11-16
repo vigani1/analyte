@@ -64,7 +64,7 @@ impl Store {
         let rows = statement.query_map(
             params![
                 after,
-                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidDeliveryInput)?
             ],
             |row| {
                 Ok((
@@ -114,7 +114,7 @@ impl Store {
         if audit.action.as_str() != "delivery-resend"
             || !audit.targets.iter().any(|item| item.as_str() == target)
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         let encoded = self.encode(audit)?;
         self.capacity(encoded.len())?;

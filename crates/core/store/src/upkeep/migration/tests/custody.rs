@@ -81,19 +81,17 @@ fn adr0003_v6_every_state_owner_and_parking_shape_migrates_without_losing_meanin
     );
     store.db.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app','new-order','machine','1',?1,102,102,'new')",[SqlOrderState(OrderState::Sending)])?;
     assert_eq!(store.db.last_insert_rowid(), 1001);
-    assert!(
+    assert_constraint(
         store
             .db
-            .execute("UPDATE machine_order_history SET owner_id='changed'", [])
-            .is_err()
+            .execute("UPDATE machine_order_history SET owner_id='changed'", []),
     );
-    assert!(
+    assert_constraint(
         store
             .db
-            .execute("UPDATE parked SET original_evidence='changed'", [])
-            .is_err()
+            .execute("UPDATE parked SET original_evidence='changed'", []),
     );
-    assert!(store.db.execute("DELETE FROM parked", []).is_err());
+    assert_constraint(store.db.execute("DELETE FROM parked", []));
     drop(store);
     assert_eq!(
         open(&path)?
@@ -249,7 +247,7 @@ fn mutation_adr0003_migration_canonical_parking_limit_is_inclusive_and_refusal_r
             assert_eq!(retained, original);
         } else {
             assert!(
-                matches!(result,Err(Error::MigrationEvidence{table:"parked",row:1,cause}) if matches!(*cause,Error::InvalidInput))
+                matches!(result,Err(Error::MigrationEvidence{table:"parked",row:1,cause}) if matches!(*cause,Error::InvalidMaintenanceInput))
             );
             assert_eq!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,

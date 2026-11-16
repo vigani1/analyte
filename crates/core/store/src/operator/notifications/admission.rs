@@ -19,7 +19,7 @@ impl Store {
         capacity: usize,
     ) -> Result<bool, Error> {
         if !(60..=86400).contains(&reminder_seconds) || !(1..=4096).contains(&capacity) {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOperatorInput);
         }
         let cursor: i64 = self.db.query_row(
             "SELECT cursor FROM alert_endpoints WHERE id=?1",
@@ -33,7 +33,8 @@ impl Store {
             [endpoint.as_str()],
             |r| r.get(0),
         )?;
-        let full = u64::from(count) >= u64::try_from(capacity).map_err(|_| Error::InvalidInput)?;
+        let full =
+            u64::from(count) >= u64::try_from(capacity).map_err(|_| Error::InvalidOperatorInput)?;
         tx.execute(
             "UPDATE alert_endpoints SET queue_full=?2 WHERE id=?1",
             params![endpoint.as_str(), full],
@@ -43,8 +44,8 @@ impl Store {
             return Ok(false);
         }
         let next = now
-            .checked_add(i64::try_from(reminder_seconds).map_err(|_| Error::InvalidInput)?)
-            .ok_or(Error::InvalidInput)?;
+            .checked_add(i64::try_from(reminder_seconds).map_err(|_| Error::InvalidOperatorInput)?)
+            .ok_or(Error::InvalidOperatorInput)?;
         if let Some(transition) = transition {
             let state = transition.state;
             let condition = crate::key(&state.key)?;

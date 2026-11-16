@@ -392,3 +392,26 @@ covers the receipt; distinct known samples establish separation only when source
 order evidence does not contradict them. Missing evidence, excessive histories
 and cache-version inconsistencies remain unknown and block deletion. Explicit
 poll receipt targets can establish separation; machine-only legacy targets cannot.
+
+## Error recovery
+
+`Busy` preserves SQLite BUSY/LOCKED codes and diagnostics: the refused operation
+has not committed. Retry with the original identity after contention clears.
+`Timeout` means a submitted worker operation may have committed; reconcile that
+identity before deciding what to do. `ConstraintViolation` preserves SQLite's
+extended constraint code and source, separately from application identity/state
+`Conflict`. These distinctions follow [SQLite result codes](https://www.sqlite.org/rescode.html)
+and [transaction completion](https://www.sqlite.org/lang_transaction.html).
+
+`AuditMismatch` requires corrected authorization, and `LimitExceeded { what }`
+names a configured bound. Other input refusals name their boundary: limits,
+receipt, interpretation, delivery, order, operator, maintenance or host command.
+`Text` retains the model's precise bounded-text cause. Encoding refusals retain
+the original JSON error, including its I/O category for bounded serialization.
+
+Migrations are ordered in `src/upkeep/migration/mod.rs`; every step checks
+integrity, and transactional conversions also check before commit.
+`src/upkeep/current-schema.sql` records the current objects (excluding SQLite's
+internal objects), ordered by type and name. `current_schema_matches_fresh_store`
+compares these definitions with a freshly opened store, normalizing line endings
+only. Update the file deliberately alongside any future schema migration.

@@ -116,20 +116,25 @@ fn adr0004_cancel_expiry_version_trust_and_builder_failure_never_reserve() -> Te
         );
     }
     store.order_page(&page(1, "requested", false, 200)?)?;
-    assert!(
-        store
+    {
+        let refusal = store
             .reject_unsent(
                 &OrderReservation {
                     identity: &identity()?,
                     version: NonZeroU64::MIN,
                     now: 101,
-                    freshness: 30
+                    freshness: 30,
                 },
                 SourceText::new("mapping rejected")?,
-                |_| Err(Error::InvalidInput)
+                |_| Err(Error::InvalidOrderInput),
             )
-            .is_err()
-    );
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::InvalidOrderInput),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert!(
         store
             .machine_orders(&MachineOrderFilter {

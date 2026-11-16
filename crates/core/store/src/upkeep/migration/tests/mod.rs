@@ -51,19 +51,9 @@ fn verify_plan11_v1_evidence(
         "audit",
         "outbox",
     ] {
-        assert!(
-            migrated
-                .db
-                .execute(&format!("DELETE FROM {table}"), [])
-                .is_err()
-        );
+        assert_constraint(migrated.db.execute(&format!("DELETE FROM {table}"), []));
     }
-    assert!(
-        migrated
-            .db
-            .execute("UPDATE outbox SET payload=x'00'", [])
-            .is_err()
-    );
+    assert_constraint(migrated.db.execute("UPDATE outbox SET payload=x'00'", []));
     Ok(())
 }
 
@@ -189,7 +179,7 @@ fn verify_adr0003_migrated_custody_reconciliation(store: &mut Store, guards: &[i
                 .get::<_, i64>(0))?,
         134
     );
-    assert!(store.db.execute("DELETE FROM poll_intents", []).is_err());
+    assert_constraint(store.db.execute("DELETE FROM poll_intents", []));
     Ok(())
 }
 

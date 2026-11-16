@@ -27,14 +27,14 @@ impl Store {
             || outcomes.len() > order.items.len()
             || order.items.is_empty()
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOrderInput);
         }
         let mut seen = std::collections::HashSet::new();
         for outcome in outcomes {
             if !seen.insert(outcome.index)
                 || !order.items.iter().any(|item| item.index == outcome.index)
             {
-                return Err(Error::InvalidInput);
+                return Err(Error::InvalidOrderInput);
             }
         }
         let cancelling = order.state == OrderState::CancelRequested;
@@ -53,7 +53,7 @@ impl Store {
             } else {
                 item.state = item_decision(item, ItemDecision::Uncertain)?;
                 item.source_code =
-                    SourceText::new("exchange-answer-missing").map_err(|_| Error::InvalidInput)?;
+                    SourceText::new("exchange-answer-missing").map_err(Error::Text)?;
             }
             item.updated_at = now;
             write_item(&tx, item, limit)?;
@@ -130,5 +130,5 @@ fn outcome_summary(items: &[MachineOrderItem], refused: bool) -> Result<SourceTe
         })
         .collect::<Vec<_>>()
         .join("; ");
-    SourceText::new(&format!("{prefix}: {summary}")).map_err(|_| Error::InvalidInput)
+    SourceText::new(&format!("{prefix}: {summary}")).map_err(Error::Text)
 }

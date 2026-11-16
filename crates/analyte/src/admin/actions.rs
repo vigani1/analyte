@@ -60,7 +60,7 @@ pub(super) async fn deliveries(
         .store
         .request(deadline(), move |s| {
             s.deliveries(
-                i64::try_from(cursor.after).map_err(|_| analyte_store::Error::InvalidInput)?,
+                i64::try_from(cursor.after).map_err(|_| analyte_store::Error::InvalidHostInput)?,
             )
         })
         .await;

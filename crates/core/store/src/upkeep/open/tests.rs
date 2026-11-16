@@ -1,6 +1,7 @@
 //! Tests database opening and stored settings.
 use super::*;
 use crate::startup::Progress;
+use crate::test_support::assert_constraint;
 use crate::test_support::{Space, TestResult, limits};
 use std::{
     sync::{
@@ -351,7 +352,7 @@ fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_gua
                     .raw,
                 vec![1, 2, 3]
             );
-            assert!(store.db.execute("DELETE FROM receipts", []).is_err());
+            assert_constraint(store.db.execute("DELETE FROM receipts", []));
         }
         let provenance = crate::FrameProvenance {
             machine: metadata.machine,
@@ -509,5 +510,28 @@ fn migrate_fixture_to_version(db: &mut Connection, version: i64) -> TestResult {
     if version >= 9 {
         Store::migrate_v9(db, 65_536)?;
     }
+    Ok(())
+}
+
+#[test]
+fn current_schema_matches_fresh_store() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let store = Store::open(
+        &dir.path().join("schema.db"),
+        limits(),
+        Box::new(Space(u64::MAX)),
+    )?;
+    let mut statement = store.db.prepare("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name")?;
+    let actual = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|sql| format!("{sql};\n"))
+        .collect::<String>();
+    let expected = include_str!("../current-schema.sql")
+        .split_once('\n')
+        .expect("schema header")
+        .1;
+    assert_eq!(actual.replace("\r\n", "\n"), expected.replace("\r\n", "\n"));
     Ok(())
 }

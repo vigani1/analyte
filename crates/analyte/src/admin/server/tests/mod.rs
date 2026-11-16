@@ -263,8 +263,7 @@ async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
             )?;
             store.evaluate_alert(
                 &analyte_store::AlertKey::MachineSilent(
-                    Identifier::new("<busy&machine>")
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    Identifier::new("<busy&machine>").map_err(analyte_store::Error::Text)?,
                 ),
                 "analyzer operator",
                 true,
@@ -290,14 +289,13 @@ async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
             for order in ["first", "second"] {
                 seed_overview_order(store, order)?;
             }
-            let id = |value| Identifier::new(value).map_err(|_| analyte_store::Error::InvalidInput);
+            let id = |value| Identifier::new(value).map_err(analyte_store::Error::Text);
             store.audit(&analyte_store::Audit {
                 actor: id("operator")?,
                 action: id("store-restore")?,
                 targets: Vec::new(),
                 time: 103,
-                reason: Reason::new("synthetic restore")
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+                reason: Reason::new("synthetic restore").map_err(analyte_store::Error::Text)?,
             })?;
             Ok(())
         })
@@ -309,13 +307,13 @@ fn seed_overview_order(
     store: &mut analyte_store::Store,
     order: &str,
 ) -> Result<(), analyte_store::Error> {
-    let id = |value| Identifier::new(value).map_err(|_| analyte_store::Error::InvalidInput);
+    let id = |value| Identifier::new(value).map_err(analyte_store::Error::Text);
     let raw = b"protected-raw-never-log";
     let config = b"synthetic-config";
     store.receive(
         &analyte_model::ReceiptMetadata {
             id: analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())
-                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                .map_err(|_| analyte_store::Error::InvalidHostInput)?,
             raw_digest: analyte_model::Digest(analyte_contract::content_digest(raw)),
             connection: id("synthetic")?,
             machine: id("<script>alert('hostile')&\"</script>")?,
@@ -326,7 +324,7 @@ fn seed_overview_order(
             config_version: id("1")?,
             config_digest: analyte_model::Digest(analyte_contract::content_digest(config)),
             received_at: jiff::Timestamp::from_second(if order == "first" { 100 } else { 200 })
-                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                .map_err(|_| analyte_store::Error::InvalidHostInput)?,
         },
         raw,
         config,
@@ -339,7 +337,7 @@ fn seed_overview_order(
                     orders: vec![analyte_store::CachedOrder {
                         id: id(order)?,
                         sample: analyte_model::SampleId::new("<script>sample</script>")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(|_| analyte_store::Error::InvalidHostInput)?,
                         document: "{\"version\":1,\"state\":\"requested\",\"tombstone\":false,\"tests\":[{\"namespace\":\"local\",\"value\":\"test\"}]}"
                             .into(),
                         tombstone: false,
@@ -365,13 +363,12 @@ fn seed_overview_order(
     store.transition_order(
         reserved.id,
         OrderState::Uncertain,
-        analyte_model::SourceText::new("timeout")
-            .map_err(|_| analyte_store::Error::InvalidInput)?,
+        analyte_model::SourceText::new("timeout").map_err(analyte_store::Error::Text)?,
         102,
         |order| {
             Ok(analyte_store::OrderEventDelivery {
                 id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7())
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    .map_err(|_| analyte_store::Error::InvalidHostInput)?,
                 destination: order.key.destination.clone(),
                 order_id: order.key.order.clone(),
                 payload: b"protected-payload-never-log".to_vec(),

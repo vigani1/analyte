@@ -117,17 +117,22 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
         event,
     )?;
     assert_eq!(uncertain.state, OrderState::Uncertain);
-    assert!(
-        store
+    {
+        let refusal = store
             .transition_order(
                 reserved.id,
                 OrderState::Requested,
                 SourceText::new("invalid")?,
                 103,
-                event
+                event,
             )
-            .is_err()
-    );
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::OrderTransition(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     drop(store);
     verify_adr0004_restart_and_reconciliation(&path, reserved.id)
 }
@@ -334,26 +339,36 @@ fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() 
             decision: ItemDecision::Accepted,
             code: SourceText::new("OK").expect("constant code"),
         });
-        assert!(
-            store
+        {
+            let refusal = store
                 .finish_order_items(record.id, &outcomes, 102, event)
-                .is_err()
-        );
+                .map(|_| ())
+                .expect_err("input must be refused");
+            assert!(
+                matches!(&refusal, Error::InvalidOrderInput),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
-    assert!(
-        store
+    {
+        let refusal = store
             .finish_order_items(
                 record.id,
                 &[ItemOutcome {
                     index: 1,
                     decision: ItemDecision::CancelConfirmed,
-                    code: SourceText::new("CR")?
+                    code: SourceText::new("CR")?,
                 }],
                 102,
-                event
+                event,
             )
-            .is_err()
-    );
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::OrderTransition(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert_eq!(
         store
             .db
@@ -468,17 +483,27 @@ fn law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart() -> T
             },
         )?
         .map_err(std::io::Error::other)?;
-    assert!(
-        store
+    {
+        let refusal = store
             .retain_order_command(&key, &Identifier::new("other")?, b"wrong-owner".to_vec())
-            .is_err()
-    );
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::Conflict),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     store.retain_order_command(&key, &owner, b"synthetic original command".to_vec())?;
-    assert!(
-        store
+    {
+        let refusal = store
             .retain_order_command(&key, &owner, b"changed command".to_vec())
-            .is_err()
-    );
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::Conflict),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     let placer = record.items.first().ok_or("item")?.placer.clone();
     assert!(
         store

@@ -3,11 +3,11 @@ use crate::test_support::*;
 use crate::*;
 
 #[test]
-fn adr0003_rule7_sqlite_lock_failures_remain_specific_timeouts() -> TestResult {
+fn adr0003_rule7_sqlite_lock_failures_remain_specific_busy_failures() -> TestResult {
     // SQLite result codes 5 and 6 are BUSY and LOCKED. No wall-clock wait is needed.
     for code in [5, 6] {
         let error = rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), None);
-        assert!(matches!(Error::from(error), Error::Timeout));
+        assert!(matches!(Error::from(error), Error::Busy(_)));
     }
     Ok(())
 }
@@ -26,9 +26,9 @@ fn adr0003_storage_failures_distinguish_full_corrupt_conflict_and_unknown() -> T
             None,
         ));
         match expected {
-            "full" => assert!(matches!(error, Error::DiskFull)),
+            "full" => assert!(matches!(error, Error::DiskFull(_))),
             "corrupt" => assert!(matches!(error, Error::Corruption)),
-            "conflict" => assert!(matches!(error, Error::Conflict)),
+            "conflict" => assert!(matches!(error, Error::ConstraintViolation(_))),
             _ => unreachable!("fixed test cases"),
         }
     }
@@ -57,7 +57,7 @@ fn mutation_rule7_lib_limits_validate_each_field_and_include_thirty_seconds() ->
         if valid {
             result?;
         } else {
-            assert!(matches!(result, Err(Error::InvalidInput)));
+            assert!(matches!(result, Err(Error::InvalidLimits)));
         }
     }
     Ok(())
@@ -80,10 +80,10 @@ fn mutation_adr0003_rule1_lib_sqlite_errors_keep_specific_recovery_actions() -> 
             Some("synthetic failure".into()),
         ));
         assert!(match code {
-            ffi::SQLITE_FULL => matches!(error, Error::DiskFull),
+            ffi::SQLITE_FULL => matches!(error, Error::DiskFull(_)),
             ffi::SQLITE_CORRUPT | ffi::SQLITE_NOTADB => matches!(error, Error::Corruption),
-            ffi::SQLITE_CONSTRAINT => matches!(error, Error::Conflict),
-            ffi::SQLITE_BUSY | ffi::SQLITE_LOCKED => matches!(error, Error::Timeout),
+            ffi::SQLITE_CONSTRAINT => matches!(error, Error::ConstraintViolation(_)),
+            ffi::SQLITE_BUSY | ffi::SQLITE_LOCKED => matches!(error, Error::Busy(_)),
             ffi::SQLITE_IOERR =>
                 matches!(error,Error::Sqlite(rusqlite::Error::SqliteFailure(cause,Some(message))) if cause.extended_code==code && message=="synthetic failure"),
             _ => unreachable!(),
@@ -117,7 +117,16 @@ fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestRe
     };
     assert_eq!(writer.write(b"ab")?, 2);
     assert_eq!(writer.write(b"c")?, 1);
-    assert!(writer.write(b"d").is_err());
+    {
+        let refusal = writer
+            .write(b"d")
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            refusal.kind() == std::io::ErrorKind::Other,
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert_eq!(writer.bytes, b"abc");
     writer.flush()?;
     let temp = tempfile::tempdir()?;
@@ -125,7 +134,16 @@ fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestRe
     store.limits.record_bytes = 5;
     assert_eq!(store.encode(&"001")?, r#""001""#);
     store.limits.record_bytes = 4;
-    assert!(store.encode(&"001").is_err());
+    {
+        let refusal = store
+            .encode(&"001")
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::Json(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert!(OrderTrust::Trusted { age: 0 }.is_trusted());
     for trust in [
         OrderTrust::Stale { age: 1 },
@@ -136,4 +154,26 @@ fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestRe
         assert!(!trust.is_trusted());
     }
     Ok(())
+}
+
+#[test]
+fn sqlite_result_codes_preserve_lock_and_constraint_causes() {
+    use std::error::Error as _;
+    for code in [
+        rusqlite::ffi::SQLITE_BUSY,
+        rusqlite::ffi::SQLITE_LOCKED,
+        rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE,
+    ] {
+        let error = Error::from(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(code),
+            Some("synthetic diagnostic".into()),
+        ));
+        let source = error
+            .source()
+            .and_then(|source| source.downcast_ref::<rusqlite::Error>())
+            .expect("original SQLite source");
+        assert!(
+            matches!(source, rusqlite::Error::SqliteFailure(cause, Some(message)) if cause.extended_code == code && message == "synthetic diagnostic")
+        );
+    }
 }

@@ -55,7 +55,8 @@ impl Store {
             .query_map(
                 params![
                     after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(self.limits.page_rows)
+                        .map_err(|_| Error::InvalidInterpretationInput)?
                 ],
                 |r| {
                     Ok((
@@ -100,7 +101,8 @@ impl Store {
                 order,
                 item,
                 after,
-                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                i64::try_from(self.limits.page_rows)
+                    .map_err(|_| Error::InvalidInterpretationInput)?
             ],
             |r| {
                 Ok((

@@ -178,7 +178,18 @@ fn adr0003_0010_law_projection_commit_failure_leaves_raw_pending_and_retry_safe(
     let order = setup(&mut store)?;
     let custody = notice(&order, AwosExecution::AnalyzerCancelled, "ca")?;
     store.db.execute_batch("CREATE TRIGGER fail_execution BEFORE INSERT ON awos_execution_history BEGIN SELECT RAISE(ABORT,'synthetic disk failure'); END;")?;
-    assert!(commit(&mut store, &custody, b"ca").is_err());
+    {
+        let refusal = commit(&mut store, &custody, b"ca")
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(
+                refusal.downcast_ref::<Error>(),
+                Some(Error::ConstraintViolation(_))
+            ),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     for table in [
         "interpretations",
         "law_messages",

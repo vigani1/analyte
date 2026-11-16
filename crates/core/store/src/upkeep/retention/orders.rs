@@ -32,22 +32,23 @@ pub(super) fn batch(
     run: &mut PurgeRun,
     limits: &crate::Limits,
 ) -> Result<(), Error> {
-    let days = run.days.ok_or(Error::InvalidInput)?;
+    let days = run.days.ok_or(Error::InvalidMaintenanceInput)?;
     let cutoff = run
         .time
         .checked_sub(
             i64::from(days)
                 .checked_mul(86400)
-                .ok_or(Error::InvalidInput)?,
+                .ok_or(Error::InvalidMaintenanceInput)?,
         )
-        .ok_or(Error::InvalidInput)?;
+        .ok_or(Error::InvalidMaintenanceInput)?;
     let mut statement=db.prepare("SELECT id FROM machine_orders WHERE machine=?1 AND (?2 IS NULL OR id>?2) ORDER BY id LIMIT ?3")?;
     let candidates = statement
         .query_map(
             params![
                 run.machine.as_str(),
                 run.order_after,
-                i64::try_from(limits.page_rows.min(16)).map_err(|_| Error::InvalidInput)?
+                i64::try_from(limits.page_rows.min(16))
+                    .map_err(|_| Error::InvalidMaintenanceInput)?
             ],
             |r| r.get::<_, i64>(0),
         )?
@@ -57,11 +58,14 @@ pub(super) fn batch(
     for id in candidates {
         if eligible(db, id, cutoff, limits)? {
             let deliveries = purge(db, credential, id, run.time, limits.record_bytes)?;
-            run.orders = run.orders.checked_add(1).ok_or(Error::InvalidInput)?;
+            run.orders = run
+                .orders
+                .checked_add(1)
+                .ok_or(Error::InvalidMaintenanceInput)?;
             run.deliveries = run
                 .deliveries
                 .checked_add(deliveries)
-                .ok_or(Error::InvalidInput)?;
+                .ok_or(Error::InvalidMaintenanceInput)?;
             run.order_range = Some((run.order_range.map_or(id, |range| range.0), id));
         }
     }
@@ -111,7 +115,7 @@ fn purge(
     let sample: Option<String> = db
         .query_row(
             "SELECT CASE WHEN length(CAST(sample AS BLOB))<=?3 THEN sample END FROM orders WHERE destination=?1 AND id=?2",
-            params![destination, order, i64::try_from(limit).map_err(|_|Error::InvalidInput)?],
+            params![destination, order, i64::try_from(limit).map_err(|_|Error::InvalidMaintenanceInput)?],
             |r| r.get(0),
         )
         .optional()?;
@@ -121,7 +125,7 @@ fn purge(
     let original: Option<String> = db
         .query_row(
             "SELECT CASE WHEN length(CAST(evidence AS BLOB))<=?3 THEN evidence END FROM orders WHERE destination=?1 AND id=?2",
-            params![destination, order, i64::try_from(limit).map_err(|_|Error::InvalidInput)?],
+            params![destination, order, i64::try_from(limit).map_err(|_|Error::InvalidMaintenanceInput)?],
             |r| r.get(0),
         )
         .optional()?;
