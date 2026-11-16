@@ -510,7 +510,7 @@ Load evidence (three concurrent full delivery processes, 20 total invocations):
   from shared support and limited to HL7 send-ahead and LAW send-ahead setup.
 - Additional CI-shaped reproduction: nextest 0.9.150, workspace/all features,
   partition `count:1/2`, four test threads: 604 passed. Three competing nextest
-  processes, each constrained to CPUs 0–3, each repeated that shard three times:
+  processes, each constrained to CPUs 0 to 3, each repeated that shard three times:
   all nine iterations passed (604 tests per iteration). ASTM passed all nine.
 - Final all-features delivery nextest run: 129 passed, one existing ignored test.
 
@@ -528,7 +528,7 @@ for the before run, then restoring the final source for the after run:
 
 A new **production-code test timing seam** is explicitly included:
 `Program::set_loopback_poll_interval_for_test`. It requires an existing loopback
-destination override, bounds the interval to 1 ms–5 s and changes only that
+destination override, bounds the interval to 1 ms to 5 s and changes only that
 in-memory test program. Production entry points reject the required override.
 The new `plan11_loopback_poll_override_keeps_production_defaults_and_refuses_unbounded_waits`
 test checks refusal, bounds, unchanged default and production rejection. The
