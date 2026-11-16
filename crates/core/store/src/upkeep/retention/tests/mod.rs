@@ -319,7 +319,7 @@ fn adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate() -> TestRe
             analyte_model::Revision(0)
         )]
     );
-    assert!(store.db.execute("DELETE FROM receipts", []).is_err());
+    assert_constraint(store.db.execute("DELETE FROM receipts", []));
     drop(store);
     let mut store = open(&path)?;
     assert!(matches!(
@@ -409,7 +409,7 @@ fn adr0013_item4_crash_mid_batch_rolls_back_data_tombstones_and_guards() -> Test
                 .get::<_, i64>(0))?,
         0
     );
-    assert!(store.db.execute("DELETE FROM receipts", []).is_err());
+    assert_constraint(store.db.execute("DELETE FROM receipts", []));
     Store::integrity(&store.db)?;
     Ok(())
 }
@@ -536,7 +536,13 @@ fn adr0013_item4_audit_failure_rolls_back_purge_and_restores_guards() -> TestRes
         86500,
         Instant::now().checked_add(HANG_GUARD).ok_or("deadline")?,
     );
-    assert!(result.is_err());
+    {
+        let refusal = result.map(|_| ()).expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::ConstraintViolation(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert!(store.receipt(id)?.is_some());
     assert_eq!(
         store
@@ -545,7 +551,7 @@ fn adr0013_item4_audit_failure_rolls_back_purge_and_restores_guards() -> TestRes
                 .get::<_, i64>(0))?,
         0
     );
-    assert!(store.db.execute("DELETE FROM receipts", []).is_err());
+    assert_constraint(store.db.execute("DELETE FROM receipts", []));
     Store::integrity(&store.db)?;
     Ok(())
 }

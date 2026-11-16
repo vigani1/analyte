@@ -41,7 +41,10 @@ fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> R
         "priority",
     ] {
         assert!(
-            load(&LAW.replace(&format!("{flag} = false"), "")).is_err(),
+            matches!(
+                load(&LAW.replace(&format!("{flag} = false"), "")),
+                Err(Error::Schema { .. })
+            ),
             "{flag}"
         );
         let changed = load(&LAW.replace(&format!("{flag} = false"), &format!("{flag} = true")))?;
@@ -79,7 +82,16 @@ fn law_tf2b_2_2_config_rejects_impossible_stack_combinations() {
         LAW.replace("acknowledgment = \"store_and_forward\"", ""),
         LAW.replace("kind = \"hl7_v2\"", "kind = \"astm_lis02\""),
     ] {
-        assert!(load(&bad).is_err(), "invalid LAW stack accepted");
+        assert!(
+            matches!(
+                load(&bad),
+                Err(Error::IncompatibleStack { .. }
+                    | Error::ProtocolSettings { .. }
+                    | Error::Schema { .. }
+                    | Error::Invalid { .. })
+            ),
+            "invalid LAW stack accepted"
+        );
     }
 }
 
@@ -94,16 +106,31 @@ fn law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms
         "[\"isolate\"]",
         "[\"container\", \"all_pending\", \"container\"]",
     ] {
-        assert!(load(&LAW.replace("[\"container\", \"all_pending\"]", forms)).is_err());
+        {
+            let Err(refusal) = load(&LAW.replace("[\"container\", \"all_pending\"]", forms)) else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(&refusal, Error::Schema { .. } | Error::Invalid { .. }),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
     for forms in ["[\"container\"]", "[\"all_pending\"]"] {
         load(&LAW.replace("[\"container\", \"all_pending\"]", forms))?;
     }
     for key in ["query_deadline_ms", "response_ms"] {
         for value in [0, 60_001] {
-            assert!(
-                load(&LAW.replace(&format!("{key} = 1500"), &format!("{key} = {value}"))).is_err()
-            );
+            {
+                let refusal =
+                    load(&LAW.replace(&format!("{key} = 1500"), &format!("{key} = {value}")))
+                        .map(|_| ())
+                        .expect_err("input must be refused");
+                assert!(
+                    matches!(&refusal, Error::Schema { .. } | Error::Invalid { .. }),
+                    "unexpected refusal: {refusal:?}"
+                );
+            }
         }
         for value in [1, 60_000] {
             load(&LAW.replace(&format!("{key} = 1500"), &format!("{key} = {value}")))?;
@@ -154,10 +181,18 @@ fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() ->
             "specimen_types = []",
         ),
     ] {
-        assert!(load(&bad).is_err());
+        {
+            let Err(refusal) = load(&bad) else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(&refusal, Error::Invalid { .. }),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
-    assert!(
-        load(&format!(
+    {
+        let Err(refusal) = load(&format!(
             "{LAW}\n{}",
             layout
                 .split("[orders]")
@@ -166,9 +201,14 @@ fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() ->
                     reason: "LAW test requires LAW stack",
                     path: "fixture".into()
                 })?
-        ))
-        .is_err()
-    );
+        )) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }
 
@@ -227,15 +267,20 @@ fn adr0002_law_overrides_replace_policy_and_change_protected_provenance() -> Res
     assert_eq!(law(&config)?.policy().query_deadline_ms(), 2500);
     assert_ne!(config.digest(), load(LAW)?.digest());
     let invalid = replacement.replace("query_deadline_ms = 2500", "query_deadline_ms = 0");
-    assert!(
-        Draft::load(
+    {
+        let Err(refusal) = Draft::load(
             ("law.toml", LAW),
             ("site.toml", SITE),
-            ("overrides", &invalid)
+            ("overrides", &invalid),
         )?
-        .validate()
-        .is_err()
-    );
+        .validate() else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }
 
@@ -255,10 +300,45 @@ fn law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpo
     let independent =
         unsupported.replace("[law]", "[law]\noutbound_endpoint = \"127.0.0.1:15100\"");
     load(&independent)?;
-    assert!(load(&independent.replace("kind = \"tcp_server\"", "kind = \"tcp_client\"")).is_err());
-    assert!(load(&independent.replace("127.0.0.1:15100", "0.0.0.0:0")).is_err());
-    assert!(load(&independent.replace("independent_per_transaction", "persistent")).is_err());
-    assert!(load(&LAW.replace("connection_mode = \"persistent\"", "")).is_err());
+    {
+        let Err(refusal) =
+            load(&independent.replace("kind = \"tcp_server\"", "kind = \"tcp_client\""))
+        else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+    {
+        let Err(refusal) = load(&independent.replace("127.0.0.1:15100", "0.0.0.0:0")) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+    {
+        let Err(refusal) = load(&independent.replace("independent_per_transaction", "persistent"))
+        else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+    {
+        let Err(refusal) = load(&LAW.replace("connection_mode = \"persistent\"", "")) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Schema { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }
 

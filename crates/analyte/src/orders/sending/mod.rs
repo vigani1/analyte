@@ -274,8 +274,7 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                         store.transition_order(
                             id,
                             OrderState::Uncertain,
-                            SourceText::new("host-restart")
-                                .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            SourceText::new("host-restart").map_err(analyte_store::Error::Text)?,
                             jiff::Timestamp::now().as_second(),
                             super::event,
                         )

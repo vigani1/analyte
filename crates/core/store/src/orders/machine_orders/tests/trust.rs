@@ -255,14 +255,14 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
                 owner: Some(&owner),
                 prepare: Some(&mut |record| -> Result<(), Error> {
                     assert_eq!(
-                        record.items.first().ok_or(Error::InvalidInput)?.placer,
+                        record.items.first().ok_or(Error::InvalidOrderInput)?.placer,
                         format!("{}-1", record.id)
                     );
-                    Err(Error::InvalidInput)
+                    Err(Error::InvalidOrderInput)
                 }),
             }
         ),
-        Err(Error::InvalidInput)
+        Err(Error::InvalidOrderInput)
     ));
     for table in [
         "machine_orders",
@@ -296,7 +296,7 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
                     max_identity_bytes: 18
                 },
                 owner: Some(&owner),
-                prepare: Some(&mut |_| -> Result<(), Error> { Err(Error::InvalidInput) }),
+                prepare: Some(&mut |_| -> Result<(), Error> { Err(Error::InvalidOrderInput) }),
             }
         )?,
         Err(SendRefusal::RestoreUnreconciled)

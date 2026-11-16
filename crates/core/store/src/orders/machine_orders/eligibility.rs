@@ -24,7 +24,7 @@ impl Store {
             .limits
             .page_rows
             .checked_add(1)
-            .ok_or(Error::InvalidInput)?;
+            .ok_or(Error::InvalidOrderInput)?;
         let mut statement = self.db.prepare("SELECT evidence FROM orders o WHERE destination=?1 AND id>?3 AND tombstone=0 AND expiry>?4 AND generation=(SELECT generation FROM feed WHERE destination=?1) AND NOT EXISTS(SELECT 1 FROM machine_orders m WHERE m.destination=o.destination AND m.order_id=o.id AND m.machine=?2) ORDER BY id LIMIT ?5")?;
         let mut encoded = statement
             .query_map(
@@ -33,7 +33,7 @@ impl Store {
                     machine.as_str(),
                     after,
                     now,
-                    i64::try_from(limit).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(limit).map_err(|_| Error::InvalidOrderInput)?
                 ],
                 |row| row.get::<_, String>(0),
             )?
@@ -103,7 +103,7 @@ impl Store {
                     destination.as_str(),
                     machine.as_str(),
                     after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOrderInput)?
                 ],
                 |r| r.get::<_, String>(0),
             )?

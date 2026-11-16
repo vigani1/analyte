@@ -26,7 +26,9 @@ impl Store {
             }
             for (rowid, receipt, version, evidence, metadata) in rows {
                 if evidence.len() > limit || metadata.len() > limit {
-                    return Err(Error::InvalidInput);
+                    return Err(Error::LimitExceeded {
+                        what: "record_bytes",
+                    });
                 }
                 let evidence: Interpretation = serde_json::from_str(&evidence)?;
                 let metadata: analyte_model::ReceiptMetadata = serde_json::from_str(&metadata)?;

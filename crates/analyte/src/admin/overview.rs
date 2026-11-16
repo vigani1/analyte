@@ -277,8 +277,8 @@ mod webhook_tests {
         .await?;
         store
             .request(deadline(), |s| {
-                let endpoint = analyte_model::Identifier::new("relay")
-                    .map_err(|_| analyte_store::Error::InvalidInput)?;
+                let endpoint =
+                    analyte_model::Identifier::new("relay").map_err(analyte_store::Error::Text)?;
                 s.register_alert_endpoint(&endpoint)?;
                 s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,

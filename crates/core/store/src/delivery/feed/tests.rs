@@ -114,7 +114,16 @@ fn adr0004_failed_page_never_advances_its_cursor() -> TestResult {
         tombstone: false,
         expiry: 100,
     });
-    assert!(store.order_page(&page).is_err());
+    {
+        let refusal = store
+            .order_page(&page)
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::ConstraintViolation(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert_eq!(store.cursor(&destination)?, Some("first".into()));
     Ok(())
 }
@@ -171,7 +180,10 @@ fn mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent() 
         id: Identifier::new("order-b")?,
         ..order
     });
-    assert!(matches!(store.order_page(&page), Err(Error::InvalidInput)));
+    assert!(matches!(
+        store.order_page(&page),
+        Err(Error::InvalidDeliveryInput)
+    ));
     store.reset_orders(&destination)?;
     assert!(matches!(
         store.orders(&destination, &sample, 100, 30)?,

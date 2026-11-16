@@ -5,13 +5,12 @@ use analyte_store::{AlertFailure, AlertKey, PendingAlert};
 async fn alert(store: &Handle, now: i64) -> Result<PendingAlert, Box<dyn std::error::Error>> {
     Ok(store
         .request(until()?, move |s| {
-            let endpoint =
-                Identifier::new("relay").map_err(|_| analyte_store::Error::InvalidInput)?;
+            let endpoint = Identifier::new("relay").map_err(analyte_store::Error::Text)?;
             s.register_alert_endpoint(&endpoint)?;
             s.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), now)?;
             s.prepare_alert_event(&endpoint, now, 60, 10)?;
             s.claim_alert_attempt(&endpoint, now, 3, 5, 20)?
-                .ok_or(analyte_store::Error::InvalidInput)
+                .ok_or(analyte_store::Error::InvalidHostInput)
         })
         .await?)
 }
@@ -43,7 +42,7 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
     let retry = store
         .request(until()?, |s| {
             s.claim_alert_attempt(
-                &Identifier::new("relay").map_err(|_| analyte_store::Error::InvalidInput)?,
+                &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
                 105,
                 3,
                 5,
@@ -64,8 +63,7 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
     for (now, active, event_kind) in [(160, true, "reminder"), (161, false, "resolved")] {
         let event = store
             .request(until()?, move |s| {
-                let endpoint =
-                    Identifier::new("relay").map_err(|_| analyte_store::Error::InvalidInput)?;
+                let endpoint = Identifier::new("relay").map_err(analyte_store::Error::Text)?;
                 s.evaluate_alert(
                     &AlertKey::ParkedItems,
                     "Duty officer",
@@ -75,7 +73,7 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
                 )?;
                 s.prepare_alert_event(&endpoint, now, 60, 10)?;
                 s.claim_alert_attempt(&endpoint, now, 3, 5, 20)?
-                    .ok_or(analyte_store::Error::InvalidInput)
+                    .ok_or(analyte_store::Error::InvalidHostInput)
             })
             .await?;
         let body: serde_json::Value = serde_json::from_slice(event.payload())?;
@@ -118,7 +116,7 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     assert!(
         store
             .request(until()?, |s| s.claim_alert_attempt(
-                &Identifier::new("relay").map_err(|_| analyte_store::Error::InvalidInput)?,
+                &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
                 104,
                 3,
                 5,
@@ -138,7 +136,7 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     let retry = store
         .request(until()?, |s| {
             s.claim_alert_attempt(
-                &Identifier::new("relay").map_err(|_| analyte_store::Error::InvalidInput)?,
+                &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
                 105,
                 3,
                 5,
@@ -218,7 +216,7 @@ async fn adr0014_slow_endpoint_never_holds_store_or_clinical_intake() -> TestRes
         assert_eq!(
             store
                 .request(until()?, |s| s.health(
-                    &Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?,
+                    &Identifier::new("app").map_err(analyte_store::Error::Text)?,
                     100,
                     30
                 ))

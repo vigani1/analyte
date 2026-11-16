@@ -75,13 +75,13 @@ fn order_seed(store: &mut Store, state: &str) -> Result<i64, Box<dyn std::error:
 }
 fn order_run(store: &mut Store, now: i64) -> Result<PurgeRun, Error> {
     store.purge_order_batch(
-        &Identifier::new("synthetic-machine").map_err(|_| Error::InvalidInput)?,
+        &Identifier::new("synthetic-machine").map_err(Error::Text)?,
         Some(1),
         None,
         now,
         Instant::now()
             .checked_add(HANG_GUARD)
-            .ok_or(Error::InvalidInput)?,
+            .ok_or(Error::InvalidMaintenanceInput)?,
     )
 }
 #[test]
@@ -117,12 +117,7 @@ fn adr0013_item2_final_orders_purge_only_after_period_and_keep_replay_guard() ->
             crate::ReserveOptions::default(),
         );
         assert!(matches!(result, Err(Error::Purged)));
-        assert!(
-            store
-                .db
-                .execute("DELETE FROM retention_orders", [])
-                .is_err()
-        );
+        assert_constraint(store.db.execute("DELETE FROM retention_orders", []));
         Store::integrity(&store.db)?;
     }
     Ok(())
@@ -204,7 +199,13 @@ fn adr0013_item2_unfinished_items_events_and_linked_receipts_block_order_purge()
         }
         let result = order_run(&mut store, 86500);
         if guard == "audit" {
-            assert!(result.is_err());
+            {
+                let refusal = result.map(|_| ()).expect_err("input must be refused");
+                assert!(
+                    matches!(&refusal, Error::ConstraintViolation(_)),
+                    "unexpected refusal: {refusal:?}"
+                );
+            }
         } else {
             assert_eq!(result?.orders, 0);
         }

@@ -114,7 +114,7 @@ fn mutation_adr0003_rule8_order_reconciliation_checks_target_and_outcome_indepen
         };
         assert!(matches!(
             store.reconcile_order(record.id, outcome, &audit, event),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidOrderInput)
         ));
         assert_eq!(
             store.machine_order(&key)?.ok_or("missing order")?.state,
@@ -235,7 +235,12 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
             if delta == 0 {
                 assert_eq!(result?.state, OrderState::Sent);
             } else {
-                assert!(matches!(result, Err(Error::InvalidInput)));
+                assert!(matches!(
+                    result,
+                    Err(Error::LimitExceeded {
+                        what: "record_bytes"
+                    })
+                ));
                 assert_eq!(
                     store.machine_order(&key)?.ok_or("missing order")?.state,
                     OrderState::Sending
@@ -265,7 +270,12 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
                 assert_eq!(result?.state, OrderState::Accepted);
                 assert_eq!(store.audits(0)?.len(), 1);
             } else {
-                assert!(matches!(result, Err(Error::InvalidInput)));
+                assert!(matches!(
+                    result,
+                    Err(Error::LimitExceeded {
+                        what: "record_bytes"
+                    })
+                ));
                 assert_eq!(
                     store.machine_order(&key)?.ok_or("missing order")?.state,
                     OrderState::Uncertain
@@ -322,12 +332,10 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
                 ];
                 match case {
                     "destination" => {
-                        value.destination =
-                            Identifier::new("wrong").map_err(|_| Error::InvalidInput)?;
+                        value.destination = Identifier::new("wrong").map_err(Error::Text)?;
                     }
                     "order" => {
-                        value.order_id =
-                            Identifier::new("wrong").map_err(|_| Error::InvalidInput)?;
+                        value.order_id = Identifier::new("wrong").map_err(Error::Text)?;
                     }
                     "version" => value.contract_version = 2,
                     "valid" | "large-one" | "large-two" => {}
@@ -343,7 +351,10 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
                 vec![b'x'; 2048]
             );
         } else {
-            assert!(matches!(result, Err(Error::InvalidInput)), "case {case}");
+            assert!(
+                matches!(result, Err(Error::InvalidOrderInput)),
+                "case {case}"
+            );
             let retained = store.machine_order(&key)?.ok_or("missing order")?;
             assert_eq!(retained.state, OrderState::Sending);
             assert_eq!(
@@ -388,7 +399,7 @@ fn mutation_adr0003_rule8_order_command_refuses_empty_bytes_and_keeps_original_a
         .map_err(std::io::Error::other)?;
     assert!(matches!(
         store.retain_order_command(&key, &owner, vec![]),
-        Err(Error::InvalidInput)
+        Err(Error::InvalidOrderInput)
     ));
     assert!(
         store

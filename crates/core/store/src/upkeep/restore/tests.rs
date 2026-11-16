@@ -94,7 +94,7 @@ fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResul
             },
             Box::new(Space(u64::MAX))
         ),
-        Err(Error::InvalidInput)
+        Err(Error::InvalidLimits)
     ));
     let result = Store::restore(
         &path,
@@ -105,7 +105,7 @@ fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResul
         Instant::now() + HANG_GUARD,
     );
     assert!(
-        matches!(result, Err(Error::InvalidInput)),
+        matches!(result, Err(Error::InvalidLimits)),
         "restore accepted invalid zero page limit: {result:?}"
     );
     assert_eq!(

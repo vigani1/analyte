@@ -228,7 +228,7 @@ pub(super) async fn detail(
                 .into_iter()
                 .skip(
                     usize::try_from(cursor.after)
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        .map_err(|_| analyte_store::Error::InvalidHostInput)?,
                 )
                 .take(PAGE)
                 .collect();
@@ -331,7 +331,7 @@ fn read_raw(s: &Store, form: &RawForm) -> Result<Option<RawPage>, analyte_store:
     match form.source {
         Source::Receipt => {
             if form.offset != 0 {
-                return Err(analyte_store::Error::InvalidInput);
+                return Err(analyte_store::Error::InvalidHostInput);
             }
             let Some(id) = receipt_id(&form.target) else {
                 return Ok(None);
@@ -340,20 +340,20 @@ fn read_raw(s: &Store, form: &RawForm) -> Result<Option<RawPage>, analyte_store:
                 return Ok(None);
             };
             let after =
-                usize::try_from(form.after).map_err(|_| analyte_store::Error::InvalidInput)?;
+                usize::try_from(form.after).map_err(|_| analyte_store::Error::InvalidHostInput)?;
             let Some(tail) = receipt.raw.get(after..) else {
-                return Err(analyte_store::Error::InvalidInput);
+                return Err(analyte_store::Error::InvalidHostInput);
             };
             let bytes: Vec<u8> = tail.iter().take(RAW_PAGE).copied().collect();
             let next = after
                 .checked_add(bytes.len())
-                .ok_or(analyte_store::Error::InvalidInput)?;
+                .ok_or(analyte_store::Error::InvalidHostInput)?;
             Ok(Some(RawPage {
                 bytes,
                 next: if next < receipt.raw.len() {
                     Some(RawCursor {
                         after: u64::try_from(next)
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(|_| analyte_store::Error::InvalidHostInput)?,
                         offset: 0,
                     })
                 } else {
@@ -363,28 +363,28 @@ fn read_raw(s: &Store, form: &RawForm) -> Result<Option<RawPage>, analyte_store:
         }
         Source::Frames => {
             let after =
-                i64::try_from(form.after).map_err(|_| analyte_store::Error::InvalidInput)?;
+                i64::try_from(form.after).map_err(|_| analyte_store::Error::InvalidHostInput)?;
             let frames = s.frames(&form.target, after)?;
             let Some(frame) = frames.first() else {
                 return Ok(None);
             };
             let offset =
-                usize::try_from(form.offset).map_err(|_| analyte_store::Error::InvalidInput)?;
+                usize::try_from(form.offset).map_err(|_| analyte_store::Error::InvalidHostInput)?;
             let tail = frame
                 .raw
                 .get(offset..)
-                .ok_or(analyte_store::Error::InvalidInput)?;
+                .ok_or(analyte_store::Error::InvalidHostInput)?;
             let bytes: Vec<_> = tail.iter().take(RAW_PAGE).copied().collect();
             let end = offset
                 .checked_add(bytes.len())
-                .ok_or(analyte_store::Error::InvalidInput)?;
+                .ok_or(analyte_store::Error::InvalidHostInput)?;
             Ok(Some(RawPage {
                 bytes,
                 next: Some(if end < frame.raw.len() {
                     RawCursor {
                         after: form.after,
                         offset: u64::try_from(end)
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(|_| analyte_store::Error::InvalidHostInput)?,
                     }
                 } else {
                     RawCursor {
@@ -439,7 +439,7 @@ pub(super) async fn raw(
                     };
                     let evidence = row.details()?;
                     if !evidence.targets.contains(&form.target) {
-                        return Err(analyte_store::Error::InvalidInput);
+                        return Err(analyte_store::Error::InvalidHostInput);
                     }
                     let page = read_raw(s, &form)?;
                     if page.is_some() {

@@ -109,13 +109,13 @@ async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
             |store| {
                 store.audit(&analyte_store::Audit {
                     actor: analyte_model::Identifier::new("operator")
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        .map_err(analyte_store::Error::Text)?,
                     action: analyte_model::Identifier::new("store-restore")
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        .map_err(analyte_store::Error::Text)?,
                     targets: Vec::new(),
                     time: jiff::Timestamp::now().as_second(),
                     reason: analyte_model::Reason::new("synthetic restore")
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                        .map_err(analyte_store::Error::Text)?,
                 })
             },
         )

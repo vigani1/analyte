@@ -98,7 +98,15 @@ mod tests {
     #[test]
     fn adr0003_legacy_owner_never_normalizes_a_cancellation_version() {
         for version in ["0001", "+1", "0", "invalid"] {
-            assert!(OrderOwner::legacy(&format!("app-cancel:{version}:owner")).is_err());
+            {
+                let refusal = OrderOwner::legacy(&format!("app-cancel:{version}:owner"))
+                    .map(|_| ())
+                    .expect_err("input must be refused");
+                assert!(
+                    matches!(&refusal, Error::Corruption),
+                    "unexpected refusal: {refusal:?}"
+                );
+            }
         }
     }
 }

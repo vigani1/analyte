@@ -285,9 +285,9 @@ impl Store {
             .iter()
             .any(|target| target.as_str() == id.to_string())
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOrderInput);
         }
-        let code = SourceText::new("operator-reconciled").map_err(|_| Error::InvalidInput)?;
+        let code = SourceText::new("operator-reconciled").map_err(Error::Text)?;
         self.change_order(
             id,
             outcome,
@@ -395,7 +395,9 @@ impl Store {
         if let Some(audit) = audit {
             let evidence = crate::document(audit)?;
             if evidence.len() > limit {
-                return Err(Error::InvalidInput);
+                return Err(Error::LimitExceeded {
+                    what: "record_bytes",
+                });
             }
             tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [evidence])?;
         }
@@ -428,7 +430,9 @@ fn append(
 ) -> Result<(), Error> {
     let evidence = crate::document(record)?;
     if evidence.len() > limit {
-        return Err(Error::InvalidInput);
+        return Err(Error::LimitExceeded {
+            what: "record_bytes",
+        });
     }
     let (kind, owner, version) = record.owner.columns();
     tx.execute(
@@ -443,7 +447,7 @@ fn append(
         || event.order_id != record.key.order
         || event.contract_version != 1
     {
-        return Err(Error::InvalidInput);
+        return Err(Error::InvalidOrderInput);
     }
     tx.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?8,?2,?3,?2,?4,?5,?6,?9,0,?7)",params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,digest(&event.payload).0.as_slice(),event.contract_version,record.updated_at,crate::DeliveryKind::OrderEvent,crate::DeliveryState::Pending])?;
     Ok(())
@@ -474,7 +478,7 @@ fn create_items(
     limit: usize,
 ) -> Result<Vec<MachineOrderItem>, Error> {
     if tests.is_empty() || tests.len() > 100 {
-        return Err(Error::InvalidInput);
+        return Err(Error::InvalidOrderInput);
     }
     let groups = match shape {
         OrderItems::Together => vec![tests],
@@ -485,26 +489,26 @@ fn create_items(
                     .iter()
                     .any(|group| group.is_empty() || group.len() > 100)
             {
-                return Err(Error::InvalidInput);
+                return Err(Error::InvalidOrderInput);
             }
             let mut remaining = tests;
             for test in groups.iter().flatten() {
                 let position = remaining
                     .iter()
                     .position(|candidate| candidate == test)
-                    .ok_or(Error::InvalidInput)?;
+                    .ok_or(Error::InvalidOrderInput)?;
                 remaining.remove(position);
             }
             if !remaining.is_empty() {
-                return Err(Error::InvalidInput);
+                return Err(Error::InvalidOrderInput);
             }
             groups.to_vec()
         }
     };
     let mut items = Vec::new();
     for (offset, tests) in groups.into_iter().enumerate() {
-        let index = u16::try_from(offset.checked_add(1).ok_or(Error::InvalidInput)?)
-            .map_err(|_| Error::InvalidInput)?;
+        let index = u16::try_from(offset.checked_add(1).ok_or(Error::InvalidOrderInput)?)
+            .map_err(|_| Error::InvalidOrderInput)?;
         let placer = format!("{}-{index}", order.id);
         if let OrderItems::Groups {
             max_identity_bytes, ..
@@ -539,7 +543,9 @@ fn create_items(
 fn write_item(tx: &Transaction<'_>, item: &MachineOrderItem, limit: usize) -> Result<(), Error> {
     let evidence = crate::document(item)?;
     if evidence.len() > limit {
-        return Err(Error::InvalidInput);
+        return Err(Error::LimitExceeded {
+            what: "record_bytes",
+        });
     }
     tx.execute(
         "UPDATE machine_order_items SET state=?1 WHERE machine_order=?2 AND item_index=?3",

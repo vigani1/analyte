@@ -27,7 +27,8 @@ impl DigestKey {
         crate::digest(&self.0).0
     }
     pub(crate) fn digest(&self, domain: &str, value: &[u8]) -> Result<[u8; 32], Error> {
-        let mut mac = Hmac::<Sha256>::new_from_slice(&self.0).map_err(|_| Error::InvalidInput)?;
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&self.0).map_err(|_| Error::InvalidMaintenanceInput)?;
         mac.update(domain.as_bytes());
         mac.update(&[0]);
         mac.update(value);

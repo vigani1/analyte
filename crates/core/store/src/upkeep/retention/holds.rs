@@ -44,7 +44,7 @@ impl Store {
             }
             HoldTarget::Order { destination, order } => {
                 if self.cached_order(destination, order)?.is_none() {
-                    return Err(Error::InvalidInput);
+                    return Err(Error::InvalidMaintenanceInput);
                 }
             }
         }
@@ -54,7 +54,9 @@ impl Store {
             "retention-hold-release"
         };
         let mut evidence = serde_json::to_value(audit)?;
-        let fields = evidence.as_object_mut().ok_or(Error::InvalidInput)?;
+        let fields = evidence
+            .as_object_mut()
+            .ok_or(Error::InvalidMaintenanceInput)?;
         fields.insert("action".into(), serde_json::Value::String(action.into()));
         fields.insert("hold".into(), serde_json::to_value(target)?);
         let encoded = self.encode(&evidence)?;
@@ -101,13 +103,13 @@ impl Store {
     /// Refuses invalid cursors, corrupt targets and database errors.
     pub fn retention_holds(&self, after: i64) -> Result<Vec<RetentionHold>, Error> {
         if after < 0 {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidMaintenanceInput);
         }
         let mut statement = self.db.prepare("SELECT rowid,kind,target FROM retention_holds WHERE active=1 AND rowid>?1 ORDER BY rowid LIMIT ?2")?;
         let rows = statement.query_map(
             params![
                 after,
-                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidMaintenanceInput)?
             ],
             |r| {
                 Ok((

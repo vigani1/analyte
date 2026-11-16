@@ -35,7 +35,7 @@ fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
             .query_row("SELECT count(*) FROM audit", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    assert!(store.db.execute("DELETE FROM audit", []).is_err());
+    assert_constraint(store.db.execute("DELETE FROM audit", []));
     Ok(())
 }
 
@@ -70,7 +70,10 @@ fn mutation_adr0003_park_resolve_and_audit_keep_exact_evidence_once_after_restar
     assert_eq!(store.audits(0)?.len(), 1);
     let before = store.parked_item(id)?.ok_or("missing item")?.evidence;
     store.db.execute_batch("CREATE TRIGGER fail_resolution_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
-    assert!(matches!(store.resolve(id, &entry), Err(Error::Conflict)));
+    assert!(matches!(
+        store.resolve(id, &entry),
+        Err(Error::ConstraintViolation(_))
+    ));
     assert!(
         store
             .parked_item(id)?

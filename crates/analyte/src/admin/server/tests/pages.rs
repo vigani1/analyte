@@ -108,26 +108,26 @@ struct RawPage {
 
 async fn seed_pages(store: &analyte_store::Handle) -> Result<(ReceiptId, i64, ReceiptId), Error> {
     let (receipt_id, parked_id, other_receipt) = store.request(fixture_deadline()?, |store| {
-        let id = |text: &str| Identifier::new(text).map_err(|_| analyte_store::Error::InvalidInput);
+        let id = |text: &str| Identifier::new(text).map_err(analyte_store::Error::Text);
         let mut first = None;
         for name in ["first", "second"] {
             let mut raw = b"<script>RAW&\"'\x00\xff".to_vec(); raw.extend(vec![b'A'; 4100]); raw.extend(b"TAIL");
             let config = b"config";
-            let receipt_id = ReceiptId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidInput)?;
+            let receipt_id = ReceiptId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidHostInput)?;
             store.receive(&ReceiptMetadata {id: receipt_id, raw_digest: Digest(analyte_contract::content_digest(&raw)), connection: id("test")?, machine: id("machine")?, driver: NamespacedId {namespace: id("synthetic")?, value: id("1")?}, config_version: id("1")?, config_digest: Digest(analyte_contract::content_digest(config)), received_at: jiff::Timestamp::UNIX_EPOCH}, &raw, config)?;
             let target = id(&uuid::Uuid::from(receipt_id).to_string())?;
-            let parked_id = store.park(&Parked {kind: id(name)?, reason: Reason::new("<script>hostile reason</script>").map_err(|_| analyte_store::Error::InvalidInput)?, targets: vec![target]})?;
-            store.order_page(&OrderPage {destination: id("app")?, cursor: id(name)?, complete: true, polled: 100, orders: vec![CachedOrder {id: id(name)?, sample: SampleId::new("<script>sample</script>").map_err(|_| analyte_store::Error::InvalidInput)?, document: serde_json::json!({"id": name,"version":1,"state":"requested","sample_id":"<script>sample</script>","tests":[{"namespace":"local","value":"<test>"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string(), tombstone: false, expiry: 200}]})?;
+            let parked_id = store.park(&Parked {kind: id(name)?, reason: Reason::new("<script>hostile reason</script>").map_err(analyte_store::Error::Text)?, targets: vec![target]})?;
+            store.order_page(&OrderPage {destination: id("app")?, cursor: id(name)?, complete: true, polled: 100, orders: vec![CachedOrder {id: id(name)?, sample: SampleId::new("<script>sample</script>").map_err(|_| analyte_store::Error::InvalidHostInput)?, document: serde_json::json!({"id": name,"version":1,"state":"requested","sample_id":"<script>sample</script>","tests":[{"namespace":"local","value":"<test>"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string(), tombstone: false, expiry: 200}]})?;
             let key = analyte_store::MachineOrderKey {destination: id("app")?, order: id(name)?, machine: id("machine")?};
             let record = store.reserve_send(&analyte_store::OrderReservation { identity: &key, version: std::num::NonZeroU64::MIN, now: 101, freshness: 30 }, analyte_store::ReserveOptions::default())?.map_err(|_| analyte_store::Error::Conflict)?;
-            store.transition_order(record.id, OrderState::Uncertain, analyte_model::SourceText::new("timeout").map_err(|_| analyte_store::Error::InvalidInput)?, 102, |order| Ok(analyte_store::OrderEventDelivery {id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidInput)?, destination: order.key.destination.clone(), order_id: order.key.order.clone(), payload: b"not a raw view".to_vec(), contract_version: 1}))?;
+            store.transition_order(record.id, OrderState::Uncertain, analyte_model::SourceText::new("timeout").map_err(analyte_store::Error::Text)?, 102, |order| Ok(analyte_store::OrderEventDelivery {id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidHostInput)?, destination: order.key.destination.clone(), order_id: order.key.order.clone(), payload: b"not a raw view".to_vec(), contract_version: 1}))?;
             if let Some((receipt, parked)) = first {
-                store.audit(&Audit {actor: id("operator")?, action: id("store-restore")?, targets: Vec::new(), time: 103, reason: Reason::new("synthetic restore").map_err(|_| analyte_store::Error::InvalidInput)?})?;
+                store.audit(&Audit {actor: id("operator")?, action: id("store-restore")?, targets: Vec::new(), time: 103, reason: Reason::new("synthetic restore").map_err(analyte_store::Error::Text)?})?;
                 return Ok((receipt, parked, receipt_id));
             }
             first = Some((receipt_id, parked_id));
         }
-        Err(analyte_store::Error::InvalidInput)
+        Err(analyte_store::Error::InvalidHostInput)
     }).await?;
     Ok((receipt_id, parked_id, other_receipt))
 }
@@ -364,24 +364,23 @@ async fn assert_cache_version_stays_distinct(
     // historical version; operator reads never resend or reconcile an order.
     store
         .request(fixture_deadline()?, |s| {
-            let destination =
-                Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?;
-            let key = Identifier::new("first").map_err(|_| analyte_store::Error::InvalidInput)?;
+            let destination = Identifier::new("app").map_err(analyte_store::Error::Text)?;
+            let key = Identifier::new("first").map_err(analyte_store::Error::Text)?;
             let mut cached = s
                 .cached_order(&destination, &key)?
                 .ok_or(analyte_store::Error::Conflict)?;
             let mut document: serde_json::Value = serde_json::from_str(&cached.document)?;
             *document
                 .get_mut("version")
-                .ok_or(analyte_store::Error::InvalidInput)? = serde_json::json!(2);
+                .ok_or(analyte_store::Error::InvalidHostInput)? = serde_json::json!(2);
             *document
                 .get_mut("tests")
-                .ok_or(analyte_store::Error::InvalidInput)? =
+                .ok_or(analyte_store::Error::InvalidHostInput)? =
                 serde_json::json!([{"namespace":"local","value":"<newtest>"}]);
             cached.document = serde_json::to_string(&document)?;
             s.order_page(&OrderPage {
                 destination,
-                cursor: Identifier::new("new").map_err(|_| analyte_store::Error::InvalidInput)?,
+                cursor: Identifier::new("new").map_err(analyte_store::Error::Text)?,
                 complete: true,
                 polled: 200,
                 orders: vec![cached],
@@ -406,8 +405,7 @@ async fn assert_frame_pagination(
     } = view;
     let frame_park = store
         .request(fixture_deadline()?, |s| {
-            let transfer =
-                Identifier::new("transfer").map_err(|_| analyte_store::Error::InvalidInput)?;
+            let transfer = Identifier::new("transfer").map_err(analyte_store::Error::Text)?;
             let mut bytes = b"<frame>".to_vec();
             bytes.extend(vec![b'B'; 4100]);
             bytes.extend(b"FRAME-TAIL");
@@ -416,22 +414,18 @@ async fn assert_frame_pagination(
                 analyte_store::FrameSequence::new(1, 7)?,
                 &bytes,
                 &analyte_store::FrameProvenance {
-                    machine: Identifier::new("synthetic")
-                        .map_err(|_| analyte_store::Error::InvalidInput)?,
+                    machine: Identifier::new("synthetic").map_err(analyte_store::Error::Text)?,
                     driver: NamespacedId {
                         namespace: Identifier::new("synthetic")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
-                        value: Identifier::new("1")
-                            .map_err(|_| analyte_store::Error::InvalidInput)?,
+                            .map_err(analyte_store::Error::Text)?,
+                        value: Identifier::new("1").map_err(analyte_store::Error::Text)?,
                     },
                     config: b"synthetic config".to_vec(),
                 },
             )?;
             s.park(&Parked {
-                kind: Identifier::new("transfer")
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
-                reason: Reason::new("incomplete transfer")
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+                kind: Identifier::new("transfer").map_err(analyte_store::Error::Text)?,
+                reason: Reason::new("incomplete transfer").map_err(analyte_store::Error::Text)?,
                 targets: vec![transfer],
             })
         })

@@ -14,11 +14,10 @@ fn adr0014_migration_restart_attempt_identity_budget_and_immutable_bytes() -> Te
             .db
             .query_row("SELECT identity FROM alert_installation", [], |r| r.get(0))?;
     store.db.execute_batch("INSERT INTO alert_events VALUES('00000000000000000000000000000001','relay','condition',1,'raised',100,x'7b7d'); INSERT INTO alert_progress(event,next_attempt) VALUES('00000000000000000000000000000001',100); INSERT INTO alert_reminders VALUES('relay','condition',1,160);")?;
-    assert!(
+    assert_constraint(
         store
             .db
-            .execute("UPDATE alert_events SET payload=x'00'", [])
-            .is_err()
+            .execute("UPDATE alert_events SET payload=x'00'", []),
     );
     let first = store
         .claim_alert_attempt(&endpoint, 100, 2, 5, 10)?
@@ -205,14 +204,14 @@ fn adr0014_backoff_doubles_then_caps_and_limits_refuse_invalid_input() -> TestRe
     for (reminder, capacity) in [(0, 1), (59, 1), (86401, 1), (60, 0), (60, 4097)] {
         assert!(matches!(
             store.prepare_alert_event(&endpoint, 100, reminder, capacity),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidOperatorInput)
         ));
     }
     store.prepare_alert_event(&endpoint, 100, 60, 1)?;
     for (attempts, min, max) in [(0, 1, 1), (101, 1, 1), (1, 0, 1), (1, 2, 1), (1, 1, 86401)] {
         assert!(matches!(
             store.claim_alert_attempt(&endpoint, 100, attempts, min, max),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidOperatorInput)
         ));
     }
     for (now, due) in [(100, 105), (105, 115), (115, 125)] {
@@ -251,7 +250,16 @@ fn adr0014_operator_retry_is_audited_and_preserves_original_event() -> TestResul
         reason: analyte_model::Reason::new("Relay repaired and receipt checked")?,
     };
     store.retry_failed_alerts(&endpoint, &audit)?;
-    assert!(store.retry_failed_alerts(&endpoint, &audit).is_err());
+    {
+        let refusal = store
+            .retry_failed_alerts(&endpoint, &audit)
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::InvalidOperatorInput),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     let retry = store
         .claim_alert_attempt(&endpoint, 200, 1, 5, 10)?
         .ok_or("retry missing")?;

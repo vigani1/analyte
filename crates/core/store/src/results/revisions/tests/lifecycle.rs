@@ -121,16 +121,17 @@ fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
         policy,
         |evidence, _| {
             let Reading::Results(results) = &evidence.outcome else {
-                return Err(Error::InvalidInput);
+                return Err(Error::InvalidInterpretationInput);
             };
             let Some(analyte_model::IdentityStatus::Resolved(identity)) =
                 results.first().map(|r| &r.identity)
             else {
-                return Err(Error::InvalidInput);
+                return Err(Error::InvalidInterpretationInput);
             };
             Ok(vec![Delivery {
-                id: DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| Error::InvalidInput)?,
-                destination: Identifier::new("app").map_err(|_| Error::InvalidInput)?,
+                id: DeliveryId::try_from(uuid::Uuid::now_v7())
+                    .map_err(|_| Error::InvalidInterpretationInput)?,
+                destination: Identifier::new("app").map_err(Error::Text)?,
                 ordering_key: OrderingKey {
                     machine: metadata.machine.clone(),
                     observation: identity.observation.clone(),
@@ -140,7 +141,7 @@ fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
             }])
         },
     );
-    assert!(matches!(result, Err(Error::InvalidInput)));
+    assert!(matches!(result, Err(Error::InvalidInterpretationInput)));
     for table in ["interpretations", "observation_revisions", "outbox"] {
         assert_eq!(
             store

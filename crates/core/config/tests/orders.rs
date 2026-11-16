@@ -14,7 +14,7 @@ fn config(section: &str) -> Result<Validated, analyte_config::Error> {
 fn adr0002_outbound_duplicate_missing_policy_and_unbounded_deadline_are_rejected() -> TestResult {
     let section = include_str!("../examples/orders.toml");
     for invalid in [section.replace("deadline_ms = 1000", "deadline_ms = 0"), section.replace("when_untrusted = \"error\"", ""), section.replace("send_ahead = true", ""), section.replace("machine_components=[\"\", \"\", \"\", \"SEND\"]}", "machine_components=[\"SEND\"]},{app={namespace=\"demo\",value=\"DEMO\"},machine_components=[\"OTHER\"]}")] {
-        assert!(config(&invalid).is_err());
+        { let Err(refusal) = config(&invalid) else { panic!("input must be refused") }; assert!(matches!(&refusal, analyte_config::Error::Schema { .. } | analyte_config::Error::Invalid { .. }), "unexpected refusal: {refusal:?}"); }
     }
     let valid = config(section)?;
     assert!(valid.canonical().contains("[machine.orders]"));
@@ -69,7 +69,19 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
         );
         for namespace in ["", "bad\nnamespace"] {
             let invalid = section.replace("synthetic-patients", namespace);
-            assert!(vendor_config(&definition, &invalid).is_err());
+            {
+                let Err(refusal) = vendor_config(&definition, &invalid) else {
+                    panic!("input must be refused")
+                };
+                assert!(
+                    matches!(
+                        &refusal,
+                        analyte_config::Error::Schema { .. }
+                            | analyte_config::Error::Invalid { .. }
+                    ),
+                    "unexpected refusal: {refusal:?}"
+                );
+            }
         }
         let exact = section.replace("synthetic-patients", "000LabA");
         let valid = vendor_config(&definition, &exact)?;
@@ -99,7 +111,17 @@ fn autolyser_rev18_ch23_clone_requires_explicit_true_or_false() -> TestResult {
         );
         assert!(valid.canonical().contains(&format!("clone = {value}")));
     }
-    assert!(vendor_config(&definition, &format!("{VENDOR_ORDERS}clone = \"false\"\n")).is_err());
+    {
+        let Err(refusal) =
+            vendor_config(&definition, &format!("{VENDOR_ORDERS}clone = \"false\"\n"))
+        else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, analyte_config::Error::Schema { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }
 
@@ -255,6 +277,10 @@ fn lis02_section8_4_16_1_specimen_destination_and_code_table_preserve_field_owne
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "One retained-evidence scenario checks refusals and rollback alongside its successful lifecycle"
+)]
 fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> TestResult {
     let definition = include_str!("../examples/hl7.toml");
     let section = include_str!("../examples/hl7_orders.toml");
@@ -301,27 +327,42 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     ] {
         invalid_key(vendor_config(definition, &invalid), key);
     }
-    assert!(
-        vendor_config(
+    {
+        let Err(refusal) = vendor_config(
             definition,
-            &section.replace("deadline_ms = 1000", "deadline_ms = 60001")
-        )
-        .is_err()
-    );
-    assert!(
-        vendor_config(
+            &section.replace("deadline_ms = 1000", "deadline_ms = 60001"),
+        ) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, analyte_config::Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+    {
+        let Err(refusal) = vendor_config(
             definition,
-            &section.replace("source=\"test_code\"", "source=\"guessed\"")
-        )
-        .is_err()
-    );
-    assert!(
-        vendor_config(
+            &section.replace("source=\"test_code\"", "source=\"guessed\""),
+        ) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, analyte_config::Error::Schema { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+    {
+        let Err(refusal) = vendor_config(
             definition,
-            &section.replace("value=\"\"", "value=\"injected|field\"")
-        )
-        .is_err()
-    );
+            &section.replace("value=\"\"", "value=\"injected|field\""),
+        ) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, analyte_config::Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     invalid_key(
         vendor_config(
             definition,
@@ -332,14 +373,27 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
         ),
         "orders.query.when_untrusted",
     );
-    assert!(
-        vendor_config(
+    {
+        let Err(refusal) = vendor_config(
             definition,
-            &section.replace(r#"sample_suffix = "^^^^^^^LCL""#, r#"sample_suffix = """#)
-        )
-        .is_err()
-    );
-    assert!(config(section).is_err());
+            &section.replace(r#"sample_suffix = "^^^^^^^LCL""#, r#"sample_suffix = """#),
+        ) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, analyte_config::Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+    {
+        let Err(refusal) = config(section) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, analyte_config::Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }
 
@@ -380,7 +434,15 @@ fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -
         vendor_config(definition, &invalid_processing),
         Err(analyte_config::Error::Schema { .. })
     ));
-    assert!(config(section).is_err());
+    {
+        let Err(refusal) = config(section) else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, analyte_config::Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }
 

@@ -8,7 +8,12 @@ fn rule3_interpretation_digest_verified_legacy_evidence_still_reads() -> TestRes
     let evidence = interpretation()?;
     let mut encoded = serde_json::to_value(&evidence)?;
     encoded["config_digest"] = serde_json::to_value(digest(b"different"))?;
-    assert!(serde_json::from_value::<Interpretation>(encoded.clone()).is_err());
+    assert!(
+        serde_json::from_value::<Interpretation>(encoded.clone())
+            .map(|_| ())
+            .expect_err("invalid evidence must be refused")
+            .is_data()
+    );
     encoded
         .as_object_mut()
         .ok_or("not object")?
@@ -38,6 +43,11 @@ fn mutation_adr0003_record_interpretation_roundtrip_keeps_provenance_and_failure
     assert_eq!(reason.as_str(), "unknown synthetic test");
     let mut invalid = encoded;
     invalid["config_digest"] = serde_json::to_value(digest(b"wrong"))?;
-    assert!(serde_json::from_value::<Interpretation>(invalid).is_err());
+    assert!(
+        serde_json::from_value::<Interpretation>(invalid)
+            .map(|_| ())
+            .expect_err("invalid evidence must be refused")
+            .is_data()
+    );
     Ok(())
 }

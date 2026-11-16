@@ -1,4 +1,5 @@
 //! Tests durable machine order reservations and outcomes.
+use crate::test_support::assert_constraint;
 use crate::test_support::{TestResult, open};
 use crate::*;
 use analyte_model::{OrderState, SourceText};
@@ -36,7 +37,7 @@ fn page(
 
 fn event(order: &MachineOrder) -> Result<OrderEventDelivery, Error> {
     Ok(OrderEventDelivery {
-        id: DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| Error::InvalidInput)?,
+        id: DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| Error::InvalidOrderInput)?,
         destination: order.key.destination.clone(),
         order_id: order.key.order.clone(),
         payload: serde_json::to_vec(order)?,
@@ -92,17 +93,11 @@ fn verify_adr0004_restart_and_reconciliation(path: &Path, reserved_id: i64) -> T
         2
     );
     assert_eq!(store.audits(0)?.len(), 1);
-    assert!(
+    assert_constraint(store.db.execute("DELETE FROM machine_order_history", []));
+    assert_constraint(
         store
             .db
-            .execute("DELETE FROM machine_order_history", [])
-            .is_err()
-    );
-    assert!(
-        store
-            .db
-            .execute("UPDATE machine_order_history SET evidence='{}'", [])
-            .is_err()
+            .execute("UPDATE machine_order_history SET evidence='{}'", []),
     );
     Ok(())
 }
@@ -249,7 +244,7 @@ fn verify_adr0003_invalid_groups_and_identity_budget(
                     ..Default::default()
                 }
             ),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidOrderInput)
         ));
     }
     let one_per_test = test_groups(&["c", "a", "b"])?;

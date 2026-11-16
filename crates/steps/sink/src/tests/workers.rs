@@ -63,7 +63,7 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
     let health = store
         .request(until()?, |s| {
             s.health(
-                &Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?,
+                &Identifier::new("app").map_err(analyte_store::Error::Text)?,
                 jiff::Timestamp::now().as_second(),
                 30,
             )

@@ -4,6 +4,10 @@ use crate::*;
 use analyte_model::Reason;
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "One retained-evidence scenario checks refusals and rollback alongside its successful lifecycle"
+)]
 fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("resend.db"))?;
@@ -62,7 +66,16 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
     store.attempted(delivery.id, &Attempt::Done, 0)?;
     // An audit write failure must roll back the requeue, not just the audit.
     store.db.execute_batch("CREATE TRIGGER reject_resend_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
-    assert!(store.resend_delivery(delivery.id, false, &audit).is_err());
+    {
+        let refusal = store
+            .resend_delivery(delivery.id, false, &audit)
+            .map(|_| ())
+            .expect_err("input must be refused");
+        assert!(
+            matches!(&refusal, Error::ConstraintViolation(_)),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     assert_eq!(
         store
             .deliveries(0)?
@@ -229,7 +242,7 @@ fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> T
         };
         assert!(matches!(
             store.resend_delivery(id, false, &audit),
-            Err(Error::InvalidInput)
+            Err(Error::AuditMismatch)
         ));
         assert_eq!(
             store

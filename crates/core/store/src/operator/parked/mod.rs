@@ -24,9 +24,9 @@ pub(crate) fn evidence(
     context: Option<ParkingContext>,
 ) -> Result<String, Error> {
     let details = Parked {
-        kind: Identifier::new(kind).map_err(|_| Error::InvalidInput)?,
-        reason: Reason::new(reason).map_err(|_| Error::InvalidInput)?,
-        targets: vec![Identifier::new(target).map_err(|_| Error::InvalidInput)?],
+        kind: Identifier::new(kind).map_err(Error::Text)?,
+        reason: Reason::new(reason).map_err(Error::Text)?,
+        targets: vec![Identifier::new(target).map_err(Error::Text)?],
     };
     crate::document(&ParkingEvidence { details, context })
 }

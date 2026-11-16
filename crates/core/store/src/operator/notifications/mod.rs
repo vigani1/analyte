@@ -102,7 +102,7 @@ impl Store {
         )?;
         let count: u32 = tx.query_row("SELECT count(*) FROM alert_endpoints", [], |r| r.get(0))?;
         if !existing && count >= 128 {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOperatorInput);
         }
         tx.execute(
             "INSERT OR IGNORE INTO alert_endpoints(id) VALUES(?1)",
@@ -131,7 +131,7 @@ impl Store {
             || backoff_min > backoff_max
             || backoff_max > 86400
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOperatorInput);
         }
         let tx = self.db.transaction()?;
         let row: Option<(String, Vec<u8>, u32)> = tx.query_row(
@@ -148,8 +148,8 @@ impl Store {
             .saturating_mul(1u64.checked_shl(previous.min(63)).unwrap_or(u64::MAX))
             .min(backoff_max);
         let next = now
-            .checked_add(i64::try_from(delay).map_err(|_| Error::InvalidInput)?)
-            .ok_or(Error::InvalidInput)?;
+            .checked_add(i64::try_from(delay).map_err(|_| Error::InvalidOperatorInput)?)
+            .ok_or(Error::InvalidOperatorInput)?;
         tx.execute("UPDATE alert_progress SET attempts=?2,next_attempt=?3,exhausted=?4,failure='interrupted' WHERE event=?1",
             params![id, attempts, next, attempts>=max_attempts])?;
         tx.commit()?;
@@ -177,7 +177,7 @@ impl Store {
             params![id, failure.as_str()],
         )? != 1
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOperatorInput);
         }
         Ok(())
     }
@@ -215,13 +215,13 @@ impl Store {
     ) -> Result<(), Error> {
         if audit.action.as_str() != "alert-retry" || audit.targets.as_slice() != [endpoint.clone()]
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::AuditMismatch);
         }
         let encoded = self.encode(audit)?;
         let tx = self.db.transaction()?;
         let count: u32 = tx.query_row("SELECT count(*) FROM alert_events e JOIN alert_progress p ON p.event=e.id WHERE e.endpoint=?1 AND p.exhausted=1", [endpoint.as_str()], |r| r.get(0))?;
         if count == 0 || count > 4096 {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidOperatorInput);
         }
         tx.execute("UPDATE alert_progress SET attempts=0,exhausted=0,next_attempt=?2,failure=NULL WHERE exhausted=1 AND event IN (SELECT id FROM alert_events WHERE endpoint=?1)", params![endpoint.as_str(),audit.time])?;
         tx.execute("INSERT INTO audit(evidence) VALUES(?1)", [encoded])?;

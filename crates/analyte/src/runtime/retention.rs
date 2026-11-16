@@ -66,7 +66,7 @@ pub(crate) async fn run(
                     .request(crate::deadline(), move |store| {
                         let until = Instant::now()
                             .checked_add(Duration::from_millis(250))
-                            .ok_or(analyte_store::Error::InvalidInput)?;
+                            .ok_or(analyte_store::Error::InvalidHostInput)?;
                         store.purge_order_batch(&order_machine, days, order_after, now, until)
                     })
                     .await;
@@ -79,7 +79,7 @@ pub(crate) async fn run(
                     .request(crate::deadline(), |store| {
                         let until = Instant::now()
                             .checked_add(Duration::from_millis(250))
-                            .ok_or(analyte_store::Error::InvalidInput)?;
+                            .ok_or(analyte_store::Error::InvalidHostInput)?;
                         match store.reclaim_retention_space(until) {
                             Ok(())
                             | Err(

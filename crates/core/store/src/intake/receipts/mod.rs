@@ -19,7 +19,7 @@ impl Store {
         self.bound(encoded.as_bytes())?;
         self.capacity(raw.len().checked_add(config.len()).ok_or(Error::Capacity)?)?;
         if digest(raw) != metadata.raw_digest || digest(config) != metadata.config_digest {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidReceiptInput);
         }
         self.db.execute(
             "INSERT INTO receipts VALUES (?1,?2,?3,?4)",

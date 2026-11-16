@@ -159,3 +159,22 @@ pub(crate) fn remove_alert_schema_for_legacy_fixture(db: &Connection) -> TestRes
     db.execute_batch("DROP INDEX alert_history_episode; DROP TRIGGER alert_installation_retained; DROP TABLE alert_installation;")?;
     Ok(())
 }
+
+pub(crate) fn assert_constraint<T>(result: rusqlite::Result<T>) {
+    let Err(error) = result else {
+        panic!("SQL mutation must be refused")
+    };
+    assert!(
+        matches!(
+            error,
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error {
+                    code: rusqlite::ErrorCode::ConstraintViolation,
+                    ..
+                },
+                _
+            )
+        ),
+        "unexpected refusal: {error:?}"
+    );
+}

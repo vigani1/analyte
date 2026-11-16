@@ -40,7 +40,9 @@ pub(crate) async fn lookup(
         .await
     {
         Ok(answer) => Ok(answer),
-        Err(analyte_store::Error::Timeout) => Ok(analyte_store::Lookup::NotTrusted),
+        Err(analyte_store::Error::Timeout | analyte_store::Error::Busy(_)) => {
+            Ok(analyte_store::Lookup::NotTrusted)
+        }
         Err(error) => Err(error.into()),
     }
 }

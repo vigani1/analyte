@@ -119,7 +119,7 @@ fn default_startup() -> Result<Startup, Error> {
     Ok(Startup::new(
         std::time::Instant::now()
             .checked_add(crate::DEFAULT_STARTUP_TIMEOUT)
-            .ok_or(Error::InvalidInput)?,
+            .ok_or(Error::InvalidMaintenanceInput)?,
     ))
 }
 

@@ -25,15 +25,15 @@ pub(super) fn eligible(
     limits: &crate::Limits,
 ) -> Result<bool, Error> {
     if !(1..=3650).contains(&days) {
-        return Err(Error::InvalidInput);
+        return Err(Error::InvalidMaintenanceInput);
     }
     let cutoff = now
         .checked_sub(
             i64::from(days)
                 .checked_mul(86400)
-                .ok_or(Error::InvalidInput)?,
+                .ok_or(Error::InvalidMaintenanceInput)?,
         )
-        .ok_or(Error::InvalidInput)?;
+        .ok_or(Error::InvalidMaintenanceInput)?;
     let finished: bool = db.query_row(
         include_str!("eligibility.sql"),
         params![key(&receipt)?, cutoff],

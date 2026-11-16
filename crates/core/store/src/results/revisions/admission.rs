@@ -14,18 +14,18 @@ impl Store {
                 || evidence.driver != stored.metadata.driver
                 || evidence.config_version != stored.metadata.config_version)
         {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidInterpretationInput);
         }
         let count = match &evidence.outcome {
             Reading::Results(r) => r.len(),
             Reading::Failed(_) => 0,
         };
         if count != corrections.len() || count > self.limits.page_rows {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidInterpretationInput);
         }
         self.encode(evidence)?;
         if findings.len() > self.limits.page_rows {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidInterpretationInput);
         }
         let findings = findings
             .iter()
@@ -59,7 +59,7 @@ pub(super) fn required_capacity(
         )
         .ok_or(Error::Capacity)?;
     if audit.is_some_and(|value| value.len() > limit) {
-        return Err(Error::InvalidInput);
+        return Err(Error::InvalidInterpretationInput);
     }
     for finding in findings {
         required = required.checked_add(finding.len()).ok_or(Error::Capacity)?;

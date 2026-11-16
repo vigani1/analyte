@@ -50,9 +50,25 @@ fn adr_0002_schema_rejects_versions_unknown_keys_and_secrets() {
         ASTM.replace("name =", "unknown ="),
         ASTM.replace("baud = 9600", "baud = 9600\npassword = 'secret'"),
     ] {
-        assert!(draft(&bad, OVERRIDES).is_err());
+        {
+            let Err(refusal) = draft(&bad, OVERRIDES) else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(&refusal, Error::Schema { .. } | Error::Invalid { .. }),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
-    assert!(draft(ASTM, "schema_version = 1\nevidence = 'proven'").is_err());
+    {
+        let Err(refusal) = draft(ASTM, "schema_version = 1\nevidence = 'proven'") else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Schema { .. } | Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
 }
 
 #[test]
@@ -65,7 +81,20 @@ fn plan_5_rejects_incompatible_stacks_and_invalid_serial_settings() -> Result<()
         ASTM.replace("limit = 64000", "limit = 64001"),
         HL7.replace("hl7_receiver", "astm_link"),
     ] {
-        assert!(draft(&bad, OVERRIDES)?.validate().is_err());
+        {
+            let Err(refusal) = draft(&bad, OVERRIDES)?.validate() else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(
+                    &refusal,
+                    Error::IncompatibleStack { .. }
+                        | Error::Invalid { .. }
+                        | Error::Departure { .. }
+                ),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
     Ok(())
 }
@@ -132,28 +161,49 @@ fn adr_0002_bounds_and_duplicate_tables_fail_visibly() -> Result<(), Error> {
             "units = [{original='mg/L',ucum='mg/L'},{original='mg/L',ucum='g/L'}]",
         ),
     ] {
-        assert!(draft(&bad, OVERRIDES)?.validate().is_err());
+        {
+            let Err(refusal) = draft(&bad, OVERRIDES)?.validate() else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(&refusal, Error::Invalid { .. }),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
     Ok(())
 }
 
 #[test]
 fn adr_0005_claims_require_capability_evidence() -> Result<(), Error> {
-    assert!(
-        draft(
+    {
+        let Err(refusal) = draft(
             &ASTM.replace("level = \"documented\"", "level = \"proven\""),
-            OVERRIDES
+            OVERRIDES,
         )?
-        .validate()
-        .is_err()
-    );
+        .validate() else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Invalid { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     Ok(())
 }
 
 #[test]
 fn adr_0007_vendor_departures_need_named_reasons() -> Result<(), Error> {
     let smaller = ASTM.replace("limit = 64000", "limit = 247");
-    assert!(draft(&smaller, OVERRIDES)?.validate().is_err());
+    {
+        let Err(refusal) = draft(&smaller, OVERRIDES)?.validate() else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Departure { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     let declared = smaller.replace("deviations = []", include_str!("fixtures/departure.toml"));
     assert_eq!(
         astm_frame_limit(&draft(&declared, OVERRIDES)?.validate()?)?,
@@ -361,7 +411,15 @@ fn adr_0002_vidas_installed_sample_limit_preserves_numeric_toml() -> Result<(), 
     for number in [0, 11, 13, 16, 18, 255] {
         let definition =
             definition.replace("sample_limit = 12", &format!("sample_limit = {number}"));
-        assert!(draft(&definition, OVERRIDES).is_err());
+        {
+            let Err(refusal) = draft(&definition, OVERRIDES) else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(&refusal, Error::Schema { .. }),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
     Ok(())
 }
@@ -396,7 +454,15 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
         "escapes = \"reject\"",
         "escapes = \"reject\"\nallow_utf8_in_v231 = true",
     );
-    assert!(draft(&selected, OVERRIDES)?.validate().is_err());
+    {
+        let Err(refusal) = draft(&selected, OVERRIDES)?.validate() else {
+            panic!("input must be refused")
+        };
+        assert!(
+            matches!(&refusal, Error::Departure { .. }),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
     let declared = selected.replace(
         "deviations = []",
         &include_str!("fixtures/departure.toml")
@@ -418,7 +484,15 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
         declared.replace("edition = \"v231\"", "edition = \"v251\""),
         declared.replace("encoding = \"utf8\"", "encoding = \"ascii\""),
     ] {
-        assert!(draft(&invalid, OVERRIDES)?.validate().is_err());
+        {
+            let Err(refusal) = draft(&invalid, OVERRIDES)?.validate() else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(&refusal, Error::Departure { .. }),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
     let strict = draft(&base, OVERRIDES)?.validate()?;
     let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =

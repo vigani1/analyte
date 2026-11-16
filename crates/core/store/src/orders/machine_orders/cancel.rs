@@ -15,7 +15,7 @@ impl Store {
         build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
     ) -> Result<MachineOrder, Error> {
         let code = SourceText::new(&format!("app-cancel:{version}:{}", owner.as_str()))
-            .map_err(|_| Error::InvalidInput)?;
+            .map_err(Error::Text)?;
         self.change_order(
             id,
             OrderState::CancelRequested,

@@ -1,6 +1,7 @@
 //! Tests database opening and stored settings.
 use super::*;
 use crate::startup::Progress;
+use crate::test_support::assert_constraint;
 use crate::test_support::{Space, TestResult, limits};
 use std::{
     sync::{
@@ -351,7 +352,7 @@ fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_gua
                     .raw,
                 vec![1, 2, 3]
             );
-            assert!(store.db.execute("DELETE FROM receipts", []).is_err());
+            assert_constraint(store.db.execute("DELETE FROM receipts", []));
         }
         let provenance = crate::FrameProvenance {
             machine: metadata.machine,

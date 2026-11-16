@@ -20,21 +20,26 @@ pub(super) fn order(
     let sample: Option<String> = db
         .query_row(
             "SELECT CASE WHEN length(CAST(sample AS BLOB))<=?3 THEN sample END FROM orders o WHERE destination=?1 AND id=?2 AND CASE WHEN json_valid(json_extract(evidence,'$.document')) THEN NOT EXISTS(SELECT 1 FROM machine_orders m WHERE m.destination=o.destination AND m.order_id=o.id AND CAST(json_extract(json_extract(o.evidence,'$.document'),'$.version') AS TEXT) IS NOT m.version) ELSE 0 END",
-            params![destination, order, i64::try_from(limits.record_bytes).map_err(|_|Error::InvalidInput)?],
+            params![destination, order, i64::try_from(limits.record_bytes).map_err(|_|Error::InvalidMaintenanceInput)?],
             |r| r.get(0),
         )
         .optional()?;
     let mut statement = db.prepare("SELECT CASE WHEN length(CAST(evidence AS BLOB))<=?2 THEN evidence END FROM interpretations WHERE receipt=?1 LIMIT ?3")?;
     let mut rows = statement.query(params![
         key(&receipt)?,
-        i64::try_from(limits.record_bytes).map_err(|_| Error::InvalidInput)?,
-        i64::try_from(limits.page_rows.checked_add(1).ok_or(Error::InvalidInput)?)
-            .map_err(|_| Error::InvalidInput)?
+        i64::try_from(limits.record_bytes).map_err(|_| Error::InvalidMaintenanceInput)?,
+        i64::try_from(
+            limits
+                .page_rows
+                .checked_add(1)
+                .ok_or(Error::InvalidMaintenanceInput)?
+        )
+        .map_err(|_| Error::InvalidMaintenanceInput)?
     ])?;
     let mut unknown = false;
     let mut count = 0usize;
     while let Some(row) = rows.next()? {
-        count = count.checked_add(1).ok_or(Error::InvalidInput)?;
+        count = count.checked_add(1).ok_or(Error::InvalidMaintenanceInput)?;
         if count > limits.page_rows {
             return Ok(Link::Unknown);
         }
@@ -90,12 +95,17 @@ pub(super) fn blocked(
     let mut statement = db.prepare("SELECT json_extract(target,'$[0]'),json_extract(target,'$[1]') FROM retention_holds WHERE kind='order' AND active=1 UNION SELECT destination,order_id FROM machine_orders m WHERE machine=?1 AND (state NOT IN ('Done','Rejected','CancelConfirmed') OR EXISTS(SELECT 1 FROM machine_order_items i WHERE i.machine_order=m.id AND i.state NOT IN ('Done','Rejected','CancelConfirmed'))) LIMIT ?2")?;
     let mut rows = statement.query(params![
         machine,
-        i64::try_from(limits.page_rows.checked_add(1).ok_or(Error::InvalidInput)?)
-            .map_err(|_| Error::InvalidInput)?
+        i64::try_from(
+            limits
+                .page_rows
+                .checked_add(1)
+                .ok_or(Error::InvalidMaintenanceInput)?
+        )
+        .map_err(|_| Error::InvalidMaintenanceInput)?
     ])?;
     let mut count = 0usize;
     while let Some(row) = rows.next()? {
-        count = count.checked_add(1).ok_or(Error::InvalidInput)?;
+        count = count.checked_add(1).ok_or(Error::InvalidMaintenanceInput)?;
         if count > limits.page_rows
             || order(
                 db,
@@ -111,12 +121,17 @@ pub(super) fn blocked(
     let mut statement=db.prepare("SELECT p.evidence FROM poll_intents i JOIN parked p ON p.id=i.parked WHERE i.machine=?1 AND i.state!='confirmed' LIMIT ?2")?;
     let mut rows = statement.query(params![
         machine,
-        i64::try_from(limits.page_rows.checked_add(1).ok_or(Error::InvalidInput)?)
-            .map_err(|_| Error::InvalidInput)?
+        i64::try_from(
+            limits
+                .page_rows
+                .checked_add(1)
+                .ok_or(Error::InvalidMaintenanceInput)?
+        )
+        .map_err(|_| Error::InvalidMaintenanceInput)?
     ])?;
     let mut count = 0usize;
     while let Some(row) = rows.next()? {
-        count = count.checked_add(1).ok_or(Error::InvalidInput)?;
+        count = count.checked_add(1).ok_or(Error::InvalidMaintenanceInput)?;
         if count > limits.page_rows {
             return Ok(true);
         }

@@ -430,7 +430,7 @@ async fn check_cache_changes(
 ) -> TestResult {
     let first = store
         .request(until()?, |s| {
-            s.cursor(&Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?)
+            s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)
         })
         .await?;
     let mut receiver = analyte_receiver::Receiver::open(
@@ -454,8 +454,8 @@ async fn check_cache_changes(
     let cached = store
         .request(until()?, |s| {
             s.orders(
-                &Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?,
-                &SampleId::new("000Ab12").map_err(|_| analyte_store::Error::InvalidInput)?,
+                &Identifier::new("app").map_err(analyte_store::Error::Text)?,
+                &SampleId::new("000Ab12").map_err(|_| analyte_store::Error::InvalidHostInput)?,
                 jiff::Timestamp::now().as_second(),
                 30,
             )
@@ -473,17 +473,15 @@ async fn check_cache_changes(
     );
     let next = store
         .request(until()?, |s| {
-            s.cursor(&Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?)
+            s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)
         })
         .await?;
     assert_ne!(first, next);
     store
         .request(until()?, |s| {
             s.order_page(&analyte_store::OrderPage {
-                destination: Identifier::new("app")
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
-                cursor: Identifier::new("invalid-cursor")
-                    .map_err(|_| analyte_store::Error::InvalidInput)?,
+                destination: Identifier::new("app").map_err(analyte_store::Error::Text)?,
+                cursor: Identifier::new("invalid-cursor").map_err(analyte_store::Error::Text)?,
                 complete: true,
                 polled: jiff::Timestamp::now().as_second(),
                 orders: vec![],

@@ -61,7 +61,12 @@ fn mutation_adr0003_rule7_capacity_checks_reserve_and_database_bound_independent
     store.limits.record_bytes = 2;
     store.bound(b"")?;
     store.bound(b"ab")?;
-    assert!(matches!(store.bound(b"abc"), Err(Error::InvalidInput)));
+    assert!(matches!(
+        store.bound(b"abc"),
+        Err(Error::LimitExceeded {
+            what: "record_bytes"
+        })
+    ));
     let pages: u64 = store.db.query_row("PRAGMA page_count", [], |r| {
         r.get::<_, u32>(0).map(u64::from)
     })?;

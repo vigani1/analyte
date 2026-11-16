@@ -168,7 +168,7 @@ async fn next_work(
                 match record {
                     Ok(record) => Ok(Ok((
                         record,
-                        message.ok_or(analyte_store::Error::InvalidInput)?,
+                        message.ok_or(analyte_store::Error::InvalidHostInput)?,
                     ))),
                     Err(refusal) => Ok(Err(refusal)),
                 }

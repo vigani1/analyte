@@ -11,7 +11,7 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
     store.receive(&metadata, b"raw\0exact", b"config")?;
     assert!(matches!(
         store.receive(&metadata, b"raw\0exact", b"config"),
-        Err(Error::Conflict)
+        Err(Error::ConstraintViolation(_))
     ));
     let reading = interpretation()?;
     assert_eq!(
@@ -38,13 +38,8 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
             .map(|commit| commit.version)?,
         2
     );
-    assert!(
-        store
-            .db
-            .execute("UPDATE receipts SET raw=x'00'", [])
-            .is_err()
-    );
-    assert!(store.db.execute("DELETE FROM interpretations", []).is_err());
+    assert_constraint(store.db.execute("UPDATE receipts SET raw=x'00'", []));
+    assert_constraint(store.db.execute("DELETE FROM interpretations", []));
     assert_eq!(store.raw(metadata.id)?, Some(b"raw\0exact".to_vec()));
     Ok(())
 }
@@ -57,7 +52,7 @@ proptest! {
         let mut saved=Vec::new();
         for raw in operations {
             let metadata=receipt(&raw).map_err(|e| TestCaseError::fail(e.to_string()))?; store.receive(&metadata,&raw,b"config")?;
-            prop_assert!(store.receive(&metadata,&raw,b"config").is_err());
+            prop_assert!(matches!(store.receive(&metadata,&raw,b"config"), Err(Error::ConstraintViolation(_))));
             saved.push((metadata.id,raw));
             drop(store); store=open(&path)?;
             for (id,raw) in &saved { let stored=store.raw(*id)?; prop_assert_eq!(stored.as_ref(),Some(raw)); }
@@ -77,7 +72,7 @@ fn mutation_adr0003_receipt_digests_validate_raw_and_config_independently_withou
         let metadata = receipt(b"raw")?;
         assert!(matches!(
             store.receive(&metadata, raw, config),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidReceiptInput)
         ));
         assert!(store.receipt(metadata.id)?.is_none());
     }

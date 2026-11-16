@@ -29,7 +29,7 @@ fn mutation_plan11_alerts_validate_responders_and_destination_count_at_the_bound
     ] {
         assert!(matches!(
             store.evaluate_alert(&identity, &responder, false, Some(0), 20),
-            Err(Error::InvalidInput)
+            Err(Error::InvalidOperatorInput)
         ));
         let after = store.alert_state(&identity)?.ok_or("alert lost")?;
         assert_eq!(after.responder, before.responder);
@@ -45,7 +45,7 @@ fn mutation_plan11_alerts_validate_responders_and_destination_count_at_the_bound
     let destinations = vec![(Identifier::new("app")?, 1); 129];
     assert!(matches!(
         store.alert_value(&identity, 1, &destinations),
-        Err(Error::InvalidInput)
+        Err(Error::InvalidOperatorInput)
     ));
     Ok(())
 }
@@ -195,19 +195,9 @@ mod existing {
         assert_eq!(history.len(), 14);
         assert_eq!(history.iter().filter(|h| h.state.active).count(), 7);
         for table in ["alert_state", "alert_history"] {
-            assert!(
-                store
-                    .db
-                    .execute(&format!("DELETE FROM {table}"), [])
-                    .is_err()
-            );
+            assert_constraint(store.db.execute(&format!("DELETE FROM {table}"), []));
         }
-        assert!(
-            store
-                .db
-                .execute("UPDATE alert_history SET time=0", [])
-                .is_err()
-        );
+        assert_constraint(store.db.execute("UPDATE alert_history SET time=0", []));
         Ok(())
     }
 
@@ -313,11 +303,16 @@ mod existing {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("atomic.db"))?;
         store.db.execute_batch("CREATE TRIGGER reject_alert BEFORE INSERT ON alert_history BEGIN SELECT RAISE(ABORT,'test history failure'); END;")?;
-        assert!(
-            store
+        {
+            let refusal = store
                 .evaluate_alert(&AlertKey::RestorePaused, "duty officer", true, Some(1), 10)
-                .is_err()
-        );
+                .map(|_| ())
+                .expect_err("input must be refused");
+            assert!(
+                matches!(&refusal, Error::ConstraintViolation(_)),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
         assert!(store.alert_state(&AlertKey::RestorePaused)?.is_none());
         assert!(store.alert_history(0)?.is_empty());
         Ok(())

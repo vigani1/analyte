@@ -9,7 +9,7 @@ impl Store {
     /// Rejects oversized pages and database failures.
     pub fn order_page(&mut self, page: &OrderPage) -> Result<(), Error> {
         if page.orders.len() > self.limits.page_rows {
-            return Err(Error::InvalidInput);
+            return Err(Error::InvalidDeliveryInput);
         }
         self.bound(self.encode(page)?.as_bytes())?;
         let tx = self.db.transaction()?;
@@ -50,14 +50,14 @@ impl Store {
             .limits
             .page_rows
             .checked_add(1)
-            .ok_or(Error::InvalidInput)?;
+            .ok_or(Error::InvalidDeliveryInput)?;
         let encoded = stmt
             .query_map(
                 params![
                     destination.as_str(),
                     sample.as_str(),
                     now,
-                    i64::try_from(limit).map_err(|_| Error::InvalidInput)?
+                    i64::try_from(limit).map_err(|_| Error::InvalidDeliveryInput)?
                 ],
                 |r| r.get::<_, String>(0),
             )?

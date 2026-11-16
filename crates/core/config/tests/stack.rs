@@ -221,7 +221,15 @@ fn adr0012_protocol_and_transport_are_independent_and_invalid_pairs_fail_loading
             &format!(r#"protocol = "{protocol}""#),
             r#"protocol = "unknown""#,
         );
-        assert!(load(&wrong, SITE, "schema_version=1").is_err());
+        {
+            let Err(refusal) = load(&wrong, SITE, "schema_version=1") else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(&refusal, analyte_config::Error::Schema { .. }),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
     Ok(())
 }
