@@ -107,7 +107,7 @@ The workspace enables `too_many_lines` (100), `cognitive_complexity` (25),
 `fn_params_excessive_bools`, `struct_excessive_bools`, `items_after_statements`,
 `module_name_repetitions` and `similar_names`. An exception is a narrow
 `#[expect(..., reason = "...")]`, for a flat table that reads best whole. A
-tracked Rust file under `crates/` or `fuzz/` is limited to 800 lines; files of 601?800 lines require a `//!` header line containing `Kept whole:` and its reason, enforced by the Layout CI job.
+tracked Rust file under `crates/` or `fuzz/` is limited to 800 lines; files of 601 to 800 lines require a `//!` header line containing `Kept whole:` and its reason, enforced by the Layout CI job.
 Several related yes/no flags become one enum of named states.
 
 ### 8. Every crate and every file says what it holds
