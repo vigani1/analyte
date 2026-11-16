@@ -104,3 +104,5 @@ fn qualified_hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::er
     }
     hl7(&qualified, definition)
 }
+
+mod patient;
