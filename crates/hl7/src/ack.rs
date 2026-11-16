@@ -93,34 +93,7 @@ pub(crate) fn acknowledgment_with_msh(
         AckProfile::Base => 20,
         AckProfile::Law => 50,
     };
-    match (code, responsibility) {
-        (AckCode::Aa, Responsibility::StoredAndInterpreted)
-        | (AckCode::Ca, Responsibility::Stored | Responsibility::StoredAndInterpreted)
-        | (
-            AckCode::Ae | AckCode::Ar | AckCode::Ce | AckCode::Cr,
-            Responsibility::NotStored
-            | Responsibility::Stored
-            | Responsibility::StoredAndInterpreted,
-        ) => {}
-        (AckCode::Aa, Responsibility::NotStored | Responsibility::Stored)
-        | (AckCode::Ca, Responsibility::NotStored) => return Err(Error::NotStored),
-    }
-    let requested = match msh.mode() {
-        AckMode::Original => {
-            if code.accept() {
-                return Err(Error::AckMode);
-            }
-            true
-        }
-        AckMode::Enhanced {
-            accept,
-            application,
-        } => {
-            let condition = if code.accept() { accept } else { application };
-            condition.is_some_and(|condition| condition.requests(code.success()))
-        }
-    };
-    if !requested {
+    if !ack_requested(msh, code, responsibility)? {
         return Ok(None);
     }
     let delimiters = msh.segment().delimiters;
@@ -163,16 +136,7 @@ pub(crate) fn acknowledgment_with_msh(
     let component = delimiters.bytes().get(1).copied().ok_or(Error::Encoding)?;
     let segment = msh.segment();
     let get = |number| segment.field(number).map_or(&[][..], |f| f.raw());
-    let mut message_type = b"ACK".to_vec();
-    let trigger = msh.message_type().nth(1).unwrap_or_default();
-    if !trigger.is_empty() {
-        message_type.push(component);
-        message_type.extend_from_slice(trigger);
-    }
-    if msh.version() == Version::V251 {
-        message_type.push(component);
-        message_type.extend_from_slice(b"ACK");
-    }
+    let message_type = encode_message_type(msh, component);
     let mut raw = b"MSH".to_vec();
     for value in [
         get(2),
@@ -203,49 +167,7 @@ pub(crate) fn acknowledgment_with_msh(
     raw.extend_from_slice(msh.control_id());
     raw.push(b'\r');
     if let Some(error) = error {
-        safe(error.segment, 0, 3)?;
-        safe(error.code, 0, 3)?;
-        safe(error.application_code, 0, 64)?;
-        let unlocated = error.segment.is_empty() && error.occurrence == 0 && error.field == 0;
-        if (!unlocated && (error.segment.len() != 3 || error.occurrence == 0 || error.field == 0))
-            || error.code.is_empty()
-        {
-            return Err(Error::Control {
-                segment: "ERR",
-                field: 1,
-            });
-        }
-        let mut location = Vec::new();
-        if !unlocated {
-            location.extend_from_slice(error.segment);
-            location.push(component);
-            location.extend_from_slice(error.occurrence.to_string().as_bytes());
-            location.push(component);
-            location.extend_from_slice(error.field.to_string().as_bytes());
-        }
-        raw.extend_from_slice(b"ERR");
-        raw.push(field);
-        match msh.version() {
-            Version::V231 => {
-                if unlocated {
-                    location.extend_from_slice(&[component, component]);
-                }
-                raw.extend_from_slice(&location);
-                raw.push(component);
-                raw.extend_from_slice(error.code);
-            }
-            Version::V251 => {
-                raw.push(field);
-                raw.extend_from_slice(&location);
-                raw.push(field);
-                raw.extend_from_slice(error.code);
-                raw.push(field);
-                raw.push(b'E');
-                raw.push(field);
-                raw.extend_from_slice(error.application_code);
-            }
-        }
-        raw.push(b'\r');
+        encode_error(&mut raw, error, field, component, msh.version(), safe)?;
     }
     if raw.len() > options.limits.message_bytes {
         return Err(Error::Limit {
@@ -267,4 +189,107 @@ pub(crate) fn acknowledgment_with_msh(
         },
     )
     .map(Some)
+}
+
+fn ack_requested(
+    msh: Msh<'_>,
+    code: AckCode,
+    responsibility: Responsibility,
+) -> Result<bool, Error> {
+    match (code, responsibility) {
+        (AckCode::Aa, Responsibility::StoredAndInterpreted)
+        | (AckCode::Ca, Responsibility::Stored | Responsibility::StoredAndInterpreted)
+        | (
+            AckCode::Ae | AckCode::Ar | AckCode::Ce | AckCode::Cr,
+            Responsibility::NotStored
+            | Responsibility::Stored
+            | Responsibility::StoredAndInterpreted,
+        ) => {}
+        (AckCode::Aa, Responsibility::NotStored | Responsibility::Stored)
+        | (AckCode::Ca, Responsibility::NotStored) => return Err(Error::NotStored),
+    }
+    let requested = match msh.mode() {
+        AckMode::Original => {
+            if code.accept() {
+                return Err(Error::AckMode);
+            }
+            true
+        }
+        AckMode::Enhanced {
+            accept,
+            application,
+        } => {
+            let condition = if code.accept() { accept } else { application };
+            condition.is_some_and(|condition| condition.requests(code.success()))
+        }
+    };
+    Ok(requested)
+}
+
+fn encode_error(
+    raw: &mut Vec<u8>,
+    error: AckError<'_>,
+    field: u8,
+    component: u8,
+    version: Version,
+    safe: impl Fn(&[u8], usize, usize) -> Result<(), Error>,
+) -> Result<(), Error> {
+    safe(error.segment, 0, 3)?;
+    safe(error.code, 0, 3)?;
+    safe(error.application_code, 0, 64)?;
+    let unlocated = error.segment.is_empty() && error.occurrence == 0 && error.field == 0;
+    if (!unlocated && (error.segment.len() != 3 || error.occurrence == 0 || error.field == 0))
+        || error.code.is_empty()
+    {
+        return Err(Error::Control {
+            segment: "ERR",
+            field: 1,
+        });
+    }
+    let mut location = Vec::new();
+    if !unlocated {
+        location.extend_from_slice(error.segment);
+        location.push(component);
+        location.extend_from_slice(error.occurrence.to_string().as_bytes());
+        location.push(component);
+        location.extend_from_slice(error.field.to_string().as_bytes());
+    }
+    raw.extend_from_slice(b"ERR");
+    raw.push(field);
+    match version {
+        Version::V231 => {
+            if unlocated {
+                location.extend_from_slice(&[component, component]);
+            }
+            raw.extend_from_slice(&location);
+            raw.push(component);
+            raw.extend_from_slice(error.code);
+        }
+        Version::V251 => {
+            raw.push(field);
+            raw.extend_from_slice(&location);
+            raw.push(field);
+            raw.extend_from_slice(error.code);
+            raw.push(field);
+            raw.push(b'E');
+            raw.push(field);
+            raw.extend_from_slice(error.application_code);
+        }
+    }
+    raw.push(b'\r');
+    Ok(())
+}
+
+fn encode_message_type(msh: Msh<'_>, component: u8) -> Vec<u8> {
+    let mut message_type = b"ACK".to_vec();
+    let trigger = msh.message_type().nth(1).unwrap_or_default();
+    if !trigger.is_empty() {
+        message_type.push(component);
+        message_type.extend_from_slice(trigger);
+    }
+    if msh.version() == Version::V251 {
+        message_type.push(component);
+        message_type.extend_from_slice(b"ACK");
+    }
+    message_type
 }
