@@ -203,7 +203,7 @@ fn source_times(
             _ => &[],
         };
         for field in fields {
-            if node.name == "OBX" && *field == 19 && source.uses_compatibility_contract(config) {
+            if node.name == "OBX" && *field == 19 && !source.has_analysis_time(config) {
                 continue;
             }
             if let Some(raw) = present(source.component(*ancestor, *field, 1, 1)?) {

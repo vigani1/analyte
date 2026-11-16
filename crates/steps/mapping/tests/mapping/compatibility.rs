@@ -207,3 +207,40 @@ fn hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe() ->
     }
     Ok(())
 }
+
+// HL7 2.3.1 sections 7.2.1 and 7.3.2: no standard SPM/SAC or OBX-19 analysis time.
+#[test]
+fn hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning() -> TestResult {
+    let config = config(&HL7_CONFIG.replace("edition = \"v251\"", "edition = \"v231\""))?;
+    for extra in ["", "SPM|1|later-specimen\r", "SAC|||later-container\r"] {
+        let mut fields = [""; 19];
+        fields[0] = "1";
+        fields[1] = "NM";
+        fields[2] = "SYN^^synthetic";
+        fields[4] = "1";
+        fields[10] = "F";
+        fields[18] = "20261116123045";
+        let raw = format!(
+            "MSH|^~\\&|SYN||||20261116||ORU^R01|MSG|P|2.3.1\r{extra}OBR|1||000AbC\rOBX|{}\r",
+            fields.join("|")
+        );
+        let message = analyte_hl7::Message::parse(
+            raw.as_bytes(),
+            config.effective().hl7_options().ok_or("options")?,
+        )?;
+        let result = map_hl7(&message, &config, input());
+        if extra.is_empty() {
+            assert!(
+                !first(&result?)?
+                    .times
+                    .as_slice()
+                    .iter()
+                    .any(|time| time.role.as_str() == "OBX.19")
+            );
+        } else {
+            assert!(result.is_err());
+        }
+        assert_eq!(message.encode(), raw.as_bytes());
+    }
+    Ok(())
+}

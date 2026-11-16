@@ -34,6 +34,12 @@ impl Source<'_> {
             .is_some_and(analyte_hl7::Version::uses_compatibility_contract)
     }
 
+    pub(crate) fn has_analysis_time(&self, config: &analyte_config::Validated) -> bool {
+        self.base_version(config).is_some_and(|version| {
+            version != analyte_hl7::Version::V231 && !version.uses_compatibility_contract()
+        })
+    }
+
     pub(crate) fn uses_dtm(&self, config: &analyte_config::Validated) -> bool {
         self.base_version(config)
             .is_some_and(analyte_hl7::Version::uses_dtm)
