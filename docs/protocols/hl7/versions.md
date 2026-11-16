@@ -180,7 +180,8 @@ must carry an explicitly supplied test revision through that boundary.
 
 The existing order scope remains ORM/O01–ORR/O02 and OML/O21–ORL/O22.
 Later patient-optional reply variants are not implicitly selected: 2.8.2
-§4.4.7.2 uses the ORL_O41 structure, and 2.9.1 §4.4.7.2 uses ORL/O53.
+§4.4.7.2 pp.16–17 uses the ORL_O41 structure, and 2.9.1 §4.4.7.2 pp.18–19
+uses ORL/O53.
 The existing O22 profile requires the patient response group for order decisions;
 no replacement family or patient information is invented here. No writer code
 or configuration capability is enabled by this audit.
