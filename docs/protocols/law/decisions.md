@@ -164,7 +164,7 @@ ERL repetition requires a field position (section 2.A.28.4); omitted repetition 
 ## Status-only LAB-29 custody
 
 Under [ADR 0016](../../adr/0016-awos-status-notifications.md), valid empty
-SC, IP and CA groups (TF-2b ?3.29.4.1.2.1) are typed execution evidence.
+SC, IP and CA groups (TF-2b §3.29.4.1.2.1) are typed execution evidence.
 They update an optional per-item Scheduled, InProgress or AnalyzerCancelled
 projection without changing command OrderState or creating observations,
 revisions or contract v1 deliveries. CM still requires RESULT content.
