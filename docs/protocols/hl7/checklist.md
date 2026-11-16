@@ -20,9 +20,11 @@
 - [x] Register all eight exact editions with source-named tests and explicit
   unavailable typed profiles. `version/tests.rs` covers every registry entry
   plus `adr0012_s3_no_unlisted_edition_or_prefix_match` (ADR 0012 §3).
-- [x] Validate the eight machine edition selections without defaults or patch
-  upgrades. `config/tests/hl7_editions.rs` covers exact identity, canonical
-  snapshots, missing declarations and positioned unsupported-value errors.
+- [x] Accept machine edition selections only for implemented typed profiles
+  (currently 2.3.1 and 2.5.1), without defaults or patch upgrades.
+  `config/tests/hl7_editions.rs` covers exact identity and canonical snapshots
+  for those two, actionable validation errors for the six recognized unsupported
+  editions, missing declarations and positioned unlisted-value errors.
 - [ ] Complete concrete 2.3/2.4/2.5 compatibility interpretation and the later
   editions' typed message/datatype differences and writer integration. Registry
   and config acceptance alone do not close this requirement.

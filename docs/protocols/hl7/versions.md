@@ -25,16 +25,22 @@ The single registry in `version/mod.rs` selects exact wire IDs, required MSH-7
 usage and truncation-character availability. Each entry explicitly identifies
 whether its typed field profile exists. Recognition never aliases a new edition
 to 2.5.1: absent field profiles refuse interpretation and writing while syntax
-retains the original bytes. Machine configuration now accepts exactly `v23`,
-`v231`, `v24`, `v25`, `v251`, `v26`, `v282` and `v291`; these map to the exact
-wire IDs below. Unsupported values fail at the positioned TOML schema boundary
-with the bad value and the allowed choices. A missing edition is not defaulted.
+retains the original bytes. Configuration parsing recognizes `v23`, `v231`,
+`v24`, `v25`, `v251`, `v26`, `v282` and `v291`, which map to the exact wire IDs
+below. Validation accepts only **`v231` and `v251`**, whose typed profiles exist.
+The other six return `UnsupportedHl7Edition` before a stack can be activated;
+the diagnostic names the requested edition and the currently supported editions.
+Unlisted values fail at the positioned TOML schema boundary with the bad value
+and the recognized choices. A missing edition is not defaulted.
 Compatibility interpretation, message/datatype differences and writer
-integration are separate remaining steps. A valid configuration does not qualify
-a still-unimplemented typed profile for clinical use.
+integration are separate remaining steps. Enabling another edition in config
+must accompany its implemented typed support and the corresponding tests.
 
-Config tests in `hl7_editions.rs` cover all eight exact selections and canonical
-snapshots (`adr0012_s3_eight_configured_editions_preserve_exact_wire_identity`),
+The registry tests retain exact wire identity for all eight editions. Config
+tests in `hl7_editions.rs` cover the two supported selections and canonical
+snapshots (`adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`),
+refusal and actionable diagnostics for the other six
+(`adr0012_s3_recognized_editions_without_typed_support_fail_config_validation`),
 unlisted values and their diagnostics
 (`adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values`) and
 missing declarations (`adr0012_s3_missing_config_edition_is_not_defaulted`).

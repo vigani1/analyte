@@ -6,12 +6,18 @@
   typed field profile optional until its actual rules have been implemented;
   a missing profile returns `EditionRules` with the edition's static name.
   Do not fill a new row by copying 2.5.1's interpretation.
+  Configuration validation refuses a recognized edition without typed support
+  using `UnsupportedHl7Edition`; such a machine must not start and park all input.
+  Enabling an edition in config is part of implementing its typed support.
 - **why**: An exhaustive enum is infrastructure, not conformance evidence.
   This lets registry and configuration work remain buildable while later
   commits add compatibility, message/datatype rules and writer support.
 - **source**: ADR 0007 and ADR 0012 §3; HL7 2.5.1 §2.8, pp.2-20–22.
 - **test**: the eight edition cases in `version/tests.rs`; existing 2.3.1 and
   2.5.1 conformance tests continue to guard their implemented field rules.
+  `adr0012_s3_recognized_editions_without_typed_support_fail_config_validation`
+  checks that all six other editions fail before activation with an actionable
+  diagnostic naming the edition and the supported alternatives.
 
 ## Sender-marked truncation
 

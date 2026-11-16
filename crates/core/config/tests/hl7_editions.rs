@@ -15,16 +15,10 @@ fn draft(edition: &str) -> Result<Draft, Error> {
 }
 
 #[test]
-fn adr0012_s3_eight_configured_editions_preserve_exact_wire_identity() -> Result<(), Error> {
+fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> Result<(), Error> {
     for (config_id, edition, wire) in [
-        ("v23", Edition::V23, "2.3"),
         ("v231", Edition::V231, "2.3.1"),
-        ("v24", Edition::V24, "2.4"),
-        ("v25", Edition::V25, "2.5"),
         ("v251", Edition::V251, "2.5.1"),
-        ("v26", Edition::V26, "2.6"),
-        ("v282", Edition::V282, "2.8.2"),
-        ("v291", Edition::V291, "2.9.1"),
     ] {
         let config = draft(config_id)?.validate()?;
         let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
@@ -45,6 +39,31 @@ fn adr0012_s3_eight_configured_editions_preserve_exact_wire_identity() -> Result
         );
     }
     Ok(())
+}
+
+#[test]
+fn adr0012_s3_recognized_editions_without_typed_support_fail_config_validation() {
+    for (config_id, wire) in [
+        ("v23", "2.3"),
+        ("v24", "2.4"),
+        ("v25", "2.5"),
+        ("v26", "2.6"),
+        ("v282", "2.8.2"),
+        ("v291", "2.9.1"),
+    ] {
+        assert_eq!(Version::parse(wire.as_bytes()).unwrap().as_str(), wire);
+        let error = draft(config_id).unwrap().validate().unwrap_err();
+        assert!(
+            matches!(&error, Error::UnsupportedHl7Edition { path, edition }
+            if path == "synthetic.toml" && *edition == wire)
+        );
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "synthetic.toml: syntax.edition: HL7 {wire} is recognized but not yet supported for result processing; supported: 2.3.1, 2.5.1"
+            )
+        );
+    }
 }
 
 #[test]
