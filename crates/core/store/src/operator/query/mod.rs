@@ -78,6 +78,9 @@ impl Store {
                 |row| row.get(0),
             )
             .optional()?;
+        if encoded.is_none() && self.receipt_was_purged(id)? {
+            return Err(Error::Purged);
+        }
         encoded
             .map(|text| {
                 let metadata: ReceiptMetadata = serde_json::from_str(&text)?;
@@ -175,6 +178,9 @@ impl Store {
                 },
             )
             .optional()?;
+        if row.is_none() && self.receipt_was_purged(id)? {
+            return Err(Error::Purged);
+        }
         row.map(|(metadata, raw, config)| {
             let metadata: ReceiptMetadata = serde_json::from_str(&metadata)?;
             if metadata.id != id

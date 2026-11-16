@@ -9,3 +9,5 @@ pub mod test_hooks;
 pub(crate) mod test_tracing;
 #[cfg(windows)]
 pub mod windows_service;
+
+pub(crate) mod retention;

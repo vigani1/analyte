@@ -51,14 +51,31 @@ pub(crate) async fn open_store_with_deadline(
         page_rows: program.store_limits.page_rows,
         busy_timeout: program.store_limits.busy_timeout,
     };
-    Ok(Handle::start(
+    let finite = program.machines().iter().any(|m| {
+        matches!(
+            m.snapshot().effective().site().retention,
+            analyte_config::Retention::Days(_)
+        )
+    });
+    let key = crate::installation::secrets::retention_key(finite)?;
+    let handle = Handle::start(
         program.data_directory.join("analyte.db"),
         limits,
         space,
         32,
         until,
     )
-    .await?)
+    .await?;
+    handle
+        .request(until, move |store| {
+            store.configure_retention_key(key, finite)?;
+            if finite {
+                store.retention_space_ready()?;
+            }
+            Ok(())
+        })
+        .await?;
+    Ok(handle)
 }
 
 /// Runs machines in the foreground until Ctrl-C or the termination signal.
@@ -479,6 +496,21 @@ fn start_alerts(
     watchdog: &crate::runtime::shutdown::Watchdog,
 ) -> JoinSet<Result<(), Error>> {
     let mut alert_owners = JoinSet::new();
+    {
+        let store = store.clone();
+        let policies: Vec<_> = crate::runtime::retention::policies(program)
+            .into_iter()
+            .filter(|(_, days)| days.is_some())
+            .collect();
+        let stop = stopping.clone();
+        let component = watchdog.component("retention-worker".into());
+        if !policies.is_empty() {
+            alert_owners.spawn(async move {
+                let _component = component;
+                crate::runtime::retention::run(store, policies, stop).await
+            });
+        }
+    }
     if !program.alerts().is_empty() {
         let store = store.clone();
         let policies = program.alerts().to_vec();
@@ -604,6 +636,23 @@ pub async fn restore(
             Instant::now()
                 .checked_add(Duration::from_secs(30))
                 .unwrap_or(Instant::now()),
+        )
+    })
+    .await??)
+}
+
+/// Converts an existing store for incremental vacuum while the service is stopped.
+/// # Errors
+/// Refuses active owners, capacity failures, expired deadlines and database errors.
+pub async fn prepare_retention(program: Program) -> Result<(), Error> {
+    Ok(tokio::task::spawn_blocking(move || {
+        analyte_store::Store::prepare_retention_space(
+            &program.data_directory.join("analyte.db"),
+            program.store_limits,
+            Box::new(Volume),
+            Instant::now()
+                .checked_add(analyte_store::DEFAULT_STARTUP_TIMEOUT)
+                .ok_or(analyte_store::Error::InvalidInput)?,
         )
     })
     .await??)

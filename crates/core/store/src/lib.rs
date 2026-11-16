@@ -3,6 +3,7 @@
 mod operator;
 use operator::{alerts, parked, query};
 mod upkeep;
+pub use upkeep::retention::{DigestKey, HoldTarget, PurgeRun, RetentionHold};
 use upkeep::{startup, worker};
 mod orders;
 use orders::{machine_orders, polls};
@@ -27,7 +28,7 @@ pub use reprocess::Reprocess;
 pub use delivery_operator::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 pub use machine_orders::*;
 
 pub use revisions::{InterpretationCommit, RevisionOutcome, StatusLifecycle};
@@ -56,6 +57,21 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Another process currently owns a backup or retention maintenance operation.
+    #[error("retention maintenance is busy; retry after the active batch or backup")]
+    MaintenanceBusy,
+    /// An existing SQLite file needs one offline conversion before finite retention.
+    #[error("retention requires incremental vacuum; stop the service and run prepare-retention")]
+    RetentionVacuumRequired,
+    /// A finite policy requires the original host credential.
+    #[error("retention digest key is required")]
+    RetentionKeyRequired,
+    /// Changing the digest key would lose duplicate recognition.
+    #[error("retention digest key fingerprint mismatch; key rotation is unsupported")]
+    RetentionKeyMismatch,
+    /// Purged evidence can no longer be replayed.
+    #[error("item was purged by retention; reprocessing and resending are unavailable")]
+    Purged,
     /// Startup exceeded its budget; the active migration transaction is rolled back.
     #[error("store startup deadline expired during {step}")]
     StartupTimeout {
@@ -207,6 +223,7 @@ impl Limits {
 
 /// One connection, owned by a dedicated worker when used from async code.
 pub struct Store {
+    retention_key: Option<DigestKey>,
     _lock: std::fs::File,
     db: Connection,
     path: PathBuf,

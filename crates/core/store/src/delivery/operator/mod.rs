@@ -107,6 +107,9 @@ impl Store {
             Option<String>,
             Option<i64>,
         );
+        if self.delivery_was_purged(id)? {
+            return Err(Error::Purged);
+        }
         let target = format!("delivery:{}", serde_json::from_str::<String>(&key(&id)?)?);
         if audit.action.as_str() != "delivery-resend"
             || !audit.targets.iter().any(|item| item.as_str() == target)

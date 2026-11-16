@@ -54,7 +54,7 @@ impl Store {
         Self::open_locked_starting(path, limits, space, lock, &default_startup()?)
     }
 
-    fn open_locked_starting(
+    pub(crate) fn open_locked_starting(
         path: &Path,
         limits: Limits,
         space: Box<dyn FreeSpace>,
@@ -66,6 +66,9 @@ impl Store {
             startup.install(&mut db)?;
             db.busy_timeout(limits.busy_timeout)?;
             let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+            if version == 0 {
+                db.execute_batch("PRAGMA auto_vacuum=INCREMENTAL")?;
+            }
             Ok((db, version))
         })?;
         if version > SCHEMA_VERSION {
@@ -73,7 +76,7 @@ impl Store {
         }
         startup.run(StartupStep::Integrity, || Self::integrity(&db))?;
         db.execute_batch(
-            "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;",
         )?;
         if version == 0 {
             startup.run(StartupStep::Migration { from: 0, to: 1 }, || {
@@ -140,6 +143,9 @@ impl Store {
                 Ok(())
             })?;
         }
+        if version <= 9 {
+            migrate_retention(&mut db, startup)?;
+        }
         startup.run(StartupStep::Finalizing, || {
         // SQL constraints also protect evidence from accidental maintenance updates.
         for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
@@ -149,6 +155,7 @@ impl Store {
         })?;
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
+            retention_key: None,
             _lock: lock,
             db,
             path: path.into(),
@@ -191,3 +198,13 @@ fn default_startup() -> Result<Startup, Error> {
 
 #[cfg(test)]
 mod tests;
+
+fn migrate_retention(db: &mut Connection, startup: &Startup) -> Result<(), Error> {
+    startup.run(StartupStep::Migration { from: 9, to: 10 }, || {
+        let tx = db.transaction()?;
+        tx.execute_batch(include_str!("../migration_v10.sql"))?;
+        Store::integrity(&tx)?;
+        tx.commit()?;
+        Ok(())
+    })
+}

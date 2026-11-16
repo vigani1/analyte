@@ -1,6 +1,7 @@
 # Synthetic Gazelle peer. The ignored harness replaces this reserved HTTPS app
 # URL through the existing loopback-only test seam; production verification stays on.
 schema_version = 1
+retention = "keep"
 endpoint = "151.80.220.161:10112"
 [destination]
 name = "gazelle-local"

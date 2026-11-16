@@ -223,6 +223,7 @@ name = "analyte-store"
 version = "0.1.0"
 dependencies = [
  "analyte-model",
+ "hmac",
  "jiff",
  "proptest",
  "rusqlite",

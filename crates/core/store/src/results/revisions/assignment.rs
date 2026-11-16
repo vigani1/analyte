@@ -10,6 +10,7 @@ pub(super) struct RevisionBatch {
 }
 
 pub(super) struct Reconciliation<'a, 'db> {
+    pub(super) retention_key: Option<&'a crate::DigestKey>,
     pub(super) tx: &'a rusqlite::Transaction<'db>,
     pub(super) machine: &'a analyte_model::Identifier,
     pub(super) limit: usize,

@@ -446,6 +446,8 @@ pub struct Destination {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Site {
+    /// Explicit retention in days (1 through 3650), or `keep` (ADR 0013 item 1).
+    pub retention: crate::Retention,
     /// Must be one.
     pub schema_version: u32,
     /// Port, numeric socket address, or absolute folder path.

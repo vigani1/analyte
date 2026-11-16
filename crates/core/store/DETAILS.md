@@ -317,3 +317,54 @@ confirmation, capacity refusal, transactional audit/history failures and operato
 resolution. Migration tests include both resolved and unresolved guards beyond the
 old 128-page limit, exact retention of every original table/row, duplicate targets,
 multiple guards and refusal when the machine identity is missing.
+
+## Retention schema (ADR 0013)
+
+Schema v10 adds receipt tombstones, delivery UUID associations, keyed result
+identity/component/content digests, a key fingerprint and explicit holds. The
+credential is never serialized into the database. Startup configures the key
+before machine admission and refuses a missing or changed credential when a
+fingerprint is retained. There is no key rotation.
+
+The single receipt eligibility query requires retained interpretations, resolved
+identities, a delivery for every interpretation's result, every delivery done with
+an acknowledgment, and a complete retention period after the last acknowledgment.
+It excludes parking evidence, unfinished transfers, open or uncertain machine
+orders/items and poll intents, and explicit holds. In this version, ambiguous
+machine links retain the whole machine's receipts; any order hold conservatively
+blocks receipt purging until released. Resolved parking evidence is retained too.
+
+Use `analyte --actor NAME holds receipt UUID --reason TEXT` or `holds order
+DESTINATION ORDER --reason TEXT` to place a hold; add `--release` to release it.
+Each transition and its audit commit together; repeated transitions are refused.
+
+## Purge transactions and filesystem space
+
+`purge_batch` examines at most `min(page_rows, 16)` receipts in one immediate
+transaction. The same eligibility query used by the public store rule runs inside
+that transaction. Its delete guards are removed only transactionally and restored
+before commit. A rollback or abrupt process death restores both evidence and guards.
+The batch preserves original raw digests, provenance, receive/ack/purge times,
+receipt/delivery UUIDs, keyed result components/content and revisions. Audit fields
+record policy, receipt/result/delivery counts, scan cursor and the purged UUID range.
+They retain the common Audit header, so ordinary audit readers keep working.
+
+SQLite's progress handler interrupts overdue SQL once, permitting rollback to
+finish. Lock waits are capped by the same deadline. Backups share a host maintenance
+lock; purge/reclamation require it exclusively. Offline restore uses the separate
+exclusive store lock. The runtime owns and joins its retention task at shutdown.
+
+Incremental vacuum avoids running a whole-file rebuild during live receiving.
+New files set `auto_vacuum=INCREMENTAL` before schema creation; existing files use
+the explicit offline `prepare-retention` conversion. Online vacuum requests at
+most 32 pages and never waits for a checkpoint reader. `secure_delete=ON` clears
+deleted page content. The SQLite documentation explains why existing files need a
+rebuild and why conversion needs temporary capacity:
+[auto_vacuum and incremental_vacuum](https://www.sqlite.org/pragma.html#pragma_auto_vacuum),
+[VACUUM](https://www.sqlite.org/lang_vacuum.html).
+
+Tests named `adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate`,
+`adr0013_item4_crash_mid_batch_rolls_back_data_tombstones_and_guards` and
+`adr0013_item2_random_unfinished_states_never_purge` guard the key safety outcomes.
+The crash test terminates a child process before commit without running destructors.
+The space test checks a real file shrink after offline conversion and bounded vacuum.
