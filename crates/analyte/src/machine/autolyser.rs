@@ -217,38 +217,30 @@ impl ConnectionState {
         actions: &mut VecDeque<Action>,
         machine: &intake::Connection<'_>,
         store: &Handle,
-        policy: &analyte_config::Autolyser,
     ) -> Option<Error> {
         let prior_code = self.end_code;
         self.end_code = "Autolyser-storage-failed";
         let id = ReceiptId::new();
-        let stored = tokio::time::timeout(
-            ms(policy.storage_ms),
+        let stored = custody::store_within(
+            custody::budget(machine),
             intake::receive(store, machine, id, raw),
         )
         .await;
         match stored {
-            Ok(Ok(time)) => {
+            Ok(time) => {
                 self.end_code = prior_code;
                 self.receipt = Some((id, time));
                 actions.extend(self.dialog.step(self.start.elapsed(), Event::Stored(token)));
             }
-            Ok(Err(error)) => {
+            Err(error) => {
+                if error.downcast_ref::<custody::StoreTimeout>().is_some() {
+                    self.end_code = "Autolyser-storage-timeout";
+                }
                 actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::StoreFailed(token)),
                 );
                 return Some(error);
-            }
-            Err(_) => {
-                self.end_code = "Autolyser-storage-timeout";
-                actions.extend(
-                    self.dialog
-                        .step(self.start.elapsed(), Event::StoreFailed(token)),
-                );
-                return Some(invalid(
-                    "Autolyser storage deadline exceeded; custody uncertain",
-                ));
             }
         }
 
@@ -334,7 +326,7 @@ async fn process(
             }
             Action::Store(token, raw) => {
                 if let Some(error) = state
-                    .store_report(token, raw, &mut actions, machine, store, policy)
+                    .store_report(token, raw, &mut actions, machine, store)
                     .await
                 {
                     failure = Some(error);

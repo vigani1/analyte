@@ -97,24 +97,15 @@ impl Connection {
         code: &str,
     ) -> Result<(), Error> {
         let mut result = Ok(());
-        for identity in self.reserving.drain(..) {
-            let loaded = store
-                .request(deadline(), move |store| store.machine_order(&identity))
-                .await;
-            let order = match loaded {
-                Ok(Some(order)) => order,
-                Ok(None) => continue,
-                Err(error) => {
-                    crate::machine::custody::retain_cleanup(&mut result, Err(error.into()));
-                    continue;
-                }
-            };
-            if (order.reserved_by(&self.owner) || order.cancel_requested_by(&self.owner))
-                && !self.active.iter().any(|active| active.id == order.id)
-            {
-                self.active.push(order);
-            }
-        }
+        let cleanup = super::sending::settle_owned(
+            store,
+            std::mem::take(&mut self.reserving),
+            &self.owner,
+            code,
+            super::sending::Settlement::Order,
+        )
+        .await;
+        crate::machine::custody::retain_cleanup(&mut result, cleanup);
         if let Some(exchange) = &self.exchange {
             let cleanup = super::hl7_send::finish(
                 store,
@@ -348,21 +339,13 @@ impl Connection {
                                 }
                                 lines.extend(mapped);
                                 candidates.push(super::Candidate {
-                                    identity: analyte_store::MachineOrderKey {
-                                        destination: super::destination(machine),
-                                        order: cached.id,
-                                        machine: machine.id.clone(),
-                                    },
+                                    identity: super::reservation::key(machine, cached.id),
                                     version: fields.version,
                                 });
                                 answer = CacheAnswer::Found;
                             }
                             Err(error) => {
-                                let identity = analyte_store::MachineOrderKey {
-                                    destination: super::destination(machine),
-                                    order: cached.id,
-                                    machine: machine.id.clone(),
-                                };
+                                let identity = super::reservation::key(machine, cached.id);
                                 let version = fields.version;
                                 let reason = analyte_model::SourceText::new(&format!(
                                     "HL7-display-mapping: {error}"
@@ -478,6 +461,58 @@ mod tests {
         fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
             Ok(u64::MAX)
         }
+    }
+
+    #[tokio::test]
+    async fn adr0003_shared_cleanup_settles_later_key_after_store_failure() -> Result<(), Error> {
+        let machine = query_machine()?;
+        let temp = tempfile::tempdir()?;
+        let mut store = Handle::start(
+            temp.path().join("owned-cleanup.db"),
+            analyte_store::Limits {
+                reserve_bytes: 1024,
+                database_bytes: 100_000_000,
+                record_bytes: 65_536,
+                page_rows: 100,
+                busy_timeout: Duration::from_millis(20),
+            },
+            Box::new(Space),
+            4,
+            crate::test_startup_deadline()?,
+        )
+        .await?;
+        let owner = Identifier::new("owner")?;
+        let first = super::super::reservation::key(&machine, Identifier::new("order-2")?);
+        let second = super::super::reservation::key(&machine, Identifier::new("order-1")?);
+        reserve_original_connection(&store, &first, &owner).await?;
+        reserve_original_connection(&store, &second, &owner).await?;
+        let database = rusqlite::Connection::open(temp.path().join("owned-cleanup.db"))?;
+        database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
+        let result = super::super::sending::settle_owned(
+            &store,
+            vec![first.clone(), second.clone()],
+            &owner,
+            "disconnect",
+            super::super::sending::Settlement::Items,
+        )
+        .await;
+        assert!(result.is_err());
+        let (first, second) = store
+            .request(deadline(), move |store| {
+                Ok((store.machine_order(&first)?, store.machine_order(&second)?))
+            })
+            .await?;
+        assert_eq!(
+            first.ok_or("first")?.state,
+            analyte_model::OrderState::Sending
+        );
+        assert_eq!(
+            second.ok_or("second")?.state,
+            analyte_model::OrderState::Uncertain
+        );
+        drop(database);
+        store.shutdown(deadline()).await?;
+        Ok(())
     }
 
     #[tokio::test]

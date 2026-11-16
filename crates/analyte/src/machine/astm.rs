@@ -55,7 +55,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             establish: Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
             frame: Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
             receive: Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
-            commit: Duration::from_secs(5),
+            commit: super::custody::budget(machine),
             ..Timers::default()
         };
         let config = Config::new(
@@ -375,11 +375,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             number.value(),
             analyte_framing::astm::FrameNumber::MAX.value(),
         )?;
-        let committed = store
-            .request(deadline(), move |s| {
+        let committed = super::custody::store_within(
+            super::custody::budget(machine),
+            store.request(deadline(), move |s| {
                 s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
-            })
-            .await;
+            }),
+        )
+        .await;
         if let Err(error) = &committed {
             tracing::error!(machine = machine.id.as_str(), error_kind = %error, "ASTM frame commit refused");
         }

@@ -155,3 +155,31 @@ async fn assert_recovered_outcomes(
         .await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn adr0003_cleanup_attempts_every_key_and_retains_every_failure() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("closed.db")).await?;
+    store.shutdown(deadline()).await?;
+    let key = MachineOrderKey {
+        destination: Identifier::new("demo")?,
+        order: Identifier::new("order")?,
+        machine: Identifier::new("machine")?,
+    };
+    let owner = Identifier::new("owner")?;
+    let error = settle_owned(
+        &store,
+        vec![key.clone(), key.clone(), key],
+        &owner,
+        "disconnect",
+        Settlement::Order,
+    )
+    .await
+    .expect_err("closed store must reject each cleanup");
+    // Each link proves another independent request was attempted after failure.
+    assert_eq!(
+        error.to_string().matches("dialog effect failed:").count(),
+        2
+    );
+    Ok(())
+}

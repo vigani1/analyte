@@ -301,7 +301,8 @@ async fn process(
             }
             DialogAction::Store { ticket, message } => {
                 let operation = store_message(store, machine, &message);
-                let outcome = match operation.await {
+                let outcome = match custody::store_within(custody::budget(machine), operation).await
+                {
                     Ok(outcome) => outcome,
                     Err(error) => {
                         tracing::error!(machine = machine.id.as_str(), error_kind = %error, "POCT custody failed");

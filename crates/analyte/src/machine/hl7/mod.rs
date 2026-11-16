@@ -335,7 +335,12 @@ impl ConnectionState {
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
-        match intake::receive(store, machine, id, raw).await {
+        match super::custody::store_within(
+            super::custody::budget(machine),
+            intake::receive(store, machine, id, raw),
+        )
+        .await
+        {
             Ok(_) => {
                 if self.pending.len() >= 2 {
                     return Err(invalid("HL7 pending receipt limit exceeded"));
