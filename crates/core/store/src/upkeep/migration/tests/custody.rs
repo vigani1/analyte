@@ -15,7 +15,7 @@ fn adr0003_v6_every_state_owner_and_parking_shape_migrates_without_losing_meanin
         "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
         params![
             key(&metadata.id)?,
-            key(&metadata)?,
+            document(&metadata)?,
             b"original bytes",
             b"config"
         ],

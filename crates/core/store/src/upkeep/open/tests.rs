@@ -297,7 +297,7 @@ fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_gua
                 "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
                 rusqlite::params![
                     crate::key(&metadata.id)?,
-                    crate::key(&metadata)?,
+                    crate::document(&metadata)?,
                     b"original bytes",
                     b"config"
                 ],

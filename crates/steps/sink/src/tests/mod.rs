@@ -755,3 +755,5 @@ mod bounds;
 mod delivery;
 
 mod alert_webhooks;
+
+mod diagnostics;

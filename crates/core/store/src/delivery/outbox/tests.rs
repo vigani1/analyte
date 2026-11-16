@@ -326,7 +326,7 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
         [key(&id)?],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
-    assert_eq!(attempts, (key(&Attempt::Interrupted)?, 42));
+    assert_eq!(attempts, (document(&Attempt::Interrupted)?, 42));
     let audits = store.audits(0)?;
     let (_, entry) = audits.first().ok_or("missing audit")?;
     assert_eq!(
@@ -379,7 +379,7 @@ fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_clai
             time: 42,
             reason: Reason::new("interrupted delivery")?,
         };
-        store.limits.record_bytes = key(&audit)?.len().checked_sub(delta).ok_or("limit")?;
+        store.limits.record_bytes = document(&audit)?.len().checked_sub(delta).ok_or("limit")?;
         let result = store.recover_in_flight(42, &audit);
         let state = store.delivery(id)?.ok_or("missing delivery")?.state;
         if delta == 0 {

@@ -23,7 +23,7 @@ fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_
     };
     db.execute(
         "INSERT INTO frame_provenance VALUES ('legacy',?1)",
-        [key(&provenance)?],
+        [document(&provenance)?],
     )?;
     db.execute(
         "INSERT INTO frames(transfer,number,raw) VALUES ('legacy',1,?1),('legacy',7,?2)",
