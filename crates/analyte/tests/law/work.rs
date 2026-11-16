@@ -437,11 +437,22 @@ async fn palm_tf2b_b7_6_c8_adr0003_0011_status_custody_repeats_restart_and_confl
     drop(peer);
     let pending = execution_notice(&sent, "raw-before-crash", "IP", 0)?;
     let pending_id = seed_pending_notice(&path, &pending)?;
+    // ADR 0003/0010: a crash before parking an incomplete MLLP block must not
+    // strand raw evidence or prevent all subsequent interpretation on restart.
+    let malformed_id = seed_pending_raw(&path, b"\x0bMSH|^~\\&|synthetic-incomplete")?;
     let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     assert_eq!(
         database(&path)?.query_row(
             "SELECT count(*) FROM interpretations WHERE receipt=?1",
             [serde_json::to_string(&pending_id)?],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    assert_eq!(
+        database(&path)?.query_row(
+            "SELECT count(*) FROM interpretations WHERE receipt=?1",
+            [serde_json::to_string(&malformed_id)?],
             |r| r.get::<_, i64>(0)
         )?,
         1
@@ -521,6 +532,12 @@ async fn palm_tf2b_b7_6_adr0003_0011_mixed_status_result_accepts_or_rejects_as_o
 }
 
 fn seed_pending_notice(path: &Path, wire: &str) -> Result<analyte_model::ReceiptId, Error> {
+    let raw =
+        analyte_framing::hl7::encode(wire.as_bytes(), analyte_framing::hl7::Limit::new(1048576)?)?;
+    seed_pending_raw(path, &raw)
+}
+
+fn seed_pending_raw(path: &Path, raw: &[u8]) -> Result<analyte_model::ReceiptId, Error> {
     let db = database(path)?;
     let (encoded, config): (String, Vec<u8>) = db.query_row(
         "SELECT metadata,config FROM receipts ORDER BY rowid DESC LIMIT 1",
@@ -530,9 +547,7 @@ fn seed_pending_notice(path: &Path, wire: &str) -> Result<analyte_model::Receipt
     let mut metadata: analyte_model::ReceiptMetadata = serde_json::from_str(&encoded)?;
     metadata.id = analyte_model::ReceiptId::new();
     metadata.received_at = jiff::Timestamp::UNIX_EPOCH;
-    let raw =
-        analyte_framing::hl7::encode(wire.as_bytes(), analyte_framing::hl7::Limit::new(1048576)?)?;
-    metadata.raw_digest = analyte_model::Digest(analyte_contract::content_digest(&raw));
+    metadata.raw_digest = analyte_model::Digest(analyte_contract::content_digest(raw));
     db.execute(
         "INSERT INTO receipts(id,metadata,raw,config) VALUES (?1,?2,?3,?4)",
         rusqlite::params![

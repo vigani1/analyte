@@ -21,7 +21,10 @@ pub(super) async fn plan(
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
-    let payload = crate::machine::interpretation::unpack(machine, &receipt.raw)?;
+    let Ok(payload) = crate::machine::interpretation::unpack(machine, &receipt.raw) else {
+        // The ordinary mapping failure still needs a durable interpretation and parking.
+        return Ok(None);
+    };
     let Ok(message) = law::parse_message(&payload, settings.options()) else {
         return Ok(None);
     };
