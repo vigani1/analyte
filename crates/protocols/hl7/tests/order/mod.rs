@@ -1,4 +1,4 @@
-//! Synthetic ORM/ORR fixtures: HL7 2.3.1 ch.4 / 2.5.1 §§4.4.1–2, 4.5.1.
+//! Supplies synthetic order test fixtures and scenarios.
 use analyte_hl7::order::{
     self, Code, Control, Error, Header, Order, OrderId, OrderMessage, OrderResponse, Outcome,
     Patient, Priority, Processing, SampleField, SampleId, Specimen, Subject, Timestamp, Timing,

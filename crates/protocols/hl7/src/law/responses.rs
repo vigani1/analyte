@@ -1,4 +1,4 @@
-//! LAW response interpretation belongs to the HL7 profile syntax boundary.
+//! Builds and interprets LAW responses.
 use super::{Error, Query, content, raw};
 use crate::{AckCode, AckError, Message, Options, Response, Responsibility};
 

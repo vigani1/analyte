@@ -1,4 +1,4 @@
-//! upkeep/backup regression tests kept beside the storage behavior they guard.
+//! Tests plan11 online backup copy reopens with exact receipt bytes; mutation plan11 backup refuses a locked source without reporting corruption.
 use crate::test_support::*;
 use crate::*;
 

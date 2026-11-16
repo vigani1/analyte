@@ -1,4 +1,4 @@
-//! Synthetic transport behavior tests.
+//! Tests loopback preserves bytes and disconnect; dropping dialog cancels owner.
 use analyte_transport::{Event, Limits, connection, tcp};
 use std::{error::Error, time::Duration};
 use tokio::{

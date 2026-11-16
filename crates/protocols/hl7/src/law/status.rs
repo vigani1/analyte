@@ -1,4 +1,4 @@
-//! ADR 0011; `PaLM` TF-2b Rev 11 C.7 Table C.7-18 p.110 and Figure C.7-1 p.111.
+//! Defines LAW observation status transitions and single-run rules (ADR 0011 and TF-2b C.7).
 /// Permitted changes to retained content within one observation identity.
 pub const STATUS_TRANSITIONS: &[(&str, &str)] = &[
     ("P", "P"),

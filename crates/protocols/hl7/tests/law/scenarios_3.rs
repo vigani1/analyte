@@ -1,4 +1,4 @@
-//! Regression scenarios for law.
+//! Tests law tf2b c1 component failures report precise locations; law tf2b c6 c7 c9 typed work fields preserve wire.
 use super::*;
 
 #[test]

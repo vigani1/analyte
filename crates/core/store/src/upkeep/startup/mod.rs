@@ -1,4 +1,4 @@
-//! Startup progress and cooperative SQLite cancellation.
+//! Tracks startup progress and cancels SQLite operations cooperatively.
 use crate::Error;
 use std::{
     sync::{

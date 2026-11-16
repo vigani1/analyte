@@ -1,4 +1,4 @@
-//! POCT01-A2 DML reviewer with durable custody before every acceptance.
+//! Drives POCT DML reviewer connections with durable custody before acceptance.
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::{Error, evidence, invalid};

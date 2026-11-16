@@ -1,4 +1,4 @@
-//! Version-1 value evidence owns its wire types and validation.
+//! Defines version-1 value evidence types and validates their wire values.
 use super::{Identifier, NamespacedId, Reason, SourceText};
 use serde::{Deserialize, Serialize};
 /// Invalid exact decimal notation (only optional sign, digits and a decimal point).

@@ -1,4 +1,4 @@
-//! Contract v1 HTTP/authentication, results, orders and retry boundaries; clinical rules 4–7.
+//! Tests contract v1 rule7 text and document byte ceilings are inclusive; contract v1 rule4 envelope uuid timestamps and digests validate independently.
 #![forbid(unsafe_code)]
 use analyte_contract::*;
 use serde_json::{Value, json};

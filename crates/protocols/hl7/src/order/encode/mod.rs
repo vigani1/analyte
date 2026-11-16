@@ -1,4 +1,4 @@
-//! Order-specific validation and encoding belong beside typed HL7 order fields.
+//! Validates and encodes typed HL7 orders.
 use super::{
     Code, Control, Error, Family, Header, Order, OrderId, OrderMessage, SampleField, Subject,
     invalid, types::scalar,

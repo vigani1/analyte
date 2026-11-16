@@ -1,4 +1,4 @@
-//! Nonclinical alert state and retained transition history (plan section 11).
+//! Stores nonclinical alert states and transition history.
 use crate::{Error, Store, key};
 use analyte_model::Identifier;
 use rusqlite::{OptionalExtension, params};

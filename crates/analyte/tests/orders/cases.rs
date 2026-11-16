@@ -1,4 +1,5 @@
-//! LIS02-A2 §§8,11,12 and ADR 0004, using synthetic loopback peers only. Kept whole: ASTM order context cases share one query and send-ahead exchange fixture.
+//! Tests lis02 section11 fresh cache orders empty and untrusted are distinct on wire; rule8 query response reserves without event then disconnect emits one uncertain.
+//! Kept whole: ASTM order context cases share one query and send-ahead exchange fixture.
 use super::*;
 use crate::support::HANG_GUARD;
 use tokio::{

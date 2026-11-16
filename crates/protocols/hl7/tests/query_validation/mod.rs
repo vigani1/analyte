@@ -1,4 +1,4 @@
-//! Synthetic negative fixtures for HL7 2.3.1 §§2.24.4–5 / 2.5.1 §§5.10.5.3–4.
+//! Supplies synthetic query validation test fixtures and scenarios.
 use analyte_hl7::{Error, Message, Options, query::Request};
 
 fn fixture(

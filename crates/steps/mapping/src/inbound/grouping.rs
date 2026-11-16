@@ -1,4 +1,4 @@
-//! Replacement grouping and mapping orchestration.
+//! Groups replacement results and coordinates result mapping.
 use crate::FieldSyntax;
 use crate::MappedResult;
 use crate::inbound::source::Source;

@@ -1,4 +1,4 @@
-//! Transport layer: owns bounded byte I/O and recordings, without protocol interpretation.
+//! Reads and writes bounded transport bytes and recordings without interpreting protocols.
 #![forbid(unsafe_code)]
 
 use std::{

@@ -1,4 +1,4 @@
-//! Outbound mapping never searches or reverses the incoming result table.
+//! Maps outgoing orders without reversing incoming result tables.
 mod app;
 pub(crate) mod codes;
 pub use crate::hl7::Command as Hl7Command;

@@ -1,4 +1,4 @@
-//! Shared transport settings and conversions at the config boundary.
+//! Holds validated transport settings and converts raw settings.
 use super::*;
 
 /// TCP connection direction; cannot select serial or folder transport.

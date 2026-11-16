@@ -1,4 +1,4 @@
-//! Regression scenarios for law observation.
+//! Tests law tf2b c2 c5 c7 x fields components and composite send ceilings; law tf2b c5 nte 4 extended vendor namespace has 12 character limit.
 use super::*;
 
 #[test]

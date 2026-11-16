@@ -1,4 +1,4 @@
-//! ADR 0004: outgoing translations are explicit and independent of result tables.
+//! Translates outgoing codes using explicit tables independent of result mappings.
 use crate::orders::{AppOrderPriority, OrderMappingError};
 use analyte_config::{OrderPriority, OutboundSpecimen, OutboundTest};
 use analyte_model::NamespacedId;

@@ -1,4 +1,4 @@
-//! delivery/outbox regression tests kept beside the storage behavior they guard.
+//! Tests adr0008 outbox and interpretation rollback together; adr0008 parked head blocks correction but not other machine.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

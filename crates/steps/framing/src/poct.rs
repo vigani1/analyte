@@ -1,4 +1,4 @@
-//! POCT01-A2 Appendix B XML root boundaries; syntax remains authoritative.
+//! Finds POCT XML root message delimiters without validating message syntax.
 use quick_xml::{Reader, events::Event};
 
 /// A message exceeds the host's bounded framing policy.

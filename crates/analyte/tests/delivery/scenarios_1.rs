@@ -1,4 +1,4 @@
-//! Regression scenarios for delivery.
+//! Tests plan13 adr0008 astm and hl7 deliver once retransmission and correction; adr0008 receiver outage retries immutable delivery when it returns.
 use super::*;
 
 #[tokio::test]

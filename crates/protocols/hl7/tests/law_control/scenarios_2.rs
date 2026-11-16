@@ -1,4 +1,4 @@
-//! Regression scenarios for law control.
+//! Tests law tf2b c1 query builder checks generated erl code and mandatory err; law tf2b c4 work builder checks all four hd fields and response id.
 use super::*;
 
 #[test]

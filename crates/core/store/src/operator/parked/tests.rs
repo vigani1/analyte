@@ -1,4 +1,4 @@
-//! operator/parked regression tests kept beside the storage behavior they guard.
+//! Tests rule2 parse failure parks and resolution is audited once; mutation adr0003 park resolve and audit keep exact evidence once after restart.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

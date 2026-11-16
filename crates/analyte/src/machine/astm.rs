@@ -1,4 +1,4 @@
-//! ASTM journaling precedes every data ACK (ADR 0003).
+//! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
 use crate::orders::astm::{Pending, Request};
 use crate::{Error, deadline, evidence, invalid};

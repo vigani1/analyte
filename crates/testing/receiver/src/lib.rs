@@ -1,4 +1,4 @@
-//! Reference integration endpoint: owns durable contract receipt and orders, without clinical decisions.
+//! Receives durable contract deliveries and serves orders without clinical decisions.
 #![forbid(unsafe_code)]
 use analyte_contract::{Delivery, OrderEvent, SigningSecret, content_digest, decode};
 use axum::{

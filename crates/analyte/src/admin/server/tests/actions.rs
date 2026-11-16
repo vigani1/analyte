@@ -1,4 +1,4 @@
-//! Plan sections 11/12 and ADR 0003: real HTTP action confirmation, CSRF and audit atomicity.
+//! Tests plan11 admin reprocess resend confirmation csrf actor and audit failure atomicity.
 use super::pages::{csrf, encode, login};
 use super::*;
 

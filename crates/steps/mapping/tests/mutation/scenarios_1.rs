@@ -1,4 +1,4 @@
-//! Regression scenarios for mutation.
+//! Tests rule2 uninterpreted numeric comparator never becomes equality; rule2 configured coded kind refuses empty or numeric text without guessing.
 use super::*;
 
 #[test]

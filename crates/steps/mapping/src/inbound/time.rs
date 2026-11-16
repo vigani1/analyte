@@ -1,4 +1,4 @@
-//! Partial source times keep written precision and never acquire an implied zone.
+//! Maps partial source times without inventing precision or time zones.
 use crate::{Error, Position, text};
 use analyte_model::{SourceTime, TimePrecision, UtcOffset};
 

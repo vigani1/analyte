@@ -1,4 +1,4 @@
-//! Edition selection and the edition-dependent grammar rules. No implied upgrades.
+//! Selects HL7 editions and their grammar rules without implied upgrades.
 /// Edition selected exclusively from MSH-12.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Version {

@@ -1,4 +1,4 @@
-//! Incremental vendor framing, from research/vidas.md ?3 (BCI A ?3).
+//! Frames VIDAS messages incrementally (BCI Appendix A chapter 3).
 use thiserror::Error;
 
 /// Packet acknowledgment boundary.

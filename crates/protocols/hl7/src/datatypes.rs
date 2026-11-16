@@ -1,4 +1,4 @@
-//! Fixed-depth datatype checks. Values are borrowed; no defaults are synthesized.
+//! Checks HL7 datatypes to a fixed depth without synthesizing defaults.
 use crate::{Component, Repetition, Version};
 
 pub(super) fn scalar(value: Component<'_>) -> bool {

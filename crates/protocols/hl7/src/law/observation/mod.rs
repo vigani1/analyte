@@ -1,4 +1,4 @@
-//! Observation, comment and inventory profiles from TF-2b C.2/C.5/C.7.
+//! Validates LAW OBX, NTE and INV segments (TF-2b C.2/C.5/C.7).
 use super::fields::{characters, component_error, excluded_fields, field, part, primitive, scalar};
 use super::order::limit;
 use super::patient::{authority_value, coded, excluded, extras};

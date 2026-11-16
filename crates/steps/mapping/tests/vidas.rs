@@ -1,4 +1,4 @@
-//! VIDAS BCI Appendix A chapter 4 mapping assertions, moved without changed expectations.
+//! Tests vidas bci a 4 exact identity unknown tags and values.
 use analyte_vidas::syntax::{Message, SampleLimit};
 
 #[test]

@@ -1,4 +1,4 @@
-//! Regression scenarios for queries.
+//! Tests law tf2b b7 6 returned work must match downloaded awos; law tf2b b7 1 b7 2 host correlates errors without ack loops.
 use super::*;
 
 #[tokio::test]

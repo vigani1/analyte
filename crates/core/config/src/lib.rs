@@ -1,4 +1,4 @@
-//! Configuration boundary: owns bounded loading and validated settings, without connection I/O.
+//! Loads bounded configuration and validates settings without connection I/O.
 #![forbid(unsafe_code)]
 
 mod orders;

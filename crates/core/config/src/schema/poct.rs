@@ -1,4 +1,4 @@
-//! Raw POCT policy at the TOML boundary.
+//! Holds raw POCT TOML policy settings.
 use super::*;
 
 /// POCT DML reviewer resource and time budgets.

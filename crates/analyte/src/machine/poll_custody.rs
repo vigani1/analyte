@@ -1,4 +1,4 @@
-//! Typed durable poll custody; uncertainty blocks R without scanning operator evidence.
+//! Records poll custody and blocks R while its outcome is uncertain.
 use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, Handle, PollIntentId, PollIntentState, PollOutcome};

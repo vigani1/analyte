@@ -1,4 +1,4 @@
-//! Read-only comment record positions belong beside the ASTM grammar.
+//! Reads ASTM comment record fields.
 use crate::{Field, Kind, Record};
 /// Read-only LIS02 comment positions; no clinical defaults are inferred.
 #[derive(Clone, Copy, Debug)]

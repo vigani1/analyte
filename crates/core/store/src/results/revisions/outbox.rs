@@ -1,4 +1,4 @@
-//! Eligible result deliveries written within the coordinator?s transaction.
+//! Writes eligible result deliveries within the caller transaction.
 use super::*;
 impl Reconciliation<'_, '_> {
     pub(super) fn write_deliveries(

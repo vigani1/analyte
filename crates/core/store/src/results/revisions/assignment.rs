@@ -1,4 +1,4 @@
-//! Per-result revision assignment using one borrowed transaction and bounded batch state.
+//! Assigns result revisions within one transaction and bounded batch state.
 use super::*;
 pub(super) type AssignedRevision = (String, i64, analyte_model::Digest);
 

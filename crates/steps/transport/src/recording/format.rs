@@ -1,4 +1,4 @@
-//! ADR 0009 bounded JSONL codec shared by capture and replay.
+//! Encodes and decodes bounded JSONL wire recordings (ADR 0009).
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};

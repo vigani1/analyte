@@ -1,4 +1,4 @@
-//! App-supplied enhanced work content. Absence never creates a default value.
+//! Holds app-supplied enhanced LAW work content without default values.
 
 /// Encoded patient/encounter fields supplied by the app, checked when rendered.
 #[derive(Debug, Clone, Copy)]

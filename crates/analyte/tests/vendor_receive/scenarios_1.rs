@@ -1,4 +1,4 @@
-//! Regression scenarios for vendor receive.
+//! Tests vidas literal notes3 adr0003 stored before ack unresolved parked no delivery; poct01 b3 2 adr0003 stored before ack unresolved parked no delivery.
 use super::*;
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-//! upkeep/startup regression tests kept beside the storage behavior they guard.
+//! Tests adr0003 rule7 startup budget is inclusive and cancellation is sticky.
 use crate::test_support::*;
 use crate::*;
 

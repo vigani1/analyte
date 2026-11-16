@@ -1,4 +1,4 @@
-//! Plan §11, ADR 0003 crash recovery and AGENTS concurrency: real forced process exit.
+//! Tests forced exit child; plan11 adr0003 agents forced exit preserves receipts delivery and uncertain orders.
 use super::*;
 use crate::support::HANG_GUARD;
 use std::io::Read as _;

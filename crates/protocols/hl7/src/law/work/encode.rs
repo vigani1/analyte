@@ -1,4 +1,4 @@
-//! LAW work-order encoding and specimen grouping, without lifecycle decisions.
+//! Encodes LAW work orders and specimen groups without lifecycle decisions.
 use super::*;
 use crate::law;
 use crate::{Message, Options, Response};

@@ -1,4 +1,4 @@
-//! Regression scenarios for syntax.
+//! Tests lis02 6 2 bootstrap and 5 4 6 message delimiters; lis02 5 4 5 escapes never change boundaries.
 use super::*;
 
 #[test]

@@ -1,4 +1,4 @@
-//! Version-1 result evidence owns its wire types and validation.
+//! Defines version-1 result evidence types and validates their wire values.
 use super::{
     Dilution, EvidenceList, Identifier, IdentityStatus, NamedSourceTime, NamespacedId,
     NonEmptyEvidenceList, ProcessingMode, ReceiptId, ResultValue, SampleIdentity, SourceText,

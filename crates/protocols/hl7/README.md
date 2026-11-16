@@ -1,6 +1,6 @@
 # hl7
 
-**Kind: protocol.** One file per job, such as `syntax.rs`, `views.rs` or `version.rs`, where that job exists.
+**Kind: protocol.** Separates message parsing, typed field access and version rules into named files.
 
 **What it does:** Reads and writes HL7 messages, including the IHE LAW laboratory profile.
 
@@ -10,7 +10,8 @@
 
 **Main parts:**
 
-- `syntax`: Message grammar.
+- `syntax`: Parses HL7 message grammar.
+- `wire`: Writes size-capped segments without escaping.
 - `views`: Named field access.
 - `version`: Explicit edition rules.
 - `ack`: Acknowledgment message syntax.

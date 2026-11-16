@@ -1,4 +1,4 @@
-//! Specimen/container profiles from TF-2b C.11/C.12, B.1 and 2.2.4.
+//! Validates LAW specimen and container segments (TF-2b C.11/C.12).
 use super::fields::{characters, component_error, excluded_fields, field, part, primitive, scalar};
 use super::patient::{coded, excluded, extras, universal_type};
 use super::{ControlDirection, Error, Profile, content, raw};

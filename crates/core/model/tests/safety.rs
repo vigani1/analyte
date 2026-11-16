@@ -1,4 +1,4 @@
-//! Synthetic cases from plan §6, ADR 0002/0003 and AGENTS clinical rules 3–8.
+//! Tests adr0003 uuid validation survives deserialization; rule5 sample identity rejects controls empty and overlong on deserialize.
 use analyte_model::OrderTransition;
 use analyte_model::*;
 use proptest::prelude::*;

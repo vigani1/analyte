@@ -1,4 +1,4 @@
-//! Feed storage responsibilities.
+//! Stores and pages order-change feed entries.
 use crate::{Error, Lookup, OrderPage, OrderTrust, Store, key};
 use analyte_model::{Identifier, SampleId};
 use rusqlite::{Connection, OptionalExtension, params};

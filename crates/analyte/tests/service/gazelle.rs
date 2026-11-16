@@ -1,4 +1,4 @@
-//! Explicit manual Gazelle run; CI must never opt into this external connection.
+//! Tests gazelle lab28 live.
 use super::*;
 use crate::support::HANG_GUARD;
 use std::sync::{Mutex, atomic::AtomicUsize};

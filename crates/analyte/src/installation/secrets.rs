@@ -1,4 +1,4 @@
-//! Host-owned environment credential loading, separate from configuration checking.
+//! Loads host credentials from environment variables.
 use analyte_contract::SigningSecret;
 use analyte_model::Identifier;
 use analyte_sink::{Credentials, SecretsSource};

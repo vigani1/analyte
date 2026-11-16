@@ -1,4 +1,4 @@
-//! Appendix B sections 3, 4 and 9 deterministic reviewer conversation tests.
+//! Tests poct01 b 4 1 2 startup and rejection in sequence; poct01 b 3 2 adr0003 commit gate orders asynchronous acks.
 use analyte_dialog::poct::{
     CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent, Error as DialogError,
 };

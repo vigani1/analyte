@@ -1,4 +1,4 @@
-//! Caller-owned status policy and revision lifecycle regression tests.
+//! Tests adr0011 caller status table is generic and correction cannot bypass it; adr0011 latest status uses exact revision when one batch advances twice.
 use crate::test_support::*;
 use crate::*;
 

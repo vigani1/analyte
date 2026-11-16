@@ -1,4 +1,4 @@
-//! ADR 0004 explicit outbound context and rule 7 host-configured bounds.
+//! Tests autolyser rev18 p186 rule5 explicit patient code and download context are preserved; rule7 autolyser download refuses missing context and bounds before output.
 //! These assertions do not claim vendor conformance; no vendor evidence level changes.
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{AppOrder, AppOrderPriority, MachineOrder, OrderMappingError, map_order};

@@ -1,4 +1,4 @@
-//! Shared host custody boundary, independent of vendor conversation rules.
+//! Stores machine receipts and interpretation outcomes independently of vendor dialogs.
 use crate::{Error, invalid};
 use std::time::Duration;
 

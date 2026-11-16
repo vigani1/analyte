@@ -1,4 +1,4 @@
-//! Regression scenarios for query validation.
+//! Tests hl7 231 2 24 4 5 and 251 5 10 5 3 4 field usage lengths and repetitions; hl7 251 5 10 5 4 10 threshold nm and 231 exclusion.
 use super::*;
 
 #[test]

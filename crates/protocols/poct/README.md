@@ -1,6 +1,6 @@
 # poct
 
-**Kind: protocol.** One file per job, such as `syntax.rs`, `views.rs` or `version.rs`, where that job exists.
+**Kind: protocol.** Separates message parsing, typed field access and version rules into named files.
 
 **What it does:** Reads and builds POCT Basic Profile messages while retaining the source values.
 
@@ -14,7 +14,7 @@
 - `views/data`: Values with original spelling.
 - `views/message`: Required Basic Profile message fields.
 - `syntax/structure`: Message structure checks.
-- `encoder`: Reply message construction and XML escaping.
+- `messages`: Reply message construction and XML escaping.
 - `duplicate`: Bounded observation duplicate comparison.
 
 [Technical details and safety guidance](DETAILS.md).

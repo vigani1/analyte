@@ -1,4 +1,4 @@
-//! Process-level deadline independent of async scheduling and blocking destructors.
+//! Enforces a process shutdown deadline independent of async scheduling.
 use crate::Error;
 use std::{
     collections::BTreeSet,

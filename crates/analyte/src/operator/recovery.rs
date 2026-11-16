@@ -1,4 +1,4 @@
-//! Operator recovery changes app delivery or interpretation, never machine orders.
+//! Runs operator recovery for app deliveries and receipt interpretation without resending machine orders.
 use crate::{Error, deadline, installation::config::Program, invalid};
 use analyte_model::{DeliveryId, Identifier, Reason, ReceiptId};
 use analyte_store::{Audit, Handle, InterpretationCommit, Reprocess};

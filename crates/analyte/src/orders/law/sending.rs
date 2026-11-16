@@ -1,4 +1,4 @@
-//! Shared query/send-ahead reservation and cancellation admission; TF-2b 3.28.4.
+//! Checks LAW query and send-ahead reservations and cancellation eligibility (TF-2b 3.28.4).
 use super::{
     Connection, Exchange,
     work::{Command, render},

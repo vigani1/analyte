@@ -1,4 +1,4 @@
-//! Regression scenarios for law order.
+//! Tests law tf2b c8 order control and order status are closed enums; law tf2b c8 orc 1 m control direction and transaction predicates.
 use super::*;
 
 #[test]

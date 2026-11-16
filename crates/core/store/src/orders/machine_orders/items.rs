@@ -1,4 +1,4 @@
-//! Items for durable machine orders.
+//! Records individual machine order item outcomes.
 use super::*;
 
 impl Store {

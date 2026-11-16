@@ -1,4 +1,4 @@
-//! Plan §10, ADR 0009 and rule 10: optional capture must not change ACKs or delivery.
+//! Tests plan10 adr0009 capture preserves tcp bytes and failure does not change delivery.
 use super::*;
 use crate::support::HANG_GUARD;
 use analyte_transport::recording::{self, Direction, Evidence};

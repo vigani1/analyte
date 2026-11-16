@@ -1,4 +1,4 @@
-//! lib regression tests kept beside the storage behavior they guard.
+//! Tests adr0003 rule7 sqlite lock failures remain specific timeouts; adr0003 storage failures distinguish full corrupt conflict and unknown.
 use crate::test_support::*;
 use crate::*;
 

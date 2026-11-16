@@ -1,4 +1,4 @@
-//! Workers regression scenarios.
+//! Tests rule7 active delivery and order poll cancel without waiting for http deadline; mutation rule7 draining closed or set stop does not claim.
 use super::*;
 
 #[tokio::test]

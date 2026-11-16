@@ -1,4 +1,4 @@
-//! Transactional observation history (ADR 0003).
+//! Records transactional observation revision history (ADR 0003).
 mod admission;
 mod assignment;
 mod content;

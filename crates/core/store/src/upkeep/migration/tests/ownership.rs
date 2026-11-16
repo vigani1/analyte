@@ -1,4 +1,4 @@
-//! Ownership regression scenarios.
+//! Tests adr0003 v7 to v8 keeps frames sequence activity and immutability with caller bounds; adr0003 v7 unrecognized evidence rolls back without dropping any legacy row.
 use super::*;
 
 #[test]

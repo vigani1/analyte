@@ -1,4 +1,4 @@
-//! Rev18 chapter 23 pp.175-179 and ADR 0004/0008, synthetic peers only.
+//! Tests autolyser rev18 ch23 confirmed insertion carries explicit clone and stays sent on restart; autolyser rev18 ch23 unanswered initial poll never reserves or sends order.
 use super::vendor_support::*;
 use super::*;
 use crate::support::HANG_GUARD;

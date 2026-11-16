@@ -1,4 +1,4 @@
-//! Structural rules derived from Appendix B sections 6, 8 and 12.
+//! Checks POCT message object structure (Appendix B 6, 8 and 12).
 //! Rules are executable checks, not copied schema documents.
 use crate::{
     Document, Element,

@@ -1,4 +1,4 @@
-//! Regression scenarios for delivery.
+//! Tests plan11 adr0008 restored outbox retries same id bytes as duplicate; plan11 alert evaluator keeps receive delivery and shutdown bounded.
 use super::*;
 
 #[tokio::test]

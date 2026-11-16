@@ -1,4 +1,4 @@
-//! Synthetic localhost fixtures; no environment mutation or external peers.
+//! Tests startup failure reaches caller before any peer or cache wait.
 mod guard;
 pub(super) use guard::HANG_GUARD;
 

@@ -1,4 +1,4 @@
-//! Transport test fixtures belong beside integration tests to share bounded synthetic peers.
+//! Supplies bounded synthetic peers for transport integration tests.
 use std::error::Error;
 pub(crate) type Record = (u8, u128, Vec<u8>);
 pub(crate) fn decode(input: &[u8]) -> Result<Vec<Record>, Box<dyn Error>> {

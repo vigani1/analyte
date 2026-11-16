@@ -1,4 +1,4 @@
-//! delivery/resend regression tests kept beside the storage behavior they guard.
+//! Tests plan11 adr0008 resend preserves identity bytes and atomic audit; plan11 adr0003 superseded resend requires explicit delivery.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

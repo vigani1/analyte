@@ -1,4 +1,4 @@
-//! Canonical bytes are checked at the private document boundary, not reconstructed from runtime views.
+//! Tests adr0002 every example keeps legacy canonical bytes.
 use super::*;
 const SITE: &str = include_str!("../examples/site.toml");
 const ASTM: &str = include_str!("../examples/astm.toml");

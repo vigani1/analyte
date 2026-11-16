@@ -1,2 +1,2 @@
-//! Results operations grouped by their storage responsibility.
+//! Stores result revisions and retained observation history.
 pub(crate) mod revisions;

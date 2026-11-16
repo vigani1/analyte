@@ -1,4 +1,4 @@
-//! Append-only protected recordings. The host must use a dedicated storage thread.
+//! Appends protected wire recordings on a dedicated storage thread.
 
 mod format;
 use crate::CHUNK_LIMIT;

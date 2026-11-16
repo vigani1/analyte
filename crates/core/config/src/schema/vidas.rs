@@ -1,4 +1,4 @@
-//! Installed VIDAS acknowledgment and checksum choices, preserving the boolean TOML boundary.
+//! Holds installed VIDAS acknowledgment and checksum choices.
 use super::VidasSampleLimit;
 use serde::{Deserialize, Serialize};
 

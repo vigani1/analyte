@@ -1,4 +1,4 @@
-//! Safety rule 8: the lifecycle table is exhaustive, including every illegal move.
+//! Tests rule8 cancel refusal requires cancellation and retained state.
 use analyte_model::OrderState::{self, *};
 use analyte_model::OrderTransition;
 

@@ -1,4 +1,4 @@
-//! Regression scenarios for law control.
+//! Tests law tf2b c4 msh 1 2 recommended delimiters; law tf2b c4 msh 3 4 5 6 re hd namespace usage length type cardinality.
 use super::*;
 
 #[test]

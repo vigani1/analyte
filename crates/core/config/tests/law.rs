@@ -1,4 +1,4 @@
-//! Synthetic configuration evidence; IHE `PaLM` TF-2b Rev 11 sections 2.2, 3.27, 3.29.
+//! Tests law tf2b 2 2 config selects mllp 251 manager and explicit peer options; law tf2b 2 2 config rejects impossible stack combinations.
 use analyte_config::{Draft, Error, EvidenceLevel, LawQueryForm};
 
 const LAW: &str = include_str!("../examples/law.toml");

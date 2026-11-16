@@ -1,4 +1,4 @@
-//! Bounds regression scenarios.
+//! Tests adr0008 build refuses nonproduction and parked evidence; mutation contract v1 rule7 response body ceiling is inclusive.
 use super::*;
 
 #[test]

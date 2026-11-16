@@ -1,4 +1,4 @@
-//! Authenticated local HTTP routing owns operator sessions and request limits.
+//! Routes authenticated local HTTP requests with session and request limits.
 use super::{
     Token, escape,
     listener::Listener,

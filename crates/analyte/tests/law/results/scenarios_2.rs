@@ -1,4 +1,4 @@
-//! Regression scenarios for results.
+//! Tests law tf2b c1 b7 second obx error reports actual occurrence; law adr0011 c7 all status moves and unverified delivery.
 use super::*;
 
 #[tokio::test]

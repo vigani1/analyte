@@ -1,4 +1,4 @@
-//! Plan §11 and AGENTS concurrency: portable structural check, without installing a unit.
+//! Tests plan11 agents systemd unit structure and shutdown margin.
 use std::collections::BTreeMap;
 
 #[test]

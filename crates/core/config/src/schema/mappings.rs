@@ -1,4 +1,4 @@
-//! Raw field selectors and mapping tables at the TOML boundary.
+//! Holds raw TOML field selectors and mapping tables.
 use super::*;
 
 /// Group-relative one-based field selection.

@@ -1,4 +1,4 @@
-//! Read-only manufacturer record positions belong beside the ASTM grammar.
+//! Reads ASTM manufacturer record fields.
 use crate::{Field, Kind, Record};
 /// Read-only LIS02 manufacturer positions; no clinical defaults are inferred.
 #[derive(Clone, Copy, Debug)]

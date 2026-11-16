@@ -1,4 +1,4 @@
-//! Synthetic program/reference-receiver evidence, TF-2b 3.28.4/C.8 and ADR 0003 rule 8.
+//! Tests law tf2b 3 28 send ahead accepted rejected and mixed awos; law tf2b 3 28 c8 cancel confirmed refused and mixed keep each awos.
 use super::*;
 use crate::support::HANG_GUARD;
 

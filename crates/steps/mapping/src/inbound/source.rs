@@ -1,4 +1,4 @@
-//! Source adapters preserve parser boundaries; mapping never splits wire text.
+//! Adapts parsed source fields without splitting wire text.
 use crate::FieldSyntax;
 use crate::{Error, Position};
 use analyte_config::{Field as Selection, Group};

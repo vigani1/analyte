@@ -1,4 +1,4 @@
-//! Revision identity, retransmission and atomicity regression tests.
+//! Tests adr0003 revisions new retransmission correction conflict runs and restart; adr0003 revision builder failure rolls back interpretation and history.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

@@ -1,4 +1,4 @@
-//! Regression scenarios for law observation.
+//! Tests law tf2b c7 obx 11 closed status and explicit correction only; law tf2b c7 obx 14 19 seconds timestamps and direction.
 use super::*;
 
 #[test]

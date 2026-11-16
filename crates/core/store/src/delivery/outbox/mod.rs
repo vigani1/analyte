@@ -1,4 +1,4 @@
-//! Outbox storage responsibilities.
+//! Queues immutable delivery bytes and records attempt outcomes.
 use crate::{Attempt, Audit, Claim, DeliveryKind, DeliveryState, Error, Store, key};
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};

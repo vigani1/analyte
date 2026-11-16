@@ -1,4 +1,4 @@
-//! ADR 0004 and AGENTS.md: outgoing code tables are explicit; no fallback or normalization.
+//! Tests adr0004 outbound test requires exact namespace case and code; adr0004 outbound specimen absent table or code never defaults.
 use analyte_config::{
     MachinePriority, OrderPriority, OutboundSpecimen, OutboundTest, PriorityCode,
 };

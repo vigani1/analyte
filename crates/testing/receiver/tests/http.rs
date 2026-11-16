@@ -1,4 +1,4 @@
-//! Synthetic ADR 0008 contract regression cases.
+//! Tests adr0008 durable retry conflict auth snapshot tombstone and reset.
 #![forbid(unsafe_code)]
 #[path = "../../../analyte/tests/support/guard.rs"]
 mod guard;

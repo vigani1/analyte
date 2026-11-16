@@ -1,4 +1,4 @@
-//! Synthetic state-machine boundaries from the clinical rules and protocol scopes.
+//! Tests adr0003 0010 astm commit identity tracks transfer and failed request ordinals; lis01 6 2 6 6 2 7 6 3 5 peer enq can take over waiting sender.
 //! LIS01-A2 §§6.2.6–6.2.7.1/6.3.5 govern takeover; §6.4 governs EOT.
 //! Configured ceilings and commit identity ordinals are Analyte rules 1/7 and
 //! ADRs 0003/0010, not limits or identities specified by LIS01-A2 §6.3.

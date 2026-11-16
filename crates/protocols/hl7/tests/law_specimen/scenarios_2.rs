@@ -1,4 +1,4 @@
-//! Regression scenarios for law specimen.
+//! Tests law tf2b c11 sac 24 re ce units identifier system predicate; law tf2b c11 sac 29 re sn exact ratio and positive denominator.
 use super::*;
 
 #[test]

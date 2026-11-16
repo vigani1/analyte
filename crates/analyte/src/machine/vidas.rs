@@ -1,4 +1,4 @@
-//! VIDAS upload custody, with installed checksum, suffix and timer policy.
+//! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::{Error, evidence, invalid};

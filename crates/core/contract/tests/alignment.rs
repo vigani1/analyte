@@ -1,4 +1,4 @@
-//! ADR 0008 / plan section 6: independent expected wire evidence and conversion.
+//! Tests rule5 decoded text preserves original and never accompanies unsupported; adr0008 published result vectors convert without loss.
 #![forbid(unsafe_code)]
 
 use analyte_contract::{Delivery, ResultDocument, decode};

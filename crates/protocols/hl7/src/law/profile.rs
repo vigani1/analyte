@@ -1,4 +1,4 @@
-//! LAW field and component constraints, from TF-2b Appendix C and section 2.2.
+//! Checks LAW segment fields and components (TF-2b Appendix C and 2.2).
 use super::{Error, content, raw};
 use crate::{Message, Segment};
 

@@ -1,4 +1,4 @@
-//! Transport outcomes before protocol custody. Receiving bytes here promises no ACK.
+//! Reads transport outcomes before bytes enter protocol custody.
 //! ASTM commits frames with transfer identity; HL7 commits complete messages and
 //! interpretation; LAW commits raw results and interpretation. POCT, VIDAS and
 //! Autolyser additionally journal chunks before dialog input via `journaled`.

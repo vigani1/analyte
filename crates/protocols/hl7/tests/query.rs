@@ -1,4 +1,4 @@
-//! Synthetic legacy query regressions; no vendor fixtures.
+//! Tests hl7 231 2 18 qck answers deferred query; hl7 231 2 18 dsr echoes query and ack correlates dsr.
 use analyte_hl7::{ControlId, Message, Options, Response, query};
 
 fn request(version: &str) -> Result<Message, analyte_hl7::Error> {

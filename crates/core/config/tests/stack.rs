@@ -1,4 +1,4 @@
-//! ADR 0001/0002: validated stacks preserve the existing layered TOML interface.
+//! Tests adr0002 every example maps to its documented stack; adr0002 stack is built after overrides and keeps serial settings.
 use analyte_config::{Draft, Stack, StreamKind, TcpRole};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;

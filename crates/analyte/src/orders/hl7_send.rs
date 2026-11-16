@@ -1,4 +1,4 @@
-//! Host-owned HL7 unsolicited work and cancellation; HL7 ch.4 and ADR 0003/0004.
+//! Sends unsolicited HL7 work and cancellations (HL7 ch.4).
 use crate::{Error, deadline, installation::config::Machine};
 use analyte_hl7::{
     Options,

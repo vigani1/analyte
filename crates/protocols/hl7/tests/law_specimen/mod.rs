@@ -1,4 +1,4 @@
-//! Synthetic TF-2b C.11/C.12, B.1 and 2.2.4 specimen/container cases.
+//! Supplies synthetic law specimen test fixtures and scenarios.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, Capabilities, ControlDirection, Profile},

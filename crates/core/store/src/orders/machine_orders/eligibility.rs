@@ -1,4 +1,4 @@
-//! Eligibility for durable machine orders.
+//! Checks machine order eligibility and freshness.
 use super::*;
 
 impl Store {

@@ -1,4 +1,4 @@
-//! Read-only query record positions belong beside the ASTM grammar.
+//! Reads ASTM query record fields.
 use crate::{Field, Kind, Record};
 /// Read-only LIS02 query positions; no clinical defaults are inferred.
 #[derive(Clone, Copy, Debug)]

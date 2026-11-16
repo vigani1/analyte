@@ -1,4 +1,4 @@
-//! Trust regression scenarios.
+//! Tests law tf2b 3 27 4 sample and pending share freshness generation and restore trust; plan11 rule2 restore keeps current and rule8 requires audited resume.
 use super::*;
 
 #[test]

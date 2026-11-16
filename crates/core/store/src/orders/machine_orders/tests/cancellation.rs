@@ -1,4 +1,4 @@
-//! Cancellation regression scenarios.
+//! Tests adr0003 typed ownership ignores reason prefixes and cancel replay keeps full version; adr0004 cancel expiry version trust and builder failure never reserve.
 use super::*;
 
 #[test]

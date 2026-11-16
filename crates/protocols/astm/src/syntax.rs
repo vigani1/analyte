@@ -1,4 +1,5 @@
-//! ASTM record grammar belongs in the syntax layer, without transport or mapping. Kept whole: ASTM grammar parsing shares bounded record and field traversal invariants.
+//! Parses ASTM records with bounded field traversal without transport or mapping.
+//! Kept whole: ASTM grammar parsing shares bounded record and field traversal invariants.
 use thiserror::Error;
 
 /// Limits applied before allocating structures from input.

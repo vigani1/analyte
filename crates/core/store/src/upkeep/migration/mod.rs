@@ -1,4 +1,4 @@
-//! Migration storage operations owned by upkeep.
+//! Migrates stored schemas while retaining existing evidence.
 use crate::{Error, Store};
 use rusqlite::Connection;
 

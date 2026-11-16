@@ -1,4 +1,4 @@
-//! ADR 0002: outbound capabilities must be explicitly configured.
+//! Tests adr0002 outbound duplicate missing policy and unbounded deadline are rejected; adr0002 vendor patient namespace is required and retained exactly.
 use analyte_config::{Draft, Validated};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 fn config(section: &str) -> Result<Validated, analyte_config::Error> {

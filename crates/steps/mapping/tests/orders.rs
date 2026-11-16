@@ -1,4 +1,4 @@
-//! Synthetic cases: LIS02-A2 §8 order fields and ADR 0004 explicit mapping.
+//! Tests rule7 outbound selected component at configured ceiling is preserved; rule7 display text bound is inclusive and refuses delimiter injection.
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError, map_order};
 use analyte_model::{Identifier, NamespacedId, SampleId};

@@ -1,4 +1,4 @@
-//! ADR 0009 resource boundaries and exact byte preservation.
+//! Tests adr0009 round trip; adr0009 arbitrary input never panics.
 use analyte_transport::recording::*;
 use proptest::prelude::*;
 fn header() -> Header {

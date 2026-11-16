@@ -1,4 +1,4 @@
-//! Regression scenarios for law order.
+//! Tests law tf2b c8 orl control status matrix matches each request type exhaustively; law tf2b c8 c6 c13 work builder preserves supplied event and validates details.
 use super::*;
 
 #[test]

@@ -1,4 +1,4 @@
-//! Regression scenarios for mutation.
+//! Tests hl7 251 2a22 partial times and invalid times preserve evidence without guessing; lis02 6 14 8 4 7 9 10 9 12 9 13 timestamps keep role and original.
 use super::*;
 
 #[test]

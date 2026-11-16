@@ -1,4 +1,4 @@
-//! Validated identity types belong to the shared model to prevent guessed identities.
+//! Holds validated result and source identity types without guessed identities.
 use crate::{Identifier, Reason};
 use serde::{Deserialize, Serialize};
 use uuid::{Uuid, Variant, Version};

@@ -1,4 +1,4 @@
-//! Regression scenarios for mapping.
+//! Tests rule7 overlimit repetitions and parts fail before partial success; hl7 231 oru and declared ts precision are kept.
 use super::*;
 
 #[test]

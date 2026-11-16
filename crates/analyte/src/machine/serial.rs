@@ -1,4 +1,4 @@
-//! Dedicated serial owner with explicit join, including on cancellation.
+//! Owns blocking serial I/O on a dedicated thread and joins it on cancellation.
 use super::{Error, Handle, Limits, Machine, invalid};
 use analyte_transport::{Cancellation, serial::Settings};
 use std::{thread, time::Duration};

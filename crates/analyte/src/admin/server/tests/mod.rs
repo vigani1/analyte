@@ -1,4 +1,4 @@
-//! Admin HTTP tests exercise authentication and audited operator actions.
+//! Tests plan11 service admin missing token and owned lifecycle; plan11 plan12 overview auth headers escaping and shutdown.
 use super::*;
 use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};

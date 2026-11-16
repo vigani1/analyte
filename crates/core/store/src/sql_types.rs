@@ -1,4 +1,4 @@
-//! SQL codecs for typed lifecycle values; unknown stored values fail decoding.
+//! Encodes and decodes SQL lifecycle values, rejecting unknown stored states.
 use crate::{DeliveryKind, DeliveryState, PollIntentState};
 use analyte_model::OrderState;
 use rusqlite::{

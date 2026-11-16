@@ -1,4 +1,4 @@
-//! Autolyser Rev18 chapter 23 checksum envelope.
+//! Frames Autolyser checksum envelopes (Rev18 chapter 23).
 use thiserror::Error;
 /// Specific record defect; display never contains patient data.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

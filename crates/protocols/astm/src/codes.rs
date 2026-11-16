@@ -1,4 +1,4 @@
-//! ASTM syntax code tables belong here to keep standard tokens beside their grammar.
+//! Defines ASTM record status and code tables.
 /// Source codes retained without collapsing distinct protocol meanings.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProcessingId {

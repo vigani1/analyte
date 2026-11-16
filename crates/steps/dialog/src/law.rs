@@ -1,4 +1,5 @@
-//! Deterministic LAW exchanges, PaLM TF-2b Rev 11 §§3.27–3.29, B.6 and B.7. Kept whole: The LAW conversation state transitions and their deadline decisions are reviewed together.
+//! Runs deterministic LAW exchanges and deadlines (TF-2b 3.27?3.29, B.6/B.7).
+//! Kept whole: The LAW conversation state transitions and their deadline decisions are reviewed together.
 //! The host owns durable custody and order reservations; this module never performs I/O.
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};

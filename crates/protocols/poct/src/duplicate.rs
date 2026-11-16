@@ -1,5 +1,5 @@
 //! Detects repeated POCT messages within a bounded window.
-//! same transaction as the result, and rebuilds this index before accepting data.
+//! The host persists identities with results and rebuilds this index before accepting data.
 //! Receipt/control/delivery IDs never participate in the observation key.
 use crate::{Message, MessageError, syntax::structure};
 use analyte_model::{Identifier, IdentityStatus, ResultIdentity};

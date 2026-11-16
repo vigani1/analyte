@@ -1,4 +1,4 @@
-//! Regression scenarios for law specimen.
+//! Tests law tf2b c12 spm 1 m si length type and message sequence; law tf2b c12 spm 2 3 eip ei identity namespace predicate lengths and repetitions.
 use super::*;
 
 #[test]

@@ -1,4 +1,4 @@
-//! Changed-content status decisions using the caller?s ADR 0011 policy.
+//! Checks changed-content statuses using the caller-supplied ADR 0011 policy.
 use super::*;
 impl Reconciliation<'_, '_> {
     pub(super) fn permits_progression(

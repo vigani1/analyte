@@ -1,4 +1,4 @@
-//! Regression scenarios for law observation.
+//! Tests law tf2b c7 obx 1 si and 4 og lengths nulls and manager re; law tf2b c7 obx 3 cwe alternate predicates and namespaces.
 use super::*;
 
 #[test]

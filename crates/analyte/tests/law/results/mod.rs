@@ -1,4 +1,4 @@
-//! Synthetic LAW program/reference-receiver matrix, TF-2b 3.29.4, B.3 and B.7.
+//! Supplies synthetic results test fixtures and scenarios.
 use super::*;
 use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

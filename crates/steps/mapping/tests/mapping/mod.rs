@@ -1,4 +1,4 @@
-//! Original synthetic fixtures. Sources: LIS02 sections 6,8-10; HL7 2.5.1 ch.7 and 2A.
+//! Supplies synthetic mapping test fixtures and scenarios.
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{Input, Output, Problem, map_astm, map_hl7};
 use analyte_model::*;

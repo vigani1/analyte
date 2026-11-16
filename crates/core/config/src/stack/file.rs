@@ -1,4 +1,4 @@
-//! Validated file settings and construction at the config boundary.
+//! Constructs validated FILE protocol settings.
 use super::*;
 
 /// Watched-folder records without any stream framing or acknowledgment policy.

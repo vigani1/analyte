@@ -1,4 +1,4 @@
-//! Foreground service and protected operator command line.
+//! Runs the foreground service and protected operator command line.
 #![forbid(unsafe_code)]
 use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_model::{Identifier, Reason};

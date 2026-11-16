@@ -1,4 +1,4 @@
-//! Synthetic credential provisioning tests for plan sections 11 and 12.
+//! Tests plan11 plan12 cli prints rotated token once without logging it.
 use analyte::Error;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::process::Command;

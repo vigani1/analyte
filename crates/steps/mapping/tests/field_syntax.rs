@@ -1,4 +1,4 @@
-//! ADR 0002: field mapping cannot accept vendor syntax.
+//! Tests adr0002 field syntax rejects every vendor family.
 use analyte_config::SyntaxKind;
 use analyte_mapping::{FieldSyntax, UnsupportedFieldSyntax};
 

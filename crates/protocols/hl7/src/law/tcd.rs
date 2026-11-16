@@ -1,4 +1,4 @@
-//! Test details from TF-2b C.13; no observation value is calculated here.
+//! Validates LAW TCD test details without calculating observation values (TF-2b C.13).
 use super::fields::{component_error, excluded_fields, field, part, primitive, scalar};
 use super::order::{limit, test_code};
 use super::patient::{coded, excluded, extras};

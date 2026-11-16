@@ -1,4 +1,4 @@
-//! Mapping layer: owns explicit machine/model translations, without I/O or clinical interpretation.
+//! Maps explicit machine and model terms without I/O or clinical interpretation.
 //! Protocol crates own grammar and dialogs; this crate owns translations and performs no I/O.
 //! The caller retains the receipt and parks any output with findings.
 #![forbid(unsafe_code)]

@@ -1,4 +1,4 @@
-//! TF-2b Rev 11 B.3.1 (pp.63-64), B.7.6 (p.82): compare against retained work.
+//! Validates LAW work replies against retained orders (TF-2b B.3.1 and B.7.6).
 use crate::{Error, deadline, installation::config::Machine};
 use analyte_hl7::{Message, Options, Segment, law};
 use analyte_store::Handle;

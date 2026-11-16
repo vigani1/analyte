@@ -1,4 +1,4 @@
-//! Read-only order record positions belong beside the ASTM grammar.
+//! Reads ASTM order record fields.
 use crate::{Field, Kind, Record};
 /// Read-only LIS02 order positions; no clinical defaults are inferred.
 #[derive(Clone, Copy, Debug)]

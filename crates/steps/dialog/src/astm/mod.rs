@@ -1,4 +1,4 @@
-//! LIS01-A2 sections 6/8 stop-and-wait link, shared by serial and TCP.
+//! Runs ASTM stop-and-wait connections over serial or TCP (LIS01-A2 6/8).
 use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, HexPolicy, NAK};
 use std::{collections::VecDeque, time::Duration};
 

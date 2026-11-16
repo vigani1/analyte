@@ -1,4 +1,4 @@
-//! Durable cursor-changing poll admission and operator reconciliation.
+//! Records cursor-changing order polls and operator reconciliation.
 use crate::{Audit, Error, Parked, Store, parked::ParkingEvidence};
 use analyte_model::{Identifier, Reason};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};

@@ -1,6 +1,6 @@
 # config
 
-**Kind: core.** Parts are grouped by role; small parts currently stay in single files and grow into role folders when needed.
+**Kind: core.** Groups files by the data and operations they handle.
 
 **What it does:** Loads size-limited configuration and checks settings before use.
 

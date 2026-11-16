@@ -1,4 +1,4 @@
-//! ADR 0008: the reference app retains optional order context without normalization.
+//! Tests adr0008 seeded patient specimen and position survive the feed.
 #[path = "../../../analyte/tests/support/guard.rs"]
 mod guard;
 use analyte_contract::{Order, SigningSecret, decode};

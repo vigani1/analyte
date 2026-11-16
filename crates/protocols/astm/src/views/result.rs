@@ -1,4 +1,4 @@
-//! Read-only result record positions belong beside the ASTM grammar.
+//! Reads ASTM result record fields.
 use crate::{Field, Kind, Record};
 /// Read-only LIS02 result positions; no clinical defaults are inferred.
 #[derive(Clone, Copy, Debug)]

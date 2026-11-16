@@ -1,4 +1,5 @@
-//! Bounded program TOML and machine snapshots, with no secret values. Kept whole: Program configuration types and boundary validation express one installation contract.
+//! Loads bounded program TOML and machine snapshots without secret values.
+//! Kept whole: Program configuration types and boundary validation express one installation contract.
 mod alerts;
 use crate::{Error, invalid};
 pub(crate) use alerts::Condition;

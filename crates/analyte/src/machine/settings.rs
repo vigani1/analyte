@@ -1,4 +1,4 @@
-//! Transport admission from supported stacks; serial settings cannot be absent.
+//! Checks supported transport settings before opening machine connections.
 use analyte_config::{Serial, Stack, StreamKind, StreamTransport, TcpRole};
 
 #[derive(Clone, Copy)]

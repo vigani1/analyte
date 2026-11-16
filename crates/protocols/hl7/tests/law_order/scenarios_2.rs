@@ -1,4 +1,4 @@
-//! Regression scenarios for law order.
+//! Tests law tf2b c14 tq1 9 r priority cwe subset and option; law tf2b c13 tcd 2 3 5 sn ratio predicates and direction.
 use super::*;
 
 #[test]

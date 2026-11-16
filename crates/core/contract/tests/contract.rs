@@ -1,4 +1,4 @@
-//! Synthetic ADR 0008 contract regression cases.
+//! Tests standard webhooks published rust test sign vector; adr0008 vectors do not drift.
 #![forbid(unsafe_code)]
 use analyte_contract::*;
 use serde_json::Value;

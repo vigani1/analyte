@@ -1,4 +1,4 @@
-//! VIDAS code, original-value evidence and outgoing work mapping.
+//! Maps VIDAS codes, original values and outgoing work.
 use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient};

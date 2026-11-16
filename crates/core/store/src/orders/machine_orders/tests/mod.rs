@@ -1,4 +1,4 @@
-//! Machine order regression tests kept beside the storage behavior they guard.
+//! Supplies synthetic tests test fixtures and scenarios.
 use crate::test_support::{TestResult, open};
 use crate::*;
 use analyte_model::{OrderState, SourceText};

@@ -1,4 +1,4 @@
-//! LAW result-group transitions preserve segment order and located failures.
+//! Checks LAW result-group segment ordering and locates failures.
 use super::*;
 use crate::law;
 

@@ -1,4 +1,4 @@
-//! Shared limits settings and conversions at the config boundary.
+//! Holds validated size and time limits and converts raw settings.
 use super::*;
 
 /// Receive and send deadlines shared by the host dialogs.

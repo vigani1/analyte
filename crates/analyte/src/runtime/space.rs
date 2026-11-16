@@ -1,4 +1,4 @@
-//! Free disk space for the store's capacity guard (AGENTS rule 1).
+//! Reads free disk space for store capacity checks.
 //!
 //! The store asks before every receipt and frame, so this must be fast and
 //! bounded: it uses the operating system's direct free-space call (statvfs on

@@ -1,4 +1,4 @@
-//! upkeep/restore regression tests kept beside the storage behavior they guard.
+//! Tests plan11 restore refuses corrupt and newer backup without changing current; plan11 interrupted restore staging refuses startup without deleting evidence.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

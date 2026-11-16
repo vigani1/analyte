@@ -1,4 +1,4 @@
-//! HL7 outbound layout validation at the config boundary.
+//! Validates configured HL7 outbound message layouts.
 use super::*;
 use std::collections::HashSet;
 

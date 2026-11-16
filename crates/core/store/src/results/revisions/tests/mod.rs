@@ -1,3 +1,3 @@
-//! Revision regression tests grouped by identity and caller-owned lifecycle rules.
+//! Supplies synthetic tests test fixtures and scenarios.
 mod identity;
 mod lifecycle;

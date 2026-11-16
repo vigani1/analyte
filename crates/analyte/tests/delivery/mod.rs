@@ -1,4 +1,4 @@
-//! Phase 1 synthetic program-to-reference-receiver tests (ADR 0008, plan 13).
+//! Supplies synthetic delivery test fixtures and scenarios.
 #[path = "../orders/autolyser.rs"]
 mod autolyser_cases;
 #[path = "../service/capture.rs"]

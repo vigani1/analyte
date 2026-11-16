@@ -1,4 +1,4 @@
-//! Synthetic order/timing/test-detail cases from TF-2b C.6/C.8/C.13/C.14.
+//! Supplies synthetic law order test fixtures and scenarios.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection, Error, OrderControl, OrderStatus, Profile},

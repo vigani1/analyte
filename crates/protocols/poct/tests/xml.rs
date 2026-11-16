@@ -1,4 +1,4 @@
-//! Synthetic XML security and source-preservation tests.
+//! Tests poct01 b 8 xml preserves bytes and decodes attributes; poct01 project security rejects dtd without resolution.
 use analyte_poct::{Document, Error, Limits};
 use proptest::prelude::*;
 

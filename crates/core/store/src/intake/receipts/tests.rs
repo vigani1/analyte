@@ -1,4 +1,4 @@
-//! intake/receipts regression tests kept beside the storage behavior they guard.
+//! Tests adr0002 0003 receipts and reinterpretations are immutable; rule3 random operations never lose or change receipt bytes.
 use crate::test_support::*;
 use crate::*;
 use proptest::prelude::*;

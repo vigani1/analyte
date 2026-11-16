@@ -1,4 +1,4 @@
-//! upkeep/capacity regression tests kept beside the storage behavior they guard.
+//! Tests adr0003 admission check matches the write guard without writing; adr0003 capacity guard refuses receipts and frames.
 use crate::test_support::*;
 use crate::*;
 

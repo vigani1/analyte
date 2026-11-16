@@ -1,4 +1,4 @@
-//! Service startup, delivery workers and shutdown own the running host lifecycle.
+//! Starts service workers and coordinates bounded shutdown.
 pub(crate) mod delivery;
 pub mod service;
 pub(crate) mod shutdown;

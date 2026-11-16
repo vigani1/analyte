@@ -1,4 +1,4 @@
-//! Synthetic BCI A sections 3-5 / PC sections 10-24 to 10-26 and ADR 0004/0008.
+//! Tests vidas bci a ch3 5 all assays confirm once sent survives restart; vidas bci a ch3 adr0004 ack timeout is uncertain never resends.
 use super::vendor_support::*;
 use super::*;
 use crate::support::HANG_GUARD;

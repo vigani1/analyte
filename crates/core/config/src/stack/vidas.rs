@@ -1,4 +1,4 @@
-//! Validated vidas settings and construction at the config boundary.
+//! Constructs validated VIDAS protocol settings.
 use super::*;
 use analyte_model::Identifier;
 

@@ -1,4 +1,4 @@
-//! Storage layer: owns durable evidence, revisions and delivery custody; never interprets clinical data or resends machine orders.
+//! Stores durable evidence, revisions and deliveries without interpreting results or resending machine orders.
 #![forbid(unsafe_code)]
 mod operator;
 use operator::{alerts, parked, query};

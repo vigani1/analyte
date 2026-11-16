@@ -1,4 +1,4 @@
-//! O21/O22 grouping with the same borrowed segment views used by LAW.
+//! Groups HL7 O21 and O22 segments into borrowed views.
 use super::{Error, invalid};
 use crate::law::{FieldRule, Usage};
 

@@ -1,4 +1,4 @@
-//! Atomic operator reprocessing evidence (plan §11 and ADR 0003).
+//! Records atomic operator reprocessing outcomes and audits.
 use crate::{Audit, Error, key};
 use analyte_model::{Identifier, ReceiptId};
 use rusqlite::{OptionalExtension, Transaction};

@@ -1,4 +1,4 @@
-//! Audited operator actions; GET only renders confirmation, POST requires session CSRF.
+//! Runs audited operator actions with GET confirmations and CSRF-checked POST requests.
 use super::{escape, pages::NAV, server::Context, sessions::Session};
 use crate::{Error, deadline};
 use analyte_model::{DeliveryId, Reason};

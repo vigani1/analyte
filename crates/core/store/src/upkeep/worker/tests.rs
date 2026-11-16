@@ -1,4 +1,4 @@
-//! upkeep/worker regression tests kept beside the storage behavior they guard.
+//! Tests rule7 worker roundtrip expired requests and shutdown joins; plan11 worker open reports newer schema specifically.
 use crate::test_support::*;
 use crate::*;
 

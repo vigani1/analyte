@@ -1,4 +1,4 @@
-//! Recovery-oriented error classes from TF-2b B.7; no error owns patient data.
+//! Classifies LAW failures for recovery without including patient data.
 use super::{Error, Query, Results, WorkResponse, content, raw};
 use crate::{AckCode, Message, Msa};
 use thiserror::Error as ThisError;

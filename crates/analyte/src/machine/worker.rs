@@ -1,4 +1,4 @@
-//! Drop-path diagnostics exclude worker errors and panic payloads (safety rule 10).
+//! Reports dropped machine workers without logging errors or panic payloads.
 pub(super) fn report_join<E>(worker: &'static str, result: &std::thread::Result<Result<(), E>>) {
     match result {
         Ok(Ok(())) => {}

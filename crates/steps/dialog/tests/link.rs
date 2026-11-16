@@ -1,4 +1,4 @@
-//! Synthetic LIS01-A2 link behavior and ADR 0003 safety cases.
+//! Tests lis01 6 2 1 to 7 neutral readiness and busy; adr0003 lis01 6 3 2 6 5 1 commit duplicate and conflict.
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Error, Event, Role, Timers};
 use analyte_framing::astm::{self, ACK, ENQ, EOT, FrameNumber, Limit, NAK};
 use proptest::prelude::*;

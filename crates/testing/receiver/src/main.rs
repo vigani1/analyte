@@ -1,4 +1,4 @@
-//! Loopback reference receiver; use a TLS reverse proxy for a remote deployment.
+//! Runs a loopback reference receiver for integration tests.
 #![forbid(unsafe_code)]
 use clap::Parser;
 #[derive(Parser)]

@@ -1,4 +1,4 @@
-//! Connection ownership is independent of human-readable source evidence.
+//! Tracks machine connection ownership separately from source evidence.
 use super::*;
 use crate::sql_types::OwnerKind;
 

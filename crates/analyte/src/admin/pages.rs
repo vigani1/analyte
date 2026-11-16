@@ -1,4 +1,4 @@
-//! Bounded operator views; raw evidence requires an audited, CSRF-checked POST.
+//! Renders bounded operator pages and gates raw evidence behind audited POST requests.
 use super::{escape, server::Context, sessions::Session};
 use crate::{Error, deadline};
 use analyte_model::{Identifier, Reason, ReceiptId};

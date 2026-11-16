@@ -1,4 +1,4 @@
-//! Transfers storage responsibilities.
+//! Stores inbound transfer chunks and durable acknowledgment evidence.
 use crate::{Error, FrameProvenance, Store, key};
 use analyte_model::{Identifier, Reason, ReceiptId};
 use rusqlite::{OptionalExtension, params};

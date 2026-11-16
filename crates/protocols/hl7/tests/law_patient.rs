@@ -1,4 +1,4 @@
-//! Synthetic patient/visit profile cases: TF-2b C.9/C.10 and HL7 2.5.1 2A.
+//! Tests law tf2b c9 pid 3 5 r singleton null when not applicable; law tf2b c9 pid 3 cx id and assigning authority lengths types predicate.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, AuthorityBinding, Capabilities, ControlDirection, Error, Profile},

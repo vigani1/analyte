@@ -1,4 +1,4 @@
-//! Explicit LAW profile selection; TF-1 section 5.2 and TF-2b sections 2.2/3.27.
+//! Selects LAW options explicitly (TF-1 ?5.2 and TF-2b 2.2/3.27).
 use crate::{DialogKind, Edition, Encoding, Error, Escapes, MachineDocument, Terminator, invalid};
 use serde::{Deserialize, Serialize};
 

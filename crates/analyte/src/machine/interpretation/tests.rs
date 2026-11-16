@@ -1,4 +1,4 @@
-//! Plan Â§11, ADR 0003 rules 2â€“4 and 8: the same stored bytes take the live mapping path.
+//! Tests plan11 adr0003 mapping repaired once retransmission conflict and original retained rule8 no machine io; plan11 rule3 vendor receipts use live interpretation and rule8 stay parked without machine io.
 use super::*;
 use crate::installation::config::Program;
 use analyte_model::{Identifier, Reason};

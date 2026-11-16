@@ -1,4 +1,4 @@
-//! Protected local administration; credentials remain owned by the host.
+//! Serves protected local administration pages and actions with host-owned credentials.
 mod actions;
 mod listener;
 mod overview;

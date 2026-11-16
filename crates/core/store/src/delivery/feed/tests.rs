@@ -1,4 +1,4 @@
-//! delivery/feed regression tests kept beside the storage behavior they guard.
+//! Tests adr0004 order cache distinguishes empty stale reset and tombstones; adr0004 reset snapshot excludes orders absent from replacement.
 use crate::test_support::*;
 use crate::*;
 

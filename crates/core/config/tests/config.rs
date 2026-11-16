@@ -1,4 +1,4 @@
-//! Synthetic configuration cases traceable to the project decisions.
+//! Tests adr 0002 and 0005 examples validate without promoting evidence; adr 0002 schema rejects versions unknown keys and secrets.
 use analyte_config::{Draft, Error, EvidenceLevel};
 use sha2::{Digest, Sha256};
 const ASTM: &str = include_str!("../examples/astm.toml");

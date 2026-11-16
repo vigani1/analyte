@@ -1,4 +1,4 @@
-//! Simulation boundary: owns exact-byte synthetic peers, without production analyzer or clinical decisions.
+//! Supplies exact-byte synthetic peers without production analyzer or clinical decisions.
 #![forbid(unsafe_code)]
 pub use analyte_transport::recording::Exception;
 use analyte_transport::recording::{Direction, Event, Link};

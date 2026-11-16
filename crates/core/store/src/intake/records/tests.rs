@@ -1,4 +1,4 @@
-//! intake/records regression tests kept beside the storage behavior they guard.
+//! Tests rule3 interpretation digest verified legacy evidence still reads; mutation adr0003 record interpretation roundtrip keeps provenance and failure reason.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

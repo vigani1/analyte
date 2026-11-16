@@ -1,4 +1,4 @@
-//! Offline restore preserves the displaced store and pauses machine commands.
+//! Restores offline stores while retaining the displaced database and pausing machine commands.
 use crate::{Audit, Error, FreeSpace, Limits, Store};
 use rusqlite::{Connection, OptionalExtension};
 use std::{

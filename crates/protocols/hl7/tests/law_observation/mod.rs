@@ -1,4 +1,4 @@
-//! Original synthetic cases: `PaLM` TF-2b C.2/C.5/C.7, section 2.2 and HL7 2.5.1 2A.
+//! Supplies synthetic law observation test fixtures and scenarios.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection, Error, Profile, ResultStatus},

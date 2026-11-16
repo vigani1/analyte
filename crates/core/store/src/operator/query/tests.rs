@@ -1,4 +1,4 @@
-//! operator/query regression tests kept beside the storage behavior they guard.
+//! Tests mutation adr0003 query parked receipt requires one retained unresolved target; mutation adr0003 query connection lookup requires interpretation and exact scope.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

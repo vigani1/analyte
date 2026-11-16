@@ -1,4 +1,4 @@
-//! upkeep/open regression tests kept beside the storage behavior they guard.
+//! Tests adr0003 rule7 startup timeout names integrity and larger budget succeeds; adr0003 rule7 timeout during migration rolls back version schema and raw frames.
 use super::*;
 use crate::startup::Progress;
 use crate::test_support::{Space, TestResult, limits};

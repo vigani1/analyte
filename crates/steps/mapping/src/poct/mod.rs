@@ -1,4 +1,4 @@
-//! POCT original observation evidence and configured result mapping; no I/O.
+//! Maps POCT observation evidence and configured results without I/O.
 mod observations;
 use crate::inbound::evidence::{Error, map_result, map_test, map_units};
 use crate::{MappedResult, Output, Position};

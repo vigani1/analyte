@@ -1,4 +1,4 @@
-//! One owner per machine; transport sessions never replay queued writes.
+//! Owns machine workers and transport sessions without replaying queued writes.
 mod astm;
 mod autolyser;
 pub(crate) mod error_location;

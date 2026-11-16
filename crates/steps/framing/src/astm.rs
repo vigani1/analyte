@@ -1,5 +1,5 @@
-//! LIS01-A2 §§6.3/8.3 framing. Dialog owns ENQ/ACK/NAK/EOT, sequence
-//! acceptance (including retransmissions), timers, and durable-before-ACK rules.
+//! Frames ASTM data and checks checksums (LIS01-A2 6.3/8.3).
+//! The dialog owns sequence acceptance, retransmissions, timers and durable-before-ACK rules.
 use thiserror::Error;
 
 /// Start of frame.

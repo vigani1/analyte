@@ -1,4 +1,4 @@
-//! Typed ASTM record views grouped by the records they interpret.
+//! Reads typed ASTM record fields.
 mod header;
 pub use header::*;
 mod patient;

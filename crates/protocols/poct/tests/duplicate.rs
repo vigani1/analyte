@@ -1,4 +1,4 @@
-//! Appendix B section 3.2 and ADR 0003 observation identity tests.
+//! Tests poct01 b 3 2 duplicate is independent of receipt and delivery; poct01 b 3 2 correction rerun and unresolved are distinct.
 mod peer_messages;
 use analyte_model::{
     Identifier, IdentityStatus, NamespacedId, ObservationIdentity, Reason, ResultIdentity,

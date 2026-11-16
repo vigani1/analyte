@@ -1,4 +1,4 @@
-//! Validated law settings and construction at the config boundary.
+//! Constructs validated LAW protocol settings.
 use super::*;
 use analyte_model::Identifier;
 

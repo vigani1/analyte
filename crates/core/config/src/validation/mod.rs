@@ -1,4 +1,4 @@
-//! Semantic checks at the config boundary.
+//! Validates configuration mappings and protocol stacks.
 use crate::{Error, invalid, schema::*};
 
 pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> Result<(), Error> {

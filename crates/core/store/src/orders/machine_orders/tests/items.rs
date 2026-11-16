@@ -1,4 +1,4 @@
-//! Items regression scenarios.
+//! Tests adr0003 0004 items are atomic retained and never reserved again; adr0008 every item aggregation row is atomic and emits one event.
 use super::*;
 
 #[test]

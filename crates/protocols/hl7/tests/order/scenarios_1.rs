@@ -1,4 +1,4 @@
-//! Regression scenarios for order.
+//! Tests hl7 231 4 2 1 and 251 4 4 1 build new and cancel groups; hl7 231 4 3 1 and 251 4 5 1 reports each matching outcome.
 use super::*;
 
 #[test]

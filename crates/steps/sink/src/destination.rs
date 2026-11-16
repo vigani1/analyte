@@ -1,4 +1,4 @@
-//! Validated HTTP destinations belong to the sink network boundary.
+//! Validates HTTP destinations, credentials and limits for delivery, order and health requests.
 use crate::Error;
 use analyte_contract::SigningSecret;
 use analyte_model::Identifier;

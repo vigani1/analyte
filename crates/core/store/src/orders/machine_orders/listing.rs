@@ -1,4 +1,4 @@
-//! Listing for durable machine orders.
+//! Lists durable machine orders and their states.
 use super::*;
 
 impl Store {

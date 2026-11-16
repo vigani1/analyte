@@ -1,4 +1,4 @@
-//! Faithful POCT-to-common-model mapping, without clinical decisions or guessed IDs.
+//! Maps POCT observations to model results without guessed identities or clinical decisions.
 use analyte_model as model;
 use analyte_poct::{Body, Code, Message, Nullable, Observation, Role, Service, Timestamp, Value};
 

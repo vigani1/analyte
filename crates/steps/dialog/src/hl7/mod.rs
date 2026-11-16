@@ -1,4 +1,5 @@
-//! HL7 2.5.1 sections 2.9.2/2.9.3 over MLLP R1. Evidence: documented. Kept whole: The HL7 conversation state transitions share connection ownership and deadline invariants.
+//! Runs HL7 acknowledgment conversations over MLLP with documented evidence (HL7 2.5.1 2.9.2/2.9.3).
+//! Kept whole: The HL7 conversation state transitions share connection ownership and deadline invariants.
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::{
     AckCode, AckError, AckMode, Condition, Message, Msa, Msh, Options, Response, Responsibility,

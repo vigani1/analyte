@@ -1,4 +1,4 @@
-//! intake/reprocess regression tests kept beside the storage behavior they guard.
+//! Tests plan11 adr0003 reprocess provenance resolution failure and audit rollback; mutation adr0003 adr0011 lifecycle reprocessing requires audit and keeps original.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

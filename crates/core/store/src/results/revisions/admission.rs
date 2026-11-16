@@ -1,4 +1,4 @@
-//! Provenance, input bounds and byte budgets checked before revision writes.
+//! Checks provenance, input bounds and byte budgets before writing revisions.
 use super::*;
 impl Store {
     pub(super) fn validate_reconciliation(

@@ -1,4 +1,4 @@
-//! Host-owned independent LAW links, TF-2b B.6 pp.79-80.
+//! Drives independent LAW connections with host-owned I/O (TF-2b B.6).
 use super::{Connection, Error, evidence, invalid};
 use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};

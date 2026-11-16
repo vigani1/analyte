@@ -1,4 +1,4 @@
-//! Nonclinical operator health snapshots.
+//! Reads nonclinical operator health snapshots.
 use crate::{Error, deadline, installation::config::Program};
 use analyte_store::Handle;
 use std::collections::BTreeMap;

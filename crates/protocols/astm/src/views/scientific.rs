@@ -1,4 +1,4 @@
-//! Read-only scientific record positions belong beside the ASTM grammar.
+//! Reads ASTM scientific record fields.
 use crate::{Field, Kind, Record};
 /// Read-only LIS02 scientific positions; no clinical defaults are inferred.
 #[derive(Clone, Copy, Debug)]

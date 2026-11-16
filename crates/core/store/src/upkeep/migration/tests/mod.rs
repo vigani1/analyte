@@ -1,4 +1,4 @@
-//! upkeep/migration regression tests kept beside the storage behavior they guard.
+//! Supplies synthetic tests test fixtures and scenarios.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

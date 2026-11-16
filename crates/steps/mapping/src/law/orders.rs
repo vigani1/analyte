@@ -1,4 +1,4 @@
-//! LAW TF-2b C.6/C.7/C.9 outgoing code mapping; identities are supplied, never generated.
+//! Maps outgoing LAW codes with supplied identities (TF-2b C.6/C.7/C.9).
 use crate::orders::WireMappingError as Error;
 use analyte_hl7::{Message, Options, law};
 use std::sync::Arc;

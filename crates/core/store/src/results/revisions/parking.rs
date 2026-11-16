@@ -1,4 +1,4 @@
-//! Unresolved outcomes and reprocessing audits kept within the coordinator?s transaction.
+//! Parks unresolved results and writes reprocessing audits in the caller transaction.
 use super::*;
 pub(super) fn reconciliation_succeeded(
     evidence: &Interpretation,

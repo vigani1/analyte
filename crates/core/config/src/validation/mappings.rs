@@ -1,4 +1,4 @@
-//! Semantic mappings checks owned by config validation.
+//! Checks configured field mappings and code tables.
 use super::*;
 
 pub(super) fn field(field: &Field, syntax: SyntaxKind, path: &str, key: &str) -> Result<(), Error> {

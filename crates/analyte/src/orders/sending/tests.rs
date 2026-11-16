@@ -1,4 +1,4 @@
-//! Safety rule 8 and ADR 0004: restart distinguishes reservation from transfer.
+//! Tests rule8 sending is internal and only interrupted transfer recovers uncertain.
 use super::*;
 use analyte_model::{Identifier, SampleId};
 use std::{path::Path, time::Duration};

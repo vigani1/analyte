@@ -1,4 +1,4 @@
-//! Synthetic tests traced to the vendor research notes, not vendor captures.
+//! Tests vidas bci a 3 checksum precedes etx; vidas bci a 3 suffixes and literal boundary.
 use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_framing::vidas::{Checksum, Config, Decoder, Mode};
 use analyte_vidas::syntax::{Message, SampleLimit};

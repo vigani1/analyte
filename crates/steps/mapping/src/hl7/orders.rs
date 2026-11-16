@@ -1,4 +1,4 @@
-//! HL7 ch.4 outgoing work mapping from explicit tables.
+//! Maps outgoing HL7 work using explicit code tables.
 use crate::orders::WireMappingError as Error;
 use analyte_hl7::{
     Options, Version,

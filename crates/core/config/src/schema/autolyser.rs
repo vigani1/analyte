@@ -1,4 +1,4 @@
-//! Raw Autolyser policy at the TOML boundary.
+//! Holds raw Autolyser TOML policy settings.
 use super::*;
 
 /// Autolyser connection timing and installed report layout.

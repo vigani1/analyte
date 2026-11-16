@@ -1,4 +1,4 @@
-//! Validated settings and host/dialog boundary values.
+//! Holds validated ASTM dialog settings and host events.
 use analyte_framing::astm::{self, Limit};
 use std::time::Duration;
 use thiserror::Error;

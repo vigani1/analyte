@@ -1,4 +1,4 @@
-//! Version-1 lifecycle evidence owns its wire types and validation.
+//! Defines version-1 lifecycle evidence types and validates their wire values.
 use serde::{Deserialize, Serialize};
 /// Mode is explicit so training and debugging cannot silently become production.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

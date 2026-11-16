@@ -1,4 +1,4 @@
-//! Shared HL7/LAW error evidence: never invent a location for an unknown cause.
+//! Locates HL7 and LAW errors without inventing unknown source positions.
 use analyte_hl7::Terminator;
 pub(crate) use analyte_hl7::location_error as build;
 use analyte_mapping::Output;
