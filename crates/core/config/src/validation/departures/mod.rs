@@ -1,6 +1,7 @@
 //! Checks named departures against installed applicability and selected settings.
 use super::super::*;
 use crate::DepartureRefusal as Refusal;
+use crate::{ParsedMachine, StackChoice};
 mod evidence;
 
 fn refusal(path: &str, rule: &str, reason: Refusal) -> Error {
@@ -13,7 +14,7 @@ fn refusal(path: &str, rule: &str, reason: Refusal) -> Error {
 }
 
 pub(super) fn validate_departures(
-    m: &MachineDocument,
+    m: &ParsedMachine<'_>,
     path: &str,
     reference_path: &str,
 ) -> Result<(), Error> {
@@ -49,9 +50,9 @@ pub(super) fn validate_departures(
     Ok(())
 }
 
-fn selected_settings(m: &MachineDocument) -> [(&'static str, bool); 9] {
+fn selected_settings(m: &ParsedMachine<'_>) -> [(&'static str, bool); 9] {
     let s = &m.syntax;
-    let astm = m.framing.kind == FramingKind::AstmLis01;
+    let astm = matches!(m.choice(), StackChoice::AstmLis02);
     [
         ("hl7_utf8_in_v231", s.allow_utf8_in_v231),
         (
@@ -83,7 +84,7 @@ fn selected_settings(m: &MachineDocument) -> [(&'static str, bool); 9] {
     ]
 }
 
-fn validate_scope(m: &MachineDocument, departure: &MachineDeparture) -> Result<(), Refusal> {
+fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result<(), Refusal> {
     let scope = &departure.declaration().scope;
     let installed = m
         .departure_scope
@@ -115,7 +116,9 @@ fn validate_scope(m: &MachineDocument, departure: &MachineDeparture) -> Result<(
         | MachineDeparture::AstmHostContentionPriority(_)
         | MachineDeparture::AstmLowercaseChecksumHex(_) => false,
     };
-    if (hl7 && m.protocol != Protocol::Hl7) || (!hl7 && m.protocol != Protocol::Astm) {
+    if (hl7 && !matches!(m.choice(), StackChoice::Hl7V2 | StackChoice::FileHl7))
+        || (!hl7 && !matches!(m.choice(), StackChoice::AstmLis02 | StackChoice::FileAstm))
+    {
         return Err(Refusal::ProtocolMismatch);
     }
     match scope.edition {
@@ -143,7 +146,7 @@ fn validate_scope(m: &MachineDocument, departure: &MachineDeparture) -> Result<(
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_) => {}
         MachineDeparture::AstmPackedRecordsInFrame(_) => {
-            if m.framing.kind != FramingKind::AstmLis01 {
+            if !matches!(m.choice(), StackChoice::AstmLis02) {
                 return Err(Refusal::ProtocolMismatch);
             }
             if scope.direction != DepartureDirection::MachineToHost {

@@ -1,14 +1,17 @@
 //! Validates outbound capabilities and code translations.
 use super::*;
+use crate::{ParsedMachine, StackChoice};
 use std::collections::HashSet;
 
 impl Orders {
-    fn validate_stack(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
-        if machine.dialog.kind == crate::DialogKind::LawManager {
+    fn validate_stack(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
+        if matches!(machine.choice(), StackChoice::LawManager) {
             return crate::schema::law::validate_orders(machine, path, self);
         }
-        if machine.syntax.kind != SyntaxKind::Hl7V2
-            && (self.hl7.is_some() || self.hl7_send.is_some() || self.placer_namespace.is_some())
+        if !matches!(
+            machine.choice(),
+            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager
+        ) && (self.hl7.is_some() || self.hl7_send.is_some() || self.placer_namespace.is_some())
         {
             return Err(invalid(
                 path,
@@ -16,8 +19,8 @@ impl Orders {
                 "HL7 query layout applies only to HL7",
             ));
         }
-        let vendor_download = match machine.syntax.kind {
-            SyntaxKind::AstmLis02 => {
+        let vendor_download = match machine.choice() {
+            StackChoice::AstmLis02 | StackChoice::FileAstm => {
                 if self.astm.is_none() {
                     return Err(invalid(
                         path,
@@ -27,13 +30,13 @@ impl Orders {
                 }
                 None
             }
-            SyntaxKind::VidasLiteral => Some(machine.vidas.as_ref().is_some_and(|v| v.download)),
-            SyntaxKind::Autolyser => Some(machine.autolyser.as_ref().is_some_and(|a| a.download)),
-            SyntaxKind::Hl7V2 => {
+            StackChoice::VidasLiteral => Some(machine.vidas.as_ref().is_some_and(|v| v.download)),
+            StackChoice::Autolyser => Some(machine.autolyser.as_ref().is_some_and(|a| a.download)),
+            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager => {
                 self.validate_hl7(machine, path)?;
                 return Ok(());
             }
-            SyntaxKind::Poct => {
+            StackChoice::Poct => {
                 return Err(invalid(
                     path,
                     "orders",
@@ -77,7 +80,7 @@ impl Orders {
                 "this outbound layout has no patient field",
             ));
         }
-        if machine.syntax.kind == SyntaxKind::Autolyser {
+        if matches!(machine.choice(), StackChoice::Autolyser) {
             if self.clone.is_none() {
                 return Err(invalid(
                     path,
@@ -96,7 +99,7 @@ impl Orders {
     }
 
     /// Refuses ambiguous tables, unbounded queries and invalid field ownership.
-    pub(crate) fn validate(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
+    pub(crate) fn validate(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
         self.validate_stack(machine, path)?;
         self.validate_test_tables(machine, path)?;
         self.validate_specimen_tables(machine, path)?;
@@ -105,7 +108,7 @@ impl Orders {
         Ok(())
     }
 
-    fn validate_test_tables(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
+    fn validate_test_tables(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
         if self.tests.is_empty()
             || self.tests.len() > 4096
             || self.priorities.is_empty()
@@ -130,7 +133,7 @@ impl Orders {
                 return Err(invalid_tables(path));
             }
         }
-        if machine.syntax.kind == SyntaxKind::VidasLiteral
+        if matches!(machine.choice(), StackChoice::VidasLiteral)
             && self.tests.iter().any(|test| {
                 let [code] = test.machine_components.as_slice() else {
                     return true;
@@ -149,26 +152,31 @@ impl Orders {
         Ok(())
     }
 
-    fn validate_specimen_tables(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
+    fn validate_specimen_tables(
+        &self,
+        machine: &ParsedMachine<'_>,
+        path: &str,
+    ) -> Result<(), Error> {
         if let Some(types) = &self.specimen_types {
             let mut seen = HashSet::new();
             if types.is_empty()
                 || types.len() > 4096
                 || types.iter().any(|t| {
                     !seen.insert((&t.app.namespace, &t.app.value))
-                        || match machine.syntax.kind {
-                            SyntaxKind::Autolyser => !matches!(t.machine.as_str(), "S" | "U"),
-                            SyntaxKind::AstmLis02 => t
+                        || match machine.choice() {
+                            StackChoice::Autolyser => !matches!(t.machine.as_str(), "S" | "U"),
+                            StackChoice::AstmLis02 | StackChoice::FileAstm => t
                                 .machine
                                 .as_str()
                                 .bytes()
                                 .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b)),
-                            SyntaxKind::Hl7V2 => t
-                                .machine
-                                .as_str()
-                                .bytes()
-                                .any(|b| !(32..127).contains(&b) || b"|^~\\&".contains(&b)),
-                            SyntaxKind::VidasLiteral | SyntaxKind::Poct => true,
+                            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager => {
+                                t.machine
+                                    .as_str()
+                                    .bytes()
+                                    .any(|b| !(32..127).contains(&b) || b"|^~\\&".contains(&b))
+                            }
+                            StackChoice::VidasLiteral | StackChoice::Poct => true,
                         }
                 })
             {
@@ -184,10 +192,10 @@ impl Orders {
 
     fn validate_installed_codes_and_priorities(
         &self,
-        machine: &MachineDocument,
+        machine: &ParsedMachine<'_>,
         path: &str,
     ) -> Result<(), Error> {
-        if machine.syntax.kind == SyntaxKind::Autolyser
+        if matches!(machine.choice(), StackChoice::Autolyser)
             && self.tests.iter().any(|test| {
                 let [code] = test.machine_components.as_slice() else {
                     return true;
@@ -201,7 +209,7 @@ impl Orders {
                 "Autolyser requires one exact four-byte printable analysis code",
             ));
         }
-        if machine.syntax.kind == SyntaxKind::Autolyser
+        if matches!(machine.choice(), StackChoice::Autolyser)
             && self.priorities.iter().any(|p| {
                 !matches!(
                     p.machine,
@@ -215,8 +223,10 @@ impl Orders {
                 "Autolyser list codes are T (routine) and R (STAT)",
             ));
         }
-        if machine.syntax.kind == SyntaxKind::Hl7V2
-            && self.hl7_send.is_some()
+        if matches!(
+            machine.choice(),
+            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager
+        ) && self.hl7_send.is_some()
             && self
                 .priorities
                 .iter()
@@ -239,7 +249,7 @@ impl Orders {
         Ok(())
     }
 
-    fn validate_astm_fields(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
+    fn validate_astm_fields(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
         let Some(astm) = &self.astm else {
             return Ok(());
         };
@@ -275,7 +285,7 @@ impl Orders {
     }
 }
 
-fn order_field(field: &Field, number: u16, machine: &MachineDocument) -> bool {
+fn order_field(field: &Field, number: u16, machine: &ParsedMachine<'_>) -> bool {
     matches!(field.group, Group::Order)
         && field.record.as_str() == "O"
         && field.field == number

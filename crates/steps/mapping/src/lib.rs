@@ -60,8 +60,8 @@ impl TryFrom<SyntaxKind> for FieldSyntax {
 
     fn try_from(syntax: SyntaxKind) -> Result<Self, Self::Error> {
         match syntax {
-            SyntaxKind::AstmLis02 => Ok(Self::AstmLis02),
-            SyntaxKind::Hl7V2 => Ok(Self::Hl7V2),
+            SyntaxKind::AstmLis02 | SyntaxKind::FileAstm => Ok(Self::AstmLis02),
+            SyntaxKind::Hl7V2 | SyntaxKind::FileHl7 | SyntaxKind::LawManager => Ok(Self::Hl7V2),
             SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
                 Err(UnsupportedFieldSyntax(syntax))
             }
@@ -78,45 +78,23 @@ fn field_mappings(config: &Validated) -> Result<&analyte_config::Mappings, Error
 }
 
 fn is_law(config: &Validated) -> bool {
-    use analyte_config::Stack;
-    match config.effective().stack() {
-        Stack::Law(_) => true,
-        Stack::Astm(analyte_config::RecordTransport::Stream(_))
-        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Stream(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
-        | Stack::Poct(_)
-        | Stack::VidasLiteral(_)
-        | Stack::Autolyser(_) => false,
-    }
+    config.effective().stack().law().is_some()
 }
 
 fn astm_syntax(config: &Validated) -> Result<&analyte_config::AstmSyntax, Error> {
-    use analyte_config::Stack;
-    match config.effective().stack() {
-        Stack::Astm(analyte_config::RecordTransport::Stream(s)) => Ok(s.syntax()),
-        Stack::Astm(analyte_config::RecordTransport::Folder(s)) => Ok(s.syntax()),
-        Stack::Hl7(analyte_config::RecordTransport::Stream(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
-        | Stack::Law(_)
-        | Stack::Poct(_)
-        | Stack::VidasLiteral(_)
-        | Stack::Autolyser(_) => Err(Error::Syntax),
-    }
+    config
+        .effective()
+        .stack()
+        .astm_syntax()
+        .ok_or(Error::Syntax)
 }
 
 fn hl7_edition(config: &Validated) -> Result<analyte_config::Edition, Error> {
-    use analyte_config::Stack;
-    match config.effective().stack() {
-        Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => Ok(s.syntax().edition()),
-        Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => Ok(s.syntax().edition()),
-        Stack::Law(_) => Ok(analyte_config::Edition::V251),
-        Stack::Astm(analyte_config::RecordTransport::Stream(_))
-        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
-        | Stack::Poct(_)
-        | Stack::VidasLiteral(_)
-        | Stack::Autolyser(_) => Err(Error::Syntax),
-    }
+    config
+        .effective()
+        .stack()
+        .hl7_edition()
+        .ok_or(Error::Syntax)
 }
 
 /// Finds one exact test translation; ambiguous or absent matches remain unknown.

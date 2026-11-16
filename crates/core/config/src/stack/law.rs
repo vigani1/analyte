@@ -1,5 +1,6 @@
 //! Constructs validated LAW protocol settings.
 use super::*;
+use crate::ParsedMachine;
 use analyte_model::Identifier;
 
 /// Validated LAW connection ownership, with no absent independent destination.
@@ -67,35 +68,42 @@ pub struct LawStack {
     pub(super) orders: Option<LawOrders>,
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-pub(super) fn law_stack(machine: &MachineDocument, timeouts: DialogTimeouts) -> LawStack {
+pub(super) fn law_stack(
+    machine: &ParsedMachine<'_>,
+    timeouts: DialogTimeouts,
+    path: &str,
+) -> Result<LawStack, Error> {
     let law = machine
         .law
         .as_ref()
-        .expect("validated LAW stack requires policy");
-    LawStack {
-        transport: tcp(&machine.transport),
+        .ok_or_else(|| invalid(path, "law", "LAW stack requires policy"))?;
+    Ok(LawStack {
+        transport: tcp(&machine.transport, path)?,
         frame_limit: machine.framing.limit,
         timeouts,
-        acknowledgment: machine
-            .dialog
-            .acknowledgment
-            .expect("validated MLLP dialog requires acknowledgment policy"),
+        acknowledgment: machine.dialog.acknowledgment.ok_or_else(|| {
+            invalid(
+                path,
+                "dialog.acknowledgment",
+                "MLLP dialog requires acknowledgment policy",
+            )
+        })?,
         limits: limits(&machine.syntax),
         mappings: machine
             .mappings
             .clone()
-            .expect("validated record stack requires mappings"),
+            .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
         policy: LawPolicy {
             links: match law.connection_mode {
                 LawConnectionMode::Persistent => LawLinks::Persistent,
                 LawConnectionMode::IndependentPerTransaction => LawLinks::Independent {
-                    outbound: law
-                        .outbound_endpoint
-                        .expect("validated independent LAW has an outbound endpoint"),
+                    outbound: law.outbound_endpoint.ok_or_else(|| {
+                        invalid(
+                            path,
+                            "law.outbound_endpoint",
+                            "independent LAW has an outbound endpoint",
+                        )
+                    })?,
                 },
             },
             query_forms: law.query_forms.clone(),
@@ -103,24 +111,35 @@ pub(super) fn law_stack(machine: &MachineDocument, timeouts: DialogTimeouts) -> 
             query_deadline_ms: law.query_deadline_ms,
             response_ms: law.response_ms,
         },
-        orders: machine.orders.as_ref().map(|orders| LawOrders {
-            work: law
-                .work
-                .clone()
-                .expect("validated LAW orders require work layout"),
-            tests: orders.tests.clone(),
-            priorities: orders.priorities.clone(),
-            specimen_types: orders
-                .specimen_types
-                .clone()
-                .expect("validated LAW orders require specimen mappings"),
-            placer_namespace: orders
-                .placer_namespace
-                .clone()
-                .expect("validated LAW orders require placer namespace"),
-            send_ahead: orders.send_ahead,
-        }),
-    }
+        orders: machine
+            .orders
+            .as_ref()
+            .map(|orders| {
+                Ok::<_, Error>(LawOrders {
+                    work: law.work.clone().ok_or_else(|| {
+                        invalid(path, "law.work", "LAW orders require work layout")
+                    })?,
+                    tests: orders.tests.clone(),
+                    priorities: orders.priorities.clone(),
+                    specimen_types: orders.specimen_types.clone().ok_or_else(|| {
+                        invalid(
+                            path,
+                            "orders.specimen_types",
+                            "LAW orders require specimen mappings",
+                        )
+                    })?,
+                    placer_namespace: orders.placer_namespace.clone().ok_or_else(|| {
+                        invalid(
+                            path,
+                            "orders.placer_namespace",
+                            "LAW orders require placer namespace",
+                        )
+                    })?,
+                    send_ahead: orders.send_ahead,
+                })
+            })
+            .transpose()?,
+    })
 }
 
 impl LawStack {

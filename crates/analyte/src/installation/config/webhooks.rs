@@ -36,7 +36,7 @@ pub enum WebhookConfigError {
 #[derive(Clone)]
 pub struct AlertEndpoint {
     id: Identifier,
-    url: analyte_sink::WebhookUrl,
+    url: analyte_config::HttpsUrl,
     secret: Identifier,
 }
 impl AlertEndpoint {
@@ -47,7 +47,7 @@ impl AlertEndpoint {
     }
     /// Exact validated HTTPS destination; never include it in logs or events.
     #[must_use]
-    pub fn url(&self) -> &analyte_sink::WebhookUrl {
+    pub fn url(&self) -> &analyte_config::HttpsUrl {
         &self.url
     }
     /// Installation secret reference, never a credential value.
@@ -174,7 +174,7 @@ impl DraftDelivery {
             }
             endpoints.push(AlertEndpoint {
                 id: endpoint.id,
-                url: analyte_sink::WebhookUrl::parse(&endpoint.url).map_err(|_| E::Url)?,
+                url: analyte_config::HttpsUrl::parse(&endpoint.url).map_err(|_| E::Url)?,
                 secret: endpoint.secret,
             });
         }

@@ -22,23 +22,14 @@ impl Command {
         app: &analyte_contract::Order,
         options: Options,
     ) -> Result<Self, Error> {
-        let (syntax, settings) = match config.effective().stack() {
-            analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) => {
-                (&stack.syntax(), stack.orders().as_ref())
-            }
-            analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(stack)) => {
-                (&stack.syntax(), stack.orders().as_ref())
-            }
-            analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
-            | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
-            | analyte_config::Stack::Law(_)
-            | analyte_config::Stack::Poct(_)
-            | analyte_config::Stack::VidasLiteral(_)
-            | analyte_config::Stack::Autolyser(_) => {
-                return Err(Error::Context("HL7 orders absent"));
-            }
-        };
-        let settings = settings.ok_or(Error::Context("HL7 orders absent"))?.clone();
+        let stack = config.effective().stack();
+        let edition = stack
+            .hl7_edition()
+            .ok_or(Error::Context("HL7 orders absent"))?;
+        let settings = stack
+            .hl7_orders()
+            .ok_or(Error::Context("HL7 orders absent"))?
+            .clone();
         if settings
             .send()
             .as_ref()
@@ -48,7 +39,7 @@ impl Command {
                 "HL7-patient-name-required-but-not-carried-by-contract",
             ));
         }
-        let version: Version = syntax.edition().into();
+        let version: Version = edition.into();
         if version.orm_patient_name_required()
             && app.fields().patient.is_some()
             && app.fields().state == analyte_contract::document::OrderState::Requested

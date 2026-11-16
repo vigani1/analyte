@@ -1,38 +1,8 @@
 //! Validates exact HTTPS webhook URLs without exposing them in diagnostics.
 use crate::Error;
 
-/// An exact HTTPS destination without embedded credentials, query or fragment.
-/// Deliberately has no Debug or Display implementation.
-#[derive(Clone)]
-pub struct WebhookUrl(reqwest::Url);
-
-impl WebhookUrl {
-    /// Parses a bounded HTTPS URL; unlike app base URLs, preserves the exact path.
-    /// # Errors
-    /// Returns a fixed configuration error without retaining rejected input.
-    pub fn parse(value: &str) -> Result<Self, Error> {
-        if value.len() > 4096 || value.chars().any(char::is_control) {
-            return Err(Error::Configuration);
-        }
-        let url = reqwest::Url::parse(value).map_err(|_| Error::Configuration)?;
-        if url.scheme() != "https"
-            || url.host_str().is_none()
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.query().is_some()
-            || url.fragment().is_some()
-        {
-            return Err(Error::Configuration);
-        }
-        Ok(Self(url))
-    }
-
-    /// Borrows the exact configured URL for host-owned HTTP requests.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-}
+/// Config-owned HTTPS URL, retained as an alias for existing callers.
+pub type WebhookUrl = analyte_config::HttpsUrl;
 
 /// Host HTTPS sender with the same TLS, redirect, proxy and retry policy as app delivery.
 /// No Debug implementation can reveal endpoint URLs or credentials.
@@ -50,7 +20,7 @@ impl WebhookSender {
         }
         Ok(Self {
             client: crate::http_client(timeout)?,
-            url: url.0.clone(),
+            url: url.url().clone(),
         })
     }
     /// Sends immutable bytes; success means HTTP 2xx acceptance, not human receipt.
@@ -92,21 +62,14 @@ impl WebhookSender {
     /// # Errors
     /// Refuses non-loopback hosts, credentials, queries and fragments.
     pub fn for_loopback_test(url: &str, timeout: std::time::Duration) -> Result<Self, Error> {
-        let parsed = reqwest::Url::parse(url).map_err(|_| Error::Configuration)?;
-        if parsed.scheme() != "http"
-            || !parsed.host_str().is_some_and(|host| {
-                host.trim_matches(['[', ']'])
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|ip| ip.is_loopback())
-            })
-            || !parsed.username().is_empty()
-            || parsed.password().is_some()
-            || parsed.query().is_some()
-            || parsed.fragment().is_some()
-        {
+        let url = analyte_config::loopback_test_url(url).map_err(|_| Error::Configuration)?;
+        if timeout.is_zero() || timeout > std::time::Duration::from_secs(300) {
             return Err(Error::Configuration);
         }
-        Self::new(&WebhookUrl(parsed), timeout)
+        Ok(Self {
+            client: crate::http_client(timeout)?,
+            url,
+        })
     }
 }
 

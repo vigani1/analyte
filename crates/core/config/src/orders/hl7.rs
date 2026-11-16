@@ -1,9 +1,14 @@
 //! Validates configured HL7 outbound message layouts.
 use super::*;
+use crate::ParsedMachine;
 use std::collections::HashSet;
 
 impl Orders {
-    pub(super) fn validate_hl7(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
+    pub(super) fn validate_hl7(
+        &self,
+        machine: &ParsedMachine<'_>,
+        path: &str,
+    ) -> Result<(), Error> {
         if (self.query.is_some() || self.hl7.is_some())
             && let Some(edition) = machine.syntax.edition.map(analyte_hl7::Version::from)
             && let Some(section) = edition.legacy_query_withdrawal()
@@ -90,7 +95,7 @@ impl Orders {
     }
     pub(super) fn validate_hl7_send(
         &self,
-        machine: &MachineDocument,
+        machine: &ParsedMachine<'_>,
         path: &str,
     ) -> Result<(), Error> {
         if let Some(send) = &self.hl7_send {
@@ -162,7 +167,7 @@ impl Orders {
     }
     fn validate_hl7_send_codes(
         &self,
-        machine: &MachineDocument,
+        machine: &ParsedMachine<'_>,
         send: &Hl7Send,
         path: &str,
     ) -> Result<(), Error> {
@@ -219,7 +224,7 @@ impl Orders {
     }
     pub(super) fn validate_query_syntax(
         &self,
-        machine: &MachineDocument,
+        machine: &ParsedMachine<'_>,
         layout: &Hl7OrderQuery,
         path: &str,
     ) -> Result<(), Error> {

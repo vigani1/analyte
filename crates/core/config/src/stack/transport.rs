@@ -48,41 +48,46 @@ pub struct TcpTransport {
     pub(super) operation_timeout_ms: u32,
 }
 
-pub(super) fn tcp(transport: &Transport) -> TcpTransport {
+pub(super) fn tcp(transport: &Transport, path: &str) -> Result<TcpTransport, Error> {
     let role = match transport.kind {
         TransportKind::TcpClient => TcpRole::Client,
         TransportKind::TcpServer => TcpRole::Server,
         TransportKind::Serial | TransportKind::WatchedFolder => {
-            unreachable!("validated TCP stack requires TCP transport")
+            return Err(Error::IncompatibleStack {
+                path: path.into(),
+                reason: "validated TCP stack requires TCP transport",
+            });
         }
     };
-    TcpTransport {
+    Ok(TcpTransport {
         role,
         operation_timeout_ms: transport.operation_timeout_ms,
-    }
+    })
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-pub(super) fn stream(transport: &Transport) -> StreamTransport {
+pub(super) fn stream(transport: &Transport, path: &str) -> Result<StreamTransport, Error> {
     let kind = match transport.kind {
-        TransportKind::Serial => StreamKind::Serial(
-            transport
-                .serial
-                .clone()
-                .expect("validated serial transport requires settings"),
-        ),
-        TransportKind::TcpClient | TransportKind::TcpServer => StreamKind::Tcp(tcp(transport).role),
+        TransportKind::Serial => StreamKind::Serial(transport.serial.clone().ok_or_else(|| {
+            invalid(
+                path,
+                "transport.serial",
+                "serial transport requires settings",
+            )
+        })?),
+        TransportKind::TcpClient | TransportKind::TcpServer => {
+            StreamKind::Tcp(tcp(transport, path)?.role)
+        }
         TransportKind::WatchedFolder => {
-            unreachable!("validated stream stack excludes watched folders")
+            return Err(Error::IncompatibleStack {
+                path: path.into(),
+                reason: "validated stream stack excludes watched folders",
+            });
         }
     };
-    StreamTransport {
+    Ok(StreamTransport {
         kind,
         operation_timeout_ms: transport.operation_timeout_ms,
-    }
+    })
 }
 
 pub(super) fn tcp_kind(role: TcpRole) -> TransportKind {

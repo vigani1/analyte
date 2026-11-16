@@ -1,5 +1,6 @@
 //! Turns a validated machine document into a `Stack`: one typed settings bundle per supported protocol combination.
 use crate::*;
+use crate::{ParsedMachine, StackChoice};
 mod astm;
 pub use astm::{AstmOrders, AstmStack, AstmSyntax};
 mod hl7;
@@ -39,27 +40,34 @@ pub enum Stack {
 }
 
 impl Stack {
-    // This is called only after both original and effective layers pass validation.
-    pub(crate) fn from_validated(machine: &MachineDocument) -> Self {
+    #[cfg(test)]
+    pub(crate) fn parse(document: &MachineDocument, path: &str) -> Result<Self, Error> {
+        Self::from_parsed(&ParsedMachine::parse(document, path)?, path)
+    }
+
+    // Conversion returns required settings as types, never relying on validation to prevent a panic.
+    pub(crate) fn from_parsed(machine: &ParsedMachine<'_>, path: &str) -> Result<Self, Error> {
         let timeouts = DialogTimeouts {
             receive_timeout_ms: machine.dialog.receive_timeout_ms,
             send_timeout_ms: machine.dialog.send_timeout_ms,
         };
-        match machine.dialog.kind {
-            DialogKind::AstmLink => Self::Astm(RecordTransport::Stream(Box::new(astm::build(
-                machine, timeouts,
-            )))),
-            DialogKind::Hl7Receiver => Self::Hl7(RecordTransport::Stream(Box::new(hl7::build(
-                machine, timeouts,
-            )))),
-            DialogKind::LawManager => Self::Law(Box::new(law_stack(machine, timeouts))),
-            DialogKind::Poct => Self::Poct(Box::new(poct::build(machine, timeouts))),
-            DialogKind::VidasLiteral => {
-                Self::VidasLiteral(Box::new(vidas::build(machine, timeouts)))
+        Ok(match machine.choice() {
+            StackChoice::AstmLis02 => Self::Astm(RecordTransport::Stream(Box::new(astm::build(
+                machine, timeouts, path,
+            )?))),
+            StackChoice::Hl7V2 => Self::Hl7(RecordTransport::Stream(Box::new(hl7::build(
+                machine, timeouts, path,
+            )?))),
+            StackChoice::LawManager => Self::Law(Box::new(law_stack(machine, timeouts, path)?)),
+            StackChoice::Poct => Self::Poct(Box::new(poct::build(machine, timeouts, path)?)),
+            StackChoice::VidasLiteral => {
+                Self::VidasLiteral(Box::new(vidas::build(machine, timeouts, path)?))
             }
-            DialogKind::Autolyser => Self::Autolyser(Box::new(autolyser::build(machine, timeouts))),
-            DialogKind::FilePickup => file_stack(machine, timeouts),
-        }
+            StackChoice::Autolyser => {
+                Self::Autolyser(Box::new(autolyser::build(machine, timeouts, path)?))
+            }
+            StackChoice::FileAstm | StackChoice::FileHl7 => file_stack(machine, timeouts, path)?,
+        })
     }
 }
 
@@ -183,15 +191,11 @@ impl Stack {
     }
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-fn code_tables(machine: &MachineDocument) -> CodeTables {
+fn code_tables(machine: &ParsedMachine<'_>, path: &str) -> Result<CodeTables, Error> {
     machine
         .codes
         .clone()
-        .expect("validated vendor stack requires code tables")
+        .ok_or_else(|| invalid(path, "codes", "vendor stack requires code tables"))
 }
 
 mod transport;
@@ -205,3 +209,5 @@ use limits::{hl7_options, limits};
 mod order_tables;
 pub use order_tables::OrderTables;
 use order_tables::order_tables;
+
+mod capabilities;

@@ -1,7 +1,8 @@
 //! Checks protocol stack settings and supported combinations.
 use super::*;
+use crate::{ParsedMachine, StackChoice};
 
-pub(super) fn validate_transport(m: &MachineDocument, path: &str) -> Result<(), Error> {
+pub(super) fn validate_transport(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     let t = &m.transport;
     if !(1..=300_000).contains(&t.operation_timeout_ms) {
         return Err(invalid(
@@ -43,11 +44,8 @@ pub(super) fn validate_transport(m: &MachineDocument, path: &str) -> Result<(), 
     Ok(())
 }
 
-pub(super) fn validate_stack(m: &MachineDocument, path: &str) -> Result<(), Error> {
-    let t = &m.transport;
-    let f = &m.framing;
-    let d = &m.dialog;
-    if let Some(enabled) = d.enhanced_application_acknowledgments
+pub(super) fn validate_stack(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
+    if let Some(enabled) = m.dialog.enhanced_application_acknowledgments
         && (!m
             .syntax
             .edition
@@ -60,91 +58,14 @@ pub(super) fn validate_stack(m: &MachineDocument, path: &str) -> Result<(), Erro
             "HL7 2.9.1 enhanced application acknowledgments require an unsupported separate channel; only false is supported for v291",
         ));
     }
-    let s = &m.syntax;
-    let compatible = match d.kind {
-        DialogKind::AstmLink => {
-            t.kind != TransportKind::WatchedFolder
-                && f.kind == FramingKind::AstmLis01
-                && s.kind == SyntaxKind::AstmLis02
-        }
-        DialogKind::Hl7Receiver | DialogKind::LawManager => {
-            matches!(t.kind, TransportKind::TcpClient | TransportKind::TcpServer)
-                && f.kind == FramingKind::Mllp
-                && s.kind == SyntaxKind::Hl7V2
-        }
-        DialogKind::Poct => {
-            matches!(t.kind, TransportKind::TcpClient | TransportKind::TcpServer)
-                && f.kind == FramingKind::Poct
-                && s.kind == SyntaxKind::Poct
-        }
-        DialogKind::VidasLiteral => {
-            t.kind != TransportKind::WatchedFolder
-                && f.kind == FramingKind::VidasLiteral
-                && s.kind == SyntaxKind::VidasLiteral
-        }
-        DialogKind::Autolyser => {
-            t.kind != TransportKind::WatchedFolder
-                && f.kind == FramingKind::Autolyser
-                && s.kind == SyntaxKind::Autolyser
-        }
-        DialogKind::FilePickup => {
-            t.kind == TransportKind::WatchedFolder
-                && f.kind == FramingKind::None
-                && matches!(s.kind, SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2)
-        }
-    };
-    if !compatible {
-        return Err(Error::IncompatibleStack {
-            path: path.into(),
-            reason: match d.kind {
-                DialogKind::AstmLink => {
-                    "ASTM link requires serial/TCP, LIS01 framing and LIS02 syntax"
-                }
-                DialogKind::Hl7Receiver | DialogKind::LawManager => {
-                    "HL7/LAW requires TCP, MLLP framing and HL7 syntax"
-                }
-                DialogKind::Poct => "POCT requires TCP, POCT framing and POCT syntax",
-                DialogKind::VidasLiteral => {
-                    "VIDAS requires serial/TCP, Literal framing and Literal syntax"
-                }
-                DialogKind::Autolyser => {
-                    "Autolyser requires serial/TCP, Autolyser framing and syntax"
-                }
-                DialogKind::FilePickup => {
-                    "file pickup requires watched_folder, no framing, and ASTM or HL7 syntax"
-                }
-            },
-        });
-    }
     Ok(())
 }
 
-pub(super) fn validate_protocol_selection(m: &MachineDocument, path: &str) -> Result<(), Error> {
-    let protocol_matches = match m.protocol {
-        Protocol::Astm => m.syntax.kind == SyntaxKind::AstmLis02,
-        Protocol::Hl7 => {
-            m.syntax.kind == SyntaxKind::Hl7V2 && m.dialog.kind != DialogKind::LawManager
-        }
-        Protocol::Law => m.dialog.kind == DialogKind::LawManager,
-        Protocol::Poct => m.syntax.kind == SyntaxKind::Poct,
-        Protocol::Vidas => m.syntax.kind == SyntaxKind::VidasLiteral,
-        Protocol::Autolyser => m.syntax.kind == SyntaxKind::Autolyser,
-    };
-    if !protocol_matches {
-        return Err(invalid(
-            path,
-            "protocol",
-            "selected protocol does not match syntax and dialog",
-        ));
-    }
-    Ok(())
-}
-
-pub(super) fn validate_dialog_and_framing(m: &MachineDocument, path: &str) -> Result<(), Error> {
+pub(super) fn validate_dialog_and_framing(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     let d = &m.dialog;
     let f = &m.framing;
-    if (d.kind == DialogKind::AstmLink) != d.contention_priority.is_some()
-        || matches!(d.kind, DialogKind::Hl7Receiver | DialogKind::LawManager)
+    if (matches!(m.choice(), StackChoice::AstmLis02)) != d.contention_priority.is_some()
+        || matches!(m.choice(), StackChoice::Hl7V2 | StackChoice::LawManager)
             != d.acknowledgment.is_some()
     {
         return Err(invalid(
@@ -172,14 +93,14 @@ pub(super) fn validate_dialog_and_framing(m: &MachineDocument, path: &str) -> Re
             "use 1 through 16777216 bytes",
         ));
     }
-    if (f.kind == FramingKind::AstmLis01) != f.checksum_hex.is_some() {
+    if (matches!(m.choice(), StackChoice::AstmLis02)) != f.checksum_hex.is_some() {
         return Err(invalid(
             path,
             "framing.checksum_hex",
             "declare checksum hex policy only for LIS01",
         ));
     }
-    if f.kind == FramingKind::AstmLis01 {
+    if matches!(m.choice(), StackChoice::AstmLis02) {
         analyte_framing::astm::Limit::new(f.limit).map_err(|_| {
             invalid(
                 path,
@@ -191,7 +112,7 @@ pub(super) fn validate_dialog_and_framing(m: &MachineDocument, path: &str) -> Re
     Ok(())
 }
 
-pub(super) fn validate_syntax(m: &MachineDocument, path: &str) -> Result<(), Error> {
+pub(super) fn validate_syntax(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     let s = &m.syntax;
     if let Some(edition) = s.edition.map(analyte_hl7::Version::from)
         && !edition.supports_result_reception()
@@ -201,9 +122,11 @@ pub(super) fn validate_syntax(m: &MachineDocument, path: &str) -> Result<(), Err
             edition: edition.as_str(),
         });
     }
-    if (s.kind == SyntaxKind::Hl7V2)
-        != (s.edition.is_some() && s.terminator.is_some() && s.escapes.is_some())
-        || (s.kind == SyntaxKind::AstmLis02
+    if (matches!(
+        m.choice(),
+        StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager
+    )) != (s.edition.is_some() && s.terminator.is_some() && s.escapes.is_some())
+        || (matches!(m.choice(), StackChoice::AstmLis02 | StackChoice::FileAstm)
             && (s.edition.is_some() || s.terminator.is_some() || s.escapes.is_some()))
     {
         return Err(invalid(
@@ -231,54 +154,33 @@ pub(super) fn validate_syntax(m: &MachineDocument, path: &str) -> Result<(), Err
     Ok(())
 }
 
-pub(super) fn validate_protocol(m: &MachineDocument, path: &str) -> Result<(), Error> {
+pub(super) fn validate_protocol(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     validate_mapping_family(m, path)?;
     let valid_ms = |value| (1..=300_000).contains(&value);
     let bad = |protocol| Error::ProtocolSettings {
         path: path.into(),
         protocol,
     };
-    match (m.syntax.kind, &m.poct) {
-        (SyntaxKind::Poct, Some(_))
-        | (
-            SyntaxKind::AstmLis02
-            | SyntaxKind::Hl7V2
-            | SyntaxKind::VidasLiteral
-            | SyntaxKind::Autolyser,
-            None,
-        ) => {}
-        (SyntaxKind::Poct, None)
-        | (
-            SyntaxKind::AstmLis02
-            | SyntaxKind::Hl7V2
-            | SyntaxKind::VidasLiteral
-            | SyntaxKind::Autolyser,
-            Some(_),
-        ) => return Err(bad("poct")),
-    }
-    match (m.syntax.kind, &m.vidas) {
-        (SyntaxKind::VidasLiteral, Some(_))
-        | (
-            SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 | SyntaxKind::Poct | SyntaxKind::Autolyser,
-            None,
-        ) => {}
-        (SyntaxKind::VidasLiteral, None)
-        | (
-            SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 | SyntaxKind::Poct | SyntaxKind::Autolyser,
-            Some(_),
-        ) => return Err(bad("vidas")),
-    }
-    match (m.syntax.kind, &m.autolyser) {
-        (SyntaxKind::Autolyser, Some(_))
-        | (
-            SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 | SyntaxKind::Poct | SyntaxKind::VidasLiteral,
-            None,
-        ) => {}
-        (SyntaxKind::Autolyser, None)
-        | (
-            SyntaxKind::AstmLis02 | SyntaxKind::Hl7V2 | SyntaxKind::Poct | SyntaxKind::VidasLiteral,
-            Some(_),
-        ) => return Err(bad("autolyser")),
+    for (selected, supplied, protocol) in [
+        (
+            matches!(m.choice(), StackChoice::Poct),
+            m.poct.is_some(),
+            "poct",
+        ),
+        (
+            matches!(m.choice(), StackChoice::VidasLiteral),
+            m.vidas.is_some(),
+            "vidas",
+        ),
+        (
+            matches!(m.choice(), StackChoice::Autolyser),
+            m.autolyser.is_some(),
+            "autolyser",
+        ),
+    ] {
+        if selected != supplied {
+            return Err(bad(protocol));
+        }
     }
     if let Some(p) = &m.poct
         && (!(1..=128).contains(&p.pending_messages)

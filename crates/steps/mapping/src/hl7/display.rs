@@ -14,18 +14,11 @@ pub fn map(
     order_id: &str,
     config: &Validated,
 ) -> Result<Vec<Vec<u8>>, OrderMappingError> {
-    use analyte_config::Stack;
-    let orders = match config.effective().stack() {
-        Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => s.orders().as_ref(),
-        Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => s.orders().as_ref(),
-        Stack::Astm(analyte_config::RecordTransport::Stream(_))
-        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
-        | Stack::Law(_)
-        | Stack::Poct(_)
-        | Stack::VidasLiteral(_)
-        | Stack::Autolyser(_) => None,
-    }
-    .ok_or(OrderMappingError::Disabled)?;
+    let orders = config
+        .effective()
+        .stack()
+        .hl7_orders()
+        .ok_or(OrderMappingError::Disabled)?;
     let layout = &orders
         .query()
         .as_ref()

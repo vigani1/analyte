@@ -78,6 +78,7 @@ dependencies = [
  "analyte-hl7",
  "analyte-model",
  "analyte-transport",
+ "reqwest",
  "serde",
  "sha2",
  "thiserror",
@@ -203,6 +204,7 @@ dependencies = [
 name = "analyte-sink"
 version = "0.1.0"
 dependencies = [
+ "analyte-config",
  "analyte-contract",
  "analyte-model",
  "analyte-receiver",

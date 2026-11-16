@@ -1,5 +1,6 @@
 //! Constructs validated HL7 protocol settings.
 use super::*;
+use crate::ParsedMachine;
 use analyte_model::Identifier;
 
 /// HL7 syntax settings with every required option present.
@@ -69,50 +70,57 @@ pub struct Hl7Stack {
     pub(super) orders: Option<Hl7Orders>,
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-pub(super) fn hl7_syntax(syntax: &Syntax) -> Hl7Syntax {
-    Hl7Syntax {
+pub(super) fn hl7_syntax(syntax: &Syntax, path: &str) -> Result<Hl7Syntax, Error> {
+    Ok(Hl7Syntax {
         allow_utf8_in_v231: syntax.allow_utf8_in_v231,
         encoding: syntax.encoding,
         edition: syntax
             .edition
-            .expect("validated HL7 syntax requires edition"),
+            .ok_or_else(|| invalid(path, "syntax.edition", "HL7 syntax requires edition"))?,
         terminator: syntax
             .terminator
-            .expect("validated HL7 syntax requires terminator"),
+            .ok_or_else(|| invalid(path, "syntax.terminator", "HL7 syntax requires terminator"))?,
         escapes: syntax
             .escapes
-            .expect("validated HL7 syntax requires escape policy"),
+            .ok_or_else(|| invalid(path, "syntax.escapes", "HL7 syntax requires escape policy"))?,
         limits: limits(syntax),
-    }
+    })
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-pub(super) fn hl7_orders(orders: &Orders) -> Hl7Orders {
-    Hl7Orders {
+pub(super) fn hl7_orders(orders: &Orders, path: &str) -> Result<Hl7Orders, Error> {
+    Ok(Hl7Orders {
         patient_namespace: orders.patient_namespace.clone(),
         tables: order_tables(orders),
-        query: orders.query.as_ref().map(|policy| Hl7Query {
-            policy: policy.clone(),
-            layout: orders
-                .hl7
-                .clone()
-                .expect("validated HL7 query requires layout"),
-        }),
-        send: orders.hl7_send.as_ref().map(|settings| Hl7SendOrders {
-            settings: settings.clone(),
-            placer_namespace: orders
-                .placer_namespace
-                .clone()
-                .expect("validated HL7 send requires placer namespace"),
-        }),
-    }
+        query: orders
+            .query
+            .as_ref()
+            .map(|policy| {
+                Ok::<_, Error>(Hl7Query {
+                    policy: policy.clone(),
+                    layout: orders
+                        .hl7
+                        .clone()
+                        .ok_or_else(|| invalid(path, "orders.hl7", "HL7 query requires layout"))?,
+                })
+            })
+            .transpose()?,
+        send: orders
+            .hl7_send
+            .as_ref()
+            .map(|settings| {
+                Ok::<_, Error>(Hl7SendOrders {
+                    settings: settings.clone(),
+                    placer_namespace: orders.placer_namespace.clone().ok_or_else(|| {
+                        invalid(
+                            path,
+                            "orders.placer_namespace",
+                            "HL7 send requires placer namespace",
+                        )
+                    })?,
+                })
+            })
+            .transpose()?,
+    })
 }
 
 impl Hl7Syntax {
@@ -246,21 +254,31 @@ impl Hl7Stack {
     }
 }
 
-#[expect(clippy::expect_used, reason = "conversion follows semantic validation")]
-pub(super) fn build(machine: &MachineDocument, timeouts: DialogTimeouts) -> Hl7Stack {
-    Hl7Stack {
-        transport: tcp(&machine.transport),
+pub(super) fn build(
+    machine: &ParsedMachine<'_>,
+    timeouts: DialogTimeouts,
+    path: &str,
+) -> Result<Hl7Stack, Error> {
+    Ok(Hl7Stack {
+        transport: tcp(&machine.transport, path)?,
         frame_limit: machine.framing.limit,
         timeouts,
-        acknowledgment: machine
-            .dialog
-            .acknowledgment
-            .expect("validated MLLP dialog requires acknowledgment policy"),
-        syntax: hl7_syntax(&machine.syntax),
+        acknowledgment: machine.dialog.acknowledgment.ok_or_else(|| {
+            invalid(
+                path,
+                "dialog.acknowledgment",
+                "MLLP dialog requires acknowledgment policy",
+            )
+        })?,
+        syntax: hl7_syntax(&machine.syntax, path)?,
         mappings: machine
             .mappings
             .clone()
-            .expect("validated record stack requires mappings"),
-        orders: machine.orders.as_ref().map(hl7_orders),
-    }
+            .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
+        orders: machine
+            .orders
+            .as_ref()
+            .map(|o| hl7_orders(o, path))
+            .transpose()?,
+    })
 }

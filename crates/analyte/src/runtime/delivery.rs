@@ -35,7 +35,12 @@ pub(crate) fn destinations(program: &Program, loopback: bool) -> Result<Vec<Dest
                 limits,
             )?
         } else {
-            Destination::new(settings.name.clone(), base, settings.name.clone(), limits)?
+            Destination::from_url(
+                settings.name.clone(),
+                &settings.base_url,
+                settings.name.clone(),
+                limits,
+            )?
         });
     }
     Ok(destinations)
