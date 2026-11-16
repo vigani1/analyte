@@ -530,6 +530,7 @@ fn assert_empty_retention_tables(snapshot: &mut Snapshot) {
     assert_eq!(identity.len(), 32);
     assert!(identity.bytes().all(|b| b.is_ascii_hexdigit()));
     for table in [
+        "awos_execution_history",
         "alert_endpoints",
         "alert_events",
         "alert_progress",

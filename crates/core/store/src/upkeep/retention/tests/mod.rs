@@ -122,7 +122,7 @@ fn adr0013_item3_migration_from_v9_preserves_evidence() -> TestResult {
     let mut store = open(&path)?;
     let id = finished(&mut store)?;
     remove_alert_schema_for_legacy_fixture(&store.db)?;
-    store.db.execute_batch("DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; DROP TABLE retention_results; DROP TABLE retention_deliveries; DROP TABLE retention_tombstones; DROP TABLE retention_key; DROP TABLE retention_holds; PRAGMA user_version=9;")?;
+    store.db.execute_batch("DROP TABLE awos_execution_history; DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; DROP TABLE retention_results; DROP TABLE retention_deliveries; DROP TABLE retention_tombstones; DROP TABLE retention_key; DROP TABLE retention_holds; PRAGMA user_version=9;")?;
     drop(store);
     let store = open(&path)?;
     assert_eq!(store.raw(id)?.ok_or("missing raw")?, b"synthetic");

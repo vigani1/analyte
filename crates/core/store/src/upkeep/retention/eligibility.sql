@@ -1,5 +1,6 @@
 SELECT EXISTS(
  SELECT 1 FROM receipts r WHERE r.id=?1
+ AND NOT EXISTS(SELECT 1 FROM awos_execution_history h WHERE h.receipt=r.id)
  AND EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id)
  AND EXISTS(SELECT 1 FROM outbox o WHERE o.receipt=r.id)
  AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id AND (json_type(i.evidence,'$.outcome.Results') IS NOT 'array' OR json_array_length(i.evidence,'$.outcome.Results')=0))

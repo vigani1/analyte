@@ -71,7 +71,7 @@ fn adr0014_v11_migration_preserves_local_alert_history_and_is_restart_safe() -> 
     let path = temp.path().join("legacy.db");
     let mut store = open(&path)?;
     store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), 100)?;
-    store.db.execute_batch("DROP INDEX alert_history_episode; DROP TABLE alert_reminders; DROP TABLE alert_progress; DROP TABLE alert_events; DROP TABLE alert_endpoints; DROP TRIGGER alert_installation_retained; DROP TABLE alert_installation; PRAGMA user_version=11;")?;
+    store.db.execute_batch("DROP TABLE awos_execution_history; DROP INDEX alert_history_episode; DROP TABLE alert_reminders; DROP TABLE alert_progress; DROP TABLE alert_events; DROP TABLE alert_endpoints; DROP TRIGGER alert_installation_retained; DROP TABLE alert_installation; PRAGMA user_version=11;")?;
     drop(store);
     let store = open(&path)?;
     assert_eq!(store.alert_history(0)?.len(), 1);
@@ -79,7 +79,7 @@ fn adr0014_v11_migration_preserves_local_alert_history_and_is_restart_safe() -> 
     let version: i64 = store
         .db
         .query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    assert_eq!(version, 12);
+    assert_eq!(version, SCHEMA_VERSION);
     drop(store);
     assert_eq!(open(&path)?.alert_history(0)?.len(), 1);
     Ok(())

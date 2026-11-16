@@ -226,7 +226,7 @@ fn adr0013_item3_v10_migration_keeps_existing_order_evidence() -> TestResult {
     let mut store = open(&path)?;
     order_seed(&mut store, "Uncertain")?;
     remove_alert_schema_for_legacy_fixture(&store.db)?;
-    store.db.execute_batch("DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; PRAGMA user_version=10;")?;
+    store.db.execute_batch("DROP TABLE awos_execution_history; DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; PRAGMA user_version=10;")?;
     drop(store);
     let store = open(&path)?;
     assert_eq!(

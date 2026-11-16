@@ -5,6 +5,7 @@ use crate::sql_types::SqlOrderState;
 use ownership::OrderOwner;
 mod cancel;
 mod eligibility;
+mod execution;
 mod items;
 mod listing;
 mod reserve;
@@ -89,6 +90,9 @@ pub struct MachineOrderItem {
     /// State before a cancellation request; retained to handle explicit refusal.
     #[serde(default)]
     pub cancel_from: Option<OrderState>,
+    /// Latest execution evidence; absent means unknown, independently of command state.
+    #[serde(default)]
+    pub execution: Option<analyte_model::AwosExecutionProjection>,
     /// Store-assigned local command identity; the namespace is retained separately.
     pub placer: String,
     /// Retained logical namespace; configuration changes cannot alter cancellation identity.
@@ -436,7 +440,11 @@ fn load_items(db: &rusqlite::Connection, id: i64) -> Result<Vec<MachineOrderItem
         return Err(Error::Corruption);
     }
     rows.iter()
-        .map(|row| Ok(serde_json::from_str(row)?))
+        .map(|row| {
+            let mut item: MachineOrderItem = serde_json::from_str(row)?;
+            item.execution = execution::load(db, item.machine_order, item.index)?;
+            Ok(item)
+        })
         .collect()
 }
 
@@ -493,6 +501,7 @@ fn create_items(
             tests,
             coverage_known: true,
             cancel_from: None,
+            execution: None,
             placer,
             placer_namespace: match shape {
                 OrderItems::Together => None,
@@ -589,6 +598,7 @@ mod item_transition_tests {
                 tests: Vec::new(),
                 coverage_known: true,
                 cancel_from: Some(A),
+                execution: None,
                 placer: "1-1".into(),
                 placer_namespace: None,
                 state,
