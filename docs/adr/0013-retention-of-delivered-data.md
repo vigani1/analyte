@@ -44,6 +44,25 @@ correction or a dispute.
    still hold it until the deployment's backup rotation removes them; the
    installation guide says so.
 
+6. **Tombstone identities are keyed digests (amended 2026-11-16).** Receipt and
+   delivery identities are UUIDs that Analyte generates; tombstones keep them
+   as they are. A result identity contains source order, sample and run
+   identifiers, which can be linked to a patient, so the tombstone keeps only
+   a keyed digest of each such component plus the revision number. Duplicate
+   detection for purged data compares keyed digests. The digest key is a
+   host credential held in the installation secrets, never in the store; the
+   store records only the key's fingerprint. A configured period other than
+   `keep` requires the key. If the key's fingerprint differs from the one
+   recorded with existing tombstones, startup refuses with a specific error,
+   because a changed key would make a late resend look like a new result
+   (rule 4). Key rotation is not supported in this version.
+7. **Operator holds (amended 2026-11-16).** An operator can place a hold on a
+   receipt or on an order. A hold on an order also covers every receipt
+   linked to it. Placing and releasing a hold each write an audit entry with
+   the actor and a reason, from the operator page or the command line. A held
+   item is never purged. Holds have no expiry; only an explicit release ends
+   them.
+
 ## Consequences
 
 - Rule 2 (never drop data) still holds: nothing unfinished is ever purged, and
