@@ -1,4 +1,5 @@
 //! Adapts parsed source fields without splitting wire text.
+//! Kept whole: Borrowed field access and group ancestry share the private source-node invariants.
 use crate::FieldSyntax;
 use crate::{Error, Position};
 use analyte_config::{Field as Selection, Group};
@@ -29,8 +30,18 @@ impl Source<'_> {
     // Source constructors already validate their control profile. Inspect only the
     // edition here; LAW's negotiated VID compatibility is a different contract.
     pub(crate) fn uses_compatibility_contract(&self, config: &analyte_config::Validated) -> bool {
+        self.base_version(config)
+            .is_some_and(analyte_hl7::Version::uses_compatibility_contract)
+    }
+
+    pub(crate) fn uses_dtm(&self, config: &analyte_config::Validated) -> bool {
+        self.base_version(config)
+            .is_some_and(analyte_hl7::Version::uses_dtm)
+    }
+
+    fn base_version(&self, config: &analyte_config::Validated) -> Option<analyte_hl7::Version> {
         if crate::is_law(config) {
-            return false;
+            return None;
         }
         self.message
             .and_then(|message| message.segments().next())
@@ -38,7 +49,6 @@ impl Source<'_> {
             .and_then(|field| field.repetitions().next())
             .and_then(|value| value.components().next())
             .and_then(|component| analyte_hl7::Version::parse(component.raw()))
-            .is_some_and(analyte_hl7::Version::uses_compatibility_contract)
     }
 
     pub(crate) fn text_problem(&self, raw: &str) -> Option<crate::Problem> {
@@ -359,7 +369,14 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
         },
         source,
     })?;
-    if msh.version().uses_compatibility_contract() {
+    analyte_hl7::validate_result_fields(message).map_err(|source| Error::Hl7 {
+        position: Position {
+            record: 1,
+            field: 0,
+        },
+        source,
+    })?;
+    if msh.version().uses_bounded_result_groups() {
         for (index, segment) in message.segments().enumerate() {
             if matches!(segment.id(), b"SPM" | b"SAC") {
                 return Err(Error::Structure {
@@ -367,7 +384,7 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
                         record: index.saturating_add(1),
                         field: 0,
                     },
-                    reason: "compatibility does not establish specimen-group semantics; retain receipt for review",
+                    reason: "specimen groups are outside this bounded receiving profile; retain receipt for review",
                 });
             }
         }

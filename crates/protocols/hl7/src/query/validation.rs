@@ -2,7 +2,7 @@
 use super::invalid;
 use crate::{Component, Error, Repetition, Segment, Version};
 
-use crate::datatypes::{coded, decimal, quantity, scalar, timestamp, timing, xcn};
+use crate::datatypes::{coded, decimal, edition_timestamp, quantity, scalar, timing, xcn};
 
 fn check(
     segment: Segment<'_>,
@@ -69,7 +69,7 @@ pub(super) fn definition(segment: Segment<'_>, version: Version) -> Result<(), E
     let name = "QRD";
     last_field(segment, name, 12)?;
     check(segment, name, 1, true, false, 26, |v| {
-        timestamp(&v.components().collect::<Vec<_>>())
+        edition_timestamp(&v.components().collect::<Vec<_>>(), version)
     })?;
     check(segment, name, 2, true, false, 1, |v| {
         table(v, &[b"D", b"R", b"T"])
@@ -82,15 +82,15 @@ pub(super) fn definition(segment: Segment<'_>, version: Version) -> Result<(), E
         table(v, &[b"B", b"L"])
     })?;
     check(segment, name, 6, false, false, 26, |v| {
-        timestamp(&v.components().collect::<Vec<_>>())
+        edition_timestamp(&v.components().collect::<Vec<_>>(), version)
     })?;
     check(segment, name, 7, true, false, 10, quantity)?;
     let length = match version {
-        Version::V26 | Version::V282 | Version::V291 => {
+        Version::V282 | Version::V291 => {
             return Err(Error::EditionRules(version.as_str()));
         }
         Version::V23 | Version::V231 | Version::V24 | Version::V25 => 60,
-        Version::V251 => 250,
+        Version::V251 | Version::V26 => 250,
     };
     check(segment, name, 8, true, true, length, |v| xcn(v, version))?;
     for n in [9, 10] {
@@ -110,21 +110,22 @@ pub(super) fn definition(segment: Segment<'_>, version: Version) -> Result<(), E
 
 pub(super) fn filter(segment: Segment<'_>, version: Version) -> Result<(), Error> {
     let name = "QRF";
+    let rules = version.require_rules()?;
     last_field(
         segment,
         name,
         match version {
-            Version::V26 | Version::V282 | Version::V291 => {
+            Version::V282 | Version::V291 => {
                 return Err(Error::EditionRules(version.as_str()));
             }
             Version::V23 | Version::V231 | Version::V24 | Version::V25 => 9,
-            Version::V251 => 10,
+            Version::V251 | Version::V26 => 10,
         },
     )?;
     check(segment, name, 1, true, true, 20, text)?;
     for n in [2, 3] {
         check(segment, name, n, false, false, 26, |v| {
-            timestamp(&v.components().collect::<Vec<_>>())
+            edition_timestamp(&v.components().collect::<Vec<_>>(), version)
         })?;
     }
     for n in [4, 5] {
@@ -139,13 +140,22 @@ pub(super) fn filter(segment: Segment<'_>, version: Version) -> Result<(), Error
     check(segment, name, 8, false, true, 12, |v| {
         table(v, &[b"1ST", b"ALL", b"LST", b"REV"])
     })?;
-    check(segment, name, 9, false, false, 60, |v| timing(v, version))?;
+    // HL7 2.6 section 5.10.4.2.9: deprecated TQ is outside this bounded profile.
+    check(
+        segment,
+        name,
+        9,
+        false,
+        false,
+        rules.query_timing_bytes.unwrap_or(0),
+        |v| rules.query_timing_bytes.is_some() && timing(v, version),
+    )?;
     match version {
-        Version::V26 | Version::V282 | Version::V291 => {
+        Version::V282 | Version::V291 => {
             return Err(Error::EditionRules(version.as_str()));
         }
         Version::V23 | Version::V231 | Version::V24 | Version::V25 => {}
-        Version::V251 => check(segment, name, 10, false, false, 10, |v| {
+        Version::V251 | Version::V26 => check(segment, name, 10, false, false, 10, |v| {
             text(v) && decimal(v.raw())
         })?,
     }

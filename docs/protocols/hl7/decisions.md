@@ -1,5 +1,53 @@
 # HL7 decisions
 
+## Receive results without reviving withdrawn original queries
+
+- **what**: The selected scope for 2.8.2 and 2.9.1 is result reception only.
+  A legacy-query configuration fails before activation with `WithdrawnHl7Query`;
+  the diagnostic names the edition and its withdrawing section. This rule does
+  not depend on whether the result profile has finished qualification.
+  In 2.6, keep the bounded original-query exchange: chapter 5 retains it for
+  backward compatibility and does not withdraw it.
+- **why**: The newer editions withdraw the original query messages from 2.7.
+  No replacement contract is selected or needed. LAW's QBP contract remains
+  a separate modern-query path and does not pass through this legacy gate.
+- **source**: 2.6 §5.10.2 pp.95–96; 2.8.2 §5.10.2 p.104;
+  2.9.1 §5.9.2 p.80.
+  Result-only scope and no replacement query design were selected by the owner.
+- **tests**: config `hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation`,
+  `hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation`, and
+  `hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility`.
+
+## Bound the 2.6 receiving profile and refuse ambiguous intent
+
+- **what**: Qualify the existing ORU/R01 core and deferred display-query
+  exchange for 2.6. Interpret selected CWE and DTM fields and retain exact
+  lexical values. Refuse nonempty XCN-17 and QRF-9, specimen/container groups
+  and unselected ORU segments. Keep backward-compatibility OBR fields,
+  deprecated MSA information and OBX-21 raw. Refuse nonempty OBX-22.
+- **why**: Nested deprecated DR cannot be represented fully. Ignoring a TQ
+  qualifier could answer a different query. OBX-21 has no established laboratory
+  identity contract here, while mood can change whether an observation is an
+  event or an intention. These fields must not silently change clinical meaning
+  or start scheduling work. Coding-system versions come from the sender.
+  For this bounded 2.6 profile, any populated CWE coding-system component
+  requires its version component, even without an identifier. The standard
+  permits omission for HL7-defined tables but requires versions for user-defined
+  tables; Analyte does not infer table ownership from an `HL7` prefix. Requiring
+  an explicit version is a stricter profile choice, not an HL7-wide requirement.
+- **source**: HL7 2.6 §§2.A.13/.20/.86, pp.2-115–119, 2-128–129, 2-190–193;
+  §5.10.4.2.9, p.102; §§7.3.1, 7.4.2.21–22, pp.7-12–14, 7-50–51.
+  Bounded scope is Analyte's selection under ADR 0007, rather than a claim
+  that the standard forbids all optional structures.
+- **tests**: protocol `receiving.rs`; mapping
+  `hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity`
+  and `hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map`.
+- **remaining**: 2.8.2/2.9.1 typed result profiles stay unfinished and fail
+  config validation. Their original queries are withdrawn
+  (2.8.2 §5.10.2; 2.9.1 §5.9.2); a modern query contract is not implicitly
+  selected; result-only scope is selected above. Step 5 order writers remain
+  a separate PR. Evidence: documented.
+
 ## Bound compatibility to the established legacy receiving prefix
 
 - **what**: Receive ORU/R01 and the selected legacy query exchange in 2.3,

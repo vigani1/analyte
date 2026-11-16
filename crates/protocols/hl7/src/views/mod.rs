@@ -134,10 +134,14 @@ impl<'a> Msh<'a> {
     /// # Errors
     /// Returns the exact MSH field that is absent or invalid.
     pub fn new(message: &'a Message) -> Result<Self, Error> {
-        Self::with_control_limit(message, 20)
-    }
-    pub(crate) fn with_control_limit(message: &'a Message, maximum: usize) -> Result<Self, Error> {
         let segment = message.segments().next().ok_or(Error::Encoding)?;
+        let version =
+            Version::parse(first_component(required(segment, 12)?)).ok_or(Error::Control {
+                segment: "MSH",
+                field: 12,
+            })?;
+        let rules = version.require_rules()?;
+        let maximum = rules.control_bytes;
         for (number, maximum) in [(9, 15), (10, maximum), (11, 3), (12, 60)] {
             let value = required(segment, number)?;
             if value.raw().len() > maximum {
@@ -179,12 +183,6 @@ impl<'a> Msh<'a> {
                 field: 11,
             });
         }
-        let version =
-            Version::parse(first_component(required(segment, 12)?)).ok_or(Error::Control {
-                segment: "MSH",
-                field: 12,
-            })?;
-        version.require_rules()?;
         validate_message_type(segment, version)?;
         // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
         // 2.3.1 retains optional usage. Validate a supplied TS in either edition.
@@ -193,9 +191,16 @@ impl<'a> Msh<'a> {
             let field = required(segment, 7)?;
             let mut repetitions = field.repetitions();
             let valid = repetitions.next().is_some_and(|value| {
-                crate::datatypes::timestamp(&value.components().collect::<Vec<_>>())
+                crate::datatypes::edition_timestamp(
+                    &value.components().collect::<Vec<_>>(),
+                    version,
+                )
             });
-            if field.raw().len() > 26 || !valid || repetitions.next().is_some() {
+            let maximum = match rules.time_format {
+                crate::version::TimeFormat::Ts => 26,
+                crate::version::TimeFormat::Dtm => 24,
+            };
+            if field.raw().len() > maximum || !valid || repetitions.next().is_some() {
                 return Err(Error::Control {
                     segment: "MSH",
                     field: 7,
@@ -317,6 +322,12 @@ impl<'a> Msa<'a> {
     pub fn new(segment: Segment<'a>) -> Result<Self, Error> {
         Self::with_control_limit(segment, 20)
     }
+    /// Validates the correlation length declared by the message edition.
+    /// # Errors
+    /// Refuses unsupported editions and malformed MSA control fields.
+    pub fn for_version(segment: Segment<'a>, version: Version) -> Result<Self, Error> {
+        Self::with_control_limit(segment, version.require_rules()?.control_bytes)
+    }
     /// Constructs a view after the LAW boundary has validated the MSA profile.
     pub(crate) fn from_law(segment: Segment<'a>) -> Result<Self, Error> {
         Ok(Self {
@@ -400,11 +411,9 @@ impl<'a> ErrView<'a> {
             });
         }
         match version {
-            Version::V26 | Version::V282 | Version::V291 => {
-                Err(Error::EditionRules(version.as_str()))
-            }
+            Version::V282 | Version::V291 => Err(Error::EditionRules(version.as_str())),
             Version::V23 | Version::V231 | Version::V24 => Ok(Self::V231(get(1)?)),
-            Version::V25 | Version::V251 => {
+            Version::V25 | Version::V251 | Version::V26 => {
                 let severity = get(4)?;
                 if !matches!(severity.raw(), b"W" | b"I" | b"E" | b"F") {
                     return Err(Error::Control {
@@ -426,6 +435,8 @@ impl<'a> ErrView<'a> {
 
 mod location;
 pub use location::*;
+mod result;
+pub use result::validate_result_fields;
 
 fn validate_message_type(segment: Segment<'_>, version: Version) -> Result<(), Error> {
     let rules = version.require_rules()?;

@@ -20,9 +20,21 @@ pub const MAX_FILE_BYTES: usize = 1_048_576;
 /// A config failure names its source file and actionable key.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The original query profile was withdrawn in the configured HL7 edition.
+    #[error(
+        "{path}: orders.hl7: HL7 {edition} withdraws the original query messages (§{section}); legacy query is not available for this edition"
+    )]
+    WithdrawnHl7Query {
+        /// Source configuration layer.
+        path: String,
+        /// Exact requested edition.
+        edition: &'static str,
+        /// Withdrawing chapter section in that edition.
+        section: &'static str,
+    },
     /// A recognized HL7 edition has no implemented result-processing profile.
     #[error(
-        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1"
+        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6"
     )]
     UnsupportedHl7Edition {
         /// Source configuration layer.

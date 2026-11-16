@@ -6,8 +6,8 @@ fn request(version: &str) -> Result<Message, analyte_hl7::Error> {
 }
 
 #[test]
-fn hl7_231_2_18_qck_answers_deferred_query() -> Result<(), analyte_hl7::Error> {
-    for version in ["2.3.1", "2.5.1"] {
+fn hl7_231_2_18_and_2_6_s5_10_qck_answers_deferred_query() -> Result<(), analyte_hl7::Error> {
+    for version in ["2.3.1", "2.5.1", "2.6"] {
         let message = request(version)?;
         let request = query::Request::new(&message)?;
         assert_eq!(request.query_id(), b"tag");
