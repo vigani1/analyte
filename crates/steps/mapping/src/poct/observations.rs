@@ -263,11 +263,10 @@ fn map_value(
         | Value::Interval(Nullable::Value(_))
         | Value::Encapsulated(_) => return Err(analyte_poct::MessageError::ObservationValue.into()),
     };
-    Ok(model::ResultValue {
-        decoded_text: None,
-        original: model::SourceText::new(&original)?,
+    Ok(model::ResultValue::new(
+        model::SourceText::new(&original)?,
         parsed,
-    })
+    ))
 }
 
 fn unsupported(kind: &str, reason: &str) -> Result<model::ValueInterpretation, model::TextError> {

@@ -281,11 +281,10 @@ fn mutation_adr0003_rule4_rule5_build_delivery_preserves_three_identities_and_ex
         ["<0.1", "1,234", "positive", "ERROR"]
             .into_iter()
             .map(|s| {
-                Ok(ResultValue {
-                    original: SourceText::new(s)?,
-                    decoded_text: None,
-                    parsed: ValueInterpretation::Text,
-                })
+                Ok(ResultValue::new(
+                    SourceText::new(s)?,
+                    ValueInterpretation::Text,
+                ))
             })
             .collect::<Result<Vec<_>, TextError>>()?,
     )?;

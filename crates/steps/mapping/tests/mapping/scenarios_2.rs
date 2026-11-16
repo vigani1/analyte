@@ -332,7 +332,7 @@ fn hl7_251_2_7_unsupported_escapes_never_become_clean_text() -> TestResult {
         )?;
         let value = first(&output)?.values.as_slice().first().ok_or("value")?;
         assert_eq!(value.original.as_str(), raw);
-        assert!(value.decoded_text.is_none());
+        assert!(value.decoded_text().is_none());
         assert!(
             output
                 .findings

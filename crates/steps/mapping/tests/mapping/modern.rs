@@ -24,10 +24,7 @@ fn hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_results_deliver_exact_values() -> Te
             let value_out = first(&output)?.values.as_slice().first().ok_or("value")?;
             assert_eq!(value_out.original.as_str(), value);
             if let Some(decoded) = decoded {
-                assert_eq!(
-                    value_out.decoded_text.as_ref().ok_or("decoded")?.as_str(),
-                    decoded
-                );
+                assert_eq!(value_out.decoded_text().ok_or("decoded")?.as_str(), decoded);
             }
             assert_eq!(message.encode(), raw.as_bytes());
         }

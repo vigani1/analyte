@@ -10,7 +10,7 @@ fn rule2_uninterpreted_numeric_comparator_never_becomes_equality() -> TestResult
         )?;
         let value = first(&mapped)?.values.as_slice().first().ok_or("value")?;
         assert_eq!(value.original.as_str(), raw);
-        assert!(value.parsed.is_unsupported());
+        assert!(value.parsed().is_unsupported());
         assert!(mapped.requires_parking());
     }
     Ok(())
@@ -89,7 +89,7 @@ fn rule2_operator_reason_distinguishes_uninterpreted_formatting_from_escape_agre
             .as_slice()
             .first()
             .ok_or("value")?
-            .parsed
+            .parsed()
         else {
             return Err("unsupported evidence expected".into());
         };
@@ -116,7 +116,7 @@ fn hl7_251_2a70_supported_numeric_comparators_and_ranges_keep_components() -> Te
             .as_slice()
             .first()
             .ok_or("value")?
-            .parsed
+            .parsed()
         else {
             return Err("SN".into());
         };
@@ -133,7 +133,7 @@ fn hl7_251_2a70_supported_numeric_comparators_and_ranges_keep_components() -> Te
             .as_slice()
             .first()
             .ok_or("value")?
-            .parsed
+            .parsed()
         else {
             return Err("SN".into());
         };
@@ -162,7 +162,7 @@ fn adr0003_coded_values_without_unambiguous_code_and_namespace_are_parked() -> T
                 .as_slice()
                 .first()
                 .ok_or("value")?
-                .parsed
+                .parsed()
                 .is_unsupported()
         );
     }

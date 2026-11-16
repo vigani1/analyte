@@ -126,11 +126,10 @@ fn make_result(receipt: ReceiptId, run: &str) -> Result<ResultContent, Box<dyn s
         }),
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![ResultPart {
             test: name("test")?,
-            values: EvidenceList::new(vec![ResultValue {
-                decoded_text: None,
-                original: SourceText::new("<0.1")?,
-                parsed: ValueInterpretation::Text,
-            }])?,
+            values: EvidenceList::new(vec![ResultValue::new(
+                SourceText::new("<0.1")?,
+                ValueInterpretation::Text,
+            )])?,
             units: None,
             dilution: None,
             flags: EvidenceList::new(vec![])?,
@@ -151,11 +150,10 @@ fn corrected_content(result: &mut ResultContent) -> Result<(), Box<dyn std::erro
     for part in &mut parts {
         part.source_status = SourceText::new("C")?;
         part.status = ResultStatus::Corrected;
-        part.values = EvidenceList::new(vec![ResultValue {
-            decoded_text: None,
-            original: SourceText::new("<0.2")?,
-            parsed: ValueInterpretation::Text,
-        }])?;
+        part.values = EvidenceList::new(vec![ResultValue::new(
+            SourceText::new("<0.2")?,
+            ValueInterpretation::Text,
+        )])?;
     }
     result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
     Ok(())

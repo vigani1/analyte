@@ -40,7 +40,7 @@ fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
         let value = first(&output)?.values.as_slice().first().ok_or("value")?;
         assert_eq!(value.original.as_str(), "caf\u{e9}\\F\\end");
         assert_eq!(
-            value.decoded_text.as_ref().map(SourceText::as_str),
+            value.decoded_text().map(SourceText::as_str),
             Some("caf\u{e9}|end")
         );
         assert_eq!(message.encode(), raw);
@@ -71,7 +71,7 @@ fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() 
     let value = part.values.as_slice().first().ok_or("value")?;
     assert_eq!(value.original.as_str(), escaped);
     assert_eq!(
-        value.decoded_text.as_ref().map(SourceText::as_str),
+        value.decoded_text().map(SourceText::as_str),
         Some(r"A|B^C~D&E\F")
     );
     let coded = result
@@ -89,7 +89,7 @@ fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() 
         format!("{escaped}^{escaped}^synthetic")
     );
     assert!(
-        matches!(&coded.parsed, ValueInterpretation::Coded(code) if code.code.value.as_str() == r"A|B^C~D&E\F" && code.text.as_str() == r"A|B^C~D&E\F")
+        matches!(&coded.parsed(), ValueInterpretation::Coded(code) if code.code.value.as_str() == r"A|B^C~D&E\F" && code.text.as_str() == r"A|B^C~D&E\F")
     );
     assert_eq!(message.encode(), raw.as_bytes());
     Ok(())
@@ -107,14 +107,14 @@ fn hl7_251_2_7_4_decoding_uses_message_delimiters_and_is_not_recursive() -> Test
     assert_eq!(
         values
             .first()
-            .and_then(|v| v.decoded_text.as_ref())
+            .and_then(|v| v.decoded_text())
             .map(SourceText::as_str),
         Some("*$%@!")
     );
     assert_eq!(
         values
             .get(1)
-            .and_then(|v| v.decoded_text.as_ref())
+            .and_then(|v| v.decoded_text())
             .map(SourceText::as_str),
         Some("literal!H!")
     );
@@ -141,9 +141,9 @@ fn hl7_251_2_7_3_2_7_6_formatting_is_unsupported_evidence_not_clean_text() -> Te
             )?;
             let value = first(&output)?.values.as_slice().first().ok_or("value")?;
             assert_eq!(value.original.as_str(), raw);
-            assert!(value.decoded_text.is_none());
+            assert!(value.decoded_text().is_none());
             assert!(matches!(
-                &value.parsed,
+                &value.parsed(),
                 ValueInterpretation::Unsupported { .. }
             ));
             assert!(
@@ -167,7 +167,7 @@ fn rule5_comparator_kept_with_original_text_lis02_9_4() -> TestResult {
     let value = part.values.as_slice().first().ok_or("missing value")?;
     assert_eq!(value.original.as_str(), "<0.10");
     assert!(
-        matches!(&value.parsed, ValueInterpretation::Numeric(n) if n.number.as_str() == "0.10" && n.comparator == Some(Comparator::Less))
+        matches!(&value.parsed(), ValueInterpretation::Numeric(n) if n.number.as_str() == "0.10" && n.comparator == Some(Comparator::Less))
     );
     assert_eq!(part.test.value.as_str(), "DEMO");
     assert_eq!(part.qc_class, QcClass::Unknown);
@@ -207,7 +207,7 @@ fn rule5_locale_decimal_and_error_tokens_stay_text_for_both_protocols() -> TestR
                 .first()
                 .ok_or("missing value")?;
             assert_eq!(value.original.as_str(), raw);
-            assert_eq!(value.parsed, ValueInterpretation::Text);
+            assert_eq!(value.parsed(), &ValueInterpretation::Text);
         }
     }
     Ok(())
@@ -348,13 +348,13 @@ fn hl7_ch2a_coded_structured_and_unknown_types_preserve_originals() -> TestResul
         let value = first(&output)?.values.as_slice().first().ok_or("value")?;
         assert_eq!(value.original.as_str(), raw);
         match kind {
-            "CE" | "CWE" => assert!(matches!(value.parsed, ValueInterpretation::Coded(_))),
+            "CE" | "CWE" => assert!(matches!(value.parsed(), ValueInterpretation::Coded(_))),
             "SN" => assert!(
-                matches!(&value.parsed, ValueInterpretation::StructuredNumeric(n) if n.comparator == Some(Comparator::Less) && n.first.as_ref().map(Decimal::as_str) == Some("1.00"))
+                matches!(&value.parsed(), ValueInterpretation::StructuredNumeric(n) if n.comparator == Some(Comparator::Less) && n.first.as_ref().map(Decimal::as_str) == Some("1.00"))
             ),
             _ => {
                 assert!(
-                    matches!(&value.parsed, ValueInterpretation::Unsupported { source_type, .. } if source_type.as_str() == "LOCAL")
+                    matches!(&value.parsed(), ValueInterpretation::Unsupported { source_type, .. } if source_type.as_str() == "LOCAL")
                 );
                 assert!(output.requires_parking());
             }
