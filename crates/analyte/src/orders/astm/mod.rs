@@ -1,4 +1,4 @@
-//! Answers bounded ASTM specimen order queries without returning historical results (LIS02-A2 ?11).
+//! Answers bounded ASTM specimen order queries without returning historical results (LIS02-A2 §11).
 use crate::{Error, installation::config::Machine, invalid};
 use analyte_astm::{Kind, Message, Query};
 use analyte_config::WhenUntrusted;

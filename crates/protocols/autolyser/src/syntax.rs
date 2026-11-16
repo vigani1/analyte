@@ -1,4 +1,4 @@
-//! Parses Autolyser fixed-width records without normalizing identities or numbers (Rev18 pp.175?179).
+//! Parses Autolyser fixed-width records without normalizing identities or numbers (Rev18 pp.175–179).
 use thiserror::Error;
 
 /// Specific record defect; display never contains patient data.

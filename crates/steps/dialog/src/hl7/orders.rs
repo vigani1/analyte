@@ -1,4 +1,4 @@
-//! Runs deferred HL7 display query exchanges (2.3.1 ?2.18 and 2.5.1 ?5.9).
+//! Runs deferred HL7 display query exchanges (2.3.1 §2.18 and 2.5.1 §5.9).
 use super::{Action, Dialog, Error, Message, Msh, ReceiptId};
 use analyte_hl7::{AckCode, ControlId, Version, query};
 use std::time::Duration;

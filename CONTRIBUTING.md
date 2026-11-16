@@ -6,6 +6,10 @@ which apply to people and coding assistants alike.
 
 ## Before you start
 
+Save text as UTF-8, including on Windows. Legacy code pages can silently replace
+section marks and range dashes with question marks; the Layout check rejects
+these suspicious patterns.
+
 - Read [docs/plan.md](docs/plan.md) and the ADRs in [docs/adr/](docs/adr/).
 - For anything larger than a small fix, open an issue first and describe the
   change, so the design can be agreed before the code is written.
