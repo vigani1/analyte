@@ -4,7 +4,6 @@ mod assignment;
 pub(crate) mod content;
 mod history;
 pub(crate) mod law;
-mod migration;
 mod outbox;
 mod parking;
 mod progression;

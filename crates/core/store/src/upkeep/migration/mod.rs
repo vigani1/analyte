@@ -1,6 +1,7 @@
 //! Migrates stored schemas while retaining existing evidence.
 use crate::{Error, Store};
 use rusqlite::Connection;
+mod revisions;
 
 impl Store {
     pub(crate) fn migrate_v2(db: &mut Connection) -> Result<(), Error> {
@@ -220,3 +221,52 @@ fn parking(encoded: &str) -> Result<String, Error> {
 
 #[cfg(test)]
 mod tests;
+
+/// Each entry advances exactly one version; SQL and evidence conversions share the same checks.
+enum Step {
+    Sql(&'static str),
+    Evidence(fn(&mut Connection, usize) -> Result<(), Error>),
+}
+
+const MIGRATIONS: &[(i64, Step)] = &[
+    (1, Step::Sql(include_str!("../schema.sql"))),
+    (2, Step::Evidence(|db, _| Store::migrate_v2(db))),
+    (3, Step::Evidence(Store::migrate_v3)),
+    (4, Step::Sql(include_str!("../migration_v4.sql"))),
+    (5, Step::Sql(include_str!("../migration_v5.sql"))),
+    (6, Step::Sql(include_str!("../migration_v6.sql"))),
+    (7, Step::Evidence(Store::migrate_v7)),
+    (8, Step::Sql(include_str!("../migration_v8.sql"))),
+    (9, Step::Evidence(Store::migrate_v9)),
+    (10, Step::Sql(include_str!("../migration_v10.sql"))),
+    (11, Step::Sql(include_str!("../migration_v11.sql"))),
+    (12, Step::Sql(include_str!("../migration_v12.sql"))),
+    (13, Step::Sql(include_str!("../migration_v13.sql"))),
+    (14, Step::Sql(include_str!("../migration_v14.sql"))),
+];
+
+pub(super) fn apply(
+    db: &mut Connection,
+    startup: &crate::startup::Startup,
+    version: i64,
+    limit: usize,
+) -> Result<(), Error> {
+    for &(to, ref step) in MIGRATIONS {
+        if to <= version {
+            continue;
+        }
+        startup.run(crate::StartupStep::Migration { from: to - 1, to }, || {
+            match step {
+                Step::Sql(sql) => {
+                    let tx = db.transaction()?;
+                    tx.execute_batch(sql)?;
+                    Store::integrity(&tx)?;
+                    tx.commit()?;
+                }
+                Step::Evidence(convert) => convert(db, limit)?,
+            }
+            Store::integrity(db)
+        })?;
+    }
+    Ok(())
+}

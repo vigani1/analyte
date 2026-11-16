@@ -78,79 +78,7 @@ impl Store {
         db.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;",
         )?;
-        if version == 0 {
-            startup.run(StartupStep::Migration { from: 0, to: 1 }, || {
-                let tx = db.transaction()?;
-                tx.execute_batch(include_str!("../schema.sql"))?;
-                tx.commit()?;
-                Ok(())
-            })?;
-        }
-        if version <= 1 {
-            startup.run(StartupStep::Migration { from: 1, to: 2 }, || {
-                Self::migrate_v2(&mut db)?;
-                Ok(())
-            })?;
-        }
-        if version <= 2 {
-            startup.run(StartupStep::Migration { from: 2, to: 3 }, || {
-                Self::migrate_v3(&mut db, limits.record_bytes)?;
-                Ok(())
-            })?;
-        }
-        if version <= 3 {
-            startup.run(StartupStep::Migration { from: 3, to: 4 }, || {
-                let tx = db.transaction()?;
-                tx.execute_batch(include_str!("../migration_v4.sql"))?;
-                tx.commit()?;
-                Ok(())
-            })?;
-        }
-        if version <= 4 {
-            startup.run(StartupStep::Migration { from: 4, to: 5 }, || {
-                let tx = db.transaction()?;
-                tx.execute_batch(include_str!("../migration_v5.sql"))?;
-                tx.commit()?;
-                Ok(())
-            })?;
-        }
-        if version <= 5 {
-            startup.run(StartupStep::Migration { from: 5, to: 6 }, || {
-                let tx = db.transaction()?;
-                tx.execute_batch(include_str!("../migration_v6.sql"))?;
-                tx.commit()?;
-                Ok(())
-            })?;
-        }
-        if version <= 6 {
-            startup.run(StartupStep::Migration { from: 6, to: 7 }, || {
-                Self::migrate_v7(&mut db, limits.record_bytes)?;
-                Ok(())
-            })?;
-        }
-        if version <= 7 {
-            startup.run(StartupStep::Migration { from: 7, to: 8 }, || {
-                let tx = db.transaction()?;
-                tx.execute_batch(include_str!("../migration_v8.sql"))?;
-                Self::integrity(&tx)?;
-                tx.commit()?;
-                Ok(())
-            })?;
-        }
-        if version <= 8 {
-            startup.run(StartupStep::Migration { from: 8, to: 9 }, || {
-                Self::migrate_v9(&mut db, limits.record_bytes)?;
-                Ok(())
-            })?;
-        }
-        if version <= 9 {
-            migrate_retention(&mut db, startup)?;
-        }
-        if version <= 10 {
-            migrate_orders(&mut db, startup)?;
-        }
-        migrate_alerts(&mut db, startup, version)?;
-        migrate_awos(&mut db, startup, version)?;
+        super::migration::apply(&mut db, startup, version, limits.record_bytes)?;
         install_guards(&db, startup)?;
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
@@ -198,26 +126,6 @@ fn default_startup() -> Result<Startup, Error> {
 #[cfg(test)]
 mod tests;
 
-fn migrate_retention(db: &mut Connection, startup: &Startup) -> Result<(), Error> {
-    startup.run(StartupStep::Migration { from: 9, to: 10 }, || {
-        let tx = db.transaction()?;
-        tx.execute_batch(include_str!("../migration_v10.sql"))?;
-        Store::integrity(&tx)?;
-        tx.commit()?;
-        Ok(())
-    })
-}
-
-fn migrate_orders(db: &mut Connection, startup: &Startup) -> Result<(), Error> {
-    startup.run(StartupStep::Migration { from: 10, to: 11 }, || {
-        let tx = db.transaction()?;
-        tx.execute_batch(include_str!("../migration_v11.sql"))?;
-        Store::integrity(&tx)?;
-        tx.commit()?;
-        Ok(())
-    })
-}
-
 fn install_guards(db: &Connection, startup: &Startup) -> Result<(), Error> {
     startup.run(StartupStep::Finalizing, || {
         // SQL constraints also protect evidence from accidental maintenance updates.
@@ -226,47 +134,4 @@ fn install_guards(db: &Connection, startup: &Startup) -> Result<(), Error> {
         }
             Ok(())
         })
-}
-fn migrate_alerts(db: &mut Connection, startup: &Startup, version: i64) -> Result<(), Error> {
-    if version > 11 {
-        return Ok(());
-    }
-    startup.run(StartupStep::Migration { from: 11, to: 12 }, || {
-        let tx = db.transaction()?;
-        tx.execute_batch(include_str!("../migration_v12.sql"))?;
-        Store::integrity(&tx)?;
-        tx.commit()?;
-        Ok(())
-    })
-}
-
-fn migrate_execution(db: &mut Connection, startup: &Startup, version: i64) -> Result<(), Error> {
-    if version > 12 {
-        return Ok(());
-    }
-    startup.run(StartupStep::Migration { from: 12, to: 13 }, || {
-        let tx = db.transaction()?;
-        tx.execute_batch(include_str!("../migration_v13.sql"))?;
-        Store::integrity(&tx)?;
-        tx.commit()?;
-        Ok(())
-    })
-}
-
-fn migrate_law(db: &mut Connection, startup: &Startup, version: i64) -> Result<(), Error> {
-    if version > 13 {
-        return Ok(());
-    }
-    startup.run(StartupStep::Migration { from: 13, to: 14 }, || {
-        let tx = db.transaction()?;
-        tx.execute_batch(include_str!("../migration_v14.sql"))?;
-        Store::integrity(&tx)?;
-        tx.commit()?;
-        Ok(())
-    })
-}
-
-fn migrate_awos(db: &mut Connection, startup: &Startup, version: i64) -> Result<(), Error> {
-    migrate_execution(db, startup, version)?;
-    migrate_law(db, startup, version)
 }

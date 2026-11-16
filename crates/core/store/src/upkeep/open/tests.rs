@@ -511,3 +511,26 @@ fn migrate_fixture_to_version(db: &mut Connection, version: i64) -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn current_schema_matches_fresh_store() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let store = Store::open(
+        &dir.path().join("schema.db"),
+        limits(),
+        Box::new(Space(u64::MAX)),
+    )?;
+    let mut statement = store.db.prepare("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name")?;
+    let actual = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|sql| format!("{sql};\n"))
+        .collect::<String>();
+    let expected = include_str!("../current-schema.sql")
+        .split_once('\n')
+        .expect("schema header")
+        .1;
+    assert_eq!(actual.replace("\r\n", "\n"), expected.replace("\r\n", "\n"));
+    Ok(())
+}
