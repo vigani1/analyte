@@ -273,7 +273,7 @@ them can be collected at any time and kept as test data.
   order cache freshness and uncertain orders, each alert with a named
   responder.
 - **Retention:** ADR 0013 defines required site periods, keyed tombstones, explicit
-  holds and bounded audited receipt purges. Existing stores need the offline
+  holds and bounded audited receipt and order purges. Existing stores need the offline
   incremental-vacuum conversion described in the program guide.
 - **Before a pilot:** the supported outage length, disk capacity and reserve,
   retention, and backup and restore targets are written down.

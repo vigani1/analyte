@@ -1,4 +1,9 @@
 SELECT EXISTS(SELECT 1 FROM machine_orders m WHERE m.id=?1
+ AND NOT EXISTS(SELECT 1 FROM orders o WHERE o.destination=m.destination AND o.id=m.order_id
+  AND CASE WHEN json_valid(json_extract(o.evidence,'$.document')) THEN
+   json_extract(json_extract(o.evidence,'$.document'),'$.version') IS NULL OR
+   (CAST(json_extract(json_extract(o.evidence,'$.document'),'$.version') AS TEXT)!=m.version AND NOT EXISTS(SELECT 1 FROM machine_order_history h WHERE h.machine_order=m.id AND h.cancel_version=CAST(json_extract(json_extract(o.evidence,'$.document'),'$.version') AS TEXT)))
+  ELSE 1 END)
  AND m.state IN ('Done','Rejected','CancelConfirmed') AND m.updated_at<=?2
  AND NOT EXISTS(SELECT 1 FROM machine_order_items i WHERE i.machine_order=m.id AND i.state NOT IN ('Done','Rejected','CancelConfirmed'))
  AND NOT EXISTS(SELECT 1 FROM machine_order_item_history h WHERE h.machine_order=m.id AND (json_extract(h.evidence,'$.updated_at') IS NULL OR json_extract(h.evidence,'$.updated_at')>?2))

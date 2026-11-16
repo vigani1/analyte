@@ -556,8 +556,8 @@ New stores support incremental vacuum from their creation. For an existing store
    startup until the conversion is complete. A timed-out conversion preserves
    evidence; inspect the error and rerun offline with sufficient disk capacity.
 
-The supervised worker examines at most sixteen receipts per machine every minute,
-within a 250 ms SQLite budget per transaction. It advances a scan cursor so older
+The supervised worker examines at most sixteen receipt and sixteen order candidates
+per machine every minute, each batch in its own transaction with a 250 ms SQLite budget. It advances a scan cursor so older
 ineligible receipts do not starve later candidates. Each successful batch commits
 its audit, tombstones and deletions together. A failed transaction rolls back and
 records a failed run; a deadline is retried at the next interval. `keep` starts no
@@ -582,8 +582,10 @@ Every transition records the actor and reason. Holds have no expiry.
 
 Retention intentionally keeps ambiguous cases: parking evidence (including resolved
 items), receipts without a delivery for every interpreted result, and receipts on a
-machine with unfinished order/poll work. An active order hold currently blocks all
-receipt purging, conservatively covering every linked receipt. Orders, order-event
-deliveries and unlinked incomplete frames are retained; this job only purges eligible
-receipt bundles. Purged receipts cannot be reprocessed and their deliveries cannot
+machine with unfinished order/poll work. Order holds and open operations block linked receipts; missing, ambiguous or
+version-inconsistent evidence retains conservative blocking. Legacy machine-only
+polls still block the machine. Completed orders are purged only after their final
+state and acknowledgment periods, with no held or unfinished linked work. Keyed
+order tombstones prevent replay if the app republishes an old order. Unlinked
+incomplete frames remain retained. Purged receipts cannot be reprocessed and their deliveries cannot
 be resent; each refusal names retention as the reason.

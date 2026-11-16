@@ -56,7 +56,7 @@ pub(super) fn batch(
     run.order_after = candidates.last().copied();
     for id in candidates {
         if eligible(db, id, cutoff, limits)? {
-            let deliveries = purge(db, credential, id, run.time)?;
+            let deliveries = purge(db, credential, id, run.time, limits.record_bytes)?;
             run.orders = run.orders.checked_add(1).ok_or(Error::InvalidInput)?;
             run.deliveries = run
                 .deliveries
@@ -93,7 +93,13 @@ fn eligible(db: &Connection, id: i64, cutoff: i64, limits: &crate::Limits) -> Re
     }
     Ok(true)
 }
-fn purge(db: &Connection, credential: &DigestKey, id: i64, now: i64) -> Result<usize, Error> {
+fn purge(
+    db: &Connection,
+    credential: &DigestKey,
+    id: i64,
+    now: i64,
+    limit: usize,
+) -> Result<usize, Error> {
     let (destination,order,machine,created,finalized):(String,String,String,i64,i64)=db.query_row("SELECT destination,order_id,machine,created_at,updated_at FROM machine_orders WHERE id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)))?;
     let identity = MachineOrderKey {
         destination: analyte_model::Identifier::new(&destination).map_err(|_| Error::Corruption)?,
@@ -104,8 +110,8 @@ fn purge(db: &Connection, credential: &DigestKey, id: i64, now: i64) -> Result<u
     let order_digest = credential.digest("order", key(&(&destination, &order))?.as_bytes())?;
     let sample: Option<String> = db
         .query_row(
-            "SELECT sample FROM orders WHERE destination=?1 AND id=?2",
-            params![destination, order],
+            "SELECT CASE WHEN length(CAST(sample AS BLOB))<=?3 THEN sample END FROM orders WHERE destination=?1 AND id=?2",
+            params![destination, order, i64::try_from(limit).map_err(|_|Error::InvalidInput)?],
             |r| r.get(0),
         )
         .optional()?;
@@ -114,8 +120,8 @@ fn purge(db: &Connection, credential: &DigestKey, id: i64, now: i64) -> Result<u
         .transpose()?;
     let original: Option<String> = db
         .query_row(
-            "SELECT evidence FROM orders WHERE destination=?1 AND id=?2",
-            params![destination, order],
+            "SELECT CASE WHEN length(CAST(evidence AS BLOB))<=?3 THEN evidence END FROM orders WHERE destination=?1 AND id=?2",
+            params![destination, order, i64::try_from(limit).map_err(|_|Error::InvalidInput)?],
             |r| r.get(0),
         )
         .optional()?;

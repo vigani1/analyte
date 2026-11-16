@@ -19,8 +19,8 @@ pub(super) fn order(
 ) -> Result<Link, Error> {
     let sample: Option<String> = db
         .query_row(
-            "SELECT sample FROM orders WHERE destination=?1 AND id=?2",
-            params![destination, order],
+            "SELECT CASE WHEN length(CAST(sample AS BLOB))<=?3 THEN sample END FROM orders o WHERE destination=?1 AND id=?2 AND CASE WHEN json_valid(json_extract(evidence,'$.document')) THEN NOT EXISTS(SELECT 1 FROM machine_orders m WHERE m.destination=o.destination AND m.order_id=o.id AND CAST(json_extract(json_extract(o.evidence,'$.document'),'$.version') AS TEXT) IS NOT m.version) ELSE 0 END",
+            params![destination, order, i64::try_from(limits.record_bytes).map_err(|_|Error::InvalidInput)?],
             |r| r.get(0),
         )
         .optional()?;

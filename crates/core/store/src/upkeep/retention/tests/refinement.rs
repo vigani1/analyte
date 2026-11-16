@@ -1,8 +1,5 @@
 //! Tests certain and uncertain retention links against ADR 0013 items 2 and 7.
 use super::*;
-use crate::test_support::*;
-use crate::{Identifier, key};
-use rusqlite::params;
 fn cached(store: &mut Store, id: &str, sample: &str) -> TestResult {
     store.order_page(&crate::OrderPage {
         destination: Identifier::new("app")?,
@@ -12,7 +9,7 @@ fn cached(store: &mut Store, id: &str, sample: &str) -> TestResult {
         orders: vec![crate::CachedOrder {
             id: Identifier::new(id)?,
             sample: analyte_model::SampleId::new(sample)?,
-            document: "synthetic".into(),
+            document: r#"{"version":1,"state":"Requested","tombstone":false,"tests":[]}"#.into(),
             tombstone: false,
             expiry: 100000,
         }],
@@ -23,7 +20,7 @@ fn cached(store: &mut Store, id: &str, sample: &str) -> TestResult {
 fn adr0013_item7_unrelated_order_hold_does_not_block_known_sample() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
-    let receipt = tests::finished(&mut store)?;
+    let receipt = finished(&mut store)?;
     cached(&mut store, "other", "different-sample")?;
     store.set_retention_hold(
         &HoldTarget::Order {
@@ -31,7 +28,7 @@ fn adr0013_item7_unrelated_order_hold_does_not_block_known_sample() -> TestResul
             order: Identifier::new("other")?,
         },
         true,
-        &tests::audit()?,
+        &audit()?,
     )?;
     assert!(store.retention_eligible(receipt, 1, 86500)?);
     store.db.execute("UPDATE orders SET sample='000123'", [])?;
@@ -44,7 +41,7 @@ fn adr0013_item7_unrelated_order_hold_does_not_block_known_sample() -> TestResul
 fn adr0013_item2_open_work_only_blocks_related_or_unknown_receipts() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
-    let receipt = tests::finished(&mut store)?;
+    let receipt = finished(&mut store)?;
     cached(&mut store, "other", "different-sample")?;
     store.db.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app','other','synthetic-machine','1','Uncertain',0,100,'synthetic')",[])?;
     assert!(store.retention_eligible(receipt, 1, 86500)?);
@@ -56,13 +53,13 @@ fn adr0013_item2_open_work_only_blocks_related_or_unknown_receipts() -> TestResu
 fn adr0013_item2_explicit_poll_receipt_targets_are_narrowed() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
-    let receipt = tests::finished(&mut store)?;
+    let receipt = finished(&mut store)?;
     let other = crate::test_support::receipt(b"other")?;
     store.receive(&other, b"other", b"config")?;
     let target: String = serde_json::from_str(&key(&other.id)?)?;
     let parked = store.park(&crate::Parked {
         kind: Identifier::new("poll")?,
-        reason: analyte_model::Reason::new("synthetic")?,
+        reason: Reason::new("synthetic")?,
         targets: vec![Identifier::new(&target)?],
     })?;
     store.db.execute("INSERT INTO poll_intents(machine,parked,state,reason) VALUES ('synthetic-machine',?1,'uncertain','synthetic')",params![parked])?;
@@ -82,7 +79,7 @@ fn order_run(store: &mut Store, now: i64) -> Result<PurgeRun, Error> {
         Some(1),
         None,
         now,
-        std::time::Instant::now()
+        Instant::now()
             .checked_add(HANG_GUARD)
             .ok_or(Error::InvalidInput)?,
     )
@@ -108,6 +105,7 @@ fn adr0013_item2_final_orders_purge_only_after_period_and_keep_replay_guard() ->
             order: Identifier::new("order")?,
             machine: Identifier::new("synthetic-machine")?,
         };
+        assert!(matches!(store.machine_order(&identity), Err(Error::Purged)));
         cached(&mut store, "order", "sample")?;
         let result = store.reserve_send(
             &crate::OrderReservation {
@@ -160,7 +158,7 @@ fn order_property(state: usize, held: bool, recent: bool) -> TestResult {
                 order: Identifier::new("order")?,
             },
             true,
-            &tests::audit()?,
+            &audit()?,
         )?;
     }
     let expected = matches!(state, "Done" | "Rejected" | "CancelConfirmed") && !held && !recent;
@@ -186,7 +184,7 @@ fn adr0013_item2_unfinished_items_events_and_linked_receipts_block_order_purge()
             "event" => {
                 store.enqueue_order_event(
                     &crate::OrderEventDelivery {
-                        id: crate::DeliveryId::try_from(uuid::Uuid::now_v7())?,
+                        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
                         order_id: Identifier::new("order")?,
                         destination: Identifier::new("app")?,
                         payload: b"synthetic".to_vec(),
@@ -196,7 +194,7 @@ fn adr0013_item2_unfinished_items_events_and_linked_receipts_block_order_purge()
                 )?;
             }
             "receipt" => {
-                tests::finished(&mut store)?;
+                finished(&mut store)?;
                 store.db.execute("UPDATE orders SET sample='000123'", [])?;
             }
             "audit" => {
@@ -242,6 +240,31 @@ fn adr0013_item3_v10_migration_keeps_existing_order_evidence() -> TestResult {
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
         11
+    );
+    Ok(())
+}
+
+#[test]
+fn adr0013_item2_newer_cached_order_work_is_never_purged() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    store.configure_retention_key(Some(DigestKey::new([4; 32])), true)?;
+    order_seed(&mut store, "Done")?;
+    let replacement = crate::CachedOrder {
+        id: Identifier::new("order")?,
+        sample: analyte_model::SampleId::new("sample")?,
+        document: r#"{"version":2,"state":"Requested","tombstone":false,"tests":[]}"#.into(),
+        tombstone: false,
+        expiry: 100000,
+    };
+    store
+        .db
+        .execute("UPDATE orders SET evidence=?1", [key(&replacement)?])?;
+    assert_eq!(order_run(&mut store, 86500)?.orders, 0);
+    assert!(
+        store
+            .cached_order(&Identifier::new("app")?, &Identifier::new("order")?)?
+            .is_some()
     );
     Ok(())
 }
