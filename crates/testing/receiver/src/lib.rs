@@ -81,11 +81,19 @@ struct Inner {
     secret: SigningSecret,
     sender: std::sync::Mutex<Option<mpsc::Sender<Command>>>,
 }
-/// Owns the database worker. Dropping all routers closes its bounded queue.
+/// Owns the database worker and its bounded admission queue.
+/// Keep the fallback guard outside the runtime (as the reference binary does),
+/// or call `shutdown().await` before dropping it from async code. Explicit shutdown
+/// closes admission independently of router clones and reports the worker result.
 pub struct Receiver {
     state: Arc<Inner>,
     worker: WorkerGuard,
 }
+#[cfg(test)]
+fn synthetic_panic() -> ! {
+    panic!("synthetic worker panic")
+}
+
 struct WorkerGuard {
     state: Arc<Inner>,
     worker: Option<std::thread::JoinHandle<Result<(), rusqlite::Error>>>,
@@ -109,7 +117,9 @@ impl Inner {
 impl WorkerGuard {
     async fn close(&mut self) -> Result<(), ReceiverError> {
         self.state.close();
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let deadline = tokio::time::Instant::now()
+            .checked_add(Duration::from_secs(5))
+            .ok_or(ReceiverError::Deadline)?;
         while self
             .worker
             .as_ref()
@@ -128,22 +138,32 @@ impl WorkerGuard {
 }
 impl Drop for WorkerGuard {
     fn drop(&mut self) {
+        use std::io::Write as _;
         self.state.close();
         if let Some(worker) = self.worker.take() {
             // Fallback owner lives outside the runtime in the binary; normal async
             // paths call close first and surface the join result to their caller.
-            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let deadline = std::time::Instant::now()
+                .checked_add(Duration::from_secs(5))
+                .unwrap_or_else(std::time::Instant::now);
             while !worker.is_finished() {
                 if std::time::Instant::now() >= deadline {
-                    eprintln!("receiver storage shutdown exceeded five seconds");
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "receiver storage shutdown exceeded five seconds"
+                    );
                     std::process::exit(3);
                 }
-                std::thread::yield_now();
+                std::thread::park_timeout(Duration::from_millis(1));
             }
             match worker.join() {
                 Ok(Ok(())) => {}
-                Ok(Err(error)) => eprintln!("receiver storage close failed: {error}"),
-                Err(_) => eprintln!("receiver storage worker panicked"),
+                Ok(Err(error)) => {
+                    let _ = writeln!(std::io::stderr(), "receiver storage close failed: {error}");
+                }
+                Err(_) => {
+                    let _ = writeln!(std::io::stderr(), "receiver storage worker panicked");
+                }
             }
         }
     }
@@ -171,7 +191,7 @@ impl Receiver {
                 while let Some(command) = receiver.blocking_recv() {
                     match command {
                         #[cfg(test)]
-                        Command::Panic => panic!("synthetic worker panic"),
+                        Command::Panic => synthetic_panic(),
                         Command::Delivery {
                             id,
                             kind,
@@ -241,7 +261,9 @@ impl Receiver {
             .layer(axum::middleware::from_fn(deadline))
             .with_state(Arc::clone(&self.state))
     }
-    /// Joins the owned storage worker after the server and all router clones are dropped.
+    /// Closes admission, drains queued work and joins the storage worker asynchronously.
+    /// Cancellation or timeout retains worker ownership; queued writes may still commit.
+    /// Retry shutdown on this owner and retain the original delivery identity.
     ///
     /// # Errors
     /// Returns an error if the worker panicked or exceeded five seconds.
@@ -542,8 +564,11 @@ mod lifecycle_tests {
             body: b"synthetic".to_vec(),
             reply,
         })?;
-        let original = ReceiverError::Key;
-        assert!(matches!(original, ReceiverError::Key));
+        let order: analyte_contract::Order = serde_json::from_slice(include_bytes!(
+            "../../../../docs/contract/vectors/order.json"
+        ))?;
+        let original = receiver.seed(vec![order; 101]).await;
+        assert!(matches!(original, Err(ReceiverError::SeedLimit)));
         receiver.shutdown().await?;
         assert!(response.await??);
         let connection = Connection::open(path)?;

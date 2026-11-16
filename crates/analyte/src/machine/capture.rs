@@ -239,7 +239,9 @@ impl Capture {
     /// as with the service watchdog, rather than detach it or block a runtime worker.
     pub(crate) async fn close(&mut self) {
         self.failures.take();
-        let until = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        let until = tokio::time::Instant::now()
+            .checked_add(std::time::Duration::from_secs(5))
+            .unwrap_or_else(tokio::time::Instant::now);
         loop {
             let finished = self
                 .state

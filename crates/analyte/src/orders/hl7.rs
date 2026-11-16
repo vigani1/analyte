@@ -511,8 +511,16 @@ mod tests {
             .request(deadline(), move |store| store.machine_order(&lookup))
             .await?
             .ok_or("order")?;
-        let mut missing = good.clone();
-        missing.key.order = Identifier::new("missing")?;
+        let mut failed_key = key.clone();
+        failed_key.order = Identifier::new("order-2")?;
+        reserve_original_connection(&store, &failed_key, &owner).await?;
+        let lookup = failed_key.clone();
+        let failed = store
+            .request(deadline(), move |store| store.machine_order(&lookup))
+            .await?
+            .ok_or("second reservation")?;
+        let database = rusqlite::Connection::open(temp.path().join("cleanup-failure.db"))?;
+        database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
         let options = machine
             .snapshot
             .effective()
@@ -520,7 +528,7 @@ mod tests {
             .ok_or("options")?;
         let mut connection = Connection::new(options)?;
         connection.owner = owner;
-        connection.active = vec![missing, good];
+        connection.active = vec![failed, good];
         let mut result = Err(invalid("original wire failure"));
         crate::machine::custody::retain_cleanup(
             &mut result,
@@ -541,7 +549,13 @@ mod tests {
             .await?
             .ok_or("reservation")?;
         assert_eq!(current.state, analyte_model::OrderState::Uncertain);
+        let failed = store
+            .request(deadline(), move |store| store.machine_order(&failed_key))
+            .await?
+            .ok_or("failed reservation retained")?;
+        assert_eq!(failed.state, analyte_model::OrderState::Sending);
         assert!(connection.active.is_empty());
+        drop(database);
         store.shutdown(deadline()).await?;
         Ok(())
     }
@@ -667,7 +681,7 @@ mod tests {
                         sample: SampleId::new("000Ab12")
                             .map_err(|_| analyte_store::Error::InvalidInput)?,
                         document: include_str!("../../../../docs/contract/vectors/order.json")
-                            .to_owned(),
+                            .replace("order-1", identity.order.as_str()),
                         tombstone: false,
                         expiry: now
                             .checked_add(100)

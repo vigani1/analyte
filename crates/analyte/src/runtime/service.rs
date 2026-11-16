@@ -242,12 +242,7 @@ async fn serve_with(
         start_delivery(destinations, &store, &secrets, &watchdog);
     let (shutdown, stopping) = watch::channel(false);
     let mut alert_owners = start_alerts(&program, &store, &stopping, &watchdog);
-    let Machines {
-        mut owners,
-        ready_to_close,
-        close_transports,
-        captures,
-    } = start_machines(&mut program, &store, &stopping, &admin_states, &watchdog);
+    let mut machines = start_machines(&mut program, &store, &stopping, &admin_states, &watchdog);
     if let Some(ready) = ready {
         let _ = ready.send(());
     }
@@ -256,7 +251,7 @@ async fn serve_with(
         &mut alert_owners,
         &mut admin_owners,
         &mut delivery_owners,
-        &mut owners,
+        &mut machines.owners,
     )
     .await;
     watchdog.arm();
@@ -278,11 +273,11 @@ async fn serve_with(
         alert_owners,
         admin_owners,
         delivery_owners,
-        owners,
-        ready_to_close,
+        owners: machines.owners,
+        ready_to_close: machines.ready_to_close,
         delivery_stop,
-        close_transports,
-        captures,
+        close_transports: machines.close_transports,
+        captures: machines.captures,
     }
     .finish(store, store_component)
     .await?;
