@@ -190,3 +190,16 @@ The product boundary: receive, retain and deliver faithfully, and answer machine
 from app-authorized orders, without clinical decisions. [ADR
 0001](adr/0001-rust-and-layered-architecture.md).
 
+
+## Retention tombstone
+
+A nonclinical record left after an eligible item's protected content is purged.
+Receipt and delivery UUIDs remain unchanged; patient-linkable result components
+remain only as keyed digests with their revision. The host key stays in installation
+secrets. [ADR 0013 items 3 and 6](adr/0013-retention-of-delivered-data.md).
+
+## Operator hold
+
+An explicit, indefinite block on purging a receipt or an order and all linked
+receipts. Placement and release record the actor and reason. It ends only through
+explicit release. [ADR 0013 item 7](adr/0013-retention-of-delivered-data.md).

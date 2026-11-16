@@ -2,6 +2,8 @@
 #![forbid(unsafe_code)]
 
 mod orders;
+mod retention;
+pub use retention::Retention;
 mod schema;
 mod stack;
 mod validation;
@@ -218,7 +220,7 @@ impl Draft {
     ) -> Result<Self, Error> {
         Ok(Self {
             machine: load(machine.0, machine.1)?,
-            site: load(site.0, site.1)?,
+            site: retention::load_site(site.0, site.1)?,
             overrides: load(overrides.0, overrides.1)?,
             paths: [machine.0.into(), site.0.into(), overrides.0.into()],
         })

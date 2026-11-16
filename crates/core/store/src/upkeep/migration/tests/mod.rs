@@ -190,6 +190,9 @@ fn verify_adr0003_migrated_custody_reconciliation(store: &mut Store, guards: &[i
 }
 
 fn verify_adr0003_v6_retained_columns(before: Snapshot, after: &Snapshot) -> TestResult {
+    let mut retained = after.clone();
+    assert_empty_retention_tables(&mut retained);
+    let after = &retained;
     assert_eq!(
         after
             .keys()
@@ -510,3 +513,19 @@ mod custody;
 mod ownership;
 
 mod legacy;
+
+fn assert_empty_retention_tables(snapshot: &mut Snapshot) {
+    for table in [
+        "retention_key",
+        "retention_holds",
+        "retention_tombstones",
+        "retention_deliveries",
+        "retention_results",
+    ] {
+        assert_eq!(
+            snapshot.remove(table),
+            Some(Vec::new()),
+            "new {table} must be empty"
+        );
+    }
+}

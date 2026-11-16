@@ -397,7 +397,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
         .replace("acknowledgment = \"store_and_forward\"\n", "");
     std::fs::write(temp.path().join("machine.toml"), definition)?;
     let site = format!(
-        "schema_version=1\nendpoint={}\n[destination]\nname='demo'\nbase_url='https://lab.example.invalid'\napi_key_name='demo-api'\nsigning_key_name='demo-signing'\n",
+        "schema_version=1\nretention='keep'\nendpoint={}\n[destination]\nname='demo'\nbase_url='https://lab.example.invalid'\napi_key_name='demo-api'\nsigning_key_name='demo-signing'\n",
         toml::Value::String(incoming.to_string_lossy().into_owned())
     );
     std::fs::write(temp.path().join("site.toml"), site)?;

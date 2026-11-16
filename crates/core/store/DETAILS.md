@@ -317,3 +317,23 @@ confirmation, capacity refusal, transactional audit/history failures and operato
 resolution. Migration tests include both resolved and unresolved guards beyond the
 old 128-page limit, exact retention of every original table/row, duplicate targets,
 multiple guards and refusal when the machine identity is missing.
+
+## Retention schema (ADR 0013)
+
+Schema v10 adds receipt tombstones, delivery UUID associations, keyed result
+identity/component/content digests, a key fingerprint and explicit holds. The
+credential is never serialized into the database. Startup configures the key
+before machine admission and refuses a missing or changed credential when a
+fingerprint is retained. There is no key rotation.
+
+The single receipt eligibility query requires retained interpretations, resolved
+identities, a delivery for every interpretation's result, every delivery done with
+an acknowledgment, and a complete retention period after the last acknowledgment.
+It excludes parking evidence, unfinished transfers, open or uncertain machine
+orders/items and poll intents, and explicit holds. In this version, ambiguous
+machine links retain the whole machine's receipts; any order hold conservatively
+blocks receipt purging until released. Resolved parking evidence is retained too.
+
+Use `analyte --actor NAME holds receipt UUID --reason TEXT` or `holds order
+DESTINATION ORDER --reason TEXT` to place a hold; add `--release` to release it.
+Each transition and its audit commit together; repeated transitions are refused.

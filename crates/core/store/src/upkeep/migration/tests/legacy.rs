@@ -30,9 +30,9 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
             .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    store.db.execute_batch("PRAGMA user_version=10")?;
+    store.db.execute_batch("PRAGMA user_version=11")?;
     drop(store);
-    assert!(matches!(open(&path), Err(Error::SchemaTooNew(10))));
+    assert!(matches!(open(&path), Err(Error::SchemaTooNew(11))));
     Ok(())
 }
 
@@ -47,6 +47,7 @@ fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult
         db.execute_batch(&format!("CREATE TRIGGER immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
     }
     let mut v1 = Store {
+        retention_key: None,
         _lock: Store::lock(&path, false)?,
         db,
         path: path.clone(),
@@ -132,6 +133,7 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
     db.execute_batch(include_str!("../../schema.sql"))?;
     Store::migrate_v2(&mut db)?;
     let mut v2 = Store {
+        retention_key: None,
         _lock: Store::lock(&path, false)?,
         db,
         path: path.clone(),

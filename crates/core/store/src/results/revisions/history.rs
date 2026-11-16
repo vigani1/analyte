@@ -47,6 +47,14 @@ impl Reconciliation<'_, '_> {
         content: &analyte_model::Digest,
         revisions: &[AssignedRevision],
     ) -> Result<Option<i64>, Error> {
+        if let Some(key) = self.retention_key {
+            let identity = key.digest("identity", identity_key.as_bytes())?;
+            let content = key.digest("content", &content.0)?;
+            let purged: Option<i64> = self.tx.query_row("SELECT revision FROM retention_results WHERE identity_digest=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1", params![identity.as_slice(), content.as_slice()], |r| r.get(0)).optional()?;
+            if purged.is_some() {
+                return Ok(purged);
+            }
+        }
         // A delayed retransmission may refer to any retained revision, not just the latest.
         let same: Option<i64> = self.tx.query_row("SELECT revision FROM observation_revisions WHERE identity_key=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1", params![identity_key, content.0.as_slice()], |r| r.get(0)).optional()?;
         // Older digests included source offsets. Compare retained typed evidence
@@ -81,6 +89,17 @@ impl Reconciliation<'_, '_> {
             [&identity_key],
             |r| r.get(0),
         )?;
+        let purged = if let Some(key) = self.retention_key {
+            let identity = key.digest("identity", identity_key.as_bytes())?;
+            self.tx.query_row(
+                "SELECT max(revision) FROM retention_results WHERE identity_digest=?1",
+                [identity.as_slice()],
+                |r| r.get::<_, Option<i64>>(0),
+            )?
+        } else {
+            None
+        };
+        let previous = previous.into_iter().chain(purged).max();
         let previous = revisions
             .iter()
             .rev()

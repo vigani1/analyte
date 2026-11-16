@@ -140,6 +140,9 @@ impl Store {
                 Ok(())
             })?;
         }
+        if version <= 9 {
+            migrate_retention(&mut db, startup)?;
+        }
         startup.run(StartupStep::Finalizing, || {
         // SQL constraints also protect evidence from accidental maintenance updates.
         for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
@@ -149,6 +152,7 @@ impl Store {
         })?;
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
+            retention_key: None,
             _lock: lock,
             db,
             path: path.into(),
@@ -191,3 +195,13 @@ fn default_startup() -> Result<Startup, Error> {
 
 #[cfg(test)]
 mod tests;
+
+fn migrate_retention(db: &mut Connection, startup: &Startup) -> Result<(), Error> {
+    startup.run(StartupStep::Migration { from: 9, to: 10 }, || {
+        let tx = db.transaction()?;
+        tx.execute_batch(include_str!("../migration_v10.sql"))?;
+        Store::integrity(&tx)?;
+        tx.commit()?;
+        Ok(())
+    })
+}

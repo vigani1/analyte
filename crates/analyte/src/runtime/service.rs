@@ -51,14 +51,27 @@ pub(crate) async fn open_store_with_deadline(
         page_rows: program.store_limits.page_rows,
         busy_timeout: program.store_limits.busy_timeout,
     };
-    Ok(Handle::start(
+    let finite = program.machines().iter().any(|m| {
+        matches!(
+            m.snapshot().effective().site().retention,
+            analyte_config::Retention::Days(_)
+        )
+    });
+    let key = crate::installation::secrets::retention_key(finite)?;
+    let handle = Handle::start(
         program.data_directory.join("analyte.db"),
         limits,
         space,
         32,
         until,
     )
-    .await?)
+    .await?;
+    handle
+        .request(until, move |store| {
+            store.configure_retention_key(key, finite)
+        })
+        .await?;
+    Ok(handle)
 }
 
 /// Runs machines in the foreground until Ctrl-C or the termination signal.

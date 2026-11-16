@@ -170,6 +170,7 @@ evidence_files = []
 ```toml
 # Synthetic installation; credential names only.
 schema_version = 1
+retention = 90 # recommended; requires the retention-digest host credential
 endpoint = "COM9"
 [destination]
 name = "demo"
@@ -414,3 +415,12 @@ assistance disclosure where applicable. A config PR is not permission to go live
 - [ ] Evidence level matches only the exercised capabilities.
 - [ ] PR contains sources, evidence and verification results without protected data.
 - [ ] Lab validation through the final report completed before activation.
+
+## Retention
+
+Every site file must explicitly set `retention = 90` (recommended), another
+period from 1 to 3650 days, or `retention = "keep"`. There is no default.
+A finite period requires the host credential `retention-digest` through the
+installation secrets path. Keep that credential with the installation secrets
+when restoring; rotation is not supported. Older backups retain purged data
+until the deployment removes them through its backup rotation.
