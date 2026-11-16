@@ -18,9 +18,10 @@ impl HttpsUrl {
     }
 
     fn parse_bounded(value: &str, limit: usize) -> Result<Self, &'static str> {
+        let parsed = parse_url(value, limit, false)?;
         Ok(Self {
             original: value.into(),
-            parsed: parse_url(value, limit, false)?,
+            parsed,
         })
     }
 
