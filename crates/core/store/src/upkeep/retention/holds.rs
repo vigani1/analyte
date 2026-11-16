@@ -53,7 +53,11 @@ impl Store {
         } else {
             "retention-hold-release"
         };
-        let encoded = self.encode(&(action, target, audit))?;
+        let mut evidence = serde_json::to_value(audit)?;
+        let fields = evidence.as_object_mut().ok_or(Error::InvalidInput)?;
+        fields.insert("action".into(), serde_json::Value::String(action.into()));
+        fields.insert("hold".into(), serde_json::to_value(target)?);
+        let encoded = self.encode(&evidence)?;
         self.capacity(encoded.len())?;
         let tx = self.db.transaction()?;
         let changed = if active {

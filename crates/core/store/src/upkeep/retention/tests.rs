@@ -100,6 +100,16 @@ fn adr0013_item2_item7_receipt_hold_blocks_until_audited_release() -> TestResult
         .db
         .query_row("SELECT count(*) FROM audit", [], |r| r.get(0))?;
     assert_eq!(count, 2);
+    let audits = store.audits(0)?;
+    assert_eq!(audits.len(), 2);
+    assert_eq!(
+        audits.first().ok_or("audit")?.1.actor.as_str(),
+        "synthetic-operator"
+    );
+    assert_eq!(
+        audits.first().ok_or("audit")?.1.action.as_str(),
+        "retention-hold-place"
+    );
     Ok(())
 }
 #[test]
