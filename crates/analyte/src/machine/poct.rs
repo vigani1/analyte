@@ -1,7 +1,7 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
 use super::connection_input::Input;
 use super::custody::{self, ms};
-use crate::{Error, evidence, invalid};
+use crate::{Error, intake, invalid};
 use analyte_dialog::poct::{CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent};
 use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
@@ -13,7 +13,7 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     settings: &analyte_config::PoctStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -74,7 +74,7 @@ impl ConnectionState {
 
     async fn receive_loop(
         &mut self,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         settings: &analyte_config::PoctStack,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
@@ -153,7 +153,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         settings: &analyte_config::PoctStack,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
@@ -169,7 +169,7 @@ impl ConnectionState {
         } = self;
         for byte in bytes {
             if raw.len() >= limits.message_bytes {
-                evidence::park_bytes(
+                intake::park_bytes(
                     store,
                     machine,
                     std::mem::take(raw),
@@ -180,7 +180,7 @@ impl ConnectionState {
             }
             raw.push(byte);
             if *stop.borrow() {
-                evidence::park_bytes(
+                intake::park_bytes(
                     store,
                     machine,
                     std::mem::take(raw),
@@ -194,7 +194,7 @@ impl ConnectionState {
             }
             let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
             if process(actions, dialog, start, machine, store, conn, settings).await? {
-                evidence::park_bytes(
+                intake::park_bytes(
                     store,
                     machine,
                     std::mem::take(raw),
@@ -230,10 +230,10 @@ impl ConnectionState {
         Ok(false)
     }
 
-    async fn close(self, machine: &evidence::Connection<'_>, store: &Handle) -> Result<(), Error> {
+    async fn close(self, machine: &intake::Connection<'_>, store: &Handle) -> Result<(), Error> {
         let raw = self.raw;
         if !raw.is_empty() {
-            evidence::park_bytes(
+            intake::park_bytes(
                 store,
                 machine,
                 raw,
@@ -249,7 +249,7 @@ async fn parse_message(
     wire: Vec<u8>,
     dialog: &mut Dialog,
     start: Instant,
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     settings: &analyte_config::PoctStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -260,7 +260,7 @@ async fn parse_message(
         Err(error) => {
             let reference = analyte_poct::hello_error_reference(&wire, limits);
             let ack_error = error.acknowledgement_error();
-            evidence::park_bytes(store, machine, wire, &format!("POCT syntax: {error}")).await?;
+            intake::park_bytes(store, machine, wire, &format!("POCT syntax: {error}")).await?;
             if let Some(reference) = reference {
                 let actions = dialog.step(
                     start.elapsed(),
@@ -283,7 +283,7 @@ async fn process(
     actions: Vec<DialogAction>,
     dialog: &mut Dialog,
     start: Instant,
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     settings: &analyte_config::PoctStack,
@@ -313,7 +313,7 @@ async fn process(
                 );
             }
             DialogAction::Park { message, reason } => {
-                evidence::park_bytes(store, machine, message.document().raw().to_vec(), reason)
+                intake::park_bytes(store, machine, message.document().raw().to_vec(), reason)
                     .await?;
             }
             DialogAction::Send { control_id, body } => {
@@ -335,7 +335,7 @@ async fn process(
             }
             DialogAction::ReadEnabled(_) => {}
             DialogAction::Deferred(message) => {
-                evidence::park_bytes(
+                intake::park_bytes(
                     store,
                     machine,
                     message.document().raw().to_vec(),
@@ -349,7 +349,7 @@ async fn process(
             }
             DialogAction::Close { normal, unresolved } => {
                 if !normal || !unresolved.is_empty() {
-                    evidence::park_bytes(store, machine, Vec::new(), &format!(
+                    intake::park_bytes(store, machine, Vec::new(), &format!(
                         "POCT dialog closure: normal={normal}; unresolved custody tickets: {unresolved:?}; inspect retained transport journal"
                     )).await?;
                 }
@@ -362,11 +362,11 @@ async fn process(
 
 async fn store_message(
     store: &Handle,
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     message: &Message,
 ) -> Result<CommitOutcome, Error> {
     let id = ReceiptId::new();
-    evidence::receive(store, machine, id, message.document().raw().to_vec()).await?;
+    intake::receive(store, machine, id, message.document().raw().to_vec()).await?;
     match message.body() {
         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
             let receipt = store
@@ -376,10 +376,10 @@ async fn store_message(
                 .await?;
             match super::interpretation::map_retained(store, machine, &receipt).await {
                 Ok(reading) => {
-                    evidence::vendor_reading(store, machine, id, reading).await?;
+                    intake::vendor_reading(store, machine, id, reading).await?;
                 }
                 Err(error) => {
-                    evidence::failed_reading(
+                    intake::failed_reading(
                         store,
                         machine,
                         id,
@@ -395,8 +395,7 @@ async fn store_message(
         Body::Hello { .. } => {
             // Mark the complete, parsed Hello as connection context. Transport
             // journal fragments are also receipts, but are not interpreted Hellos.
-            evidence::vendor_reading(store, machine, id, analyte_mapping::Output::default())
-                .await?;
+            intake::vendor_reading(store, machine, id, analyte_mapping::Output::default()).await?;
         }
         Body::Status { .. }
         | Body::EndTopic(_)

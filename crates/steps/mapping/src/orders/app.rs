@@ -34,7 +34,7 @@ pub fn map(order: &analyte_contract::Order) -> Result<super::AppOrder, analyte_m
 }
 
 fn namespaced(
-    id: &analyte_contract::evidence::NamespacedId,
+    id: &analyte_contract::document::NamespacedId,
 ) -> Result<NamespacedId, analyte_model::TextError> {
     Ok(NamespacedId {
         namespace: Identifier::new(id.namespace.as_str())?,
@@ -43,9 +43,9 @@ fn namespaced(
 }
 
 fn position(
-    position: &analyte_contract::evidence::SamplePosition,
+    position: &analyte_contract::document::SamplePosition,
 ) -> Result<analyte_model::SamplePosition, analyte_model::TextError> {
-    use analyte_contract::evidence::CarrierKind as Wire;
+    use analyte_contract::document::CarrierKind as Wire;
     use analyte_model::CarrierKind;
     Ok(analyte_model::SamplePosition {
         kind: match &position.kind {

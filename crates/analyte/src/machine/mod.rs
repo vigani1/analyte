@@ -1,6 +1,7 @@
 //! Owns machine workers and transport sessions without replaying queued writes.
 mod astm;
 mod autolyser;
+pub(crate) mod capture;
 pub(crate) mod error_location;
 mod folder;
 mod hl7;
@@ -46,7 +47,7 @@ pub(crate) async fn run(
     mut stop: watch::Receiver<bool>,
     file_root: std::path::PathBuf,
     mut closing: Closing,
-    capture: Option<crate::evidence::capture::Capture>,
+    capture: Option<capture::Capture>,
 ) -> Result<(), Error> {
     if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack()
         && matches!(
@@ -154,7 +155,7 @@ pub(crate) async fn run(
 
 fn recorded_connection(
     limits: Limits,
-    capture: Option<&crate::evidence::capture::Capture>,
+    capture: Option<&capture::Capture>,
 ) -> (analyte_transport::Connection, analyte_transport::IoSide) {
     let (conn, side) = connection(limits);
     let side = match capture {
@@ -179,7 +180,7 @@ async fn session(
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let context = crate::evidence::Connection::new(machine)?;
+    let context = crate::intake::Connection::new(machine)?;
     let machine = &context;
     match selected {
         Session::Astm(settings) => astm::session(machine, settings, store, conn, stop).await,

@@ -1,6 +1,6 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
 use super::connection_input::{self, Input};
-use crate::{Error, evidence, invalid};
+use crate::{Error, intake, invalid};
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -11,7 +11,7 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     settings: &analyte_config::Hl7Stack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -87,7 +87,7 @@ impl ConnectionState {
     }
     async fn receive_loop(
         &mut self,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -139,7 +139,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -160,7 +160,7 @@ impl ConnectionState {
     async fn process(
         &mut self,
         event: Event<'_>,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -182,7 +182,7 @@ impl ConnectionState {
     async fn effect(
         &mut self,
         action: Action,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -263,11 +263,11 @@ impl ConnectionState {
             }
             Action::Deadline(next) => self.wake = next,
             Action::Rejected(error, bytes) => {
-                evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
             Action::Parked(bytes, error) => {
                 self.pending.clear();
-                evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
             Action::QueueFull(bytes) | Action::Unmatched(bytes) => {
                 return self.refuse_message(machine, store, bytes).await;
@@ -287,7 +287,7 @@ impl ConnectionState {
     async fn answer_query(
         &mut self,
         request: QueryRequest,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
@@ -304,7 +304,7 @@ impl ConnectionState {
             .remove(&(token.epoch(), token.ordinal()))
             .ok_or("query receipt absent")?;
         if !edition_matches {
-            evidence::failed_reading(
+            intake::failed_reading(
                 store,
                 machine,
                 id,
@@ -329,12 +329,12 @@ impl ConnectionState {
         &mut self,
         token: analyte_dialog::hl7::ReceiptId,
         raw: Vec<u8>,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
-        match evidence::receive(store, machine, id, raw).await {
+        match intake::receive(store, machine, id, raw).await {
             Ok(_) => {
                 if self.pending.len() >= 2 {
                     return Err(invalid("HL7 pending receipt limit exceeded"));
@@ -363,7 +363,7 @@ impl ConnectionState {
     async fn interpret(
         &mut self,
         token: analyte_dialog::hl7::ReceiptId,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
@@ -371,8 +371,8 @@ impl ConnectionState {
             .pending
             .remove(&(token.epoch(), token.ordinal()))
             .ok_or_else(|| invalid("HL7 receipt correlation missing"))?;
-        let (outcome, location) = evidence::interpret_with_location(store, machine, id).await?;
-        let event = if matches!(outcome, evidence::InterpretationOutcome::Accepted) {
+        let (outcome, location) = intake::interpret_with_location(store, machine, id).await?;
+        let event = if matches!(outcome, intake::InterpretationOutcome::Accepted) {
             Event::Interpreted(token)
         } else {
             Event::NotInterpretable(
@@ -388,7 +388,7 @@ impl ConnectionState {
     async fn display_outcome(
         &mut self,
         outcome: DisplayOutcome,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
     ) -> Result<(), Error> {
         let DisplayOutcome {
@@ -404,7 +404,7 @@ impl ConnectionState {
                 .remove(&(token.epoch(), token.ordinal()))
                 .ok_or("display receipt absent")?;
             if let Some(detail) = detail {
-                evidence::failed_reading(store, machine, id, &detail).await?;
+                intake::failed_reading(store, machine, id, &detail).await?;
             }
         }
         self.queries
@@ -483,11 +483,11 @@ impl ConnectionState {
     }
     async fn refuse_message(
         &self,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         bytes: Vec<u8>,
     ) -> Result<bool, Error> {
-        evidence::park_bytes(
+        intake::park_bytes(
             store,
             machine,
             bytes,
@@ -498,18 +498,18 @@ impl ConnectionState {
     }
     async fn close(
         &mut self,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         result: Result<(), Error>,
     ) -> Result<(), Error> {
         // A cancelled or failed host operation must expose partial input as well.
         for action in self.dialog.step(self.start.elapsed(), Event::Disconnect)? {
             if let Action::Rejected(error, bytes) = action {
-                evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
         }
         if self.enabled && !self.input_evidence.is_empty() {
-            evidence::park_bytes(
+            intake::park_bytes(
                 store,
                 machine,
                 std::mem::take(&mut self.input_evidence),

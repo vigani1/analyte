@@ -1,4 +1,4 @@
-//! Holds independent version-1 contract evidence types without serializing model types.
+//! Holds independent version-1 document types without serializing model types.
 mod text;
 pub use text::*;
 mod value;

@@ -17,6 +17,6 @@
 - `admin`: Protected local administration.
 - `operator`: Alerts, status and recovery.
 - `installation`: Installation settings and credentials.
-- `evidence`: Protected evidence processing.
+- `intake`: Receipt storage, mapping, interpretation, revision and delivery commits, and failure parking.
 
 [Technical details and safety guidance](DETAILS.md).

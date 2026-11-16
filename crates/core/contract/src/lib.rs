@@ -1,8 +1,8 @@
 //! Defines versioned integration documents and HTTP signatures without clinical interpretation.
 #![forbid(unsafe_code)]
-pub mod evidence;
+pub mod document;
 mod response;
-pub use evidence::ResultDocument;
+pub use document::ResultDocument;
 mod signing;
 pub use response::*;
 use serde::{Deserialize, Serialize};
@@ -82,8 +82,8 @@ wire!(Receipt {
     id: Text,
     received_at: Text,
     raw_sha256: Text,
-    driver: evidence::NamespacedId,
-    config_version: evidence::Identifier,
+    driver: document::NamespacedId,
+    config_version: document::Identifier,
     config_sha256: Text
 });
 wire!(DeliveryFields {
@@ -92,20 +92,20 @@ wire!(DeliveryFields {
 });
 wire!(EventFields {
     contract_version: u8, delivery_id: Text, created_at: Text, source: Source,
-    order_id: Text, order_version: std::num::NonZeroU64, state: evidence::OrderState,
-    occurred_at: Text, source_status: evidence::SourceText, reason: Option<Text>
+    order_id: Text, order_version: std::num::NonZeroU64, state: document::OrderState,
+    occurred_at: Text, source_status: document::SourceText, reason: Option<Text>
 });
 wire!(Patient {
-    id: evidence::NamespacedId
+    id: document::NamespacedId
 });
 wire!(OrderFields {
-    id: Text, version: std::num::NonZeroU64, state: evidence::OrderState, sample_id: Text,
-    tests: Vec<evidence::NamespacedId>, priority: Priority, target_analyzers: Option<Vec<Text>>,
+    id: Text, version: std::num::NonZeroU64, state: document::OrderState, sample_id: Text,
+    tests: Vec<document::NamespacedId>, priority: Priority, target_analyzers: Option<Vec<Text>>,
     expires_at: Option<Text>, tombstone: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    position: Option<evidence::SamplePosition>,
+    position: Option<document::SamplePosition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    specimen_type: Option<evidence::NamespacedId>,
+    specimen_type: Option<document::NamespacedId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     patient: Option<Patient>
 });
@@ -131,7 +131,7 @@ impl TryFrom<DeliveryFields> for Delivery {
         digest_field(&fields.receipt.raw_sha256, "raw_sha256")?;
         digest_field(&fields.receipt.config_sha256, "config_sha256")?;
         list(&fields.results, 1000, false)?;
-        let receipt_id = evidence::ReceiptId::try_from(
+        let receipt_id = document::ReceiptId::try_from(
             uuid::Uuid::parse_str(fields.receipt.id.as_str())
                 .map_err(|_| DocumentError::Field("receipt_id"))?,
         )

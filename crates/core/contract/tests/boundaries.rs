@@ -117,7 +117,7 @@ fn contract_v1_credentials_compare_exact_bytes() {
 #[test]
 fn contract_v1_rule5_decimal_accessors_preserve_precision() -> TestResult {
     for (s, scale) in [("+001.2300", 4), ("-2", 0), ("1.00", 2)] {
-        let d = evidence::Decimal::new(s)?;
+        let d = document::Decimal::new(s)?;
         assert_eq!(d.as_str(), s);
         assert_eq!(d.scale(), scale);
     }
@@ -125,14 +125,14 @@ fn contract_v1_rule5_decimal_accessors_preserve_precision() -> TestResult {
 }
 #[test]
 fn contract_v1_rule6_units_and_rule2_unsupported_accessors_keep_evidence() -> TestResult {
-    let units: evidence::Units = serde_json::from_value(
+    let units: document::Units = serde_json::from_value(
         json!({"original":" mg/dL ","mapping":{"source":" mg/dL ","target":"mg/dL"}}),
     )?;
     assert_eq!(units.original_text().as_str(), " mg/dL ");
     let mapping = units.mapping().ok_or("mapping lost")?;
     assert_eq!(mapping.source.as_str(), " mg/dL ");
     assert_eq!(mapping.target.as_str(), "mg/dL");
-    let plain = evidence::Units::original(evidence::SourceText::new("x")?);
+    let plain = document::Units::original(document::SourceText::new("x")?);
     assert!(plain.mapping().is_none());
     for (v, expected) in [
         (json!("text"), false),
@@ -142,7 +142,7 @@ fn contract_v1_rule6_units_and_rule2_unsupported_accessors_keep_evidence() -> Te
         ),
         (json!({"numeric":{"number":"1","comparator":null}}), false),
     ] {
-        let interpretation: evidence::ValueInterpretation = serde_json::from_value(v)?;
+        let interpretation: document::ValueInterpretation = serde_json::from_value(v)?;
         assert_eq!(interpretation.is_unsupported(), expected);
     }
     Ok(())
@@ -150,13 +150,13 @@ fn contract_v1_rule6_units_and_rule2_unsupported_accessors_keep_evidence() -> Te
 #[test]
 fn contract_v1_evidence_list_reports_expected_type_and_retains_parts() -> TestResult {
     let error =
-        decode::<evidence::EvidenceList<u8>>(b"false").expect_err("boolean is not evidence list");
+        decode::<document::EvidenceList<u8>>(b"false").expect_err("boolean is not evidence list");
     assert!(error.to_string() == "invalid document");
     let DocumentError::Json(cause) = error else {
         return Err("wrong error boundary".into());
     };
     assert!(cause.to_string().contains("at most 256 evidence entries"));
-    let parts = evidence::NonEmptyEvidenceList::new(evidence::EvidenceList::new(vec![1, 2])?)?;
+    let parts = document::NonEmptyEvidenceList::new(document::EvidenceList::new(vec![1, 2])?)?;
     assert_eq!(parts.as_slice(), [1, 2]);
     Ok(())
 }

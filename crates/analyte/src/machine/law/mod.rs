@@ -2,7 +2,7 @@
 use super::connection_input::{self, Input};
 pub(super) mod independent;
 use crate::orders::law::{Connection, Reply};
-use crate::{Error, evidence, invalid};
+use crate::{Error, intake, invalid};
 use analyte_dialog::law::{self as protocol, Action, Dialog, Event, Interpretation, Link};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -13,7 +13,7 @@ use std::{
 use tokio::sync::{oneshot, watch};
 
 pub(super) async fn session(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     settings: &analyte_config::LawStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -22,7 +22,7 @@ pub(super) async fn session(
     session_with_outbound(machine, settings, store, conn, stop, None).await
 }
 async fn session_with_outbound(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     settings: &analyte_config::LawStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -58,7 +58,7 @@ async fn session_with_outbound(
 /// Owns side effects and reservation cleanup. A cancelled store request may still commit;
 /// the dialog cannot accept it or issue an ACK until its completion is driven explicitly.
 struct Host<'a, 'm> {
-    machine: &'a evidence::Connection<'m>,
+    machine: &'a intake::Connection<'m>,
     settings: &'a analyte_config::LawStack,
     link: Link,
     store: &'a Handle,
@@ -77,7 +77,7 @@ struct Host<'a, 'm> {
 }
 impl<'a, 'm> Host<'a, 'm> {
     fn new(
-        machine: &'a evidence::Connection<'m>,
+        machine: &'a intake::Connection<'m>,
         settings: &'a analyte_config::LawStack,
         store: &'a Handle,
         conn: &'a mut analyte_transport::Connection,
@@ -170,7 +170,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 let id = ReceiptId::new();
                 self.receipt = Some((token, id));
                 self.stored = false;
-                evidence::receive(self.store, self.machine, id, raw).await?;
+                intake::receive(self.store, self.machine, id, raw).await?;
                 self.stored = true;
                 #[cfg(feature = "test-hooks")]
                 if let Some(hook) = &self.machine.law_committed {
@@ -195,7 +195,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 return self.interpret_receipt(token).await;
             }
             Action::Failed(token, reason) => {
-                evidence::failed_reading(self.store, self.machine, self.receipt(token)?, &reason)
+                intake::failed_reading(self.store, self.machine, self.receipt(token)?, &reason)
                     .await?;
                 return Ok(Vec::new());
             }
@@ -240,7 +240,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Action::Uncommitted(_, raw) => {
                 if !self.stored {
-                    evidence::park_bytes(
+                    intake::park_bytes(
                         self.store,
                         self.machine,
                         raw,
@@ -251,7 +251,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Ok(Vec::new());
             }
             Action::Rejected(error, raw) => {
-                evidence::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
+                intake::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
                 return Ok(Vec::new());
             }
             Action::Refused(error) => return Err(error.into()),
@@ -305,8 +305,7 @@ impl<'a, 'm> Host<'a, 'm> {
         token: protocol::ReceiptId,
     ) -> Result<Vec<Action>, Error> {
         let (outcome, location) =
-            evidence::interpret_with_location(self.store, self.machine, self.receipt(token)?)
-                .await?;
+            intake::interpret_with_location(self.store, self.machine, self.receipt(token)?).await?;
         let detail = super::error_location::build(location.as_ref(), b"", b"");
         let location = location.as_ref().map(|_| protocol::Location {
             segment: detail.segment,
@@ -314,16 +313,16 @@ impl<'a, 'm> Host<'a, 'm> {
             field: detail.field,
         });
         let interpreted = match outcome {
-            evidence::InterpretationOutcome::Accepted => Interpretation::Accepted,
-            evidence::InterpretationOutcome::WorkConflict(location) => {
+            intake::InterpretationOutcome::Accepted => Interpretation::Accepted,
+            intake::InterpretationOutcome::WorkConflict(location) => {
                 Interpretation::WorkConflict(protocol::Location {
                     segment: location.segment,
                     occurrence: location.occurrence,
                     field: location.field,
                 })
             }
-            evidence::InterpretationOutcome::Conflict => Interpretation::Conflict,
-            evidence::InterpretationOutcome::Failed => Interpretation::Failed(location),
+            intake::InterpretationOutcome::Conflict => Interpretation::Conflict,
+            intake::InterpretationOutcome::Failed => Interpretation::Failed(location),
         };
         Ok(self
             .dialog
@@ -364,10 +363,10 @@ impl<'a, 'm> Host<'a, 'm> {
         for action in self.dialog.step(self.clock.elapsed(), Event::Disconnect)? {
             match action {
                 Action::Rejected(error, raw) => {
-                    evidence::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
+                    intake::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
                 }
                 Action::Uncommitted(_, raw) if !self.stored => {
-                    evidence::park_bytes(
+                    intake::park_bytes(
                         self.store,
                         self.machine,
                         raw,
@@ -391,7 +390,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
         }
         if !self.pending_input.is_empty() {
-            evidence::park_bytes(
+            intake::park_bytes(
                 self.store,
                 self.machine,
                 self.pending_input.drain(..).collect(),

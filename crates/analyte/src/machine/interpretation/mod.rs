@@ -1,5 +1,5 @@
 //! Maps stored receipts without transport handles, orders or acknowledgments.
-use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
+use crate::{Error, deadline, installation::config::Machine, intake, invalid};
 use analyte_config::Stack;
 use analyte_model::{ReceiptId, Revision};
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
@@ -27,7 +27,7 @@ pub async fn reprocess(
     }
     let mapping = map_retained(store, machine, &receipt).await;
     Ok(
-        evidence::persist_mapping(store, machine, id, mapping, Some(action))
+        intake::persist_mapping(store, machine, id, mapping, Some(action))
             .await?
             .1,
     )

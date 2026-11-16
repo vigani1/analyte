@@ -11,6 +11,6 @@
 **Main parts:**
 
 - `lib`: Versioned documents and input limits.
-- `evidence`: Independent app-facing evidence fields.
+- `document`: Independent version-1 app-facing document types.
 - `response`: Lab-app response shapes.
 - `signing`: Signature rules without network access.

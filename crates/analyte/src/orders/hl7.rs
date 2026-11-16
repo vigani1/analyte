@@ -1,6 +1,6 @@
 //! Drives HL7 order lookups, reservations and delivery outcomes (HL7 2.3.1 ?2.18 and 2.5.1 ?5.10).
 //! Kept whole: HL7 order exchange driving keeps cancellation, peer replies and durable transitions together.
-use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
+use crate::{Error, deadline, installation::config::Machine, intake, invalid};
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::{
     Message, Options,
@@ -40,7 +40,7 @@ impl Connection {
     pub(crate) async fn idle(
         &mut self,
         store: &Handle,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         conn: &mut analyte_transport::Connection,
         dialog: &mut analyte_dialog::hl7::Dialog,
         clock: Instant,
@@ -93,7 +93,7 @@ impl Connection {
     pub(crate) async fn close(
         &mut self,
         store: &Handle,
-        _machine: &evidence::Connection<'_>,
+        _machine: &intake::Connection<'_>,
         code: &str,
     ) -> Result<(), Error> {
         for identity in self.reserving.drain(..) {
@@ -192,7 +192,7 @@ impl Connection {
         let request = match query::Request::new(message) {
             Ok(request) => request,
             Err(error) => {
-                evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
+                intake::failed_reading(store, machine, receipt, &error.to_string()).await?;
                 return Ok(None);
             }
         };
@@ -440,7 +440,7 @@ async fn select_sample(
     let selected = match sample(request, layout) {
         Ok(Some(sample)) => Some(sample),
         Ok(None) => {
-            evidence::failed_reading(
+            intake::failed_reading(
                 store,
                 machine,
                 receipt,
@@ -450,7 +450,7 @@ async fn select_sample(
             None
         }
         Err(error) => {
-            evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
+            intake::failed_reading(store, machine, receipt, &error.to_string()).await?;
             None
         }
     };
@@ -503,7 +503,7 @@ mod tests {
         other
             .close(
                 &store,
-                &evidence::Connection::new(&machine)?,
+                &intake::Connection::new(&machine)?,
                 "HL7-DSR-disconnect",
             )
             .await?;
@@ -520,7 +520,7 @@ mod tests {
         original
             .close(
                 &store,
-                &evidence::Connection::new(&machine)?,
+                &intake::Connection::new(&machine)?,
                 "HL7-DSR-disconnect",
             )
             .await?;

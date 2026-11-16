@@ -285,7 +285,7 @@ fn start_machines(
     let mut ready_to_close = Vec::new();
     let (close_transports, transports_closing) = watch::channel(false);
     for machine in std::mem::take(&mut program.machines) {
-        let capture = crate::evidence::capture::Capture::new(
+        let capture = machine::capture::Capture::new(
             &machine,
             &program.data_directory,
             program.store_limits.reserve_bytes,

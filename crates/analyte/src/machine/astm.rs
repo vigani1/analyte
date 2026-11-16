@@ -1,7 +1,7 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
 use crate::orders::astm::{Pending, Request};
-use crate::{Error, deadline, evidence, invalid};
+use crate::{Error, deadline, intake, invalid};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
@@ -12,7 +12,7 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     settings: &analyte_config::AstmStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -24,7 +24,7 @@ pub(super) async fn session(
 }
 
 struct ConnectionState<'a, 'm> {
-    machine: &'a evidence::Connection<'m>,
+    machine: &'a intake::Connection<'m>,
     settings: &'a analyte_config::AstmStack,
     store: &'a Handle,
     config: Config,
@@ -46,7 +46,7 @@ struct ConnectionState<'a, 'm> {
 
 impl<'a, 'm> ConnectionState<'a, 'm> {
     fn open(
-        machine: &'a evidence::Connection<'m>,
+        machine: &'a intake::Connection<'m>,
         settings: &'a analyte_config::AstmStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
@@ -305,7 +305,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Action::Deadline(next) => self.wake = next,
             Action::Refused(error) => return Err(error.into()),
             Action::Conflict(bytes) => {
-                evidence::park_bytes(
+                intake::park_bytes(
                     store,
                     machine,
                     bytes,
@@ -314,13 +314,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 .await?;
             }
             Action::UnexpectedFrame(bytes) => {
-                evidence::park_bytes(store, machine, bytes, "unsolicited ASTM frame").await?;
+                intake::park_bytes(store, machine, bytes, "unsolicited ASTM frame").await?;
             }
             Action::Rejected(error, bytes) => {
                 if self.partial.len() != 1 {
                     self.partial.clear();
                 }
-                evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
             Action::CommitFailed(_) | Action::LimitReached => {
                 return Err(invalid("ASTM storage or resource limit refused transfer"));
@@ -360,7 +360,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         self.raw.extend_from_slice(&bytes);
         let provenance = analyte_store::FrameProvenance {
             machine: machine.id.clone(),
-            driver: evidence::driver(machine)?,
+            driver: intake::driver(machine)?,
             config: machine.snapshot.canonical().as_bytes().to_vec(),
         };
         let sequence = analyte_store::FrameSequence::new(
@@ -399,10 +399,10 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         if let Some(transfer_id) = self.transfer.take() {
             if end == End::Normal {
                 let id = ReceiptId::new();
-                evidence::receive(store, machine, id, std::mem::take(&mut self.raw)).await?;
+                intake::receive(store, machine, id, std::mem::take(&mut self.raw)).await?;
                 match crate::orders::astm::request(machine, &self.payload)? {
                     None => {
-                        evidence::interpret(store, machine, id).await?;
+                        intake::interpret(store, machine, id).await?;
                     }
                     Some(Request::Cancel) => {
                         self.pending = None;
@@ -460,7 +460,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             finish_incomplete(self.store, transfer).await?;
         }
         if !self.partial.is_empty() {
-            evidence::park_bytes(
+            intake::park_bytes(
                 self.store,
                 self.machine,
                 std::mem::take(&mut self.partial),

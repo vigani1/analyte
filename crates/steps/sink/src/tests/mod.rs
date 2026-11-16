@@ -396,12 +396,12 @@ async fn check_order_events(store: &Handle, destinations: &[Destination]) -> Tes
         "../../../../../docs/contract/vectors/event.json"
     ))?;
     for state in [
-        analyte_contract::evidence::OrderState::Sent,
-        analyte_contract::evidence::OrderState::Accepted,
-        analyte_contract::evidence::OrderState::Rejected,
-        analyte_contract::evidence::OrderState::Done,
-        analyte_contract::evidence::OrderState::CancelConfirmed,
-        analyte_contract::evidence::OrderState::Uncertain,
+        analyte_contract::document::OrderState::Sent,
+        analyte_contract::document::OrderState::Accepted,
+        analyte_contract::document::OrderState::Rejected,
+        analyte_contract::document::OrderState::Done,
+        analyte_contract::document::OrderState::CancelConfirmed,
+        analyte_contract::document::OrderState::Uncertain,
     ] {
         event.delivery_id = analyte_contract::Text::try_from(uuid::Uuid::now_v7().to_string())?;
         event.state = state;
@@ -443,7 +443,7 @@ async fn check_cache_changes(
         "../../../../../docs/contract/vectors/order.json"
     ))?;
     order.version = std::num::NonZeroU64::new(2).ok_or("version")?;
-    order.state = analyte_contract::evidence::OrderState::CancelRequested;
+    order.state = analyte_contract::document::OrderState::CancelRequested;
     receiver
         .seed(vec![analyte_contract::Order::try_from(order)?])
         .await?;
@@ -469,7 +469,7 @@ async fn check_cache_changes(
     assert_eq!(order.fields().version.get(), 2);
     assert_eq!(
         order.fields().state,
-        analyte_contract::evidence::OrderState::CancelRequested
+        analyte_contract::document::OrderState::CancelRequested
     );
     let next = store
         .request(until()?, |s| {

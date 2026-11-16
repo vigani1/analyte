@@ -77,14 +77,8 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
-    evidence::receive(
-        &store,
-        &evidence::Connection::new(machine)?,
-        id,
-        raw.clone(),
-    )
-    .await?;
-    assert!(!evidence::interpret(&store, machine, id).await?);
+    intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
+    assert!(!intake::interpret(&store, machine, id).await?);
     let (parked, original) = store
         .request(deadline(), move |s| {
             assert!(s.deliveries(0)?.is_empty());
@@ -288,14 +282,14 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let original = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
-    let connection = evidence::Connection::new(original)?;
-    evidence::receive(&store, &connection, id, b"unparseable original".to_vec()).await?;
-    evidence::failed_reading(&store, original, id, "synthetic failure").await?;
+    let connection = intake::Connection::new(original)?;
+    intake::receive(&store, &connection, id, b"unparseable original".to_vec()).await?;
+    intake::failed_reading(&store, original, id, "synthetic failure").await?;
     let changed = program(temp.path(), &definition, "127.0.0.1:5601")?;
     let current = changed.machines().first().ok_or("missing machine")?;
-    evidence::park_bytes(
+    intake::park_bytes(
         &store,
-        &evidence::Connection::new(current)?,
+        &intake::Connection::new(current)?,
         b"unparseable changed".to_vec(),
         "synthetic parking",
     )
@@ -400,14 +394,8 @@ async fn assert_vendor_receipt_stays_parked(
     };
     let mut store = crate::runtime::service::open_store(&current, Box::new(Space)).await?;
     let id = ReceiptId::new();
-    evidence::receive(
-        &store,
-        &evidence::Connection::new(machine)?,
-        id,
-        raw.clone(),
-    )
-    .await?;
-    assert!(!evidence::interpret(&store, machine, id).await?);
+    intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
+    assert!(!intake::interpret(&store, machine, id).await?);
     let parked = store.request(deadline(), move |s| {
         let version = s.interpretation(id, 1)?.ok_or(analyte_store::Error::Corruption)?;
         assert!(matches!(version.outcome, analyte_store::Reading::Results(results) if !results.is_empty()));
@@ -450,9 +438,9 @@ async fn assert_poct_controls_stay_failed(store: &Handle, machine: &Machine) -> 
         // machine query or an invented empty result success (rule 9).
         for control in [poct_peer::hello("hello"), poct_peer::status("status", "1")] {
             let id = ReceiptId::new();
-            evidence::receive(
+            intake::receive(
                 store,
-                &evidence::Connection::new(machine)?,
+                &intake::Connection::new(machine)?,
                 id,
                 control.into_bytes(),
             )
