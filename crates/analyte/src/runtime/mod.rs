@@ -11,3 +11,5 @@ pub(crate) mod test_tracing;
 pub mod windows_service;
 
 pub(crate) mod retention;
+
+pub(crate) mod alert_delivery;

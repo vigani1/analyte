@@ -1,8 +1,8 @@
 # sink
 
-**Kind: core.** Groups files by the data and operations they handle.
+**Kind: steps.** Groups files by the data and operations they handle.
 
-**What it does:** Delivers results to lab apps over HTTP and polls apps for order changes.
+**What it does:** Delivers results to lab apps over HTTP, polls apps for order changes and sends operational alert webhooks.
 
 **Where it sits:** Receives pending deliveries and saved order progress from the store; sends app requests and retains their outcomes.
 
@@ -13,5 +13,6 @@
 - `delivery`: Delivery work with stable retry identity.
 - `destination`: Validated destinations and credentials.
 - `polling`: Order polling from the lab app.
+- `webhook`: Validated alert URLs and bounded HTTPS attempts; the program owns scheduling and the store owns immutable events.
 
 [Technical details and safety guidance](DETAILS.md).

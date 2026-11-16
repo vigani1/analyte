@@ -225,6 +225,7 @@ fn adr0013_item3_v10_migration_keeps_existing_order_evidence() -> TestResult {
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
     order_seed(&mut store, "Uncertain")?;
+    remove_alert_schema_for_legacy_fixture(&store.db)?;
     store.db.execute_batch("DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; PRAGMA user_version=10;")?;
     drop(store);
     let store = open(&path)?;
@@ -239,7 +240,7 @@ fn adr0013_item3_v10_migration_keeps_existing_order_evidence() -> TestResult {
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        11
+        crate::SCHEMA_VERSION
     );
     Ok(())
 }
