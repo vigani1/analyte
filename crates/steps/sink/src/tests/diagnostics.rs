@@ -81,3 +81,21 @@ async fn adr0008_app_diagnostics_park_and_worker_continues() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn adr0008_diagnostic_encoding_bounds_utf8_and_preserves_visible_controls() {
+    let reason = crate::delivery::reason(&"\u{e9}".repeat(800));
+    assert!(reason.as_str().len() <= 1024);
+    assert!(reason.as_str().ends_with("\u{2026} [truncated]"));
+    assert!(reason.as_str().starts_with("\u{e9}"));
+    assert_eq!(
+        crate::delivery::reason("a\n\t\u{7f}").as_str(),
+        r"a\n\t\u{7f}"
+    );
+    assert!(!reason.as_str().chars().any(char::is_control));
+    assert_eq!(
+        crate::delivery::reason(&"x".repeat(1024)).as_str().len(),
+        1024
+    );
+    assert!(!crate::delivery::reason("").as_str().is_empty());
+}

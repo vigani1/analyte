@@ -313,6 +313,10 @@ impl<'a> Worker<'a> {
 }
 
 // App diagnostics must never terminate the delivery owner.
+#[expect(
+    clippy::expect_used,
+    reason = "the bounded, nonempty, control-free text proves the model invariant"
+)]
 pub(crate) fn reason(text: &str) -> analyte_model::Reason {
     const LIMIT: usize = 1024;
     const MARKER: &str = "\u{2026} [truncated]";

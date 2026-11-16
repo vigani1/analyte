@@ -123,7 +123,12 @@ fn incomplete(error: &quick_xml::Error, tail: &[u8]) -> bool {
             | SyntaxError::UnclosedSingleQuotedAttributeValue
             | SyntaxError::UnclosedDoubleQuotedAttributeValue,
         ) => true,
-        _ => false, // Other external XML errors cannot be repaired by appending bytes.
+        XmlError::Io(_)
+        | XmlError::IllFormed(_)
+        | XmlError::InvalidAttr(_)
+        | XmlError::Encoding(_)
+        | XmlError::Escape(_)
+        | XmlError::Namespace(_) => false,
     }
 }
 
