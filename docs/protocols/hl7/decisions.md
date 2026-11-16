@@ -1,5 +1,24 @@
 # HL7 decisions
 
+## Bound compatibility to the established legacy receiving prefix
+
+- **what**: Receive ORU/R01 and the selected legacy query exchange in 2.3,
+  2.4 and 2.5 under the later receiver contract. Preserve the exact edition and
+  original bytes. Use the common datatype/query prefix; apply the explicitly
+  dated MSH-7, MSG and ERR changes. Enable receiving/query config only with
+  tested typed paths and replies; keep command sending gated until implemented.
+- **why**: Compatibility guarantees existing meanings, not a chronology of
+  every addition. Unknown extensions must not gain later clinical meanings.
+  Keep OBR interpreter composites and OBX-19 raw; park unsupported CWE values;
+  refuse unverified URI/UTF-8 codes, extended query filters and specimen groups.
+  The exact limitations and per-edition sources are in `versions.md`.
+- **source**: HL7 2.5.1 §§2.8–2.8.2 pp.2-20–22, §2.15.9.7 p.2-76,
+  §2.A.44 pp.2-180–181, §2.15.5.1 p.2-67; 2002-04-08 2.3.1/2.4 errata,
+  TS, sequencing, XCN-17 and OBR-32–35 items (unpaginated).
+- **test**: protocol `tests/compatibility.rs`, mapping
+  `tests/mapping/compatibility.rs`, the errata sequencing datatype test,
+  `config/tests/hl7_editions.rs` and dialog `tests/hl7_compatibility.rs`.
+
 ## Edition recognition precedes typed qualification
 
 - **what**: Recognize the eight explicit edition IDs in one registry. Keep each

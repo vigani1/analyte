@@ -84,6 +84,15 @@ impl Orders {
         path: &str,
     ) -> Result<(), Error> {
         if let Some(send) = &self.hl7_send {
+            if machine.syntax.edition.is_some_and(|edition| {
+                analyte_hl7::Version::from(edition).uses_compatibility_contract()
+            }) {
+                return Err(invalid(
+                    path,
+                    "orders.hl7_send",
+                    "order writers for compatibility editions are not yet implemented; disable send_ahead",
+                ));
+            }
             let plain = |value: &Identifier| {
                 value.as_str().is_ascii()
                     && value

@@ -202,6 +202,9 @@ fn source_times(
             _ => &[],
         };
         for field in fields {
+            if node.name == "OBX" && *field == 19 && source.uses_compatibility_contract() {
+                continue;
+            }
             if let Some(raw) = present(source.component(*ancestor, *field, 1, 1)?) {
                 let mut time = time::parse(&raw, source.position(*ancestor, *field))?;
                 if let Some(original) = source.raw(*ancestor, *field)? {

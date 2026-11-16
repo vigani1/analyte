@@ -32,15 +32,15 @@ struct EditionRules {
 }
 
 const EDITIONS: [EditionRules; 8] = [
-    // HL7 2.5.1 section 2.8, pp.2-20-22: recognition under the compatibility contract.
+    // HL7 2.5.1 sections 2.8.1-2, pp.2-20-22: receive the established earlier prefix.
     EditionRules {
         edition: Version::V23,
         wire: "2.3",
         truncation: false,
         required_timestamp: false,
-        grammar: None,
+        grammar: Some(&GRAMMARS[0]),
     },
-    // HL7 2.3.1 sections 2.24.1.2/.7/.12, pp.2-92-94.
+    // HL7 2.3.1 sections 2.24.1.2/.7/.12, pp.2-94-95, 2-107.
     EditionRules {
         edition: Version::V231,
         wire: "2.3.1",
@@ -54,15 +54,15 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.4",
         truncation: false,
         required_timestamp: true,
-        grammar: None,
+        grammar: Some(&GRAMMARS[0]),
     },
-    // HL7 2.5.1 sections 2.8, 2.15.9.7: preserve the earlier edition's identity.
+    // HL7 2.5.1 sections 2.8, 2.A.44 and 2.15.5.1: common prefix plus 2.5 control changes.
     EditionRules {
         edition: Version::V25,
         wire: "2.5",
         truncation: false,
         required_timestamp: true,
-        grammar: None,
+        grammar: Some(&COMPATIBILITY_25),
     },
     // HL7 2.5.1 sections 2.15.9.2/.7/.12, pp.2-74-77.
     EditionRules {
@@ -127,6 +127,22 @@ impl Version {
         }
     }
 
+    /// Identifies editions received under the 2.5.1 section 2.8 compatibility contract.
+    /// Edition-specific additions without established meaning remain raw or refused.
+    #[must_use]
+    pub fn uses_compatibility_contract(self) -> bool {
+        matches!(self, Self::V23 | Self::V24 | Self::V25)
+    }
+
+    // Table 0211 can change under section 2.8.2; do not assume that a later
+    // character-set code was already defined in an unavailable earlier edition.
+    pub(crate) fn standard_utf8(raw: &[u8]) -> bool {
+        matches!(
+            Self::parse(raw),
+            Some(Self::V251 | Self::V26 | Self::V282 | Self::V291)
+        )
+    }
+
     pub(crate) fn defines_truncation(raw: &[u8]) -> bool {
         Self::parse(raw).is_some_and(|edition| edition.entry().truncation)
     }
@@ -148,6 +164,7 @@ impl Version {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct Rules {
     // HL7 2.3.1 section 2.24.1.9; 2.5.1 section 2.15.9.9 and section 2.A.44 (MSG).
     pub optional_response_trigger: bool,
@@ -211,6 +228,14 @@ const GRAMMARS: [Rules; 2] = [
         timing_lengths: &[267, 206, 6, 26, 26, 6, 199, 200, 1, 110, 483, 4],
     },
 ];
+
+// HL7 2.5.1 section 2.8.2: interpret the established shared prefix, not
+// unverified later extensions. Section 2.A.44 explicitly dates MSG to 2.5.
+const COMPATIBILITY_25: Rules = Rules {
+    optional_response_trigger: false,
+    message_lengths: Some([3, 3, 7]),
+    ..GRAMMARS[0]
+};
 
 #[cfg(test)]
 mod tests;

@@ -2,6 +2,15 @@
 
 Evidence level: documented. Phase 3.
 
+The native profiles below remain 2.3.1 and 2.5.1. Bounded receiving profiles
+also admit 2.3, 2.4 and 2.5 through HL7 2.5.1 §2.8 and the 2002-04-08
+2.3.1/2.4 errata. They receive the declared ORU/R01 core and legacy query
+exchange, preserve the exact edition in replies, and refuse or retain unresolved
+extensions. Command sending stays blocked in config for those three editions
+until writer integration. See [versions](versions.md) for the precise differences,
+source sections, errata items and limitations; this is not full historical-schema
+conformance or simulator qualification.
+
 Draft conformance checklist, written in our own words from the standard and
 checked in an independent review on 2026-11-15. Chapter, section and PDF page
 numbers point into the standard; nothing here reproduces its text or tables.

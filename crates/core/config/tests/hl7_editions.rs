@@ -17,7 +17,10 @@ fn draft(edition: &str) -> Result<Draft, Error> {
 #[test]
 fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> Result<(), Error> {
     for (config_id, edition, wire) in [
+        ("v23", Edition::V23, "2.3"),
         ("v231", Edition::V231, "2.3.1"),
+        ("v24", Edition::V24, "2.4"),
+        ("v25", Edition::V25, "2.5"),
         ("v251", Edition::V251, "2.5.1"),
     ] {
         let config = draft(config_id)?.validate()?;
@@ -43,14 +46,7 @@ fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> 
 
 #[test]
 fn adr0012_s3_recognized_editions_without_typed_support_fail_config_validation() {
-    for (config_id, wire) in [
-        ("v23", "2.3"),
-        ("v24", "2.4"),
-        ("v25", "2.5"),
-        ("v26", "2.6"),
-        ("v282", "2.8.2"),
-        ("v291", "2.9.1"),
-    ] {
+    for (config_id, wire) in [("v26", "2.6"), ("v282", "2.8.2"), ("v291", "2.9.1")] {
         assert_eq!(Version::parse(wire.as_bytes()).unwrap().as_str(), wire);
         let error = draft(config_id).unwrap().validate().unwrap_err();
         assert!(
@@ -60,7 +56,7 @@ fn adr0012_s3_recognized_editions_without_typed_support_fail_config_validation()
         assert_eq!(
             error.to_string(),
             format!(
-                "synthetic.toml: syntax.edition: HL7 {wire} is recognized but not yet supported for result processing; supported: 2.3.1, 2.5.1"
+                "synthetic.toml: syntax.edition: HL7 {wire} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1"
             )
         );
     }
@@ -99,4 +95,30 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
     )
     .unwrap();
     assert!(draft.validate().is_err());
+}
+
+#[test]
+fn hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_do_not() {
+    for edition in ["v23", "v24", "v25"] {
+        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        for (section, sending) in [
+            (include_str!("../examples/hl7_orders.toml"), false),
+            (include_str!("../examples/hl7_send.toml"), true),
+        ] {
+            let machine = format!("{base}\n{section}");
+            let result = Draft::load(
+                ("synthetic.toml", &machine),
+                ("site.toml", SITE),
+                ("local.toml", "schema_version=1"),
+            )
+            .unwrap()
+            .validate();
+            if sending {
+                assert!(matches!(result, Err(Error::Invalid { key, reason, .. })
+                    if key == "orders.hl7_send" && reason.contains("not yet implemented")));
+            } else {
+                result.unwrap();
+            }
+        }
+    }
 }

@@ -400,14 +400,11 @@ impl<'a> ErrView<'a> {
             });
         }
         match version {
-            Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V282
-            | Version::V291 => Err(Error::EditionRules(version.as_str())),
-            Version::V231 => Ok(Self::V231(get(1)?)),
-            Version::V251 => {
+            Version::V26 | Version::V282 | Version::V291 => {
+                Err(Error::EditionRules(version.as_str()))
+            }
+            Version::V23 | Version::V231 | Version::V24 => Ok(Self::V231(get(1)?)),
+            Version::V25 | Version::V251 => {
                 let severity = get(4)?;
                 if !matches!(severity.raw(), b"W" | b"I" | b"E" | b"F") {
                     return Err(Error::Control {

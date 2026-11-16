@@ -71,6 +71,7 @@ fn parts_config() -> String {
     )
 }
 
+mod compatibility;
 mod scenarios_1;
 
 mod scenarios_2;
