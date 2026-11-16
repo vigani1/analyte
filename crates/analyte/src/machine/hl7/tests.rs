@@ -22,7 +22,7 @@ fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Err
         &path,
         "schema_version = 1\ndata_directory = 'data'\n[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 1000\n",
     )?;
-    Program::load(&path)
+    Program::load(&path).map_err(Into::into)
 }
 
 #[tokio::test]
