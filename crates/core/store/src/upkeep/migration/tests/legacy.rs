@@ -150,7 +150,7 @@ fn plan11_v2_to_v3_migration_retains_every_row_and_trigger() -> TestResult {
     evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
     v2.db.execute(
         "INSERT INTO interpretations VALUES (?1,1,?2)",
-        params![key(&metadata.id)?, key(&evidence)?],
+        params![key(&metadata.id)?, document(&evidence)?],
     )?;
     v2.frame(
         &Identifier::new("legacy-transfer")?,
@@ -213,11 +213,11 @@ fn mutation_adr0003_migration_bounds_metadata_and_interpretation_independently_a
             };
         let limit = 4096;
         let metadata_text = pad(
-            key(&metadata)?,
+            document(&metadata)?,
             if case == "metadata-over" { 4097 } else { limit },
         )?;
         let evidence_text = pad(
-            key(&evidence)?,
+            document(&evidence)?,
             if case == "interpretation-over" {
                 4097
             } else {
@@ -279,7 +279,12 @@ fn mutation_adr0003_migration_refuses_conflicting_legacy_revision_and_accepts_re
         let metadata = receipt(b"legacy")?;
         db.execute(
             "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
-            params![key(&metadata.id)?, key(&metadata)?, b"legacy", b"config"],
+            params![
+                key(&metadata.id)?,
+                document(&metadata)?,
+                b"legacy",
+                b"config"
+            ],
         )?;
         for version in 1..=2 {
             let mut result = production_result(metadata.id)?;
@@ -290,7 +295,7 @@ fn mutation_adr0003_migration_refuses_conflicting_legacy_revision_and_accepts_re
             evidence.outcome = Reading::Results(vec![result]);
             db.execute(
                 "INSERT INTO interpretations VALUES (?1,?2,?3)",
-                params![key(&metadata.id)?, version, key(&evidence)?],
+                params![key(&metadata.id)?, version, document(&evidence)?],
             )?;
         }
         let result = Store::migrate_v3(&mut db, 65_536);

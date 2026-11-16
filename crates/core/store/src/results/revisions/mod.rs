@@ -305,7 +305,7 @@ impl Store {
         if deliveries.len() > count {
             return Err(Error::InvalidInput);
         }
-        let encoded = key(&evidence)?;
+        let encoded = crate::document(&evidence)?;
         if encoded.len() > limit {
             return Err(Error::InvalidInput);
         }

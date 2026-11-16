@@ -393,7 +393,7 @@ impl Store {
         )?;
         append(&tx, &record, Some(&build(&record)?), limit)?;
         if let Some(audit) = audit {
-            let evidence = key(audit)?;
+            let evidence = crate::document(audit)?;
             if evidence.len() > limit {
                 return Err(Error::InvalidInput);
             }
@@ -426,7 +426,7 @@ fn append(
     event: Option<&OrderEventDelivery>,
     limit: usize,
 ) -> Result<(), Error> {
-    let evidence = key(record)?;
+    let evidence = crate::document(record)?;
     if evidence.len() > limit {
         return Err(Error::InvalidInput);
     }
@@ -529,7 +529,7 @@ fn create_items(
             updated_at: order.updated_at,
             source_code: order.source_code.clone(),
         };
-        tx.execute("INSERT INTO machine_order_items(machine_order,item_index,tests,coverage_known,placer,placer_namespace,state) VALUES (?1,?2,?3,1,?4,?5,?6)", params![order.id,index,key(&item.tests)?,item.placer,item.placer_namespace.as_ref().map(Identifier::as_str),SqlOrderState(item.state)])?;
+        tx.execute("INSERT INTO machine_order_items(machine_order,item_index,tests,coverage_known,placer,placer_namespace,state) VALUES (?1,?2,?3,1,?4,?5,?6)", params![order.id,index,crate::document(&item.tests)?,item.placer,item.placer_namespace.as_ref().map(Identifier::as_str),SqlOrderState(item.state)])?;
         write_item(tx, &item, limit)?;
         items.push(item);
     }
@@ -537,7 +537,7 @@ fn create_items(
 }
 
 fn write_item(tx: &Transaction<'_>, item: &MachineOrderItem, limit: usize) -> Result<(), Error> {
-    let evidence = key(item)?;
+    let evidence = crate::document(item)?;
     if evidence.len() > limit {
         return Err(Error::InvalidInput);
     }

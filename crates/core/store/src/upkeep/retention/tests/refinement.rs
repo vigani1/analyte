@@ -258,9 +258,10 @@ fn adr0013_item2_newer_cached_order_work_is_never_purged() -> TestResult {
         tombstone: false,
         expiry: 100000,
     };
-    store
-        .db
-        .execute("UPDATE orders SET evidence=?1", [key(&replacement)?])?;
+    store.db.execute(
+        "UPDATE orders SET evidence=?1",
+        [crate::document(&replacement)?],
+    )?;
     assert_eq!(order_run(&mut store, 86500)?.orders, 0);
     assert!(
         store

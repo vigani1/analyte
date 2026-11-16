@@ -282,7 +282,7 @@ fn seed_adr0003_v6_order_states(
     for state in states {
         for (code, reservation_owner, cancellation) in owners {
             let order = format!("order-{}", expected_orders.len());
-            db.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app',?1,'machine','1',?2,100,101,?3)", params![order, key(&state)?, code])?;
+            db.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app',?1,'machine','1',?2,100,101,?3)", params![order, document(&state)?, code])?;
             let id = db.last_insert_rowid();
             let history = serde_json::json!({"id":id,"key":{"destination":"app","order":order,"machine":"machine"},"version":1,"state":state,"created_at":100,"updated_at":101,"source_code":code}).to_string();
             db.execute(
@@ -291,7 +291,7 @@ fn seed_adr0003_v6_order_states(
             )?;
             db.execute(
                 "INSERT INTO machine_order_items VALUES (?1,1,'[]',0,?2,NULL,?3)",
-                params![id, format!("{id}-1"), key(&state)?],
+                params![id, format!("{id}-1"), document(&state)?],
             )?;
             let item = serde_json::json!({"machine_order":id,"index":1,"tests":[],"coverage_known":false,"placer":format!("{id}-1"),"state":state,"updated_at":101,"source_code":code}).to_string();
             db.execute("INSERT INTO machine_order_item_history(machine_order,item_index,evidence) VALUES (?1,1,?2)",params![id,item])?;

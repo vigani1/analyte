@@ -59,7 +59,7 @@ pub(crate) fn audit_evidence(
         targets
             .push(Identifier::new(&format!("parked:{parked}")).map_err(|_| Error::InvalidInput)?);
     }
-    key(&Audit {
+    crate::document(&Audit {
         actor: action.audit.actor.clone(),
         action: action.audit.action.clone(),
         targets,

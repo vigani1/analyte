@@ -142,7 +142,7 @@ fn mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent() 
         cursor: Identifier::new("cursor")?,
         complete: false,
         polled: 100,
-        orders: vec![serde_json::from_str(&key(&order)?)?],
+        orders: vec![serde_json::from_str(&document(&order)?)?],
     };
     store.order_page(&page)?;
     assert!(matches!(

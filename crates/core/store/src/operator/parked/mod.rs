@@ -28,7 +28,7 @@ pub(crate) fn evidence(
         reason: Reason::new(reason).map_err(|_| Error::InvalidInput)?,
         targets: vec![Identifier::new(target).map_err(|_| Error::InvalidInput)?],
     };
-    crate::key(&ParkingEvidence { details, context })
+    crate::document(&ParkingEvidence { details, context })
 }
 
 impl Store {
