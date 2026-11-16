@@ -154,7 +154,11 @@ fn validate_scope(m: &MachineDocument, departure: &MachineDeparture) -> Result<(
             }
         }
         MachineDeparture::Hl7Utf8InV231(_) => {
-            if m.syntax.edition != Some(Edition::V231) {
+            if !m
+                .syntax
+                .edition
+                .is_some_and(|edition| analyte_hl7::Version::from(edition).utf8_departure())
+            {
                 return Err(Refusal::EditionMismatch);
             }
             if !m.syntax.allow_utf8_in_v231 || m.syntax.encoding != Encoding::Utf8 {

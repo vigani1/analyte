@@ -1,20 +1,18 @@
 //! Qualifies required report context independently of selected clinical field mappings.
 use crate::{Error, Output, Position, Problem, finding};
-use analyte_hl7::{Field, Message, Msh, Version};
+use analyte_hl7::{Field, Message, Msh};
 
 pub(super) fn qualify(message: &Message, output: &mut Output) -> Result<(), Error> {
-    let modern = matches!(
-        Msh::new(message)
-            .map_err(|source| Error::Hl7 {
-                position: Position {
-                    record: 1,
-                    field: 12
-                },
-                source
-            })?
-            .version(),
-        Version::V282 | Version::V291
-    );
+    let modern = (Msh::new(message)
+        .map_err(|source| Error::Hl7 {
+            position: Position {
+                record: 1,
+                field: 12,
+            },
+            source,
+        })?
+        .version())
+    .report_status_time();
     for (index, segment) in message.segments().enumerate() {
         let required: &[usize] = match segment.id() {
             b"OBR" if modern => &[4, 22, 25],

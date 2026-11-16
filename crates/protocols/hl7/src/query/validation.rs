@@ -85,13 +85,7 @@ pub(super) fn definition(segment: Segment<'_>, version: Version) -> Result<(), E
         edition_timestamp(&v.components().collect::<Vec<_>>(), version)
     })?;
     check(segment, name, 7, true, false, 10, quantity)?;
-    let length = match version {
-        Version::V282 | Version::V291 => {
-            return Err(Error::EditionRules(version.as_str()));
-        }
-        Version::V23 | Version::V231 | Version::V24 | Version::V25 => 60,
-        Version::V251 | Version::V26 => 250,
-    };
+    let length = version.query_person_bytes()?;
     check(segment, name, 8, true, true, length, |v| xcn(v, version))?;
     for n in [9, 10] {
         check(segment, name, n, true, true, length, |v| {
@@ -111,17 +105,7 @@ pub(super) fn definition(segment: Segment<'_>, version: Version) -> Result<(), E
 pub(super) fn filter(segment: Segment<'_>, version: Version) -> Result<(), Error> {
     let name = "QRF";
     let rules = version.require_rules()?;
-    last_field(
-        segment,
-        name,
-        match version {
-            Version::V282 | Version::V291 => {
-                return Err(Error::EditionRules(version.as_str()));
-            }
-            Version::V23 | Version::V231 | Version::V24 | Version::V25 => 9,
-            Version::V251 | Version::V26 => 10,
-        },
-    )?;
+    last_field(segment, name, version.query_filter_fields()?)?;
     check(segment, name, 1, true, true, 20, text)?;
     for n in [2, 3] {
         check(segment, name, n, false, false, 26, |v| {
@@ -150,14 +134,10 @@ pub(super) fn filter(segment: Segment<'_>, version: Version) -> Result<(), Error
         rules.query_timing_bytes.unwrap_or(0),
         |v| rules.query_timing_bytes.is_some() && timing(v, version),
     )?;
-    match version {
-        Version::V282 | Version::V291 => {
-            return Err(Error::EditionRules(version.as_str()));
-        }
-        Version::V23 | Version::V231 | Version::V24 | Version::V25 => {}
-        Version::V251 | Version::V26 => check(segment, name, 10, false, false, 10, |v| {
+    if version.query_filter_fields()? == 10 {
+        check(segment, name, 10, false, false, 10, |v| {
             text(v) && decimal(v.raw())
-        })?,
+        })?;
     }
     // Date precision and offsets are retained. The host decides how to compare
     // date ranges under its agreed timezone; no missing precision is invented.

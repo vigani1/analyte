@@ -48,7 +48,11 @@ pub(super) fn validate_stack(m: &MachineDocument, path: &str) -> Result<(), Erro
     let f = &m.framing;
     let d = &m.dialog;
     if let Some(enabled) = d.enhanced_application_acknowledgments
-        && (m.syntax.edition != Some(Edition::V291) || enabled)
+        && (!m
+            .syntax
+            .edition
+            .is_some_and(|edition| analyte_hl7::Version::from(edition).paired_application_ack())
+            || enabled)
     {
         return Err(invalid(
             path,
