@@ -739,6 +739,14 @@ fn parse_fields(
                     number,
                     position,
                 )? {
+                    if component.iter().any(|byte| {
+                        !matches!(byte, 32..=126 | 128..=254) && !d.bytes().contains(byte)
+                    }) {
+                        return Err(Error::Decode {
+                            record: number,
+                            field: position,
+                        });
+                    }
                     let expanded = expand(component, d);
                     let text = decode(&expanded).ok_or(Error::Decode {
                         record: number,

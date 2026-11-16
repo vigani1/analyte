@@ -325,3 +325,20 @@ fn lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence() -> Result
     ));
     Ok(())
 }
+
+// LIS02-A2 section 5.1: text components exclude literal control characters.
+#[test]
+fn lis02_5_1_literal_controls_rejected_in_text_components() {
+    for control in [7, 9, 11, 12] {
+        let mut wire = b"H|\\^&|\rP|1|name".to_vec();
+        wire.push(control);
+        wire.extend_from_slice(b"text\rL|1\r");
+        assert!(matches!(
+            parse(&wire, Limits::default()),
+            Err(Error::Decode {
+                record: 2,
+                field: 3
+            })
+        ));
+    }
+}

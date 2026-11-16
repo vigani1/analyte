@@ -140,3 +140,7 @@ review prior deliveries for reconciliation rather than overwriting their history
 Contextual C/M levels are tracked independently of P/O/R ancestry. Section
 5.6.7 resets the counter when the same type changes level or a lower numbered
 level intervenes. Regression: `lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence`.
+
+Section 5.1 text components reject literal controls before escape expansion;
+header-selected delimiters remain syntax. Delimiter escapes and raw bytes are
+unchanged. Test: `lis02_5_1_literal_controls_rejected_in_text_components`.
