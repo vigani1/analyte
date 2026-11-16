@@ -492,6 +492,16 @@ struct MappedReading {
 fn map_reading(mapping: Result<analyte_mapping::Output, Error>) -> Result<MappedReading, Error> {
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
+        Ok(output) if !output.status_notices.is_empty() => {
+            // Until notification custody commits atomically, raw storage cannot justify AA.
+            (
+                Reading::Failed(analyte_model::Reason::new(
+                    "LAW execution notice requires transactional host custody",
+                )?),
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         Ok(output) => {
             accepted = !output.requires_parking();
             let mut findings = output
@@ -557,3 +567,6 @@ fn mapping_outcome(
         result,
     ))
 }
+
+#[cfg(test)]
+mod tests;

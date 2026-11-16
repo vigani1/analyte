@@ -306,7 +306,7 @@ fn adr0003_unmapped_evidence_alone_requires_parking() -> TestResult {
 }
 
 #[test]
-fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_specifically_parked() -> TestResult {
+fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_typed_without_results() -> TestResult {
     let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
     let original = std::str::from_utf8(LAW_RESULT)?;
     let prefix = original.split("OBX|").next().ok_or("fixture")?;
@@ -318,21 +318,155 @@ fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_specifically_parked() -> TestRe
         )?;
         let results = analyte_hl7::law::Results::new(&message)?;
         let output = analyte_mapping::map_law(&results, &cfg, input())?;
-        assert!(output.requires_parking());
+        assert!(!output.requires_parking());
         assert!(output.results.is_empty());
-        assert!(
-            output
-                .findings
-                .iter()
-                .any(|f| f.problem == Problem::UnsupportedLawStatusOnly)
+        assert_eq!(output.status_notices.len(), 1);
+        let notice = output.status_notices.first().ok_or("notice")?;
+        assert_eq!(
+            notice.execution,
+            match status {
+                "IP" => AwosExecution::InProgress,
+                "SC" => AwosExecution::Scheduled,
+                "CA" => AwosExecution::AnalyzerCancelled,
+                _ => return Err("test status".into()),
+            }
         );
-        assert!(
-            !output
-                .findings
-                .iter()
-                .any(|f| f.problem == Problem::NoObservations)
-        );
+        assert!(matches!(
+            notice.estimate,
+            analyte_mapping::law::AvailabilityEstimate::Absent
+        ));
         assert_eq!(message.raw(), wire.as_bytes());
     }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c8_table_c8_9_estimate_preserves_spelling_null_and_header_zone() -> TestResult {
+    use analyte_mapping::law::AvailabilityEstimate;
+    let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
+    let original = std::str::from_utf8(LAW_RESULT)?;
+    let prefix = original.split("OBX|").next().ok_or("fixture")?;
+    let before_orc = prefix.split("ORC|").next().ok_or("ORC")?;
+    for estimate in ["", "\"\"", "20260101", "20260101123000"] {
+        let wire = format!(
+            "{before_orc}{}",
+            segment("ORC", 27, &[(1, "SC"), (5, "IP"), (27, estimate)])?
+        );
+        let message = analyte_hl7::Message::parse(
+            wire.as_bytes(),
+            cfg.effective().hl7_options().ok_or("options")?,
+        )?;
+        let results = analyte_hl7::law::Results::new(&message)?;
+        let output = analyte_mapping::map_law(&results, &cfg, input())?;
+        let notice = output.status_notices.first().ok_or("notice")?;
+        match (&notice.estimate, estimate) {
+            (AvailabilityEstimate::Absent, "") | (AvailabilityEstimate::Null, "\"\"") => {}
+            (
+                AvailabilityEstimate::Supplied {
+                    original,
+                    header_time,
+                    offset_from_header,
+                },
+                supplied,
+            ) => {
+                assert_eq!(original.as_str(), supplied);
+                assert!(header_time.as_str().ends_with("+0000"));
+                assert_eq!(*offset_from_header, Some(UtcOffset::try_from(0)?));
+            }
+            _ => return Err("estimate distinction lost".into()),
+        }
+        assert!(!output.requires_parking());
+        assert!(output.results.is_empty());
+    }
+    for estimate in [
+        "20260101123000+0100",
+        "20260101123000^S",
+        "20260230",
+        "20260101123000^",
+    ] {
+        let wire = format!(
+            "{before_orc}{}",
+            segment("ORC", 27, &[(1, "SC"), (5, "IP"), (27, estimate)])?
+        );
+        let message = analyte_hl7::Message::parse(
+            wire.as_bytes(),
+            cfg.effective().hl7_options().ok_or("options")?,
+        )?;
+        assert!(
+            analyte_hl7::law::Results::new(&message).is_err(),
+            "{estimate}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_3_29_4_1_2_1_mixed_status_groups_do_not_hide_result_groups() -> TestResult {
+    let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
+    let original = std::str::from_utf8(LAW_RESULT)?;
+    let order = original
+        .split("OBR|")
+        .nth(1)
+        .ok_or("OBR")?
+        .split("ORC|")
+        .next()
+        .ok_or("ORC")?;
+    let wire = format!("{original}OBR|{order}ORC|SC||||IP\r");
+    let message = analyte_hl7::Message::parse(
+        wire.as_bytes(),
+        cfg.effective().hl7_options().ok_or("options")?,
+    )?;
+    let results = analyte_hl7::law::Results::new(&message)?;
+    assert_eq!(results.status_notices().len(), 1);
+    assert_eq!(results.observations().len(), 1);
+    let output = analyte_mapping::map_law(&results, &cfg, input())?;
+    assert_eq!(output.status_notices.len(), 1);
+    assert_eq!(output.results.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn law_tf2b_c8_table_c8_9_estimate_zone_is_only_from_msh7_and_ip_results_are_not_empty_notices()
+-> TestResult {
+    use analyte_mapping::law::AvailabilityEstimate;
+    let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
+    let original = std::str::from_utf8(LAW_RESULT)?;
+    let prefix = original.split("OBX|").next().ok_or("fixture")?;
+    let before_orc = prefix
+        .split("ORC|")
+        .next()
+        .ok_or("ORC")?
+        .replace("+0000", "-0330");
+    let wire = format!(
+        "{before_orc}{}",
+        segment("ORC", 27, &[(1, "SC"), (5, "IP"), (27, "20260101123000")])?
+    );
+    let message = analyte_hl7::Message::parse(
+        wire.as_bytes(),
+        cfg.effective().hl7_options().ok_or("options")?,
+    )?;
+    let results = analyte_hl7::law::Results::new(&message)?;
+    let output = analyte_mapping::map_law(&results, &cfg, input())?;
+    let AvailabilityEstimate::Supplied {
+        original,
+        header_time,
+        offset_from_header,
+    } = &output.status_notices.first().ok_or("notice")?.estimate
+    else {
+        return Err("missing estimate".into());
+    };
+    assert_eq!(original.as_str(), "20260101123000");
+    assert!(header_time.as_str().ends_with("-0330"));
+    assert_eq!(*offset_from_header, Some(UtcOffset::try_from(-12600)?));
+    let wire = std::str::from_utf8(LAW_RESULT)?.replace("ORC|SC||||CM", "ORC|SC||||IP");
+    let message = analyte_hl7::Message::parse(
+        wire.as_bytes(),
+        cfg.effective().hl7_options().ok_or("options")?,
+    )?;
+    let results = analyte_hl7::law::Results::new(&message)?;
+    assert!(results.status_notices().is_empty());
+    let output = analyte_mapping::map_law(&results, &cfg, input())?;
+    assert!(output.status_notices.is_empty());
+    assert_eq!(output.results.len(), 1);
     Ok(())
 }

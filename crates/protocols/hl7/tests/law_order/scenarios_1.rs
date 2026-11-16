@@ -259,7 +259,8 @@ fn law_tf2b_c8_orc_9_m_event_timestamp_and_27_re_available_timestamp() -> TestRe
     ] {
         manager("ORC", &[(9, value)], false)?;
     }
-    for value in ["", "20240229", "20240229120000"] {
+    // ADR 0016 retains explicit null distinctly from an absent estimate (TF-2b C.8-9).
+    for value in ["", "\"\"", "20240229", "20240229120000"] {
         check(
             "ORC",
             &[(27, value)],
@@ -268,7 +269,6 @@ fn law_tf2b_c8_orc_9_m_event_timestamp_and_27_re_available_timestamp() -> TestRe
         )?;
     }
     for value in [
-        "\"\"",
         "20230229",
         "2024010112",
         "20240101120000+0000",

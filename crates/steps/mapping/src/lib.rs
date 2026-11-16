@@ -295,6 +295,8 @@ pub struct SourceComment {
 /// All mapped and unrepresentable observations, together with every discovered issue.
 #[derive(Debug, Default)]
 pub struct Output {
+    /// Typed non-result LAW execution notices, including those in mixed messages.
+    pub status_notices: Vec<law::StatusNotice>,
     /// Replacement units, in first-occurrence order.
     pub results: Vec<MappedResult>,
     /// Observations requiring a code/system decision; never silently discarded.

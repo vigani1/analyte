@@ -10,6 +10,7 @@ enum PatientPhase {
 }
 
 pub(super) struct ResultGroups<'a> {
+    pub(super) notices: Vec<StatusNotice<'a>>,
     specimen: Option<Segment<'a>>,
     container: Option<Segment<'a>>,
     pub(super) order: Option<Segment<'a>>,
@@ -28,6 +29,7 @@ pub(super) struct ResultGroups<'a> {
 impl<'a> ResultGroups<'a> {
     pub(super) fn new() -> Self {
         Self {
+            notices: Vec::new(),
             specimen: None,
             container: None,
             order: None,
@@ -141,6 +143,15 @@ impl<'a> ResultGroups<'a> {
             return Err(content("ORC", 1));
         }
         self.order_status = Some(law::OrderStatus::parse(raw(segment, 5))?);
+        if let Some(status) = ExecutionStatus::from_order(self.order_status) {
+            self.notices.push(StatusNotice {
+                status,
+                order: self.order.ok_or(content("OBR", 0))?,
+                control: segment,
+                specimen: self.specimen.ok_or(content("SPM", 0))?,
+                container: self.container.ok_or(content("SAC", 0))?,
+            });
+        }
         self.attached.push(Attached {
             parent: self.parent.ok_or(content("ORC", 0))?,
             segment,
@@ -184,6 +195,9 @@ impl<'a> ResultGroups<'a> {
             .observation_count
             .checked_add(1)
             .ok_or(content("OBX", 1))?;
+        if self.observation_count == 0 && self.order_status == Some(law::OrderStatus::InProgress) {
+            self.notices.pop().ok_or(content("ORC", 5))?;
+        }
         if raw(segment, 1) != sequence.to_string().as_bytes() {
             return Err(content("OBX", 1));
         }

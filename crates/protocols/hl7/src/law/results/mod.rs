@@ -282,6 +282,7 @@ impl<'a> Observation<'a> {
 /// Atomically validated LAB-29 interpretation borrowing the complete original message.
 #[derive(Debug)]
 pub struct Results<'a> {
+    notices: Vec<StatusNotice<'a>>,
     specimen_observations: Vec<SpecimenObservation<'a>>,
     message: &'a Message,
     observations: Vec<Observation<'a>>,
@@ -371,6 +372,7 @@ impl<'a> Results<'a> {
             }
         }
         Ok(Self {
+            notices: groups.notices,
             specimen_observations: groups.specimen_observations,
             message,
             observations: groups.observations,
@@ -382,6 +384,12 @@ impl<'a> Results<'a> {
     #[must_use]
     pub fn observations(&self) -> &[Observation<'a>] {
         &self.observations
+    }
+
+    /// Returns status-only AWOS groups, including those alongside result-bearing groups.
+    #[must_use]
+    pub fn status_notices(&self) -> &[StatusNotice<'a>] {
+        &self.notices
     }
 
     /// Returns specimen observations without falsely assigning an AWOS to them.
@@ -469,4 +477,6 @@ pub fn result_acknowledgment(
 }
 
 mod groups;
+mod notice;
 use groups::ResultGroups;
+pub use notice::{ExecutionStatus, StatusNotice};

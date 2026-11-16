@@ -3,7 +3,9 @@ use crate::inbound::{grouping, source};
 use crate::{Error, Input, Output, is_law};
 use analyte_config::Validated;
 mod orders;
+mod status;
 pub use orders::{Command, address, map_order};
+pub use status::{AvailabilityEstimate, StatusNotice};
 /// Maps atomically validated LAB-29 through the shared field mapper and translations.
 /// AWOS identity takes precedence; unsolicited work needs an explicit analyzer identity.
 /// # Errors
@@ -19,5 +21,7 @@ pub fn map(
     crate::hl7::validate_message(results.message(), config)?;
     let mut source = source::law(results)?;
     source.attach_comments()?;
-    grouping::message(&source, config, input, Some(results))
+    let mut output = grouping::message(&source, config, input, Some(results))?;
+    status::map(results, &source, &mut output)?;
+    Ok(output)
 }
