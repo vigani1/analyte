@@ -40,7 +40,7 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
             }])
         })
         .map(|commit| commit.version)?;
-    let mut audit = Audit {
+    let audit = Audit {
         actor: Identifier::new("operator")?,
         action: Identifier::new("delivery-resend")?,
         targets: vec![Identifier::new(&format!(
@@ -101,6 +101,10 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
             )?
             .is_empty()
     );
+    verify_unknown_resend_keeps_audit_count(&mut store, audit)
+}
+
+fn verify_unknown_resend_keeps_audit_count(store: &mut Store, mut audit: Audit) -> TestResult {
     let unknown = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     audit.targets = vec![Identifier::new(&format!(
         "delivery:{}",
