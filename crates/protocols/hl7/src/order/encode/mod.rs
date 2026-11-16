@@ -141,6 +141,14 @@ pub fn orm(
     if header.version.uses_dtm() {
         return Err(invalid("MSH", 9));
     }
+    if header.version == Version::V231
+        && matches!(subject, Subject::Identifier { .. })
+        && orders
+            .iter()
+            .any(|order| matches!(order, Order::New { .. }))
+    {
+        return Err(invalid("PID", 5));
+    }
     build(orders, subject, header, options, Family::Orm)
 }
 
