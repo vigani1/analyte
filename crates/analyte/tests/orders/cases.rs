@@ -1,4 +1,4 @@
-//! LIS02-A2 §§8,11,12 and ADR 0004, using synthetic loopback peers only.
+//! LIS02-A2 §§8,11,12 and ADR 0004, using synthetic loopback peers only. Kept whole: ASTM order context cases share one query and send-ahead exchange fixture.
 use super::*;
 use crate::support::HANG_GUARD;
 use tokio::{

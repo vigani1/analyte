@@ -244,6 +244,7 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     Ok(())
 }
 
+#[cfg(feature = "test-hooks")]
 #[tokio::test]
 async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;

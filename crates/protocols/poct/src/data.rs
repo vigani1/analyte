@@ -1,4 +1,4 @@
-//! POCT01-A2 Appendix B section 8 values, retaining source spelling.
+//! POCT01-A2 Appendix B section 8 values, retaining source spelling. Kept whole: POCT data structures and their field accessors define one wire vocabulary.
 use crate::Element;
 
 /// Invalid data type content; no source payload is included in the error.

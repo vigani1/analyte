@@ -423,6 +423,7 @@ async fn adr0003_lis01_6_3_1_2_recording_disconnect_mid_frame_retains_bytes_with
     failure_recording_case("astm-disconnect", false).await
 }
 
+#[cfg(feature = "test-hooks")]
 #[tokio::test]
 async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_retains_original_and_delivers_once()
 -> Result<(), Error> {

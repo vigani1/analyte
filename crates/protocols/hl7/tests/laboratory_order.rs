@@ -1,4 +1,4 @@
-//! Synthetic non-LAW O21/O22 fixtures from HL7 2.5.1 §§4.4.6–7.
+//! Synthetic non-LAW O21/O22 fixtures from HL7 2.5.1 §§4.4.6–7. Kept whole: Laboratory order validation cases form one message-family conformance matrix.
 use analyte_hl7::order::{
     self, Code, Error, Header, Order, OrderId, OrderMessage, OrderResponse, Outcome, Patient,
     Priority, Processing, SampleField, SampleId, Specimen, Subject, Timestamp, Timing,

@@ -443,6 +443,7 @@ async fn law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_
     Ok(())
 }
 
+#[cfg(feature = "test-hooks")]
 #[tokio::test]
 async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservation()
 -> Result<(), Error> {

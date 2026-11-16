@@ -447,7 +447,6 @@ async fn failure_recording_case(name: &str, completes: bool) -> Result<(), Error
     Ok(())
 }
 
-#[cfg(feature = "test-hooks")]
 fn assert_completed_recording_retained(
     path: &Path,
     db: &rusqlite::Connection,
@@ -470,7 +469,6 @@ mod scenarios_1;
 
 mod scenarios_2;
 
-#[cfg(feature = "test-hooks")]
 fn assert_failure_recording_retained(
     path: &Path,
     completes: bool,

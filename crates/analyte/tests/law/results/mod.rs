@@ -82,7 +82,6 @@ fn check(
 }
 
 #[cfg(feature = "test-hooks")]
-#[cfg(feature = "test-hooks")]
 async fn read_reply(peer: &mut tokio::net::TcpStream) -> Result<String, Error> {
     tokio::time::timeout(HANG_GUARD, async {
         let mut bytes = Vec::new();

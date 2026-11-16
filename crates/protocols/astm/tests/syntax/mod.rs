@@ -1,4 +1,4 @@
-//! Synthetic LIS02-A2 syntax conformance and resource-limit tests.
+//! Synthetic LIS02-A2 syntax conformance and resource-limit tests. Kept whole: Shared synthetic record fixtures and malformed grammar tables support the child scenarios.
 use analyte_astm::{Delimiters, Error, Kind, Limits, Presence, ResultStatus, parse, parse_with};
 use proptest::prelude::*;
 
