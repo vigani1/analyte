@@ -1,5 +1,20 @@
 # HL7 versions
 
+## Later-edition source review in progress
+
+The 2.6 receiving/query implementation must use scalar DTM for MSH-7 and the
+selected QRD/QRF time fields (2.6 §2.14.9.7 p.57; §5.10.4 pp.97–102).
+CE and TS are withdrawn (chapter 2A §§2.A.6, 2.A.77); CWE and DTM have their
+own constraints (§§2.A.13, 2.A.22). MSH-10 and MSA-2 allow 199 characters
+(chapter 2 §2.14.8/9 attribute tables). XCN remains 23 components, but its
+name-context, check-digit and time-component limits differ (§2.A.86 pp.2-190–193).
+Deprecated nested DR and TQ filters require an explicit bounded-profile policy.
+
+The 2.8.2 §5.10.2 and 2.9.1 §5.9.2 clauses mark the original query forms
+withdrawn as of 2.7. They must not acquire a working legacy handler merely from
+registering a newer edition. Config enablement follows tested typed support;
+command writers remain a separate step-5 PR. Evidence stays documented.
+
 **2.3.1 and 2.5.1** have native typed profiles; **2.3, 2.4 and 2.5** have
 bounded receiving compatibility profiles described below. MLLP Release 1 is the framing
 profile. Evidence remains documented. Documents for 2.6, 2.8.2 and 2.9.1
