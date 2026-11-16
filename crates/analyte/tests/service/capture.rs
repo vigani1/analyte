@@ -18,32 +18,7 @@ async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_
         let text = std::fs::read_to_string(&*path)?
             .replace("id = 'hl7'", &format!("id = 'hl7'\ncapture = {enabled}"));
         std::fs::write(&*path, text)?;
-        let listener = if client {
-            let listener = TcpListener::bind("127.0.0.1:0").await?;
-            let definition = temp.path().join("hl7.toml");
-            std::fs::write(
-                &definition,
-                std::fs::read_to_string(&definition)?.replace("tcp_server", "tcp_client"),
-            )?;
-            let site = temp.path().join("hl7-site.toml");
-            let previous = Program::load(&path)?
-                .machines()
-                .first()
-                .ok_or("machine")?
-                .snapshot()
-                .effective()
-                .site()
-                .endpoint
-                .clone();
-            std::fs::write(
-                &site,
-                std::fs::read_to_string(&site)?
-                    .replace(&previous, &listener.local_addr()?.to_string()),
-            )?;
-            Some(listener)
-        } else {
-            None
-        };
+        let listener = capture_listener(temp.path(), &path, client).await?;
         let mut reference = Reference::start(
             &temp.path().join("receiver.db"),
             TcpListener::bind("127.0.0.1:0").await?,
@@ -102,45 +77,7 @@ async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_
         running.stop().await?;
         let directory = temp.path().join("data/captures/hl7");
         if enabled && !fail {
-            let mut files = std::fs::read_dir(&directory)?
-                .map(|entry| entry.map(|entry| entry.path()))
-                .collect::<Result<Vec<_>, _>>()?;
-            files.sort();
-            assert_eq!(files.len(), 2);
-            for (file, ack) in files.into_iter().zip(acknowledgments) {
-                assert!(file.starts_with(temp.path().join("data")));
-                let (header, events) =
-                    recording::read(&std::fs::read(&file)?[..], recording::Limits::default())?;
-                assert_eq!(header.evidence, Evidence::Machine);
-                assert_eq!(header.de_identification, "NOT de-identified");
-                assert_eq!(
-                    header.stack,
-                    [
-                        if client { "tcp_client" } else { "tcp_server" },
-                        "mllp",
-                        "hl7_receiver",
-                        "hl7_v2"
-                    ]
-                );
-                let bytes = |direction| {
-                    events
-                        .iter()
-                        .filter(|e| e.link.is_none() && e.direction == direction)
-                        .flat_map(|e| e.bytes.iter().copied())
-                        .collect::<Vec<_>>()
-                };
-                assert_eq!(bytes(Direction::HostToMachine), ack.as_bytes());
-                let wire = analyte_framing::mllp::encode(
-                    ORU,
-                    analyte_framing::mllp::Limit::new(1048576)?,
-                )?;
-                assert_eq!(bytes(Direction::MachineToHost), wire);
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    assert_eq!(std::fs::metadata(file)?.permissions().mode() & 0o077, 0);
-                }
-            }
+            assert_captured_conversations(temp.path(), client, acknowledgments)?;
         } else if fail {
             let program = Program::load(&path)?;
             let mut store = analyte::open_system_store(&program).await?;
@@ -163,4 +100,82 @@ fn analyte_deadline() -> std::time::Instant {
     std::time::Instant::now()
         .checked_add(HANG_GUARD)
         .unwrap_or_else(std::time::Instant::now)
+}
+
+async fn capture_listener(
+    root: &Path,
+    path: &Path,
+    client: bool,
+) -> Result<Option<TcpListener>, Error> {
+    let listener = if client {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let definition = root.join("hl7.toml");
+        std::fs::write(
+            &definition,
+            std::fs::read_to_string(&definition)?.replace("tcp_server", "tcp_client"),
+        )?;
+        let site = root.join("hl7-site.toml");
+        let previous = Program::load(path)?
+            .machines()
+            .first()
+            .ok_or("machine")?
+            .snapshot()
+            .effective()
+            .site()
+            .endpoint
+            .clone();
+        std::fs::write(
+            &site,
+            std::fs::read_to_string(&site)?.replace(&previous, &listener.local_addr()?.to_string()),
+        )?;
+        Some(listener)
+    } else {
+        None
+    };
+    Ok(listener)
+}
+
+fn assert_captured_conversations(
+    root: &Path,
+    client: bool,
+    acknowledgments: Vec<String>,
+) -> Result<(), Error> {
+    let directory = root.join("data/captures/hl7");
+    let mut files = std::fs::read_dir(&directory)?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<Vec<_>, _>>()?;
+    files.sort();
+    assert_eq!(files.len(), 2);
+    for (file, ack) in files.into_iter().zip(acknowledgments) {
+        assert!(file.starts_with(root.join("data")));
+        let (header, events) =
+            recording::read(&std::fs::read(&file)?[..], recording::Limits::default())?;
+        assert_eq!(header.evidence, Evidence::Machine);
+        assert_eq!(header.de_identification, "NOT de-identified");
+        assert_eq!(
+            header.stack,
+            [
+                if client { "tcp_client" } else { "tcp_server" },
+                "mllp",
+                "hl7_receiver",
+                "hl7_v2"
+            ]
+        );
+        let bytes = |direction| {
+            events
+                .iter()
+                .filter(|e| e.link.is_none() && e.direction == direction)
+                .flat_map(|e| e.bytes.iter().copied())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(bytes(Direction::HostToMachine), ack.as_bytes());
+        let wire = analyte_framing::mllp::encode(ORU, analyte_framing::mllp::Limit::new(1048576)?)?;
+        assert_eq!(bytes(Direction::MachineToHost), wire);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(file)?.permissions().mode() & 0o077, 0);
+        }
+    }
+    Ok(())
 }
