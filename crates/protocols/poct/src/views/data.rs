@@ -124,6 +124,7 @@ pub struct Quantity {
 pub struct Timestamp {
     original: String,
     offset_seconds: Option<i32>,
+    local_bytes: usize,
 }
 
 impl Timestamp {
@@ -141,6 +142,11 @@ impl Timestamp {
             let local = value.get(..i).ok_or(DataError::Time)?;
             let offset = value.get(i..).ok_or(DataError::Time)?;
             (local, Some(parse_offset(offset)?))
+        } else if let Some(local) = value.strip_suffix('Z') {
+            if !local.contains('T') {
+                return Err(DataError::Time);
+            }
+            (local, Some(0))
         } else {
             (value, None)
         };
@@ -186,6 +192,7 @@ impl Timestamp {
         Ok(Self {
             original: value.to_owned(),
             offset_seconds,
+            local_bytes: local.len(),
         })
     }
 
@@ -193,6 +200,14 @@ impl Timestamp {
     #[must_use]
     pub fn original(&self) -> &str {
         &self.original
+    }
+
+    /// Returns the validated local calendar text, excluding the supplied offset.
+    #[must_use]
+    pub fn local(&self) -> &str {
+        self.original
+            .get(..self.local_bytes)
+            .expect("validated timestamp boundary")
     }
 
     /// Offset explicitly supplied by the source; never inferred from the host.
