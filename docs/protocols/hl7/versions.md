@@ -1,5 +1,20 @@
 # HL7 versions
 
+## 2.8.2 and 2.9.1 receiving source review
+
+Part A qualifies the existing bounded ORU/R01 profile, without selecting the
+optional participation, device, access-restriction or specimen groups in
+§7.3.1 of either edition (2.8.2 pp.13–16; 2.9.1 pp.9–13).
+CWE adds a third equivalent coding tuple and OID/value-set metadata:
+2.8.2 §2.A.13 pp.24–32; 2.9.1 §2A.2.13 pp.25–33. Conformance lengths are
+minimum receiver capacities rather than universal maxima (2.8.2 §2.5.5.3–4
+pp.13–14; 2.9.1 §2.4.5.3–4 pp.15–16).
+OBR-14 and other old fields are withdrawn (§7.4.1 in both editions), so their
+earlier typed meanings cannot be inherited. DTM remains scalar; 2.9.1's
+negative-zero zone distinguishes UTC from a known civil zero offset
+(§2A.2.22 pp.39–40). These differences require explicit receiving rules and
+tests before either result edition is enabled. Legacy query stays refused.
+
 ## Later-edition receiving profiles
 
 The 2.6 receiving/query implementation uses scalar DTM for MSH-7 and the
