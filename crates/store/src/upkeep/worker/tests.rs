@@ -167,3 +167,55 @@ mod mutation_tests {
         Ok(())
     }
 }
+
+#[test]
+fn adr0003_rule7_worker_deadline_equality_refuses_execution() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("deadline.db"))?;
+    let deadline = Instant::now();
+    for (now, expected) in [
+        (deadline - Duration::from_nanos(1), true),
+        (deadline, false),
+        (deadline + Duration::from_nanos(1), false),
+    ] {
+        let (sent, received) = std::sync::mpsc::channel();
+        let request = super::Request {
+            deadline,
+            operation: Box::new(move |_| {
+                let _ = sent.send(());
+            }),
+        };
+        request.run(&mut store, now);
+        assert_eq!(received.try_recv().is_ok(), expected);
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0003_rule7_worker_startup_guard_cancels_before_owner_join() -> TestResult {
+    let mut startup = startup::Startup::new(Instant::now() + HANG_GUARD);
+    let fixed_now = Instant::now();
+    startup.clock = Some(std::sync::Arc::new(move || fixed_now));
+    let (released, release) = std::sync::mpsc::channel();
+    let opening = startup.clone();
+    let thread = std::thread::spawn(move || {
+        let observed = release.recv_timeout(HANG_GUARD);
+        assert!(observed.is_ok());
+        assert!(opening.expired());
+    });
+    let handle = Handle {
+        sender: None,
+        thread: Some(thread),
+    };
+    assert!(!startup.expired());
+    {
+        let _cancel = super::CancelStartup(startup.clone());
+        // Leaving the scope is the same guard destruction used by future cancellation.
+    }
+    // Require cancellation before the owner is allowed to complete, not after a join.
+    let cancelled_before_release = startup.expired();
+    released.send(())?;
+    assert!(cancelled_before_release);
+    drop(handle);
+    Ok(())
+}

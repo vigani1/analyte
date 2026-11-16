@@ -100,6 +100,13 @@ impl Store {
         explicit_superseded: bool,
         audit: &Audit,
     ) -> Result<(), Error> {
+        type ResendRow = (
+            DeliveryState,
+            DeliveryKind,
+            String,
+            Option<String>,
+            Option<i64>,
+        );
         let target = format!("delivery:{}", serde_json::from_str::<String>(&key(&id)?)?);
         if audit.action.as_str() != "delivery-resend"
             || !audit.targets.iter().any(|item| item.as_str() == target)
@@ -112,13 +119,6 @@ impl Store {
             .db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let id_key = key(&id)?;
-        type ResendRow = (
-            DeliveryState,
-            DeliveryKind,
-            String,
-            Option<String>,
-            Option<i64>,
-        );
         let row: Option<ResendRow> = tx
             .query_row(
                 "SELECT state,kind,ordering_key,receipt,version FROM outbox WHERE id=?1",
