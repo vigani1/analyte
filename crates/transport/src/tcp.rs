@@ -19,10 +19,33 @@ use tokio::{
 /// Drop the future or cancel the dialog to close the active socket and stop retrying.
 /// # Errors
 /// Returns event backpressure or consumer closure; attempt failures are ordered events.
-pub async fn client(
+pub async fn client(address: SocketAddr, side: IoSide, retry: Backoff) -> Result<(), Error> {
+    run_client(address, side, retry, Reconnect::AfterClose).await
+}
+
+/// Retries connection attempts, then pumps exactly one successful TCP session.
+/// After closure the caller owns protocol cleanup before starting another session.
+/// Dropping the future or cancelling closes the socket and stops connection attempts.
+/// # Errors
+/// Returns event backpressure or consumer closure; attempt failures are ordered events.
+pub async fn client_session(
+    address: SocketAddr,
+    side: IoSide,
+    retry: Backoff,
+) -> Result<(), Error> {
+    run_client(address, side, retry, Reconnect::CallerOwned).await
+}
+
+enum Reconnect {
+    AfterClose,
+    CallerOwned,
+}
+
+async fn run_client(
     address: SocketAddr,
     mut side: IoSide,
     mut retry: Backoff,
+    reconnect: Reconnect,
 ) -> Result<(), Error> {
     let cancel = side.cancel.clone();
     loop {
@@ -36,6 +59,10 @@ pub async fn client(
                 session(stream, &mut side).await?;
                 if cancel.is_cancelled() {
                     return Ok(());
+                }
+                match reconnect {
+                    Reconnect::AfterClose => (),
+                    Reconnect::CallerOwned => return Ok(()),
                 }
             }
             Ok(Err(source)) => {
