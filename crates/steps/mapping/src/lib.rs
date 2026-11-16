@@ -76,7 +76,7 @@ fn field_mappings(config: &Validated) -> Result<&analyte_config::Mappings, Error
 }
 
 fn is_law(config: &Validated) -> bool {
-    config.effective().stack().atomic_batches()
+    config.effective().stack().law().is_some()
 }
 
 fn astm_syntax(config: &Validated) -> Result<&analyte_config::AstmSyntax, Error> {
