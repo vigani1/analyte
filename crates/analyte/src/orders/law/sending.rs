@@ -6,7 +6,7 @@ use super::{
 use crate::{Error, installation::config::Machine, invalid};
 use analyte_hl7::{Message, Options, law};
 use analyte_model::SourceText;
-use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderItems, OrderReservation};
+use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};
 use std::time::{Duration, Instant};
 impl Connection {
     /// Admits at most one idle exchange. Once reserved, only an outcome may change it;
@@ -235,29 +235,27 @@ impl Connection {
                 .saturating_sub(namespace.as_str().len())
                 .saturating_sub(1);
             self.reserving.push(key);
-            let reserved = store
-                .request(until, move |store| {
-                    store
-                        .reserve_send(
-                            &super::super::reservation::candidate(&identity, version, freshness),
-                            analyte_store::ReserveOptions {
-                                items: OrderItems::Groups {
-                                    groups: &groups,
-                                    namespace: Some(&namespace),
-                                    max_identity_bytes,
-                                },
-                                owner: Some(&owner),
-                                prepare: Some(&mut |record| {
-                                    render(&[(&command, record)], law::WorkAction::New, options)
-                                        .map_err(analyte_store::Error::DeliveryBuild)?;
-                                    Ok(())
-                                }),
-                            },
-                        )
-                        .map(|reserved| reserved.map(|record| (record, command)))
-                })
-                .await?
-                .map_err(std::io::Error::other)?;
+            let reserved = super::super::reservation::admit(
+                store,
+                until,
+                super::super::reservation::Admission {
+                    identity,
+                    version,
+                    freshness,
+                    owner,
+                    groups,
+                    namespace,
+                    max_identity_bytes,
+                },
+                move |record| {
+                    render(&[(&command, record)], law::WorkAction::New, options)
+                        .map_err(analyte_store::Error::DeliveryBuild)?;
+                    Ok(command)
+                },
+            )
+            .await?
+            .map_err(std::io::Error::other)?;
+
             let bytes = render(&[(&reserved.1, &reserved.0)], law::WorkAction::New, options)?
                 .raw()
                 .to_vec();

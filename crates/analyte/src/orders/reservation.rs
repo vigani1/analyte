@@ -61,3 +61,55 @@ pub(super) async fn cancel(
         })
         .await
 }
+
+/// Owns the typed inputs to atomic send admission and protocol preflight.
+pub(super) struct Admission {
+    pub(super) identity: MachineOrderKey,
+    pub(super) version: NonZeroU64,
+    pub(super) freshness: u64,
+    pub(super) owner: analyte_model::Identifier,
+    pub(super) groups: Vec<Vec<analyte_model::NamespacedId>>,
+    pub(super) namespace: analyte_model::Identifier,
+    pub(super) max_identity_bytes: usize,
+}
+
+/// Runs protocol rendering inside reservation admission, before any command can be sent.
+/// The store refuses previously sent work; a lost completion stays owned for cleanup.
+pub(super) async fn admit<T: Send + 'static>(
+    store: &Handle,
+    until: Instant,
+    admission: Admission,
+    encode: impl FnOnce(&MachineOrder) -> Result<T, analyte_store::Error> + Send + 'static,
+) -> Result<Result<(MachineOrder, T), SendRefusal>, analyte_store::Error> {
+    store
+        .request(until, move |store| {
+            let mut rendered = None;
+            let mut encode = Some(encode);
+            let reserved = store.reserve_send(
+                &candidate(&admission.identity, admission.version, admission.freshness),
+                analyte_store::ReserveOptions {
+                    items: analyte_store::OrderItems::Groups {
+                        groups: &admission.groups,
+                        namespace: Some(&admission.namespace),
+                        max_identity_bytes: admission.max_identity_bytes,
+                    },
+                    owner: Some(&admission.owner),
+                    prepare: Some(&mut |record| {
+                        rendered =
+                            Some(encode.take().ok_or(analyte_store::Error::InvalidInput)?(
+                                record,
+                            )?);
+                        Ok(())
+                    }),
+                },
+            )?;
+            match reserved {
+                Ok(record) => Ok(Ok((
+                    record,
+                    rendered.ok_or(analyte_store::Error::InvalidInput)?,
+                ))),
+                Err(refusal) => Ok(Err(refusal)),
+            }
+        })
+        .await
+}
