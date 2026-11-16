@@ -350,8 +350,9 @@ async fn process(
             }
             DialogAction::Close { normal, unresolved } => {
                 if !normal || !unresolved.is_empty() {
+                    let unresolved = analyte_dialog::poct::ticket_evidence(&unresolved);
                     intake::park_bytes(store, machine, Vec::new(), &format!(
-                        "POCT dialog closure: normal={normal}; unresolved custody tickets: {unresolved:?}; inspect retained transport journal"
+                        "POCT dialog closure: normal={normal}; unresolved custody tickets: {unresolved}; inspect retained transport journal"
                     )).await?;
                 }
                 return Ok(true);
