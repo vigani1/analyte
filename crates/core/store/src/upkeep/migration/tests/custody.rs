@@ -5,8 +5,11 @@ use super::*;
 fn adr0003_v6_every_state_owner_and_parking_shape_migrates_without_losing_meaning() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("v6.db");
-    let db = legacy(&path)?;
-    let (expected_orders, owner_count) = seed_adr0003_v6_order_states(&db)?;
+    let mut connection = legacy(&path)?;
+    // Commit fixture evidence together; the upgrade still runs after reopening.
+    let tx = connection.transaction()?;
+    let db = &tx;
+    let (expected_orders, owner_count) = seed_adr0003_v6_order_states(db)?;
     let metadata = receipt(b"original bytes")?;
     db.execute(
         "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
@@ -21,10 +24,11 @@ fn adr0003_v6_every_state_owner_and_parking_shape_migrates_without_losing_meanin
         "INSERT INTO interpretations VALUES (?1,1,'original interpretation')",
         [key(&metadata.id)?],
     )?;
-    let expected_deliveries = seed_adr0003_v6_deliveries(&db, metadata.id)?;
-    let expected_parking = seed_adr0003_v6_parking(&db, metadata.id, &expected_deliveries)?;
-    let before = snapshot(&db)?;
-    drop(db);
+    let expected_deliveries = seed_adr0003_v6_deliveries(db, metadata.id)?;
+    let expected_parking = seed_adr0003_v6_parking(db, metadata.id, &expected_deliveries)?;
+    let before = snapshot(db)?;
+    tx.commit()?;
+    drop(connection);
     let mut store = open(&path)?;
     let after = snapshot(&store.db)?;
     verify_adr0003_v6_retained_columns(before, &after)?;
