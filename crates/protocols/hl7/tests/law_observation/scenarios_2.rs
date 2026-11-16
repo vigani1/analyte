@@ -505,3 +505,32 @@ fn law_tf2b_c7_same_primary_identity_requires_og_group_sequence() -> TestResult 
     assert!(law::Results::new(&result_message(&[(4, "1^1^1")], &second)?).is_err());
     Ok(())
 }
+
+// PaLM TF-2b Rev11 C.7, Table C.7-4: complete identities must distinguish OBXs.
+#[test]
+fn law_tf2b_c7_repeated_observation_requires_unique_complete_og() -> TestResult {
+    let second = fields(
+        "OBX",
+        ControlDirection::Receive,
+        &[
+            (1, "2"),
+            (3, "test^Changed description^99LAB"),
+            (4, "1^1^1"),
+        ],
+    )?;
+    let message = result_message(&[(4, "1^1^1")], &second)?;
+    let error = law::Results::new(&message).expect_err("duplicate complete identity");
+    assert_eq!(
+        error,
+        Error::AtSegment {
+            occurrence: 2,
+            source: Box::new(Error::Content {
+                segment: "OBX",
+                field: 4
+            })
+        }
+    );
+    let second = fields("OBX", ControlDirection::Receive, &[(1, "2"), (4, "1^1^2")])?;
+    law::Results::new(&result_message(&[(4, "1^1^1")], &second)?)?;
+    Ok(())
+}

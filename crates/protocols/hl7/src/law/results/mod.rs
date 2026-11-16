@@ -338,6 +338,7 @@ impl<'a> Results<'a> {
                 .or_insert(0usize);
             *count = count.checked_add(1).ok_or(content("OBX", 4))?;
         }
+        let mut identities = std::collections::BTreeSet::new();
         for observation in &groups.observations {
             let repeated_code = code_counts
                 .get(&(
@@ -346,6 +347,20 @@ impl<'a> Results<'a> {
                     super::fields::part(observation.code(), 3),
                 ))
                 .is_some_and(|count| *count > 1);
+            if !identities.insert((
+                observation.order_ordinal,
+                super::fields::part(observation.code(), 1),
+                super::fields::part(observation.code(), 3),
+                observation.sub_id(),
+            )) {
+                let occurrence = message
+                    .segments()
+                    .filter(|s| s.id() == b"OBX")
+                    .take_while(|s| s.raw().as_ptr() != observation.segment.raw().as_ptr())
+                    .count()
+                    .saturating_add(1);
+                return Err(content("OBX", 4).at_segment(observation.segment, occurrence));
+            }
             if repeated_code {
                 let parts: Vec<_> = observation.sub_id().split(|b| *b == d.component).collect();
                 if parts.get(1).is_none_or(|v| v.is_empty())
