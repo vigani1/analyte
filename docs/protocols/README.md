@@ -30,3 +30,21 @@ decide these boundaries; this table names the test that guards each one.
 | POCT | Complete raw receipt and semantic outcome before ACK | [vendor_receive.rs](../../crates/analyte/tests/vendor_receive.rs): `poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
 | VIDAS Literal | Retain complete transfer before data ACK | [vendor_receive.rs](../../crates/analyte/tests/vendor_receive.rs): `vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
 | Autolyser | Retain and validate poll response before destructive R; preserve uncertain R for reconciliation | [vendor_receive.rs](../../crates/analyte/tests/vendor_receive.rs): `autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l` |
+
+
+### Host custody deadline
+
+All six stream drivers bound each store-before-positive-effect operation with
+`machine::custody::store_within`, using the validated transport
+`operation_timeout_ms`, capped by VIDAS `commit_ms` or Autolyser `storage_ms`
+where configured. The earliest configured limit wins. The budget covers the complete operation, including
+interpretation where the protocol requires it before acknowledgment. ASTM uses
+that same budget for its dialog commit timer. A timeout means custody is
+uncertain, never permission to acknowledge or repeat an order. A submitted store
+request may still commit after the caller stops waiting; retained identities and
+disconnect/restart recovery own that outcome. Store queue requests retain their
+own defensive deadline; the complete operation can finish earlier with a specific
+store error. Protocol reply timers can impose an earlier refusal.
+
+Tests: `adr0010_store_budget_refuses_uncertain_custody` and
+`adr0010_store_reports_only_completed_custody_and_keeps_failure`.

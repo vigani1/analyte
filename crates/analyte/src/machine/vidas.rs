@@ -268,9 +268,10 @@ impl ConnectionState {
             }
         }
     }
-    async fn close(&self, store: &Handle, result: Result<(), Error>) -> Result<(), Error> {
+    async fn close(&self, store: &Handle, mut result: Result<(), Error>) -> Result<(), Error> {
         if let Some(order) = self.active.as_ref() {
-            crate::orders::sending::uncertain(store, order, self.end_code).await?;
+            let cleanup = crate::orders::sending::uncertain(store, order, self.end_code).await;
+            custody::retain_cleanup(&mut result, cleanup);
         }
         result
     }
@@ -309,19 +310,14 @@ async fn process(
             Action::Store(packet) => {
                 let id = ReceiptId::new();
                 let operation = store_upload(store, machine, id, &packet.raw);
-                match tokio::time::timeout(ms(installed.commit_ms), operation).await {
-                    Ok(Ok(())) => {
+                match custody::store_within(custody::budget(machine), operation).await {
+                    Ok(()) => {
                         // Completion effects precede previously queued timer changes.
                         state.actions.extend(state.dialog.on(Event::Stored));
                     }
-                    Ok(Err(error)) => {
+                    Err(error) => {
                         state.actions.extend(state.dialog.on(Event::StorageFailed));
                         failure = Some(error);
-                    }
-                    Err(_) => {
-                        state.actions.extend(state.dialog.on(Event::StorageFailed));
-                        failure =
-                            Some(invalid("VIDAS commit deadline exceeded; custody uncertain"));
                     }
                 }
             }

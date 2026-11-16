@@ -6,7 +6,7 @@ use super::{
 use crate::{Error, installation::config::Machine, invalid};
 use analyte_hl7::{Message, Options, law};
 use analyte_model::SourceText;
-use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderItems, OrderReservation};
+use analyte_store::{Handle, MachineOrder, OrderReservation};
 use std::time::{Duration, Instant};
 impl Connection {
     /// Admits at most one idle exchange. Once reserved, only an outcome may change it;
@@ -29,30 +29,7 @@ impl Connection {
                 cfg.timeouts().send_timeout_ms(),
             )))
             .ok_or("LAW preparation deadline overflow")?;
-        let freshness = machine.destination_limits.freshness.as_secs();
-        let destination = super::super::destination(machine);
-        let target = machine.id.clone();
-        let cancels = store
-            .request(until, move |store| {
-                if !store
-                    .order_trust(&destination, jiff::Timestamp::now().as_second(), freshness)?
-                    .is_trusted()
-                {
-                    return Ok(None);
-                }
-                store
-                    .cancel_candidates(
-                        &destination,
-                        &target,
-                        jiff::Timestamp::now().as_second(),
-                        freshness,
-                    )
-                    .map(Some)
-            })
-            .await?;
-        let Some(cancels) = cancels else {
-            return Ok(None);
-        };
+        let cancels = super::super::reservation::cancellations(store, machine, until).await?;
         if let Some(sent) = self
             .idle_cancel(store, machine, options, until, cancels)
             .await?
@@ -132,11 +109,7 @@ impl Connection {
             if !super::super::eligible(&app, machine) {
                 continue;
             }
-            let key = MachineOrderKey {
-                destination: super::super::destination(machine),
-                order: cached.id.clone(),
-                machine: machine.id.clone(),
-            };
+            let key = super::super::reservation::key(machine, cached.id.clone());
             let version = app.fields().version;
             let prepared = match self
                 .reserve(store, machine, vec![cached], until, options)
@@ -144,7 +117,12 @@ impl Connection {
             {
                 Ok(prepared) => prepared,
                 Err(error) => {
-                    self.close(store, "LAW-send-preparation-failed").await?;
+                    if let Err(cleanup) = self.close(store, "LAW-send-preparation-failed").await {
+                        return Err(crate::machine::custody::effect_failure(
+                            Some(error),
+                            cleanup,
+                        ));
+                    }
                     if matches!(
                         error.downcast_ref::<analyte_store::Error>(),
                         Some(
@@ -214,11 +192,7 @@ impl Connection {
                 return Err(invalid("LAW query deadline before reservation"));
             }
             let command = super::work::command(machine, &app)?;
-            let key = MachineOrderKey {
-                destination: super::super::destination(machine),
-                order: cached.id,
-                machine: machine.id.clone(),
-            };
+            let key = super::super::reservation::key(machine, cached.id);
             let version = app.fields().version;
             let identity = key.clone();
             let owner = self.owner.clone();
@@ -235,29 +209,27 @@ impl Connection {
                 .saturating_sub(namespace.as_str().len())
                 .saturating_sub(1);
             self.reserving.push(key);
-            let reserved = store
-                .request(until, move |store| {
-                    store
-                        .reserve_send(
-                            &super::super::reservation::candidate(&identity, version, freshness),
-                            analyte_store::ReserveOptions {
-                                items: OrderItems::Groups {
-                                    groups: &groups,
-                                    namespace: Some(&namespace),
-                                    max_identity_bytes,
-                                },
-                                owner: Some(&owner),
-                                prepare: Some(&mut |record| {
-                                    render(&[(&command, record)], law::WorkAction::New, options)
-                                        .map_err(analyte_store::Error::DeliveryBuild)?;
-                                    Ok(())
-                                }),
-                            },
-                        )
-                        .map(|reserved| reserved.map(|record| (record, command)))
-                })
-                .await?
-                .map_err(std::io::Error::other)?;
+            let reserved = super::super::reservation::admit(
+                store,
+                until,
+                super::super::reservation::Admission {
+                    identity,
+                    version,
+                    freshness,
+                    owner,
+                    groups,
+                    namespace,
+                    max_identity_bytes,
+                },
+                move |record| {
+                    render(&[(&command, record)], law::WorkAction::New, options)
+                        .map_err(analyte_store::Error::DeliveryBuild)?;
+                    Ok(command)
+                },
+            )
+            .await?
+            .map_err(std::io::Error::other)?;
+
             let bytes = render(&[(&reserved.1, &reserved.0)], law::WorkAction::New, options)?
                 .raw()
                 .to_vec();

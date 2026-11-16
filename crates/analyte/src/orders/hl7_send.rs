@@ -5,9 +5,7 @@ use analyte_hl7::{
     order::{self, OrderMessage, OrderResponse, Outcome},
 };
 use analyte_model::{Identifier, OrderState, SourceText};
-use analyte_store::{
-    Handle, ItemDecision, ItemOutcome, MachineOrder, MachineOrderKey, OrderItems, OrderReservation,
-};
+use analyte_store::{Handle, ItemDecision, ItemOutcome, MachineOrder, MachineOrderKey};
 
 pub(super) struct Exchange {
     pub(super) record: MachineOrder,
@@ -62,24 +60,7 @@ async fn next_cancel(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let dest = super::destination(machine);
-    let target = machine.id.clone();
-    let cancels = store
-        .request(deadline(), move |store| {
-            if !store
-                .order_trust(&dest, jiff::Timestamp::now().as_second(), freshness)?
-                .is_trusted()
-            {
-                return Ok(Vec::new());
-            }
-            store.cancel_candidates(
-                &dest,
-                &target,
-                jiff::Timestamp::now().as_second(),
-                freshness,
-            )
-        })
-        .await?;
+    let cancels = super::reservation::cancellations(store, machine, deadline()).await?;
     for (record, cached) in cancels {
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
         let command = command(machine, &app, options)?;
@@ -121,11 +102,7 @@ async fn next_work(
         if !super::eligible(&app, machine) {
             continue;
         }
-        let key = MachineOrderKey {
-            destination: super::destination(machine),
-            order: cached.id,
-            machine: machine.id.clone(),
-        };
+        let key = super::reservation::key(machine, cached.id);
         let version = app.fields().version;
         let Some(command) = prepare_command(store, machine, &app, options, key.clone()).await?
         else {
@@ -144,36 +121,23 @@ async fn next_work(
         let identity = key.clone();
         let owner = owner.clone();
         reserving.push(key.clone());
-        let reserved = store
-            .request(deadline(), move |store| {
-                let mut message = None;
-                let record = store.reserve_send(
-                    &super::reservation::candidate(&identity, version, freshness),
-                    analyte_store::ReserveOptions {
-                        items: OrderItems::Groups {
-                            groups: &groups,
-                            namespace: Some(&namespace),
-                            max_identity_bytes,
-                        },
-                        owner: Some(&owner),
-                        prepare: Some(&mut |record| {
-                            message = Some(
-                                build(&command, record, false)
-                                    .map_err(analyte_store::Error::DeliveryBuild)?,
-                            );
-                            Ok(())
-                        }),
-                    },
-                )?;
-                match record {
-                    Ok(record) => Ok(Ok((
-                        record,
-                        message.ok_or(analyte_store::Error::InvalidInput)?,
-                    ))),
-                    Err(refusal) => Ok(Err(refusal)),
-                }
-            })
-            .await;
+        let reserved = super::reservation::admit(
+            store,
+            deadline(),
+            super::reservation::Admission {
+                identity,
+                version,
+                freshness,
+                owner,
+                groups,
+                namespace,
+                max_identity_bytes,
+            },
+            move |record| {
+                build(&command, record, false).map_err(analyte_store::Error::DeliveryBuild)
+            },
+        )
+        .await;
         match reserved {
             Ok(Ok((record, message))) => return Ok(Some(Exchange { record, message })),
             Ok(Err(refusal)) => {
@@ -215,20 +179,8 @@ async fn reject(
     freshness: u64,
 ) -> Result<(), Error> {
     let reason = SourceText::new(reason)?;
-    let result = store
-        .request(deadline(), move |store| {
-            store.reject_unsent(
-                &OrderReservation {
-                    identity: &key,
-                    version,
-                    now: jiff::Timestamp::now().as_second(),
-                    freshness,
-                },
-                reason,
-                super::event,
-            )
-        })
-        .await?;
+    let result =
+        super::reservation::reject(store, deadline(), key, version, freshness, reason).await?;
     if let Err(refusal) = result {
         tracing::info!(reason=%refusal,"HL7 rejection superseded");
     }
