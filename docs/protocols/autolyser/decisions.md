@@ -104,7 +104,8 @@ including the distinctions between manual rules and Analyte's recovery policy.
 ## 10. Persist a poll guard across connection and process lifetimes
 
 - **what**: Store poll intent before R; an unresolved guard after restart
-  blocks normal polling until operator reconciliation.
+  prevents session opening and sends neither L nor R until operator reconciliation.
+  Vendor L recovery after restart is an operator step, not an automatic program path.
 - **why**: A new dialog has no knowledge of the analyzer's earlier send
   cursor. Starting it as though nothing happened could replace the last
   recoverable report with the next one before custody is settled.
@@ -139,10 +140,14 @@ including the distinctions between manual rules and Analyte's recovery policy.
   from the patient code, result value or receipt time.
 - **why**: Those invented values would make a retransmission, correction
   and rerun appear distinguishable when the supplied report does not establish
-  that distinction. Keep the receipt unresolved for an operator instead.
-- **source**: Operator's Manual Rev18 §23.2, pp.177–178;
+  that distinction. The manual documents no immutable execution or revision
+  identifier, including in the variable transmission fields. Result identity
+  therefore stays unresolved and the receipt stays parked for an operator;
+  patient association alone cannot distinguish reruns from corrections.
+- **source**: Operator's Manual Rev18 §23.2, pp.177–178 and §23.5,
+  transmission variables p.183;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities and values.
-- **test**: none yet.
+- **test**: `autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l`.
 
 ## 14. Finish pending custody after disconnect without reopening the dialog
 
