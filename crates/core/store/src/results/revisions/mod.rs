@@ -3,6 +3,7 @@ mod admission;
 mod assignment;
 pub(crate) mod content;
 mod history;
+pub(crate) mod law;
 mod migration;
 mod outbox;
 mod parking;
@@ -35,6 +36,8 @@ pub enum RevisionOutcome {
 
 /// Durable interpretation version and decisions for its results.
 pub struct InterpretationCommit {
+    /// Durable LAW disposition when this is a LAB-29 custody transaction.
+    pub law: Option<law::LawDisposition>,
     /// Append-only interpretation version within the receipt.
     pub version: i64,
     /// One decision per input result.
@@ -66,6 +69,7 @@ impl Store {
             evidence,
             (corrections, findings, None, None),
             None,
+            None,
             build,
         )
     }
@@ -95,6 +99,7 @@ impl Store {
             evidence,
             (corrections, findings, None, None),
             Some(action),
+            None,
             build,
         )
     }
@@ -118,6 +123,7 @@ impl Store {
             receipt,
             evidence,
             (mapping.0, mapping.1, Some(lifecycle), None),
+            None,
             None,
             build,
         )
@@ -144,6 +150,7 @@ impl Store {
             evidence,
             (mapping.0, mapping.1, Some(lifecycle), None),
             Some(action),
+            None,
             build,
         )
     }
@@ -174,10 +181,48 @@ impl Store {
             evidence,
             (mapping.0, mapping.1, None, Some(mapping.2)),
             action,
+            None,
             build,
         )
     }
 
+    /// Commits LAW receipt disposition, item execution, revisions and deliveries atomically.
+    /// No positive disposition exists until commit; cancellation can leave a committed
+    /// transaction, so retries use the same trusted message identity.
+    /// # Errors
+    /// Refuses invalid provenance, bounds, audit and storage failures without partial writes.
+    pub fn interpret_law<F>(
+        &mut self,
+        receipt: ReceiptId,
+        evidence: Interpretation,
+        mapping: (&[bool], &[crate::Parked]),
+        lifecycle: StatusLifecycle<'_>,
+        context: (&law::LawCustody, Option<&crate::Reprocess>),
+        build: F,
+    ) -> Result<InterpretationCommit, Error>
+    where
+        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
+    {
+        let (custody, action) = context;
+        if action
+            .is_some_and(|a| a.receipt != receipt || a.audit.action.as_str() != "receipt-reprocess")
+        {
+            return Err(Error::InvalidInput);
+        }
+        self.reconcile(
+            receipt,
+            evidence,
+            (mapping.0, mapping.1, Some(lifecycle), None),
+            action,
+            Some(custody),
+            build,
+        )
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Keep the single interpretation commit and rollback ordering visible together"
+    )]
     fn reconcile<F>(
         &mut self,
         receipt: ReceiptId,
@@ -189,11 +234,15 @@ impl Store {
             Option<&str>,
         ),
         action: Option<&crate::Reprocess>,
+        law: Option<&law::LawCustody>,
         build: F,
     ) -> Result<InterpretationCommit, Error>
     where
         F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
     {
+        if let Some(custody) = law {
+            self.encode(custody)?;
+        }
         let (corrections, findings, lifecycle, edit_guard) = mapping;
         let stored = self.receipt(receipt)?.ok_or(Error::UnknownReceipt)?;
         let (count, findings) = self.validate_reconciliation(
@@ -218,6 +267,30 @@ impl Store {
             [&receipt_key],
             |r| r.get(0),
         )?;
+        let admission = law
+            .map(|custody| {
+                law::admit(
+                    &tx,
+                    &stored,
+                    custody,
+                    self.limits.page_rows,
+                    action.is_some(),
+                )
+            })
+            .transpose()?;
+        if let Some(admission) = &admission {
+            if let law::LawDisposition::Rejected(reason) = admission.disposition {
+                evidence.outcome = Reading::Failed(
+                    analyte_model::Reason::new(&format!(
+                        "LAW {:?} at OBR occurrence {}",
+                        reason.reason, reason.occurrence
+                    ))
+                    .map_err(|_| Error::InvalidInput)?,
+                );
+            } else if admission.replay {
+                evidence.outcome = Reading::Results(Vec::new());
+            }
+        }
         let reconciliation = Reconciliation {
             retention_key: self.retention_key.as_ref(),
             tx: &tx,
@@ -236,7 +309,10 @@ impl Store {
         if encoded.len() > limit {
             return Err(Error::InvalidInput);
         }
-        let successful = reconciliation_succeeded(&evidence, &batch.outcomes, findings.is_empty());
+        let successful = admission
+            .as_ref()
+            .is_some_and(|a| matches!(a.disposition, law::LawDisposition::Accepted))
+            || reconciliation_succeeded(&evidence, &batch.outcomes, findings.is_empty());
         let audit = action
             .map(|action| crate::reprocess::audit_evidence(action, version, successful))
             .transpose()?;
@@ -248,6 +324,13 @@ impl Store {
             &batch.revisions,
             limit,
         )?;
+        let required = required
+            .checked_add(
+                law.map(|c| crate::document(c).map(|s| s.len().saturating_mul(3)))
+                    .transpose()?
+                    .unwrap_or(0),
+            )
+            .ok_or(Error::Capacity)?;
         Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
         write_history(
             &tx,
@@ -264,17 +347,27 @@ impl Store {
             &batch.outcomes,
             deliveries,
         )?;
-        park_outcomes(
-            &tx,
-            &receipt_key,
-            version,
-            &evidence,
-            &batch.outcomes,
-            (action.is_some(), findings.is_empty(), edit_guard),
-        )?;
+        if !admission.as_ref().is_some_and(|a| {
+            a.replay
+                || (matches!(a.disposition, law::LawDisposition::Accepted)
+                    && matches!(&evidence.outcome, Reading::Results(results) if results.is_empty()))
+        }) {
+            park_outcomes(
+                &tx,
+                &receipt_key,
+                version,
+                &evidence,
+                &batch.outcomes,
+                (action.is_some(), findings.is_empty(), edit_guard),
+            )?;
+        }
+        if let Some((custody, admission)) = law.zip(admission.as_ref()) {
+            law::write(&tx, &stored, version, custody, admission)?;
+        }
         write_reprocess_audit(&tx, action, audit, successful)?;
         tx.commit()?;
         Ok(InterpretationCommit {
+            law: admission.map(|a| a.disposition),
             version,
             outcomes: batch.outcomes,
         })

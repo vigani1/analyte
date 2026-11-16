@@ -370,3 +370,192 @@ async fn law_tf2b_3_27_3_28_queried_work_uses_the_same_cancel_exchange_without_s
     reference.close().await?;
     Ok(())
 }
+
+fn execution_notice(
+    sent: &analyte_hl7::Message,
+    id: &str,
+    status: &str,
+    item: usize,
+) -> Result<String, Error> {
+    let original = |name: &[u8], occurrence: usize| -> Result<&str, Error> {
+        Ok(std::str::from_utf8(
+            sent.segments()
+                .filter(|s| s.id() == name)
+                .nth(occurrence)
+                .ok_or("retained segment")?
+                .raw(),
+        )?)
+    };
+    Ok(format!(
+        "MSH|^~\\&|A|AF|M|MF|20260101120000+0000||OUL^R22^OUL_R22|{id}|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\r{}\r{}\r{}\rORC|SC||||{status}\r",
+        original(b"SPM", 0)?,
+        original(b"SAC", 0)?,
+        original(b"OBR", item)?
+    ))
+}
+
+#[tokio::test]
+async fn palm_tf2b_b7_6_c8_adr0003_0011_status_custody_repeats_restart_and_conflicts()
+-> Result<(), Error> {
+    let (_temp, path, reference, running, mut peer) = setup(
+        vec![order("order-1", "000Ab12", Some("law"), 2)?],
+        &send_ahead(),
+        false,
+    )
+    .await?;
+    let sent = packet(&mut peer).await?;
+    orl(&mut peer, &sent, &["OK", "OK"], false).await?;
+    state(&path, "Accepted").await?;
+    wait_state(&path, "done", 1).await?;
+    let scheduled = execution_notice(&sent, "scheduled", "SC", 0)?;
+    let progress = execution_notice(&sent, "progress", "IP", 0)?;
+    for (wire, id) in [
+        (&scheduled, "scheduled"),
+        (&progress, "progress"),
+        (&scheduled, "scheduled"),
+    ] {
+        let ack = hl7(&mut peer, wire.as_bytes()).await?;
+        assert!(ack.contains(&format!("MSA|AA|{id}")), "{ack}");
+    }
+    assert_eq!(count(&path, "awos_execution_history")?, 2);
+    let conflicting = execution_notice(&sent, "cancel-after-ip", "CA", 0)?;
+    let ack = hl7(&mut peer, conflicting.as_bytes()).await?;
+    assert!(ack.contains("MSA|AR|cancel-after-ip"), "{ack}");
+    assert!(ack.contains("ERR||OBR^1^2|"), "{ack}");
+    let cancelled = execution_notice(&sent, "analyzer-cancel", "CA", 1)?;
+    assert!(
+        hl7(&mut peer, cancelled.as_bytes())
+            .await?
+            .contains("MSA|AA|analyzer-cancel")
+    );
+    assert_eq!(count(&path, "awos_execution_history")?, 3);
+    assert_eq!(count(&path, "observation_revisions")?, 0);
+    assert_eq!(count(&path, "outbox")?, 1);
+    state(&path, "Accepted").await?;
+    no_work(&mut peer).await?;
+    running.stop().await?;
+    drop(peer);
+    let pending = execution_notice(&sent, "raw-before-crash", "IP", 0)?;
+    let pending_id = seed_pending_notice(&path, &pending)?;
+    // ADR 0003/0010: a crash before parking an incomplete MLLP block must not
+    // strand raw evidence or prevent all subsequent interpretation on restart.
+    let malformed_id = seed_pending_raw(&path, b"\x0bMSH|^~\\&|synthetic-incomplete")?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+    assert_eq!(
+        database(&path)?.query_row(
+            "SELECT count(*) FROM interpretations WHERE receipt=?1",
+            [serde_json::to_string(&pending_id)?],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    assert_eq!(
+        database(&path)?.query_row(
+            "SELECT count(*) FROM interpretations WHERE receipt=?1",
+            [serde_json::to_string(&malformed_id)?],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    let mut peer = connect(&path, "law").await?;
+    for (wire, id) in [(&scheduled, "scheduled"), (&cancelled, "analyzer-cancel")] {
+        assert!(
+            hl7(&mut peer, wire.as_bytes())
+                .await?
+                .contains(&format!("MSA|AA|{id}"))
+        );
+    }
+    assert_eq!(count(&path, "awos_execution_history")?, 4);
+    let conflict = progress.replace("|IP\r", "|CA\r");
+    assert!(
+        hl7(&mut peer, conflict.as_bytes())
+            .await?
+            .contains("MSA|AR|progress")
+    );
+    assert_eq!(count(&path, "awos_execution_history")?, 4);
+    no_work(&mut peer).await?;
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn palm_tf2b_b7_6_adr0003_0011_mixed_status_result_accepts_or_rejects_as_one_message()
+-> Result<(), Error> {
+    let (_temp, path, reference, running, mut peer) = setup(
+        vec![order("order-1", "000Ab12", Some("law"), 2)?],
+        &send_ahead(),
+        false,
+    )
+    .await?;
+    let sent = packet(&mut peer).await?;
+    orl(&mut peer, &sent, &["OK", "OK"], false).await?;
+    state(&path, "Accepted").await?;
+    wait_state(&path, "done", 1).await?;
+    let notice = execution_notice(&sent, "mixed", "SC", 0)?;
+    let second = sent
+        .segments()
+        .filter(|s| s.id() == b"OBR")
+        .nth(1)
+        .ok_or("second OBR")?;
+    let result = law_results::result("source", "\"\"", "source^ANALYZER", "1.0", "F");
+    let obx = result.split("OBX|").nth(1).ok_or("OBX")?;
+    let mixed = format!(
+        "{notice}{}\rORC|SC||||CM\rOBX|{obx}",
+        std::str::from_utf8(second.raw())?
+    );
+    let invalid = mixed.replace("|mixed|", "|unknown-mixed|")
+        + "OBR||unknown-awos||SYN^Synthetic^99LAB\rORC|SC||||IP\r";
+    let ack = hl7(&mut peer, invalid.as_bytes()).await?;
+    assert!(ack.contains("MSA|AR|unknown-mixed"), "{ack}");
+    assert!(ack.contains("ERR||OBR^3^2|"), "{ack}");
+    assert_eq!(count(&path, "awos_execution_history")?, 0);
+    assert_eq!(count(&path, "observation_revisions")?, 0);
+    assert_eq!(count(&path, "outbox")?, 1);
+    let ack = hl7(&mut peer, mixed.as_bytes()).await?;
+    assert!(ack.contains("MSA|AA|mixed"), "{ack}");
+    assert_eq!(count(&path, "awos_execution_history")?, 1);
+    assert_eq!(count(&path, "observation_revisions")?, 1);
+    assert_eq!(count(&path, "outbox")?, 2);
+    assert!(
+        hl7(&mut peer, mixed.as_bytes())
+            .await?
+            .contains("MSA|AA|mixed")
+    );
+    assert_eq!(count(&path, "awos_execution_history")?, 1);
+    assert_eq!(count(&path, "observation_revisions")?, 1);
+    assert_eq!(count(&path, "outbox")?, 2);
+    no_work(&mut peer).await?;
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+fn seed_pending_notice(path: &Path, wire: &str) -> Result<analyte_model::ReceiptId, Error> {
+    let raw =
+        analyte_framing::hl7::encode(wire.as_bytes(), analyte_framing::hl7::Limit::new(1048576)?)?;
+    seed_pending_raw(path, &raw)
+}
+
+fn seed_pending_raw(path: &Path, raw: &[u8]) -> Result<analyte_model::ReceiptId, Error> {
+    let db = database(path)?;
+    let (encoded, config): (String, Vec<u8>) = db.query_row(
+        "SELECT metadata,config FROM receipts ORDER BY rowid DESC LIMIT 1",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let mut metadata: analyte_model::ReceiptMetadata = serde_json::from_str(&encoded)?;
+    metadata.id = analyte_model::ReceiptId::new();
+    metadata.received_at = jiff::Timestamp::UNIX_EPOCH;
+    metadata.raw_digest = analyte_model::Digest(analyte_contract::content_digest(raw));
+    db.execute(
+        "INSERT INTO receipts(id,metadata,raw,config) VALUES (?1,?2,?3,?4)",
+        rusqlite::params![
+            serde_json::to_string(&metadata.id)?,
+            serde_json::to_string(&metadata)?,
+            raw,
+            config
+        ],
+    )?;
+    Ok(metadata.id)
+}

@@ -5,6 +5,7 @@ use crate::sql_types::SqlOrderState;
 use ownership::OrderOwner;
 mod cancel;
 mod eligibility;
+mod execution;
 mod items;
 mod listing;
 mod reserve;
@@ -89,6 +90,9 @@ pub struct MachineOrderItem {
     /// State before a cancellation request; retained to handle explicit refusal.
     #[serde(default)]
     pub cancel_from: Option<OrderState>,
+    /// Latest execution evidence; absent means unknown, independently of command state.
+    #[serde(default)]
+    pub execution: Option<analyte_model::AwosExecutionProjection>,
     /// Store-assigned local command identity; the namespace is retained separately.
     pub placer: String,
     /// Retained logical namespace; configuration changes cannot alter cancellation identity.
@@ -100,6 +104,16 @@ pub struct MachineOrderItem {
     pub updated_at: i64,
     /// Specific source outcome or migration limitation.
     pub source_code: SourceText,
+}
+
+impl MachineOrderItem {
+    /// True only for retained analyzer-origin cancellation, independent of command state.
+    #[must_use]
+    pub fn analyzer_cancelled(&self) -> bool {
+        self.execution
+            .as_ref()
+            .is_some_and(|p| p.state == analyte_model::AwosExecution::AnalyzerCancelled)
+    }
 }
 
 /// One explicit application outcome at exchange completion.
@@ -310,6 +324,14 @@ impl Store {
                 (None, Some((version, freshness)))
             }
         };
+        if cancel_version.is_some()
+            && record
+                .items
+                .iter()
+                .any(MachineOrderItem::analyzer_cancelled)
+        {
+            return Err(Error::AnalyzerCancelled);
+        }
         if let Some((version, freshness)) = cancel_version {
             if !Self::order_trust_on(&tx, &record.key.destination, now, freshness)?.is_trusted() {
                 return Err(Error::Conflict);
@@ -382,7 +404,7 @@ impl Store {
     }
 }
 
-fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, Error> {
+pub(crate) fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, Error> {
     let purged: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM retention_orders WHERE id=?1)",
         [id],
@@ -436,7 +458,11 @@ fn load_items(db: &rusqlite::Connection, id: i64) -> Result<Vec<MachineOrderItem
         return Err(Error::Corruption);
     }
     rows.iter()
-        .map(|row| Ok(serde_json::from_str(row)?))
+        .map(|row| {
+            let mut item: MachineOrderItem = serde_json::from_str(row)?;
+            item.execution = execution::load(db, item.machine_order, item.index)?;
+            Ok(item)
+        })
         .collect()
 }
 
@@ -493,6 +519,7 @@ fn create_items(
             tests,
             coverage_known: true,
             cancel_from: None,
+            execution: None,
             placer,
             placer_namespace: match shape {
                 OrderItems::Together => None,
@@ -589,6 +616,7 @@ mod item_transition_tests {
                 tests: Vec::new(),
                 coverage_known: true,
                 cancel_from: Some(A),
+                execution: None,
                 placer: "1-1".into(),
                 placer_namespace: None,
                 state,

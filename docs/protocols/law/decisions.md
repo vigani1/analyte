@@ -161,8 +161,52 @@ NTE-3 FT accepts literal component separators as line syntax (section 2.7.6 and 
 
 ERL repetition requires a field position (section 2.A.28.4); omitted repetition with a field retains its implicit-first meaning without adding bytes. OBX SN with a second numeric component requires its separator (section 2.A.70); no relationship is inferred. Separate dilution profiles remain unchanged.
 
-## Status-only LAB-29 restriction
+## Status-only LAB-29 custody
 
-TF-2b section 3.29.4.1.2.1 permits IP without observations and SC/CA without RESULT groups. Analyte currently parks these valid notifications with `UnsupportedLawStatusOnly`, retaining the original receipt, delivering no fabricated result and issuing no work command. Durable status-only lifecycle support needs a representation decision and ADR.
+Under [ADR 0016](../../adr/0016-awos-status-notifications.md), valid empty
+SC, IP and CA groups (TF-2b §3.29.4.1.2.1) are typed execution evidence.
+They update an optional per-item Scheduled, InProgress or AnalyzerCancelled
+projection without changing command OrderState or creating observations,
+revisions or contract v1 deliveries. CM still requires RESULT content.
+
+The host stores the exact message first. It matches manager AWOS identities
+to retained immutable command items, specimen/container/service context and
+coverage. One store transaction commits message disposition, item links,
+execution evidence and any real result revisions/deliveries in a mixed
+message; AA follows that commit. Unknown or ambiguous work and contradictory
+execution reject the whole message with AR and a located ERR. No partial
+projection or result delivery survives rejection. Non-production status
+notices cannot update production work.
+
+Trusted identity is scoped by installed machine and sender. Exact repeats
+reuse their committed disposition across restart; different bytes under that
+identity are parked as conflicts. New identities repeating a state retain new
+evidence without a new command or synthetic result. Backwards notices with
+no comparable trusted ordering evidence are parked, never sorted by MSH-7.
+Pending raw receipts are interpreted before machine connections open; a
+changed configuration requires explicit audited reprocessing instead.
+
+ORC-27 preserves absence, explicit null and supplied date/date-time distinctly.
+It has no independent offset or precision component (C.8 Table C.8-9). The
+retained MSH-7 supplies zone evidence; availability is an estimate, never
+completion or a deadline. Notes remain scoped source evidence, not rules.
+
+Analyzer CA never confirms an app cancel or cancels sibling items. Already
+admitted cancellation retains its LAB-28 CR/UC path. A later UC alongside CA
+requires reconciliation while preserving the refusal and analyzer fact.
+New automatic cancellation admission is blocked for analyzer-cancelled work;
+later app intent remains in the cache for operator reconciliation.
+
+The protected admin overview links to `/analyzer-cancelled`; `/orders` shows
+command and execution facts separately, with paginated receipt-linked item
+history. Contract v1 sends no new status event. Deployment therefore requires
+an assigned admin responder who understands that app users cannot see these
+facts remotely. Evidence remains documented; simulator qualification is open.
+Old `UnsupportedLawStatusOnly` receipts require explicit audited reprocessing.
+LAW custody receipts and their linked orders are conservatively retained
+until an explicit eligibility policy covers the new disposition/history rows;
+normal viewing is not app acknowledgment and never makes them purgeable.
+
+## Informational-rack query restriction
 
 QPD-1 follows the 60-character field ceiling in section 3.27.4.1.2.3. The fixed informational-rack tuple exceeds that ceiling, so that optional form is currently refused pending clarification; shortened descriptions are not substitutes. Host positional support is unchanged.

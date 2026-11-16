@@ -29,6 +29,16 @@ qualify a machine.
 - [ ] Restore rehearsal completed and evidence location recorded.
 - [ ] All six machine evidence records completed before claiming the phase 9 six-machine pilot is done.
 
+## LAW execution notices
+
+- [ ] Record official simulator evidence for empty SC/IP/CA, estimates, mixed groups, unknown work, backwards evidence, retransmission and crash boundaries before enabling a LAW machine.
+- [ ] Assign a named responder for the protected admin cancellation list and agree a review schedule and escalation route.
+- [ ] Lab app representative accepts that contract v1 carries no AWOS execution event; app users cannot see these additional facts remotely.
+- [ ] Rehearse analyzer CA with a pending app cancel: no automatic command, CR only from correlated LAB-28, UC retained for reconciliation, siblings preserved.
+- [ ] Confirm that retained LAW custody/history is included in capacity planning and restore rehearsal; viewing it does not release retention.
+
+LAW admin responder and review schedule: __________________
+
 Lab lead: __________________ Date: __________
 
 Lab IT / recovery lead: __________________ Date: __________

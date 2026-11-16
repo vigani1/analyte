@@ -29,9 +29,10 @@ pub use reprocess::Reprocess;
 pub use delivery_operator::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 12;
+pub const SCHEMA_VERSION: i64 = 14;
 pub use machine_orders::*;
 
+pub use revisions::law::*;
 pub use revisions::{InterpretationCommit, RevisionOutcome, StatusLifecycle};
 
 pub use query::{Frame, ParkedItem, Receipt};
@@ -58,6 +59,10 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Analyzer cancellation requires visible reconciliation before any new cancel admission.
+    #[error("AWOS is analyzer-cancelled; app cancellation intent requires reconciliation")]
+    AnalyzerCancelled,
+
     /// Another process currently owns a backup or retention maintenance operation.
     #[error("retention maintenance is busy; retry after the active batch or backup")]
     MaintenanceBusy,

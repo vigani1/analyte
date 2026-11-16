@@ -9,9 +9,13 @@ async fn plan11_status_reports_health_and_last_receipt_without_payloads_or_secre
     let program = Program::load(&path)?;
     let mut store = service::open_store(&program, Box::new(Space(u64::MAX))).await?;
     let lines = analyte::operator::status::snapshot(&program, &store).await?;
-    assert_eq!(lines.len(), 3);
+    assert_eq!(lines.len(), 4);
     assert_eq!(lines[0], "order_sending_paused_after_restore=false");
-    let destination = lines.get(1).ok_or("missing health")?;
+    assert_eq!(
+        lines.get(1).ok_or("missing AWOS count")?,
+        "analyzer_cancelled_awos=0"
+    );
+    let destination = lines.get(2).ok_or("missing health")?;
     for field in [
         "pending_count=0",
         "pending_bytes=0",

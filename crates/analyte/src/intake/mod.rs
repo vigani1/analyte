@@ -3,6 +3,9 @@ use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 use std::fmt::Write;
+mod law;
+mod reading;
+use reading::{map_reading, mapping_outcome};
 
 /// Binds all evidence from one host connection to its immutable configuration.
 pub(crate) struct Connection<'a> {
@@ -149,6 +152,10 @@ fn reading_evidence(
     })
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep mixed-message acceptance and rejected-batch rollback together"
+)]
 pub(crate) async fn persist_mapping(
     store: &Handle,
     machine: &Machine,
@@ -163,7 +170,8 @@ pub(crate) async fn persist_mapping(
     let poct_edit_guard = poct_edits(machine);
     let atomic = atomic_batch(machine);
     let lifecycle = atomic.then_some(law_lifecycle());
-    let work_conflict = work_conflict(store, machine, id).await?;
+    let work_conflict = law::work_conflict(store, machine, id).await?;
+    let mut custody = law::plan(store, machine, id, work_conflict).await?;
     let mapping = if work_conflict.is_some() {
         Err(invalid(
             "LAW returned work differs from retained downloaded command; operator review required",
@@ -177,6 +185,9 @@ pub(crate) async fn persist_mapping(
         corrections,
         findings,
     } = prepare_reading(map_reading(mapping)?, atomic)?;
+    if !accepted && work_conflict.is_none() {
+        custody = None;
+    }
     let interpretation = reading_evidence(machine, reading, departures)?;
     let destination = machine.snapshot.effective().site().destination.name.clone();
     let conflict = if atomic {
@@ -215,28 +226,55 @@ pub(crate) async fn persist_mapping(
                 }
                 build_deliveries(assigned, outcomes, &receipt, &destination, lifecycle)
             };
-            let commit = reconcile(
-                store,
-                id,
-                action.as_ref(),
-                interpretation,
-                (&corrections, &findings, lifecycle, poct_edit_guard),
-                build,
-            );
+            let commit = if let Some(custody) = &custody {
+                store.interpret_law(
+                    id,
+                    interpretation.clone(),
+                    (&corrections, &findings),
+                    lifecycle.ok_or(analyte_store::Error::InvalidInput)?,
+                    (custody, action.as_ref()),
+                    build,
+                )
+            } else {
+                reconcile(
+                    store,
+                    id,
+                    action.as_ref(),
+                    interpretation,
+                    (&corrections, &findings, lifecycle, poct_edit_guard),
+                    build,
+                )
+            };
             match commit {
                 // The builder refusal rolls back revisions, audit and deliveries together.
                 // Keep a failed version (and its audit for operator actions) afterwards.
                 Err(analyte_store::Error::DeliveryBuild(error))
                     if error.is::<LawBatchConflict>() =>
                 {
-                    let rejected = reconcile(
-                        store,
-                        id,
-                        action.as_ref(),
-                        conflict.ok_or(analyte_store::Error::InvalidInput)?,
-                        (&[], &findings, lifecycle, false),
-                        |_, _| Ok(Vec::new()),
-                    )?;
+                    let rejected_evidence = conflict.ok_or(analyte_store::Error::InvalidInput)?;
+                    let rejected = if let Some(mut custody) = custody.clone() {
+                        custody.rejection = Some(analyte_store::LawRejection {
+                            occurrence: 1,
+                            reason: analyte_store::LawConflict::Progression,
+                        });
+                        store.interpret_law(
+                            id,
+                            rejected_evidence,
+                            (&[], &findings),
+                            lifecycle.ok_or(analyte_store::Error::InvalidInput)?,
+                            (&custody, action.as_ref()),
+                            |_, _| Ok(Vec::new()),
+                        )?
+                    } else {
+                        reconcile(
+                            store,
+                            id,
+                            action.as_ref(),
+                            rejected_evidence,
+                            (&[], &findings, lifecycle, false),
+                            |_, _| Ok(Vec::new()),
+                        )?
+                    };
                     Ok((rejected, InterpretationOutcome::Conflict))
                 }
                 result => result.map(|commit| {
@@ -253,7 +291,19 @@ pub(crate) async fn persist_mapping(
         })
         .await?;
     let (result, successful) = result;
-    let successful = work_conflict.map_or(successful, InterpretationOutcome::WorkConflict);
+    let successful = match result.law {
+        Some(analyte_store::LawDisposition::Accepted) => InterpretationOutcome::Accepted,
+        Some(analyte_store::LawDisposition::Rejected(rejection)) => {
+            InterpretationOutcome::WorkConflict(work_conflict.unwrap_or(
+                crate::orders::law::validation::Mismatch {
+                    segment: b"OBR",
+                    occurrence: rejection.occurrence,
+                    field: 2,
+                },
+            ))
+        }
+        None => work_conflict.map_or(successful, InterpretationOutcome::WorkConflict),
+    };
     mapping_outcome(result, successful)
 }
 
@@ -466,39 +516,6 @@ fn law_lifecycle() -> analyte_store::StatusLifecycle<'static> {
     }
 }
 
-async fn work_conflict(
-    store: &Handle,
-    machine: &Machine,
-    id: ReceiptId,
-) -> Result<Option<crate::orders::law::validation::Mismatch>, Error> {
-    Ok(
-        if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() {
-            let receipt = store
-                .request(deadline(), move |s| {
-                    s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-                })
-                .await?;
-            let payload = receipt.raw.get(1..receipt.raw.len().saturating_sub(2));
-            match payload
-                .and_then(|bytes| analyte_hl7::law::parse_message(bytes, settings.options()).ok())
-            {
-                Some(message) if analyte_hl7::law::receive_results(&message).is_ok() => {
-                    crate::orders::law::validation::check(
-                        store,
-                        machine,
-                        &message,
-                        settings.options(),
-                    )
-                    .await?
-                }
-                _ => None,
-            }
-        } else {
-            None
-        },
-    )
-}
-
 struct MappedReading {
     accepted: bool,
     reading: Reading,
@@ -506,83 +523,5 @@ struct MappedReading {
     findings: Vec<String>,
 }
 
-fn map_reading(mapping: Result<analyte_mapping::Output, Error>) -> Result<MappedReading, Error> {
-    let mut accepted = false;
-    let (reading, corrections, findings) = match mapping {
-        Ok(output) => {
-            accepted = !output.requires_parking();
-            let mut findings = output
-                .findings
-                .iter()
-                .map(|f| match f.problem {
-                    analyte_mapping::Problem::DepartureDerivedStatusRequiresContract =>
-                        "departure-derived status requires a contract version that carries departure evidence".to_owned(),
-                    analyte_mapping::Problem::DepartureConflict => format!("departure-conflict at {:?}: present non-final status contradicts documented final-only scope", f.position),
-                    analyte_mapping::Problem::UnqualifiedHl7Report
-                    | analyte_mapping::Problem::ValueKindMismatch { .. }
-                    | analyte_mapping::Problem::ComponentParts | analyte_mapping::Problem::MissingSample
-                    | analyte_mapping::Problem::UnknownTest | analyte_mapping::Problem::MissingIdentity { .. }
-                    | analyte_mapping::Problem::UnsupportedValue | analyte_mapping::Problem::UnsupportedFormatting
-                    | analyte_mapping::Problem::UnsupportedEscape | analyte_mapping::Problem::UnknownProcessing
-                    | analyte_mapping::Problem::ConflictingClassification | analyte_mapping::Problem::NoObservations
-                    | analyte_mapping::Problem::UnsupportedLawStatusOnly | analyte_mapping::Problem::InvalidTime => format!("{:?}: {:?}", f.position, f.problem),
-                })
-                .collect::<Vec<_>>();
-            for result in &output.results {
-                if let analyte_model::IdentityStatus::Unresolved(reason) = &result.content.identity
-                {
-                    findings.push(reason.as_str().to_owned());
-                }
-            }
-            let corrections = output
-                .results
-                .iter()
-                .map(|r| r.corrections.as_slice().iter().any(|c| *c))
-                .collect::<Vec<_>>();
-            (
-                Reading::Results(output.results.into_iter().map(|r| r.content).collect()),
-                corrections,
-                findings,
-            )
-        }
-        // Parser diagnostics can contain source tokens; keep them only in protected evidence.
-        Err(error) => (
-            Reading::Failed(analyte_model::Reason::new(&error.to_string())?),
-            Vec::new(),
-            Vec::new(),
-        ),
-    };
-    Ok(MappedReading {
-        accepted,
-        reading,
-        corrections,
-        findings,
-    })
-}
-
-fn mapping_outcome(
-    result: analyte_store::InterpretationCommit,
-    successful: InterpretationOutcome,
-) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
-    let accepted = matches!(successful, InterpretationOutcome::Accepted)
-        && !result
-            .outcomes
-            .iter()
-            .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
-    Ok((
-        if accepted {
-            InterpretationOutcome::Accepted
-        } else {
-            match successful {
-                InterpretationOutcome::Conflict => InterpretationOutcome::Conflict,
-                InterpretationOutcome::WorkConflict(location) => {
-                    InterpretationOutcome::WorkConflict(location)
-                }
-                InterpretationOutcome::Accepted | InterpretationOutcome::Failed => {
-                    InterpretationOutcome::Failed
-                }
-            }
-        },
-        result,
-    ))
-}
+#[cfg(test)]
+mod tests;

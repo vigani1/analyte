@@ -485,3 +485,86 @@ fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index(
     ));
     Ok(())
 }
+
+#[test]
+fn adr0016_adr0003_v12_migration_keeps_unknown_execution_and_command_evidence() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("execution-migration.db");
+    let mut store = open(&path)?;
+    let record = reserve_two(&mut store)?;
+    let before: String = store.db.query_row(
+        "SELECT evidence FROM machine_order_history ORDER BY sequence DESC LIMIT 1",
+        [],
+        |r| r.get(0),
+    )?;
+    store
+        .db
+        .execute_batch("DROP TABLE law_work_history; DROP TABLE law_messages; DROP TABLE awos_execution_history; PRAGMA user_version=12;")?;
+    drop(store);
+    let store = open(&path)?;
+    assert_eq!(
+        store
+            .db
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        SCHEMA_VERSION
+    );
+    let restored = store.machine_order(&identity()?)?.ok_or("missing")?;
+    assert_eq!(restored.id, record.id);
+    assert!(restored.items.iter().all(|i| i.execution.is_none()));
+    assert!(
+        restored
+            .items
+            .iter()
+            .all(|i| i.state == OrderState::Sending)
+    );
+    let after: String = store.db.query_row(
+        "SELECT evidence FROM machine_order_history ORDER BY sequence DESC LIMIT 1",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(before, after);
+    Ok(())
+}
+
+#[test]
+fn palm_tf2b_c8_adr0003_0011_projection_restart_keeps_command_state_and_no_results() -> TestResult {
+    use analyte_model::AwosExecution;
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("execution.db");
+    let mut store = open(&path)?;
+    let record = reserve_two(&mut store)?;
+    let metadata = test_support::receipt(b"synthetic status evidence")?;
+    store.receive(&metadata, b"synthetic status evidence", b"config")?;
+    let encoded = document(&test_support::interpretation()?)?;
+    store.db.execute(
+        "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
+        params![key(&metadata.id)?, encoded],
+    )?;
+    // The notification transaction will own admission; this fixture tests storage only.
+    store.db.execute("INSERT INTO awos_execution_history(machine_order,item_index,receipt,interpretation,state,recorded_at,cancel_outstanding) VALUES (?1,1,?2,1,'AnalyzerCancelled',105,1)",params![record.id,key(&metadata.id)?])?;
+    for sql in [
+        "UPDATE awos_execution_history SET state='Scheduled'",
+        "DELETE FROM awos_execution_history",
+    ] {
+        assert!(store.db.execute(sql, []).is_err());
+    }
+    assert!(store.db.execute("INSERT INTO awos_execution_history(machine_order,item_index,receipt,interpretation,state,recorded_at,cancel_outstanding) VALUES (?1,1,?2,1,'AnalyzerCancelled',105,1)",params![record.id,key(&metadata.id)?]).is_err());
+    drop(store);
+    let store = open(&path)?;
+    let restored = store.machine_order(&identity()?)?.ok_or("missing")?;
+    let item = restored.items.first().ok_or("item")?;
+    let execution = item.execution.as_ref().ok_or("projection")?;
+    assert_eq!(execution.state, AwosExecution::AnalyzerCancelled);
+    assert_eq!(execution.receipt, metadata.id);
+    assert!(execution.cancel_outstanding);
+    assert_eq!(execution.recorded_at, 105);
+    assert_eq!(item.state, OrderState::Sending);
+    assert!(restored.items.get(1).ok_or("sibling")?.execution.is_none());
+    assert_eq!(
+        store
+            .db
+            .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+        0
+    );
+    Ok(())
+}

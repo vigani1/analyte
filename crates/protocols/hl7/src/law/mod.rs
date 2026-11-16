@@ -376,8 +376,8 @@ pub use work::{
 mod results;
 
 pub use results::{
-    Attached, Observation, Parent, ResultStatus, Results, SpecimenObservation, Value,
-    result_acknowledgment,
+    Attached, ExecutionStatus, Observation, Parent, ResultStatus, Results, SpecimenObservation,
+    StatusNotice, Value, result_acknowledgment,
 };
 
 mod envelope;

@@ -16,6 +16,13 @@ Analyzer Manager messages after fixing a SAC-3/SAC-10 defect; this does not
 replace simulator qualification. The first live LAB-28 [run](conformance/gazelle/law-run/README.md)
 retained an invalid ORL as Uncertain and stopped before cancellation. See [reports](conformance/gazelle/README.md).
 
+ADR 0016 adds documented custody for empty LAW SC/IP/CA execution notices,
+including atomic mixed-message acceptance, retained-work correlation and
+restart-safe dispositions. Execution is visible only in protected admin views;
+contract v1 remains unchanged. Simulator status/cancellation-race qualification
+and a named admin responder remain deployment prerequisites. LAW custody
+receipts and linked work remain retained until explicit purge eligibility exists.
+
 ## 1. Goal
 
 One open program that connects any clinical lab analyzer to any lab app:

@@ -71,6 +71,11 @@ async fn render(state: &Context) -> Result<String, Error> {
             "reserve reached: receiving refused"
         },
     );
+    let cancelled = state
+        .store
+        .request(until, |s| s.analyzer_cancelled_count())
+        .await?;
+    html.push_str(&format!("<dt><strong>Analyzer-cancelled AWOSs</strong></dt><dd><strong>{cancelled}</strong> ? <a href=\"/analyzer-cancelled\">Review cancellation evidence and reconcile app intent</a></dd>"));
     render_uncertain_orders(state, &mut html, until).await?;
     render_destinations(state, &mut html, now).await?;
     render_machines(state, &mut html, until).await?;

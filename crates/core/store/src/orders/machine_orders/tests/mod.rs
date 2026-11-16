@@ -342,3 +342,5 @@ mod items;
 mod lifecycle;
 
 mod trust;
+
+mod custody;

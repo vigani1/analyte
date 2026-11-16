@@ -248,3 +248,28 @@ procedure. Keep results on the analyzer where possible. Restore space through
 approved backup/log rotation or more capacity; never delete the database,
 journals or parked evidence to make startup pass. Verify the cause is fixed,
 then inspect retained and machine-side work before resuming.
+
+
+## LAW execution and analyzer cancellation
+
+Use the authenticated overview's **Analyzer-cancelled AWOSs** link for the
+reconciliation list. Machine orders show execution alongside command state;
+open an item's execution history to review receipt/interpretation links,
+receive and host-recorded times, original estimate and zone evidence, scoped
+notes and rejected proposals. History is paginated. Missing execution means
+unknown; an absent estimate does not erase an earlier supplied estimate.
+
+Analyzer CA is an analyzer fact, not confirmation of the lab app's cancellation
+request. Check pending intent with the lab app and the original LAB-28 exchange.
+Do not resend work or create a cancel to clear the display. A UC alongside CA
+is parked for reconciliation and both facts remain visible. No sibling is
+cancelled automatically. Contract v1 has no execution-status event, so the
+assigned admin responder owns this review; clinical decisions remain with the
+lab and lab app. `status` reports only an aggregate cancellation count.
+
+LAW custody receipts and linked work remain retained conservatively until a
+specific eligibility rule supports their disposition/history records. Include
+that growth in disk planning; the usual reserve refusal still stops receiving
+visibly. A restart interprets pending raw LAW receipts before connections open;
+a receipt from a changed configuration is parked for explicit audited
+reprocessing. Previously parked status-only notices are never bulk-accepted.

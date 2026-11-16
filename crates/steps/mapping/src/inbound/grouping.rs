@@ -139,16 +139,8 @@ pub(crate) fn message(
             },
         )?;
     }
-    if output.results.is_empty() && output.unmapped.is_empty() {
-        finding(
-            &mut output,
-            source.position(0, 0),
-            if law.is_some() {
-                Problem::UnsupportedLawStatusOnly
-            } else {
-                Problem::NoObservations
-            },
-        )?;
+    if output.results.is_empty() && output.unmapped.is_empty() && law.is_none() {
+        finding(&mut output, source.position(0, 0), Problem::NoObservations)?;
     }
     Ok(output)
 }

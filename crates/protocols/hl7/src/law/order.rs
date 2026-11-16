@@ -299,8 +299,13 @@ fn orc(
                 }
             }
         }
-        field(segment, "ORC", 27, false, false)?;
-        if !raw(segment, 27).is_empty() {
+        if raw(segment, 27) != b"\"\"" {
+            field(segment, "ORC", 27, false, false)?;
+        }
+        if !raw(segment, 27).is_empty() && raw(segment, 27) != b"\"\"" {
+            if raw(segment, 27).contains(&b'^') {
+                return Err(component_error("ORC", 27, 2));
+            }
             time(raw(segment, 27), "ORC", 27, true, direction)?;
         }
     } else {

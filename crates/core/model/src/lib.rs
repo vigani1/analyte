@@ -6,12 +6,14 @@
 //! Hosts generate `UUIDv7` IDs once and persist them; this crate validates them.
 #![forbid(unsafe_code)]
 
+mod execution;
 mod identity;
 mod lifecycle;
 mod result;
 mod text;
 mod value;
 
+pub use execution::*;
 pub use identity::*;
 pub use lifecycle::*;
 pub use result::*;

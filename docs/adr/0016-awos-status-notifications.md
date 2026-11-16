@@ -1,13 +1,13 @@
 # 0016. AWOS status notifications
 
-Status: proposed, 2026-11-16.
+Status: accepted, 2026-11-16 (approved by the project lead; implemented on `feat/awos-status`).
 
 ## Context
 
-LAW permits LAB-29 without observations for SC, CA and IP. The current
-[restriction](../protocols/law/decisions.md#status-only-lab-29-restriction)
-parks these as `UnsupportedLawStatusOnly`. Normal progress would therefore
-create operator noise. [Research and sources](../research/law-status-notifications.md)
+LAW permits LAB-29 without observations for SC, CA and IP. Before this
+decision, the [restriction](../protocols/law/decisions.md#status-only-lab-29-custody)
+parked these as `UnsupportedLawStatusOnly`, adding operator noise for normal
+progress. [Research and sources](../research/law-status-notifications.md)
 distinguish AWOS execution status, command outcomes and observation status.
 
 The current [model](../../crates/core/model/src/lifecycle.rs) has nine order
@@ -19,15 +19,15 @@ marks omitted items Uncertain and conservatively aggregates mixed outcomes.
 That API describes a completed command exchange, not a sparse asynchronous
 status notice; using it for LAB-29 would damage unrelated item states.
 
-This proposal preserves [ADR 0003](0003-clinical-safety-rules.md),
+This decision preserves [ADR 0003](0003-clinical-safety-rules.md),
 [ADR 0004](0004-outbound-only-polled-orders.md),
 [ADR 0008](0008-app-contract.md),
 [ADR 0010](0010-acknowledgment-boundaries.md) and
-[ADR 0011](0011-result-status-progression.md). It authorizes no code by itself
-and changes no current support claim or plan status. The explicitly requested
-ADR number is retained even though 0015 is absent in this checkout.
+[ADR 0011](0011-result-status-progression.md). Implementation preserves the
+documented evidence level and leaves simulator qualification open. Contract
+v1 and its closed state vocabulary are unchanged.
 
-## Proposed decision
+## Decision
 
 ### Keep execution status alongside command state
 
@@ -172,7 +172,7 @@ or `cancel_confirmed` `/order-events` document to disguise the new fact.
 and lacks AWOS/item provenance. Unknown JSON fields being ignored does not
 allow a new state value or endpoint to be assumed supported.
 
-No v1 change or optional event is introduced by this proposal. If apps later
+No v1 change or optional event is introduced by this decision. If apps later
 need AWOS progress, prefer an explicitly negotiated, optional AWOS event
 capability with its own documented envelope, receipt/item provenance and
 stable delivery ID/immutable retry bytes. If support must be mandatory or
@@ -201,9 +201,9 @@ Unknown work (including unsupported analyzer-created/reflex work without an
 authorized retained match), migrated unknown coverage, malformed notices,
 unsupported text/content, identity conflicts, illegal progression and
 unsupported CM-only messages remain parked with distinct reasons. No evidence
-level is raised. Existing `UnsupportedLawStatusOnly` stays until implementation
-and qualification replace it; old parked receipts need explicit audited
-reprocessing, not automatic bulk acceptance.
+level is raised. The active mapper now types supported empty notifications;
+historical `UnsupportedLawStatusOnly` receipts still need explicit audited reprocessing,
+not automatic bulk acceptance.
 
 Implementation needs bounded store migrations and a notification-specific
 transaction, not a call to command-exchange completion. Preserve references
@@ -223,4 +223,22 @@ holds. Assert exact ACK/error bytes, durable evidence and **zero machine
 commands and zero synthetic result deliveries** from notification handling.
 Check contract v1 remains byte-compatible. Review the restriction, checklist,
 plan claims and pilot instructions when implementation actually changes them;
-this documents-only PR changes none of those claims.
+the implementation evidence is recorded in the LAW checklist. Simulator
+qualification remains required before enabling a LAW machine.
+
+## Implementation evidence
+
+Schema 13 adds immutable execution evidence; schema 14 retains message
+dispositions and receipt-to-item evidence alongside the interpretation
+transaction. Trusted exact retries reuse a disposition; audited reprocessing
+appends its own interpretation and audit. Pending raw LAW receipts recover
+before transports open, without machine commands. New cancel admission is
+blocked for analyzer-cancelled work; existing cancellation ownership is kept.
+The admin overview, cancellation list and paginated item history expose these
+facts separately from command state, and `status` adds only a count.
+
+Source-named tests are linked in the LAW checklist, including mixed-message
+rollback, restart on either side of interpretation, sparse items, estimates,
+CA/CR/UC separation and stable bounded operator history. No evidence level
+is raised. Custody receipts and linked orders are conservatively excluded
+from purge until a tested eligibility policy covers both new history tables.
