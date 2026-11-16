@@ -127,6 +127,11 @@ pub struct SourceTime {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct EvidenceList<T>(Vec<T>);
+impl<T> Default for EvidenceList<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
 /// A source supplied too many evidence entries.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[error("evidence list exceeds 256 entries")]

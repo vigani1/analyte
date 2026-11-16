@@ -22,6 +22,7 @@ pub(super) fn validate_departures(
     }
     let mut tags = std::collections::HashSet::new();
     for departure in &m.deviations {
+        departure.evidence_snapshot()?;
         let tag = departure.tag();
         if !tags.insert(tag) {
             return Err(refusal(path, tag, Refusal::DuplicateRule));

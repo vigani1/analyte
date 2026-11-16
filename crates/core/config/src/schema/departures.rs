@@ -151,6 +151,19 @@ pub enum MachineDeparture {
 }
 
 impl MachineDeparture {
+    /// Encodes the exact declaration in the existing TOML format for protected interpretation evidence.
+    /// # Errors
+    /// Refuses serialization failures or a snapshot exceeding the source-text evidence bound.
+    pub fn evidence_snapshot(&self) -> Result<analyte_model::SourceText, crate::Error> {
+        let encoded = toml::to_string(self)?;
+        analyte_model::SourceText::new(&encoded).map_err(|source| crate::Error::Departure {
+            path: "effective config".into(),
+            rule: self.tag().into(),
+            reason: super::DepartureRefusal::EvidenceLimit,
+            source: Some(Box::new(source)),
+        })
+    }
+
     /// Returns the declaration without interpreting descriptive text.
     #[must_use]
     pub fn declaration(&self) -> &DepartureDeclaration {

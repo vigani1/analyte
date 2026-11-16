@@ -26,7 +26,9 @@ pub(crate) fn mapping_location(
                 analyte_mapping::Error::Hl7 { source, .. } => {
                     return syntax_location(source, raw, ending);
                 }
-                analyte_mapping::Error::Syntax => return None,
+                analyte_mapping::Error::Syntax | analyte_mapping::Error::DepartureEvidence(_) => {
+                    return None;
+                }
             }
         }
     };
