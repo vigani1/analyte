@@ -58,6 +58,7 @@ impl AlertEndpoint {
 }
 
 /// Bounded external delivery settings, independent of clinical destinations.
+#[derive(Clone)]
 pub struct AlertDelivery {
     endpoints: Vec<AlertEndpoint>,
     reminder: Duration,

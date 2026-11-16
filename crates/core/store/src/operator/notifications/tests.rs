@@ -150,10 +150,10 @@ fn adr0014_raise_reminder_resolve_episodes_capacity_and_closed_payload() -> Test
     let reminder = store
         .claim_alert_attempt(&endpoint, 160, 3, 5, 30)?
         .ok_or("reminder missing")?;
-    let reminded = decoded(&reminder)?;
-    assert_eq!(reminded["event"], "reminder");
-    assert_eq!(reminded["condition_id"], raised["condition_id"]);
-    assert_eq!(reminded["episode_id"], raised["episode_id"]);
+    let reminder_body = decoded(&reminder)?;
+    assert_eq!(reminder_body["event"], "reminder");
+    assert_eq!(reminder_body["condition_id"], raised["condition_id"]);
+    assert_eq!(reminder_body["episode_id"], raised["episode_id"]);
     assert_ne!(reminder.id, raise.id);
     // Queue exhaustion must preserve the resolution transition until capacity returns.
     store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", false, Some(0), 161)?;

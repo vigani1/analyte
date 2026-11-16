@@ -5,7 +5,7 @@ mod delivery;
 mod destination;
 mod polling;
 mod webhook;
-pub use webhook::WebhookUrl;
+pub use webhook::{WebhookSender, WebhookUrl};
 
 pub use delivery::{DeliveryOutcome, Worker, build_delivery, build_order_event};
 pub use destination::{Credentials, Destination, Limits, SecretsSource};
@@ -89,3 +89,12 @@ async fn body(mut response: reqwest::Response) -> Result<Vec<u8>, Error> {
 
 #[cfg(test)]
 mod tests;
+
+fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .retry(reqwest::retry::never())
+        .no_proxy()
+        .timeout(timeout)
+        .build()
+}
