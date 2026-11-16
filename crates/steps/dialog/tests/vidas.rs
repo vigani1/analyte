@@ -186,3 +186,55 @@ fn vidas_bci_a_3_storage_failure_and_successful_sessions() -> Result<(), Box<dyn
     }
     Ok(())
 }
+
+#[test]
+fn adr0001_0010_vidas_owns_commit_and_session_deadlines() -> Result<(), Box<dyn std::error::Error>>
+{
+    let c = config(Mode::Literal, &[], false)?;
+    let mut dialog = Dialog::upload(c.clone(), policy())?;
+    let _ = dialog.start();
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(2)));
+    assert!(
+        dialog
+            .step(Duration::from_secs(1), Event::Activity)?
+            .is_empty()
+    );
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(3)));
+    assert!(
+        dialog
+            .step(Duration::from_secs(2), Event::Activity)?
+            .is_empty()
+    );
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(3)));
+    assert!(
+        dialog
+            .step(Duration::from_secs(3), Event::Activity)?
+            .contains(&Action::Park)
+    );
+    assert_eq!(dialog.next_deadline(), None);
+
+    let mut dialog = Dialog::upload(c.clone(), policy())?;
+    let _ = dialog.start();
+    let _ = dialog.step(Duration::ZERO, Event::Control(5))?;
+    let mut decoder = Decoder::new(c.clone());
+    let mut packet = None;
+    for byte in c.encode(b"synthetic")? {
+        packet = decoder.push(byte)?;
+    }
+    let actions = dialog.step(Duration::ZERO, Event::Packet(packet.ok_or("packet")?))?;
+    assert!(
+        actions
+            .iter()
+            .any(|action| matches!(action, Action::Store(_)))
+    );
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(1)));
+    let actions = dialog.step(Duration::from_secs(1), Event::Stored)?;
+    assert!(actions.contains(&Action::Park));
+    assert!(
+        !actions
+            .iter()
+            .any(|action| matches!(action, Action::Send(_)))
+    );
+    assert_eq!(dialog.next_deadline(), None);
+    Ok(())
+}

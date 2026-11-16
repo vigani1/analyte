@@ -2,7 +2,7 @@
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::{Error, intake, invalid};
-use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
+use analyte_dialog::vidas::{Action, Dialog, Event, Policy};
 use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -10,21 +10,11 @@ use analyte_vidas::syntax::Message;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
-fn timer_index(timer: Timer) -> usize {
-    match timer {
-        Timer::Acknowledgment => 0,
-        Timer::Interbyte => 1,
-        Timer::Session => 2,
-        Timer::Commit => 3,
-    }
-}
-
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
 struct ConnectionState {
     dialog: Dialog,
     decoder: Option<Decoder>,
     suffix: Option<(u8, usize)>,
-    timers: [Option<std::time::Duration>; 4],
     start: Instant,
     actions: VecDeque<Action>,
     active: Option<analyte_store::MachineOrder>,
@@ -69,13 +59,12 @@ impl ConnectionState {
             retries: installed.retries,
             backoff: ms(installed.backoff_ms),
         };
-        let dialog = Dialog::upload(config.clone(), policy.clone())?;
+        let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
         let actions = dialog.start().into();
         Ok(Self {
             dialog,
             decoder: None,
             suffix: None,
-            timers: [None; 4],
             start: Instant::now(),
             actions,
             active: None,
@@ -102,11 +91,10 @@ impl ConnectionState {
             if process(self, machine, store, conn, installed).await? {
                 return Ok(());
             }
-            let mut next = self.timers.iter().flatten().copied().min().unwrap_or(
-                self.start
-                    .elapsed()
-                    .saturating_add(ms(installed.session_ms)),
-            );
+            let mut next = self
+                .dialog
+                .next_deadline()
+                .ok_or_else(|| invalid("VIDAS active dialog has no deadline"))?;
             if self.idle && self.opened {
                 next = next.min(
                     self.start
@@ -127,7 +115,8 @@ impl ConnectionState {
             match input {
                 Input::Opened { .. } => self.opened = true,
                 Input::Tick => {
-                    self.tick();
+                    self.actions
+                        .extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
                 }
                 Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
                     self.end_code = if *stop.borrow() {
@@ -135,7 +124,10 @@ impl ConnectionState {
                     } else {
                         "VIDAS-transfer-disconnected"
                     };
-                    self.actions.extend(self.dialog.on(Event::Disconnected));
+                    self.actions.extend(
+                        self.dialog
+                            .step(self.start.elapsed(), Event::Disconnected)?,
+                    );
                     process(self, machine, store, conn, installed).await?;
                     return Ok(());
                 }
@@ -160,12 +152,10 @@ impl ConnectionState {
     ) -> Result<bool, Error> {
         self.idle = false;
         for byte in bytes {
-            if let Some(deadline) = self.timers.get_mut(timer_index(Timer::Interbyte)) {
-                *deadline = Some(
-                    self.start
-                        .elapsed()
-                        .saturating_add(ms(installed.interbyte_ms)),
-                );
+            self.actions
+                .extend(self.dialog.step(self.start.elapsed(), Event::Activity)?);
+            if process(self, machine, store, conn, installed).await? {
+                return Ok(true);
             }
             let event = if let Some(decoder) = &mut self.decoder {
                 match Decoder::push(decoder, byte) {
@@ -212,7 +202,8 @@ impl ConnectionState {
                 if matches!(event, Event::Packet(_)) {
                     self.decoder = None;
                 }
-                self.actions.extend(self.dialog.on(event));
+                self.actions
+                    .extend(self.dialog.step(self.start.elapsed(), event)?);
                 // Process Store before consuming a merged ETX/EOT following it.
                 if process(self, machine, store, conn, installed).await? {
                     return Ok(true);
@@ -243,31 +234,6 @@ impl ConnectionState {
         }
         Ok(())
     }
-    fn tick(&mut self) {
-        for timer in [
-            Timer::Session,
-            Timer::Commit,
-            Timer::Acknowledgment,
-            Timer::Interbyte,
-        ] {
-            if self
-                .timers
-                .get(timer_index(timer))
-                .copied()
-                .flatten()
-                .is_some_and(|d| d <= self.start.elapsed())
-            {
-                self.end_code = match timer {
-                    Timer::Acknowledgment => "VIDAS-acknowledgment-timeout",
-                    Timer::Interbyte => "VIDAS-interbyte-timeout",
-                    Timer::Session => "VIDAS-session-timeout",
-                    Timer::Commit => "VIDAS-commit-timeout",
-                };
-                self.actions.extend(self.dialog.on(Event::Expired(timer)));
-                break;
-            }
-        }
-    }
     async fn close(&self, store: &Handle, mut result: Result<(), Error>) -> Result<(), Error> {
         if let Some(order) = self.active.as_ref() {
             let cleanup = crate::orders::sending::uncertain(store, order, self.end_code).await;
@@ -284,7 +250,6 @@ fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
         .ok_or_else(|| invalid("VIDAS mapped request missing"))?;
     state.dialog = Dialog::download(state.config.clone(), state.policy.clone(), &request)?;
     state.start = Instant::now();
-    state.timers = [None; 4];
     state.idle = false;
     state.end_code = "VIDAS-transfer-error";
     state.actions.extend(state.dialog.start());
@@ -313,27 +278,21 @@ async fn process(
                 match custody::store_within(custody::budget(machine), operation).await {
                     Ok(()) => {
                         // Completion effects precede previously queued timer changes.
-                        state.actions.extend(state.dialog.on(Event::Stored));
+                        state
+                            .actions
+                            .extend(state.dialog.step(state.start.elapsed(), Event::Stored)?);
                     }
                     Err(error) => {
-                        state.actions.extend(state.dialog.on(Event::StorageFailed));
+                        state.actions.extend(
+                            state
+                                .dialog
+                                .step(state.start.elapsed(), Event::StorageFailed)?,
+                        );
                         failure = Some(error);
                     }
                 }
             }
-            Action::Arm(timer, wait) => {
-                *state
-                    .timers
-                    .get_mut(timer_index(timer))
-                    .ok_or_else(|| invalid("VIDAS timer index"))? =
-                    Some(state.start.elapsed().saturating_add(wait));
-            }
-            Action::Cancel(timer) => {
-                *state
-                    .timers
-                    .get_mut(timer_index(timer))
-                    .ok_or_else(|| invalid("VIDAS timer index"))? = None;
-            }
+            Action::Arm(_, _) | Action::Cancel(_) => {}
             Action::Park => {
                 if state.end_code == "VIDAS-transfer-error" {
                     state.end_code = "VIDAS-transfer-refused-or-unexpected";
@@ -361,7 +320,6 @@ async fn process(
                         state.active = None;
                         state.dialog = Dialog::upload(state.config.clone(), state.policy.clone())?;
                         state.start = Instant::now();
-                        state.timers = [None; 4];
                         state.actions.extend(state.dialog.start());
                         state.idle = true;
                     }

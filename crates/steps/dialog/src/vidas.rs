@@ -1,5 +1,5 @@
 //! Runs VIDAS result upload and work download conversations.
-//! Host owns byte journaling, storage, timer generations and cancellation.
+//! Host owns byte journaling, storage and cancellation; the dialog owns timers.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
 use analyte_framing::vidas::{Config, Mode, Packet};
@@ -23,7 +23,7 @@ pub struct Policy {
     pub backoff: Duration,
 }
 
-/// Named deadline the host must schedule and cancel on state changes.
+/// Names a dialog-owned deadline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Timer {
     /// Peer acknowledgment.
@@ -43,9 +43,9 @@ pub enum Action {
     Send(Vec<u8>),
     /// Durably save packet with driver/config identity before reporting Stored.
     Store(Packet),
-    /// Schedule a deadline; host supplies expiry as an event.
+    /// Reports a deadline arm for observers; the dialog schedules it internally.
     Arm(Timer, Duration),
-    /// Cancel a deadline and discard stale generations.
+    /// Reports a cancelled deadline; the dialog cancels it internally.
     Cancel(Timer),
     /// Keep receipt/order unresolved for operator reconciliation.
     Park,
@@ -66,6 +66,10 @@ pub enum Event {
     StorageFailed,
     /// A current named deadline expired.
     Expired(Timer),
+    /// Advance deadlines without input.
+    Tick,
+    /// A journaled byte arrived, including an incomplete control or packet.
+    Activity,
     /// Connection lost or host cancelled.
     Disconnected,
 }
@@ -88,6 +92,12 @@ pub enum Error {
     /// Deadlines must all be positive.
     #[error("zero conversation deadline")]
     Policy,
+    /// Connection time moved backwards.
+    #[error("dialog time moved backwards")]
+    TimeReversed,
+    /// A connection deadline cannot be represented.
+    #[error("dialog deadline exhausted")]
+    Exhausted,
     /// A download must contain an mtmpr message.
     #[error("download requires request")]
     Request,
@@ -102,6 +112,8 @@ pub struct Dialog {
     policy: Policy,
     state: State,
     outbound: Option<Vec<u8>>,
+    clock: crate::Clock,
+    timers: [Option<Duration>; 4],
 }
 
 impl Dialog {
@@ -144,12 +156,14 @@ impl Dialog {
             policy,
             state,
             outbound,
+            clock: crate::Clock::default(),
+            timers: [None; 4],
         })
     }
 
     /// Starts deadlines and emits ENQ for a download. Call exactly once.
     #[must_use]
-    pub fn start(&self) -> Vec<Action> {
+    pub fn start(&mut self) -> Vec<Action> {
         let mut actions = vec![
             Action::Arm(Timer::Session, self.policy.session),
             Action::Arm(Timer::Interbyte, self.policy.interbyte),
@@ -161,13 +175,76 @@ impl Dialog {
                 self.policy.acknowledgment,
             ));
         }
+        self.schedule(&actions);
         actions
     }
 
+    /// Returns the next absolute connection-clock wake time.
+    #[must_use]
+    pub fn next_deadline(&self) -> Option<Duration> {
+        self.timers.iter().flatten().copied().min()
+    }
+
+    /// Applies time before input; received fragments never postpone session or commit deadlines.
+    /// # Errors
+    /// Rejects reversed or overflowing time without changing the conversation.
+    pub fn step(&mut self, now: Duration, event: Event) -> Result<Vec<Action>, Error> {
+        let headroom = self
+            .policy
+            .session
+            .max(self.policy.interbyte)
+            .max(self.policy.commit)
+            .max(self.policy.acknowledgment);
+        self.clock
+            .advance(now, headroom)
+            .map_err(|error| match error {
+                crate::ClockError::Reversed => Error::TimeReversed,
+                crate::ClockError::Exhausted => Error::Exhausted,
+            })?;
+        if !matches!(event, Event::Disconnected) {
+            for timer in [
+                Timer::Session,
+                Timer::Commit,
+                Timer::Acknowledgment,
+                Timer::Interbyte,
+            ] {
+                if self.timers[timer.index()].is_some_and(|deadline| now >= deadline) {
+                    return Ok(self.on(Event::Expired(timer)));
+                }
+            }
+        }
+        if matches!(event, Event::Tick) {
+            return Ok(Vec::new());
+        }
+        if matches!(event, Event::Activity) {
+            if self.timers[Timer::Interbyte.index()].is_some() {
+                self.timers[Timer::Interbyte.index()] = now.checked_add(self.policy.interbyte);
+            }
+            return Ok(Vec::new());
+        }
+        Ok(self.on(event))
+    }
+
+    fn schedule(&mut self, actions: &[Action]) {
+        for action in actions {
+            match action {
+                Action::Arm(timer, wait) => {
+                    self.timers[timer.index()] = self.clock.now().checked_add(*wait)
+                }
+                Action::Cancel(timer) => self.timers[timer.index()] = None,
+                Action::Send(_) | Action::Store(_) | Action::Park | Action::Complete => {}
+            }
+        }
+    }
+
     /// Advances using host events. Any unexpected event parks and stops.
-    /// Stale deadline events must be removed by the host using timer generations.
+    /// Compatibility entry for events at the last accepted clock time.
+    /// Timed hosts use `step`; timers are updated before returning any store action.
     #[must_use]
     pub fn on(&mut self, event: Event) -> Vec<Action> {
+        if matches!(event, Event::Tick | Event::Activity) {
+            return Vec::new();
+        }
         let mut actions = vec![
             Action::Cancel(Timer::Interbyte),
             Action::Arm(Timer::Interbyte, self.policy.interbyte),
@@ -223,7 +300,9 @@ impl Dialog {
                 | Event::Stored
                 | Event::StorageFailed
                 | Event::Expired(_)
-                | Event::Disconnected,
+                | Event::Disconnected
+                | Event::Tick
+                | Event::Activity,
             ) => return Vec::new(),
             (
                 State::UploadReady
@@ -238,7 +317,9 @@ impl Dialog {
                 | Event::Stored
                 | Event::StorageFailed
                 | Event::Expired(_)
-                | Event::Disconnected,
+                | Event::Disconnected
+                | Event::Tick
+                | Event::Activity,
             ) => {
                 self.state = State::Finished;
                 actions.push(Action::Park);
@@ -254,6 +335,18 @@ impl Dialog {
                 actions.push(Action::Cancel(timer));
             }
         }
+        self.schedule(&actions);
         actions
+    }
+}
+
+impl Timer {
+    fn index(self) -> usize {
+        match self {
+            Self::Acknowledgment => 0,
+            Self::Interbyte => 1,
+            Self::Session => 2,
+            Self::Commit => 3,
+        }
     }
 }
