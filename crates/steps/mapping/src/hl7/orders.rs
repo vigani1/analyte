@@ -49,7 +49,10 @@ impl Command {
             ));
         }
         let version = syntax.edition().into();
-        if version == Version::V231 && app.fields().patient.is_some() {
+        if version == Version::V231
+            && app.fields().patient.is_some()
+            && app.fields().state == analyte_contract::document::OrderState::Requested
+        {
             return Err(Error::Context(
                 "HL7-patient-name-required-but-not-carried-by-contract",
             ));
