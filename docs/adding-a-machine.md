@@ -85,8 +85,8 @@ Record unresolved items explicitly and withhold activation until resolved.
 
 All layers use TOML, a text format with named sections. Unknown keys fail.
 Sections and lists replace in full; overrides do not merge individual list
-entries and cannot change evidence. See the [schema](../crates/core/config/src/schema.rs)
-and [validation rules](../crates/core/config/src/validation.rs) before editing.
+entries and cannot change evidence. See the [schema](../crates/core/config/src/schema/mod.rs)
+and [validation rules](../crates/core/config/src/validation/mod.rs) before editing.
 
 ### Complete synthetic example
 

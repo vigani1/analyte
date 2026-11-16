@@ -23,7 +23,7 @@ Cargo-mutants 27.1.0; pinned Rust 1.100.0; all features, scratch copies;
 
 ```powershell
 cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 4 -o target/store-mutation-before
-cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 1 --file crates/core/store/src/lib.rs -F '162:17' --cargo-test-arg adr0003_rule7_sqlite_lock_failures -o target/store-mutation-recheck-lock
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 1 --file crates/core/store/src/lib/mod.rs -F '162:17' --cargo-test-arg adr0003_rule7_sqlite_lock_failures -o target/store-mutation-recheck-lock
 ```
 
 The full run discovered 565 mutants, then was interrupted on the confirmed bug.
@@ -678,7 +678,7 @@ cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -
 cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/core/store/src/alerts.rs -F '60:9|124:13|125:13|124:32|183:34|205:31|216:69' --cargo-test-arg alerts -o target/store-round-3/alerts-recheck
 cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/core/store/src/capacity.rs --cargo-test-arg capacity -o target/store-round-3/capacity-before
 cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 1 --file crates/core/store/src/capacity.rs -F '8:' --cargo-test-arg capacity -o target/store-round-3/capacity-bound-recheck
-cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/core/store/src/lib.rs --cargo-test-arg lib_ -o target/store-round-3/lib-focused
+cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 2 --file crates/core/store/src/lib/mod.rs --cargo-test-arg lib_ -o target/store-round-3/lib-focused
 cargo mutants -p analyte-store --all-features --timeout 60 --build-timeout 180 -j 1 --file crates/core/store/src/restore.rs -F '79:21' --cargo-test-arg mutation_plan11_restore_busy -o target/store-round-3/restore-busy-recheck
 # The two draft compile failures used the corresponding query/worker commands above,
 # with output names query-resumed and worker-shutdown-recheck.

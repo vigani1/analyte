@@ -9,7 +9,7 @@ impl Store {
         db.execute_batch("PRAGMA foreign_keys=OFF")?;
         let result = (|| {
             let tx = db.transaction()?;
-            tx.execute_batch(include_str!("migration_v2.sql"))?;
+            tx.execute_batch(include_str!("../migration_v2.sql"))?;
             tx.commit()?;
             Ok::<_, Error>(())
         })();
@@ -24,7 +24,7 @@ impl Store {
         db.execute_batch("PRAGMA foreign_keys=OFF")?;
         let result = (|| {
             let tx = db.transaction()?;
-            tx.execute_batch(include_str!("migration_v7.sql"))?;
+            tx.execute_batch(include_str!("../migration_v7.sql"))?;
             migrate_rows(
                 &tx,
                 "machine_order_history",
@@ -68,7 +68,7 @@ PRAGMA user_version=7;")?;
 impl Store {
     pub(crate) fn migrate_v9(db: &mut Connection, limit: usize) -> Result<(), Error> {
         let tx = db.transaction()?;
-        tx.execute_batch(include_str!("migration_v9.sql"))?;
+        tx.execute_batch(include_str!("../migration_v9.sql"))?;
         migrate_rows(&tx, "parked", "id", limit, |id, encoded| {
             let evidence: crate::parked::ParkingEvidence = serde_json::from_str(encoded)?;
             let details = evidence.details;

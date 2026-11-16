@@ -46,7 +46,7 @@ path = "tests/outbound_lookup.rs"
 
 [[test]]
 name = "poct"
-path = "tests/poct.rs"
+path = "tests/poct/mod.rs"
 
 [[test]]
 name = "vendor_mapping"

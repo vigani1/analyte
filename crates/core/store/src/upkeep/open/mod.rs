@@ -78,7 +78,7 @@ impl Store {
         if version == 0 {
             startup.run(StartupStep::Migration { from: 0, to: 1 }, || {
                 let tx = db.transaction()?;
-                tx.execute_batch(include_str!("schema.sql"))?;
+                tx.execute_batch(include_str!("../schema.sql"))?;
                 tx.commit()?;
                 Ok(())
             })?;
@@ -98,7 +98,7 @@ impl Store {
         if version <= 3 {
             startup.run(StartupStep::Migration { from: 3, to: 4 }, || {
                 let tx = db.transaction()?;
-                tx.execute_batch(include_str!("migration_v4.sql"))?;
+                tx.execute_batch(include_str!("../migration_v4.sql"))?;
                 tx.commit()?;
                 Ok(())
             })?;
@@ -106,7 +106,7 @@ impl Store {
         if version <= 4 {
             startup.run(StartupStep::Migration { from: 4, to: 5 }, || {
                 let tx = db.transaction()?;
-                tx.execute_batch(include_str!("migration_v5.sql"))?;
+                tx.execute_batch(include_str!("../migration_v5.sql"))?;
                 tx.commit()?;
                 Ok(())
             })?;
@@ -114,7 +114,7 @@ impl Store {
         if version <= 5 {
             startup.run(StartupStep::Migration { from: 5, to: 6 }, || {
                 let tx = db.transaction()?;
-                tx.execute_batch(include_str!("migration_v6.sql"))?;
+                tx.execute_batch(include_str!("../migration_v6.sql"))?;
                 tx.commit()?;
                 Ok(())
             })?;
@@ -128,7 +128,7 @@ impl Store {
         if version <= 7 {
             startup.run(StartupStep::Migration { from: 7, to: 8 }, || {
                 let tx = db.transaction()?;
-                tx.execute_batch(include_str!("migration_v8.sql"))?;
+                tx.execute_batch(include_str!("../migration_v8.sql"))?;
                 Self::integrity(&tx)?;
                 tx.commit()?;
                 Ok(())

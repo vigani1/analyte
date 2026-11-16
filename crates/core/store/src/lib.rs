@@ -285,5 +285,5 @@ impl OrderTrust {
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
-#[path = "lib/tests.rs"]
+#[path = "tests.rs"]
 mod tests;

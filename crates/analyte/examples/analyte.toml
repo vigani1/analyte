@@ -13,5 +13,5 @@ busy_timeout_ms = 1000
 
 [[machines]]
 id = "synthetic-hl7"
-definition = "../../config/examples/hl7.toml"
-site = "../../config/examples/site.toml"
+definition = "../../core/config/examples/hl7.toml"
+site = "../../core/config/examples/site.toml"

@@ -643,7 +643,7 @@ fn recording(
     Error,
 > {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../sim/recordings")
+        .join("../testing/sim/recordings")
         .join(format!("{name}.rec.jsonl"));
     Ok(analyte_transport::recording::read(
         std::fs::File::open(path)?,

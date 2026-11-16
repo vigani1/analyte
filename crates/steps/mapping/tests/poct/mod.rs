@@ -1,5 +1,5 @@
 //! Appendix B sections 5.15, 5.21 and 8 faithful common-model mapping tests.
-#[path = "poct/messages.rs"]
+#[path = "messages.rs"]
 mod messages;
 use analyte_mapping::poct::map_observations;
 use analyte_model::{Comparator, IdentityStatus, QcClass, ResultStatus, ValueInterpretation};
