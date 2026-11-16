@@ -272,3 +272,35 @@ fn poct01_b_12_3_p181_encapsulation_uses_first_text_node() -> Result<(), Message
     assert_eq!(parsed.document().raw(), raw.as_bytes());
     Ok(())
 }
+
+// POCT01-A2 B 8.9 p.135, 12.3 p.189 and 6.5.2.1 p.116.
+#[test]
+fn poct01_b_8_9_p135_decimal_integral_with_trailing_point() -> Result<(), MessageError> {
+    for value in ["10.", "+5.", "-0.", "0.50"] {
+        let real = hello("h").replace(
+            "DCP.application_timeout V=\"12.5\"",
+            &format!("DCP.application_timeout V=\"{value}\""),
+        );
+        Message::parse(real.as_bytes(), limits())?;
+        let pq = observation("o", true, &format!("<OBS.value V=\"{value}\" U=\"mg/L\"/>"));
+        let parsed = Message::parse(pq.as_bytes(), limits())?;
+        assert_eq!(parsed.document().raw(), pq.as_bytes());
+    }
+    for value in [".", "+.", "-", "+", "1..", "1e2", "1,2"] {
+        let real = hello("h").replace(
+            "DCP.application_timeout V=\"12.5\"",
+            &format!("DCP.application_timeout V=\"{value}\""),
+        );
+        assert!(Message::parse(real.as_bytes(), limits()).is_err());
+        assert!(
+            Message::parse(
+                observation("o", true, &format!("<OBS.value V=\"{value}\" U=\"mg/L\"/>"))
+                    .as_bytes(),
+                limits()
+            )
+            .is_err()
+        );
+    }
+    assert!(Message::parse(status("s", "1.").as_bytes(), limits()).is_err());
+    Ok(())
+}

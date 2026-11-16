@@ -191,3 +191,21 @@ fn poct01_b_8_11_clarification_p287_utc_z_preserves_original_and_precision() -> 
     }
     Ok(())
 }
+
+// POCT01-A2 B 8.9 p.135 and 6.5.2.1 p.116: numeric grammar must retain literal spelling.
+#[test]
+fn poct01_b_8_9_trailing_point_quantity_survives_mapping() -> TestResult {
+    let raw = messages::observation("o", true, "<OBS.value V=\"10.\" U=\"mg/L\"/>");
+    let message = Message::parse(raw.as_bytes(), messages::limits())?;
+    let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
+    let value = mapped
+        .first()
+        .ok_or("observation")?
+        .part
+        .values
+        .as_slice()
+        .first()
+        .ok_or("value")?;
+    assert_eq!(value.original.as_str(), "10.");
+    Ok(())
+}

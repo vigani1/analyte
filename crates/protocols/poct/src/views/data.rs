@@ -347,7 +347,7 @@ pub(crate) fn number(text: &str, integer: bool) -> Result<(), DataError> {
         return Err(DataError::Number);
     }
     if let Some(fraction) = parts.next()
-        && (integer || fraction.is_empty() || !fraction.bytes().all(|b| b.is_ascii_digit()))
+        && (integer || !fraction.bytes().all(|b| b.is_ascii_digit()))
     {
         return Err(DataError::Number);
     }
