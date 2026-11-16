@@ -12,7 +12,15 @@ pub(super) fn nte(segment: Segment<'_>, direction: ControlDirection) -> Result<(
     if raw(segment, 2) != source {
         return Err(content("NTE", 2));
     }
-    scalar(segment, "NTE", 3, true, usize::MAX)?;
+    field(segment, "NTE", 3, true, false)?;
+    text(
+        raw(segment, 3),
+        true,
+        usize::MAX,
+        content("NTE", 3),
+        TextKind::Ft,
+        direction,
+    )?;
     field(segment, "NTE", 4, false, false)?;
     if !raw(segment, 4).is_empty() {
         let value = raw(segment, 4);

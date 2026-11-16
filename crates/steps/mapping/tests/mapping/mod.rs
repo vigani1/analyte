@@ -72,6 +72,7 @@ fn parts_config() -> String {
 }
 
 mod compatibility;
+mod law_text;
 mod modern;
 mod scenarios_1;
 

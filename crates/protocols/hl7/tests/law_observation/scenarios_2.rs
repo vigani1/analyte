@@ -222,7 +222,7 @@ fn law_tf2b_c5_nte_required_singletons_source_and_truncatable_comment() -> TestR
     for value in ["", "\"\"", "OTHER", "A~Z"] {
         both("NTE", &[(2, value)], false)?;
     }
-    for value in ["", "\"\"", "one~two", "one^two"] {
+    for value in ["", "\"\"", "one~two"] {
         both("NTE", &[(3, value)], false)?;
     }
     assert!(

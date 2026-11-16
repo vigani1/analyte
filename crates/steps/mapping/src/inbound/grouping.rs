@@ -164,13 +164,21 @@ fn map_comments(source: &Source<'_>, output: &mut Output) -> Result<(), Error> {
                 position,
                 reason: "note has no parent",
             })?;
+            let original = source.raw(index, position.field)?.unwrap_or_default();
+            let problem = if node.name == "NTE"
+                && original.contains(char::from(source.component_separator))
+            {
+                Some(Problem::UnsupportedFormatting)
+            } else {
+                source.text_problem(&original)
+            };
+            if let Some(problem) = problem {
+                finding(output, position, problem)?;
+            }
             output.comments.push(crate::SourceComment {
                 position,
                 parent_path: result::source_path(source, parent)?,
-                text: text(
-                    &source.raw(index, position.field)?.unwrap_or_default(),
-                    position,
-                )?,
+                text: text(&original, position)?,
             });
         }
     }
