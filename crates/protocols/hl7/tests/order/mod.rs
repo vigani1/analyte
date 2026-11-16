@@ -30,6 +30,7 @@ fn new_order(sample: &[u8], field: SampleField) -> Result<Order<'_>, Error> {
         },
         priority: Priority::Stat,
         timing: Timing {
+            priority_version: None,
             start: Some(Timestamp::new(b"202611151000")?),
             end: Some(Timestamp::new(b"202611151100")?),
         },
@@ -46,6 +47,7 @@ fn sent(version: Version) -> Result<OrderMessage, Error> {
             },
         ],
         Subject::Patient(Patient {
+            identifier_type: None,
             identifier: b"P1",
             namespace: b"LAB",
             family_name: b"Synthetic",

@@ -40,24 +40,20 @@ pub(super) fn encode_new_order(
         priority,
         timing,
     } = request;
+    let rules = header
+        .version
+        .order_rules()
+        .ok_or_else(|| invalid("MSH", 12))?;
+    if rules.test_cwe
+        && (test.version.is_none()
+            || specimen
+                .source
+                .is_some_and(|source| source.version.is_none()))
+    {
+        return Err(invalid("CWE", 7));
+    }
     let schedule = encode_schedule(output, context, priority, timing, placer, filler)?;
-    let test = code(
-        test,
-        b'^',
-        match header.version {
-            Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V282
-            | Version::V291 => return Err(invalid("MSH", 12)),
-            Version::V231 => 200,
-            Version::V251 => 250,
-        },
-        "OBR",
-        4,
-        CodeForm::Ce,
-    )?;
+    let test = encode_test(test, header.version)?;
     let sample_field = match family {
         Family::Orm => match specimen.field {
             SampleField::Placer1 => 18,
@@ -222,11 +218,30 @@ fn encode_timing(
     timing: order::Timing<'_>,
 ) -> Result<(), Error> {
     let BuildContext {
-        options, family, ..
+        options,
+        family,
+        header,
     } = context;
     if family == Family::Oml {
         let mut priority_code = priority.wire().to_vec();
         priority_code.extend_from_slice(b"^^HL70485");
+        let rules = header
+            .version
+            .order_rules()
+            .ok_or_else(|| invalid("MSH", 12))?;
+        if rules.test_cwe && timing.priority_version.is_none() {
+            return Err(invalid("TQ1", 9));
+        }
+        if let Some(revision) = timing.priority_version {
+            scalar(revision, "TQ1", 9, 10, true)?;
+            priority_code.extend_from_slice(b"^^^^");
+            priority_code.extend_from_slice(revision);
+        }
+        for (number, time) in [(7, timing.start), (8, timing.end)] {
+            if time.is_some_and(|time| time.raw().len() > rules.time_bytes) {
+                return Err(invalid("TQ1", number));
+            }
+        }
         segment(
             output,
             b"TQ1",
@@ -245,4 +260,20 @@ fn encode_timing(
         )?;
     }
     Ok(())
+}
+
+fn encode_test(test: Code<'_>, version: Version) -> Result<Vec<u8>, Error> {
+    let rules = version.order_rules().ok_or_else(|| invalid("MSH", 12))?;
+    code(
+        test,
+        b'^',
+        rules.code_bytes,
+        "OBR",
+        4,
+        if rules.test_cwe {
+            CodeForm::Cwe
+        } else {
+            CodeForm::Ce
+        },
+    )
 }

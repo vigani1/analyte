@@ -7,12 +7,14 @@ also admit 2.3, 2.4 and 2.5 through HL7 2.5.1 §2.8 and the 2002-04-08
 2.3.1/2.4 errata. They receive the declared ORU/R01 core and legacy query
 exchange, preserve the exact edition in replies, and refuse or retain unresolved
 extensions. Command sending stays blocked in config for those three editions
-until writer integration. The bounded 2.6 receiving/query profile uses its own
+until their own writer field definitions are available. The bounded 2.6 receiving/query profile uses its own
 DTM/CWE/XCN rules in the shared table, with deprecated and unselected elements
-kept raw or refused visibly. Command sending also remains blocked for 2.6.
+kept raw or refused visibly. The bounded 2.6 O21/O22 writer is qualified with explicit coding revisions;
+see the field matrix in versions.md.
 The bounded 2.8.2 and 2.9.1 profiles receive ORU/R01 results with the modern
 typed rules; legacy queries remain refused by edition and withdrawing section.
-Their order sending also remains blocked pending writer qualification.
+The bounded 2.8.2 O21/O22 writer is qualified; 2.9.1 sending remains blocked
+on the ORC-4 source conflict documented in versions.md.
 See [versions](versions.md) for the precise differences,
 source sections, errata items and limitations; this is not full historical-schema
 conformance or simulator qualification.

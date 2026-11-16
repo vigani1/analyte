@@ -1,4 +1,5 @@
 //! Interprets HL7 order acknowledgments.
+//! Kept whole: Validates one correlated order response and its bounded order-owned groups atomically.
 use super::{Control, Error, Family, OrderMessage, SpecimenResponse, invalid, laboratory, raw};
 use crate::{AckCode, Field, Message, Msa, Msh, Segment, Version};
 use std::collections::{BTreeMap, BTreeSet};
@@ -179,16 +180,10 @@ fn identities<'a>(
 fn reason(orc: Segment<'_>, version: Version) -> Result<Option<Field<'_>>, Error> {
     let value = field(orc, 16);
     if let Some(value) = value {
-        let max = match version {
-            Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V282
-            | Version::V291 => return Err(invalid("MSH", 12)),
-            Version::V231 => 200,
-            Version::V251 => 250,
-        };
+        let max = version
+            .order_rules()
+            .ok_or_else(|| invalid("MSH", 12))?
+            .code_bytes;
         if value.raw().len() > max || value.is_null() || value.repetitions().count() != 1 {
             return Err(invalid("ORC", 16));
         }
@@ -265,8 +260,8 @@ impl<'a> OrderResponse<'a> {
         let sent_header = Msh::new(sent.message())?;
         let version = validate_response_header(message, sent, sent_header)?;
         let mut segments = message.segments().skip(1).peekable();
-        let msa = Msa::new(segments.next().ok_or_else(|| invalid("MSA", 0))?)?;
-        validate_acceptance(msa, sent_header)?;
+        let msa_segment = segments.next().ok_or_else(|| invalid("MSA", 0))?;
+        let msa = response_acceptance(msa_segment, version, sent_header)?;
         let mut decisions = Vec::new();
         let mut expected = BTreeMap::new();
         let mut sent_fillers = Vec::new();
@@ -323,7 +318,7 @@ impl<'a> OrderResponse<'a> {
         }
         let has_patient = segments.peek().is_some_and(|s| s.id() == b"PID");
         if has_patient {
-            segments.next();
+            validate_patient(segments.next().ok_or_else(|| invalid("PID", 0))?, version)?;
             while sent.family == Family::Orm && segments.peek().is_some_and(|s| s.id() == b"NTE") {
                 segments.next();
             }
@@ -401,6 +396,8 @@ fn read_orders<'a>(
         }
         let control = Control::parse(raw(common, 1))?;
         validate_order_status(common)?;
+        let rules = version.order_rules().ok_or_else(|| invalid("MSH", 12))?;
+        refuse_fields(common, rules.withdrawn_orc)?;
         let mut timing = Vec::new();
         if lab.is_some() {
             while segments.peek().is_some_and(|s| s.id() == b"TQ1") {
@@ -408,7 +405,7 @@ fn read_orders<'a>(
                     return Err(invalid("TQ1", 0));
                 }
                 let tq1 = segments.next().ok_or_else(|| invalid("TQ1", 0))?;
-                laboratory::timing(tq1)?;
+                laboratory::timing(tq1, version)?;
                 timing.push(tq1);
             }
         }
@@ -486,17 +483,18 @@ fn validate_order_detail(
     version: Version,
 ) -> Result<(), Error> {
     if let Some(obr) = detail {
+        refuse_fields(
+            obr,
+            version
+                .order_rules()
+                .ok_or_else(|| invalid("MSH", 12))?
+                .withdrawn_obr,
+        )?;
         let test = field(obr, 4).ok_or_else(|| invalid("OBR", 4))?;
-        let max = match version {
-            Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V282
-            | Version::V291 => return Err(invalid("MSH", 12)),
-            Version::V231 => 200,
-            Version::V251 => 250,
-        };
+        let max = version
+            .order_rules()
+            .ok_or_else(|| invalid("MSH", 12))?
+            .code_bytes;
         if test.is_null() || test.raw().len() > max || test.repetitions().count() != 1 {
             return Err(invalid("OBR", 4));
         }
@@ -560,5 +558,63 @@ fn validate_acceptance(msa: Msa<'_>, sent_header: Msh<'_>) -> Result<(), Error> 
         AckCode::Aa | AckCode::Ae | AckCode::Ar => {}
         AckCode::Ca | AckCode::Ce | AckCode::Cr => return Err(invalid("MSA", 1)),
     }
+    Ok(())
+}
+
+fn response_acceptance<'a>(
+    msa_segment: Segment<'a>,
+    version: Version,
+    sent_header: Msh<'_>,
+) -> Result<Msa<'a>, Error> {
+    for field in version
+        .order_rules()
+        .ok_or_else(|| invalid("MSH", 12))?
+        .withdrawn_msa
+    {
+        if !raw(msa_segment, *field).is_empty() {
+            return Err(invalid("MSA", *field));
+        }
+    }
+    let msa = Msa::for_version(msa_segment, version)?;
+    validate_acceptance(msa, sent_header)?;
+    Ok(msa)
+}
+
+fn refuse_fields(segment: Segment<'_>, fields: &[usize]) -> Result<(), Error> {
+    for number in fields {
+        if !raw(segment, *number).is_empty() {
+            return Err(invalid(
+                std::str::from_utf8(segment.id()).map_err(|_| crate::Error::Encoding)?,
+                *number,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_patient(segment: Segment<'_>, version: Version) -> Result<(), Error> {
+    if !version
+        .order_rules()
+        .ok_or_else(|| invalid("MSH", 12))?
+        .patient_type_required
+    {
+        return Ok(());
+    }
+    let identifiers = field(segment, 3)
+        .filter(|f| !f.is_null())
+        .ok_or_else(|| invalid("PID", 3))?;
+    for repetition in identifiers.repetitions() {
+        let parts = repetition.components().collect::<Vec<_>>();
+        for (number, maximum) in [(1_usize, 15), (5, 5)] {
+            let part = number
+                .checked_sub(1)
+                .and_then(|index| parts.get(index))
+                .ok_or_else(|| invalid("PID", 3))?;
+            super::types::scalar(part.raw(), "CX", number, maximum, true)?;
+        }
+    }
+    field(segment, 5)
+        .filter(|f| !f.is_null())
+        .ok_or_else(|| invalid("PID", 5))?;
     Ok(())
 }

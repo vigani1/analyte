@@ -95,20 +95,13 @@ impl Orders {
         path: &str,
     ) -> Result<(), Error> {
         if let Some(send) = &self.hl7_send {
-            if machine.syntax.edition.is_some_and(|edition| match edition {
-                Edition::V231 | Edition::V251 => false,
-                Edition::V23
-                | Edition::V24
-                | Edition::V25
-                | Edition::V26
-                | Edition::V282
-                | Edition::V291 => true,
-            }) {
-                return Err(invalid(
-                    path,
-                    "orders.hl7_send",
-                    "order writers for this edition are not yet implemented; disable send_ahead",
-                ));
+            if let Some(reason) = machine
+                .syntax
+                .edition
+                .map(analyte_hl7::Version::from)
+                .and_then(analyte_hl7::Version::order_sending_blocker)
+            {
+                return Err(invalid(path, "orders.hl7_send", reason));
             }
             let plain = |value: &Identifier| {
                 value.as_str().is_ascii()
@@ -156,22 +149,69 @@ impl Orders {
                     "ORM position must use the other placer field; OML position is not supported",
                 ));
             }
-            if self.tests.iter().any(|test| {
-                test.machine_components.len() != 3
-                    || test.machine_components.first().is_none_or(String::is_empty)
-                    || test.machine_components.get(2).is_none_or(String::is_empty)
-            }) {
-                return Err(invalid(
-                    path,
-                    "orders.tests",
-                    "HL7 orders require explicit code, text and coding system components",
-                ));
-            }
+            self.validate_hl7_send_codes(machine, send, path)?;
         } else if self.placer_namespace.is_some() {
             return Err(invalid(
                 path,
                 "orders.placer_namespace",
                 "a placer namespace belongs to HL7 send-ahead",
+            ));
+        }
+        Ok(())
+    }
+    fn validate_hl7_send_codes(
+        &self,
+        machine: &MachineDocument,
+        send: &Hl7Send,
+        path: &str,
+    ) -> Result<(), Error> {
+        let plain = |value: &Identifier| {
+            analyte_hl7::is_safe_field(
+                value.as_str().as_bytes(),
+                20,
+                analyte_hl7::FieldSyntax::Plain,
+            )
+        };
+        let modern = machine
+            .syntax
+            .edition
+            .map(analyte_hl7::Version::from)
+            .is_some_and(analyte_hl7::Version::uses_dtm);
+        if modern
+            && (send
+                .priority_version
+                .as_ref()
+                .is_none_or(|v| !plain(v) || v.as_str().len() > 10)
+                || send
+                    .specimen_version
+                    .as_ref()
+                    .is_none_or(|v| !plain(v) || v.as_str().len() > 10)
+                || send.specimen_system.is_none())
+        {
+            return Err(invalid(
+                path,
+                "orders.hl7_send",
+                "supply explicit specimen and priority coding-system revisions",
+            ));
+        }
+        if self.tests.iter().any(|test| {
+            test.machine_components.len() != if modern { 7 } else { 3 }
+                || (modern
+                    && (test
+                        .machine_components
+                        .get(3..6)
+                        .is_none_or(|v| v.iter().any(|v| !v.is_empty()))
+                        || test
+                            .machine_components
+                            .get(6)
+                            .is_none_or(|v| v.is_empty() || v.len() > 10)))
+                || test.machine_components.first().is_none_or(String::is_empty)
+                || test.machine_components.get(2).is_none_or(String::is_empty)
+        }) {
+            return Err(invalid(
+                path,
+                "orders.tests",
+                "HL7 orders require explicit code, text and coding system components",
             ));
         }
         Ok(())

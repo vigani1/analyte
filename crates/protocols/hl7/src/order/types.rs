@@ -216,6 +216,8 @@ impl Priority {
 /// Caller-supplied non-repeating service window. No deadline or schedule runs here.
 #[derive(Debug, Clone, Copy)]
 pub struct Timing<'a> {
+    /// Explicit revision of user-defined priority table 0485 where required.
+    pub priority_version: Option<&'a [u8]>,
     /// Earliest service time, if the caller knows it.
     pub start: Option<Timestamp<'a>>,
     /// Latest service time, if supplied; the host resolves timezone/precision comparisons.
@@ -235,6 +237,10 @@ pub struct Specimen<'a> {
 
 /// One caller-authorized new order or cancellation request.
 #[derive(Debug, Clone, Copy)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Borrowed Copy order descriptors avoid allocating each new order; cancellation needs no invented details."
+)]
 pub enum Order<'a> {
     /// New work: one test/battery under one placer identity. Replicates need new IDs.
     New {
@@ -263,6 +269,8 @@ pub enum Order<'a> {
 /// Caller-supplied PID content for patient-related new orders.
 #[derive(Debug, Clone, Copy)]
 pub struct Patient<'a> {
+    /// Supplied CX.5 identifier type; required by modern editions.
+    pub identifier_type: Option<&'a [u8]>,
     /// Literal patient identifier, supplied by the host.
     pub identifier: &'a [u8],
     /// Explicit assigning namespace for the CX identifier.
