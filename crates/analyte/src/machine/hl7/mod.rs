@@ -522,7 +522,7 @@ impl ConnectionState {
         for action in actions {
             if let Action::Rejected(error, bytes) = action {
                 let cleanup = intake::park_bytes(store, machine, bytes, &error.to_string()).await;
-                super::custody::retain_cleanup(&mut result, cleanup);
+                super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
             }
         }
         if let Some(query) = &mut self.queries {

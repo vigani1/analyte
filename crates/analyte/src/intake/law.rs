@@ -31,7 +31,7 @@ pub(super) async fn plan(
     let Ok(results) = law::receive_results(&message) else {
         return Ok(None);
     };
-    let header = message.segments().next().ok_or("LAW header")?;
+    let header = message.segments().next().ok_or(Error::LawHeader)?;
     let raw =
         |s: analyte_hl7::Segment<'_>, f| s.field(f).map_or(b"".as_slice(), Field::raw).to_vec();
     let scope = analyte_model::SourceText::new(&serde_json::to_string(&(
@@ -61,7 +61,7 @@ pub(super) async fn plan(
         .delimiters()
         .bytes()
         .get(1)
-        .ok_or("LAW component delimiter")?;
+        .ok_or(Error::LawComponentDelimiter)?;
     let production = raw(header, 11).split(|b| *b == component).next() == Some(b"P".as_slice());
     let mut notes = std::collections::BTreeMap::<usize, Vec<&str>>::new();
     let mut controls = std::collections::BTreeMap::new();
@@ -89,7 +89,7 @@ pub(super) async fn plan(
     for segment in message.segments() {
         match segment.id() {
             b"OBR" => {
-                occurrence = occurrence.checked_add(1).ok_or("LAW OBR occurrence")?;
+                occurrence = occurrence.checked_add(1).ok_or(Error::LawObrOccurrence)?;
                 let awos = raw(segment, 2);
                 if awos == b"\"\"" {
                     work = None;
@@ -120,7 +120,7 @@ pub(super) async fn plan(
                     .items
                     .iter()
                     .find(|i| i.placer == placer)
-                    .ok_or("retained LAW item")?;
+                    .ok_or(Error::RetainedLawItem)?;
                 let Some(command) = record.original_command() else {
                     custody.rejection = Some(LawRejection {
                         occurrence,

@@ -114,7 +114,23 @@ pub(super) async fn session(
                 break;
             };
             let id = ReceiptId::new();
-            intake::receive(store, machine, id, raw).await?;
+            intake::receive(store, machine, id, raw)
+                .await
+                .map_err(|error| match error {
+                    // File owners expose storage refusal directly to their existing recovery caller.
+                    intake::Error::Store(source) => Error::from(source),
+                    other @ (intake::Error::LawHeader
+                    | intake::Error::LawComponentDelimiter
+                    | intake::Error::LawObrOccurrence
+                    | intake::Error::RetainedLawItem
+                    | intake::Error::Validation(_)
+                    | intake::Error::Text(_)
+                    | intake::Error::Format(_)
+                    | intake::Error::Encoding(_)
+                    | intake::Error::Json(_)
+                    | intake::Error::Evidence(_)
+                    | intake::Error::WrongMachine) => Error::from(other),
+                })?;
             let accepted = intake::interpret(store, machine, id).await?;
             item.completed
                 .send(if accepted {

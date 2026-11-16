@@ -290,7 +290,7 @@ async fn process(
                                 .dialog
                                 .step(state.start.elapsed(), Event::StorageFailed)?,
                         );
-                        failure = Some(error);
+                        failure = Some(error.into());
                     }
                 }
             }
@@ -307,7 +307,7 @@ async fn process(
                 }
                 let parked = intake::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
                 if let Err(error) = parked {
-                    return Err(custody::effect_failure(failure, error));
+                    return Err(custody::effect_failure(failure, error.into()));
                 }
                 if failure.is_none() {
                     failure = Some(invalid("VIDAS transfer parked; reconcile before reconnect"));
@@ -348,7 +348,7 @@ async fn store_upload(
     machine: &intake::Connection<'_>,
     id: ReceiptId,
     raw: &[u8],
-) -> Result<(), Error> {
+) -> Result<(), intake::Error> {
     let time = intake::receive(store, machine, id, raw.to_vec()).await?;
     let reading = super::interpretation::map(machine, id, time, raw);
     match reading {
@@ -365,5 +365,5 @@ async fn store_upload(
             .await?;
         }
     }
-    Ok::<_, Error>(())
+    Ok::<_, intake::Error>(())
 }

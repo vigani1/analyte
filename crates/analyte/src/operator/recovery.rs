@@ -61,6 +61,7 @@ pub async fn reprocess(
         },
     )
     .await
+    .map_err(Into::into)
 }
 
 /// Requeues exactly the named delivery, preserving its ID and stored bytes.

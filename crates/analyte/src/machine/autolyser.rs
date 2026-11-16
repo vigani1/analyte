@@ -232,14 +232,14 @@ impl ConnectionState {
                 actions.extend(self.dialog.step(self.start.elapsed(), Event::Stored(token)));
             }
             Err(error) => {
-                if error.downcast_ref::<custody::StoreTimeout>().is_some() {
+                if matches!(error, custody::StoreWaitError::Timeout(_)) {
                     self.end_code = AutolyserEnd::StorageTimeout;
                 }
                 actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::StoreFailed(token)),
                 );
-                return Some(error);
+                return Some(error.into());
             }
         }
 
@@ -357,7 +357,7 @@ async fn process(
                     None => intake::park_bytes(store, machine, Vec::new(), &reason).await,
                 };
                 if let Err(error) = parked {
-                    return Err(custody::effect_failure(failure, error));
+                    return Err(custody::effect_failure(failure, error.into()));
                 }
                 if let Err(error) =
                     super::poll_custody::uncertain(store, state.guard, machine, &reason).await

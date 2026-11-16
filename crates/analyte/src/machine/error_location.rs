@@ -7,13 +7,14 @@ pub(crate) use analyte_hl7::Location;
 use analyte_hl7::syntax_location;
 
 pub(crate) fn mapping_location(
-    mapping: &Result<Output, crate::Error>,
+    mapping: &Result<Output, super::interpretation::ReadError>,
     raw: &[u8],
     ending: Terminator,
 ) -> Option<Location> {
     let position = match mapping {
         Ok(output) => output.findings.first()?.position,
         Err(error) => {
+            let error: &(dyn std::error::Error + 'static) = error;
             if let Some(error) = error.downcast_ref::<analyte_hl7::Error>() {
                 return syntax_location(error, raw, ending);
             }

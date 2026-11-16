@@ -36,8 +36,8 @@ impl Mapping {
         }
     }
 }
-impl From<Result<analyte_mapping::Output, crate::Error>> for Mapping {
-    fn from(result: Result<analyte_mapping::Output, crate::Error>) -> Self {
+impl<E: std::fmt::Display> From<Result<analyte_mapping::Output, E>> for Mapping {
+    fn from(result: Result<analyte_mapping::Output, E>) -> Self {
         match result {
             Ok(output) => Self::Mapped(output),
             // Diagnostics may contain source tokens. They belong only in protected evidence.

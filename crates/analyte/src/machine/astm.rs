@@ -449,7 +449,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                         let cleanup =
                             intake::park_bytes(self.store, self.machine, bytes, &error.to_string())
                                 .await;
-                        super::custody::retain_cleanup(&mut result, cleanup);
+                        super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
                     }
                 }
             }

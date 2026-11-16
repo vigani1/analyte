@@ -1,7 +1,9 @@
 //! Stores receipts, maps results, commits interpretations, revisions and deliveries, and parks failures.
-use crate::{Error, deadline, installation::config::Machine};
+use crate::{deadline, installation::config::Machine};
+mod error;
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
+pub use error::IntakeError as Error;
 use std::fmt::Write;
 mod law;
 mod parking;
@@ -118,7 +120,9 @@ pub(crate) async fn interpret_with_location(
             let payload = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw).ok()?;
             crate::machine::error_location::mapping_location(&mapping, &payload, options.terminator)
         });
-    let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
+    let accepted = persist_mapping(store, machine, id, mapping.into(), None)
+        .await?
+        .0;
     Ok((accepted, location))
 }
 
@@ -140,21 +144,11 @@ fn reading_evidence(
     })
 }
 
-pub(crate) async fn persist_mapping(
-    store: &Handle,
-    machine: &Machine,
-    id: ReceiptId,
-    mapping: Result<analyte_mapping::Output, Error>,
-    action: Option<analyte_store::Reprocess>,
-) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
-    persist_reading(store, machine, id, mapping.into(), action).await
-}
-
 #[expect(
     clippy::too_many_lines,
     reason = "Keep mixed-message acceptance and rejected-batch rollback together"
 )]
-async fn persist_reading(
+pub(crate) async fn persist_mapping(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
@@ -477,7 +471,7 @@ pub(crate) async fn vendor_reading(
     id: ReceiptId,
     output: analyte_mapping::Output,
 ) -> Result<(), Error> {
-    persist_mapping(store, machine, id, Ok(output), None).await?;
+    persist_mapping(store, machine, id, Mapping::Mapped(output), None).await?;
     Ok(())
 }
 
@@ -487,7 +481,7 @@ pub(crate) async fn failed_reading(
     id: ReceiptId,
     reason: &str,
 ) -> Result<(), Error> {
-    persist_reading(
+    persist_mapping(
         store,
         machine,
         id,
