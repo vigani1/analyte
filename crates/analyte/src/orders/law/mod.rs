@@ -522,6 +522,25 @@ fn item_outcomes(
             ),
             Err(error) => (ItemDecision::Uncertain, format!("LAW-invalid-ORL:{error}")),
         };
+        let code = if let Ok(response) = response {
+            response
+                .decisions()
+                .iter()
+                .find(|d| d.id.raw() == expected.as_bytes())
+                .map_or(code.clone(), |d| {
+                    format!(
+                        "{code}:{}",
+                        match d.status {
+                            law::OrderStatus::Scheduled => "SC",
+                            law::OrderStatus::InProgress => "IP",
+                            law::OrderStatus::Complete => "CM",
+                            law::OrderStatus::Cancelled => "CA",
+                        }
+                    )
+                })
+        } else {
+            code
+        };
         outcomes.push(ItemOutcome {
             index: item.index,
             decision,

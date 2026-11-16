@@ -2,7 +2,7 @@
 use super::*;
 
 #[test]
-fn adr0003_0010_law_status_mapping_alone_never_promises_aa()
+fn adr0003_0010_law_status_maps_for_transactional_custody()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut mapped = analyte_mapping::Output::default();
     mapped.status_notices = vec![analyte_mapping::law::StatusNotice {
@@ -20,8 +20,8 @@ fn adr0003_0010_law_status_mapping_alone_never_promises_aa()
     }];
 
     let reading = map_reading(Ok(mapped))?;
-    assert!(!reading.accepted);
-    assert!(matches!(reading.reading, Reading::Failed(_)));
+    assert!(reading.accepted);
+    assert!(matches!(reading.reading, Reading::Results(ref results) if results.is_empty()));
     assert!(reading.corrections.is_empty());
     Ok(())
 }

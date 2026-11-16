@@ -499,14 +499,14 @@ fn adr0016_adr0003_v12_migration_keeps_unknown_execution_and_command_evidence() 
     )?;
     store
         .db
-        .execute_batch("DROP TABLE awos_execution_history; PRAGMA user_version=12;")?;
+        .execute_batch("DROP TABLE law_work_history; DROP TABLE law_messages; DROP TABLE awos_execution_history; PRAGMA user_version=12;")?;
     drop(store);
     let store = open(&path)?;
     assert_eq!(
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        13
+        SCHEMA_VERSION
     );
     let restored = store.machine_order(&identity()?)?.ok_or("missing")?;
     assert_eq!(restored.id, record.id);

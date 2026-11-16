@@ -13,3 +13,5 @@ pub mod windows_service;
 pub(crate) mod retention;
 
 pub(crate) mod alert_delivery;
+
+mod law_recovery;

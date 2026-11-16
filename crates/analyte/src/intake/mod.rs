@@ -3,6 +3,7 @@ use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 use std::fmt::Write;
+mod law;
 
 /// Binds all evidence from one host connection to its immutable configuration.
 pub(crate) struct Connection<'a> {
@@ -135,6 +136,10 @@ fn poct_edits(machine: &Machine) -> bool {
     )
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep mixed-message acceptance and rejected-batch rollback together"
+)]
 pub(crate) async fn persist_mapping(
     store: &Handle,
     machine: &Machine,
@@ -145,7 +150,8 @@ pub(crate) async fn persist_mapping(
     let poct_edit_guard = poct_edits(machine);
     let atomic = atomic_batch(machine);
     let lifecycle = atomic.then_some(law_lifecycle());
-    let work_conflict = work_conflict(store, machine, id).await?;
+    let work_conflict = law::work_conflict(store, machine, id).await?;
+    let mut custody = law::plan(store, machine, id, work_conflict).await?;
     let mapping = if work_conflict.is_some() {
         Err(invalid(
             "LAW returned work differs from retained downloaded command; operator review required",
@@ -159,6 +165,9 @@ pub(crate) async fn persist_mapping(
         corrections,
         findings,
     } = prepare_reading(map_reading(mapping)?, atomic)?;
+    if !accepted && work_conflict.is_none() {
+        custody = None;
+    }
     let interpretation = Interpretation {
         driver: driver(machine)?,
         config_version: config_version(machine)?,
@@ -201,28 +210,55 @@ pub(crate) async fn persist_mapping(
                 }
                 build_deliveries(assigned, outcomes, &receipt, &destination, lifecycle)
             };
-            let commit = reconcile(
-                store,
-                id,
-                action.as_ref(),
-                interpretation,
-                (&corrections, &findings, lifecycle, poct_edit_guard),
-                build,
-            );
+            let commit = if let Some(custody) = &custody {
+                store.interpret_law(
+                    id,
+                    interpretation.clone(),
+                    (&corrections, &findings),
+                    lifecycle.ok_or(analyte_store::Error::InvalidInput)?,
+                    (custody, action.as_ref()),
+                    build,
+                )
+            } else {
+                reconcile(
+                    store,
+                    id,
+                    action.as_ref(),
+                    interpretation,
+                    (&corrections, &findings, lifecycle, poct_edit_guard),
+                    build,
+                )
+            };
             match commit {
                 // The builder refusal rolls back revisions, audit and deliveries together.
                 // Keep a failed version (and its audit for operator actions) afterwards.
                 Err(analyte_store::Error::DeliveryBuild(error))
                     if error.is::<LawBatchConflict>() =>
                 {
-                    let rejected = reconcile(
-                        store,
-                        id,
-                        action.as_ref(),
-                        conflict.ok_or(analyte_store::Error::InvalidInput)?,
-                        (&[], &findings, lifecycle, false),
-                        |_, _| Ok(Vec::new()),
-                    )?;
+                    let rejected_evidence = conflict.ok_or(analyte_store::Error::InvalidInput)?;
+                    let rejected = if let Some(mut custody) = custody.clone() {
+                        custody.rejection = Some(analyte_store::LawRejection {
+                            occurrence: 1,
+                            reason: analyte_store::LawConflict::Progression,
+                        });
+                        store.interpret_law(
+                            id,
+                            rejected_evidence,
+                            (&[], &findings),
+                            lifecycle.ok_or(analyte_store::Error::InvalidInput)?,
+                            (&custody, action.as_ref()),
+                            |_, _| Ok(Vec::new()),
+                        )?
+                    } else {
+                        reconcile(
+                            store,
+                            id,
+                            action.as_ref(),
+                            rejected_evidence,
+                            (&[], &findings, lifecycle, false),
+                            |_, _| Ok(Vec::new()),
+                        )?
+                    };
                     Ok((rejected, InterpretationOutcome::Conflict))
                 }
                 result => result.map(|commit| {
@@ -239,7 +275,19 @@ pub(crate) async fn persist_mapping(
         })
         .await?;
     let (result, successful) = result;
-    let successful = work_conflict.map_or(successful, InterpretationOutcome::WorkConflict);
+    let successful = match result.law {
+        Some(analyte_store::LawDisposition::Accepted) => InterpretationOutcome::Accepted,
+        Some(analyte_store::LawDisposition::Rejected(rejection)) => {
+            InterpretationOutcome::WorkConflict(work_conflict.unwrap_or(
+                crate::orders::law::validation::Mismatch {
+                    segment: b"OBR",
+                    occurrence: rejection.occurrence,
+                    field: 2,
+                },
+            ))
+        }
+        None => work_conflict.map_or(successful, InterpretationOutcome::WorkConflict),
+    };
     mapping_outcome(result, successful)
 }
 
@@ -449,39 +497,6 @@ fn law_lifecycle() -> analyte_store::StatusLifecycle<'static> {
     }
 }
 
-async fn work_conflict(
-    store: &Handle,
-    machine: &Machine,
-    id: ReceiptId,
-) -> Result<Option<crate::orders::law::validation::Mismatch>, Error> {
-    Ok(
-        if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() {
-            let receipt = store
-                .request(deadline(), move |s| {
-                    s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-                })
-                .await?;
-            let payload = receipt.raw.get(1..receipt.raw.len().saturating_sub(2));
-            match payload
-                .and_then(|bytes| analyte_hl7::law::parse_message(bytes, settings.options()).ok())
-            {
-                Some(message) if analyte_hl7::law::receive_results(&message).is_ok() => {
-                    crate::orders::law::validation::check(
-                        store,
-                        machine,
-                        &message,
-                        settings.options(),
-                    )
-                    .await?
-                }
-                _ => None,
-            }
-        } else {
-            None
-        },
-    )
-}
-
 struct MappedReading {
     accepted: bool,
     reading: Reading,
@@ -492,16 +507,6 @@ struct MappedReading {
 fn map_reading(mapping: Result<analyte_mapping::Output, Error>) -> Result<MappedReading, Error> {
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
-        Ok(output) if !output.status_notices.is_empty() => {
-            // Until notification custody commits atomically, raw storage cannot justify AA.
-            (
-                Reading::Failed(analyte_model::Reason::new(
-                    "LAW execution notice requires transactional host custody",
-                )?),
-                Vec::new(),
-                Vec::new(),
-            )
-        }
         Ok(output) => {
             accepted = !output.requires_parking();
             let mut findings = output

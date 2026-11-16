@@ -386,7 +386,7 @@ impl Store {
     }
 }
 
-fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, Error> {
+pub(crate) fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, Error> {
     let purged: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM retention_orders WHERE id=?1)",
         [id],

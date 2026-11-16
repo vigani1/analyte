@@ -1,5 +1,6 @@
 SELECT EXISTS(
  SELECT 1 FROM receipts r WHERE r.id=?1
+ AND NOT EXISTS(SELECT 1 FROM law_messages m WHERE m.receipt=r.id)
  AND NOT EXISTS(SELECT 1 FROM awos_execution_history h WHERE h.receipt=r.id)
  AND EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id)
  AND EXISTS(SELECT 1 FROM outbox o WHERE o.receipt=r.id)

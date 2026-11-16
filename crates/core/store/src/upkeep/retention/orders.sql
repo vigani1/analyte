@@ -4,6 +4,7 @@ SELECT EXISTS(SELECT 1 FROM machine_orders m WHERE m.id=?1
    json_extract(json_extract(o.evidence,'$.document'),'$.version') IS NULL OR
    (CAST(json_extract(json_extract(o.evidence,'$.document'),'$.version') AS TEXT)!=m.version AND NOT EXISTS(SELECT 1 FROM machine_order_history h WHERE h.machine_order=m.id AND h.cancel_version=CAST(json_extract(json_extract(o.evidence,'$.document'),'$.version') AS TEXT)))
   ELSE 1 END)
+ AND NOT EXISTS(SELECT 1 FROM law_work_history h WHERE h.machine_order=m.id)
  AND NOT EXISTS(SELECT 1 FROM awos_execution_history h WHERE h.machine_order=m.id)
  AND m.state IN ('Done','Rejected','CancelConfirmed') AND m.updated_at<=?2
  AND NOT EXISTS(SELECT 1 FROM machine_order_items i WHERE i.machine_order=m.id AND i.state NOT IN ('Done','Rejected','CancelConfirmed'))

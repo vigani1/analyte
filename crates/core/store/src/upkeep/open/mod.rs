@@ -150,7 +150,7 @@ impl Store {
             migrate_orders(&mut db, startup)?;
         }
         migrate_alerts(&mut db, startup, version)?;
-        migrate_execution(&mut db, startup, version)?;
+        migrate_awos(&mut db, startup, version)?;
         install_guards(&db, startup)?;
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
@@ -251,4 +251,22 @@ fn migrate_execution(db: &mut Connection, startup: &Startup, version: i64) -> Re
         tx.commit()?;
         Ok(())
     })
+}
+
+fn migrate_law(db: &mut Connection, startup: &Startup, version: i64) -> Result<(), Error> {
+    if version > 13 {
+        return Ok(());
+    }
+    startup.run(StartupStep::Migration { from: 13, to: 14 }, || {
+        let tx = db.transaction()?;
+        tx.execute_batch(include_str!("../migration_v14.sql"))?;
+        Store::integrity(&tx)?;
+        tx.commit()?;
+        Ok(())
+    })
+}
+
+fn migrate_awos(db: &mut Connection, startup: &Startup, version: i64) -> Result<(), Error> {
+    migrate_execution(db, startup, version)?;
+    migrate_law(db, startup, version)
 }

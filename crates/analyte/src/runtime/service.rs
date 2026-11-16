@@ -224,6 +224,7 @@ async fn serve_with(
         "store restore reconciliation status"
     );
     crate::runtime::delivery::recover(&store).await?;
+    super::law_recovery::run(&program, &store).await?;
     let admin = crate::admin::prepare(&program, store.clone(), loopback).await?;
     let admin_states = admin
         .as_ref()
