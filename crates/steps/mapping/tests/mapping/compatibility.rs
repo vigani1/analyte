@@ -75,7 +75,7 @@ fn hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map() -> TestResult {
 #[test]
 fn law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time() -> TestResult {
     let definition = include_str!("../../../../core/config/examples/law.toml").replace(
-        "order_namespace = {field={group=\"order\",record=\"OBR\",field=2,component=2,repetition=1}}",
+        "order_namespace = {fixed=\"LAB\"}",
         "order_namespace = {fixed=\"manager\"}",
     );
     let config = config(&definition)?;

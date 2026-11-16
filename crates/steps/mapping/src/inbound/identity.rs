@@ -135,8 +135,13 @@ fn law_observation(
     let namespace = present(source.component(order, field, 1, 2)?);
     let universal = present(source.component(order, field, 1, 3)?);
     let kind = present(source.component(order, field, 1, 4)?);
-    let namespace = if universal.is_some() {
-        // EI's complete assigning authority is source evidence; do not discard its universal ID.
+    let namespace = if field == 2 {
+        // TF-2b C.6-2: received EI.2+ are X, never assigning authority.
+        match &crate::field_mappings(config)?.identity.order_namespace {
+            OrderNamespace::Fixed { fixed } => Some(fixed.as_str().to_owned()),
+            OrderNamespace::Field { .. } => None,
+        }
+    } else if universal.is_some() {
         Some(format!(
             "{}^{}^{}",
             namespace.unwrap_or_default(),
@@ -144,16 +149,7 @@ fn law_observation(
             kind.unwrap_or_default()
         ))
     } else {
-        namespace.or_else(|| {
-            if field == 2 {
-                match &crate::field_mappings(config).ok()?.identity.order_namespace {
-                    OrderNamespace::Fixed { fixed } => Some(fixed.as_str().to_owned()),
-                    OrderNamespace::Field { .. } => None,
-                }
-            } else {
-                None
-            }
-        })
+        namespace
     };
     let sub_id = present(Some(source.text(observation.sub_id(), index, 4)?));
     let (Some(id), Some(namespace), Some(sub_id)) = (id, namespace, sub_id) else {

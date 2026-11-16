@@ -78,10 +78,21 @@ async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> 
         assert_eq!(count(&path, "outbox")?, baseline);
         assert_eq!(count(&path, "observation_revisions")?, 0);
     }
-    for suffix in ["", "^OTHER", "^OTHER^arbitrary^ignored"] {
-        let accepted = valid.replace(&format!("{awos}^LAB"), &format!("{awos}{suffix}"));
+    for (index, suffix) in ["", "^OTHER", "^OTHER^arbitrary^ignored"]
+        .into_iter()
+        .enumerate()
+    {
+        let accepted = valid
+            .replace(&format!("{awos}^LAB"), &format!("{awos}{suffix}"))
+            .replace("|valid|", &format!("|valid-{index}|"));
         send(&mut peer, accepted.as_bytes()).await?;
-        assert_eq!(field(&packet(&mut peer).await?, b"MSA", 1)?, b"AA");
+        let ack = packet(&mut peer).await?;
+        assert_eq!(
+            field(&ack, b"MSA", 1)?,
+            b"AA",
+            "variant {index}: {}",
+            String::from_utf8_lossy(ack.raw())
+        );
     }
     send(&mut peer, valid.as_bytes()).await?;
     assert_eq!(field(&packet(&mut peer).await?, b"MSA", 1)?, b"AA");
