@@ -28,7 +28,7 @@ pub use reprocess::Reprocess;
 pub use delivery_operator::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 10;
+pub const SCHEMA_VERSION: i64 = 11;
 pub use machine_orders::*;
 
 pub use revisions::{InterpretationCommit, RevisionOutcome, StatusLifecycle};

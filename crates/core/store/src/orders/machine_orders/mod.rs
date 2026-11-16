@@ -383,6 +383,14 @@ impl Store {
 }
 
 fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, Error> {
+    let purged: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM retention_orders WHERE id=?1)",
+        [id],
+        |r| r.get(0),
+    )?;
+    if purged {
+        return Err(Error::Purged);
+    }
     let (evidence, owner): (String, OrderOwner) = db.query_row("SELECT evidence,owner_kind,owner_id,cancel_version FROM machine_order_history WHERE machine_order=?1 ORDER BY sequence DESC LIMIT 1", [id], |row| Ok((row.get(0)?, OrderOwner::read(row)?)))?;
     let mut record: MachineOrder = serde_json::from_str(&evidence)?;
     record.owner = owner;

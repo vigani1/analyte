@@ -26,7 +26,7 @@ pub(crate) async fn run(
     policies: Vec<(Identifier, Option<u16>)>,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let mut cursors = vec![None; policies.len()];
+    let mut cursors = vec![(None, None); policies.len()];
     loop {
         if *stop.borrow() {
             return Ok(());
@@ -35,9 +35,10 @@ pub(crate) async fn run(
             if *stop.borrow() {
                 return Ok(());
             }
+            let order_machine = machine.clone();
             let machine = machine.clone();
             let days = *days;
-            let after = *cursor;
+            let after = cursor.0;
             let now = jiff::Timestamp::now().as_second();
             let batch_deadline = Instant::now()
                 .checked_add(Duration::from_millis(250))
@@ -49,7 +50,7 @@ pub(crate) async fn run(
                 .await;
             match outcome {
                 Ok(run) => {
-                    *cursor = run.after;
+                    cursor.0 = run.after;
                 }
                 Err(analyte_store::Error::Timeout) => {
                     tracing::warn!(
@@ -60,6 +61,20 @@ pub(crate) async fn run(
                 Err(error) => return Err(error.into()),
             }
             if days.is_some() {
+                let order_after = cursor.1;
+                let run = store
+                    .request(crate::deadline(), move |store| {
+                        let until = Instant::now()
+                            .checked_add(Duration::from_millis(250))
+                            .ok_or(analyte_store::Error::InvalidInput)?;
+                        store.purge_order_batch(&order_machine, days, order_after, now, until)
+                    })
+                    .await;
+                match run {
+                    Ok(run) => cursor.1 = run.order_after,
+                    Err(analyte_store::Error::Timeout) => {}
+                    Err(error) => return Err(error.into()),
+                }
                 store
                     .request(crate::deadline(), |store| {
                         let until = Instant::now()

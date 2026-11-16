@@ -516,6 +516,8 @@ mod legacy;
 
 fn assert_empty_retention_tables(snapshot: &mut Snapshot) {
     for table in [
+        "retention_orders",
+        "retention_order_deliveries",
         "retention_key",
         "retention_holds",
         "retention_tombstones",

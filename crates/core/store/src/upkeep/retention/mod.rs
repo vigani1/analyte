@@ -1,5 +1,7 @@
 //! Retains keyed duplicate evidence and explicit operator holds (ADR 0013).
 mod eligibility;
+mod links;
+pub(crate) mod orders;
 mod purge;
 mod tombstones;
 mod vacuum;
@@ -51,7 +53,7 @@ impl Store {
             )
             .optional()?;
         let tombstones: bool = self.db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM retention_tombstones)",
+            "SELECT EXISTS(SELECT 1 FROM retention_tombstones UNION SELECT 1 FROM retention_orders)",
             [],
             |r| r.get(0),
         )?;
@@ -89,7 +91,7 @@ impl Store {
         delivery: analyte_model::DeliveryId,
     ) -> Result<bool, Error> {
         Ok(self.db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM retention_deliveries WHERE delivery=?1)",
+            "SELECT EXISTS(SELECT 1 FROM retention_deliveries WHERE delivery=?1 UNION SELECT 1 FROM retention_order_deliveries WHERE delivery=?1)",
             [crate::key(&delivery)?],
             |r| r.get(0),
         )?)

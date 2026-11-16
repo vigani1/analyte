@@ -331,8 +331,7 @@ identities, a delivery for every interpretation's result, every delivery done wi
 an acknowledgment, and a complete retention period after the last acknowledgment.
 It excludes parking evidence, unfinished transfers, open or uncertain machine
 orders/items and poll intents, and explicit holds. In this version, ambiguous
-machine links retain the whole machine's receipts; any order hold conservatively
-blocks receipt purging until released. Resolved parking evidence is retained too.
+machine links retain the whole machine's receipts; order holds cover linked receipts, with uncertain links retained. Resolved parking evidence is retained too.
 
 Use `analyte --actor NAME holds receipt UUID --reason TEXT` or `holds order
 DESTINATION ORDER --reason TEXT` to place a hold; add `--release` to release it.
@@ -368,3 +367,22 @@ Tests named `adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate`,
 `adr0013_item2_random_unfinished_states_never_purge` guard the key safety outcomes.
 The crash test terminates a child process before commit without running destructors.
 The space test checks a real file shrink after offline conversion and bounded vacuum.
+
+## Refined order retention (ADR 0013 items 2, 6 and 7)
+
+Schema v11 adds immutable keyed order tombstones and delivery associations. It
+preserves v10 evidence and reservation sequence high-water marks. Order bundles
+use separate bounded scan cursors, the existing transaction deadline/backup pause
+and the common audit header. Only Done, Rejected and CancelConfirmed parents with
+finished items and old enough final/acknowledgment times are eligible. Holds,
+unfinished app events, newer or unknown cached versions and potentially linked
+retained receipts prevent deletion. Shared cache/events remain until the last
+machine reservation is purged. Pending-order discovery and atomic reservation
+check keyed tombstones, so feed replay cannot resend purged work.
+
+Receipt links use exact namespaced order or retained placer identities, or sample
+IDs in interpretations and the order cache. A matching sample conservatively
+covers the receipt; distinct known samples establish separation only when source
+order evidence does not contradict them. Missing evidence, excessive histories
+and cache-version inconsistencies remain unknown and block deletion. Explicit
+poll receipt targets can establish separation; machine-only legacy targets cannot.

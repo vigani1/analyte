@@ -6,7 +6,9 @@ use analyte_model::{IdentityStatus, Reason};
 use rusqlite::params;
 use std::time::Instant;
 
-fn finished(store: &mut Store) -> Result<analyte_model::ReceiptId, Box<dyn std::error::Error>> {
+pub(super) fn finished(
+    store: &mut Store,
+) -> Result<analyte_model::ReceiptId, Box<dyn std::error::Error>> {
     let metadata = receipt(b"synthetic")?;
     store.receive(&metadata, b"synthetic", b"config")?;
     let result = production_result(metadata.id)?;
@@ -31,7 +33,7 @@ fn finished(store: &mut Store) -> Result<analyte_model::ReceiptId, Box<dyn std::
     store.attempted(delivery, &Attempt::Done, 100)?;
     Ok(metadata.id)
 }
-fn audit() -> Result<Audit, Box<dyn std::error::Error>> {
+pub(super) fn audit() -> Result<Audit, Box<dyn std::error::Error>> {
     Ok(Audit {
         actor: Identifier::new("synthetic-operator")?,
         action: Identifier::new("hold")?,
@@ -119,7 +121,7 @@ fn adr0013_item3_migration_from_v9_preserves_evidence() -> TestResult {
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
     let id = finished(&mut store)?;
-    store.db.execute_batch("DROP TABLE retention_results; DROP TABLE retention_deliveries; DROP TABLE retention_tombstones; DROP TABLE retention_key; DROP TABLE retention_holds; PRAGMA user_version=9;")?;
+    store.db.execute_batch("DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; DROP TABLE retention_results; DROP TABLE retention_deliveries; DROP TABLE retention_tombstones; DROP TABLE retention_key; DROP TABLE retention_holds; PRAGMA user_version=9;")?;
     drop(store);
     let store = open(&path)?;
     assert_eq!(store.raw(id)?.ok_or("missing raw")?, b"synthetic");
@@ -127,7 +129,7 @@ fn adr0013_item3_migration_from_v9_preserves_evidence() -> TestResult {
     let version: i64 = store
         .db
         .query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    assert_eq!(version, 10);
+    assert_eq!(version, crate::SCHEMA_VERSION);
     Ok(())
 }
 
@@ -546,3 +548,5 @@ fn adr0013_item4_audit_failure_rolls_back_purge_and_restores_guards() -> TestRes
     Store::integrity(&store.db)?;
     Ok(())
 }
+
+mod refinement;
