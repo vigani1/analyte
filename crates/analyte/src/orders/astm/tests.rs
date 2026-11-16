@@ -92,7 +92,9 @@ fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orde
 -> Result<(), Error> {
     let machine = machine("error")?;
     // LIS02-A2 section 6.13 p.13: the edition is LIS2-A2, not a legacy numeric version.
-    assert!(envelope(Vec::new(), b'Q')[0].starts_with(b"H|\\^&|||Analyte|||||||P|LIS2-A2|"));
+    assert!(
+        envelope(&machine, Vec::new(), b'Q')[0].starts_with(b"H|\\^&|||Analyte|||||||P|LIS2-A2|")
+    );
     assert!(matches!(
         request(
             &machine,
@@ -189,8 +191,9 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
 // LIS02-A2 section 6.14 p.13 and section 5.6.2 p.10: generated UTC date/time to seconds.
 #[test]
 fn lis02_6_14_p13_generated_header_time() -> Result<(), Error> {
+    let machine = machine("error")?;
     let before = jiff::Timestamp::now().strftime("%Y%m%d%H%M%S").to_string();
-    let records = envelope(Vec::new(), b'N');
+    let records = envelope(&machine, Vec::new(), b'N');
     let header = std::str::from_utf8(&records[0])?;
     let timestamp = header
         .trim_end_matches('\r')
@@ -203,5 +206,65 @@ fn lis02_6_14_p13_generated_header_time() -> Result<(), Error> {
     let digits = timestamp.get(..14).ok_or("short time")?;
     assert!(digits.bytes().all(|b| b.is_ascii_digit()));
     assert!(digits >= before.as_str() && digits <= after.as_str());
+    Ok(())
+}
+
+#[test]
+fn lis02_6_10_generated_header_identifies_receiver() -> Result<(), Error> {
+    for receiver in [None, Some("Peer|A")] {
+        let mut machine = machine("error")?;
+        if let Some(receiver) = receiver {
+            let section = include_str!("../../../../core/config/examples/orders.toml").replace(
+                "[orders.astm]",
+                &format!("[orders.astm]\nreceiver={receiver:?}"),
+            );
+            let definition = format!(
+                "{}\n{section}",
+                include_str!("../../../../core/config/examples/astm.toml")
+            );
+            machine.snapshot = analyte_config::Draft::load(
+                ("machine", &definition),
+                (
+                    "site",
+                    include_str!("../../../../core/config/examples/site.toml"),
+                ),
+                ("overrides", "schema_version=1"),
+            )?
+            .validate()?;
+        }
+        let records = envelope(&machine, Vec::new(), b'N');
+        let messages = analyte_astm::parse(&records.concat(), analyte_astm::Limits::default())?;
+        let header = analyte_astm::Header::new(&messages[0].records()[0]).ok_or("header")?;
+        assert_eq!(
+            header.receiver().ok_or("receiver")?.repeats()[0][0].text(),
+            receiver.unwrap_or("")
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn lis02_5_4_5_8_4_3_query_uses_decoded_specimen_and_refuses_unknown_operations()
+-> Result<(), Error> {
+    let machine = machine("error")?;
+    for (raw, expected) in [
+        ("A&F&B", "A|B"),
+        ("A&S&B", "A^B"),
+        ("A&R&B", "A\\B"),
+        ("A&E&B", "A&B"),
+    ] {
+        let payload = format!("H|\\^&||||||||||P|LIS2-A2\rQ|1|^{raw}||||||||||O\rL|1|N\r");
+        let Some(Request::Orders(samples)) = request(&machine, payload.as_bytes())? else {
+            return Err("query rejected".into());
+        };
+        assert_eq!(samples[0].as_str(), expected);
+    }
+    assert!(
+        request(
+            &machine,
+            b"H|\\^&||||||||||P|LIS2-A2\rQ|1|^A&Zlocal&B||||||||||O\rL|1|N\r"
+        )
+        .is_err()
+    );
     Ok(())
 }

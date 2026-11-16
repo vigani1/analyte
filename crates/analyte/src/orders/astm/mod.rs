@@ -109,6 +109,11 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
         if sample.raw() == b"ALL" || sample.raw().is_empty() {
             return Ok(Some(Request::Unsupported));
         }
+        if sample.has_unsupported_escape() {
+            return Err(invalid(
+                "ASTM specimen selector contains unsupported escapes",
+            ));
+        }
         samples.push(SampleId::new(sample.text())?);
     }
     if samples.is_empty() {
@@ -230,7 +235,7 @@ async fn answer(
     }
     let code = if records.is_empty() { b'I' } else { b'N' };
     Ok(Some(Reply {
-        records: envelope(records, code),
+        records: envelope(machine, records, code),
         candidates,
     }))
 }
@@ -242,7 +247,7 @@ pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
         .when_untrusted
     {
         WhenUntrusted::Error => Some(Reply {
-            records: envelope(Vec::new(), b'Q'),
+            records: envelope(machine, Vec::new(), b'Q'),
             candidates: Vec::new(),
         }),
         WhenUntrusted::NoAnswer => None,
@@ -250,11 +255,24 @@ pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
 }
 
 /// Wraps mapped orders with independent patient groups and explicit termination.
-pub(crate) fn envelope(mut orders: Vec<Vec<u8>>, termination: u8) -> Vec<Vec<u8>> {
+pub(crate) fn envelope(
+    machine: &Machine,
+    mut orders: Vec<Vec<u8>>,
+    termination: u8,
+) -> Vec<Vec<u8>> {
+    let receiver = super::settings::astm(machine)
+        .and_then(|s| s.layout().receiver.as_ref())
+        .map_or("", |id| id.as_str());
+    let receiver = receiver
+        .replace('&', "&E&")
+        .replace('|', "&F&")
+        .replace('^', "&S&")
+        .replace('\\', "&R&");
     let timestamp = jiff::Timestamp::now()
         .strftime("%Y%m%d%H%M%S%z")
         .to_string();
-    let mut records = vec![format!("H|\\^&|||Analyte|||||||P|LIS2-A2|{timestamp}\r").into_bytes()];
+    let mut records =
+        vec![format!("H|\\^&|||Analyte|||||{receiver}||P|LIS2-A2|{timestamp}\r").into_bytes()];
     for (index, order) in orders.drain(..).enumerate() {
         records.push(format!("P|{}\r", index.saturating_add(1)).into_bytes());
         records.push(order);

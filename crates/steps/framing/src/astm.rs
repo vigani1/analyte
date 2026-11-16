@@ -99,6 +99,9 @@ impl Limit {
 /// Specific framing failures; no payload is included in display messages.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum Error {
+    /// LIS02 records must begin in separate LIS01 frames.
+    #[error("multiple or prematurely terminated LIS02 records in frame")]
+    RecordBoundary,
     /// Invalid configured total bound.
     #[error("invalid ASTM frame limit {0}")]
     InvalidLimit(usize),

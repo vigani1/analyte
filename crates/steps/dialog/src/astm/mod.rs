@@ -240,7 +240,8 @@ impl Dialog {
                     | astm::Error::BadChecksum { .. }
                     | astm::Error::MissingTrailer(_)
                     | astm::Error::Interrupted
-                    | astm::Error::Incomplete => None,
+                    | astm::Error::Incomplete
+                    | astm::Error::RecordBoundary => None,
                 };
                 out.push(Action::Rejected(error, raw));
                 if matches!(self.state, State::Receiving(_)) {
@@ -280,6 +281,18 @@ impl Dialog {
                     out.push(Action::Write(vec![NAK]));
                     self.set_timer(self.config.timers.receive);
                     self.state = State::Receiving(receive);
+                } else if frame
+                    .text()
+                    .iter()
+                    .position(|b| *b == b'\r')
+                    .is_some_and(|i| !frame.is_final() || i.saturating_add(1) != frame.text().len())
+                {
+                    out.extend([
+                        Action::Rejected(astm::Error::RecordBoundary, frame.raw().to_vec()),
+                        Action::Write(vec![NAK]),
+                    ]);
+                    self.state = State::Receiving(receive);
+                    self.set_timer(self.config.timers.receive);
                 } else if receive.count
                     >= u64::try_from(self.config.frames).map_err(|_| Error::Exhausted)?
                     || receive
