@@ -458,3 +458,8 @@ Config test `hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending` and
 Modern OBX-4 accepts only legacy OG.1. Populated enhanced grouping components
 are refused before identity mapping: this profile does not select the complete
 group/sequence contract (2.8.2 2.A.50; 2.9.1 2A.2.50). Raw evidence remains retained.
+
+For 2.9.1 the generic TCP receiver supports original mode and enhanced accept-only
+exchanges. Enhanced application responses require a separate channel (2.8.3.2),
+which is unsupported. Config cannot enable that capability; incoming requests
+are durably retained and parked before any response or interpretation.

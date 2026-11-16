@@ -724,3 +724,29 @@ fn hl7_231_2_18_dsr_issuance_starts_ack_budget_without_retry() -> TestResult {
     );
     Ok(())
 }
+
+// HL7 2.9.1 section 2.8.3.2: NE/AL still requires a separate channel.
+#[test]
+fn hl7_291_s2_8_3_2_enhanced_application_ack_requires_separate_channel() -> TestResult {
+    for mode in ["NE|AL", "AL|AL", "AL|ER", "AL|SU"] {
+        let mut dialog = dialog()?;
+        let raw = String::from_utf8(message(mode))?
+            .replace("2.5.1", "2.9.1")
+            .into_bytes();
+        let actions = feed(&mut dialog, &raw)?;
+        let id = receipt(&actions)?;
+        assert!(
+            !actions
+                .iter()
+                .any(|action| matches!(action, Action::Write(_)))
+        );
+        let actions = dialog.step(Duration::ZERO, Event::Committed(id))?;
+        assert!(actions.iter().any(|action|matches!(action, Action::Parked(bytes, Error::SeparateApplicationChannel) if bytes==&raw)));
+        assert!(
+            !actions
+                .iter()
+                .any(|action| matches!(action, Action::Write(_) | Action::Interpret(..)))
+        );
+    }
+    Ok(())
+}

@@ -306,6 +306,8 @@ pub struct Dialog {
     pub contention_priority: Option<Priority>,
     /// Required only for HL7.
     pub acknowledgment: Option<Responsibility>,
+    /// Optional 2.9.1 capability request; true is refused until a separate channel is supported.
+    pub enhanced_application_acknowledgments: Option<bool>,
 }
 
 /// Syntax options checked against the selected protocol.

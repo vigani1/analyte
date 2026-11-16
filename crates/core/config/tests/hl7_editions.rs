@@ -234,3 +234,22 @@ fn hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions() {
         }
     }
 }
+
+// HL7 2.9.1 section 2.8.3.2 requires a separate application exchange channel.
+#[test]
+fn hl7_291_s2_8_3_2_separate_application_channel_cannot_be_enabled() -> Result<(), Error> {
+    for enabled in [false, true] {
+        let definition=MACHINE.replace("edition = \"v251\"", "edition = \"v291\"").replace("acknowledgment = \"store_and_forward\"", &format!("acknowledgment = \"store_and_forward\"\nenhanced_application_acknowledgments = {enabled}"));
+        let result = Draft::load(
+            ("synthetic", &definition),
+            ("site", SITE),
+            ("local", "schema_version=1"),
+        )?
+        .validate();
+        assert_eq!(result.is_err(), enabled);
+        if let Err(error) = result {
+            assert!(error.to_string().contains("unsupported separate channel"));
+        }
+    }
+    Ok(())
+}
