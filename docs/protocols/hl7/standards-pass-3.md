@@ -57,3 +57,8 @@ fixture was repaired to conceal its intended failure.
 
 The host safety regression verifies exact retained MLLP bytes, parked evidence,
 AE instead of AA and an empty delivery queue for unsafe reports/fragments.
+
+The comment ancestry test now refuses an ORU header-level NTE (2.5.1 7.3.1),
+then checks all four valid patient/order/observation comments, including the
+empty order. Its last source occurrence shifts from nine to eight when the
+invalid prefix is removed. OUL retains its separately defined header note.

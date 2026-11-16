@@ -10,11 +10,13 @@ pub(super) fn validate(message: &analyte_hl7::Message, oul: bool) -> Result<(), 
     let mut specimen = false;
     let mut pending_control = false;
     let mut oul_control = false;
+    let mut previous = b"MSH".as_slice();
     for (index, segment) in message.segments().enumerate().skip(1) {
         let valid = match segment.id() {
             b"PID" => {
-                let valid =
-                    !pending_control && (!patient || (!oul && order)) && (!oul || !specimen);
+                let valid = !pending_control
+                    && (!patient || (!oul && order))
+                    && (!oul || (!specimen && !visit));
                 patient = true;
                 visit = false;
                 visit_extra = false;
@@ -33,7 +35,7 @@ pub(super) fn validate(message: &analyte_hl7::Message, oul: bool) -> Result<(), 
                 valid
             }
             b"ORC" if oul => {
-                let valid = order && !oul_control;
+                let valid = order && !oul_control && previous == b"OBR";
                 oul_control = true;
                 valid
             }
@@ -60,9 +62,15 @@ pub(super) fn validate(message: &analyte_hl7::Message, oul: bool) -> Result<(), 
             b"SPM" => order && !pending_control,
             b"SAC" => oul && specimen && !order,
             b"OBX" => !pending_control && (order || (oul && specimen)),
-            b"NTE" => !pending_control,
-            // Ownership validation below checks the narrow OUL result-detail positions.
-            b"TCD" | b"SID" => oul && order,
+            b"NTE" => {
+                !pending_control
+                    && (matches!(
+                        previous,
+                        b"PID" | b"OBR" | b"OBX" | b"NTE" | b"TCD" | b"SID"
+                    ) || (oul && index == 1))
+            }
+            b"TCD" => oul && order && previous == b"OBX",
+            b"SID" => oul && order && matches!(previous, b"OBX" | b"TCD" | b"SID"),
             _ => false,
         };
         if !valid {
@@ -74,6 +82,7 @@ pub(super) fn validate(message: &analyte_hl7::Message, oul: bool) -> Result<(), 
                 reason: "segment violates selected HL7 result grammar; retain receipt for review",
             });
         }
+        previous = segment.id();
     }
     if pending_control || !order {
         return Err(Error::Structure {

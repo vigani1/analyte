@@ -563,11 +563,13 @@ fn hl7_ch2_escapes_and_empty_subid_declaration_keep_written_evidence() -> TestRe
 
 #[test]
 fn plan6_notes_keep_parent_paths_even_without_a_result() -> TestResult {
+    // HL7 2.5.1 section 7.3.1 does not admit an ORU header-level NTE.
+    assert!(hl7("NTE|1||message note\rOBR|1||001\r", HL7_CONFIG).is_err());
     let output = hl7(
-        "NTE|1||message note\rPID|1\rNTE|1||patient note\rOBR|1||001\rNTE|1||order note\rOBX|1|NM|SYN^^synthetic||1||||||F\rNTE|1||observation note\rOBR|2||002\rNTE|1||empty order note\r",
+        "PID|1\rNTE|1||patient note\rOBR|1||001\rNTE|1||order note\rOBX|1|NM|SYN^^synthetic||1||||||F\rNTE|1||observation note\rOBR|2||002\rNTE|1||empty order note\r",
         HL7_CONFIG,
     )?;
-    assert_eq!(output.comments.len(), 5);
+    assert_eq!(output.comments.len(), 4);
     assert_eq!(
         output
             .comments
@@ -575,7 +577,7 @@ fn plan6_notes_keep_parent_paths_even_without_a_result() -> TestResult {
             .filter_map(|note| note.parent_path.as_slice().last())
             .map(|node| node.kind.as_str())
             .collect::<Vec<_>>(),
-        ["MSH", "PID", "OBR", "OBX", "OBR"]
+        ["PID", "OBR", "OBX", "OBR"]
     );
     assert_eq!(
         output
@@ -583,7 +585,7 @@ fn plan6_notes_keep_parent_paths_even_without_a_result() -> TestResult {
             .last()
             .and_then(|note| note.parent_path.as_slice().last())
             .map(|node| node.occurrence),
-        Some(9)
+        Some(8)
     );
     Ok(())
 }
