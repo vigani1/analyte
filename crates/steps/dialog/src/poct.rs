@@ -243,6 +243,23 @@ impl Dialog {
         })
     }
 
+    /// Returns the earliest absolute elapsed time requiring a Tick, or none after closure.
+    /// Incoming fragments must not restart this deadline. The host waits for input,
+    /// cancellation or this time, then supplies fresh elapsed time to `step`.
+    #[must_use]
+    pub fn next_deadline(&self) -> Option<Duration> {
+        if matches!(self.phase, Phase::Closed) {
+            return None;
+        }
+        Some(
+            self.pending
+                .iter()
+                .fold(self.response_deadline, |deadline, pending| {
+                    deadline.min(pending.deadline)
+                }),
+        )
+    }
+
     /// Applies one event, expiring deadlines first. Never retransmits on timeout.
     /// # Errors
     /// Rejects reversed/unrepresentable time, unknown completion tickets and host

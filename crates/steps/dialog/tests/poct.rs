@@ -639,3 +639,43 @@ fn poct01_b_5_12_unexpected_ack_escape_references_incoming_header() -> Result<()
     }
     Ok(())
 }
+
+#[test]
+fn adr_0001_poct_reports_absolute_custody_deadline_without_polling() -> Result<(), DialogError> {
+    let mut dialog = Dialog::new(
+        DialogConfig {
+            pending_messages: 2,
+            message_bytes: 65536,
+            response_timeout: Duration::from_secs(180),
+            unannounced_ack_timeout: Duration::from_secs(20),
+        },
+        ControlId::new("deadline-session")?,
+    )?;
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(180)));
+    let hello = Message::parse(
+        peer_messages::hello("hello").as_bytes(),
+        peer_messages::limits(),
+    )?;
+    dialog.step(
+        Duration::from_secs(5),
+        DialogEvent::Received(Box::new(hello)),
+    )?;
+    let actions = dialog.step(Duration::from_secs(5), DialogEvent::HelloDecision(true))?;
+    assert!(
+        actions
+            .iter()
+            .any(|action| matches!(action, DialogAction::Store { .. }))
+    );
+    // The synthetic Hello advertises a 12.5-second ACK budget (POCT01 B.4.1.2).
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_millis(17500)));
+    dialog.step(Duration::from_secs(17), DialogEvent::Tick)?;
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_millis(17500)));
+    let actions = dialog.step(Duration::from_millis(17500), DialogEvent::Tick)?;
+    assert!(
+        actions
+            .iter()
+            .any(|action| matches!(action, DialogAction::Close { normal: false, .. }))
+    );
+    assert_eq!(dialog.next_deadline(), None);
+    Ok(())
+}
