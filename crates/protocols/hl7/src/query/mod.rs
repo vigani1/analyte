@@ -31,6 +31,12 @@ impl<'a> Request<'a> {
     /// every filter before claiming that a cache answer is trusted.
     pub fn new(message: &'a Message) -> Result<Self, crate::Error> {
         let msh = Msh::new(message)?;
+        if let Some(section) = msh.version().legacy_query_withdrawal() {
+            return Err(crate::Error::WithdrawnQuery {
+                edition: msh.version().as_str(),
+                section,
+            });
+        }
         let mut kind = msh.message_type();
         if kind.next() != Some(b"QRY")
             || kind.next() != Some(b"Q02")
@@ -119,6 +125,12 @@ impl<'a> DisplayAck<'a> {
     /// Rejects mismatched correlation, invalid acknowledgments or extra segments.
     pub fn new(message: &'a Message, expected: crate::ControlId<'_>) -> Result<Self, crate::Error> {
         let msh = Msh::new(message)?;
+        if let Some(section) = msh.version().legacy_query_withdrawal() {
+            return Err(crate::Error::WithdrawnQuery {
+                edition: msh.version().as_str(),
+                section,
+            });
+        }
         let mut kind = msh.message_type();
         if kind.next() != Some(b"ACK")
             || kind.next() != Some(b"Q03")

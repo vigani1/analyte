@@ -18,13 +18,13 @@
   Evidence: `hl7_2_9_1_s2_6_1_truncation_character_escape` and
   `hl7_2_8_2_s2_7_2_undeclared_p_escape_remains_unsupported`.
 - [x] Register all eight exact editions with source-named tests and explicit
-  unavailable typed profiles. `version/tests.rs` covers every registry entry
+  qualification state. `version/tests.rs` covers every registry entry
   plus `adr0012_s3_no_unlisted_edition_or_prefix_match` (ADR 0012 §3).
 - [x] Accept machine edition selections only for implemented typed profiles
-  (native 2.3.1/2.5.1, bounded 2.3/2.4/2.5 compatibility and bounded 2.6 receiving), without defaults or patch upgrades.
+  (all eight declared receiving editions), without defaults or patch upgrades.
   `config/tests/hl7_editions.rs` covers exact identity and canonical snapshots
-  for those six, actionable validation errors for the two recognized unsupported
-  editions, missing declarations and positioned unlisted-value errors.
+  for all eight, withdrawn-query and unqualified-writer refusals, missing
+  declarations and positioned unlisted-value errors.
 - [x] Implement the declared 2.3/2.4/2.5 receiving compatibility prefix under
   2.5.1 §§2.8–2.8.2 and the 2002-04-08 errata, with exact edition replies and
   explicit raw/refusal behavior. Evidence and limitations: [versions](versions.md),
@@ -40,9 +40,14 @@
   2.6's retained backward-compatible query path (§5.10.2 pp.95–96).
   Evidence: the three source-named config tests listed in [versions](versions.md).
   The newer editions' selected scope is result reception only; LAW QBP is separate.
-- [ ] 2.8.2 — Complete typed result/message/datatype differences for result reception.
-- [ ] 2.9.1 — Complete typed result/message/datatype differences for result reception,
-  including its later coded components and withdrawals.
+- [x] 2.8.2 — Complete the bounded result profile: 22-component CWE, normative
+  versus conformance lengths, withdrawal checks, literal-marker handling and
+  explicit rejection of unselected groups. Sources and per-row tests: [versions](versions.md),
+  protocol `modern.rs`, mapping `mapping/modern.rs`, config `hl7_editions.rs`
+  and store-before-ACK dialog tests. Evidence: documented.
+- [x] 2.9.1 — Complete that bounded result profile with its additional OBR
+  withdrawals, paired ACK requests and raw-only UTC-without-civil-offset times.
+  Same source/test matrix; no new common-model field or dependency.
 - [ ] Step 5 — Implement order writers per edition in a separate PR.
 
 

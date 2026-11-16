@@ -8,8 +8,10 @@ use crate::{Error, Message, Msh, Repetition, datatypes, version::FieldKind};
 /// unselected result moods. Does not qualify arbitrary HL7 structures.
 pub fn validate_result_fields(message: &Message) -> Result<(), Error> {
     let version = Msh::new(message)?.version();
+    let rules = version.require_rules()?;
     for segment in message.segments() {
-        for row in version.require_rules()?.result_fields {
+        validate_context(segment, rules)?;
+        for row in rules.result_fields {
             if segment.id() != row.segment {
                 continue;
             }
@@ -27,7 +29,7 @@ pub fn validate_result_fields(message: &Message) -> Result<(), Error> {
                     )
             };
             let cwe = |value: Repetition<'_>| {
-                value.raw().len() <= 705
+                value.raw().len() <= rules.coded_field_bytes
                     && datatypes::coded(&value.components().collect::<Vec<_>>(), version)
             };
             let valid = match row.kind {
@@ -48,6 +50,65 @@ pub fn validate_result_fields(message: &Message) -> Result<(), Error> {
                 return Err(Error::Control {
                     segment: if segment.id() == b"OBR" { "OBR" } else { "OBX" },
                     field: row.field,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+// Reject contexts that would let mapping assign a meaning the selected profile cannot establish.
+fn validate_context(
+    segment: crate::Segment<'_>,
+    rules: &crate::version::Rules,
+) -> Result<(), Error> {
+    if segment.id() == b"OBR" {
+        for number in rules.withdrawn_obr {
+            if segment
+                .field(*number)
+                .is_some_and(|field| !field.raw().is_empty() && !field.is_null())
+            {
+                return Err(Error::Control {
+                    segment: "OBR",
+                    field: *number,
+                });
+            }
+        }
+    }
+    if segment.id() == b"OBX" {
+        if let Some(component) = rules.observation_authority
+            && let Some(field) = segment
+                .field(3)
+                .filter(|field| !field.raw().is_empty() && !field.is_null())
+        {
+            for value in field.repetitions() {
+                if value
+                    .components()
+                    .next()
+                    .is_some_and(|code| !code.raw().is_empty())
+                    && value
+                        .components()
+                        .nth(component.saturating_sub(1))
+                        .is_none_or(|system| system.raw().is_empty())
+                {
+                    return Err(Error::Control {
+                        segment: "OBX",
+                        field: 3,
+                    });
+                }
+            }
+        }
+        for (dependent, required) in rules.observation_dependencies {
+            if segment
+                .field(*dependent)
+                .is_some_and(|field| !field.raw().is_empty() && !field.is_null())
+                && segment
+                    .field(*required)
+                    .is_none_or(|field| field.raw().is_empty() || field.is_null())
+            {
+                return Err(Error::Control {
+                    segment: "OBX",
+                    field: *required,
                 });
             }
         }

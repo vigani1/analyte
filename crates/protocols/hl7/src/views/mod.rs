@@ -152,11 +152,11 @@ impl<'a> Msh<'a> {
             }
         }
         let id = required(segment, 10)?;
-        if id
-            .raw()
-            .iter()
-            .any(|b| !b.is_ascii_graphic() || segment.delimiters.bytes().contains(b))
-        {
+        if id.raw().iter().any(|b| {
+            !b.is_ascii_graphic()
+                || segment.delimiters.bytes().contains(b)
+                || segment.delimiters.truncation == Some(*b)
+        }) {
             return Err(Error::Control {
                 segment: "MSH",
                 field: 10,
@@ -184,31 +184,27 @@ impl<'a> Msh<'a> {
             });
         }
         validate_message_type(segment, version)?;
-        // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
-        // 2.3.1 retains optional usage. Validate a supplied TS in either edition.
-        let timestamp = segment.field(7);
-        if version.required_timestamp() || timestamp.is_some_and(|field| !field.raw().is_empty()) {
-            let field = required(segment, 7)?;
-            let mut repetitions = field.repetitions();
-            let valid = repetitions.next().is_some_and(|value| {
-                crate::datatypes::edition_timestamp(
-                    &value.components().collect::<Vec<_>>(),
-                    version,
-                )
-            });
-            let maximum = match rules.time_format {
-                crate::version::TimeFormat::Ts => 26,
-                crate::version::TimeFormat::Dtm => 24,
-            };
-            if field.raw().len() > maximum || !valid || repetitions.next().is_some() {
-                return Err(Error::Control {
-                    segment: "MSH",
-                    field: 7,
-                });
+        validate_timestamp(segment, version)?;
+        if rules.ack_pair == crate::version::AckPair::Paired {
+            for field in [15, 16] {
+                if segment.field(field).is_some_and(Field::is_null) {
+                    return Err(Error::Control {
+                        segment: "MSH",
+                        field,
+                    });
+                }
             }
         }
         let accept = condition(segment, 15)?;
         let application = condition(segment, 16)?;
+        if rules.ack_pair == crate::version::AckPair::Paired
+            && accept.is_some() != application.is_some()
+        {
+            return Err(Error::Control {
+                segment: "MSH",
+                field: if accept.is_none() { 15 } else { 16 },
+            });
+        }
         let mode = if accept.is_none() && application.is_none() {
             AckMode::Original
         } else {
@@ -280,6 +276,31 @@ impl<'a> Msh<'a> {
         self.segment.field(18)
     }
 }
+fn validate_timestamp(segment: Segment<'_>, version: Version) -> Result<(), Error> {
+    let rules = version.require_rules()?;
+    // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
+    // 2.3.1 retains optional usage. Validate a supplied TS in either edition.
+    let timestamp = segment.field(7);
+    if version.required_timestamp() || timestamp.is_some_and(|field| !field.raw().is_empty()) {
+        let field = required(segment, 7)?;
+        let mut repetitions = field.repetitions();
+        let valid = repetitions.next().is_some_and(|value| {
+            crate::datatypes::edition_timestamp(&value.components().collect::<Vec<_>>(), version)
+        });
+        let maximum = match rules.time_format {
+            crate::version::TimeFormat::Ts => 26,
+            crate::version::TimeFormat::Dtm => 24,
+        };
+        if field.raw().len() > maximum || !valid || repetitions.next().is_some() {
+            return Err(Error::Control {
+                segment: "MSH",
+                field: 7,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn condition(segment: Segment<'_>, field: usize) -> Result<Option<Condition>, Error> {
     match segment.field(field).map_or(&[][..], Field::raw) {
         b"" | b"\"\"" => Ok(None),
@@ -326,7 +347,19 @@ impl<'a> Msa<'a> {
     /// # Errors
     /// Refuses unsupported editions and malformed MSA control fields.
     pub fn for_version(segment: Segment<'a>, version: Version) -> Result<Self, Error> {
-        Self::with_control_limit(segment, version.require_rules()?.control_bytes)
+        let rules = version.require_rules()?;
+        for field in rules.withdrawn_msa {
+            if segment
+                .field(*field)
+                .is_some_and(|value| !value.raw().is_empty() && !value.is_null())
+            {
+                return Err(Error::Control {
+                    segment: "MSA",
+                    field: *field,
+                });
+            }
+        }
+        Self::with_control_limit(segment, rules.control_bytes)
     }
     /// Constructs a view after the LAW boundary has validated the MSA profile.
     pub(crate) fn from_law(segment: Segment<'a>) -> Result<Self, Error> {
@@ -410,10 +443,20 @@ impl<'a> ErrView<'a> {
                 field: 0,
             });
         }
+        for field in version.require_rules()?.withdrawn_err {
+            if segment
+                .field(*field)
+                .is_some_and(|value| !value.raw().is_empty() && !value.is_null())
+            {
+                return Err(Error::Control {
+                    segment: "ERR",
+                    field: *field,
+                });
+            }
+        }
         match version {
-            Version::V282 | Version::V291 => Err(Error::EditionRules(version.as_str())),
             Version::V23 | Version::V231 | Version::V24 => Ok(Self::V231(get(1)?)),
-            Version::V25 | Version::V251 | Version::V26 => {
+            Version::V25 | Version::V251 | Version::V26 | Version::V282 | Version::V291 => {
                 let severity = get(4)?;
                 if !matches!(severity.raw(), b"W" | b"I" | b"E" | b"F") {
                     return Err(Error::Control {
