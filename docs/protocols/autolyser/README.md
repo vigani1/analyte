@@ -31,9 +31,12 @@ Close stop feeding this dialog and preserve remaining transport bytes in the
 protected host journal; keep consuming pending Store effects. Incomplete and
 overlong responses are stored as bounded evidence, then the connection closes.
 Storage failure closes visibly. A timeout/disconnect after insertion may have
-changed the analyzer: reconcile rather than resubmit. On restart the host must
-reconcile the last outstanding poll with L before normal polling; a new Dialog
-cannot discover an earlier process's send cursor or journal.
+changed the analyzer: reconcile rather than resubmit. After restart with an
+unresolved poll guard, Analyte refuses the session and
+sends neither L nor R. Operator reconciliation is required before resolving the
+guard. The vendor L command is an operator recovery step only in this case;
+retain all evidence and verify cursor behavior rather than assume persistence.
+A new Dialog cannot discover an earlier process's send cursor or journal.
 
 The source does not provide an immutable run identity, timestamps, units or
 result-receipt ACK. This crate invents none. Mapping must retain unresolved
@@ -96,10 +99,11 @@ crate path supplies a resolved result identity for a delivery test.
 
 Before R, the program stores a poll-custody guard. A complete durably stored
 response clears it; corrupt input keeps it through L recovery. An empty L does
-not clear it. Disconnect or restart with an open guard blocks further R requests
-until an operator reconciles and resolves that guard. This prevents a new session
+not clear it. Disconnect or restart with an open guard prevents session opening:
+neither L nor R is sent until an operator reconciles and resolves that guard.
+This prevents a new session
 from silently advancing a cursor whose previous outcome is uncertain.
 
 ## Protocol notes
 
-[Decisions](decisions.md) ? [Checklist](checklist.md) ? [Versions](versions.md)
+[Decisions](decisions.md) – [Checklist](checklist.md) – [Versions](versions.md)
