@@ -553,6 +553,8 @@ mod tests {
             destination_limits: crate::runtime::delivery::limits(30),
             #[cfg(feature = "test-hooks")]
             law_committed: None,
+            #[cfg(feature = "test-hooks")]
+            law_precommit: None,
             id: Identifier::new("synthetic")?,
             snapshot,
             listener: None,
