@@ -112,10 +112,20 @@ Several related yes/no flags become one enum of named states.
 
 ### 8. Every crate and every file says what it holds
 
-Each crate's `lib.rs` starts with its layer, what it owns and what it must
-not do. Every other source file starts with a one-line `//!` header saying
-what it holds and why it belongs where it is; a check in CI refuses a file
-without one.
+Every Rust file starts with a `//!` line that explains its contents to a
+newcomer. Crate READMEs use the same concrete descriptions, stating the kind
+first. Apply these rules:
+
+- Write one complete sentence that can be read alone. Good: `//! Detects repeated POCT messages within a bounded window.` Bad: `//! Bounded duplicate detection. The host persists identities in the`.
+- Start with a verb and the main things the file handles, naming concrete segments, types or records. Good: `//! Validates LAW MSH, MSA and ERR segments.` Bad: `//! Manager control profiles.`
+- Put safety and I/O limits after the job. Good: `//! Maps ASTM result records to model results without I/O.` Bad: `//! No I/O or clinical decisions.`
+- Describe contents rather than where they belong. Good: `//! Reads ASTM header record fields.` Bad: `//! Header views belong beside the grammar.`
+- Prefer concrete terms to abstractions such as semantics, profiles, assembly or boundary. Good: `//! Writes HL7 segments within a byte limit.` Bad: `//! Private bounded wire assembly.`
+- Avoid words whose lab or standards meaning differs from the code. Good: `//! Holds evidence lists capped at 256 entries.` Bad: `//! Holds evidence collections.` In a lab, collection means collecting a specimen.
+- Keep any `//! Kept whole:` reason on its own line, as the second header line. Good: `//! Runs service startup and shutdown.` followed by `//! Kept whole: Preserves worker ownership order.` Bad: `//! Service ownership. Kept whole: Preserves worker ownership order.`
+
+The Layout CI job checks the opening header and finds the separate
+`Kept whole:` line in the opening documentation block.
 
 ### 9. Large folders group files by role
 
