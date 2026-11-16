@@ -329,9 +329,15 @@ These capabilities matter to a literal “complete” claim and to future equipm
 - [x] Report specific per-edition blockers from the protocol registry in config
   (ADR 0012 section 3). Evidence:
   `adr0012_s3_config_reports_the_registry_writer_blocker`.
-- [ ] Qualify 2.6, 2.8.2 and 2.9.1 order encoding and replies from their own
+- [ ] Qualify 2.8.2 and 2.9.1 order encoding and replies from their own
   chapter 4 and datatype definitions, carry explicit test revisions, and prove
   exact bytes, withdrawn-field refusal, response outcomes and no resend after
   timeout/restart before config enablement. See the version audit.
 - [ ] Obtain original 2.3, 2.4 and 2.5 writer field definitions before enabling
   sending; 2.5.1 section 2.8 receiving compatibility alone is insufficient.
+
+- [x] 2.6 bounded OML/O21 and ORL/O22 with explicit test/specimen/priority
+  revisions, DTM timing, exact bytes and response correlation. Source field
+  matrix and tests: versions.md, `edition_orders.rs`, config edition tests.
+  Host evidence includes 2.6 in `hl7_send_cases` acceptance/rejection,
+  cancellation, timeout/disconnect and restart without resend tests (rule 8).

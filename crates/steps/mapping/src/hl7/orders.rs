@@ -118,13 +118,10 @@ impl Command {
             };
             let mapped = crate::orders::codes::map_test(self.settings.tables().tests(), requested)
                 .map_err(|source| Error::lookup("HL7-unmapped-test", source))?;
-            let [code, text, system] = mapped.machine_components.as_slice() else {
-                return Err(Error::Context("HL7-test-components"));
-            };
             orders.push(order::Order::New {
                 placer,
                 filler: None,
-                test: order::Code::new(code.as_bytes(), text.as_bytes(), system.as_bytes())?,
+                test: test_code(&mapped.machine_components)?,
                 specimen: order::Specimen {
                     sample,
                     field: if cfg.sample_field == 18 {
@@ -136,6 +133,7 @@ impl Command {
                 },
                 priority,
                 timing: order::Timing {
+                    priority_version: cfg.priority_version.as_ref().map(|v| v.as_str().as_bytes()),
                     start: None,
                     end: None,
                 },
@@ -235,13 +233,10 @@ impl Command {
     ) -> Result<OrderMessage, Error> {
         match self.version {
             Version::V231 => Ok(order::orm(orders, subject, header, self.options)?),
-            Version::V251 => Ok(order::oml(orders, subject, header, self.options)?),
-            Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V282
-            | Version::V291 => Err(Error::Context("HL7-order-edition-rules-not-implemented")),
+            Version::V251 | Version::V26 => Ok(order::oml(orders, subject, header, self.options)?),
+            Version::V23 | Version::V24 | Version::V25 | Version::V282 | Version::V291 => {
+                Err(Error::Context("HL7-order-edition-rules-not-implemented"))
+            }
         }
     }
 
@@ -263,7 +258,7 @@ impl Command {
                 )?;
                 Some(
                     if let Some(version) = &cfg.specimen_version
-                        && self.version == Version::V251
+                        && self.version != Version::V231
                     {
                         code.with_version(version.as_str().as_bytes())?
                     } else {
@@ -309,5 +304,21 @@ impl Command {
             }
         };
         Ok(priority)
+    }
+}
+
+fn test_code(components: &[String]) -> Result<order::Code<'_>, Error> {
+    let [code, text, system, rest @ ..] = components else {
+        return Err(Error::Context("HL7-test-components"));
+    };
+    let code = order::Code::new(code.as_bytes(), text.as_bytes(), system.as_bytes())?;
+    match rest {
+        [] => Ok(code),
+        [empty1, empty2, empty3, revision]
+            if [empty1, empty2, empty3].iter().all(|v| v.is_empty()) =>
+        {
+            Ok(code.with_version(revision.as_bytes())?)
+        }
+        _ => Err(Error::Context("HL7-test-components")),
     }
 }

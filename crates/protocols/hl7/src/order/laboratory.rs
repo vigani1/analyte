@@ -116,7 +116,7 @@ fn entity_parts(parts: &[&[u8]], name: &'static str, field: usize) -> Result<(),
     Ok(())
 }
 
-fn specimen(segment: Segment<'_>) -> Result<(), Error> {
+fn specimen(segment: Segment<'_>, version: Version) -> Result<(), Error> {
     sequence(segment, "SPM", false)?;
     rule(segment, "SPM", 2, false, SPECIMEN_ID_BYTES)?;
     if let Some(field) = value(segment, 2)
@@ -141,7 +141,11 @@ fn specimen(segment: Segment<'_>) -> Result<(), Error> {
             .repetitions()
             .next()
             .ok_or_else(|| invalid("SPM", 4))?;
-        if !crate::datatypes::cwe(&repetition.components().collect::<Vec<_>>()) {
+        if !if version == Version::V251 {
+            crate::datatypes::cwe(&repetition.components().collect::<Vec<_>>())
+        } else {
+            crate::datatypes::coded(&repetition.components().collect::<Vec<_>>(), version)
+        } {
             return Err(invalid("SPM", 4));
         }
     }
@@ -177,7 +181,7 @@ fn container(segment: Segment<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub(super) fn timing(segment: Segment<'_>) -> Result<(), Error> {
+pub(super) fn timing(segment: Segment<'_>, version: Version) -> Result<(), Error> {
     sequence(segment, "TQ1", true)?;
     for (index, field) in segment.fields().enumerate() {
         let number = index.saturating_add(1);
@@ -186,14 +190,26 @@ pub(super) fn timing(segment: Segment<'_>) -> Result<(), Error> {
         }
     }
     for number in [7, 8] {
-        rule(segment, "TQ1", number, false, 26)?;
+        rule(
+            segment,
+            "TQ1",
+            number,
+            false,
+            version
+                .order_rules()
+                .ok_or_else(|| invalid("MSH", 12))?
+                .time_bytes,
+        )?;
         if let Some(field) = value(segment, number) {
             let repetition = field
                 .repetitions()
                 .next()
                 .ok_or_else(|| invalid("TQ1", number))?;
             if field.is_null()
-                || !crate::datatypes::timestamp(&repetition.components().collect::<Vec<_>>())
+                || !crate::datatypes::edition_timestamp(
+                    &repetition.components().collect::<Vec<_>>(),
+                    version,
+                )
             {
                 return Err(invalid("TQ1", number));
             }
@@ -205,7 +221,13 @@ pub(super) fn timing(segment: Segment<'_>) -> Result<(), Error> {
             .repetitions()
             .next()
             .ok_or_else(|| invalid("TQ1", 9))?;
-        if field.is_null() || !crate::datatypes::cwe(&repetition.components().collect::<Vec<_>>()) {
+        if field.is_null()
+            || !if version == Version::V251 {
+                crate::datatypes::cwe(&repetition.components().collect::<Vec<_>>())
+            } else {
+                crate::datatypes::coded(&repetition.components().collect::<Vec<_>>(), version)
+            }
+        {
             return Err(invalid("TQ1", 9));
         }
     }
@@ -273,7 +295,7 @@ pub(super) fn read_specimens<'a>(
     let mut specimens = Vec::new();
     while segments.peek().is_some_and(|s| s.id() == b"SPM") {
         let spm = segments.next().ok_or_else(|| invalid("SPM", 0))?;
-        specimen(spm)?;
+        specimen(spm, crate::Msh::new(context.message)?.version())?;
         if !specimens.is_empty() {
             return Err(invalid("SPM", 2));
         }

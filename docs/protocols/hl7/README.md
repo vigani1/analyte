@@ -9,7 +9,8 @@ exchange, preserve the exact edition in replies, and refuse or retain unresolved
 extensions. Command sending stays blocked in config for those three editions
 until writer integration. The bounded 2.6 receiving/query profile uses its own
 DTM/CWE/XCN rules in the shared table, with deprecated and unselected elements
-kept raw or refused visibly. Command sending also remains blocked for 2.6.
+kept raw or refused visibly. The bounded 2.6 O21/O22 writer is qualified with explicit coding revisions;
+see the field matrix in versions.md.
 The bounded 2.8.2 and 2.9.1 profiles receive ORU/R01 results with the modern
 typed rules; legacy queries remain refused by edition and withdrawing section.
 Their order sending also remains blocked pending writer qualification.

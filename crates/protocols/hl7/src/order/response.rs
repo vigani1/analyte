@@ -179,16 +179,10 @@ fn identities<'a>(
 fn reason(orc: Segment<'_>, version: Version) -> Result<Option<Field<'_>>, Error> {
     let value = field(orc, 16);
     if let Some(value) = value {
-        let max = match version {
-            Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V282
-            | Version::V291 => return Err(invalid("MSH", 12)),
-            Version::V231 => 200,
-            Version::V251 => 250,
-        };
+        let max = version
+            .order_rules()
+            .ok_or_else(|| invalid("MSH", 12))?
+            .code_bytes;
         if value.raw().len() > max || value.is_null() || value.repetitions().count() != 1 {
             return Err(invalid("ORC", 16));
         }
@@ -265,8 +259,8 @@ impl<'a> OrderResponse<'a> {
         let sent_header = Msh::new(sent.message())?;
         let version = validate_response_header(message, sent, sent_header)?;
         let mut segments = message.segments().skip(1).peekable();
-        let msa = Msa::new(segments.next().ok_or_else(|| invalid("MSA", 0))?)?;
-        validate_acceptance(msa, sent_header)?;
+        let msa_segment = segments.next().ok_or_else(|| invalid("MSA", 0))?;
+        let msa = response_acceptance(msa_segment, version, sent_header)?;
         let mut decisions = Vec::new();
         let mut expected = BTreeMap::new();
         let mut sent_fillers = Vec::new();
@@ -408,7 +402,7 @@ fn read_orders<'a>(
                     return Err(invalid("TQ1", 0));
                 }
                 let tq1 = segments.next().ok_or_else(|| invalid("TQ1", 0))?;
-                laboratory::timing(tq1)?;
+                laboratory::timing(tq1, version)?;
                 timing.push(tq1);
             }
         }
@@ -487,16 +481,10 @@ fn validate_order_detail(
 ) -> Result<(), Error> {
     if let Some(obr) = detail {
         let test = field(obr, 4).ok_or_else(|| invalid("OBR", 4))?;
-        let max = match version {
-            Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V282
-            | Version::V291 => return Err(invalid("MSH", 12)),
-            Version::V231 => 200,
-            Version::V251 => 250,
-        };
+        let max = version
+            .order_rules()
+            .ok_or_else(|| invalid("MSH", 12))?
+            .code_bytes;
         if test.is_null() || test.raw().len() > max || test.repetitions().count() != 1 {
             return Err(invalid("OBR", 4));
         }
@@ -561,4 +549,23 @@ fn validate_acceptance(msa: Msa<'_>, sent_header: Msh<'_>) -> Result<(), Error> 
         AckCode::Ca | AckCode::Ce | AckCode::Cr => return Err(invalid("MSA", 1)),
     }
     Ok(())
+}
+
+fn response_acceptance<'a>(
+    msa_segment: Segment<'a>,
+    version: Version,
+    sent_header: Msh<'_>,
+) -> Result<Msa<'a>, Error> {
+    for field in version
+        .order_rules()
+        .ok_or_else(|| invalid("MSH", 12))?
+        .withdrawn_msa
+    {
+        if !raw(msa_segment, *field).is_empty() {
+            return Err(invalid("MSA", *field));
+        }
+    }
+    let msa = Msa::for_version(msa_segment, version)?;
+    validate_acceptance(msa, sent_header)?;
+    Ok(msa)
 }

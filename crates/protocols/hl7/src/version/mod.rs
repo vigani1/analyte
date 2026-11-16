@@ -127,11 +127,7 @@ impl Version {
             Self::V25 => Some(
                 "2.5 order writers are not yet implemented: original 2.5 order field definitions are unavailable; 2.5.1 section 2.8 only establishes receiving compatibility",
             ),
-            Self::V231 | Self::V251 => None,
-            // HL7 2.6 sections 4.4.6-7, 4.5.3.4 and 2.A.13.7.
-            Self::V26 => Some(
-                "2.6 order writers are not yet implemented: O21/O22 field qualification and explicit outbound test coding-system revisions remain incomplete",
-            ),
+            Self::V231 | Self::V251 | Self::V26 => None,
             // HL7 2.8.2 sections 4.4.7.1-2, 4.5.3.4 and 2.A.13.7.
             Self::V282 => Some(
                 "2.8.2 order writers are not yet implemented: CWE revisions, withdrawn order fields and O22 patient-required response qualification remain incomplete",
@@ -442,3 +438,5 @@ pub(crate) use result::{FieldKind, ResultField};
 
 #[cfg(test)]
 mod tests;
+
+mod order;

@@ -260,3 +260,14 @@ and unfinished modern implementation are different blockers. The modern source
 material remains available for follow-up; no source absence is claimed there.
 The version audit lists the remaining work without enabling any edition.
 Evidence: `adr0012_s3_config_reports_the_registry_writer_blocker`.
+
+## Qualify 2.6 laboratory sending with explicit coding revisions
+
+The selected transaction is OML/O21 with ORL/O22, not legacy ORM. Preserve the
+existing bounded order model and conservative identity/code caps, but use CWE
+for OBR-4 and scalar DTM for timing. A test revision is carried in component 7;
+priority table 0485 and specimen coding revisions are supplied separately.
+Requiring revisions for all named systems avoids guessing table ownership from
+an HL7 prefix. Sources and the field matrix are in versions.md; protocol
+`edition_orders.rs`, config edition tests and program `hl7_send_cases` establish
+the bounded behavior. Evidence remains documented; no retransmission is added.

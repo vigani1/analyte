@@ -190,6 +190,8 @@ pub enum Hl7Processing {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Hl7Send {
+    /// Explicit revision of the user-defined HL7 priority table 0485.
+    pub priority_version: Option<Identifier>,
     /// Require PID patient identification. Contract v1 has no names, so orders
     /// for this interface are rejected before reservation rather than inventing PID-5.
     #[serde(default)]

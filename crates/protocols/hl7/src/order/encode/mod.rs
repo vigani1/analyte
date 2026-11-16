@@ -138,6 +138,9 @@ pub fn orm(
     header: Header<'_>,
     options: Options,
 ) -> Result<OrderMessage, Error> {
+    if header.version.uses_dtm() {
+        return Err(invalid("MSH", 9));
+    }
     build(orders, subject, header, options, Family::Orm)
 }
 
@@ -149,7 +152,7 @@ pub fn orm(
 /// specimen/container. Non-HL7 specimen coding systems require a supplied version.
 ///
 /// # Errors
-/// Rejects editions other than 2.5.1, invalid/duplicate work, missing coding versions
+/// Rejects unqualified editions, invalid/duplicate work, missing coding versions
 /// and output beyond the caller's configured bounds.
 pub fn oml(
     orders: &[Order<'_>],
@@ -157,7 +160,7 @@ pub fn oml(
     header: Header<'_>,
     options: Options,
 ) -> Result<OrderMessage, Error> {
-    if header.version != Version::V251 {
+    if !matches!(header.version, Version::V251 | Version::V26) {
         return Err(invalid("MSH", 12));
     }
     build(orders, subject, header, options, Family::Oml)
@@ -251,6 +254,7 @@ fn build(
         },
     )?;
     crate::Msh::new(&message)?;
+    validate_output_codes(&message, header.version)?;
     Ok(OrderMessage { message, family })
 }
 
@@ -342,16 +346,11 @@ fn encode_header(output: &mut Vec<u8>, context: BuildContext<'_>) -> Result<(), 
     ] {
         scalar(value, "MSH", field, 20, required)?;
     }
-    let version = match header.version {
-        Version::V23
-        | Version::V24
-        | Version::V25
-        | Version::V26
-        | Version::V282
-        | Version::V291 => return Err(invalid("MSH", 12)),
-        Version::V231 => b"2.3.1".as_slice(),
-        Version::V251 => b"2.5.1",
-    };
+    header
+        .version
+        .order_rules()
+        .ok_or_else(|| invalid("MSH", 12))?;
+    let version = header.version.as_str().as_bytes();
     let charset = match options.charset {
         Charset::Ascii => b"ASCII".as_slice(),
         Charset::Latin1 => b"8859/1",
@@ -424,3 +423,27 @@ fn encode_subject(
 
 mod request;
 use request::{NewRequest, encode_new_order};
+
+fn validate_output_codes(message: &Message, version: Version) -> Result<(), Error> {
+    if !version.uses_dtm() {
+        return Ok(());
+    }
+    for row in message.segments() {
+        let number = match row.id() {
+            b"OBR" | b"SPM" => 4,
+            b"TQ1" => 9,
+            _ => continue,
+        };
+        let field = row.field(number).ok_or_else(|| invalid("CWE", number))?;
+        let parts = field
+            .repetitions()
+            .next()
+            .ok_or_else(|| invalid("CWE", number))?
+            .components()
+            .collect::<Vec<_>>();
+        if !crate::datatypes::coded(&parts, version) {
+            return Err(invalid("CWE", number));
+        }
+    }
+    Ok(())
+}
