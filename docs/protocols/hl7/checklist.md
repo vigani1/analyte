@@ -221,7 +221,7 @@ qualification or proof of host durability/recovery.
   **Evidence:** [order.rs](../../../crates/protocols/hl7/tests/order.rs): `hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors`. Status-query replies, dietary/pharmacy/supply and other order families have no builder in this API; a typed order parser rejects an unexpected event/structure at MSH-9 and unsupported controls at ORC-1. This declaration does not claim a host-wide dispatch/rejection dialog.
 - [ ] B — Test accept/reject/cancel/unable-to-cancel/change and uncertain delivery with stable identities, never issuing new machine orders as a side effect of replay. Same order rules plus project order-lifecycle policy.
 
-  **Remaining:** change workflows and broader cancellation-race qualification. Program send/recovery tests exist in [hl7_send.rs](../../../crates/analyte/tests/orders/hl7_send.rs): `hl7_251_no_reply_disconnect_and_restart_never_resend` and `hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once`. Pure acceptance/cancellation and stable replay evidence: [order.rs](../../../crates/protocols/hl7/tests/order.rs), `hl7_231_4_3_1_and_251_4_5_1_reports_each_matching_outcome`, `hl7_231_4_2_2_and_251_4_4_2_message_ack_is_not_order_acceptance`, `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. These tests neither send orders nor prove durable host recovery.
+  **Remaining:** change workflows and broader cancellation-race qualification. Program send/recovery tests exist in [hl7_send.rs](../../../crates/analyte/tests/orders/hl7_send.rs): `hl7_251_26_282_rule8_no_reply_disconnect_and_restart_never_resend` and `hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once`. Pure acceptance/cancellation and stable replay evidence: [order.rs](../../../crates/protocols/hl7/tests/order.rs), `hl7_231_4_3_1_and_251_4_5_1_reports_each_matching_outcome`, `hl7_231_4_2_2_and_251_4_4_2_message_ack_is_not_order_acceptance`, `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. These tests neither send orders nor prove durable host recovery.
 
 ### H. Queries, responses and continuation
 
@@ -323,3 +323,31 @@ These capabilities matter to a literal “complete” claim and to future equipm
 9. **A source/fixture manifest.** Pin standard edition/section, profile, synthetic/vendor origin, tool version and known deviations. Vendor teaching examples must never become the standard suite merely because a parser accepts them.
 10. **Reproducible adoption evidence.** Before dependency selection, audit current releases, license, enabled features, transitive code, bounds and Windows behavior with the agreed corpus. This report does not approve adding any library.
 
+
+### Order writer edition qualification (incomplete)
+
+- [x] Report specific per-edition blockers from the protocol registry in config
+  (ADR 0012 section 3). Evidence:
+  `adr0012_s3_config_reports_the_registry_writer_blocker`.
+- [ ] Qualify 2.9.1 order encoding and replies from their own
+  chapter 4 and datatype definitions, carry explicit test revisions, and prove
+  exact bytes, withdrawn-field refusal, response outcomes and no resend after
+  timeout/restart before config enablement. See the version audit.
+- [ ] Obtain original 2.3, 2.4 and 2.5 writer field definitions before enabling
+  sending; 2.5.1 section 2.8 receiving compatibility alone is insufficient.
+
+- [x] 2.6 bounded OML/O21 and ORL/O22 with explicit test/specimen/priority
+  revisions, DTM timing, exact bytes and response correlation. Source field
+  matrix and tests: versions.md, `edition_orders.rs`, config edition tests.
+  Host evidence includes 2.6 in `hl7_send_cases` acceptance/rejection,
+  cancellation, timeout/disconnect and restart without resend tests (rule 8).
+
+- [x] 2.8.2 bounded O21/O22 with EIP group identity, supplied CX.5,
+  explicit revisions, withdrawn-field refusal and no replay retransmission.
+  Sources and per-field evidence: versions.md; `edition_orders.rs`, config
+  edition tests and program `hl7_send_cases`.
+
+- [ ] Resolve the 2.9.1 ORC-4 source conflict (4.5.1 attribute table and
+  4.5.1.4 component description) before writing group authorities. Sending stays
+  blocked with a source-specific reason; see versions.md and
+  `hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending`.

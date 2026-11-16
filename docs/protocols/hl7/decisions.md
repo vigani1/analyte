@@ -31,11 +31,13 @@
   §§2.4.5.3–4 pp.15–16; §§2.13.8–9 pp.67–72; §7.4.1 pp.49–57.
 - **tests**: The source-named rows in versions.md link protocol `modern.rs`,
   mapping `mapping/modern.rs`, config edition tests and the dialog custody test.
-  Evidence remains documented. Order writers are Part B and remain gated.
+  Evidence remains documented. Order sending is qualified for 2.6/2.8.2 below;
+  2.9.1 remains blocked at its source gate.
 
 ## Receive results without reviving withdrawn original queries
 
-- **what**: The selected scope for 2.8.2 and 2.9.1 is result reception only.
+- **what**: Both modern profiles receive results and refuse legacy queries. Order
+  sending is qualified separately below for 2.8.2; 2.9.1 stays blocked.
   A legacy-query configuration fails before activation with `WithdrawnHl7Query`;
   the diagnostic names the edition and its withdrawing section. This rule does
   not depend on whether the result profile has finished qualification.
@@ -77,8 +79,8 @@
   and `hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map`.
 - **remaining**: 2.8.2/2.9.1 now have bounded result profiles. Their original queries are withdrawn
   (2.8.2 §5.10.2; 2.9.1 §5.9.2); a modern query contract is not implicitly
-  selected; result-only scope is selected above. Step 5 order writers remain
-  a separate PR. Evidence: documented.
+  selected. The 2.6 and 2.8.2 bounded order writers are qualified below;
+  2.9.1 stays blocked. Evidence: documented.
 
 ## Bound compatibility to the established legacy receiving prefix
 
@@ -250,3 +252,43 @@ choices within that scope, not additional promises of conformance.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities;
   [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
 - **test**: `adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart`.
+
+## Report order-writer qualification separately from receiving
+
+Config obtains the edition-specific sending blocker from the protocol registry.
+Receiving support and receiving compatibility do not imply writing support
+(ADR 0012 section 3; HL7 2.5.1 section 2.8). Unavailable historical definitions
+and unfinished modern implementation are different blockers. The modern source
+material remains available for follow-up; no source absence is claimed there.
+The version audit lists the remaining work without enabling any edition.
+Evidence: `adr0012_s3_config_reports_the_registry_writer_blocker`.
+
+## Qualify 2.6 laboratory sending with explicit coding revisions
+
+The selected transaction is OML/O21 with ORL/O22, not legacy ORM. Preserve the
+existing bounded order model and conservative identity/code caps, but use CWE
+for OBR-4 and scalar DTM for timing. A test revision is carried in component 7;
+priority table 0485 and specimen coding revisions are supplied separately.
+Requiring revisions for all named systems avoids guessing table ownership from
+an HL7 prefix. Sources and the field matrix are in versions.md; protocol
+`edition_orders.rs`, config edition tests and program `hl7_send_cases` establish
+the bounded behavior. Evidence remains documented; no retransmission is added.
+
+## Keep the 2.8.2 writer on the patient-required O22 response
+
+Select section 4.4.7.1 ORL_O22, not section 4.4.7.2 ORL_O41. Order decisions
+without that response group are refused. ORC-4 uses EIP with the placer authority
+as EI subcomponents (4.5.1.4). Caller-supplied patient content needs an explicit
+CX.5 identifier type (2.A.14.5); no type is inferred from a namespace. The
+contract-v1 mapper still omits the optional request PID when no name is supplied.
+The shared writer keeps conservative caps and explicit coding revisions.
+Evidence: edition order and host send/recovery tests listed in versions.md.
+
+## Stop 2.9.1 sending at the ORC-4 source conflict
+
+Keep 2.9.1 blocked rather than choosing separators for its group authority.
+Chapter 4 (September 2024) 4.5.1 and 4.5.1.4 declare EI while the field's
+component description uses subcomponent separators. The exact conflict and
+required clarification are in versions.md. This is a source gate, not a claim
+that 2.9.1 lacks laboratory ordering. The existing O22/O53 distinction remains
+separate. Evidence: the source-named config refusal test and registry blocker.

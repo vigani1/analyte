@@ -137,8 +137,9 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
 }
 
 #[test]
-fn adr0012_s3_modern_result_editions_do_not_enable_order_sending() -> Result<(), Error> {
-    for edition in ["v282", "v291"] {
+fn hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending() -> Result<(), Error> {
+    {
+        let edition = "v291";
         let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
         let machine = format!("{base}\n{}", include_str!("../examples/hl7_send.toml"));
         let result = Draft::load(
@@ -148,7 +149,7 @@ fn adr0012_s3_modern_result_editions_do_not_enable_order_sending() -> Result<(),
         )?
         .validate();
         assert!(
-            matches!(result, Err(Error::Invalid { key, reason, .. }) if key == "orders.hl7_send" && reason.contains("not yet implemented"))
+            matches!(result, Err(Error::Invalid { key, reason, .. }) if key == "orders.hl7_send" && reason.contains("4.5.1.4"))
         );
     }
     Ok(())
@@ -156,7 +157,7 @@ fn adr0012_s3_modern_result_editions_do_not_enable_order_sending() -> Result<(),
 
 #[test]
 fn hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_do_not() {
-    for edition in ["v23", "v24", "v25", "v26"] {
+    for edition in ["v23", "v24", "v25"] {
         let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
         for (section, sending) in [
             (include_str!("../examples/hl7_orders.toml"), false),
@@ -176,6 +177,60 @@ fn hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_
             } else {
                 result.unwrap();
             }
+        }
+    }
+}
+
+#[test]
+fn adr0012_s3_config_reports_the_registry_writer_blocker() {
+    for (edition, version) in [
+        ("v23", Version::V23),
+        ("v24", Version::V24),
+        ("v25", Version::V25),
+        ("v291", Version::V291),
+    ] {
+        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let machine = format!("{base}\n{}", include_str!("../examples/hl7_send.toml"));
+        let result = Draft::load(
+            ("synthetic.toml", &machine),
+            ("site.toml", SITE),
+            ("local.toml", "schema_version=1"),
+        )
+        .unwrap()
+        .validate();
+        let Err(Error::Invalid { key, reason, .. }) = result else {
+            panic!("unqualified writer must fail configuration");
+        };
+        assert_eq!(key, "orders.hl7_send");
+        assert_eq!(Some(reason), version.order_sending_blocker());
+    }
+}
+
+#[test]
+fn hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions() {
+    for edition in ["v26", "v282"] {
+        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let send = include_str!("../examples/hl7_send.toml")
+            .replace(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
+        let send = format!("{send}\npriority_version = \"prio-r1\"\n");
+        for (settings, accepted) in [
+            (send.clone(), true),
+            (send.replace("priority_version = \"prio-r1\"", ""), false),
+            (send.replace("specimen_version = \"1\"", ""), false),
+            (
+                send.replace(r#"["SYN","","L","","","","test-r1"]"#, r#"["SYN","","L"]"#),
+                false,
+            ),
+        ] {
+            let machine = format!("{base}\n{settings}");
+            let result = Draft::load(
+                ("synthetic.toml", &machine),
+                ("site.toml", SITE),
+                ("local.toml", "schema_version=1"),
+            )
+            .unwrap()
+            .validate();
+            assert_eq!(result.is_ok(), accepted, "{result:?}");
         }
     }
 }

@@ -111,6 +111,30 @@ const EDITIONS: [EditionRules; 8] = [
 ];
 
 impl Version {
+    /// Returns why order sending remains unqualified for this exact edition.
+    /// Receiving compatibility never establishes permission to write older fields.
+    #[must_use]
+    pub fn order_sending_blocker(self) -> Option<&'static str> {
+        match self {
+            // HL7 2.5.1 section 2.8 specifies receiving compatibility, not
+            // complete earlier-edition writer field definitions.
+            Self::V23 => Some(
+                "2.3 order writers are not yet implemented: original 2.3 order field definitions are unavailable; 2.5.1 section 2.8 only establishes receiving compatibility",
+            ),
+            Self::V24 => Some(
+                "2.4 order writers are not yet implemented: original 2.4 order field definitions are unavailable; 2.5.1 section 2.8 only establishes receiving compatibility",
+            ),
+            Self::V25 => Some(
+                "2.5 order writers are not yet implemented: original 2.5 order field definitions are unavailable; 2.5.1 section 2.8 only establishes receiving compatibility",
+            ),
+            Self::V231 | Self::V251 | Self::V26 | Self::V282 => None,
+            // HL7 2.9.1 sections 4.4.7.1-2, 4.5.3.4 and 2A.2.13.7.
+            Self::V291 => Some(
+                "2.9.1 order writers are not yet implemented: section 4.5.1.4 and the ORC table declare ORC-4 as EI but its component description uses subcomponent separators; group encoding needs authoritative clarification",
+            ),
+        }
+    }
+
     /// Recognizes exactly the eight declared editions, without a nearest-version fallback.
     #[must_use]
     pub fn parse(raw: &[u8]) -> Option<Self> {
@@ -410,3 +434,5 @@ pub(crate) use result::{FieldKind, ResultField};
 
 #[cfg(test)]
 mod tests;
+
+mod order;

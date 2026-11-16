@@ -46,6 +46,15 @@ async fn setup_with_patient_requirement(
                 )
         ),
     )?;
+    if matches!(edition, "v26" | "v282") {
+        let file = temp.path().join("hl7.toml");
+        let configured = std::fs::read_to_string(&file)?
+            .replace(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
+        std::fs::write(
+            file,
+            format!("{configured}\npriority_version = \"priority1\"\n"),
+        )?;
+    }
     let reference = Reference::start(
         &temp.path().join("receiver.db"),
         TcpListener::bind("127.0.0.1:0").await?,
@@ -122,8 +131,12 @@ async fn reply(
         "MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||{family}|reply|T|{edition}\rMSA|AA|{}\r",
         std::str::from_utf8(header.control_id())?
     );
-    if edition == "2.5.1" {
-        response.push_str("PID|1\r");
+    if edition != "2.3.1" {
+        response.push_str(if edition == "2.8.2" {
+            "PID|1||P1^^^LAB^MR||Synthetic\r"
+        } else {
+            "PID|1\r"
+        });
     }
     for (orc, code) in message
         .segments()
@@ -135,7 +148,11 @@ async fn reply(
             std::str::from_utf8(orc.field(2).ok_or("placer")?.raw())?
         ));
         if matches!(*code, "UA" | "UC") {
-            response.push_str("||||||||||||||SYN^Machine reason^L");
+            response.push_str(if matches!(edition, "2.6" | "2.8.2") {
+                "||||||||||||||SYN^Machine reason^L^^^^reason-r1"
+            } else {
+                "||||||||||||||SYN^Machine reason^L"
+            });
         }
         response.push('\r');
     }
@@ -151,8 +168,14 @@ async fn outcome(path: &Path, expected: &str) -> Result<(), Error> {
     wait_state(path, "done", 1).await
 }
 #[tokio::test]
-async fn hl7_231_251_send_ahead_accepted_rejected_and_mixed_items() -> Result<(), Error> {
-    for (edition, version) in [("v231", "2.3.1"), ("v251", "2.5.1")] {
+async fn hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items()
+-> Result<(), Error> {
+    for (edition, version) in [
+        ("v231", "2.3.1"),
+        ("v251", "2.5.1"),
+        ("v26", "2.6"),
+        ("v282", "2.8.2"),
+    ] {
         for (codes, expected) in [
             (["OK", "OK"], "Accepted"),
             (["UA", "UA"], "Rejected"),
@@ -178,7 +201,15 @@ async fn hl7_231_251_send_ahead_accepted_rejected_and_mixed_items() -> Result<()
                 .collect::<Result<Vec<_>, Error>>()?;
             assert_eq!(ids, vec!["1-1^LAB", "1-2^LAB"]);
             for segment in message.segments().filter(|segment| segment.id() == b"ORC") {
-                assert_eq!(segment.field(4).ok_or("group")?.raw(), b"order-1^LAB");
+                // HL7 2.8.2 section 4.5.1.4 changes ORC-4 from EI to EIP.
+                assert_eq!(
+                    segment.field(4).ok_or("group")?.raw(),
+                    if edition == "v282" {
+                        b"order-1&LAB"
+                    } else {
+                        b"order-1^LAB"
+                    }
+                );
             }
             state(&path, "Sending").await?;
             assert_eq!(
@@ -208,10 +239,17 @@ async fn hl7_231_251_send_ahead_accepted_rejected_and_mixed_items() -> Result<()
     Ok(())
 }
 #[tokio::test]
-async fn hl7_251_no_reply_disconnect_and_restart_never_resend() -> Result<(), Error> {
-    for disconnect in [false, true] {
+async fn hl7_251_26_282_rule8_no_reply_disconnect_and_restart_never_resend() -> Result<(), Error> {
+    for (edition, disconnect) in [
+        ("v251", false),
+        ("v251", true),
+        ("v26", false),
+        ("v26", true),
+        ("v282", false),
+        ("v282", true),
+    ] {
         let (_temp, path, reference, service, mut peer) = setup_with_id(
-            "v251",
+            edition,
             "order-1",
             false,
             if disconnect { 30000 } else { 250 },
@@ -256,7 +294,12 @@ async fn cancel_cache(path: &Path, reference: &Reference) -> Result<(), Error> {
 }
 #[tokio::test]
 async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> Result<(), Error> {
-    for (edition, version) in [("v231", "2.3.1"), ("v251", "2.5.1")] {
+    for (edition, version) in [
+        ("v231", "2.3.1"),
+        ("v251", "2.5.1"),
+        ("v26", "2.6"),
+        ("v282", "2.8.2"),
+    ] {
         for refused in [false, true] {
             let (_temp, path, reference, service, mut peer) = setup(edition).await?;
             let bytes = read_mllp_packet(&mut peer, "oversized packet").await?;
@@ -333,38 +376,41 @@ async fn hl7_231_orc4_overlong_group_is_rejected_before_any_reservation() -> Res
 }
 
 #[tokio::test]
-async fn adr0003_hl7_restart_during_sending_recovers_items_without_resend() -> Result<(), Error> {
-    let (_temp, path, reference, service, mut peer) = setup("v251").await?;
-    read_mllp_packet(&mut peer, "oversized packet").await?;
-    state(&path, "Sending").await?;
-    service.crash().await?;
-    tokio::time::timeout(HANG_GUARD, async {
-        let mut byte = [0];
-        loop {
-            match peer.read(&mut byte).await {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
+async fn adr0003_rule8_hl7_251_26_282_restart_during_sending_recovers_items_without_resend()
+-> Result<(), Error> {
+    for edition in ["v251", "v26", "v282"] {
+        let (_temp, path, reference, service, mut peer) = setup(edition).await?;
+        read_mllp_packet(&mut peer, "oversized packet").await?;
+        state(&path, "Sending").await?;
+        service.crash().await?;
+        tokio::time::timeout(HANG_GUARD, async {
+            let mut byte = [0];
+            loop {
+                match peer.read(&mut byte).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
             }
-        }
-    })
-    .await?;
-    state(&path, "Sending").await?;
-    let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
-    let mut peer = connect(&path, "hl7").await?;
-    outcome(&path, "Uncertain").await?;
-    let code: String =
-        database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |row| {
-            row.get(0)
-        })?;
-    assert_eq!(code, "host-restart");
-    assert!(
-        // Deliberate quiet window: no reply may arrive.
-        tokio::time::timeout(Duration::from_millis(250), peer.read_u8())
-            .await
-            .is_err()
-    );
-    restarted.stop().await?;
-    reference.close().await?;
+        })
+        .await?;
+        state(&path, "Sending").await?;
+        let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
+        let mut peer = connect(&path, "hl7").await?;
+        outcome(&path, "Uncertain").await?;
+        let code: String =
+            database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |row| {
+                row.get(0)
+            })?;
+        assert_eq!(code, "host-restart");
+        assert!(
+            // Deliberate quiet window: no reply may arrive.
+            tokio::time::timeout(Duration::from_millis(250), peer.read_u8())
+                .await
+                .is_err()
+        );
+        restarted.stop().await?;
+        reference.close().await?;
+    }
     Ok(())
 }
 
