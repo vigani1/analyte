@@ -6,7 +6,7 @@ reference app receiver. No real analyzer has qualified this implementation.
 ## Enable a machine explicitly
 
 Append an optional `[orders]` section to the machine definition. The synthetic
-[orders section](../config/examples/orders.toml) shows every required table.
+[orders section](../core/config/examples/orders.toml) shows every required table.
 It is separate from incoming result mappings. Without this section the host
 answers no order queries and sends no work lists. `send_ahead` is explicit;
 the presence of `query` enables queries and requires both a deadline and an
@@ -290,7 +290,7 @@ not qualification against hardware or an official simulator.
 ## HL7 legacy display queries
 
 Evidence remains **documented** (HL7 2.3.1 section 2.18 and 2.5.1 section 5.10).
-The synthetic [HL7 orders example](../config/examples/hl7_orders.toml) explicitly
+The synthetic [HL7 orders example](../core/config/examples/hl7_orders.toml) explicitly
 selects which QRD field carries the sample, its exact trailing components, and
 all supported nonempty selectors. Config validation checks a synthetic query
 against the selected edition. No QRF filter, continuation, range, wildcard or
@@ -337,7 +337,7 @@ Follow the [operator restore procedure](README.md#restore-and-reconciliation-pla
 
 ## HL7 send-ahead and cancellation
 
-The synthetic [send-ahead example](../config/examples/hl7_send.toml) opts into
+The synthetic [send-ahead example](../core/config/examples/hl7_send.toml) opts into
 `send_ahead`, requires `placer_namespace`, and declares MSH applications,
 processing mode, specimen placement and the application response deadline.
 Edition 2.3.1 selects ORM/O01 and ORR/O02; 2.5.1 selects non-LAW OML/O21 and

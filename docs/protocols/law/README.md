@@ -14,7 +14,7 @@ unchecked row can have partial evidence; its remaining work is stated explicitly
 A planned test is not evidence and does not exist yet. Even a checked field row
 does not establish simulator, host integration or overall actor conformance.
 The crate README records exact fields and source discrepancies. Test names below
-are in `crates/hl7/tests/` unless a different path is given.
+are in `crates/protocols/hl7/tests/` unless a different path is given.
 
 ## Agreed scope and qualification
 

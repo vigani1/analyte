@@ -27,13 +27,13 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     let directory = crate::admin::private_tempdir()?;
     std::fs::write(
         directory.path().join("machine.toml"),
-        include_str!("../../../../config/examples/hl7.toml"),
+        include_str!("../../../../core/config/examples/hl7.toml"),
     )?;
     let analyzer = std::net::TcpListener::bind("127.0.0.1:0")?;
     let analyzer_address = analyzer.local_addr()?.to_string();
     std::fs::write(
         directory.path().join("site.toml"),
-        include_str!("../../../../config/examples/site.toml")
+        include_str!("../../../../core/config/examples/site.toml")
             .replace("127.0.0.1:5600", &analyzer_address),
     )?;
     let reserved = std::net::TcpListener::bind("127.0.0.1:0")?;

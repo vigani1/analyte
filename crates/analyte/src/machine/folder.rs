@@ -275,8 +275,8 @@ mod tests {
     #[tokio::test]
     async fn adr0003_file_astm_and_hl7_storage_refusal_never_release_claim() -> Result<(), Error> {
         for definition in [
-            include_str!("../../../config/examples/astm.toml"),
-            include_str!("../../../config/examples/hl7.toml"),
+            include_str!("../../../core/config/examples/astm.toml"),
+            include_str!("../../../core/config/examples/hl7.toml"),
         ] {
             let temp = tempfile::tempdir()?;
             let incoming = temp.path().join("incoming");
@@ -291,7 +291,7 @@ mod tests {
                 &definition[..start],
                 &definition[end..]
             );
-            let site = include_str!("../../../config/examples/site.toml").replace(
+            let site = include_str!("../../../core/config/examples/site.toml").replace(
                 "\"127.0.0.1:5600\"",
                 &toml::Value::String(incoming.to_string_lossy().into_owned()).to_string(),
             );

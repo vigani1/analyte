@@ -13,15 +13,15 @@ members = ["."]
 
 [dependencies]
 libfuzzer-sys = "=0.4.13"
-analyte-dialog = { path = "../crates/dialog" }
-analyte-framing = { path = "../crates/framing" }
-analyte-astm = { path = "../crates/astm" }
-analyte-hl7 = { path = "../crates/hl7" }
-analyte-poct = { path = "../crates/poct" }
-analyte-vidas = { path = "../crates/vidas" }
-analyte-autolyser = { path = "../crates/autolyser" }
-analyte-transport = { path = "../crates/transport" }
-analyte-contract = { path = "../crates/contract" }
+analyte-dialog = { path = "../crates/steps/dialog" }
+analyte-framing = { path = "../crates/steps/framing" }
+analyte-astm = { path = "../crates/protocols/astm" }
+analyte-hl7 = { path = "../crates/protocols/hl7" }
+analyte-poct = { path = "../crates/protocols/poct" }
+analyte-vidas = { path = "../crates/protocols/vidas" }
+analyte-autolyser = { path = "../crates/protocols/autolyser" }
+analyte-transport = { path = "../crates/steps/transport" }
+analyte-contract = { path = "../crates/core/contract" }
 
 [[bin]]
 name = "lis01"

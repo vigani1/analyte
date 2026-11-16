@@ -11,13 +11,13 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Host results, queries, send-ahead and cancellation have the program matrices below. Originating-work result correlation and both link topologies have the named host tests below; simulator and complete actor qualification remain.
 - [ ] **R** Answer supported peer query forms, support broadcast and assume query mode unless configured otherwise (TF-1 §5.1.1.2, p.34).
   Tests: `law_tf2b_3_27_4_query_forms_and_conditional_fields`.
-  Pure query forms and broadcast rendering are tested. Host config declares container/all-pending only (`crates/config/tests/law.rs::law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms`); the query host matrix now covers both. Send-ahead is explicitly selected by `orders.send_ahead` (default query example: false); host evidence: `law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos` in `crates/analyte/tests/law/work.rs`. Independent broadcast links have the B.6 matrix below. Isolate/parent needs app-supplied identities in a future contract version; rack/tray/informational-position forms are explicitly rejected by the host, without a no-work claim.
+  Pure query forms and broadcast rendering are tested. Host config declares container/all-pending only (`crates/core/config/tests/law.rs::law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms`); the query host matrix now covers both. Send-ahead is explicitly selected by `orders.send_ahead` (default query example: false); host evidence: `law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos` in `crates/analyte/tests/law/work.rs`. Independent broadcast links have the B.6 matrix below. Isolate/parent needs app-supplied identities in a future contract version; rack/tray/informational-position forms are explicitly rejected by the host, without a no-work claim.
 - [x] **R** Apply LAW M/R/RE/RE.AN/C/X usages, cardinality, length, data-type and empty/null rules (TF-2b §§2.2.1–2.2.3, pp.9–14; Appendix A, p.59).
   Tests: `law_tf2b_2_2_usage_cardinality_length_and_null_rules`, `law_tf2b_c2_c5_c7_x_fields_components_and_composite_send_ceilings`.
   Field-profile tests also span law_control.rs, law_patient.rs, law_specimen.rs and law_order.rs; cross-message negotiation is separate.
 - [ ] **R** Support enhanced content and implementation profiles; transaction ID first in MSH-21, correct option identifiers and conditional usages (TF-2b §2.2.4, pp.14–24; C.4, pp.90–95).
   Tests: `law_tf2b_c4_msh_21_m_ei_required_components_lengths_first_transaction`, `law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_results`.
-  Explicit content/profile selection and host peer declarations are tested by `crates/config/tests/law.rs::law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options`. Query work now selects only supplied basic/specimen/priority content intersected with peer support (`law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_peer_support` in the program). Other enhanced host work content and automatic option/profile negotiation remain absent.
+  Explicit content/profile selection and host peer declarations are tested by `crates/core/config/tests/law.rs::law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options`. Query work now selects only supplied basic/specimen/priority content intersected with peer support (`law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_peer_support` in the program). Other enhanced host work content and automatic option/profile negotiation remain absent.
 - [x] **S** Send enhanced data only to supporting peers (TF-1 §5.1.1.2, p.34).
   Tests: `law_tf2b_c11_c12_explicit_profile_cannot_enlarge_peer_send_capabilities`, `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`.
   Outgoing supported builders intersect explicit content selection with peer capabilities.
@@ -197,7 +197,7 @@ Send-ahead and cancellation reuse that path. Both link topologies have local tes
 
 These thirteen tests live in `crates/analyte/tests/law/queries.rs`, compiled in
 `tests/delivery.rs`, and use synthetic peers, a temporary store and the reference
-receiver. The store read has its own two tests in `crates/store/src/order_tests.rs`:
+receiver. The store read has its own two tests in `crates/core/store/src/order_tests.rs`:
 `law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay`
 and `law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust`.
 The one new public read, `pending_orders`, shares the existing age predicate with
@@ -205,7 +205,7 @@ SampleId lookup and reservations, and shares the restore-aware lookup gate.
 No schema or contract changed.
 
 Config requires explicit `[law.work]` bindings plus shared `[orders]` translations.
-Configuration permits explicit send-ahead; test: `crates/config/tests/law.rs::law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead`.
+Configuration permits explicit send-ahead; test: `crates/core/config/tests/law.rs::law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead`.
 Results-only configuration still returns a query error without work.
 
 Small pure-code corrections use the LAW syntax entry point in both LAB-28
@@ -242,7 +242,7 @@ The runtime uses the shared order store (schema 9) and operator controls.
 
 Evidence remains **documented**. `law.connection_mode = "persistent"` keeps all three transactions on one configured TCP client/server link. `independent_per_transaction` requires `transport.kind = "tcp_server"` and an explicit `law.outbound_endpoint` for the analyzer's LAB-28 listener. The site endpoint is the LAB-27/LAB-29 listener. Neither direction needs its opposite connection to be established first. The host accepts at most four concurrent inbound sessions and owns one outbound transaction at a time, with at most eight queued follow-ups. All sessions, queued reservations and recording taps have an owner and are settled on shutdown. Peers may retain an inbound connection or close after each transaction; the host opens and closes its own outbound link per LAB-28 attempt. No failed or expired command is automatically repeated.
 
-- [x] Both topology choices, required independent listener role/destination, and rejected unused/invalid destinations. Test: `crates/config/tests/law.rs::law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint`.
+- [x] Both topology choices, required independent listener role/destination, and rejected unused/invalid destinations. Test: `crates/core/config/tests/law.rs::law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint`.
 - [x] Both roles validate without startup I/O. Test: `crates/analyte/tests/receive.rs::law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io`.
 - [x] All three transactions share one persistent connection in both configured directions (B.5 and the declared B.6 subset). Test: `crates/analyte/tests/law/connections.rs::law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`.
 - [x] Client disconnect/first-byte timeout retains evidence, reconnects and never replays reserved work. Test: `crates/analyte/tests/law/connections.rs::law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work`.

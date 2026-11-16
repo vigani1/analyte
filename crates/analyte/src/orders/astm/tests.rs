@@ -11,19 +11,19 @@ impl analyte_store::FreeSpace for Space {
 }
 
 fn machine(policy: &str) -> Result<Machine, Error> {
-    let section = include_str!("../../../../config/examples/orders.toml").replace(
+    let section = include_str!("../../../../core/config/examples/orders.toml").replace(
         "when_untrusted = \"error\"",
         &format!("when_untrusted = \"{policy}\""),
     );
     let definition = format!(
         "{}\n{section}",
-        include_str!("../../../../config/examples/astm.toml")
+        include_str!("../../../../core/config/examples/astm.toml")
     );
     let snapshot = analyte_config::Draft::load(
         ("machine", &definition),
         (
             "site",
-            include_str!("../../../../config/examples/site.toml"),
+            include_str!("../../../../core/config/examples/site.toml"),
         ),
         ("overrides", "schema_version=1"),
     )?

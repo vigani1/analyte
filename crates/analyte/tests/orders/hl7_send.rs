@@ -35,7 +35,7 @@ async fn setup_with_patient_requirement(
         temp.path().join("hl7.toml"),
         format!(
             "{definition}\n{}",
-            include_str!("../../../config/examples/hl7_send.toml")
+            include_str!("../../../core/config/examples/hl7_send.toml")
                 .replace(
                     "require_patient_identification = false",
                     &format!("require_patient_identification = {require_patient}")

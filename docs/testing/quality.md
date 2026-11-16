@@ -55,7 +55,7 @@ Locations refer to the baseline production files, which this round did not edit.
 | `mllp.rs:174`, payload length `>` changed to `==` | Real gap: over-limit encoding could escape the check. `rule7_mllp_r1_1_2_encoder_payload_limit_is_inclusive` requires rejection above the limit. |
 | `mllp.rs:174`, payload length `>` changed to `>=` | Real gap: a payload exactly at the configured limit could be rejected. The same boundary test checks below, at and above the limit. |
 
-Three tests were added in `crates/framing/tests/custody.rs`. No production bug
+Three tests were added in `crates/steps/framing/tests/custody.rs`. No production bug
 was exposed and no production code, dependency, existing test or machine evidence
 level changed. This is improved detection of broken code, not a clinical safety
 certification.
@@ -110,7 +110,7 @@ Dialog baseline: `14fa7875572ec7da6d5084a0497aa26a795140c7`, with the same
 production code as the coverage baseline. The baseline exercised 134 mutants:
 90 caught, 34 missed, 10 unable to compile, no timeouts. Each miss below is a
 real test gap; none is classified as equivalent or irrelevant. Locations refer
-to unchanged production files under `crates/dialog/src/`. Grouped rows enumerate
+to unchanged production files under `crates/steps/dialog/src/`. Grouped rows enumerate
 every distinct mutation and give the test that checks its behavior.
 
 | Missed mutation(s) | Behavior required and new test |
@@ -143,8 +143,8 @@ and no timeouts. Matching the before/after outcome records confirms that all
 34 baseline misses became caught mutants. Both complete runs took about four
 minutes. No equivalent-mutation exclusions or production changes were needed.
 
-Eleven tests were added in `crates/dialog/tests/boundaries.rs` and
-`crates/dialog/tests/hl7_boundaries.rs`. The additional split-frame test checks
+Eleven tests were added in `crates/steps/dialog/tests/boundaries.rs` and
+`crates/steps/dialog/tests/hl7_boundaries.rs`. The additional split-frame test checks
 that the configured frame ceiling applies after encoding, not just to the count
 of supplied records. Tests use synthetic bytes and controlled time. No existing
 test was weakened and no production bug or production change was needed.

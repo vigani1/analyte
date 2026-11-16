@@ -10,7 +10,7 @@ use tokio::{
 fn definition(clone: bool) -> String {
     format!(
         "{}\n[orders]\nsend_ahead=true\npatient_namespace='synthetic'\nclone={clone}\n{}",
-        include_str!("../../../config/examples/autolyser.toml")
+        include_str!("../../../core/config/examples/autolyser.toml")
             .replace("download = false", "download = true")
             .replace("poll_ms = 1000", "poll_ms = 200"),
         r#"

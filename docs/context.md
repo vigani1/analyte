@@ -92,9 +92,9 @@ What this means:
 ### Before machine configs (phase 7)
 
 No machine config is qualified yet. Component decomposition and per-test value
-expectations now cover the cobas mapping prerequisites. `crates/config/src/schema.rs`
+expectations now cover the cobas mapping prerequisites. `crates/core/config/src/schema.rs`
 provides selectors, QC equality rules and correction-code lists;
-`crates/config/src/orders.rs` provides legacy QRY/QCK/DSR layouts and deadlines.
+`crates/core/config/src/orders.rs` provides legacy QRY/QCK/DSR layouts and deadlines.
 
 - cobas e 411: no known remaining mapping expressiveness gap; installed host
   codes, serial settings and a recording still need confirmation.

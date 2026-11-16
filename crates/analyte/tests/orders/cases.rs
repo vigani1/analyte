@@ -10,7 +10,7 @@ fn configure_orders(root: &Path, send: bool) -> Result<(), Error> {
     let path = root.join("astm.toml");
     let text = std::fs::read_to_string(&path)?;
     // Normal query outcomes must not depend on a loaded runner meeting the teaching deadline.
-    let section = include_str!("../../../config/examples/orders.toml")
+    let section = include_str!("../../../core/config/examples/orders.toml")
         .replace("deadline_ms = 1000", "deadline_ms = 30000")
         .replace("send_ahead = true", &format!("send_ahead = {send}"))
         .replace(

@@ -212,7 +212,8 @@ async fn replay_machine(
 }
 
 fn site(endpoint: &str) -> Result<String, Error> {
-    let mut site: toml::Table = toml::from_str(include_str!("../../../config/examples/site.toml"))?;
+    let mut site: toml::Table =
+        toml::from_str(include_str!("../../../core/config/examples/site.toml"))?;
     site.insert("endpoint".into(), toml::Value::String(endpoint.into()));
     Ok(toml::to_string(&site)?)
 }

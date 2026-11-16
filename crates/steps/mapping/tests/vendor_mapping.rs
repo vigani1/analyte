@@ -1,0 +1,231 @@
+//! ADR 0004 explicit outbound context and rule 7 host-configured bounds.
+//! These assertions do not claim vendor conformance; no vendor evidence level changes.
+use analyte_config::{Draft, Validated};
+use analyte_mapping::{AppOrder, AppOrderPriority, MachineOrder, OrderMappingError, map_order};
+use analyte_model::{Identifier, NamespacedId, SampleId};
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+const SECTION: &str = "\n[orders]\nsend_ahead=true\npatient_namespace='patients'\ntests=[{app={namespace='demo',value='DEMO'},machine_components=['SYN']}]\npriorities=[{app='routine',machine='R'}]\n";
+fn config(definition: &str) -> Result<Validated, analyte_config::Error> {
+    Draft::load(
+        ("machine", definition),
+        (
+            "site",
+            include_str!("../../../core/config/examples/site.toml"),
+        ),
+        ("local", "schema_version=1"),
+    )?
+    .validate()
+}
+fn vidas() -> String {
+    format!(
+        "{}{SECTION}",
+        include_str!("../../../core/config/examples/vidas_literal.toml")
+            .replace("download = false", "download = true")
+    )
+}
+
+fn autolyser() -> String {
+    format!(
+        "{}\n[orders]\nsend_ahead=true\npatient_namespace='patients'\nclone=false\ntests=[{{app={{namespace='demo',value='DEMO'}},machine_components=['SYN ']}}]\npriorities=[{{app='routine',machine='T'}}]\nspecimen_types=[{{app={{namespace='types',value='SERUM'}},machine='S'}}]\n",
+        include_str!("../../../core/config/examples/autolyser.toml")
+            .replace("download = false", "download = true")
+    )
+}
+
+fn positioned_order() -> Result<AppOrder, analyte_model::TextError> {
+    let mut input = order()?;
+    input.position = Some(analyte_model::SamplePosition {
+        kind: analyte_model::CarrierKind::Rack,
+        carrier: None,
+        slot: Identifier::new("03")?,
+    });
+    input.specimen_type = Some(NamespacedId {
+        namespace: Identifier::new("types")?,
+        value: Identifier::new("SERUM")?,
+    });
+    Ok(input)
+}
+
+#[test]
+fn autolyser_rev18_p186_rule5_explicit_patient_code_and_download_context_are_preserved()
+-> TestResult {
+    let cfg = config(&autolyser())?;
+    let MachineOrder::Autolyser(work) = map_order(&positioned_order()?, &cfg)? else {
+        return Err("stack".into());
+    };
+    let wire = work.encode();
+    assert_eq!(wire.get(..15), Some(b"000Patient     ".as_slice()));
+    assert_eq!(wire.get(15..22), Some(b"TSN0301".as_slice()));
+    assert_eq!(wire.get(22..26), Some(b"SYN ".as_slice()));
+    for (length, accepted) in [(14, true), (15, true), (16, false)] {
+        let mut input = positioned_order()?;
+        input.patient.as_mut().ok_or("patient")?.value = Identifier::new(&"X".repeat(length))?;
+        let mapped = map_order(&input, &cfg);
+        if accepted {
+            assert!(mapped.is_ok());
+        } else {
+            assert!(matches!(
+                mapped,
+                Err(OrderMappingError::Overlong("patient-id"))
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn rule7_autolyser_download_refuses_missing_context_and_bounds_before_output() -> TestResult {
+    let cfg = config(&autolyser())?;
+    // The manual permits 00 (automatic positioning); its current refusal by
+    // Analyte is reported separately rather than asserted as a wire rule here.
+    for slot in ["100", "ABC", "003"] {
+        let mut input = positioned_order()?;
+        input.position.as_mut().ok_or("position")?.slot = Identifier::new(slot)?;
+        assert!(matches!(
+            map_order(&input, &cfg),
+            Err(OrderMappingError::InvalidCupPosition)
+        ));
+    }
+    let mut one_digit = positioned_order()?;
+    one_digit.position.as_mut().ok_or("position")?.slot = Identifier::new("3")?;
+    let MachineOrder::Autolyser(one_digit) = map_order(&one_digit, &cfg)? else {
+        return Err("stack".into());
+    };
+    assert_eq!(one_digit.encode().get(18..20), Some(b"03".as_slice()));
+    let urine = config(&autolyser().replace("machine='S'", "machine='U'"))?;
+    let MachineOrder::Autolyser(work) = map_order(&positioned_order()?, &urine)? else {
+        return Err("stack".into());
+    };
+    assert_eq!(work.encode().get(16), Some(&b'U'));
+    let repeated = config(&autolyser().replace("repetitions = 128", "repetitions = 2"))?;
+    for (count, accepted) in [(1, true), (2, true), (3, false)] {
+        let mut input = positioned_order()?;
+        input.tests = vec![input.tests.first().ok_or("test")?.clone(); count];
+        assert_eq!(map_order(&input, &repeated).is_ok(), accepted);
+    }
+    for (count, accepted) in [(0, false), (1, true), (99, true), (100, false)] {
+        let mut input = positioned_order()?;
+        input.tests = vec![input.tests.first().ok_or("test")?.clone(); count];
+        let mapped = map_order(&input, &cfg);
+        assert_eq!(mapped.is_ok(), accepted, "count {count}");
+        if !accepted {
+            assert!(matches!(mapped, Err(OrderMappingError::Representation)));
+        }
+    }
+    let input = positioned_order()?;
+    let MachineOrder::Autolyser(work) = map_order(&input, &cfg)? else {
+        return Err("stack".into());
+    };
+    let size = work.encode().len();
+    for (bound, accepted) in [(size - 1, false), (size, true), (size + 1, true)] {
+        let cfg = config(&autolyser().replace("bytes = 1048576", &format!("bytes = {bound}")))?;
+        assert_eq!(map_order(&input, &cfg).is_ok(), accepted);
+    }
+    Ok(())
+}
+fn order() -> Result<AppOrder, analyte_model::TextError> {
+    Ok(AppOrder {
+        sample: SampleId::new("000Ab")?,
+        tests: vec![NamespacedId {
+            namespace: Identifier::new("demo")?,
+            value: Identifier::new("DEMO")?,
+        }],
+        priority: AppOrderPriority::Routine,
+        position: None,
+        patient: Some(NamespacedId {
+            namespace: Identifier::new("patients")?,
+            value: Identifier::new("000Patient")?,
+        }),
+        specimen_type: None,
+    })
+}
+
+#[test]
+fn adr0004_rule5_vendor_download_keeps_exact_explicit_patient_and_sample() -> TestResult {
+    let cfg = config(&vidas())?;
+    let input = order()?;
+    let MachineOrder::Vidas(requests) = map_order(&input, &cfg)? else {
+        return Err("wrong stack".into());
+    };
+    assert_eq!(requests.len(), 1);
+    let request = requests.first().ok_or("request")?;
+    assert_eq!(request.get("pi"), Some("000Patient"));
+    assert_eq!(request.get("ci"), Some("000Ab"));
+    assert_eq!(request.get("rt"), Some("SYN"));
+    let mut missing = order()?;
+    missing.patient = None;
+    assert!(matches!(
+        map_order(&missing, &cfg),
+        Err(OrderMappingError::MissingPatient)
+    ));
+    let mut wrong = order()?;
+    wrong.patient.as_mut().ok_or("patient")?.namespace = Identifier::new("other")?;
+    assert!(matches!(
+        map_order(&wrong, &cfg),
+        Err(OrderMappingError::PatientNamespace)
+    ));
+    Ok(())
+}
+
+#[test]
+fn rule7_vendor_download_reports_exact_host_identity_bounds() -> TestResult {
+    let cfg = config(&vidas())?;
+    for (length, accepted) in [(16, true), (17, true), (18, false)] {
+        let mut input = order()?;
+        input.patient.as_mut().ok_or("patient")?.value = Identifier::new(&"X".repeat(length))?;
+        let result = map_order(&input, &cfg);
+        if accepted {
+            assert!(result.is_ok());
+        } else {
+            assert!(matches!(
+                result,
+                Err(OrderMappingError::Overlong("patient-id"))
+            ));
+        }
+    }
+    for (length, accepted) in [(11, true), (12, true), (13, false)] {
+        let mut input = order()?;
+        input.sample = SampleId::new(&"X".repeat(length))?;
+        let result = map_order(&input, &cfg);
+        if accepted {
+            assert!(result.is_ok());
+        } else {
+            assert!(matches!(
+                result,
+                Err(OrderMappingError::Overlong("sample-id"))
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn rule7_vendor_download_count_and_aggregate_bounds_are_independent() -> TestResult {
+    let cfg = config(&vidas())?;
+    for (count, accepted) in [(99, true), (100, true), (101, false)] {
+        let mut input = order()?;
+        input.tests = vec![input.tests.first().ok_or("test")?.clone(); count];
+        assert_eq!(map_order(&input, &cfg).is_ok(), accepted, "count={count}");
+    }
+    for (key, old) in [("records", 4096), ("repetitions", 128)] {
+        let cfg = config(&vidas().replace(&format!("{key} = {old}"), &format!("{key} = 2")))?;
+        for (count, accepted) in [(0, false), (1, true), (2, true), (3, false)] {
+            let mut input = order()?;
+            input.tests = vec![input.tests.first().ok_or("test")?.clone(); count];
+            assert_eq!(map_order(&input, &cfg).is_ok(), accepted, "{key}:{count}");
+        }
+    }
+    let input = order()?;
+    let MachineOrder::Vidas(requests) = map_order(&input, &config(&vidas())?)? else {
+        return Err("stack".into());
+    };
+    let size = requests.first().ok_or("request")?.text().len();
+    for (key, old) in [("bytes", 1048576), ("limit", 1920)] {
+        for (bound, accepted) in [(size - 1, false), (size, true), (size + 1, true)] {
+            let cfg =
+                config(&vidas().replace(&format!("{key} = {old}"), &format!("{key} = {bound}")))?;
+            assert_eq!(map_order(&input, &cfg).is_ok(), accepted, "{key}:{bound}");
+        }
+    }
+    Ok(())
+}

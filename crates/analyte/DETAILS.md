@@ -150,7 +150,7 @@ or external-app qualification.
 
 ## Documented vendor receive stacks
 
-Machine definitions in `crates/config/examples/poct.toml`, `vidas_literal.toml`
+Machine definitions in `crates/core/config/examples/poct.toml`, `vidas_literal.toml`
 and `autolyser.toml` are synthetic examples, not installed settings. Every vendor
 policy is explicit. POCT uses TCP; VIDAS Literal and Autolyser use TCP or serial.
 Field-position mappings are rejected for these syntaxes; `[codes]` uses the same
@@ -203,7 +203,7 @@ margin without requiring systemd or installing anything.
 
 
 HL7 legacy QRY^Q02 queries can opt into the shared order cache and reservation
-path with the explicit [DSP layout](../config/examples/hl7_orders.toml).
+path with the explicit [DSP layout](../core/config/examples/hl7_orders.toml).
 QCK/DSR replies follow durable raw storage. Trusted empty is NF; untrusted,
 stale or late lookup is AE. DSR application receipt is Sent, never Accepted;
 negative, missing or disconnected ACKs are Uncertain. HL7 ORM/OML send-ahead

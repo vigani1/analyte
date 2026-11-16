@@ -10,7 +10,7 @@ use tokio::{
 fn definition() -> String {
     format!(
         "{}\n{}",
-        include_str!("../../../config/examples/vidas_literal.toml")
+        include_str!("../../../core/config/examples/vidas_literal.toml")
             .replace("download = false", "download = true"),
         r#"
 [orders]

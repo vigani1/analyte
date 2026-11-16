@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/analyte", "crates/steps/*", "crates/protocols/*", "crates/core/*", "crates/testing/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,22 +14,22 @@ publish = false
 # and add only the features they need. Adding an entry here is a reviewed change.
 [workspace.dependencies]
 # Analyte crates
-analyte-model = { path = "crates/model", version = "0.1.0" }
-analyte-store = { path = "crates/store", version = "0.1.0" }
-analyte-transport = { path = "crates/transport", version = "0.1.0" }
-analyte-framing = { path = "crates/framing", version = "0.1.0" }
-analyte-dialog = { path = "crates/dialog", version = "0.1.0" }
-analyte-astm = { path = "crates/astm", version = "0.1.0" }
-analyte-hl7 = { path = "crates/hl7", version = "0.1.0" }
-analyte-config = { path = "crates/config", version = "0.1.0" }
-analyte-mapping = { path = "crates/mapping", version = "0.1.0" }
-analyte-contract = { path = "crates/contract", version = "0.1.0" }
-analyte-sink = { path = "crates/sink", version = "0.1.0" }
-analyte-sim = { path = "crates/sim", version = "0.1.0" }
-analyte-receiver = { path = "crates/receiver", version = "0.1.0" }
-analyte-poct = { path = "crates/poct", version = "0.1.0" }
-analyte-vidas = { path = "crates/vidas", version = "0.1.0" }
-analyte-autolyser = { path = "crates/autolyser", version = "0.1.0" }
+analyte-model = { path = "crates/core/model", version = "0.1.0" }
+analyte-store = { path = "crates/core/store", version = "0.1.0" }
+analyte-transport = { path = "crates/steps/transport", version = "0.1.0" }
+analyte-framing = { path = "crates/steps/framing", version = "0.1.0" }
+analyte-dialog = { path = "crates/steps/dialog", version = "0.1.0" }
+analyte-astm = { path = "crates/protocols/astm", version = "0.1.0" }
+analyte-hl7 = { path = "crates/protocols/hl7", version = "0.1.0" }
+analyte-config = { path = "crates/core/config", version = "0.1.0" }
+analyte-mapping = { path = "crates/steps/mapping", version = "0.1.0" }
+analyte-contract = { path = "crates/core/contract", version = "0.1.0" }
+analyte-sink = { path = "crates/steps/sink", version = "0.1.0" }
+analyte-sim = { path = "crates/testing/sim", version = "0.1.0" }
+analyte-receiver = { path = "crates/testing/receiver", version = "0.1.0" }
+analyte-poct = { path = "crates/protocols/poct", version = "0.1.0" }
+analyte-vidas = { path = "crates/protocols/vidas", version = "0.1.0" }
+analyte-autolyser = { path = "crates/protocols/autolyser", version = "0.1.0" }
 
 # Runtime, errors, logging
 windows-services = { version = "0.100.0", default-features = false }

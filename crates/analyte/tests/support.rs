@@ -55,14 +55,14 @@ pub(super) fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
         let address = listener.local_addr()?;
         listeners.push((name.to_owned(), listener));
         let definition = if is_astm {
-            include_str!("../../config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
+            include_str!("../../core/config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
         } else {
-            include_str!("../../config/examples/hl7.toml").to_owned()
+            include_str!("../../core/config/examples/hl7.toml").to_owned()
         };
         std::fs::write(root.join(format!("{name}.toml")), definition)?;
         std::fs::write(
             root.join(format!("{name}-site.toml")),
-            include_str!("../../config/examples/site.toml")
+            include_str!("../../core/config/examples/site.toml")
                 .replace("127.0.0.1:5600", &address.to_string()),
         )?;
         machines.push_str(&format!(
