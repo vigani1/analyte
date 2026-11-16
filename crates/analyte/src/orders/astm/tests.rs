@@ -36,6 +36,8 @@ fn machine(policy: &str) -> Result<Machine, Error> {
         #[cfg(feature = "test-hooks")]
         law_precommit: None,
         #[cfg(feature = "test-hooks")]
+        law_gates: crate::runtime::test_hooks::LawGates::default(),
+        #[cfg(feature = "test-hooks")]
         astm_committed: None,
         #[cfg(feature = "test-hooks")]
         connection_closing: None,
