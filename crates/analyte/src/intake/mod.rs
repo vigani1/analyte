@@ -128,6 +128,13 @@ pub(crate) async fn interpret_with_location(
     Ok((accepted, location))
 }
 
+fn poct_edits(machine: &Machine) -> bool {
+    matches!(
+        machine.snapshot.effective().stack(),
+        analyte_config::Stack::Poct(_)
+    )
+}
+
 pub(crate) async fn persist_mapping(
     store: &Handle,
     machine: &Machine,
@@ -135,6 +142,7 @@ pub(crate) async fn persist_mapping(
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
+    let poct_edit_guard = poct_edits(machine);
     let atomic = atomic_batch(machine);
     let lifecycle = atomic.then_some(law_lifecycle());
     let work_conflict = work_conflict(store, machine, id).await?;
@@ -198,7 +206,7 @@ pub(crate) async fn persist_mapping(
                 id,
                 action.as_ref(),
                 interpretation,
-                (&corrections, &findings, lifecycle),
+                (&corrections, &findings, lifecycle, poct_edit_guard),
                 build,
             );
             match commit {
@@ -212,7 +220,7 @@ pub(crate) async fn persist_mapping(
                         id,
                         action.as_ref(),
                         conflict.ok_or(analyte_store::Error::InvalidInput)?,
-                        (&[], &findings, lifecycle),
+                        (&[], &findings, lifecycle, false),
                         |_, _| Ok(Vec::new()),
                     )?;
                     Ok((rejected, InterpretationOutcome::Conflict))
@@ -306,13 +314,18 @@ fn reconcile(
         &[bool],
         &[analyte_store::Parked],
         Option<analyte_store::StatusLifecycle<'_>>,
+        bool,
     ),
     build: impl FnOnce(
         &Interpretation,
         &[RevisionOutcome],
     ) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error>,
 ) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
-    let (corrections, findings, lifecycle) = mapping;
+    let (corrections, findings, lifecycle, edit_guard) = mapping;
+    if edit_guard {
+        return store.interpret_with_edit_guard(id, interpretation,
+            (corrections, findings, "edited POCT observation with no detectable common-content change; source context may have changed"), action, build);
+    }
     match (action, lifecycle) {
         (Some(action), Some(policy)) => store.reprocess_with_lifecycle(
             action,

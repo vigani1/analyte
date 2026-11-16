@@ -33,3 +33,7 @@ name = "duplicate"
 
 [[test]]
 name = "builders"
+
+[[test]]
+name = "type_rules"
+path = "tests/type_rules.rs"

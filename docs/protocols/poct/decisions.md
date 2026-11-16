@@ -112,3 +112,23 @@ policy choices; mandatory message rules remain in [checklist.md](checklist.md).
 - **source**: POCT01-A2 Appendix B §3.2, p.72;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), revision policy.
 - **test**: `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction`.
+
+## Conservative edited-observation handling
+
+POCT patient context is retained in protected raw receipts but is not delivered
+downstream today. Method, range qualifiers and other source context are also
+not fully represented by the common content comparison.
+
+When EDT identifies an existing result and its common content equals the latest
+revision, park it with the reason "edited POCT observation with no detectable
+common-content change; source context may have changed". Keep the raw receipt,
+create no revision and send no delivery. Each repeated EDT receipt is parked
+separately, including retries after a lost ACK. Changed common content follows
+the normal correction path. Identical NEW/RES uploads remain retransmissions.
+This policy changes no stored format and never puts editable patient identity
+in the immutable result key. A precise protocol-context digest requires a
+future design note (ADR), including old evidence and retention behavior.
+
+Source: Appendix B 3.2, 5.15, 5.18, 5.21 Table 49, 5.22; project-lead decision
+2026-11-16. Test:
+`poct01_b_5_21_table49_patient_and_metadata_edits_are_not_retransmissions`.
