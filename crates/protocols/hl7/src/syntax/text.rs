@@ -188,7 +188,11 @@ pub enum TextEscape {
 /// Inspects escapes without decoding them; formatting takes precedence over
 /// earlier unsupported escapes, preserving conservative text handling.
 #[must_use]
-pub fn inspect_text_escapes(raw: &str, escape: u8) -> Option<TextEscape> {
+pub fn inspect_text_escapes(
+    raw: &str,
+    escape: u8,
+    truncation_declared: bool,
+) -> Option<TextEscape> {
     let escape = char::from(escape);
     let mut parts = raw.split(escape);
     parts.next();
@@ -201,6 +205,7 @@ pub fn inspect_text_escapes(raw: &str, escape: u8) -> Option<TextEscape> {
             "H" | "N" => return Some(TextEscape::Formatting),
             _ if code.starts_with('.') => return Some(TextEscape::Formatting),
             "F" | "S" | "T" | "R" | "E" => {}
+            "P" if truncation_declared => {}
             _ => issue = Some(TextEscape::Unsupported),
         }
     }

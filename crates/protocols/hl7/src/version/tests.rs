@@ -15,21 +15,7 @@ fn edition(edition: Version, wire: &str, required_time: bool, truncation: bool) 
         } else {
             let message = result.unwrap();
             assert_eq!(message.raw(), raw.as_bytes());
-            match edition {
-                Version::V23
-                | Version::V231
-                | Version::V24
-                | Version::V25
-                | Version::V251
-                | Version::V26 => {
-                    assert_eq!(Msh::new(&message).unwrap().version(), edition);
-                }
-                Version::V282 | Version::V291 => {
-                    assert!(
-                        matches!(Msh::new(&message), Err(Error::EditionRules(id)) if id == wire)
-                    );
-                }
-            }
+            assert_eq!(Msh::new(&message).unwrap().version(), edition);
         }
     }
 }

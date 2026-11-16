@@ -7,6 +7,14 @@ pub enum Error {
     /// The edition is recognized, but its typed field rules are not implemented.
     #[error("typed field rules are not implemented for HL7 {0}; retain the raw message")]
     EditionRules(&'static str),
+    /// The original query messages were withdrawn in this exact edition.
+    #[error("HL7 {edition} withdraws original queries (section {section})")]
+    WithdrawnQuery {
+        /// Exact declared edition.
+        edition: &'static str,
+        /// Section withdrawing the original query messages.
+        section: &'static str,
+    },
     /// A configured resource ceiling was reached.
     #[error("{kind} limit exceeded at segment {segment}, field {field}")]
     Limit {

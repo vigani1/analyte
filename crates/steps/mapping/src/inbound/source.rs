@@ -39,6 +39,14 @@ impl Source<'_> {
             .is_some_and(analyte_hl7::Version::uses_dtm)
     }
 
+    pub(crate) fn keeps_utc_without_civil_offset_raw(
+        &self,
+        config: &analyte_config::Validated,
+    ) -> bool {
+        self.base_version(config)
+            .is_some_and(analyte_hl7::Version::keeps_utc_without_civil_offset_raw)
+    }
+
     fn base_version(&self, config: &analyte_config::Validated) -> Option<analyte_hl7::Version> {
         if crate::is_law(config) {
             return None;
@@ -55,7 +63,11 @@ impl Source<'_> {
         let Record::Hl7(header) = self.nodes.first()?.record else {
             return None;
         };
-        match analyte_hl7::inspect_text_escapes(raw, *header.field(2)?.raw().get(2)?) {
+        match analyte_hl7::inspect_text_escapes(
+            raw,
+            *header.field(2)?.raw().get(2)?,
+            header.field(2)?.raw().len() == 5,
+        ) {
             Some(analyte_hl7::TextEscape::Unsupported) => Some(crate::Problem::UnsupportedEscape),
             Some(analyte_hl7::TextEscape::Formatting) => {
                 Some(crate::Problem::UnsupportedFormatting)

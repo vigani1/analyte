@@ -27,6 +27,7 @@ impl Dialog {
                 (AckCode::Ar, Some(header_error(18, b"102", b"LAW-control")))
             }
             analyte_hl7::Error::EditionRules(_)
+            | analyte_hl7::Error::WithdrawnQuery { .. }
             | analyte_hl7::Error::Limit { .. }
             | analyte_hl7::Error::Encoding
             | analyte_hl7::Error::Truncated { .. }
