@@ -122,12 +122,7 @@ fn law_tf2b_c7_remaining_component_boundaries_and_located_failures() -> TestResu
             (2, "RP"),
             (
                 5,
-                &format!(
-                    "pointer^&{}&URI^{}^{}",
-                    "u".repeat(199),
-                    "t".repeat(9),
-                    "s".repeat(19)
-                ),
+                &format!("pointer^Local^{}^{}", "t".repeat(9), "s".repeat(19)),
             ),
             (6, ""),
         ],

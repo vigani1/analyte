@@ -375,6 +375,16 @@ pub(super) fn validate(
         if !matches!(part(value, 1), b"O" | b"R" | b"D" | b"F") {
             return Err(component_error("TCD", 8, 1));
         }
+        let text: &[u8] = match part(value, 1) {
+            b"O" => b"Original, first run",
+            b"R" => b"Repeated without dilution",
+            b"D" => b"Repeated with dilution",
+            b"F" => b"Reflex test",
+            _ => return Err(component_error("TCD", 8, 1)),
+        };
+        if part(value, 2) != text {
+            return Err(component_error("TCD", 8, 2));
+        }
         if part(value, 3) != b"HL70389" {
             return Err(component_error("TCD", 8, 3));
         }

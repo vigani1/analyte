@@ -33,7 +33,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Tests: `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`.
   Tests distinguish genuine empty work from unavailable lookup.
 - [x] **R/C** Handle container, isolate, rack/position, tray/position, all-pending and informational location forms as applicable to connected peers (TF-1 §§5.2.1–5.2.5, pp.36–37; TF-2b QPD definition, pp.35–41).
-  Tests: `law_tf2b_3_27_4_query_forms_and_conditional_fields`, `law_tf2b_2_2_4_2_c11_c12_negative_query_echoes_each_scope_without_invented_ids`.
+  Tests: `law_tf2b_3_27_4_query_forms_and_conditional_fields`, `law_tf2b_3_28_4_1_2_1_negative_query_echoes_all_sac_identity_values`.
   All six pure query scopes have synthetic evidence. The running program supports container and all-pending only; known unsupported forms return QAK AR (`law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work`). This checked row is pure view/build support, not a claim of all-form host support.
 - [ ] **R** Send work in OML and process ORL for every AWOS, including all applicable groups/fields (TF-2b §3.28.4.1.2, pp.47–51).
   Tests: `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`, `law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively`.
@@ -42,7 +42,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Tests: `law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively`.
   Every permitted/refused request-specific control/status pair is checked. Host item decisions are covered by `crates/analyte/tests/law/work.rs::law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos`.
 - [x] **R** Use restricted negative LAB-28 structure for genuine no-work; preserve query scope and analyzer-specific deadline (TF-2b §2.2.4.2, p.16; §§3.27.4–3.28.4, pp.34–52).
-  Tests: `law_tf2b_2_2_4_2_c11_c12_negative_query_echoes_each_scope_without_invented_ids`.
+  Tests: `law_tf2b_3_28_4_1_2_1_negative_query_echoes_all_sac_identity_values`.
   Host evidence for the selected forms: `law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_orl_without_items`, `law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage`, and `law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_effects` in `crates/analyte/tests/law/queries.rs`. No items are reserved for negative work. Unsupported forms return an error rather than negative work.
 - [ ] **R** Preserve uncertain prior acceptance; duplicate-AWOS UA must not undo the original accepted request (TF-2b §3.28.4.1.3, p.51).
   Tests: `law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions`.
@@ -55,7 +55,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
 
 - [ ] **R** Receive OUL and return ACK with required structures/fields; correlate known AWOS to originating work (TF-2b §3.29.4, pp.53–58).
   Tests: `law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability`.
-  Host LAB-29 receive/ACK is covered by the result matrix below. Query work is now durably reserved, but validation of returned result content against that originating work is not yet wired; this combined row stays unchecked.
+  Host LAB-29 receive/ACK is covered by the result matrix below. Returned work is correlated against retained AWOS, specimen, container and test content, including after restart. The remaining actor/structure qualification is open, so this combined row stays unchecked.
 - [x] **R, host boundary** Store the exact LAB-29 MLLP block before interpretation/ACK; AA only after durable interpretation, with no partial batch delivery on a conflict (TF-2b §3.29.4; B.7; ADR 0003).
   Tests in `crates/analyte/tests/law/results.rs`: `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack`, `law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa`, `law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa`, `law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_delivery`, `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`.
 - [x] **R** Support unsolicited/unassigned work cases; do not reject all results merely because no downloaded AWOS exists (TF-1 §5.4.2; TF-2b §3.29.4, C.8, pp.53–58,113–118).
@@ -81,7 +81,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Failures preserve original input and carry located content errors.
 - [x] **R** Reject inconsistent LAB-29 as a whole, including TCD-1/OBX-3 mismatch; retain bytes without applying a subset (TF-2b p.57; B.7.6, p.82).
   Tests: `law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original`.
-  Host revision conflicts return AR (B.7.6, p.82), while mapping failures remain AE. Tests: `law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c`, `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`. Originating-work checks are covered by `law_tf2b_b7_6_returned_work_must_match_downloaded_awos` (B.3.1 pp.63–64; B.7.6 p.82): unknown/nonmatching placer, specimen identity/type, container and requested test reject the entire batch with AR and an ERR location; null-AWOS unsolicited results remain allowed. Prepared outbound work is retained with the reservation before I/O and survives restart. Missing legacy command evidence is rejected for operator review. `law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart` covers store ownership and immutability.
+  Host revision conflicts return AR (B.7.6, p.82), while mapping failures remain AE. Tests: `law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c`, `law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`. Originating-work checks are covered by `law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match` (B.3.1 pp.63–64; B.7.6 p.82): unknown/nonmatching placer, specimen identity/type, container and requested test reject the entire batch with AR and an ERR location; null-AWOS unsolicited results remain allowed. Prepared outbound work is retained with the reservation before I/O and survives restart. Missing legacy command evidence is rejected for operator review. `law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart` covers store ownership and immutability.
   No partial Results view escapes a failed message.
 - [ ] **R** Keep manager-sourced patient data authoritative; correct downloaded patient information through cancel/new-AWOS, not repeated work (TF-2b B.7.9, pp.82–83).
   Tests: `law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions`.
@@ -110,13 +110,13 @@ These are optional Analyzer capabilities, but relevant manager enhanced-content 
   Tests: `law_tf2b_c7_same_primary_identity_requires_og_group_sequence`, `law_tf2b_c7_repeated_observation_requires_unique_complete_og`.
   Run identifiers and ambiguity rejection are tested; persistent run/retransmission reconciliation remains.
 - [ ] **R/C** Encode app-authorized manager rerun/reflex as new AWOS with repeat status (TF-1 §5.2.11, pp.38–39; TF-2b §2.2.4.8, p.20).
-  Tests: `law_tf2b_c13_tcd_6_7_r_permissions_8_r_repeat_status`, `law_tf2b_c8_c6_c13_work_builder_preserves_supplied_event_and_validates_details`.
+  Tests: `law_tf2b_c13_9_repeat_status_output_preserves_profiled_tuple`, `law_tf2b_c13_9_repeat_status_text_matches_code`, `law_tf2b_c8_c6_c13_work_builder_preserves_supplied_event_and_validates_details`.
   Explicit repeat status and unique supplied AWOS rendering are tested. Host authorization and durable new-work lifecycle still need integration evidence.
 - [x] **R/C** Encode authorized automatic-repeat/reflex permissions for supporting peers (TF-1 §5.2.12, p.39; TF-2b §2.2.4.9, p.20).
-  Tests: `law_tf2b_c13_tcd_6_7_r_permissions_8_r_repeat_status`, `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`.
+  Tests: `law_tf2b_c13_9_repeat_status_text_matches_code`, `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`.
   No permission defaults are synthesized.
 - [x] **R/C** Preserve requested and applied priority (TF-1 §5.2.13, p.39; TF-2b §2.2.4.10, pp.20–21).
-  Tests: `law_tf2b_c14_tq1_9_r_priority_cwe_subset_and_option`, `law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_results`.
+  Tests: `law_tf2b_c14_requested_and_applied_priority_preserve_exact_code`, `law_tf2b_c14_tq1_9_r_priority_cwe_subset_and_option`, `law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_results`.
   Explicit peer/receive option selection is required; no automatic negotiation is claimed.
 - [x] **R/C** Preserve specimen/parent identities and applicable collection/source/risk/time data (TF-1 §5.2.14, p.39; TF-2b §2.2.4.11, p.21).
   Tests: `law_tf2b_c12_spm_2_3_eip_ei_identity_namespace_predicate_lengths_and_repetitions`, `law_tf2b_c12_spm_17_18_dr_ts_required_start_seconds_calendar_and_x`.
@@ -128,7 +128,7 @@ These are optional Analyzer capabilities, but relevant manager enhanced-content 
   Tests: `law_tf2b_c7_obx_9_mass_spec_probability_exact_range_option_and_manager_x`.
   Probability is range-checked without floating-point arithmetic and retained exactly.
 - [ ] **R/C** Preserve external-result pointers and persistence classification (TF-1 §5.2.17, p.40; TF-2b §2.2.4.15, p.22; B.3.12, p.77).
-  Tests: `law_tf2b_c7_obx_5_rp_nested_hd_limits_and_no_pointer_fetch`, `law_tf2b_c6_obr_11_reflex_g_and_49_result_handling_re`.
+  Tests: `law_tf2b_c7_10_tf2x_a4_rp_application_hd_profile`, `law_tf2b_c6_obr_11_reflex_g_and_49_result_handling_re`.
   Pointer/classification fields are retained. Durable external-object custody and access/recovery integration are not implemented.
 - [x] **R/C** Support enhanced elements outside named options: error detail, comments, grouping, providers, ranges, instance IDs, timing and consumption (TF-2b §2.2.4.18, pp.23–24).
   Tests: `law_tf2b_c5_work_builder_validates_and_keeps_truncatable_notes`, `law_tf2b_c7_obx_21_available_ei_identity_and_29_type_subset`, `law_tf2b_c13_tcd_8_required_text_and_9_nested_cq_limits`.

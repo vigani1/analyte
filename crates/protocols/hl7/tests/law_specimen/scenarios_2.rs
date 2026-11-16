@@ -271,7 +271,7 @@ fn law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields()
 }
 
 #[test]
-fn law_tf2b_2_2_4_2_c11_c12_negative_query_echoes_each_scope_without_invented_ids() -> TestResult {
+fn law_tf2b_3_28_4_1_2_1_negative_query_echoes_all_sac_identity_values() -> TestResult {
     use analyte_hl7::{Field, Response};
     use law::{Address, Query};
     let address = Address {
@@ -287,9 +287,9 @@ fn law_tf2b_2_2_4_2_c11_c12_negative_query_echoes_each_scope_without_invented_id
     for body in [
         "QPD|WOS^Synthetic^IHELAW|tag|000tube",
         "QPD|WOS_ALL^Synthetic^IHELAW|tag",
-        "QPD|WOS_BY_RACK^Synthetic^IHELAW|tag||rack|1",
-        "QPD|WOS_BY_TRAY^Synthetic^IHELAW|tag||||tray|1^2",
-        "QPD|WOS_BY_ISOLATE^Synthetic^IHELAW|tag|child||||||parent",
+        "QPD|WOS_BY_RACK^Synthetic^IHELAW|tag||rack-42|7|||room^Bench^99LAB",
+        "QPD|WOS_BY_TRAY^Synthetic^IHELAW|tag||||tray-73|3^8",
+        "QPD|WOS_BY_ISOLATE^Synthetic^IHELAW|tag|child-41||||||parent-92",
         "QPD|WOS_INFORMATIONAL_RACK^Synthetic^IHELAW|tag|000tube|rack|2",
     ] {
         let wire = format!(
@@ -300,6 +300,20 @@ fn law_tf2b_2_2_4_2_c11_c12_negative_query_echoes_each_scope_without_invented_id
         let output = law::negative_work(query, address, response, options())?;
         Profile::for_peer(Capabilities::default())
             .validate_message(&output, ControlDirection::Send)?;
+        let qpd = source.segments().find(|s| s.id() == b"QPD").ok_or("QPD")?;
+        let sac = output.segments().find(|s| s.id() == b"SAC").ok_or("SAC")?;
+        for (target, parameter) in [(3, 3), (4, 9), (10, 4), (11, 5), (13, 6), (14, 7), (15, 8)] {
+            let expected = if body.contains("WOS_ALL^") && target == 3 {
+                b"\"\"".as_slice()
+            } else {
+                qpd.field(parameter).map_or(b"".as_slice(), Field::raw)
+            };
+            assert_eq!(
+                sac.field(target).map_or(b"".as_slice(), Field::raw),
+                expected,
+                "{body}: SAC-{target}"
+            );
+        }
         let spm = output
             .segments()
             .find(|segment| segment.id() == b"SPM")
