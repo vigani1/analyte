@@ -428,6 +428,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hl7_2_3_1_and_2_4_20020408_errata_order_sequencing_component_model() {
+        let valid: &[&[u8]] = &[
+            b"S", b"00001", b"LAB", b"00002", b"LAB", b"", b"2", b"1.2.3", b"ISO", b"1.2.4", b"ISO",
+        ];
+        for version in [Version::V23, Version::V24, Version::V25] {
+            assert!(sequence(valid, version));
+            let mut invalid = valid.to_vec();
+            invalid[6] = b"two";
+            assert!(!sequence(&invalid, version));
+            let mut extra = valid.to_vec();
+            extra.push(b"unsettled");
+            assert!(!sequence(&extra, version));
+        }
+    }
+
+    #[test]
     fn hl7_231_4_4_and_251_2_a_50_order_sequence_required_fields_and_lengths() {
         let valid: &[&[u8]] = &[
             b"S", b"placer", b"", b"filler", b"", b"", b"", b"uid1", b"", b"uid2",

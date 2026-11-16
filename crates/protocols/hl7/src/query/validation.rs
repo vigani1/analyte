@@ -86,13 +86,10 @@ pub(super) fn definition(segment: Segment<'_>, version: Version) -> Result<(), E
     })?;
     check(segment, name, 7, true, false, 10, quantity)?;
     let length = match version {
-        Version::V23
-        | Version::V24
-        | Version::V25
-        | Version::V26
-        | Version::V282
-        | Version::V291 => return Err(Error::EditionRules(version.as_str())),
-        Version::V231 => 60,
+        Version::V26 | Version::V282 | Version::V291 => {
+            return Err(Error::EditionRules(version.as_str()));
+        }
+        Version::V23 | Version::V231 | Version::V24 | Version::V25 => 60,
         Version::V251 => 250,
     };
     check(segment, name, 8, true, true, length, |v| xcn(v, version))?;
@@ -117,13 +114,10 @@ pub(super) fn filter(segment: Segment<'_>, version: Version) -> Result<(), Error
         segment,
         name,
         match version {
-            Version::V23
-            | Version::V24
-            | Version::V25
-            | Version::V26
-            | Version::V282
-            | Version::V291 => return Err(Error::EditionRules(version.as_str())),
-            Version::V231 => 9,
+            Version::V26 | Version::V282 | Version::V291 => {
+                return Err(Error::EditionRules(version.as_str()));
+            }
+            Version::V23 | Version::V231 | Version::V24 | Version::V25 => 9,
             Version::V251 => 10,
         },
     )?;
@@ -147,13 +141,10 @@ pub(super) fn filter(segment: Segment<'_>, version: Version) -> Result<(), Error
     })?;
     check(segment, name, 9, false, false, 60, |v| timing(v, version))?;
     match version {
-        Version::V23
-        | Version::V24
-        | Version::V25
-        | Version::V26
-        | Version::V282
-        | Version::V291 => return Err(Error::EditionRules(version.as_str())),
-        Version::V231 => {}
+        Version::V26 | Version::V282 | Version::V291 => {
+            return Err(Error::EditionRules(version.as_str()));
+        }
+        Version::V23 | Version::V231 | Version::V24 | Version::V25 => {}
         Version::V251 => check(segment, name, 10, false, false, 10, |v| {
             text(v) && decimal(v.raw())
         })?,

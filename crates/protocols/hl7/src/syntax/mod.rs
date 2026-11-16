@@ -274,23 +274,7 @@ impl Message {
                 field: 12,
             });
         }
-        let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
-            b"" | b"ASCII" => Charset::Ascii,
-            b"8859/1" => Charset::Latin1,
-            b"UNICODE UTF-8"
-                if crate::Version::parse_wire(version_id, law) != Some(crate::Version::V231)
-                    || options.allow_utf8_in_v231 =>
-            {
-                Charset::Utf8
-            }
-            _ => return Err(Error::UnsupportedCharset),
-        };
-        if charset != options.charset {
-            return Err(Error::CharsetMismatch);
-        }
-        if !law && msh.field(20).is_some_and(|f| !f.raw.is_empty()) {
-            return Err(Error::UnsupportedCharset);
-        }
+        let charset = text::declared_charset(msh, version_id, options, law)?;
         match charset {
             Charset::Ascii if !raw.is_ascii() => return Err(Error::CharacterEncoding),
             Charset::Utf8 => {

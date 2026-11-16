@@ -206,3 +206,31 @@ pub fn inspect_text_escapes(raw: &str, escape: u8) -> Option<TextEscape> {
     }
     issue
 }
+
+// Declared encodings are checked before any decoding; never guess from bytes.
+pub(super) fn declared_charset(
+    msh: Segment<'_>,
+    version_id: &[u8],
+    options: Options,
+    law: bool,
+) -> Result<Charset, Error> {
+    let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
+        b"" | b"ASCII" => Charset::Ascii,
+        b"8859/1" => Charset::Latin1,
+        b"UNICODE UTF-8"
+            if crate::Version::standard_utf8(version_id)
+                || (law && version_id.starts_with(b"2.5"))
+                || (version_id == b"2.3.1" && options.allow_utf8_in_v231) =>
+        {
+            Charset::Utf8
+        }
+        _ => return Err(Error::UnsupportedCharset),
+    };
+    if charset != options.charset {
+        return Err(Error::CharsetMismatch);
+    }
+    if !law && msh.field(20).is_some_and(|f| !f.raw.is_empty()) {
+        return Err(Error::UnsupportedCharset);
+    }
+    Ok(charset)
+}

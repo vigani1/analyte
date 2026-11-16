@@ -26,6 +26,21 @@ pub(crate) struct Source<'a> {
 }
 
 impl Source<'_> {
+    // Source constructors already validate their control profile. Inspect only the
+    // edition here; LAW's negotiated VID compatibility is a different contract.
+    pub(crate) fn uses_compatibility_contract(&self, config: &analyte_config::Validated) -> bool {
+        if crate::is_law(config) {
+            return false;
+        }
+        self.message
+            .and_then(|message| message.segments().next())
+            .and_then(|header| header.field(12))
+            .and_then(|field| field.repetitions().next())
+            .and_then(|value| value.components().next())
+            .and_then(|component| analyte_hl7::Version::parse(component.raw()))
+            .is_some_and(analyte_hl7::Version::uses_compatibility_contract)
+    }
+
     pub(crate) fn text_problem(&self, raw: &str) -> Option<crate::Problem> {
         let Record::Hl7(header) = self.nodes.first()?.record else {
             return None;
@@ -344,6 +359,19 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
         },
         source,
     })?;
+    if msh.version().uses_compatibility_contract() {
+        for (index, segment) in message.segments().enumerate() {
+            if matches!(segment.id(), b"SPM" | b"SAC") {
+                return Err(Error::Structure {
+                    position: Position {
+                        record: index.saturating_add(1),
+                        field: 0,
+                    },
+                    reason: "compatibility does not establish specimen-group semantics; retain receipt for review",
+                });
+            }
+        }
+    }
     let parts: Vec<_> = msh.message_type().collect();
     let oul = match parts.as_slice() {
         [b"ORU", b"R01"] | [b"ORU", b"R01", b"ORU_R01"] => false,

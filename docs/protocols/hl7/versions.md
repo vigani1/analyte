@@ -1,13 +1,14 @@
 # HL7 versions
 
-Only **2.3.1 and 2.5.1** have implemented typed field profiles. MLLP Release 1 is the framing
+**2.3.1 and 2.5.1** have native typed profiles; **2.3, 2.4 and 2.5** have
+bounded receiving compatibility profiles described below. MLLP Release 1 is the framing
 profile. Evidence remains documented. Documents for 2.6, 2.8.2 and 2.9.1
 are available and planned; they are not implemented versions.
 
 The lossless syntax layer now also reads 2.8.2 and 2.9.1 envelopes to retain
 their declared truncation character and marker evidence. This is grammar
 groundwork, not typed edition support: `Version` recognizes all eight requested
-editions, but typed message views still refuse the six additional editions with
+editions, but typed message views still refuse 2.6, 2.8.2 and 2.9.1 with
 an edition-specific `EditionRules` error. No earlier edition is
 silently upgraded. Truncated input is refused before result mapping, while
 its exact bytes and the field/component marker flags remain available.
@@ -27,19 +28,19 @@ whether its typed field profile exists. Recognition never aliases a new edition
 to 2.5.1: absent field profiles refuse interpretation and writing while syntax
 retains the original bytes. Configuration parsing recognizes `v23`, `v231`,
 `v24`, `v25`, `v251`, `v26`, `v282` and `v291`, which map to the exact wire IDs
-below. Validation accepts only **`v231` and `v251`**, whose typed profiles exist.
-The other six return `UnsupportedHl7Edition` before a stack can be activated;
+below. Validation accepts **`v23`, `v231`, `v24`, `v25` and `v251`** for the
+declared receiving profiles. The other three return `UnsupportedHl7Edition` before activation;
 the diagnostic names the requested edition and the currently supported editions.
 Unlisted values fail at the positioned TOML schema boundary with the bad value
 and the recognized choices. A missing edition is not defaulted.
-Compatibility interpretation, message/datatype differences and writer
-integration are separate remaining steps. Enabling another edition in config
+Later-edition message/datatype differences and command-writer integration
+remain separate steps. Enabling another edition in config
 must accompany its implemented typed support and the corresponding tests.
 
 The registry tests retain exact wire identity for all eight editions. Config
-tests in `hl7_editions.rs` cover the two supported selections and canonical
+tests in `hl7_editions.rs` cover the five supported selections and canonical
 snapshots (`adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`),
-refusal and actionable diagnostics for the other six
+refusal and actionable diagnostics for the other three
 (`adr0012_s3_recognized_editions_without_typed_support_fail_config_validation`),
 unlisted values and their diagnostics
 (`adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values`) and
@@ -48,7 +49,7 @@ missing declarations (`adr0012_s3_missing_config_edition_is_not_defaulted`).
 | Registry entry | MSH-7 | Fifth MSH-2 character | Source | Source-named test in `version/tests.rs` |
 | --- | --- | --- | --- | --- |
 | 2.3 | Optional | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `hl7_2_5_1_s2_8_recognizes_2_3_without_upgrading` |
-| 2.3.1 | Optional | Refused | 2.3.1 §§2.24.1.2/.7/.12, pp.2-92–94 | `hl7_2_3_1_s2_24_1_2_7_12_recognizes_edition` |
+| 2.3.1 | Optional | Refused | 2.3.1 §§2.24.1.2/.7/.12, pp.2-94–95, 2-107 | `hl7_2_3_1_s2_24_1_2_7_12_recognizes_edition` |
 | 2.4 | Required | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `hl7_2_5_1_s2_8_and_s2_15_9_7_recognizes_2_4` |
 | 2.5 | Required | Refused | Same compatibility and MSH-7 clauses | `hl7_2_5_1_s2_8_recognizes_2_5_without_patch_upgrade` |
 | 2.5.1 | Required | Refused | 2.5.1 §§2.15.9.2/.7/.12, pp.2-74–77 | `hl7_2_5_1_s2_15_9_2_7_12_recognizes_edition` |
@@ -72,10 +73,94 @@ chapter; this does not justify applying the older edition's wording to 2.9.1.
 | --- | --- | --- |
 | 2.3.1 | Legacy laboratory transactions; no OBX-21 observation identifier | Existing scope and field evidence in [checklist](checklist.md) |
 | 2.5.1 | Adds the selected OML/OUL/QBP transaction profiles; OBX-21 is reserved, not a trusted result identity | Existing scope and field evidence in [checklist](checklist.md) |
-| 2.3, 2.4, 2.5 | Earlier messages fall under the compatibility contract, not separate implemented edition profiles | HL7 2.5.1 section 2.8-2.8.2, pp.2-20-2-21 |
+| 2.3, 2.4, 2.5 | Implemented receiving compatibility profiles; exact edition retained, unresolved extensions remain raw or are refused | HL7 2.5.1 §§2.8–2.8.2, pp.2-20–22; errata and details below |
 | 2.6, 2.8.2, 2.9.1 | Planned; differences have not been implemented or qualified | [Plan](../../plan.md) scope and ADR 0012 section 3 |
 
 ## Compatibility rule
+
+### Source review for the legacy compatibility implementation
+
+HL7 2.5.1 §2.8, pp.2-20–22, supplies the receiving contract for 2.3, 2.4
+and 2.5; it does not reconstruct each unavailable edition's entire schema.
+The implementation must distinguish these specific cases:
+
+- §2.8.1 admits added constituents; §2.8.2 permits datatype changes only while
+  preserving the earlier structure and meaning at the left. Unused information
+  stays in the original message rather than receiving invented semantics.
+- §2.15.9.7, p.2-76, explicitly dates required MSH-7 to 2.4.
+- §2.A.44, pp.2-180–181, dates the MSG replacement of MSH-9's CM to 2.5.
+- §2.15.5.1, p.2-67, dates ERR-1's compatibility-only status to 2.5 and
+  identifies ERR-2/3 as its replacement.
+- The 2002-04-08 errata for 2.3.1 (TS §2.8.44.1) and 2.4 (TS §2.9.47.1)
+  explain digit precision, offsets and the retained precision component.
+  Both also supply the missing order-sequencing component model. These supplied
+  errata are unpaginated; the item names and section numbers identify the source.
+- The 2.4 errata's XCN-17 item identifies the unrepresentable nested date range
+  and assigns backward-compatibility usage. OBR-32–35 also have unresolved
+  embedded-name representations. They must not silently acquire 2.5 meanings.
+
+### Implemented receiving profiles
+
+These are explicitly bounded newer-receiver contracts, not reconstructed copies
+of the unavailable editions' complete schemas. The selected ORU/R01 core uses
+the existing patient/order/observation grouping and configured identities, units
+and codes. Legacy QRY/Q02, QCK/Q02 and DSR/Q03 use the established QRD/QRF
+prefix. Every reply preserves the selected MSH-12, original correlation ID and
+unavailable-versus-empty distinction; no result or order identity is synthesized.
+
+| Edition | Admission rule and implemented differences | Regression evidence |
+| --- | --- | --- |
+| 2.3 | §2.8 requires the newer receiver to understand older messages. §§2.8.1–2 preserve earlier constituents and datatype prefixes. Use the established legacy control/query prefix; MSH-7 is optional. No assumption that 2.3.1 internationalization additions or later datatype extensions existed in 2.3. They remain original bytes. | `hl7_2_5_1_s2_8_2_datatype_prefix_preserves_legacy_msh_identity`; `hl7_2_5_1_s2_15_9_7_required_since_2_4_not_retroactive_to_2_3` |
+| 2.4 | Same §2.8 receiving contract; §2.15.9.7 explicitly makes MSH-7 required. MSH-9 retains the CM-compatible shape; ERR uses the legacy combined location/code field. The 2.4 TS and sequencing errata supply the stated corrections; extended XCN-17 is not interpreted. | `hl7_2_5_1_s2_a_44_msg_replaces_cm_as_of_2_5`; `hl7_2_4_20020408_errata_xcn_17_unsettled_nested_range_is_refused_and_raw` |
+| 2.5 | Same §§2.8.1–2 prefix contract, without relabeling the receipt 2.5.1. §2.A.44 dates MSG's three required components to 2.5; §2.15.5.1 dates the expanded ERR representation to 2.5. Other unverified datatype/table extensions do not inherit 2.5.1 semantics. | `hl7_2_5_1_s2_a_44_msg_replaces_cm_as_of_2_5`; `hl7_2_5_1_s2_8_2_and_s2_15_5_1_ack_edition_and_error_shapes` |
+
+The three profiles use the existing shared implementation and a conservative
+common datatype/query prefix: at most fifteen XCN components, two family-name
+subcomponents and nine QRF fields; query selector fields are capped at 60 bytes.
+These are selected receiving-profile limits, not claims about every historical
+edition's normative maxima. Extended filters are refused at their field, never
+ignored to return a falsely trusted lookup. The 2.5 row adds only its sourced
+control constraints to this common prefix; it does not copy the 2.5.1 profile.
+These restrictions apply only to the base HL7 configuration. LAW uses its own
+negotiated profile even when its compatible MSH-12 is `2.5` or another accepted
+`2.5`-prefixed VID (TF-2b C.4); its known analysis time is still interpreted.
+`law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time` guards that boundary.
+
+### Content left raw or refused
+
+- The errata's TS digit precision, offsets and retained degree component are
+  accepted without rewriting. The formal fractional spelling supports up to four
+  fractional digits; the errata's inconsistent digit-count description does not
+  change the received spelling or supply missing precision. Tests:
+  `hl7_2_3_1_errata_s2_8_44_1_and_2_4_errata_s2_9_47_1_ts_precision` and
+  `hl7_2_3_1_and_2_4_20020408_errata_order_sequencing_component_model`.
+- XCN extensions beyond the selected prefix, including the errata's problematic
+  XCN-17, are refused by the QRD-8 view while the receipt retains the complete
+  field. OBR-32–35 remain raw; they never become typed person names.
+- Table changes and newly added datatypes are permitted by §2.8, but it does not
+  date each code's availability. The three compatibility profiles therefore
+  refuse the unverified UTF-8 declaration and URI universal-ID code. CWE result
+  values remain original unsupported values and require parking. ASCII and
+  Latin-1 remain the selected supported encodings. Tests:
+  `hl7_2_5_1_s2_8_2_table_changes_do_not_establish_earlier_utf8_code`,
+  `hl7_2_5_1_s2_8_1_2_unsettled_query_extensions_and_uri_codes_are_refused`, and
+  mapping `hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe`.
+- OBX-19 remains raw instead of acquiring a later analysis-time interpretation.
+  SPM/SAC group extensions and OUL message families are refused rather than
+  changing legacy result ownership. Tests in mapping `compatibility.rs` check
+  stable numeric values, leading-zero sample bytes, opaque interpreter fields,
+  raw time extensions and visible rejection of unsettled specimen groups.
+- Outbound machine-order commands remain unimplemented for these three profiles
+  until writer integration. Config refuses `orders.hl7_send` for them; a valid
+  receiving/query configuration cannot accidentally enable that writer.
+  `hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_do_not`
+  guards this activation boundary.
+
+`hl7_2_5_1_s2_8_and_s5_10_legacy_query_unavailable_is_not_empty` checks query
+correlation and AE replies. The dialog regression
+`hl7_2_5_1_s2_8_and_s2_9_2_legacy_original_ack_requires_store_and_interpretation`
+checks the store-before-ACK boundary for all three editions. Evidence remains
+**documented**, with synthetic tests only.
 
 HL7 2.5.1 section 2.8 (pp.2-20 onward) requires newer receivers to understand
 older messages and older receivers to tolerate new information. Additions
@@ -84,8 +169,8 @@ the existing structure, and the earlier part of a changed datatype must keep
 its earlier interpretation. Changes outside the stated rules cannot be
 assumed compatible. Local extensions are a separate agreement (section 2.11).
 This covers 2.3, 2.4 and 2.5 within the declared message scope; it does not
-promise every transaction from those editions. Registry variants now exist;
-concrete typed compatibility remains a separate implementation step.
+promise every transaction from those editions. The receiving profiles above
+implement the declared common prefix; command writers remain separately gated.
 Unexpected information must not by itself cause application failure under
 section 2.8.1; Analyte retains original bytes even when it cannot use a constituent.
 Unsupported message semantics, invalid headers and unsupported configured
