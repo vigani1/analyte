@@ -90,7 +90,7 @@ pub(crate) fn acknowledgment_with_msh(
     profile: AckProfile,
 ) -> Result<Option<Message>, Error> {
     let control_limit = match profile {
-        AckProfile::Base => 20,
+        AckProfile::Base => msh.version().require_rules()?.control_bytes,
         AckProfile::Law => 50,
     };
     if !ack_requested(msh, code, responsibility)? {
@@ -113,25 +113,7 @@ pub(crate) fn acknowledgment_with_msh(
         }
         Ok(())
     };
-    safe(response.control_id.raw(), 10, control_limit)?;
-    safe(response.timestamp, 7, 26)?;
-    if response.control_id.raw().is_empty() || response.control_id.raw() == msh.control_id() {
-        return Err(Error::Control {
-            segment: "MSH",
-            field: 10,
-        });
-    }
-    if response.timestamp.is_empty()
-        || !response
-            .timestamp
-            .iter()
-            .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'+' | b'-'))
-    {
-        return Err(Error::Control {
-            segment: "MSH",
-            field: 7,
-        });
-    }
+    validate_response(msh, response, control_limit, safe)?;
     let field = delimiters.bytes().first().copied().ok_or(Error::Encoding)?;
     let component = delimiters.bytes().get(1).copied().ok_or(Error::Encoding)?;
     let segment = msh.segment();
@@ -189,6 +171,44 @@ pub(crate) fn acknowledgment_with_msh(
         },
     )
     .map(Some)
+}
+
+fn validate_response(
+    msh: Msh<'_>,
+    response: Response<'_>,
+    control_limit: usize,
+    safe: impl Fn(&[u8], usize, usize) -> Result<(), Error>,
+) -> Result<(), Error> {
+    safe(response.control_id.raw(), 10, control_limit)?;
+    safe(
+        response.timestamp,
+        7,
+        if msh.version().uses_dtm() { 24 } else { 26 },
+    )?;
+    if msh.version().uses_dtm() && !crate::datatypes::ts(&[response.timestamp]) {
+        return Err(Error::Control {
+            segment: "MSH",
+            field: 7,
+        });
+    }
+    if response.control_id.raw().is_empty() || response.control_id.raw() == msh.control_id() {
+        return Err(Error::Control {
+            segment: "MSH",
+            field: 10,
+        });
+    }
+    if response.timestamp.is_empty()
+        || !response
+            .timestamp
+            .iter()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'+' | b'-'))
+    {
+        return Err(Error::Control {
+            segment: "MSH",
+            field: 7,
+        });
+    }
+    Ok(())
 }
 
 fn ack_requested(
@@ -257,7 +277,7 @@ fn encode_error(
     raw.extend_from_slice(b"ERR");
     raw.push(field);
     match version {
-        Version::V26 | Version::V282 | Version::V291 => {
+        Version::V282 | Version::V291 => {
             return Err(Error::EditionRules(version.as_str()));
         }
         Version::V23 | Version::V231 | Version::V24 => {
@@ -268,7 +288,7 @@ fn encode_error(
             raw.push(component);
             raw.extend_from_slice(error.code);
         }
-        Version::V25 | Version::V251 => {
+        Version::V25 | Version::V251 | Version::V26 => {
             raw.push(field);
             raw.extend_from_slice(&location);
             raw.push(field);
@@ -290,7 +310,7 @@ fn encode_message_type(msh: Msh<'_>, component: u8) -> Vec<u8> {
         message_type.push(component);
         message_type.extend_from_slice(trigger);
     }
-    if matches!(msh.version(), Version::V25 | Version::V251) {
+    if matches!(msh.version(), Version::V25 | Version::V251 | Version::V26) {
         message_type.push(component);
         message_type.extend_from_slice(b"ACK");
     }

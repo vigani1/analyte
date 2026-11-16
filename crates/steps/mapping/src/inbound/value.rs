@@ -43,6 +43,7 @@ pub(crate) fn values(
             )?
         } else {
             match data_type.as_str() {
+                "DTM" if source.uses_dtm(config) => ValueInterpretation::Text,
                 "NM" => decimal(&original, false),
                 "ST" | "TX" | "FT" | "DT" | "TM" | "TS" | "ID" | "IS" => ValueInterpretation::Text,
                 "CE" | "CWE" => coded(source, index, field, repetition)?.unwrap_or(unsupported(

@@ -16,10 +16,15 @@ fn edition(edition: Version, wire: &str, required_time: bool, truncation: bool) 
             let message = result.unwrap();
             assert_eq!(message.raw(), raw.as_bytes());
             match edition {
-                Version::V23 | Version::V231 | Version::V24 | Version::V25 | Version::V251 => {
+                Version::V23
+                | Version::V231
+                | Version::V24
+                | Version::V25
+                | Version::V251
+                | Version::V26 => {
                     assert_eq!(Msh::new(&message).unwrap().version(), edition);
                 }
-                Version::V26 | Version::V282 | Version::V291 => {
+                Version::V282 | Version::V291 => {
                     assert!(
                         matches!(Msh::new(&message), Err(Error::EditionRules(id)) if id == wire)
                     );

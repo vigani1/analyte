@@ -1,4 +1,5 @@
 //! Checks HL7 datatypes to a fixed depth without synthesizing defaults.
+use crate::version::{CodingVersions, TimeFormat};
 use crate::{Component, Repetition, Version};
 
 pub(super) fn scalar(value: Component<'_>) -> bool {
@@ -146,12 +147,21 @@ pub(super) fn timestamp(parts: &[Component<'_>]) -> bool {
     parts.iter().copied().all(scalar) && ts(&parts.iter().map(|v| v.raw()).collect::<Vec<_>>())
 }
 
+pub(super) fn edition_timestamp(parts: &[Component<'_>], version: Version) -> bool {
+    let Some(rules) = version.rules() else {
+        return false;
+    };
+    timestamp(parts) && (rules.time_format == TimeFormat::Ts || parts.len() == 1)
+}
+
 pub(super) fn coded(parts: &[Component<'_>], version: Version) -> bool {
     parts.iter().copied().all(scalar)
         && parts.iter().any(|p| !p.raw().is_empty())
         && coded_parts(
             &parts.iter().map(|p| p.raw()).collect::<Vec<_>>(),
-            false,
+            version
+                .rules()
+                .is_some_and(|rules| rules.coded_components == 9),
             version,
         )
 }
@@ -188,10 +198,10 @@ fn coded_parts(parts: &[&[u8]], extended: bool, version: Version) -> bool {
     if extended {
         for (code, system, revision) in [(1, 3, 7), (4, 6, 8)] {
             let system = at(parts, system);
-            if !at(parts, code).is_empty()
-                && !system.is_empty()
-                && !system.starts_with(b"HL7")
+            if !system.is_empty()
                 && at(parts, revision).is_empty()
+                && (rules.coding_versions == CodingVersions::Explicit
+                    || (!at(parts, code).is_empty() && !system.starts_with(b"HL7")))
             {
                 return false;
             }
@@ -283,14 +293,18 @@ pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
                         || (!at(&parts, 1).is_empty() && lengths(&parts, rules.family_lengths)))
             }
             9 | 14 => hd(&parts, version),
-            16 => coded_parts(&parts, false, version),
+            16 => coded_parts(&parts, rules.coded_components == 9, version),
             // DR nested in XCN has no sub-subcomponent delimiter; its two
             // date/time values are demoted scalar DTM values (2.A.86.17 erratum).
             17 => {
-                simple_parts(&parts, 2)
+                (!rules.refused_deprecated.contains(&17) || component.raw().is_empty())
+                    && simple_parts(&parts, 2)
                     && parts.iter().all(|v| v.is_empty() || date_time(v).is_some())
             }
-            19 | 20 => component.raw().is_empty() || ts(&parts),
+            19 | 20 => {
+                component.raw().is_empty()
+                    || (ts(&parts) && (rules.time_format == TimeFormat::Ts || parts.len() == 1))
+            }
             22 | 23 => coded_parts(&parts, true, version),
             _ => scalar(*component),
         };

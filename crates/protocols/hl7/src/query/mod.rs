@@ -39,7 +39,7 @@ impl<'a> Request<'a> {
             return Err(invalid("MSH", 9));
         }
         let mut segments = message.segments().skip(1).peekable();
-        if matches!(msh.version(), Version::V25 | Version::V251) {
+        if matches!(msh.version(), Version::V25 | Version::V251 | Version::V26) {
             while segments.peek().is_some_and(|s| s.id() == b"SFT") {
                 segments.next();
             }
@@ -127,12 +127,12 @@ impl<'a> DisplayAck<'a> {
             return Err(invalid("MSH", 9));
         }
         let mut segments = message.segments().skip(1).peekable();
-        if matches!(msh.version(), Version::V25 | Version::V251) {
+        if matches!(msh.version(), Version::V25 | Version::V251 | Version::V26) {
             while segments.peek().is_some_and(|s| s.id() == b"SFT") {
                 segments.next();
             }
         }
-        let msa = Msa::new(segments.next().ok_or(invalid("MSA", 0))?)?;
+        let msa = Msa::for_version(segments.next().ok_or(invalid("MSA", 0))?, msh.version())?;
         if msa.control_id() != expected.raw() {
             return Err(invalid("MSA", 2));
         }
@@ -307,7 +307,7 @@ fn encode_response_segments(
                     output.extend_from_slice(message_type);
                     output.push(d.component);
                     output.extend_from_slice(event);
-                    if matches!(version, Version::V25 | Version::V251) {
+                    if matches!(version, Version::V25 | Version::V251 | Version::V26) {
                         output.push(d.component);
                         output.extend_from_slice(structure);
                     }

@@ -5,6 +5,60 @@ use analyte_hl7::Version;
 const MACHINE: &str = include_str!("../examples/hl7.toml");
 const SITE: &str = include_str!("../examples/site.toml");
 
+fn query_config(edition: &str) -> Result<analyte_config::Validated, Error> {
+    let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+    Draft::load(
+        (
+            "synthetic.toml",
+            &format!("{base}\n{}", include_str!("../examples/hl7_orders.toml")),
+        ),
+        ("site.toml", SITE),
+        ("local.toml", "schema_version=1"),
+    )?
+    .validate()
+}
+
+#[test]
+fn hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation() {
+    let error = query_config("v282").unwrap_err();
+    assert!(matches!(
+        &error,
+        Error::WithdrawnHl7Query {
+            edition: "2.8.2",
+            section: "5.10.2",
+            ..
+        }
+    ));
+    assert_eq!(
+        error.to_string(),
+        "synthetic.toml: orders.hl7: HL7 2.8.2 withdraws the original query messages (§5.10.2); legacy query is not available for this edition"
+    );
+}
+
+#[test]
+fn hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation() {
+    let error = query_config("v291").unwrap_err();
+    assert!(matches!(
+        &error,
+        Error::WithdrawnHl7Query {
+            edition: "2.9.1",
+            section: "5.9.2",
+            ..
+        }
+    ));
+    assert_eq!(
+        error.to_string(),
+        "synthetic.toml: orders.hl7: HL7 2.9.1 withdraws the original query messages (§5.9.2); legacy query is not available for this edition"
+    );
+}
+
+#[test]
+fn hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility() -> Result<(), Error> {
+    assert_eq!(Version::V26.legacy_query_withdrawal(), None);
+    query_config("v26")?;
+    Ok(())
+}
+
 fn draft(edition: &str) -> Result<Draft, Error> {
     let machine = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
     Draft::load(
@@ -22,6 +76,7 @@ fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> 
         ("v24", Edition::V24, "2.4"),
         ("v25", Edition::V25, "2.5"),
         ("v251", Edition::V251, "2.5.1"),
+        ("v26", Edition::V26, "2.6"),
     ] {
         let config = draft(config_id)?.validate()?;
         let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
@@ -46,7 +101,7 @@ fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> 
 
 #[test]
 fn adr0012_s3_recognized_editions_without_typed_support_fail_config_validation() {
-    for (config_id, wire) in [("v26", "2.6"), ("v282", "2.8.2"), ("v291", "2.9.1")] {
+    for (config_id, wire) in [("v282", "2.8.2"), ("v291", "2.9.1")] {
         assert_eq!(Version::parse(wire.as_bytes()).unwrap().as_str(), wire);
         let error = draft(config_id).unwrap().validate().unwrap_err();
         assert!(
@@ -56,7 +111,7 @@ fn adr0012_s3_recognized_editions_without_typed_support_fail_config_validation()
         assert_eq!(
             error.to_string(),
             format!(
-                "synthetic.toml: syntax.edition: HL7 {wire} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1"
+                "synthetic.toml: syntax.edition: HL7 {wire} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6"
             )
         );
     }
@@ -99,7 +154,7 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
 
 #[test]
 fn hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_do_not() {
-    for edition in ["v23", "v24", "v25"] {
+    for edition in ["v23", "v24", "v25", "v26"] {
         let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
         for (section, sending) in [
             (include_str!("../examples/hl7_orders.toml"), false),

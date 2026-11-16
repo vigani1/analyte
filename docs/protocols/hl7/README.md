@@ -7,7 +7,11 @@ also admit 2.3, 2.4 and 2.5 through HL7 2.5.1 §2.8 and the 2002-04-08
 2.3.1/2.4 errata. They receive the declared ORU/R01 core and legacy query
 exchange, preserve the exact edition in replies, and refuse or retain unresolved
 extensions. Command sending stays blocked in config for those three editions
-until writer integration. See [versions](versions.md) for the precise differences,
+until writer integration. The bounded 2.6 receiving/query profile uses its own
+DTM/CWE/XCN rules in the shared table, with deprecated and unselected elements
+kept raw or refused visibly. Command sending also remains blocked for 2.6.
+Typed 2.8.2 and 2.9.1 support is unfinished and config refuses those editions.
+See [versions](versions.md) for the precise differences,
 source sections, errata items and limitations; this is not full historical-schema
 conformance or simulator qualification.
 
