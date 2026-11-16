@@ -28,6 +28,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         receiver.seed(analyte_contract::decode(&bytes)?).await?;
     }
     let listener = tokio::net::TcpListener::bind(arguments.listen).await?;
+    // Report the address only after seeding and binding have succeeded, including port zero.
+    {
+        use std::io::Write as _;
+        let mut output = std::io::stdout().lock();
+        writeln!(output, "{}", listener.local_addr()?)?;
+        output.flush()?;
+    }
     axum::serve(listener, receiver.router())
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
