@@ -214,6 +214,8 @@ async fn serve_with(
     let destinations = crate::runtime::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
     let store = Arc::new(open_store(&program, space).await?);
+    #[cfg(feature = "test-hooks")]
+    super::test_hooks::publish_store_probes(&program, &store)?;
     let paused = store
         .request(deadline(), |store| store.restore_unreconciled())
         .await?;
