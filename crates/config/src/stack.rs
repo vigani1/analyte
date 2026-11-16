@@ -38,109 +38,8 @@ pub enum Stack {
     Autolyser(Box<AutolyserStack>),
 }
 
-/// TCP connection direction; cannot select serial or folder transport.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TcpRole {
-    /// Connect to the configured endpoint.
-    Client,
-    /// Listen on the configured endpoint.
-    Server,
-}
-
-/// Transport for a stack supporting either serial or TCP, never a watched folder.
-#[derive(Debug, Clone)]
-pub struct StreamTransport {
-    kind: StreamKind,
-    operation_timeout_ms: u32,
-}
-
-/// Read-only physical stream selection; the owning transport validates its settings.
-#[derive(Debug, Clone)]
-pub enum StreamKind {
-    /// Installed serial settings.
-    Serial(Serial),
-    /// TCP connection direction.
-    Tcp(TcpRole),
-}
-
-impl StreamTransport {
-    /// Borrows the installed physical stream selection.
-    #[must_use]
-    pub fn kind(&self) -> &StreamKind {
-        &self.kind
-    }
-    /// Returns the validated, nonzero external-operation deadline.
-    #[must_use]
-    pub fn operation_timeout_ms(&self) -> u32 {
-        self.operation_timeout_ms
-    }
-}
-
-/// Validated TCP settings without serial or folder alternatives.
-#[derive(Debug, Clone)]
-pub struct TcpTransport {
-    /// Connection direction.
-    role: TcpRole,
-    /// Deadline for external operations.
-    operation_timeout_ms: u32,
-}
-
-/// Receive and send deadlines shared by the host dialogs.
-/// Cloning validated settings never grants write access.
-/// ```compile_fail
-/// fn invalidate(settings: &analyte_config::DialogTimeouts) {
-///     let mut settings = settings.clone();
-///     settings.receive_timeout_ms = 0;
-/// }
-/// ```
-#[derive(Debug, Clone)]
-pub struct DialogTimeouts {
-    /// Receive deadline.
-    receive_timeout_ms: u32,
-    /// Send deadline.
-    send_timeout_ms: u32,
-}
-
-/// Explicit syntax resource ceilings retained from the config.
-/// ```compile_fail
-/// fn invalidate(limits: &analyte_config::SyntaxLimits) {
-///     let mut limits = limits.clone();
-///     limits.bytes = 0;
-/// }
-/// ```
-#[derive(Debug, Clone)]
-pub struct SyntaxLimits {
-    /// Total message bytes.
-    bytes: usize,
-    /// Maximum records or segments.
-    records: usize,
-    /// Maximum record bytes.
-    record_bytes: usize,
-    /// Maximum fields.
-    fields: usize,
-    /// Maximum repetitions.
-    repetitions: usize,
-    /// Maximum components.
-    components: usize,
-}
-
-/// Outbound field-based translations shared by ASTM and HL7.
-#[derive(Debug, Clone)]
-pub struct OrderTables {
-    /// Exact outbound test translations.
-    tests: Vec<OutboundTest>,
-    /// Explicit specimen translations; absence maps no values.
-    specimen_types: Option<Vec<OutboundSpecimen>>,
-    /// Exact outbound priority translations.
-    priorities: Vec<OrderPriority>,
-}
-
 impl Stack {
     // This is called only after both original and effective layers pass validation.
-    #[expect(
-        clippy::expect_used,
-        reason = "private conversion runs only after validate_machine proves required sections and options"
-    )]
     pub(crate) fn from_validated(machine: &MachineDocument) -> Self {
         let timeouts = DialogTimeouts {
             receive_timeout_ms: machine.dialog.receive_timeout_ms,
@@ -161,93 +60,6 @@ impl Stack {
             DialogKind::Autolyser => Self::Autolyser(Box::new(autolyser::build(machine, timeouts))),
             DialogKind::FilePickup => file_stack(machine, timeouts),
         }
-    }
-}
-
-fn tcp(transport: &Transport) -> TcpTransport {
-    let role = match transport.kind {
-        TransportKind::TcpClient => TcpRole::Client,
-        TransportKind::TcpServer => TcpRole::Server,
-        TransportKind::Serial | TransportKind::WatchedFolder => {
-            unreachable!("validated TCP stack requires TCP transport")
-        }
-    };
-    TcpTransport {
-        role,
-        operation_timeout_ms: transport.operation_timeout_ms,
-    }
-}
-
-#[expect(
-    clippy::expect_used,
-    reason = "private conversion runs only after validate_machine proves required sections and options"
-)]
-fn stream(transport: &Transport) -> StreamTransport {
-    let kind = match transport.kind {
-        TransportKind::Serial => StreamKind::Serial(
-            transport
-                .serial
-                .clone()
-                .expect("validated serial transport requires settings"),
-        ),
-        TransportKind::TcpClient | TransportKind::TcpServer => StreamKind::Tcp(tcp(transport).role),
-        TransportKind::WatchedFolder => {
-            unreachable!("validated stream stack excludes watched folders")
-        }
-    };
-    StreamTransport {
-        kind,
-        operation_timeout_ms: transport.operation_timeout_ms,
-    }
-}
-
-fn limits(syntax: &Syntax) -> SyntaxLimits {
-    SyntaxLimits {
-        bytes: syntax.bytes,
-        records: syntax.records,
-        record_bytes: syntax.record_bytes,
-        fields: syntax.fields,
-        repetitions: syntax.repetitions,
-        components: syntax.components,
-    }
-}
-
-fn order_tables(orders: &Orders) -> OrderTables {
-    OrderTables {
-        tests: orders.tests.clone(),
-        specimen_types: orders.specimen_types.clone(),
-        priorities: orders.priorities.clone(),
-    }
-}
-
-fn hl7_options(
-    encoding: Encoding,
-    terminator: Terminator,
-    escapes: Escapes,
-    limits: &SyntaxLimits,
-) -> analyte_hl7::Options {
-    analyte_hl7::Options {
-        allow_utf8_in_v231: false,
-        charset: match encoding {
-            Encoding::Ascii => analyte_hl7::Charset::Ascii,
-            Encoding::Latin1 => analyte_hl7::Charset::Latin1,
-            Encoding::Utf8 => analyte_hl7::Charset::Utf8,
-        },
-        terminator: match terminator {
-            Terminator::Cr => analyte_hl7::Terminator::Cr,
-            Terminator::CrLf => analyte_hl7::Terminator::CrLf,
-            Terminator::Lf => analyte_hl7::Terminator::Lf,
-        },
-        escapes: match escapes {
-            Escapes::Reject => analyte_hl7::EscapePolicy::Reject,
-            Escapes::Preserve => analyte_hl7::EscapePolicy::Preserve,
-        },
-        limits: analyte_hl7::Limits {
-            message_bytes: limits.bytes,
-            segments: limits.records,
-            fields: limits.fields,
-            repetitions: limits.repetitions,
-        },
     }
 }
 
@@ -356,24 +168,6 @@ impl Stack {
     }
 }
 
-fn tcp_kind(role: TcpRole) -> TransportKind {
-    match role {
-        TcpRole::Client => TransportKind::TcpClient,
-        TcpRole::Server => TransportKind::TcpServer,
-    }
-}
-
-fn stream_kind(transport: &StreamTransport) -> TransportKind {
-    match transport.kind() {
-        StreamKind::Serial(_) => TransportKind::Serial,
-        StreamKind::Tcp(role) => tcp_kind(*role),
-    }
-}
-
-fn stream_timeout(transport: &StreamTransport) -> u32 {
-    transport.operation_timeout_ms()
-}
-
 impl Stack {
     /// Returns field selectors only for record-based stacks; vendor code tables have no selectors.
     #[must_use]
@@ -389,92 +183,6 @@ impl Stack {
     }
 }
 
-impl TcpTransport {
-    /// Returns the validated role setting.
-    #[must_use]
-    pub fn role(&self) -> TcpRole {
-        self.role
-    }
-    /// Returns the validated operation timeout ms setting.
-    #[must_use]
-    pub fn operation_timeout_ms(&self) -> u32 {
-        self.operation_timeout_ms
-    }
-}
-
-impl DialogTimeouts {
-    /// Returns the validated receive timeout ms setting.
-    #[must_use]
-    pub fn receive_timeout_ms(&self) -> u32 {
-        self.receive_timeout_ms
-    }
-    /// Returns the validated send timeout ms setting.
-    #[must_use]
-    pub fn send_timeout_ms(&self) -> u32 {
-        self.send_timeout_ms
-    }
-}
-
-impl SyntaxLimits {
-    /// Returns the validated bytes setting.
-    #[must_use]
-    pub fn bytes(&self) -> usize {
-        self.bytes
-    }
-    /// Returns the validated records setting.
-    #[must_use]
-    pub fn records(&self) -> usize {
-        self.records
-    }
-    /// Returns the validated record bytes setting.
-    #[must_use]
-    pub fn record_bytes(&self) -> usize {
-        self.record_bytes
-    }
-    /// Returns the validated fields setting.
-    #[must_use]
-    pub fn fields(&self) -> usize {
-        self.fields
-    }
-    /// Returns the validated repetitions setting.
-    #[must_use]
-    pub fn repetitions(&self) -> usize {
-        self.repetitions
-    }
-    /// Returns the validated components setting.
-    #[must_use]
-    pub fn components(&self) -> usize {
-        self.components
-    }
-}
-
-impl OrderTables {
-    /// Returns the validated tests setting.
-    #[must_use]
-    pub fn tests(&self) -> &Vec<OutboundTest> {
-        &self.tests
-    }
-    /// Returns the validated specimen types setting.
-    #[must_use]
-    pub fn specimen_types(&self) -> &Option<Vec<OutboundSpecimen>> {
-        &self.specimen_types
-    }
-    /// Returns the validated priorities setting.
-    #[must_use]
-    pub fn priorities(&self) -> &Vec<OrderPriority> {
-        &self.priorities
-    }
-}
-
-/// Transport-specific settings for one record protocol. Folder pickup has no wire dialog.
-#[derive(Debug, Clone)]
-pub enum RecordTransport<S, F> {
-    /// Serial or TCP framing and conversation settings.
-    Stream(S),
-    /// Complete-file handoff settings, without wire acknowledgments.
-    Folder(F),
-}
-
 #[expect(
     clippy::expect_used,
     reason = "private conversion runs only after validate_machine proves required sections and options"
@@ -485,3 +193,15 @@ fn code_tables(machine: &MachineDocument) -> CodeTables {
         .clone()
         .expect("validated vendor stack requires code tables")
 }
+
+mod transport;
+pub use transport::{RecordTransport, StreamKind, StreamTransport, TcpRole, TcpTransport};
+use transport::{stream, stream_kind, stream_timeout, tcp, tcp_kind};
+
+mod limits;
+pub use limits::{DialogTimeouts, SyntaxLimits};
+use limits::{hl7_options, limits};
+
+mod order_tables;
+pub use order_tables::OrderTables;
+use order_tables::order_tables;
