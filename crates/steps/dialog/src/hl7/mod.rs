@@ -631,7 +631,7 @@ impl Dialog {
             .and_then(|bytes| Message::parse(bytes, self.config.options).map_err(Error::from));
         match result.and_then(|message| {
             let msh = Msh::new(&message)?;
-            if msh.version() == analyte_hl7::Version::V291
+            if msh.version().paired_application_ack()
                 && matches!(msh.mode(), AckMode::Enhanced { application: Some(condition), .. } if condition != Condition::Never) {
                 return Err(Error::SeparateApplicationChannel);
             }

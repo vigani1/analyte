@@ -48,8 +48,8 @@ impl Command {
                 "HL7-patient-name-required-but-not-carried-by-contract",
             ));
         }
-        let version = syntax.edition().into();
-        if version == Version::V231
+        let version: Version = syntax.edition().into();
+        if version.orm_patient_name_required()
             && app.fields().patient.is_some()
             && app.fields().state == analyte_contract::document::OrderState::Requested
         {
@@ -239,14 +239,12 @@ impl Command {
         subject: order::Subject<'_>,
         header: order::Header<'_>,
     ) -> Result<OrderMessage, Error> {
-        match self.version {
-            Version::V231 => Ok(order::orm(orders, subject, header, self.options)?),
-            Version::V251 | Version::V26 | Version::V282 => {
-                Ok(order::oml(orders, subject, header, self.options)?)
-            }
-            Version::V23 | Version::V24 | Version::V25 | Version::V291 => {
-                Err(Error::Context("HL7-order-edition-rules-not-implemented"))
-            }
+        if self.version.orm_writer() {
+            Ok(order::orm(orders, subject, header, self.options)?)
+        } else if self.version.oml_writer() {
+            Ok(order::oml(orders, subject, header, self.options)?)
+        } else {
+            Err(Error::Context("HL7-order-edition-rules-not-implemented"))
         }
     }
 
@@ -268,7 +266,7 @@ impl Command {
                 )?;
                 Some(
                     if let Some(version) = &cfg.specimen_version
-                        && self.version != Version::V231
+                        && self.version.specimen_code_version()
                     {
                         code.with_version(version.as_str().as_bytes())?
                     } else {
