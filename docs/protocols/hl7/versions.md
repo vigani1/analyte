@@ -351,3 +351,26 @@ timestamp precision forms and the explicit LAW and UTF-8 policies.
 | Order sequence required components and lengths | 2.3.1 section 4.4; 2.5.1 section 2.A.50 | datatype order sequence required fields and lengths |
 | Interval component lengths | 2.3.1 section 2.8.35; 2.5.1 section 2.A.63 | query TQ component constraints |
 | Timing component lengths | 2.3.1 section 4.4; 2.5.1 section 2.A.76 | query TQ component constraints |
+
+## Order writer qualification audit (incomplete)
+
+No additional edition is qualified by this audit. The registry exposes the
+specific blocker used by config rather than a generic implementation message.
+This is groundwork, not completion of Part B. In particular, available modern
+sources are sufficient to continue implementation; their blockers below are
+implementation and verification gaps, not missing standards.
+
+| Edition | Sending | Specific remaining qualification |
+| --- | --- | --- |
+| 2.3 | Blocked | Original order-message and field definitions are unavailable. The later 2.5.1 section 2.8 receiving contract cannot establish an earlier writer. |
+| 2.4 | Blocked | Original order-message and field definitions are unavailable; the partial historical errata do not supply a complete writer contract. |
+| 2.5 | Blocked | Original order-message and field definitions are unavailable; no patch-edition downgrade is justified by section 2.8. |
+| 2.6 | Blocked | Sections 4.4.6-7 establish O21/O22; section 4.5.3.4 selects CWE for OBR-4. Carry the actual test revision through config/mapping (2.A.13.7), then qualify all written fields and the response. |
+| 2.8.2 | Blocked | Qualify the written fields, CWE revisions and withdrawn-field refusal. Section 4.4.7.1 selects patient-required O22; section 4.4.7.2's patient-optional ORL_O41 structure must not be accepted implicitly. |
+| 2.9.1 | Blocked | Qualify the written fields, CWE revisions and withdrawn-field refusal. Section 4.4.7.1 selects patient-required O22; section 4.4.7.2's O53 transaction must not be accepted implicitly. |
+
+Evidence: protocol `adr0012_s3_writer_qualification_is_separate_from_receiving`
+and config `adr0012_s3_config_reports_the_registry_writer_blocker` test the
+refusal boundary only. They do not establish emitted bytes, response decisions
+or timeout/restart behavior for these six editions. Existing 2.3.1/2.5.1 writer
+qualification is unchanged. Evidence level remains documented.

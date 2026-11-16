@@ -95,20 +95,13 @@ impl Orders {
         path: &str,
     ) -> Result<(), Error> {
         if let Some(send) = &self.hl7_send {
-            if machine.syntax.edition.is_some_and(|edition| match edition {
-                Edition::V231 | Edition::V251 => false,
-                Edition::V23
-                | Edition::V24
-                | Edition::V25
-                | Edition::V26
-                | Edition::V282
-                | Edition::V291 => true,
-            }) {
-                return Err(invalid(
-                    path,
-                    "orders.hl7_send",
-                    "order writers for this edition are not yet implemented; disable send_ahead",
-                ));
+            if let Some(reason) = machine
+                .syntax
+                .edition
+                .map(analyte_hl7::Version::from)
+                .and_then(analyte_hl7::Version::order_sending_blocker)
+            {
+                return Err(invalid(path, "orders.hl7_send", reason));
             }
             let plain = |value: &Identifier| {
                 value.as_str().is_ascii()

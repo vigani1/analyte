@@ -250,3 +250,13 @@ choices within that scope, not additional promises of conformance.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities;
   [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
 - **test**: `adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart`.
+
+## Report order-writer qualification separately from receiving
+
+Config obtains the edition-specific sending blocker from the protocol registry.
+Receiving support and receiving compatibility do not imply writing support
+(ADR 0012 section 3; HL7 2.5.1 section 2.8). Unavailable historical definitions
+and unfinished modern implementation are different blockers. The modern source
+material remains available for follow-up; no source absence is claimed there.
+The version audit lists the remaining work without enabling any edition.
+Evidence: `adr0012_s3_config_reports_the_registry_writer_blocker`.

@@ -179,3 +179,30 @@ fn hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_
         }
     }
 }
+
+#[test]
+fn adr0012_s3_config_reports_the_registry_writer_blocker() {
+    for (edition, version) in [
+        ("v23", Version::V23),
+        ("v24", Version::V24),
+        ("v25", Version::V25),
+        ("v26", Version::V26),
+        ("v282", Version::V282),
+        ("v291", Version::V291),
+    ] {
+        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let machine = format!("{base}\n{}", include_str!("../examples/hl7_send.toml"));
+        let result = Draft::load(
+            ("synthetic.toml", &machine),
+            ("site.toml", SITE),
+            ("local.toml", "schema_version=1"),
+        )
+        .unwrap()
+        .validate();
+        let Err(Error::Invalid { key, reason, .. }) = result else {
+            panic!("unqualified writer must fail configuration");
+        };
+        assert_eq!(key, "orders.hl7_send");
+        assert_eq!(Some(reason), version.order_sending_blocker());
+    }
+}

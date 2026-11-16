@@ -76,3 +76,30 @@ fn adr0012_s3_no_unlisted_edition_or_prefix_match() {
         );
     }
 }
+
+#[test]
+fn adr0012_s3_writer_qualification_is_separate_from_receiving() {
+    for (version, reason) in [
+        (
+            Version::V23,
+            "original 2.3 order field definitions are unavailable",
+        ),
+        (
+            Version::V24,
+            "original 2.4 order field definitions are unavailable",
+        ),
+        (
+            Version::V25,
+            "original 2.5 order field definitions are unavailable",
+        ),
+        (Version::V26, "O21/O22 field qualification"),
+        (Version::V282, "O22 patient-required response qualification"),
+        (Version::V291, "O22 versus O53 response qualification"),
+    ] {
+        assert!(version.supports_result_reception());
+        assert!(version.order_sending_blocker().unwrap().contains(reason));
+    }
+    for version in [Version::V231, Version::V251] {
+        assert_eq!(version.order_sending_blocker(), None);
+    }
+}
