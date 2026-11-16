@@ -180,7 +180,11 @@ impl<'a, 'm> Host<'a, 'm> {
                 if let Some(hook) = &self.machine.law_precommit {
                     hook.pause(&mut self.stop).await?;
                 }
-                intake::receive(self.store, self.machine, id, raw).await?;
+                super::custody::store_within(
+                    super::custody::budget(self.machine),
+                    intake::receive(self.store, self.machine, id, raw),
+                )
+                .await?;
                 self.stored = true;
                 #[cfg(feature = "test-hooks")]
                 if let Some(hook) = &self.machine.law_committed {

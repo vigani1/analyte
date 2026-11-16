@@ -74,11 +74,12 @@ pub(in crate::machine) async fn run(
         Finished::Inbound => outbound.await,
         Finished::Outbound => inbound.await,
     };
-    if *stop.borrow() {
-        closing.after_commits().await?;
-    }
     let mut result = result;
     super::super::custody::retain_cleanup(&mut result, cleanup);
+    if *stop.borrow() {
+        let retained = closing.after_commits().await;
+        super::super::custody::retain_cleanup(&mut result, retained);
+    }
     result
 }
 
