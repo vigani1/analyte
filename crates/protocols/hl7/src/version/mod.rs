@@ -78,7 +78,7 @@ const EDITIONS: [EditionRules; 8] = [
         wire: "2.6",
         truncation: false,
         required_timestamp: true,
-        grammar: None,
+        grammar: Some(&GRAMMAR_26),
     },
     // HL7 2.8.2 sections 2.14.9.2/.7/.12, pp.59-61.
     EditionRules {
@@ -134,6 +134,20 @@ impl Version {
         matches!(self, Self::V23 | Self::V24 | Self::V25)
     }
 
+    /// Reports whether specimen/container extensions are outside the selected receiving profile.
+    #[must_use]
+    pub fn uses_bounded_result_groups(self) -> bool {
+        self.uses_compatibility_contract()
+            || self.rules().is_some_and(|rules| rules.core_groups_only)
+    }
+
+    /// Reports whether this qualified receiving profile uses scalar DTM values.
+    #[must_use]
+    pub fn uses_dtm(self) -> bool {
+        self.rules()
+            .is_some_and(|rules| rules.time_format == TimeFormat::Dtm)
+    }
+
     // Table 0211 can change under section 2.8.2; do not assume that a later
     // character-set code was already defined in an unavailable earlier edition.
     pub(crate) fn standard_utf8(raw: &[u8]) -> bool {
@@ -164,8 +178,31 @@ impl Version {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TimeFormat {
+    Ts,
+    Dtm,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CodingVersions {
+    LocalSystems,
+    Explicit,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct Rules {
+    // HL7 2.6 section 7.3.1; Analyte's selected core group scope (ADR 0007).
+    pub core_groups_only: bool,
+    pub result_fields: &'static [ResultField],
+    // HL7 2.6 sections 2.14.9.7/.10, 2.14.8.2 and 2.A.22.
+    pub time_format: TimeFormat,
+    pub control_bytes: usize,
+    // HL7 2.6 sections 2.A.6/.13, 2.A.20/.76/.86 and 5.10.4.2.9.
+    pub coding_versions: CodingVersions,
+    pub coded_components: usize,
+    pub query_timing_bytes: Option<usize>,
+    pub refused_deprecated: &'static [usize],
     // HL7 2.3.1 section 2.24.1.9; 2.5.1 section 2.15.9.9 and section 2.A.44 (MSG).
     pub optional_response_trigger: bool,
     pub message_lengths: Option<[usize; 3]>,
@@ -191,6 +228,14 @@ pub(crate) struct Rules {
 
 const GRAMMARS: [Rules; 2] = [
     Rules {
+        core_groups_only: false,
+        result_fields: &[],
+        time_format: TimeFormat::Ts,
+        control_bytes: 20,
+        coding_versions: CodingVersions::LocalSystems,
+        coded_components: 6,
+        query_timing_bytes: Some(60),
+        refused_deprecated: &[],
         optional_response_trigger: true,
         message_lengths: None,
         timestamp_precisions: &[4, 6, 8, 10, 12, 14],
@@ -207,6 +252,14 @@ const GRAMMARS: [Rules; 2] = [
         timing_lengths: &[],
     },
     Rules {
+        core_groups_only: false,
+        result_fields: &[],
+        time_format: TimeFormat::Ts,
+        control_bytes: 20,
+        coding_versions: CodingVersions::LocalSystems,
+        coded_components: 6,
+        query_timing_bytes: Some(60),
+        refused_deprecated: &[],
         optional_response_trigger: false,
         message_lengths: Some([3, 3, 7]),
         timestamp_precisions: &[4, 6, 8, 10, 12, 14],
@@ -236,6 +289,27 @@ const COMPATIBILITY_25: Rules = Rules {
     message_lengths: Some([3, 3, 7]),
     ..GRAMMARS[0]
 };
+
+// HL7 2.6 sections 2.14.9/.8, 2.A.6/.13/.22/.86 and 5.10.4.
+// Reuse unchanged constraints; differing lengths and component meanings stay here.
+const GRAMMAR_26: Rules = Rules {
+    core_groups_only: true,
+    result_fields: RESULT_FIELDS_26,
+    time_format: TimeFormat::Dtm,
+    control_bytes: 199,
+    coding_versions: CodingVersions::Explicit,
+    coded_components: 9,
+    query_timing_bytes: None,
+    refused_deprecated: &[17],
+    xcn_lengths: &[
+        15, 194, 30, 30, 20, 20, 5, 4, 227, 1, 4, 3, 5, 227, 1, 705, 49, 1, 24, 24, 199, 705, 705,
+    ],
+    ..GRAMMARS[1]
+};
+
+mod result;
+use result::RESULT_FIELDS_26;
+pub(crate) use result::{FieldKind, ResultField};
 
 #[cfg(test)]
 mod tests;

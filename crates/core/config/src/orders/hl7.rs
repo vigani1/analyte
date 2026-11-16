@@ -1,5 +1,6 @@
 //! Validates configured HL7 outbound message layouts.
 use super::*;
+use crate::Edition;
 use std::collections::HashSet;
 
 impl Orders {
@@ -84,13 +85,19 @@ impl Orders {
         path: &str,
     ) -> Result<(), Error> {
         if let Some(send) = &self.hl7_send {
-            if machine.syntax.edition.is_some_and(|edition| {
-                analyte_hl7::Version::from(edition).uses_compatibility_contract()
+            if machine.syntax.edition.is_some_and(|edition| match edition {
+                Edition::V231 | Edition::V251 => false,
+                Edition::V23
+                | Edition::V24
+                | Edition::V25
+                | Edition::V26
+                | Edition::V282
+                | Edition::V291 => true,
             }) {
                 return Err(invalid(
                     path,
                     "orders.hl7_send",
-                    "order writers for compatibility editions are not yet implemented; disable send_ahead",
+                    "order writers for this edition are not yet implemented; disable send_ahead",
                 ));
             }
             let plain = |value: &Identifier| {
@@ -130,7 +137,7 @@ impl Orders {
                 || send.position_field.is_some_and(|field| {
                     !matches!(field, 18 | 19)
                         || field == send.sample_field
-                        || machine.syntax.edition != Some(crate::Edition::V231)
+                        || machine.syntax.edition != Some(Edition::V231)
                 })
             {
                 return Err(invalid(

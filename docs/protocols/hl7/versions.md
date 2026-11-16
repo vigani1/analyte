@@ -1,14 +1,14 @@
 # HL7 versions
 
-## Later-edition source review in progress
+## Later-edition receiving profiles
 
-The 2.6 receiving/query implementation must use scalar DTM for MSH-7 and the
+The 2.6 receiving/query implementation uses scalar DTM for MSH-7 and the
 selected QRD/QRF time fields (2.6 §2.14.9.7 p.57; §5.10.4 pp.97–102).
 CE and TS are withdrawn (chapter 2A §§2.A.6, 2.A.77); CWE and DTM have their
 own constraints (§§2.A.13, 2.A.22). MSH-10 and MSA-2 allow 199 characters
 (chapter 2 §2.14.8/9 attribute tables). XCN remains 23 components, but its
 name-context, check-digit and time-component limits differ (§2.A.86 pp.2-190–193).
-Deprecated nested DR and TQ filters require an explicit bounded-profile policy.
+Deprecated nested DR and TQ filters are refused visibly; see the bounded 2.6 decision.
 
 The 2.8.2 §5.10.2 and 2.9.1 §5.9.2 clauses mark the original query forms
 withdrawn as of 2.7. They must not acquire a working legacy handler merely from
@@ -17,13 +17,14 @@ command writers remain a separate step-5 PR. Evidence stays documented.
 
 **2.3.1 and 2.5.1** have native typed profiles; **2.3, 2.4 and 2.5** have
 bounded receiving compatibility profiles described below. MLLP Release 1 is the framing
-profile. Evidence remains documented. Documents for 2.6, 2.8.2 and 2.9.1
-are available and planned; they are not implemented versions.
+profile. **2.6** has the bounded ORU/R01 receiving and deferred display-query
+profile described below. Evidence remains documented. Typed support for 2.8.2
+and 2.9.1 remains unfinished.
 
 The lossless syntax layer now also reads 2.8.2 and 2.9.1 envelopes to retain
 their declared truncation character and marker evidence. This is grammar
 groundwork, not typed edition support: `Version` recognizes all eight requested
-editions, but typed message views still refuse 2.6, 2.8.2 and 2.9.1 with
+editions, but typed message views still refuse 2.8.2 and 2.9.1 with
 an edition-specific `EditionRules` error. No earlier edition is
 silently upgraded. Truncated input is refused before result mapping, while
 its exact bytes and the field/component marker flags remain available.
@@ -43,8 +44,8 @@ whether its typed field profile exists. Recognition never aliases a new edition
 to 2.5.1: absent field profiles refuse interpretation and writing while syntax
 retains the original bytes. Configuration parsing recognizes `v23`, `v231`,
 `v24`, `v25`, `v251`, `v26`, `v282` and `v291`, which map to the exact wire IDs
-below. Validation accepts **`v23`, `v231`, `v24`, `v25` and `v251`** for the
-declared receiving profiles. The other three return `UnsupportedHl7Edition` before activation;
+below. Validation accepts **`v23`, `v231`, `v24`, `v25`, `v251` and `v26`** for the
+declared receiving profiles. The other two return `UnsupportedHl7Edition` before activation;
 the diagnostic names the requested edition and the currently supported editions.
 Unlisted values fail at the positioned TOML schema boundary with the bad value
 and the recognized choices. A missing edition is not defaulted.
@@ -53,9 +54,9 @@ remain separate steps. Enabling another edition in config
 must accompany its implemented typed support and the corresponding tests.
 
 The registry tests retain exact wire identity for all eight editions. Config
-tests in `hl7_editions.rs` cover the five supported selections and canonical
+tests in `hl7_editions.rs` cover the six supported selections and canonical
 snapshots (`adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`),
-refusal and actionable diagnostics for the other three
+refusal and actionable diagnostics for the other two
 (`adr0012_s3_recognized_editions_without_typed_support_fail_config_validation`),
 unlisted values and their diagnostics
 (`adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values`) and
@@ -89,7 +90,61 @@ chapter; this does not justify applying the older edition's wording to 2.9.1.
 | 2.3.1 | Legacy laboratory transactions; no OBX-21 observation identifier | Existing scope and field evidence in [checklist](checklist.md) |
 | 2.5.1 | Adds the selected OML/OUL/QBP transaction profiles; OBX-21 is reserved, not a trusted result identity | Existing scope and field evidence in [checklist](checklist.md) |
 | 2.3, 2.4, 2.5 | Implemented receiving compatibility profiles; exact edition retained, unresolved extensions remain raw or are refused | HL7 2.5.1 §§2.8–2.8.2, pp.2-20–22; errata and details below |
-| 2.6, 2.8.2, 2.9.1 | Planned; differences have not been implemented or qualified | [Plan](../../plan.md) scope and ADR 0012 section 3 |
+| 2.6 | Bounded typed ORU/R01 and deferred query reception; command sending disabled | Rules below |
+| 2.8.2, 2.9.1 | Typed differences remain unfinished; config refuses activation | [Plan](../../plan.md) scope and ADR 0012 section 3 |
+
+### 2.6 difference rules and evidence
+
+The shared parser uses one 2.6 rule-table entry, with per-field result rules in
+`version/result.rs`. The receiving scope matches the bounded historical profiles:
+ORU/R01 core groups, QRY/Q02, QCK/Q02, DSR/Q03 and their ACKs. It does not claim
+the complete 2.6 schema. SPM/SAC, OUL/R22 and additional ORU segments such as
+SFT/UAC/ROL are refused at the mapping boundary; the receipt remains protected.
+Query SFT is retained without interpretation. Optional MSH profile declarations
+remain raw and do not activate an undeclared profile.
+
+All tests in the next table are in protocol `tests/receiving.rs` unless noted.
+
+| Rule-table difference or bounded policy | Source (2.6) | Source-named test |
+| --- | --- | --- |
+| MSH-7 is required scalar DTM, with digit precision and at most four fractional digits; no TS precision component | §2.14.9.7 p.57; §2.A.22 pp.2-129–131 | `hl7_2_6_s2_14_9_7_and_s2_a_22_dtm_precision_and_scalar_structure` |
+| MSH-10/MSA-2 permit 199 bytes; ACK retains exact edition and ID, uses the expanded ERR shape | §§2.14.8.2, 2.14.9.10 pp.54, 57; §§2.14.5.1–5 pp.48–50 | `hl7_2_6_s2_14_8_2_and_s2_14_9_10_control_lengths_ack_and_err` |
+| CE and TS value-type declarations are withdrawn and refused; CWE and DTM are qualified instead | §§2.A.6, 2.A.77 pp.2-107?108, 2-182 | `hl7_2_6_s2_a_6_77_withdrawn_ce_ts_are_refused` |
+| OBX-3/6 and CWE-valued OBX-5 use nine components and field/component limits; local coding-system versions are supplied, never invented | §§7.4.2.3/.5/.6 pp.7-40–44; §2.A.13 pp.2-115–119 | `hl7_2_6_s7_4_2_3_6_and_s2_a_13_cwe_components_lengths_and_versions`, `hl7_2_6_s2_a_13_all_cwe_component_length_boundaries` |
+| Interpreted OBR-7/8/14/22 and OBX-12/14/19 timestamps use scalar DTM | §§7.4.1.7/.8/.14/.22 pp.7-23–28; §§7.4.2.12/.14/.19 pp.7-46–50 | `hl7_2_6_s7_4_1_7_8_14_22_and_s7_4_2_12_14_19_result_dtm` |
+| QRD/QRF use DTM and CWE, QRD-8 uses 23-component XCN with changed check-digit, name-context and time limits; nonempty XCN-17 is refused | §5.10.4 pp.97–102; §§2.A.20, 2.A.86 pp.2-129, 2-190–193 | `hl7_2_6_s2_a_86_xcn_check_digit_cwe_dtm_and_deprecated_range`, `hl7_2_6_s5_10_4_1_2_qrd_qrf_dtm_cwe_and_deprecated_tq` |
+| Nonempty deprecated QRF-9 TQ is refused rather than ignoring its scheduling constraints; QRF-10 remains validated NM | §5.10.4.2.9–10 p.102 | Same QRD/QRF test |
+| OBX-21 EI remains raw and is not a laboratory result identity; nonempty OBX-22 mood is refused | §§7.4.2.21–22 p.7-51 | Same result-DTM test; mapping `hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity` |
+| Original/enhanced ACK custody rules and exact request edition remain independent of successful parsing | §§2.9.2–3 pp.23–26; §§2.14.9.15–16 pp.58–59 | Dialog `hl7_2_5_1_s2_8_and_2_6_s2_9_2_legacy_original_ack_requires_store_and_interpretation` |
+
+Escape and charset rules are exercised by
+`hl7_2_6_s2_7_1_and_s2_14_9_18_charset_and_literal_escapes`
+(2.6 ??2.7.1, 2.14.9.18, pp.17, 59?61); enhanced custody conditions by
+`hl7_2_6_s2_9_3_and_s2_14_9_15_16_enhanced_ack_custody`.
+
+The bounded CWE rule requires an explicit version whenever either coding-system
+component is populated. This includes text-only tuples and apparent `HL7nnnn`
+names: an `HL7` prefix does not establish the table's ownership. Section
+2.A.13.7 permits omitted versions for HL7-defined tables, but requires them for
+user-defined tables. Analyte chooses the stricter explicit-version profile
+rather than supplying a guessed table kind or version; see decisions.
+
+Unselected backward-compatibility fields remain raw: OBR-5/6, OBR-15/27,
+OBR-32–35, MSA-3/5/6 and ERR-1 do not acquire new common-model meanings.
+Sources: 2.6 §§7.4.1.5–6/.15/.27/.32–35 pp.7-23–32; §§2.14.8.3/.5/.6
+pp.54–55; §2.14.5.1 p.48. In particular, embedded NDL/CNN names are not
+guessed, deprecated scheduling fields are not executed, and withdrawn delayed
+ACK information never changes the dialog. Evidence:
+`hl7_2_6_s7_4_1_5_6_15_27_32_35_backward_fields_stay_raw` and the MSA/ERR
+control-length test above. Unknown OBX value types (including
+unselected CNE) remain unsupported and cause parking. Field refusal retains the
+original bytes; it never trims or converts a value to fit.
+
+Whole-edition progress in this PR: **2.6 bounded profile completed**.
+Remaining step 4: qualify 2.8.2 and 2.9.1 result/message/datatype rules, including
+withdrawals and newer CWE/XCN components, and settle a bounded query scope that
+does not revive withdrawn original queries. Both editions remain refused in
+config. Step 5 order writers remain a separate PR for all non-native editions.
 
 ## Compatibility rule
 

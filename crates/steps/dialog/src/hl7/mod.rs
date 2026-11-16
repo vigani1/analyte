@@ -670,12 +670,12 @@ impl Dialog {
             .ok_or(Error::Framing(mllp::Error::Incomplete))
             .and_then(|p| Message::parse(p, self.config.options).map_err(Error::from));
         let result = parsed.and_then(|message| {
-            Msh::new(&message)?;
+            let msh = Msh::new(&message)?;
             let segment = message
                 .segments()
                 .find(|s| s.id() == b"MSA")
                 .ok_or(Error::Stale)?;
-            let msa = Msa::new(segment)?;
+            let msa = Msa::for_version(segment, msh.version())?;
             Ok((msa.control_id().to_vec(), msa.code()))
         });
         if let Ok((id, code)) = result

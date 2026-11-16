@@ -21,17 +21,25 @@
   unavailable typed profiles. `version/tests.rs` covers every registry entry
   plus `adr0012_s3_no_unlisted_edition_or_prefix_match` (ADR 0012 §3).
 - [x] Accept machine edition selections only for implemented typed profiles
-  (native 2.3.1/2.5.1 and bounded 2.3/2.4/2.5 receiving compatibility), without defaults or patch upgrades.
+  (native 2.3.1/2.5.1, bounded 2.3/2.4/2.5 compatibility and bounded 2.6 receiving), without defaults or patch upgrades.
   `config/tests/hl7_editions.rs` covers exact identity and canonical snapshots
-  for those five, actionable validation errors for the three recognized unsupported
+  for those six, actionable validation errors for the two recognized unsupported
   editions, missing declarations and positioned unlisted-value errors.
 - [x] Implement the declared 2.3/2.4/2.5 receiving compatibility prefix under
   2.5.1 §§2.8–2.8.2 and the 2002-04-08 errata, with exact edition replies and
   explicit raw/refusal behavior. Evidence and limitations: [versions](versions.md),
   protocol `compatibility.rs`, mapping `mapping/compatibility.rs`, dialog
   `hl7_compatibility.rs`, datatype sequencing and config `hl7_editions.rs` tests.
-- [ ] Complete later-edition typed message/datatype differences and command-writer
-  integration. Compatibility profiles' `orders.hl7_send` remains refused.
+- [x] 2.6 — Complete the bounded receiving/query profile: DTM, CWE, XCN changes,
+  199-byte MSH-10/MSA-2, expanded ERR, deprecated-field raw/refusal rules and
+  protected raw retention. Sources and per-row tests: [versions](versions.md),
+  protocol `receiving.rs`, mapping `mapping/compatibility.rs`, dialog
+  `hl7_compatibility.rs` and config `hl7_editions.rs`. Evidence: documented.
+- [ ] 2.8.2 — Complete typed result/message/datatype differences and select a
+  query scope that does not revive original queries withdrawn since 2.7.
+- [ ] 2.9.1 — Complete typed result/message/datatype differences and select that
+  edition's query scope, including its later CWE/XCN components and withdrawals.
+- [ ] Step 5 — Implement order writers per edition in a separate PR.
 
 
 **Applicability:** B = both 2.3.1 and 2.5.1; 231 or 251 = edition-specific; M = version-independent MLLP R1. References are chapter/section/PDF page as above. Each checkbox is an implementation requirement or an explicit support-declaration decision. Optional features are required only when declared/negotiated; unsupported cases must have a specific safe outcome. Engineering gates are identified separately from normative wire rules. A profile matrix must instantiate the field definitions and conditional predicates referenced here; this is not a claim that one generic application must implement all healthcare domains.

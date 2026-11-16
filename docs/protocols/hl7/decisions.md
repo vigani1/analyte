@@ -1,5 +1,34 @@
 # HL7 decisions
 
+## Bound the 2.6 receiving profile and refuse ambiguous intent
+
+- **what**: Qualify the existing ORU/R01 core and deferred display-query
+  exchange for 2.6. Interpret selected CWE and DTM fields and retain exact
+  lexical values. Refuse nonempty XCN-17 and QRF-9, specimen/container groups
+  and unselected ORU segments. Keep backward-compatibility OBR fields,
+  deprecated MSA information and OBX-21 raw. Refuse nonempty OBX-22.
+- **why**: Nested deprecated DR cannot be represented fully. Ignoring a TQ
+  qualifier could answer a different query. OBX-21 has no established laboratory
+  identity contract here, while mood can change whether an observation is an
+  event or an intention. These fields must not silently change clinical meaning
+  or start scheduling work. Coding-system versions come from the sender.
+  For this bounded 2.6 profile, any populated CWE coding-system component
+  requires its version component, even without an identifier. The standard
+  permits omission for HL7-defined tables but requires versions for user-defined
+  tables; Analyte does not infer table ownership from an `HL7` prefix. Requiring
+  an explicit version is a stricter profile choice, not an HL7-wide requirement.
+- **source**: HL7 2.6 §§2.A.13/.20/.86, pp.2-115–119, 2-128–129, 2-190–193;
+  §5.10.4.2.9, p.102; §§7.3.1, 7.4.2.21–22, pp.7-12–14, 7-50–51.
+  Bounded scope is Analyte's selection under ADR 0007, rather than a claim
+  that the standard forbids all optional structures.
+- **tests**: protocol `receiving.rs`; mapping
+  `hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity`
+  and `hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map`.
+- **remaining**: 2.8.2/2.9.1 typed profiles and their query-scope decision stay
+  unfinished and fail config validation. Their original queries are withdrawn
+  (2.8.2 §5.10.2; 2.9.1 §5.9.2); a modern query contract is not implicitly
+  selected. Step 5 order writers remain a separate PR. Evidence: documented.
+
 ## Bound compatibility to the established legacy receiving prefix
 
 - **what**: Receive ORU/R01 and the selected legacy query exchange in 2.3,

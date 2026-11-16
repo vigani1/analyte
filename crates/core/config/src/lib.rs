@@ -20,7 +20,7 @@ pub const MAX_FILE_BYTES: usize = 1_048_576;
 pub enum Error {
     /// A recognized HL7 edition has no implemented result-processing profile.
     #[error(
-        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1"
+        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6"
     )]
     UnsupportedHl7Edition {
         /// Source configuration layer.

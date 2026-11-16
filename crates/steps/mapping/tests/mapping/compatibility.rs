@@ -2,6 +2,77 @@
 use super::*;
 
 #[test]
+fn hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity() -> TestResult {
+    let config = config(&HL7_CONFIG.replace("edition = \"v251\"", "edition = \"v26\""))?;
+    for (datatype, value) in [
+        ("NM", "0.10"),
+        ("CWE", "POS^Positive^LOCAL^^^^v1"),
+        ("DTM", "20261116123045.1200-0530"),
+    ] {
+        let mut fields = [""; 21];
+        fields[0] = "1";
+        fields[1] = datatype;
+        fields[2] = "SYN^Synthetic^synthetic^^^^v1";
+        fields[4] = value;
+        fields[10] = "F";
+        fields[18] = "20261116123045.1200-0530";
+        fields[20] = "opaque-instance^external";
+        let raw = format!(
+            "MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|2.6\rOBR|1||000AbC\rOBX|{}\r",
+            fields.join("|")
+        );
+        let message = analyte_hl7::Message::parse(
+            raw.as_bytes(),
+            config.effective().hl7_options().ok_or("options")?,
+        )?;
+        let output = map_hl7(&message, &config, input())?;
+        assert!(!output.requires_parking(), "{output:?}");
+        let part = first(&output)?;
+        assert_eq!(
+            part.values
+                .as_slice()
+                .first()
+                .ok_or("value")?
+                .original
+                .as_str(),
+            value
+        );
+        assert!(
+            part.times
+                .as_slice()
+                .iter()
+                .any(|time| time.role.as_str() == "OBX.19"
+                    && time.time.original.as_str() == "20261116123045.1200-0530")
+        );
+        assert_eq!(message.encode(), raw.as_bytes());
+    }
+    Ok(())
+}
+
+#[test]
+fn hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map() -> TestResult {
+    let config = config(&HL7_CONFIG.replace("edition = \"v251\"", "edition = \"v26\""))?;
+    for observation in [
+        "OBX|1|CE|SYN||POS||||||F\r",
+        "OBX|1|TS|SYN||20261116||||||F\r",
+        "OBX|1|CWE|SYN||POS^Positive^LOCAL||||||F\r",
+        "OBX|1|NM|SYN||0.10||||||F|||||||||||INT^Intent^HL70725\r",
+        "SPM|1|opaque\rOBX|1|NM|SYN||0.10||||||F\r",
+    ] {
+        let raw = format!(
+            "MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|2.6\rOBR|1||000AbC\r{observation}"
+        );
+        let message = analyte_hl7::Message::parse(
+            raw.as_bytes(),
+            config.effective().hl7_options().ok_or("options")?,
+        )?;
+        assert!(map_hl7(&message, &config, input()).is_err());
+        assert_eq!(message.raw(), raw.as_bytes());
+    }
+    Ok(())
+}
+
+#[test]
 fn law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time() -> TestResult {
     let definition = include_str!("../../../../core/config/examples/law.toml").replace(
         "order_namespace = {field={group=\"order\",record=\"OBR\",field=2,component=2,repetition=1}}",

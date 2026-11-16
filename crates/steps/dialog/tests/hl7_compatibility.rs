@@ -4,9 +4,9 @@ use analyte_hl7::{ControlId, Message, Msh, Options, Response};
 use std::time::Duration;
 
 #[test]
-fn hl7_2_5_1_s2_8_and_s2_9_2_legacy_original_ack_requires_store_and_interpretation()
+fn hl7_2_5_1_s2_8_and_2_6_s2_9_2_legacy_original_ack_requires_store_and_interpretation()
 -> Result<(), Box<dyn std::error::Error>> {
-    for version in ["2.3", "2.4", "2.5"] {
+    for version in ["2.3", "2.4", "2.5", "2.6"] {
         let mut dialog = Dialog::new(
             Config::new(Options::default(), Duration::from_secs(5), 1)?,
             42,

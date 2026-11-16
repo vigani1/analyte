@@ -181,9 +181,16 @@ pub(super) fn validate_dialog_and_framing(m: &MachineDocument, path: &str) -> Re
 pub(super) fn validate_syntax(m: &MachineDocument, path: &str) -> Result<(), Error> {
     let s = &m.syntax;
     match s.edition {
-        Some(Edition::V23 | Edition::V231 | Edition::V24 | Edition::V25 | Edition::V251) | None => {
-        }
-        Some(edition @ (Edition::V26 | Edition::V282 | Edition::V291)) => {
+        Some(
+            Edition::V23
+            | Edition::V231
+            | Edition::V24
+            | Edition::V25
+            | Edition::V251
+            | Edition::V26,
+        )
+        | None => {}
+        Some(edition @ (Edition::V282 | Edition::V291)) => {
             return Err(Error::UnsupportedHl7Edition {
                 path: path.into(),
                 edition: analyte_hl7::Version::from(edition).as_str(),
