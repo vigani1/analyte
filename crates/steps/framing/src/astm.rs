@@ -2,6 +2,29 @@
 //! The dialog owns sequence acceptance, retransmissions, timers and durable-before-ACK rules.
 use thiserror::Error;
 
+/// Inbound record boundaries; checksums and envelopes are independent of this policy.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RecordBoundaries {
+    /// LIS01-A2 §§3.3.2, 6.3.1.1, 8.3.1.1: each record begins in a separate frame.
+    #[default]
+    Separate,
+    /// ADR 0015: evidenced CR-ended records may share a verified inbound frame.
+    Packed,
+}
+impl RecordBoundaries {
+    /// Checks record endings after envelope verification, without changing source bytes.
+    #[must_use]
+    pub fn accepts(self, text: &[u8], final_frame: bool) -> bool {
+        match self {
+            Self::Separate => !text
+                .iter()
+                .position(|b| *b == CR)
+                .is_some_and(|i| !final_frame || i.saturating_add(1) != text.len()),
+            Self::Packed => !final_frame || text.last() == Some(&CR),
+        }
+    }
+}
+
 /// Start of frame.
 pub const STX: u8 = 2;
 /// Final frame terminator.

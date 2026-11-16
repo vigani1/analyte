@@ -68,7 +68,9 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             settings.syntax().limits().bytes(),
             settings.syntax().limits().records(),
             true,
-        )?;
+        )?
+        .with_record_boundaries(settings.record_boundaries())
+        .with_checksum_hex(settings.checksum_policy());
         let epoch = Epoch(uuid::Uuid::now_v7().as_u128());
         let dialog = Dialog::new(config.clone(), epoch);
         let start = Instant::now();

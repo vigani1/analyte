@@ -341,18 +341,6 @@ pub struct Syntax {
     pub components: usize,
 }
 
-/// Named departure attached to an exact config key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Deviation {
-    /// Reviewable name.
-    pub name: Identifier,
-    /// Affected protocol key.
-    pub key: Identifier,
-    /// Why it is needed.
-    pub reason: analyte_model::Reason,
-}
-
 /// Evidence applies only to these exercised capabilities.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -422,7 +410,10 @@ pub(crate) struct MachineDocument {
     /// Required Autolyser polling policy.
     pub autolyser: Option<Autolyser>,
     /// Named vendor departures.
-    pub deviations: Vec<Deviation>,
+    pub deviations: Vec<MachineDeparture>,
+    /// Installed applicability, required when departures are declared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub departure_scope: Option<DepartureScope>,
     /// Declared evidence.
     pub evidence: Evidence,
 }
@@ -479,7 +470,9 @@ pub struct Overrides {
     /// Replacement mapping table.
     pub mappings: Option<Mappings>,
     /// Replacement deviation declarations.
-    pub deviations: Option<Vec<Deviation>>,
+    pub deviations: Option<Vec<MachineDeparture>>,
+    /// Explicit installed applicability replacement.
+    pub departure_scope: Option<DepartureScope>,
     /// Replacement site endpoint.
     pub endpoint: Option<String>,
     /// Replacement destination.
@@ -592,3 +585,9 @@ pub use poct::*;
 
 mod autolyser;
 pub use autolyser::*;
+
+mod departures;
+pub use departures::*;
+
+mod refusal;
+pub use refusal::DepartureRefusal;

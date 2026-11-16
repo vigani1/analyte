@@ -13,6 +13,8 @@ pub struct Interpretation {
     pub config: Vec<u8>,
     /// Typed contents or a specific failure.
     pub outcome: Reading,
+    /// Enabled and applied departures; absent only in legacy records predating ADR 0015.
+    pub departures: Option<analyte_model::DepartureEvidence>,
 }
 
 // Legacy versions lacked an explicit digest. New evidence records it; readers
@@ -20,12 +22,13 @@ pub struct Interpretation {
 impl Serialize for Interpretation {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut fields = serializer.serialize_struct("Interpretation", 5)?;
+        let mut fields = serializer.serialize_struct("Interpretation", 6)?;
         fields.serialize_field("driver", &self.driver)?;
         fields.serialize_field("config_version", &self.config_version)?;
         fields.serialize_field("config", &self.config)?;
         fields.serialize_field("config_digest", &crate::digest(&self.config))?;
         fields.serialize_field("outcome", &self.outcome)?;
+        fields.serialize_field("departures", &self.departures)?;
         fields.end()
     }
 }
@@ -40,6 +43,8 @@ impl<'de> Deserialize<'de> for Interpretation {
             #[serde(default)]
             config_digest: Option<analyte_model::Digest>,
             outcome: Reading,
+            #[serde(default)]
+            departures: Option<analyte_model::DepartureEvidence>,
         }
         let evidence = Evidence::deserialize(deserializer)?;
         if evidence
@@ -55,6 +60,7 @@ impl<'de> Deserialize<'de> for Interpretation {
             config_version: evidence.config_version,
             config: evidence.config,
             outcome: evidence.outcome,
+            departures: evidence.departures,
         })
     }
 }

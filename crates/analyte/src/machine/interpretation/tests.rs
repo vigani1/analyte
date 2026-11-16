@@ -5,7 +5,7 @@ use analyte_model::{Identifier, Reason};
 use analyte_store::{Attempt, Audit, FreeSpace, RevisionOutcome};
 use std::path::Path;
 
-struct Space;
+pub(super) struct Space;
 impl FreeSpace for Space {
     fn available(&self, _: &Path) -> std::io::Result<u64> {
         Ok(u64::MAX)
@@ -26,7 +26,7 @@ fn action(receipt: ReceiptId, parked: Option<i64>) -> Result<Reprocess, Error> {
     })
 }
 
-fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Error> {
+pub(super) fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Error> {
     std::fs::write(root.join("machine.toml"), definition)?;
     std::fs::write(
         root.join("site.toml"),

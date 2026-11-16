@@ -1,4 +1,4 @@
-//! Loads bounded configuration and validates settings without connection I/O.
+//! Loads bounded configuration and validates settings and local evidence without connection I/O.
 #![forbid(unsafe_code)]
 
 mod orders;
@@ -20,6 +20,19 @@ pub const MAX_FILE_BYTES: usize = 1_048_576;
 /// A config failure names its source file and actionable key.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A named machine departure failed a specific activation prerequisite.
+    #[error("{path}: departure {rule}: {reason}")]
+    Departure {
+        /// Configuration source.
+        path: String,
+        /// Stable rule tag or migration key.
+        rule: String,
+        /// Exact refusal, without payload contents.
+        reason: DepartureRefusal,
+        /// Original local I/O failure when reference resolution or reading failed.
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
     /// The original query profile was withdrawn in the configured HL7 edition.
     #[error(
         "{path}: orders.hl7: HL7 {edition} withdraws the original query messages (§{section}); legacy query is not available for this edition"
@@ -146,6 +159,24 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
             "use supported schema_version = 1",
         ));
     }
+    if value
+        .get("deviations")
+        .and_then(toml::Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                item.get("name").is_some()
+                    || item.get("key").is_some()
+                    || item.get("reason").is_some()
+            })
+        })
+    {
+        return Err(Error::Departure {
+            path: path.into(),
+            rule: "deviations".into(),
+            reason: DepartureRefusal::LegacyDeclaration,
+            source: None,
+        });
+    }
     if let Some(identity) = value.get("mappings").and_then(|v| v.get("identity")) {
         for setting in ["order_id", "order_namespace"] {
             if identity.get(setting).is_none() {
@@ -178,7 +209,7 @@ pub struct Machine {
     /// Definition identity.
     pub name: analyte_model::Identifier,
     /// Named, validated compatibility departures.
-    pub deviations: Vec<Deviation>,
+    pub deviations: Vec<MachineDeparture>,
     /// Declared evidence; validation never promotes it.
     pub evidence: Evidence,
     stack: Stack,
@@ -248,13 +279,14 @@ impl Draft {
         })
     }
 
-    /// Applies explicit replacements, validates once, then freezes the exact effective snapshot.
+    /// Applies explicit replacements, checks bounded local evidence, then freezes the exact effective snapshot.
     /// # Errors
     /// Rejects incompatible stacks, invalid endpoints, ambiguous mappings and unbounded settings.
     pub fn validate(mut self) -> Result<Validated, Error> {
         // Validate original layers too: an override must not conceal an invalid shipped definition.
         validate_machine(
             &self.machine,
+            self.paths.first().map_or("machine", String::as_str),
             self.paths.first().map_or("machine", String::as_str),
         )?;
         validate_site(
@@ -284,6 +316,9 @@ impl Draft {
         if let Some(v) = o.orders {
             self.machine.orders = Some(v);
         }
+        if let Some(v) = o.departure_scope {
+            self.machine.departure_scope = Some(v);
+        }
         if let Some(v) = o.deviations {
             self.machine.deviations = v;
         }
@@ -294,7 +329,11 @@ impl Draft {
             self.site.destination = v;
         }
         let path = self.paths.get(2).map_or("overrides", String::as_str);
-        validate_machine(&self.machine, path)?;
+        validate_machine(
+            &self.machine,
+            path,
+            self.paths.first().map_or("machine", String::as_str),
+        )?;
         validate_site(&self.site, &self.machine.transport, path)?;
         let stack = Stack::from_validated(&self.machine);
         // Preserve the existing sorted TOML layout, including explicit input settings

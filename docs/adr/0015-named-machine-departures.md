@@ -1,6 +1,6 @@
 # 0015. Typed, evidenced departures for individual machines
 
-Status: proposed, 2026-11-16
+Status: accepted, 2026-11-16; delivery scope clarified by the project lead
 
 ## Context
 
@@ -16,10 +16,9 @@ which acceptance contract a lab actually enabled.
 departures in machine configuration. Today's `Deviation { name, key, reason }`
 is attached to an allowlist of compatibility settings, not arbitrary behavior.
 It lacks typed status/packing departures and mandatory evidence per departure.
-This proposal strengthens that existing seam. It authorizes no code change
-until accepted and qualifies no real machine.
+This decision strengthens that existing seam. It qualifies no real machine.
 
-## Proposed decision
+## Decision
 
 ### One closed vocabulary
 
@@ -193,7 +192,7 @@ the enum to conceal uncertainty.
 CRLF/LF terminators and lowercase checksum digits are already explicit
 settings, covered above, not new candidates for auto-detection.
 
-## Acceptance evidence for a later implementation
+## Acceptance evidence
 
 Keep standard tests unchanged. Add paired strict/departure replay cases for
 each rule, citing its standard section and vendor evidence. Test absent versus
@@ -208,8 +207,26 @@ cases. Synthetic fixtures exercise failure paths without raising evidence.
 
 Labs can support documented differences without weakening standard defaults.
 Some machines remain parked until their meaning is established; a recording
-alone cannot supply universal clinical semantics. The later change spans
+alone cannot supply universal clinical semantics. The implementation spans
 config, interpretation evidence, delivery and admin display, but adds no plugin
 system, new protocol family or general transformation language. ADR 0003's
-safety guarantees remain unchanged. The plan is unchanged because this is a
-proposal, not a claim of shipped support.
+safety guarantees remain unchanged. Synthetic tests establish implementation
+behavior, not qualification of any installed machine.
+
+
+**Delivery clarification, project lead, 2026-11-16:** Contract v2 is outside this
+task. Framing-only ASTM packing keeps contract-v1 delivery unchanged; its applied
+ledger remains in the receipt interpretation and admin page. Delivery of
+**departure-derived HL7 final status** waits for a future contract version under
+ADR 0008 that carries this evidence explicitly. Until then these interpretations
+park with `departure-derived status requires a contract version that carries departure evidence`,
+keep original bytes and source absence, and create no delivery. This deliberate
+v1 restriction supersedes the general delivered-evidence requirement above for
+the current implementation; it is not permission to drop status provenance.
+
+New ledgers distinguish enabled declarations from actual applications. Legacy
+interpretations without a ledger remain visibly unrecorded. Bounded ledger
+failures are explicit, retain the original and prevent delivery. Patient-only
+status scope requires explicit classification, not inference from an ORU name.
+Implementation and synthetic acceptance cases are linked from the HL7 and ASTM
+decisions files. No driver or machine evidence level is raised by this acceptance.
