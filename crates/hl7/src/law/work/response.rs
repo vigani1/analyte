@@ -77,47 +77,7 @@ impl<'a> WorkResponse<'a> {
             .filter(|s| s.id() == b"OBR")
             .map(|s| law::raw(s, 2))
             .collect();
-        let mut requests = BTreeMap::new();
-        let mut action = None;
-        let mut source_specimen = b"".as_slice();
-        let mut source_container = b"".as_slice();
-        for segment in sent.segments() {
-            match segment.id() {
-                b"SPM" => {
-                    source_specimen = law::raw(segment, 2);
-                    source_container = b"";
-                    action = None;
-                }
-                b"SAC" => {
-                    source_container = law::raw(segment, 3);
-                }
-                b"ORC" => {
-                    action = match law::OrderControl::parse(law::raw(segment, 1))? {
-                        law::OrderControl::New => Some(WorkAction::New),
-                        law::OrderControl::Cancel => Some(WorkAction::Cancel),
-                        law::OrderControl::Discontinue => None,
-                        law::OrderControl::Accepted
-                        | law::OrderControl::UnableToAccept
-                        | law::OrderControl::Cancelled
-                        | law::OrderControl::UnableToCancel
-                        | law::OrderControl::StatusChange => return Err(content("ORC", 1)),
-                    };
-                }
-                b"OBR" => {
-                    let action = action.ok_or(content("ORC", 1))?;
-                    if requests
-                        .insert(
-                            law::raw(segment, 2),
-                            (action, source_specimen, source_container),
-                        )
-                        .is_some()
-                    {
-                        return Err(content("OBR", 2));
-                    }
-                }
-                _ => {}
-            }
-        }
+        let requests = sent_requests(sent)?;
         let mut decisions = Vec::new();
         let mut has_specimen = false;
         let mut response_specimen = b"".as_slice();
@@ -162,50 +122,14 @@ impl<'a> WorkResponse<'a> {
                 _ => return Err(content("ORL", 0)),
             }
 
-            let id = law::raw(s, 2);
-            if !expected.contains(&id) || !seen.insert(id) {
-                return Err(content("ORC", 2));
-            }
-            let (_, expected_specimen, expected_container) =
-                requests.get(id).ok_or(content("ORC", 2))?;
-            if !response_specimen.is_empty() && response_specimen != *expected_specimen {
-                return Err(Error::Inconsistent {
-                    segment: "SPM",
-                    field: 2,
-                });
-            }
-            if !response_container.is_empty() && response_container != *expected_container {
-                return Err(Error::Inconsistent {
-                    segment: "SAC",
-                    field: 3,
-                });
-            }
-            let status = law::OrderStatus::parse(law::raw(s, 5))?;
-            let outcome = response_outcome(law::OrderControl::parse(law::raw(s, 1))?, status)?;
-            match (requests.get(id).map(|request| &request.0), outcome) {
-                (Some(WorkAction::New), AwosOutcome::Accepted | AwosOutcome::UnableToAccept)
-                | (
-                    Some(WorkAction::Cancel),
-                    AwosOutcome::CancelAccepted | AwosOutcome::UnableToCancel,
-                ) => {}
-                (
-                    Some(WorkAction::New),
-                    AwosOutcome::CancelAccepted | AwosOutcome::UnableToCancel,
-                )
-                | (Some(WorkAction::Cancel), AwosOutcome::Accepted | AwosOutcome::UnableToAccept)
-                | (
-                    None,
-                    AwosOutcome::Accepted
-                    | AwosOutcome::UnableToAccept
-                    | AwosOutcome::CancelAccepted
-                    | AwosOutcome::UnableToCancel,
-                ) => return Err(content("ORC", 1)),
-            }
-            decisions.push(AwosDecision {
-                id: Identity(id),
-                outcome,
-                status,
-            });
+            decisions.push(parse_decision(
+                s,
+                &expected,
+                &mut seen,
+                &requests,
+                response_specimen,
+                response_container,
+            )?);
         }
         if (msa.code() == crate::AckCode::Aa) == (error_count != 0) {
             return Err(content("ERR", 0));
@@ -275,4 +199,98 @@ fn response_outcome(
         | OrderControl::Discontinue
         | OrderControl::StatusChange => Err(content("ORC", 1)),
     }
+}
+
+type Requests<'a> = BTreeMap<&'a [u8], (WorkAction, &'a [u8], &'a [u8])>;
+fn sent_requests(sent: &Message) -> Result<Requests<'_>, Error> {
+    let mut requests = BTreeMap::new();
+    let mut action = None;
+    let mut source_specimen = b"".as_slice();
+    let mut source_container = b"".as_slice();
+    for segment in sent.segments() {
+        match segment.id() {
+            b"SPM" => {
+                source_specimen = law::raw(segment, 2);
+                source_container = b"";
+                action = None;
+            }
+            b"SAC" => {
+                source_container = law::raw(segment, 3);
+            }
+            b"ORC" => {
+                action = match law::OrderControl::parse(law::raw(segment, 1))? {
+                    law::OrderControl::New => Some(WorkAction::New),
+                    law::OrderControl::Cancel => Some(WorkAction::Cancel),
+                    law::OrderControl::Discontinue => None,
+                    law::OrderControl::Accepted
+                    | law::OrderControl::UnableToAccept
+                    | law::OrderControl::Cancelled
+                    | law::OrderControl::UnableToCancel
+                    | law::OrderControl::StatusChange => return Err(content("ORC", 1)),
+                };
+            }
+            b"OBR" => {
+                let action = action.ok_or(content("ORC", 1))?;
+                if requests
+                    .insert(
+                        law::raw(segment, 2),
+                        (action, source_specimen, source_container),
+                    )
+                    .is_some()
+                {
+                    return Err(content("OBR", 2));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(requests)
+}
+
+fn parse_decision<'a>(
+    s: crate::Segment<'a>,
+    expected: &[&[u8]],
+    seen: &mut BTreeSet<&'a [u8]>,
+    requests: &Requests<'_>,
+    response_specimen: &[u8],
+    response_container: &[u8],
+) -> Result<AwosDecision<'a>, Error> {
+    let id = law::raw(s, 2);
+    if !expected.contains(&id) || !seen.insert(id) {
+        return Err(content("ORC", 2));
+    }
+    let (_, expected_specimen, expected_container) = requests.get(id).ok_or(content("ORC", 2))?;
+    if !response_specimen.is_empty() && response_specimen != *expected_specimen {
+        return Err(Error::Inconsistent {
+            segment: "SPM",
+            field: 2,
+        });
+    }
+    if !response_container.is_empty() && response_container != *expected_container {
+        return Err(Error::Inconsistent {
+            segment: "SAC",
+            field: 3,
+        });
+    }
+    let status = law::OrderStatus::parse(law::raw(s, 5))?;
+    let outcome = response_outcome(law::OrderControl::parse(law::raw(s, 1))?, status)?;
+    match (requests.get(id).map(|request| &request.0), outcome) {
+        (Some(WorkAction::New), AwosOutcome::Accepted | AwosOutcome::UnableToAccept)
+        | (Some(WorkAction::Cancel), AwosOutcome::CancelAccepted | AwosOutcome::UnableToCancel) => {
+        }
+        (Some(WorkAction::New), AwosOutcome::CancelAccepted | AwosOutcome::UnableToCancel)
+        | (Some(WorkAction::Cancel), AwosOutcome::Accepted | AwosOutcome::UnableToAccept)
+        | (
+            None,
+            AwosOutcome::Accepted
+            | AwosOutcome::UnableToAccept
+            | AwosOutcome::CancelAccepted
+            | AwosOutcome::UnableToCancel,
+        ) => return Err(content("ORC", 1)),
+    }
+    Ok(AwosDecision {
+        id: Identity(id),
+        outcome,
+        status,
+    })
 }

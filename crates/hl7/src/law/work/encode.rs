@@ -187,30 +187,7 @@ pub fn work_order_with_profile(
     }
     let mut wire = Wire::new(options.limits.message_bytes, b'|');
     header(&mut wire, address, response, capabilities)?;
-    if let Some(patient) = patient {
-        if !capabilities.patient {
-            return Err(content("PID", 0));
-        }
-        let mut fields: [&[u8]; 35] = [b""; 35];
-        for (position, value) in [
-            (3, Some(patient.identifiers)),
-            (5, Some(patient.name)),
-            (7, patient.birth),
-            (8, patient.sex),
-            (10, patient.race),
-            (35, patient.taxonomy),
-        ] {
-            set_field(&mut fields, position, value, "PID")?;
-        }
-        segment(&mut wire, b"PID", &fields)?;
-        notes(&mut wire, patient.notes, &mut 0)?;
-        if let Some(visit) = patient.visit {
-            let mut fields: [&[u8]; 3] = [b""; 3];
-            set_field(&mut fields, 2, Some(visit.class), "PV1")?;
-            set_field(&mut fields, 3, visit.location, "PV1")?;
-            segment(&mut wire, b"PV1", &fields)?;
-        }
-    }
+    encode_patient(&mut wire, patient, capabilities)?;
     let mut groups: BTreeMap<(&[u8], &[u8]), Vec<&Awos<'_>>> = BTreeMap::new();
     for awos in work {
         groups
@@ -219,177 +196,9 @@ pub fn work_order_with_profile(
             .push(awos);
     }
     for (ordinal, group) in groups.values().enumerate() {
-        let awos = group.first().ok_or(content("SPM", 0))?;
-        if group.iter().any(|other| {
-            other.specimen_type != awos.specimen_type
-                || other.role != awos.role
-                || other.specimen_details != awos.specimen_details
-                || other.container_details != awos.container_details
-        }) {
-            return Err(content("SPM", 4));
-        }
-        let sequence = ordinal.checked_add(1).ok_or(content("SPM", 1))?.to_string();
-        let mut specimen: [&[u8]; 27] = [b""; 27];
-        for (position, value) in [
-            (1, Some(sequence.as_bytes())),
-            (2, capabilities.specimen.then_some(awos.specimen)),
-            (4, Some(awos.specimen_type)),
-            (
-                11,
-                Some(match awos.role {
-                    b"P" => b"P^^HL70369".as_slice(),
-                    b"Q" => b"Q^^HL70369",
-                    _ => return Err(content("SPM", 11)),
-                }),
-            ),
-        ] {
-            set_field(&mut specimen, position, value, "SPM")?;
-        }
-        if let Some(details) = awos.specimen_details {
-            for (position, value) in [
-                (3, details.parents),
-                (7, details.collection_method),
-                (8, details.source_site),
-                (9, details.source_modifier),
-                (16, details.risk),
-                (17, details.collection_time),
-                (18, details.receipt_time),
-                (27, details.container_type),
-            ] {
-                set_field(&mut specimen, position, value, "SPM")?;
-            }
-        }
-        segment(&mut wire, b"SPM", &specimen)?;
-        let mut note_count = 0usize;
+        encode_specimen_group(&mut wire, group, ordinal, capabilities)?;
         for awos in group {
-            if let Some(content) = awos.notes {
-                notes(&mut wire, content.specimen, &mut note_count)?;
-            }
-        }
-        let mut container: [&[u8]; 29] = [b""; 29];
-        set_field(&mut container, 3, Some(awos.container), "SAC")?;
-        if let Some(details) = awos.container_details {
-            for (position, value) in [
-                (4, details.parent),
-                (9, details.carrier_type),
-                (10, details.carrier),
-                (11, details.carrier_position),
-                (13, details.tray),
-                (14, details.tray_position),
-                (15, details.location),
-                (21, details.container_volume),
-                (22, details.specimen_volume),
-                (24, details.volume_units),
-                (29, details.dilution),
-            ] {
-                // C.11 excludes carrier/tray identification when SAC-3 is supplied.
-                if awos.container.is_empty() || !matches!(position, 10 | 11 | 13 | 14 | 15) {
-                    set_field(&mut container, position, value, "SAC")?;
-                }
-            }
-        }
-        segment(&mut wire, b"SAC", &container)?;
-        let mut note_count = 0usize;
-        for awos in group {
-            if let Some(content) = awos.notes {
-                notes(&mut wire, content.container, &mut note_count)?;
-            }
-        }
-        for awos in group {
-            let control = match awos.action {
-                WorkAction::New => law::OrderControl::New,
-                WorkAction::Cancel => law::OrderControl::Cancel,
-            };
-            let details = awos.order_details.copied().unwrap_or_default();
-            let mut order: [&[u8]; 21] = [b""; 21];
-            for (position, value) in [
-                (1, Some(control.as_bytes())),
-                (4, details.group),
-                (9, awos.transaction_time.or(response.timestamp.get(..14))),
-                (21, details.facility),
-            ] {
-                set_field(&mut order, position, value, "ORC")?;
-            }
-            segment(&mut wire, b"ORC", &order)?;
-            if let Some(content) = awos.notes {
-                notes(&mut wire, content.order, &mut 0)?;
-            }
-            let instruction = awos.instructions;
-            if let Some(priority) = instruction.priority {
-                if !capabilities.priority {
-                    return Err(content("TQ1", 9));
-                }
-                safe(priority, "TQ1", 9, 250)?;
-                segment(
-                    &mut wire,
-                    b"TQ1",
-                    &[b"", b"", b"", b"", b"", b"", b"", b"", priority],
-                )?;
-            }
-            let mut request: [&[u8]; 49] = [b""; 49];
-            for (position, value) in [
-                (2, Some(awos.id)),
-                (4, Some(awos.test)),
-                (16, details.provider),
-                (49, details.result_handling),
-            ] {
-                set_field(&mut request, position, value, "OBR")?;
-            }
-            segment(&mut wire, b"OBR", &request)?;
-            if instruction.dilution.is_some()
-                || instruction.rerun_dilution.is_some()
-                || instruction.predilution_content.is_some()
-                || instruction.consumption.is_some()
-                || instruction.dilution_type.is_some()
-                || instruction.repeat.is_some()
-                || instruction.automatic_repeat.is_some()
-                || instruction.reflex.is_some()
-            {
-                if (instruction.dilution.is_some()
-                    || instruction.rerun_dilution.is_some()
-                    || instruction.predilution_content.is_some()
-                    || instruction.dilution_type.is_some())
-                    && !capabilities.dilution
-                {
-                    return Err(content("TCD", 2));
-                }
-                if instruction.repeat.is_some() && !capabilities.manager_repeat {
-                    return Err(content("TCD", 8));
-                }
-                if (instruction.automatic_repeat.is_some() || instruction.reflex.is_some())
-                    && !capabilities.repeat_control
-                {
-                    return Err(content("TCD", 6));
-                }
-                for (value, field) in [(instruction.dilution, 2), (instruction.repeat, 8)] {
-                    if let Some(value) = value {
-                        safe(value, "TCD", field, 250)?;
-                    }
-                }
-                let permission = |value| match value {
-                    Some(true) => b"Y".as_slice(),
-                    Some(false) => b"N",
-                    None => b"",
-                };
-                let mut details: [&[u8]; 11] = [b""; 11];
-                for (position, value) in [
-                    (1, Some(awos.test)),
-                    (2, instruction.dilution),
-                    (3, instruction.rerun_dilution),
-                    (5, instruction.predilution_content),
-                    (6, Some(permission(instruction.automatic_repeat))),
-                    (7, Some(permission(instruction.reflex))),
-                    (8, instruction.repeat),
-                    (9, instruction.consumption),
-                    (11, instruction.dilution_type),
-                ] {
-                    set_field(&mut details, position, value, "TCD")?;
-                }
-                segment(&mut wire, b"TCD", &details)?;
-            }
-            if let Some(content) = awos.notes {
-                notes(&mut wire, content.request, &mut 0)?;
-            }
+            encode_awos(&mut wire, awos, response, capabilities)?;
         }
     }
     let message = law::parse_message(&wire.bytes, options)?;
@@ -465,4 +274,239 @@ pub fn negative_work(
     law::Profile::for_peer(Capabilities::default())
         .validate_message(&message, law::ControlDirection::Send)?;
     Ok(message)
+}
+
+fn encode_patient(
+    wire: &mut Wire,
+    patient: Option<PatientInfo<'_>>,
+    capabilities: Capabilities,
+) -> Result<(), Error> {
+    if let Some(patient) = patient {
+        if !capabilities.patient {
+            return Err(content("PID", 0));
+        }
+        let mut fields: [&[u8]; 35] = [b""; 35];
+        for (position, value) in [
+            (3, Some(patient.identifiers)),
+            (5, Some(patient.name)),
+            (7, patient.birth),
+            (8, patient.sex),
+            (10, patient.race),
+            (35, patient.taxonomy),
+        ] {
+            set_field(&mut fields, position, value, "PID")?;
+        }
+        segment(wire, b"PID", &fields)?;
+        notes(wire, patient.notes, &mut 0)?;
+        if let Some(visit) = patient.visit {
+            let mut fields: [&[u8]; 3] = [b""; 3];
+            set_field(&mut fields, 2, Some(visit.class), "PV1")?;
+            set_field(&mut fields, 3, visit.location, "PV1")?;
+            segment(wire, b"PV1", &fields)?;
+        }
+    }
+    Ok(())
+}
+
+fn encode_awos(
+    wire: &mut Wire,
+    awos: &Awos<'_>,
+    response: Response<'_>,
+    capabilities: Capabilities,
+) -> Result<(), Error> {
+    let control = match awos.action {
+        WorkAction::New => law::OrderControl::New,
+        WorkAction::Cancel => law::OrderControl::Cancel,
+    };
+    let details = awos.order_details.copied().unwrap_or_default();
+    let mut order: [&[u8]; 21] = [b""; 21];
+    for (position, value) in [
+        (1, Some(control.as_bytes())),
+        (4, details.group),
+        (9, awos.transaction_time.or(response.timestamp.get(..14))),
+        (21, details.facility),
+    ] {
+        set_field(&mut order, position, value, "ORC")?;
+    }
+    segment(wire, b"ORC", &order)?;
+    if let Some(content) = awos.notes {
+        notes(wire, content.order, &mut 0)?;
+    }
+    let instruction = awos.instructions;
+    if let Some(priority) = instruction.priority {
+        if !capabilities.priority {
+            return Err(content("TQ1", 9));
+        }
+        safe(priority, "TQ1", 9, 250)?;
+        segment(
+            wire,
+            b"TQ1",
+            &[b"", b"", b"", b"", b"", b"", b"", b"", priority],
+        )?;
+    }
+    let mut request: [&[u8]; 49] = [b""; 49];
+    for (position, value) in [
+        (2, Some(awos.id)),
+        (4, Some(awos.test)),
+        (16, details.provider),
+        (49, details.result_handling),
+    ] {
+        set_field(&mut request, position, value, "OBR")?;
+    }
+    segment(wire, b"OBR", &request)?;
+    encode_instructions(wire, awos, instruction, capabilities)?;
+    if let Some(content) = awos.notes {
+        notes(wire, content.request, &mut 0)?;
+    }
+    Ok(())
+}
+
+fn encode_instructions(
+    wire: &mut Wire,
+    awos: &Awos<'_>,
+    instruction: Instructions<'_>,
+    capabilities: Capabilities,
+) -> Result<(), Error> {
+    if instruction.dilution.is_some()
+        || instruction.rerun_dilution.is_some()
+        || instruction.predilution_content.is_some()
+        || instruction.consumption.is_some()
+        || instruction.dilution_type.is_some()
+        || instruction.repeat.is_some()
+        || instruction.automatic_repeat.is_some()
+        || instruction.reflex.is_some()
+    {
+        if (instruction.dilution.is_some()
+            || instruction.rerun_dilution.is_some()
+            || instruction.predilution_content.is_some()
+            || instruction.dilution_type.is_some())
+            && !capabilities.dilution
+        {
+            return Err(content("TCD", 2));
+        }
+        if instruction.repeat.is_some() && !capabilities.manager_repeat {
+            return Err(content("TCD", 8));
+        }
+        if (instruction.automatic_repeat.is_some() || instruction.reflex.is_some())
+            && !capabilities.repeat_control
+        {
+            return Err(content("TCD", 6));
+        }
+        for (value, field) in [(instruction.dilution, 2), (instruction.repeat, 8)] {
+            if let Some(value) = value {
+                safe(value, "TCD", field, 250)?;
+            }
+        }
+        let permission = |value| match value {
+            Some(true) => b"Y".as_slice(),
+            Some(false) => b"N",
+            None => b"",
+        };
+        let mut details: [&[u8]; 11] = [b""; 11];
+        for (position, value) in [
+            (1, Some(awos.test)),
+            (2, instruction.dilution),
+            (3, instruction.rerun_dilution),
+            (5, instruction.predilution_content),
+            (6, Some(permission(instruction.automatic_repeat))),
+            (7, Some(permission(instruction.reflex))),
+            (8, instruction.repeat),
+            (9, instruction.consumption),
+            (11, instruction.dilution_type),
+        ] {
+            set_field(&mut details, position, value, "TCD")?;
+        }
+        segment(wire, b"TCD", &details)?;
+    }
+    Ok(())
+}
+
+fn encode_specimen_group(
+    wire: &mut Wire,
+    group: &[&Awos<'_>],
+    ordinal: usize,
+    capabilities: Capabilities,
+) -> Result<(), Error> {
+    let awos = group.first().ok_or(content("SPM", 0))?;
+    if group.iter().any(|other| {
+        other.specimen_type != awos.specimen_type
+            || other.role != awos.role
+            || other.specimen_details != awos.specimen_details
+            || other.container_details != awos.container_details
+    }) {
+        return Err(content("SPM", 4));
+    }
+    let sequence = ordinal.checked_add(1).ok_or(content("SPM", 1))?.to_string();
+    let mut specimen: [&[u8]; 27] = [b""; 27];
+    for (position, value) in [
+        (1, Some(sequence.as_bytes())),
+        (2, capabilities.specimen.then_some(awos.specimen)),
+        (4, Some(awos.specimen_type)),
+        (
+            11,
+            Some(match awos.role {
+                b"P" => b"P^^HL70369".as_slice(),
+                b"Q" => b"Q^^HL70369",
+                _ => return Err(content("SPM", 11)),
+            }),
+        ),
+    ] {
+        set_field(&mut specimen, position, value, "SPM")?;
+    }
+    if let Some(details) = awos.specimen_details {
+        for (position, value) in [
+            (3, details.parents),
+            (7, details.collection_method),
+            (8, details.source_site),
+            (9, details.source_modifier),
+            (16, details.risk),
+            (17, details.collection_time),
+            (18, details.receipt_time),
+            (27, details.container_type),
+        ] {
+            set_field(&mut specimen, position, value, "SPM")?;
+        }
+    }
+    segment(wire, b"SPM", &specimen)?;
+    let mut note_count = 0usize;
+    for awos in group {
+        if let Some(content) = awos.notes {
+            notes(wire, content.specimen, &mut note_count)?;
+        }
+    }
+    encode_container(wire, awos, group)?;
+    Ok(())
+}
+
+fn encode_container(wire: &mut Wire, awos: &Awos<'_>, group: &[&Awos<'_>]) -> Result<(), Error> {
+    let mut container: [&[u8]; 29] = [b""; 29];
+    set_field(&mut container, 3, Some(awos.container), "SAC")?;
+    if let Some(details) = awos.container_details {
+        for (position, value) in [
+            (4, details.parent),
+            (9, details.carrier_type),
+            (10, details.carrier),
+            (11, details.carrier_position),
+            (13, details.tray),
+            (14, details.tray_position),
+            (15, details.location),
+            (21, details.container_volume),
+            (22, details.specimen_volume),
+            (24, details.volume_units),
+            (29, details.dilution),
+        ] {
+            // C.11 excludes carrier/tray identification when SAC-3 is supplied.
+            if awos.container.is_empty() || !matches!(position, 10 | 11 | 13 | 14 | 15) {
+                set_field(&mut container, position, value, "SAC")?;
+            }
+        }
+    }
+    segment(wire, b"SAC", &container)?;
+    let mut note_count = 0usize;
+    for awos in group {
+        if let Some(content) = awos.notes {
+            notes(wire, content.container, &mut note_count)?;
+        }
+    }
+    Ok(())
 }
