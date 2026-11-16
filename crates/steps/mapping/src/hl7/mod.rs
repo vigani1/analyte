@@ -2,6 +2,7 @@
 use crate::inbound::{grouping, source};
 use crate::{Error, Input, Output, Position, hl7_edition, is_law};
 use analyte_config::Validated;
+mod departures;
 mod display;
 mod orders;
 mod report;
@@ -83,5 +84,6 @@ fn map_checked(
     source.attach_comments()?;
     let mut output = grouping::message(&source, config, input, None)?;
     report::qualify(message, &mut output)?;
+    departures::apply(message, config, &mut output)?;
     Ok(output)
 }

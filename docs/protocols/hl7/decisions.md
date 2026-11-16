@@ -438,3 +438,40 @@ nonempty encodings in withdrawn MSA/ERR fields (2.8.2 §2.14.8 and 2.9.1 §2.13.
 This is the declared profile's refusal policy, not a claim that explicit null
 carries clinical content. View regressions and the O22 response regressions in
 [edition_orders.rs](../../../crates/protocols/hl7/tests/edition_orders.rs) cover it.
+
+## Named missing-status interpretations and contract-v1 parking
+
+- **what**: Keep the strict report diagnostics above. Under
+  [ADR 0015](../../adr/0015-named-machine-departures.md), validated
+  `Hl7AbsentObr25MeansFinal` and `Hl7AbsentObx11MeansFinal` declarations can
+  discharge only their own absent/empty field diagnostics for generic ORU^R01
+  patient uploads in the declared model, firmware, installed mode and edition.
+  Mapping requires explicit patient classification; control, calibration and
+  unknown classifications do not inherit this interpretation. Null, malformed
+  and populated statuses are never replaced. Both guarantees are needed for
+  both omissions. Populated non-final statuses in a final-only scope park as a
+  `departure-conflict`; partial/failed observation evidence cannot substantiate
+  a final consolidated report. No observation count establishes completion.
+- **why**: Documented omission meaning is distinct from received status and from
+  clinical release. OBR interpretation does not assign observation status; OBX
+  interpretation does not establish panel completion. Identity, OBR-4, OBX-3,
+  value type, edition-specific report time, units and dilution stay strict.
+- **delivery decision, project lead, 2026-11-16**: No contract v2 is introduced
+  here. Any departure-derived final status must park with the specific reason
+  `departure-derived status requires a contract version that carries departure evidence`.
+  The outbox remains empty; original bytes, source absence and derived meaning
+  remain protected interpretation evidence. A future contract is a separate
+  decision under [ADR 0008](../../adr/0008-contract-with-lab-apps.md). Contract
+  v1's unknown-field behavior must not hide this clinically meaningful origin.
+- **evidence and admin**: Each new interpretation stores enabled declaration
+  snapshots and its applied list, including empty lists and parked outcomes.
+  The machine page shows the active digest, scope, references, level and fixed
+  meaning. Receipt interpretation pages distinguish source status from a
+  conspicuous final-from-documentation label. Legacy missing ledgers are
+  labelled unrecorded. An incomplete bounded ledger stops delivery visibly.
+- **source**: HL7 2.3.1 §7.3.2; later supported editions §§7.4.1.25 and
+  7.4.2.11; modern §7.4.1.22; ADRs 0003, 0005, 0008 and 0015.
+- **tests**: [paired mapping cases](../../../crates/steps/mapping/tests/mapping/departures.rs),
+  [durable v1 refusal](../../../crates/analyte/src/machine/interpretation/departure_tests.rs),
+  [admin origin labels](../../../crates/analyte/src/admin/departures.rs).
+  These are synthetic tests; no real analyzer gains an evidence level.

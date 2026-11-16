@@ -20,7 +20,8 @@ remains unresolved. No order download, cancellation or rerun qualification.
 
 ## Departures
 
-None.
+None. `deviations = []` selects strict standard behavior. No installed departure
+scope or vendor omission guarantee is claimed; synthetic replay cannot supply one.
 
 ## Evidence
 

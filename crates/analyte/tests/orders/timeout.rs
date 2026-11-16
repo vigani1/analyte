@@ -13,7 +13,12 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
     std::fs::write(
         &definition,
         std::fs::read_to_string(&definition)?
-            .replace("send_timeout_ms = 15000", "send_timeout_ms = 50").replace("deviations = []", "deviations = [{name=\"synthetic-fast-timeout\",key=\"dialog.send_timeout_ms\",reason=\"Shortened loopback failure-path timer\"}]"),
+            .replace("send_timeout_ms = 15000", "send_timeout_ms = 50")
+            .replace(
+                "deviations = []",
+                &include_str!("../../../core/config/tests/fixtures/departure.toml")
+                    .replace("astm_frame_limit", "astm_send_timeout"),
+            ),
     )?;
     let receiver_path = temp.path().join("receiver.db");
     let reference = Reference::start(

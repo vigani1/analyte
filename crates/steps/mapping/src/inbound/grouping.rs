@@ -345,7 +345,9 @@ fn append_result(
                             | Problem::InvalidTime
                             | Problem::NoObservations
                             | Problem::UnsupportedLawStatusOnly
-                            | Problem::UnqualifiedHl7Report => None,
+                            | Problem::UnqualifiedHl7Report
+                            | Problem::DepartureConflict
+                            | Problem::DepartureDerivedStatusRequiresContract => None,
                         })
                         .unwrap_or_else(|| "unknown test mapping".into()),
                 )

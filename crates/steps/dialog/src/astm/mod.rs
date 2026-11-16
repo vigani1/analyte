@@ -1,5 +1,5 @@
 //! Runs ASTM stop-and-wait connections over serial or TCP (LIS01-A2 6/8).
-use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, HexPolicy, NAK};
+use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, NAK};
 use std::{collections::VecDeque, time::Duration};
 
 mod types;
@@ -11,6 +11,7 @@ struct Receive {
     previous: Option<Frame>,
     record: Vec<u8>,
     count: u64,
+    records: usize,
 }
 
 #[derive(Debug)]
@@ -54,7 +55,7 @@ impl Dialog {
     /// Creates a neutral connection with capacity disabled.
     #[must_use]
     pub fn new(config: Config, epoch: Epoch) -> Self {
-        let decoder = Decoder::new(config.limit, HexPolicy::Strict);
+        let decoder = Decoder::new(config.limit, config.checksum_hex);
         Self {
             config,
             epoch,
@@ -142,6 +143,9 @@ impl Dialog {
             return Err(Error::Limit);
         }
         for record in records {
+            if !astm::RecordBoundaries::Separate.accepts(record, true) {
+                return Err(astm::Error::RecordBoundary.into());
+            }
             bytes = bytes.checked_add(record.len()).ok_or(Error::Limit)?;
             if bytes > self.config.bytes {
                 return Err(Error::Limit);
@@ -214,6 +218,7 @@ impl Dialog {
                 expected: FrameNumber::FIRST,
                 previous: None,
                 record: Vec::new(),
+                records: 0,
                 count: 0,
             });
             out.push(Action::Write(vec![ACK]));
@@ -281,11 +286,10 @@ impl Dialog {
                     out.push(Action::Write(vec![NAK]));
                     self.set_timer(self.config.timers.receive);
                     self.state = State::Receiving(receive);
-                } else if frame
-                    .text()
-                    .iter()
-                    .position(|b| *b == b'\r')
-                    .is_some_and(|i| !frame.is_final() || i.saturating_add(1) != frame.text().len())
+                } else if !self
+                    .config
+                    .record_boundaries
+                    .accepts(frame.text(), frame.is_final())
                 {
                     out.extend([
                         Action::Rejected(astm::Error::RecordBoundary, frame.raw().to_vec()),
@@ -293,8 +297,13 @@ impl Dialog {
                     ]);
                     self.state = State::Receiving(receive);
                     self.set_timer(self.config.timers.receive);
-                } else if receive.count
-                    >= u64::try_from(self.config.frames).map_err(|_| Error::Exhausted)?
+                } else if (self.config.record_boundaries == astm::RecordBoundaries::Packed
+                    && receive
+                        .records
+                        .checked_add(frame.text().iter().filter(|b| **b == astm::CR).count())
+                        .is_none_or(|n| n > self.config.frames))
+                    || receive.count
+                        >= u64::try_from(self.config.frames).map_err(|_| Error::Exhausted)?
                     || receive
                         .record
                         .len()
@@ -357,8 +366,28 @@ impl Dialog {
             if success {
                 receive.count = receive.count.checked_add(1).ok_or(Error::Exhausted)?;
                 receive.record.extend_from_slice(frame.text());
-                if frame.is_final() {
-                    out.push(Action::Record(std::mem::take(&mut receive.record)));
+                match self.config.record_boundaries {
+                    astm::RecordBoundaries::Separate => {
+                        if frame.is_final() {
+                            out.push(Action::Record(std::mem::take(&mut receive.record)));
+                        }
+                    }
+                    astm::RecordBoundaries::Packed => {
+                        receive.records = receive
+                            .records
+                            .checked_add(frame.text().iter().filter(|b| **b == astm::CR).count())
+                            .ok_or(Error::Exhausted)?;
+                        let complete = receive
+                            .record
+                            .iter()
+                            .rposition(|b| *b == astm::CR)
+                            .map_or(0, |i| i.saturating_add(1));
+                        let tail = receive.record.split_off(complete);
+                        for record in receive.record.split_inclusive(|b| *b == astm::CR) {
+                            out.push(Action::Record(record.to_vec()));
+                        }
+                        receive.record = tail;
+                    }
                 }
                 receive.expected = frame.number().next();
                 receive.previous = Some(frame);

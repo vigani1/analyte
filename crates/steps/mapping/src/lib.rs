@@ -159,6 +159,9 @@ pub struct Position {
 /// Mapping failure: keep the raw receipt and park it without delivering partial output.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A validated declaration could not be represented as bounded provenance.
+    #[error("{0}")]
+    DepartureEvidence(#[from] analyte_config::Error),
     /// The validated config belongs to another syntax family.
     #[error("configuration syntax does not match the parsed message")]
     Syntax,
@@ -218,6 +221,10 @@ pub struct Input {
 pub enum Problem {
     /// A required HL7 report field or supported observation state is not established.
     UnqualifiedHl7Report,
+    /// Populated source status contradicts an enabled final-only guarantee.
+    DepartureConflict,
+    /// Version 1 cannot carry the provenance of departure-derived final status.
+    DepartureDerivedStatusRequiresContract,
 
     /// Source value does not fit the configured test expectation.
     ValueKindMismatch {
@@ -305,6 +312,8 @@ pub struct Output {
     pub findings: Vec<Finding>,
     /// All notes once, with their parents; result parts also expose applicable text.
     pub comments: Vec<SourceComment>,
+    /// Actual departure applications, separately from enabled configuration.
+    pub applied_departures: Vec<AppliedDeparture>,
     evidence_budget: usize,
 }
 
@@ -327,6 +336,14 @@ impl Output {
     #[must_use]
     pub fn requires_parking(&self) -> bool {
         !self.findings.is_empty()
+            || self
+                .applied_departures
+                .iter()
+                .any(|entry| match entry.meaning {
+                    DepartureMeaning::FinalReportFromDocumentation
+                    | DepartureMeaning::FinalObservationFromDocumentation => true,
+                    DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => false,
+                })
             || !self.unmapped.is_empty()
             || self.results.iter().any(|r| r.content.requires_parking())
     }

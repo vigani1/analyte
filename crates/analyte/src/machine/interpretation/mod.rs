@@ -276,14 +276,23 @@ pub(crate) fn unpack<'a>(
         }
         Stack::Law(settings) => unpack_mllp(raw, settings.frame_limit()),
         Stack::Astm(analyte_config::RecordTransport::Stream(settings)) => {
-            use analyte_framing::astm::{Decoder, Event, HexPolicy, Limit};
-            let mut decoder = Decoder::new(Limit::new(settings.frame_limit())?, HexPolicy::Strict);
+            use analyte_framing::astm::{Decoder, Event, Limit};
+            let mut decoder = Decoder::new(
+                Limit::new(settings.frame_limit())?,
+                settings.checksum_policy(),
+            );
             let mut payload = Vec::new();
             let mut final_frame = false;
             for byte in raw {
                 if let Some(event) = decoder.push(*byte) {
                     match event {
                         Event::Frame(frame) => {
+                            if !settings
+                                .record_boundaries()
+                                .accepts(frame.text(), frame.is_final())
+                            {
+                                return Err(analyte_framing::astm::Error::RecordBoundary.into());
+                            }
                             if payload
                                 .len()
                                 .checked_add(frame.text().len())
@@ -333,3 +342,8 @@ fn unpack_mllp(raw: &[u8], frame_limit: usize) -> Result<std::borrow::Cow<'_, [u
         .ok_or_else(|| invalid("MLLP payload"))?
         .into())
 }
+
+pub(crate) mod departure_evidence;
+
+#[cfg(test)]
+mod departure_tests;

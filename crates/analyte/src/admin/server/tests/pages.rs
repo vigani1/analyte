@@ -149,6 +149,7 @@ async fn start_pages_server(
     let mut machines = Vec::new();
     for index in 0..61 {
         machines.push(Machine {
+            departure_html: String::new(),
             id: Identifier::new(&format!("machine-{index}"))?,
             running: Arc::new(AtomicBool::new(true)),
         });

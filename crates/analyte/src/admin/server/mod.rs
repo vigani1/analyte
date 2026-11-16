@@ -25,6 +25,7 @@ use tokio::sync::{Semaphore, watch};
 pub(super) struct Machine {
     pub(super) id: Identifier,
     pub(super) running: Arc<AtomicBool>,
+    pub(super) departure_html: String,
 }
 
 pub(super) struct Context {
@@ -66,11 +67,14 @@ pub(crate) async fn prepare(
     let machines: Vec<_> = program
         .machines()
         .iter()
-        .map(|m| Machine {
-            id: m.id().clone(),
-            running: Arc::new(AtomicBool::new(true)),
+        .map(|m| {
+            Ok(Machine {
+                departure_html: super::departures::enabled(&m.snapshot)?,
+                id: m.id().clone(),
+                running: Arc::new(AtomicBool::new(true)),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, Error>>()?;
     let owners = machines
         .iter()
         .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
@@ -143,6 +147,7 @@ fn router(state: Arc<Context>) -> Router {
             get(super::retention::show).post(super::retention::hold),
         )
         .route("/machines", get(super::pages::machines))
+        .route("/receipts/{id}/departures", get(super::departures::receipt))
         .route("/parked", get(super::pages::parked))
         .route("/parked/{id}", get(super::pages::detail))
         .route("/parked/{id}/raw", post(super::pages::raw))

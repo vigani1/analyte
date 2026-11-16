@@ -30,6 +30,7 @@ pub struct AstmStack {
     pub(super) transport: StreamTransport,
     /// Maximum frame bytes including overhead.
     pub(super) frame_limit: usize,
+    record_boundaries: analyte_framing::astm::RecordBoundaries,
     /// Required LIS01 checksum policy.
     pub(super) checksum_hex: ChecksumHex,
     /// Host receive and send deadlines.
@@ -128,6 +129,19 @@ impl AstmStack {
     pub fn frame_limit(&self) -> usize {
         self.frame_limit
     }
+    /// Returns the inbound record policy selected only by a validated departure.
+    #[must_use]
+    pub fn record_boundaries(&self) -> analyte_framing::astm::RecordBoundaries {
+        self.record_boundaries
+    }
+    /// Returns the selected digit-case policy without relaxing checksum correctness.
+    #[must_use]
+    pub fn checksum_policy(&self) -> analyte_framing::astm::HexPolicy {
+        match self.checksum_hex {
+            ChecksumHex::Strict => analyte_framing::astm::HexPolicy::Strict,
+            ChecksumHex::AcceptLowercase => analyte_framing::astm::HexPolicy::AcceptLowercase,
+        }
+    }
     /// Returns the validated checksum hex setting.
     #[must_use]
     pub fn checksum_hex(&self) -> ChecksumHex {
@@ -165,6 +179,15 @@ pub(super) fn build(machine: &MachineDocument, timeouts: DialogTimeouts) -> Astm
     AstmStack {
         transport: stream(&machine.transport),
         frame_limit: machine.framing.limit,
+        record_boundaries: if machine
+            .deviations
+            .iter()
+            .any(|d| matches!(d, MachineDeparture::AstmPackedRecordsInFrame(_)))
+        {
+            analyte_framing::astm::RecordBoundaries::Packed
+        } else {
+            analyte_framing::astm::RecordBoundaries::Separate
+        },
         timeouts,
         checksum_hex: machine
             .framing

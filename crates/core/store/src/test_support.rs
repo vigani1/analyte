@@ -46,6 +46,7 @@ pub(crate) fn receipt(raw: &[u8]) -> Result<ReceiptMetadata, Box<dyn std::error:
 
 pub(crate) fn interpretation() -> Result<Interpretation, Box<dyn std::error::Error>> {
     Ok(Interpretation {
+        departures: None,
         driver: receipt(b"")?.driver,
         config_version: Identifier::new("1")?,
         config: b"config".to_vec(),

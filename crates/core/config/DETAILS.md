@@ -5,13 +5,17 @@ qualified machine drivers or evidence of standards conformance.
 
 Call `Draft::load((path, text), (path, text), (path, text))`, then `validate()`.
 The caller bounds file reads to `MAX_FILE_BYTES + 1` before supplying text.
-The loader also rejects oversized strings before parsing. It performs no I/O.
+The loader also rejects oversized strings before parsing. Validation resolves
+bounded local departure recording references through the existing ADR 0009
+reader; it never fetches a remote manual or recording.
 
 The shipped definition owns protocol choices, mappings, vendor departures and
 evidence. Site TOML owns `endpoint` and `destination`. Local overrides contain
 `schema_version = 1` plus optional replacement sections. Sections and lists
 replace in full; there is no implicit array merging or expression language.
-All three layers reject unknown keys. Overrides cannot change evidence.
+All three layers reject unknown keys. Overrides cannot change the machine-wide
+evidence claim. Replacing departure declarations requires complete per-rule
+evidence and matching selected settings.
 
 `examples/astm.toml` and `examples/hl7.toml` use `examples/site.toml` and an empty
 local layer (`schema_version = 1`). The serial example may replace the synthetic
@@ -19,7 +23,8 @@ site endpoint with `COM9` or `/dev/ttyUSB0`. TCP endpoints require numeric socke
 addresses, including an explicit bind address for servers.
 
 Resource ceilings: 1 MiB per input layer; 4096 entries per mapping table;
-128 deviations/capabilities and 128 references per capability; 16 MiB messages;
+12 departures, 16 references per departure and 16384 bytes per declaration
+snapshot; 128 capabilities and 128 references per capability; 16 MiB messages;
 65536 records; 1024 fields/repetitions/components; 300000 ms deadlines.
 Individual identifiers use the model crate's bounded text types.
 
@@ -43,7 +48,10 @@ capability; an enabled capability carries its required layout and namespace.
 HL7 processing IDs, fixed priority codes and VIDAS sample limits are typed.
 Custom ASTM priority spelling remains configurable.
 
-The existing TOML layout is unchanged. Its document type is private to loading
+Protocol TOML layout is unchanged. ADR 0015 explicitly replaces the contents of
+nonempty `deviations` lists with typed, scoped declarations. Old free-text
+name/key/reason entries are rejected with a migration error, never converted to
+evidence. See `machines/README.md` for the declaration vocabulary. Its document type is private to loading
 and validation. Original and overridden documents are checked before building the
 runtime stack, so an override cannot conceal an invalid definition. The resolved
 TOML value is retained only for canonical serialization/provenance, never for

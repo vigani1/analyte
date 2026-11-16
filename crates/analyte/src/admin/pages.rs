@@ -95,9 +95,11 @@ pub(super) async fn machines(
                         "stopped"
                     }
                 ));
+                html.push_str(&machine.departure_html);
                 let mut cursor = String::new();
                 let until = deadline();
                 let mut last = None;
+                let mut evidence_links = 0usize;
                 loop {
                     let rows = state
                         .store
@@ -110,6 +112,10 @@ pub(super) async fn machines(
                     for receipt in rows {
                         if receipt.machine == machine.id {
                             last = last.max(Some(receipt.received_at));
+                            if evidence_links < PAGE {
+                            evidence_links = evidence_links.saturating_add(1);
+                            html.push_str(&format!("<p><a href=\"/receipts/{}/departures\">Receipt {} interpretation evidence</a></p>",uuid::Uuid::from(receipt.id),uuid::Uuid::from(receipt.id)));
+                            }
                         }
                     }
                 }
@@ -251,7 +257,9 @@ pub(super) async fn detail(
     html.push_str("<p>Raw bytes are hidden. Each raw page is disclosed only after its audit entry is durable.</p>");
     if let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) {
         for target in &evidence.targets {
-            if receipt_id(target).is_some() {
+            if let Some(receipt) = receipt_id(target) {
+                let receipt = uuid::Uuid::from(receipt);
+                html.push_str(&format!("<p><a href=\"/receipts/{receipt}/departures\">Interpretation departure evidence</a></p>"));
                 raw_form(
                     &mut html,
                     id,

@@ -4,6 +4,8 @@ use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 use std::fmt::Write;
 mod law;
+mod reading;
+use reading::{map_reading, mapping_outcome};
 
 /// Binds all evidence from one host connection to its immutable configuration.
 pub(crate) struct Connection<'a> {
@@ -136,6 +138,20 @@ fn poct_edits(machine: &Machine) -> bool {
     )
 }
 
+fn reading_evidence(
+    machine: &Machine,
+    outcome: Reading,
+    departures: analyte_model::DepartureEvidence,
+) -> Result<Interpretation, Error> {
+    Ok(Interpretation {
+        driver: driver(machine)?,
+        config_version: config_version(machine)?,
+        config: machine.snapshot.canonical().as_bytes().to_vec(),
+        outcome,
+        departures: Some(departures),
+    })
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "Keep mixed-message acceptance and rejected-batch rollback together"
@@ -147,6 +163,10 @@ pub(crate) async fn persist_mapping(
     mapping: Result<analyte_mapping::Output, Error>,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
+    let (mapping, departures) = super::machine::interpretation::departure_evidence::for_receipt(
+        store, machine, id, mapping,
+    )
+    .await?;
     let poct_edit_guard = poct_edits(machine);
     let atomic = atomic_batch(machine);
     let lifecycle = atomic.then_some(law_lifecycle());
@@ -168,15 +188,11 @@ pub(crate) async fn persist_mapping(
     if !accepted && work_conflict.is_none() {
         custody = None;
     }
-    let interpretation = Interpretation {
-        driver: driver(machine)?,
-        config_version: config_version(machine)?,
-        config: machine.snapshot.canonical().as_bytes().to_vec(),
-        outcome: reading,
-    };
+    let interpretation = reading_evidence(machine, reading, departures)?;
     let destination = machine.snapshot.effective().site().destination.name.clone();
     let conflict = if atomic {
         Some(Interpretation {
+            departures: interpretation.departures.clone(),
             driver: interpretation.driver.clone(),
             config_version: interpretation.config_version.clone(),
             config: interpretation.config.clone(),
@@ -449,8 +465,11 @@ pub(crate) async fn park_bytes(
     reason: &str,
 ) -> Result<(), Error> {
     let id = ReceiptId::new();
+    let departures =
+        super::machine::interpretation::departure_evidence::collect(machine, &bytes, &[])?;
     receive(store, machine, id, bytes).await?;
     let evidence = Interpretation {
+        departures: Some(departures),
         driver: driver(machine)?,
         config_version: config_version(machine)?,
         config: machine.snapshot.canonical().as_bytes().to_vec(),
@@ -502,75 +521,6 @@ struct MappedReading {
     reading: Reading,
     corrections: Vec<bool>,
     findings: Vec<String>,
-}
-
-fn map_reading(mapping: Result<analyte_mapping::Output, Error>) -> Result<MappedReading, Error> {
-    let mut accepted = false;
-    let (reading, corrections, findings) = match mapping {
-        Ok(output) => {
-            accepted = !output.requires_parking();
-            let mut findings = output
-                .findings
-                .iter()
-                .map(|f| format!("{:?}: {:?}", f.position, f.problem))
-                .collect::<Vec<_>>();
-            for result in &output.results {
-                if let analyte_model::IdentityStatus::Unresolved(reason) = &result.content.identity
-                {
-                    findings.push(reason.as_str().to_owned());
-                }
-            }
-            let corrections = output
-                .results
-                .iter()
-                .map(|r| r.corrections.as_slice().iter().any(|c| *c))
-                .collect::<Vec<_>>();
-            (
-                Reading::Results(output.results.into_iter().map(|r| r.content).collect()),
-                corrections,
-                findings,
-            )
-        }
-        // Parser diagnostics can contain source tokens; keep them only in protected evidence.
-        Err(error) => (
-            Reading::Failed(analyte_model::Reason::new(&error.to_string())?),
-            Vec::new(),
-            Vec::new(),
-        ),
-    };
-    Ok(MappedReading {
-        accepted,
-        reading,
-        corrections,
-        findings,
-    })
-}
-
-fn mapping_outcome(
-    result: analyte_store::InterpretationCommit,
-    successful: InterpretationOutcome,
-) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
-    let accepted = matches!(successful, InterpretationOutcome::Accepted)
-        && !result
-            .outcomes
-            .iter()
-            .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
-    Ok((
-        if accepted {
-            InterpretationOutcome::Accepted
-        } else {
-            match successful {
-                InterpretationOutcome::Conflict => InterpretationOutcome::Conflict,
-                InterpretationOutcome::WorkConflict(location) => {
-                    InterpretationOutcome::WorkConflict(location)
-                }
-                InterpretationOutcome::Accepted | InterpretationOutcome::Failed => {
-                    InterpretationOutcome::Failed
-                }
-            }
-        },
-        result,
-    ))
 }
 
 #[cfg(test)]

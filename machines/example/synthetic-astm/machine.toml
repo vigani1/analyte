@@ -2,6 +2,7 @@
 schema_version = 1
 protocol = "astm"
 name = "generic-synthetic"
+# ADR 0015: no typed departure or qualifying vendor evidence is declared.
 deviations = []
 [transport]
 kind = "tcp_server"
