@@ -51,26 +51,21 @@ impl<'a> ResultGroups<'a> {
         profile: law::Profile<'_>,
     ) -> Result<(), Error> {
         match segment.id() {
-            b"PID" => self.parse_pid(segment, ordinal, profile),
-            b"PV1" => self.parse_pv1(segment, ordinal, profile),
-            b"SPM" => self.parse_spm(segment, ordinal, profile),
-            b"SAC" => self.parse_sac(segment, ordinal, profile),
-            b"OBR" => self.parse_obr(segment, ordinal, profile),
-            b"ORC" => self.parse_orc(segment, ordinal, profile),
-            b"TQ1" => self.parse_tq1(segment, ordinal, profile),
-            b"OBX" => self.parse_obx(segment, ordinal, profile),
-            b"TCD" => self.parse_tcd(segment, ordinal, profile),
-            b"NTE" => self.parse_nte(segment, ordinal, profile),
-            b"INV" => self.parse_inv(segment, ordinal, profile),
+            b"PID" => self.parse_pid(ordinal),
+            b"PV1" => self.parse_pv1(segment),
+            b"SPM" => self.parse_spm(segment, ordinal),
+            b"SAC" => self.parse_sac(segment, ordinal),
+            b"OBR" => self.parse_obr(segment, ordinal),
+            b"ORC" => self.parse_orc(segment),
+            b"TQ1" => self.parse_tq1(segment),
+            b"OBX" => self.parse_obx(segment, ordinal),
+            b"TCD" => self.parse_tcd(segment, profile),
+            b"NTE" => self.parse_nte(segment),
+            b"INV" => self.parse_inv(segment, profile),
             _ => Err(content("OUL", 0)),
         }
     }
-    fn parse_pid(
-        &mut self,
-        _segment: Segment<'a>,
-        ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_pid(&mut self, ordinal: usize) -> Result<(), Error> {
         if (self.patient_phase != PatientPhase::Absent) || self.specimen.is_some() {
             return Err(content("PID", 0));
         }
@@ -78,12 +73,7 @@ impl<'a> ResultGroups<'a> {
         self.parent = Some(Parent::Patient(ordinal));
         Ok(())
     }
-    fn parse_pv1(
-        &mut self,
-        segment: Segment<'a>,
-        _ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_pv1(&mut self, segment: Segment<'a>) -> Result<(), Error> {
         if (self.patient_phase == PatientPhase::Absent)
             || (self.patient_phase == PatientPhase::Visit)
             || self.specimen.is_some()
@@ -97,12 +87,7 @@ impl<'a> ResultGroups<'a> {
         });
         Ok(())
     }
-    fn parse_spm(
-        &mut self,
-        segment: Segment<'a>,
-        ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_spm(&mut self, segment: Segment<'a>, ordinal: usize) -> Result<(), Error> {
         if self.specimen.is_some() && self.order.is_none() {
             return Err(content("OBR", 0));
         }
@@ -117,12 +102,7 @@ impl<'a> ResultGroups<'a> {
         self.parent = Some(Parent::Specimen(ordinal));
         Ok(())
     }
-    fn parse_sac(
-        &mut self,
-        segment: Segment<'a>,
-        ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_sac(&mut self, segment: Segment<'a>, ordinal: usize) -> Result<(), Error> {
         if self.specimen.is_none() || self.container.is_some() {
             return Err(content("SAC", 0));
         }
@@ -132,12 +112,7 @@ impl<'a> ResultGroups<'a> {
         self.parent = Some(Parent::Container(ordinal));
         Ok(())
     }
-    fn parse_obr(
-        &mut self,
-        segment: Segment<'a>,
-        ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_obr(&mut self, segment: Segment<'a>, ordinal: usize) -> Result<(), Error> {
         check_complete(self.order_status, self.observation_count)?;
         if self.order.is_some() && self.order_status.is_none() {
             return Err(content("ORC", 0));
@@ -158,12 +133,7 @@ impl<'a> ResultGroups<'a> {
         self.parent = Some(Parent::Order(ordinal));
         Ok(())
     }
-    fn parse_orc(
-        &mut self,
-        segment: Segment<'a>,
-        _ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_orc(&mut self, segment: Segment<'a>) -> Result<(), Error> {
         if self.order.is_none()
             || law::OrderControl::parse(raw(segment, 1))? != law::OrderControl::StatusChange
             || self.order_status.is_some()
@@ -177,12 +147,7 @@ impl<'a> ResultGroups<'a> {
         });
         Ok(())
     }
-    fn parse_tq1(
-        &mut self,
-        segment: Segment<'a>,
-        _ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_tq1(&mut self, segment: Segment<'a>) -> Result<(), Error> {
         if self.order_status.is_none() || self.has_timing || self.observation_count != 0 {
             return Err(content("TQ1", 0));
         }
@@ -193,12 +158,7 @@ impl<'a> ResultGroups<'a> {
         });
         Ok(())
     }
-    fn parse_obx(
-        &mut self,
-        segment: Segment<'a>,
-        ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_obx(&mut self, segment: Segment<'a>, ordinal: usize) -> Result<(), Error> {
         if self.order.is_none() && self.container.is_none() {
             let current_specimen = self.specimen.ok_or(content("SPM", 0))?;
             self.specimen_observations.push(SpecimenObservation {
@@ -246,12 +206,7 @@ impl<'a> ResultGroups<'a> {
         self.parent = Some(Parent::Observation(ordinal));
         Ok(())
     }
-    fn parse_tcd(
-        &mut self,
-        segment: Segment<'a>,
-        _ordinal: usize,
-        profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_tcd(&mut self, segment: Segment<'a>, profile: law::Profile<'_>) -> Result<(), Error> {
         match self.result_phase {
             ResultPhase::Observation => {}
             ResultPhase::NoResult
@@ -284,12 +239,7 @@ impl<'a> ResultGroups<'a> {
         });
         Ok(())
     }
-    fn parse_nte(
-        &mut self,
-        segment: Segment<'a>,
-        _ordinal: usize,
-        _profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_nte(&mut self, segment: Segment<'a>) -> Result<(), Error> {
         match self.parent {
             Some(Parent::Patient(_)) => {}
             Some(Parent::Order(_)) => {
@@ -309,12 +259,7 @@ impl<'a> ResultGroups<'a> {
         });
         Ok(())
     }
-    fn parse_inv(
-        &mut self,
-        segment: Segment<'a>,
-        _ordinal: usize,
-        profile: law::Profile<'_>,
-    ) -> Result<(), Error> {
+    fn parse_inv(&mut self, segment: Segment<'a>, profile: law::Profile<'_>) -> Result<(), Error> {
         match self.parent {
             Some(Parent::Container(_)) => {
                 if self.has_container_inventory
