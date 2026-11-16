@@ -593,19 +593,19 @@ fn refuse_fields(segment: Segment<'_>, fields: &[usize]) -> Result<(), Error> {
 }
 
 fn validate_patient(segment: Segment<'_>, version: Version) -> Result<(), Error> {
-    if !version
+    let type_required = version
         .order_rules()
         .ok_or_else(|| invalid("MSH", 12))?
-        .patient_type_required
-    {
-        return Ok(());
-    }
+        .patient_type_required;
     let identifiers = field(segment, 3)
         .filter(|f| !f.is_null())
         .ok_or_else(|| invalid("PID", 3))?;
     for repetition in identifiers.repetitions() {
         let parts = repetition.components().collect::<Vec<_>>();
-        for (number, maximum) in [(1_usize, 15), (5, 5)] {
+        for (number, maximum) in [(1_usize, 15), (5, 5)]
+            .into_iter()
+            .filter(|(number, _)| *number == 1 || type_required)
+        {
             let part = number
                 .checked_sub(1)
                 .and_then(|index| parts.get(index))
@@ -613,8 +613,18 @@ fn validate_patient(segment: Segment<'_>, version: Version) -> Result<(), Error>
             super::types::scalar(part.raw(), "CX", number, maximum, true)?;
         }
     }
-    field(segment, 5)
+    let names = field(segment, 5)
         .filter(|f| !f.is_null())
         .ok_or_else(|| invalid("PID", 5))?;
+    for name in names.repetitions() {
+        let family = name.components().next().ok_or_else(|| invalid("PID", 5))?;
+        let surname = family
+            .subcomponents()
+            .next()
+            .ok_or_else(|| invalid("PID", 5))?;
+        if surname.is_empty() || surname == b"\"\"" {
+            return Err(invalid("PID", 5));
+        }
+    }
     Ok(())
 }
