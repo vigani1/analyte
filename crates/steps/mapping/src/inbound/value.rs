@@ -7,6 +7,7 @@ pub(crate) fn values(
     source: &Source<'_>,
     index: usize,
     field: usize,
+    config: &analyte_config::Validated,
     output: &mut Output,
 ) -> Result<EvidenceList<ResultValue>, Error> {
     let position = source.position(index, field);
@@ -34,6 +35,12 @@ pub(crate) fn values(
             unsupported(&data_type, position, reason)?
         } else if astm {
             decimal(&original, true)
+        } else if data_type == "CWE" && source.uses_compatibility_contract(config) {
+            unsupported(
+                &data_type,
+                position,
+                "compatibility does not establish this edition's CWE definition",
+            )?
         } else {
             match data_type.as_str() {
                 "NM" => decimal(&original, false),

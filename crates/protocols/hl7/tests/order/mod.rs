@@ -57,6 +57,12 @@ fn sent(version: Version) -> Result<OrderMessage, Error> {
 
 fn reply(version: Version, code: &[u8], body: &[u8]) -> Result<Message, Error> {
     let edition = match version {
+        Version::V23
+        | Version::V24
+        | Version::V25
+        | Version::V26
+        | Version::V282
+        | Version::V291 => unreachable!("fixture enumerates only 2.3.1 and 2.5.1"),
         Version::V231 => "2.3.1",
         Version::V251 => "2.5.1",
     };

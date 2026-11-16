@@ -20,6 +20,16 @@ pub const MAX_FILE_BYTES: usize = 1_048_576;
 /// A config failure names its source file and actionable key.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A recognized HL7 edition has no implemented result-processing profile.
+    #[error(
+        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1"
+    )]
+    UnsupportedHl7Edition {
+        /// Source configuration layer.
+        path: String,
+        /// Exact recognized wire edition, without a patch-edition upgrade.
+        edition: &'static str,
+    },
     /// A part separator collides with a protocol delimiter.
     #[error("{path}: component_parts separator is a protocol delimiter")]
     PartSeparator {

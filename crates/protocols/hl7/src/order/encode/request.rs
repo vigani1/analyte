@@ -45,6 +45,12 @@ pub(super) fn encode_new_order(
         test,
         b'^',
         match header.version {
+            Version::V23
+            | Version::V24
+            | Version::V25
+            | Version::V26
+            | Version::V282
+            | Version::V291 => return Err(invalid("MSH", 12)),
             Version::V231 => 200,
             Version::V251 => 250,
         },

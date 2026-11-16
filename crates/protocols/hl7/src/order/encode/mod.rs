@@ -176,6 +176,7 @@ fn build(
     if orders.len() > options.limits.segments {
         return Err(Error::Limit);
     }
+    header.version.require_rules()?;
     let mut output = Vec::new();
     encode_header(
         &mut output,
@@ -342,6 +343,12 @@ fn encode_header(output: &mut Vec<u8>, context: BuildContext<'_>) -> Result<(), 
         scalar(value, "MSH", field, 20, required)?;
     }
     let version = match header.version {
+        Version::V23
+        | Version::V24
+        | Version::V25
+        | Version::V26
+        | Version::V282
+        | Version::V291 => return Err(invalid("MSH", 12)),
         Version::V231 => b"2.3.1".as_slice(),
         Version::V251 => b"2.5.1",
     };

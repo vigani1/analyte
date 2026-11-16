@@ -2,6 +2,37 @@
 
 ## Checklist
 
+### Later-edition truncation groundwork (documented)
+
+- [x] 2.8.2 / 2.9.1 — Preserve the optional fifth encoding character and require
+  distinct separators; earlier editions still refuse the declaration.
+  Sources: 2.8.2 §2.14.9.2 p.59; 2.9.1 §2.13.9.2 p.69.
+  Evidence: `hl7_2_8_2_s2_14_9_2_and_2_9_1_s2_13_9_2_encoding_characters`.
+- [x] Preserve marked primitive bytes, expose marker flags and refuse clinical
+  mapping. Sources: 2.8.2 §2.5.5.2 pp.12–13; 2.9.1 §2.4.5.2 pp.14–15.
+  Evidence: `hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_preserve_and_refuse_marked_values`
+  and `hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping`.
+- [x] Decode and encode literal declared truncation characters; refuse size
+  overflow without shortening; retain undeclared-escape rejection/preservation.
+  Sources: 2.8.2 §§2.7.1–2 pp.20–21; 2.9.1 §§2.6.1–2 pp.22–23.
+  Evidence: `hl7_2_9_1_s2_6_1_truncation_character_escape` and
+  `hl7_2_8_2_s2_7_2_undeclared_p_escape_remains_unsupported`.
+- [x] Register all eight exact editions with source-named tests and explicit
+  unavailable typed profiles. `version/tests.rs` covers every registry entry
+  plus `adr0012_s3_no_unlisted_edition_or_prefix_match` (ADR 0012 §3).
+- [x] Accept machine edition selections only for implemented typed profiles
+  (native 2.3.1/2.5.1 and bounded 2.3/2.4/2.5 receiving compatibility), without defaults or patch upgrades.
+  `config/tests/hl7_editions.rs` covers exact identity and canonical snapshots
+  for those five, actionable validation errors for the three recognized unsupported
+  editions, missing declarations and positioned unlisted-value errors.
+- [x] Implement the declared 2.3/2.4/2.5 receiving compatibility prefix under
+  2.5.1 §§2.8–2.8.2 and the 2002-04-08 errata, with exact edition replies and
+  explicit raw/refusal behavior. Evidence and limitations: [versions](versions.md),
+  protocol `compatibility.rs`, mapping `mapping/compatibility.rs`, dialog
+  `hl7_compatibility.rs`, datatype sequencing and config `hl7_editions.rs` tests.
+- [ ] Complete later-edition typed message/datatype differences and command-writer
+  integration. Compatibility profiles' `orders.hl7_send` remains refused.
+
 
 **Applicability:** B = both 2.3.1 and 2.5.1; 231 or 251 = edition-specific; M = version-independent MLLP R1. References are chapter/section/PDF page as above. Each checkbox is an implementation requirement or an explicit support-declaration decision. Optional features are required only when declared/negotiated; unsupported cases must have a specific safe outcome. Engineering gates are identified separately from normative wire rules. A profile matrix must instantiate the field definitions and conditional predicates referenced here; this is not a claim that one generic application must implement all healthcare domains.
 
