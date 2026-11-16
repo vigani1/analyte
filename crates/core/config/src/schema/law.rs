@@ -255,9 +255,7 @@ pub(crate) fn validate(machine: &MachineDocument, path: &str) -> Result<(), Erro
         !selects(&mapping.identity.order_id, crate::Group::Order, "OBR", 2, 1)
             || match &mapping.identity.order_namespace {
                 crate::OrderNamespace::Fixed { .. } => false,
-                crate::OrderNamespace::Field { field } => {
-                    !selects(field, crate::Group::Order, "OBR", 2, 2)
-                }
+                crate::OrderNamespace::Field { .. } => true,
             }
             || match &mapping.identity.sub_id {
                 crate::SubId::Field(field) => {
@@ -270,7 +268,7 @@ pub(crate) fn validate(machine: &MachineDocument, path: &str) -> Result<(), Erro
         return Err(invalid(
             path,
             "mappings.identity",
-            "LAW uses OBR-2 AWOS and complete OBX-4 OG; use OBR-2.2 or an explicit fixed AWOS namespace and no extra run selectors",
+            "LAW uses OBR-2 AWOS and complete OBX-4 OG; use an explicit fixed AWOS namespace (OBR-2.2 is X) and no extra run selectors",
         ));
     }
     if machine

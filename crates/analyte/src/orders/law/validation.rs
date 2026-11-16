@@ -74,19 +74,7 @@ pub(crate) async fn check(
                 else {
                     return Ok(Some(unknown));
                 };
-                let mut parts = components(segment, 2);
-                parts.next();
-                let namespace = parts.next().unwrap_or_default();
-                if !namespace.is_empty()
-                    && Some(namespace)
-                        != item
-                            .placer_namespace
-                            .as_ref()
-                            .map(|n| n.as_str().as_bytes())
-                    || parts.any(|p| !p.is_empty())
-                {
-                    return Ok(Some(unknown));
-                }
+                // TF-2b 2.2.1/2.2.2 and C.6-2: only EI.1 participates in matching.
                 let Some(bytes) = record.original_command() else {
                     return Ok(Some(unknown));
                 };

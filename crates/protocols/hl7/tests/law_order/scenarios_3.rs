@@ -259,11 +259,16 @@ fn law_tf2b_c13_tcd_8_required_text_and_9_nested_cq_limits() -> TestResult {
     let profile = Profile::receive().with_repeat_options(true, false);
     check(
         "TCD",
-        &[(8, &format!("O^{}^HL70389", "x".repeat(199)))],
+        &[(8, "O^Original, first run^HL70389")],
         profile,
         ControlDirection::Send,
     )?;
-    for text in [String::new(), "x".repeat(200), String::from("\"\"")] {
+    for text in [
+        String::from("Repeated with dilution"),
+        String::new(),
+        "x".repeat(200),
+        String::from("\"\""),
+    ] {
         assert!(
             check(
                 "TCD",
