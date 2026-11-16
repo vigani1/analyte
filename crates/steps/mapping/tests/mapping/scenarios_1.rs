@@ -59,7 +59,7 @@ fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() 
     );
     let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
     let output = map_hl7(&message, &config, input())?;
-    assert!(!output.requires_parking());
+    assert!(output.requires_parking());
     let result = output.results.first().ok_or("result")?;
     assert_eq!(
         result.content.sample.as_ref().ok_or("sample")?.id.as_str(),
@@ -259,7 +259,7 @@ fn hl7_7_4_2_5_and_11_same_key_obxs_form_one_replacement_unit() -> TestResult {
     assert!(
         matches!(&result.content.identity, IdentityStatus::Resolved(id) if id.revision == Revision(7) && id.observation.run.as_str().is_empty())
     );
-    assert!(!output.requires_parking());
+    assert!(output.requires_parking());
     Ok(())
 }
 
@@ -460,7 +460,7 @@ fn hl7_7_3_7_oul_specimen_order_orc_and_result_ownership() -> TestResult {
             .collect::<Vec<_>>(),
         ["MSH", "PID", "SPM", "OBR", "ORC", "OBX"]
     );
-    assert!(!output.requires_parking());
+    assert!(output.requires_parking());
     Ok(())
 }
 
@@ -563,11 +563,13 @@ fn hl7_ch2_escapes_and_empty_subid_declaration_keep_written_evidence() -> TestRe
 
 #[test]
 fn plan6_notes_keep_parent_paths_even_without_a_result() -> TestResult {
+    // HL7 2.5.1 section 7.3.1 does not admit an ORU header-level NTE.
+    assert!(hl7("NTE|1||message note\rOBR|1||001\r", HL7_CONFIG).is_err());
     let output = hl7(
-        "NTE|1||message note\rPID|1\rNTE|1||patient note\rOBR|1||001\rNTE|1||order note\rOBX|1|NM|SYN^^synthetic||1||||||F\rNTE|1||observation note\rOBR|2||002\rNTE|1||empty order note\r",
+        "PID|1\rNTE|1||patient note\rOBR|1||001\rNTE|1||order note\rOBX|1|NM|SYN^^synthetic||1||||||F\rNTE|1||observation note\rOBR|2||002\rNTE|1||empty order note\r",
         HL7_CONFIG,
     )?;
-    assert_eq!(output.comments.len(), 5);
+    assert_eq!(output.comments.len(), 4);
     assert_eq!(
         output
             .comments
@@ -575,7 +577,7 @@ fn plan6_notes_keep_parent_paths_even_without_a_result() -> TestResult {
             .filter_map(|note| note.parent_path.as_slice().last())
             .map(|node| node.kind.as_str())
             .collect::<Vec<_>>(),
-        ["MSH", "PID", "OBR", "OBX", "OBR"]
+        ["PID", "OBR", "OBX", "OBR"]
     );
     assert_eq!(
         output
@@ -583,7 +585,7 @@ fn plan6_notes_keep_parent_paths_even_without_a_result() -> TestResult {
             .last()
             .and_then(|note| note.parent_path.as_slice().last())
             .map(|node| node.occurrence),
-        Some(9)
+        Some(8)
     );
     Ok(())
 }

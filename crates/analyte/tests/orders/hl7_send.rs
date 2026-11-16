@@ -64,6 +64,12 @@ async fn setup_with_patient_requirement(
     let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
         "../../../../docs/contract/vectors/order.json"
     ))?;
+    if id == "known-patient" {
+        value.as_object_mut().ok_or("order")?.insert(
+            "patient".into(),
+            serde_json::json!({"id":{"namespace":"patients","value":"P1"}}),
+        );
+    }
     *value.get_mut("id").ok_or("id")? = serde_json::json!(id);
     *value.get_mut("tests").ok_or("tests")? = serde_json::json!([{"namespace":"synthetic","value":"TEST"},{"namespace":"synthetic","value":"TEST"}]);
     value.as_object_mut().ok_or("order")?.insert(
@@ -135,7 +141,7 @@ async fn reply(
         response.push_str(if edition == "2.8.2" {
             "PID|1||P1^^^LAB^MR||Synthetic\r"
         } else {
-            "PID|1\r"
+            "PID|1||P1^^^LAB||Synthetic\r"
         });
     }
     for (orc, code) in message
@@ -490,9 +496,10 @@ async fn plan11_hl7_send_ahead_reserves_nothing_while_restore_paused() -> Result
 #[tokio::test]
 async fn hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing_name()
 -> Result<(), Error> {
-    for edition in ["v231", "v251"] {
+    for (edition, required) in [("v231", true), ("v251", true), ("v231", false)] {
         let (_temp, path, reference, service, mut peer) =
-            setup_with_patient_requirement(edition, "order-1", false, 30000, true).await?;
+            setup_with_patient_requirement(edition, "known-patient", false, 30000, required)
+                .await?;
         outcome(&path, "Rejected").await?;
         let reason: String =
             database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |row| {

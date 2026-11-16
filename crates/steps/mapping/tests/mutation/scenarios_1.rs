@@ -23,7 +23,7 @@ fn rule2_configured_coded_kind_refuses_empty_or_numeric_text_without_guessing() 
         "app_system=\"demo\",value_kind=\"coded\"",
     );
     for (raw, mismatch) in [("positive", false), ("", true), ("123", true), ("<1", true)] {
-        let mapped = hl7(
+        let mapped = qualified_hl7(
             &format!("OBR|1||001\rOBX|1|ST|SYN^^synthetic||{raw}||||||F\r"),
             &definition,
         )?;

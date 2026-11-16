@@ -180,7 +180,8 @@ impl Version {
     /// Reports whether specimen/container extensions are outside the selected receiving profile.
     #[must_use]
     pub fn uses_bounded_result_groups(self) -> bool {
-        self.uses_compatibility_contract()
+        self == Self::V231
+            || self.uses_compatibility_contract()
             || self.rules().is_some_and(|rules| rules.core_groups_only)
     }
 

@@ -54,6 +54,12 @@ impl Config {
 /// Specific refusal without payload in its display.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// The selected edition requires an application exchange on another channel.
+    #[error(
+        "HL7 2.9.1 enhanced application acknowledgment requires an unsupported separate channel"
+    )]
+    SeparateApplicationChannel,
+
     /// Invalid deadline configuration.
     #[error("invalid configuration")]
     Configuration,
@@ -624,7 +630,11 @@ impl Dialog {
             .ok_or(Error::Framing(mllp::Error::Incomplete))
             .and_then(|bytes| Message::parse(bytes, self.config.options).map_err(Error::from));
         match result.and_then(|message| {
-            Msh::new(&message)?;
+            let msh = Msh::new(&message)?;
+            if msh.version() == analyte_hl7::Version::V291
+                && matches!(msh.mode(), AckMode::Enhanced { application: Some(condition), .. } if condition != Condition::Never) {
+                return Err(Error::SeparateApplicationChannel);
+            }
             Ok(message)
         }) {
             Ok(message) => {

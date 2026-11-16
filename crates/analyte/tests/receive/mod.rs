@@ -92,7 +92,7 @@ async fn read_ack(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
     .await?
 }
 
-const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
+const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
 
 async fn serve(
     program: Program,
@@ -115,3 +115,5 @@ async fn serve(
 mod scenarios_1;
 
 mod scenarios_2;
+
+mod hl7_safety;

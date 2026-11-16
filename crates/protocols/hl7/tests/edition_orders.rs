@@ -87,7 +87,7 @@ fn hl7_2_6_s4_4_7_s2_14_8_response_outcomes_and_correlation() -> Result<(), Erro
     let sent = sent(Version::V26)?;
     for (control, expected) in [("OK", true), ("UA", false)] {
         let bytes = format!(
-            "MSH|^~\\&|MACHINE|LAB|HOST|LAB|202611161201||ORL^O22^ORL_O22|reply1|T|2.6\rMSA|AA|sent1\rPID|1\rORC|{control}|001^LAB\r"
+            "MSH|^~\\&|MACHINE|LAB|HOST|LAB|202611161201||ORL^O22^ORL_O22|reply1|T|2.6\rMSA|AA|sent1\rPID|1||P1^^^LAB||Synthetic\rORC|{control}|001^LAB\r"
         );
         let message = Message::parse(bytes.as_bytes(), Options::default())?;
         let response = OrderResponse::new(&message, &sent)?;
@@ -269,5 +269,33 @@ fn hl7_2_8_2_s2_a_13_s4_5_4_7_reply_datatypes_and_name_bound() -> Result<(), Err
         )
         .is_err()
     );
+    Ok(())
+}
+
+// HL7 2.5.1/2.6 section 4.4.7 and 3.4.2; 2.8.2 section 3.3.2.
+#[test]
+fn hl7_251_26_s4_4_7_required_pid_content_in_order_reply() -> Result<(), Error> {
+    for version in [Version::V26, Version::V282] {
+        let sent = sent(version)?;
+        for pid in [
+            "PID",
+            "PID|1",
+            "PID|1||\"\"||Synthetic",
+            "PID|1||P1",
+            "PID|1||P1||\"\"",
+            "PID|1||^^^LAB||Synthetic",
+        ] {
+            let raw = format!(
+                "MSH|^~\\&|MACHINE|LAB|HOST|LAB|202611161201||ORL^O22^ORL_O22|reply1|T|{}\rMSA|AA|sent1\r{pid}\rORC|OK|001^LAB\r",
+                version.as_str()
+            );
+            let message = Message::parse(raw.as_bytes(), Options::default())?;
+            assert!(
+                OrderResponse::new(&message, &sent).is_err(),
+                "{version:?}: {pid}"
+            );
+            assert_eq!(message.encode(), raw.as_bytes());
+        }
+    }
     Ok(())
 }

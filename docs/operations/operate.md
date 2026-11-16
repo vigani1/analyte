@@ -168,11 +168,11 @@ according to the site's backup and outage policy.
 
 | Setting | Accepted range |
 | --- | --- |
-| Reminder interval | 60?86400 seconds; missed intervals do not create a burst. |
-| Queue capacity | 1?4096 pending events per endpoint, including exhausted events. |
-| Request timeout | 1?300 seconds. |
-| Retry minimum/maximum | 1?86400 seconds, minimum no greater than maximum. |
-| Attempt budget | 1?100 attempts per event, including interrupted reserved attempts. |
+| Reminder interval | 60–86400 seconds; missed intervals do not create a burst. |
+| Queue capacity | 1–4096 pending events per endpoint, including exhausted events. |
+| Request timeout | 1–300 seconds. |
+| Retry minimum/maximum | 1–86400 seconds, minimum no greater than maximum. |
+| Attempt budget | 1–100 attempts per event, including interrupted reserved attempts. |
 
 Attempts reserve their retry deadline before sending. Delay doubles from the
 minimum and is capped at the maximum. The queue has at most one outstanding

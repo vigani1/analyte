@@ -459,3 +459,61 @@ fn hl7_2_8_2_s2_14_9_18_and_2_9_1_s2_13_9_18_utf8_and_literal_p() -> Result<(), 
     }
     Ok(())
 }
+
+// HL7 2.8.2 section 2.A.50 and 7.4.2.4; 2.9.1 section 2A.2.50 and 7.4.2.4.
+#[test]
+fn hl7_282_s2_a_50_291_s7_4_2_4_enhanced_og_requires_full_grouping_contract() -> Result<(), Error> {
+    for edition in ["2.8.2", "2.9.1"] {
+        for group in ["^1^1", "^1^2", "legacy^1", "legacy^^^isolate"] {
+            let message = message(edition, "^~\\&", &observation(4, group)?)?;
+            assert!(matches!(
+                validate_result_fields(&message),
+                Err(Error::Control {
+                    segment: "OBX",
+                    field: 4
+                })
+            ));
+            assert!(
+                message
+                    .raw()
+                    .windows(group.len())
+                    .any(|bytes| bytes == group.as_bytes())
+            );
+        }
+        validate_result_fields(&message(edition, "^~\\&", &observation(4, "legacy")?)?)?;
+    }
+    Ok(())
+}
+
+// HL7 2.9.1 section 2.8.3.2: an application acknowledgment cannot request another.
+#[test]
+fn hl7_291_s2_8_3_2_application_ack_declares_ne_without_recursion() -> Result<(), Error> {
+    let raw = b"MSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|id|P|2.9.1|||AL|AL\r";
+    let input = Message::parse(raw, Options::default())?;
+    for code in [AckCode::Ca, AckCode::Aa, AckCode::Ae, AckCode::Ar] {
+        let ack = acknowledgment(
+            &input,
+            Response {
+                control_id: ControlId::new(b"reply")?,
+                timestamp: b"20261116",
+            },
+            code,
+            Responsibility::StoredAndInterpreted,
+            None,
+            Options::default(),
+        )?
+        .ok_or(Error::Encoding)?;
+        let msh = Msh::new(&ack)?;
+        for field in [15, 16] {
+            assert_eq!(
+                msh.segment().field(field).ok_or(Error::Encoding)?.raw(),
+                if code == AckCode::Ca {
+                    b"".as_slice()
+                } else {
+                    b"NE".as_slice()
+                }
+            );
+        }
+    }
+    Ok(())
+}

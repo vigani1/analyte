@@ -34,6 +34,13 @@ impl Source<'_> {
             .is_some_and(analyte_hl7::Version::uses_compatibility_contract)
     }
 
+    pub(crate) fn has_analysis_time(&self, config: &analyte_config::Validated) -> bool {
+        crate::is_law(config)
+            || self.base_version(config).is_some_and(|version| {
+                version != analyte_hl7::Version::V231 && !version.uses_compatibility_contract()
+            })
+    }
+
     pub(crate) fn uses_dtm(&self, config: &analyte_config::Validated) -> bool {
         self.base_version(config)
             .is_some_and(analyte_hl7::Version::uses_dtm)
@@ -392,6 +399,35 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
         },
         source,
     })?;
+    if msh
+        .segment()
+        .field(13)
+        .is_some_and(|field| !field.raw().is_empty() && !field.is_null())
+    {
+        return Err(Error::Structure {
+            position: Position {
+                record: 1,
+                field: 13,
+            },
+            reason: "HL7 sequence-number negotiation is unsupported; retain receipt for review",
+        });
+    }
+    // HL7 2.5.1 section 2.10.2.2: either marker identifies an incomplete logical message.
+    for (index, segment) in message.segments().enumerate() {
+        let pointer = segment.id() == b"MSH"
+            && segment
+                .field(14)
+                .is_some_and(|field| !field.raw().is_empty() && !field.is_null());
+        if pointer || segment.id() == b"DSC" {
+            return Err(Error::Structure {
+                position: Position {
+                    record: index.saturating_add(1),
+                    field: if pointer { 14 } else { 0 },
+                },
+                reason: "HL7 continuation is unsupported; retain fragment for review",
+            });
+        }
+    }
     analyte_hl7::validate_result_fields(message).map_err(|source| Error::Hl7 {
         position: Position {
             record: 1,
@@ -430,6 +466,7 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
             });
         }
     };
+    super::grammar::validate(message, oul)?;
     hl7_segments(
         message,
         if oul {

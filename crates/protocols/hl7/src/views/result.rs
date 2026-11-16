@@ -11,6 +11,24 @@ pub fn validate_result_fields(message: &Message) -> Result<(), Error> {
     let rules = version.require_rules()?;
     for segment in message.segments() {
         validate_context(segment, rules)?;
+        // Enhanced OG identity needs a full grouping contract, which this profile does not select.
+        if matches!(version, crate::Version::V282 | crate::Version::V291)
+            && segment.id() == b"OBX"
+            && segment.field(4).is_some_and(|field| {
+                field.repetitions().any(|value| {
+                    value
+                        .components()
+                        .skip(1)
+                        .any(|component| !component.raw().is_empty())
+                })
+            })
+        {
+            return Err(Error::Control {
+                segment: "OBX",
+                field: 4,
+            });
+        }
+
         for row in rules.result_fields {
             if segment.id() != row.segment {
                 continue;
