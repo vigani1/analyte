@@ -165,20 +165,15 @@ impl Store {
         )
     }
 
-    fn reconcile<F>(
-        &mut self,
-        receipt: ReceiptId,
-        mut evidence: Interpretation,
-        mapping: (&[bool], &[crate::Parked], Option<StatusLifecycle<'_>>),
-        action: Option<&crate::Reprocess>,
-        build: F,
-    ) -> Result<InterpretationCommit, Error>
-    where
-        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
-    {
-        let (corrections, findings, lifecycle) = mapping;
-        let stored = self.receipt(receipt)?.ok_or(Error::UnknownReceipt)?;
-        if action.is_none()
+    fn validate_reconciliation(
+        &self,
+        stored: &crate::Receipt,
+        evidence: &Interpretation,
+        corrections: &[bool],
+        findings: &[crate::Parked],
+        reprocessing: bool,
+    ) -> Result<(usize, Vec<String>), Error> {
+        if !reprocessing
             && (evidence.config != stored.config
                 || evidence.driver != stored.metadata.driver
                 || evidence.config_version != stored.metadata.config_version)
@@ -192,7 +187,7 @@ impl Store {
         if count != corrections.len() || count > self.limits.page_rows {
             return Err(Error::InvalidInput);
         }
-        self.encode(&evidence)?;
+        self.encode(evidence)?;
         if findings.len() > self.limits.page_rows {
             return Err(Error::InvalidInput);
         }
@@ -205,6 +200,30 @@ impl Store {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
+
+        Ok((count, findings))
+    }
+
+    fn reconcile<F>(
+        &mut self,
+        receipt: ReceiptId,
+        mut evidence: Interpretation,
+        mapping: (&[bool], &[crate::Parked], Option<StatusLifecycle<'_>>),
+        action: Option<&crate::Reprocess>,
+        build: F,
+    ) -> Result<InterpretationCommit, Error>
+    where
+        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
+    {
+        let (corrections, findings, lifecycle) = mapping;
+        let stored = self.receipt(receipt)?.ok_or(Error::UnknownReceipt)?;
+        let (count, findings) = self.validate_reconciliation(
+            &stored,
+            &evidence,
+            corrections,
+            findings,
+            action.is_some(),
+        )?;
         let limit = self.limits.record_bytes;
         let receipt_key = key(&receipt)?;
         let tx = self
@@ -220,133 +239,15 @@ impl Store {
             [&receipt_key],
             |r| r.get(0),
         )?;
-        let mut outcomes = Vec::new();
-        let mut revisions: Vec<(String, i64, analyte_model::Digest)> = Vec::new();
-        let mut staged = Vec::<(String, ResultContent)>::new();
-        if let Reading::Results(results) = &mut evidence.outcome {
-            for (result, correction) in results.iter_mut().zip(corrections) {
-                if result.receipt != receipt {
-                    return Err(Error::InvalidInput);
-                }
-                let candidate = result.clone();
-                let content = clinical_digest(result)?;
-                let IdentityStatus::Resolved(identity) = &mut result.identity else {
-                    outcomes.push(RevisionOutcome::Unresolved);
-                    continue;
-                };
-                let identity_key = key(&(&stored.metadata.machine, &identity.observation))?;
-                if let Some(policy) = lifecycle
-                    && status::other_final_run(
-                        &tx,
-                        &stored.metadata.machine,
-                        &candidate,
-                        &staged,
-                        policy,
-                        self.limits.page_rows,
-                        limit,
-                    )?
-                {
-                    result.identity = IdentityStatus::Unresolved(
-                        analyte_model::Reason::new(
-                            "multiple final runs under the same order and test",
-                        )
-                        .map_err(|_| Error::InvalidInput)?,
-                    );
-                    outcomes.push(RevisionOutcome::Conflict);
-                    continue;
-                }
-                // A delayed retransmission may refer to any retained revision, not just the latest.
-                let same: Option<i64> = tx.query_row("SELECT revision FROM observation_revisions WHERE identity_key=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1", params![identity_key, content.0.as_slice()], |r| r.get(0)).optional()?;
-                // Older digests included source offsets. Compare retained typed evidence
-                // on a miss; do not rewrite history or silently treat old results as new.
-                let same = match same {
-                    Some(revision) => Some(revision),
-                    None => same_retained_content(
-                        &tx,
-                        &identity_key,
-                        &identity.observation,
-                        &content,
-                        self.limits.page_rows,
-                        limit,
-                    )?,
-                };
-                let same = revisions
-                    .iter()
-                    .rev()
-                    .find(|(key, _, digest)| key == &identity_key && digest == &content)
-                    .map(|(_, revision, _)| *revision)
-                    .or(same);
-                if let Some(revision) = same {
-                    identity.revision =
-                        Revision(u64::try_from(revision).map_err(|_| Error::Corruption)?);
-                    outcomes.push(RevisionOutcome::Retransmission(identity.revision));
-                    continue;
-                }
-                let previous: Option<i64> = tx.query_row(
-                    "SELECT max(revision) FROM observation_revisions WHERE identity_key=?1",
-                    [&identity_key],
-                    |r| r.get(0),
-                )?;
-                let previous = revisions
-                    .iter()
-                    .rev()
-                    .find(|(key, _, _)| key == &identity_key)
-                    .map(|(_, revision, _)| *revision)
-                    .or(previous);
-                let withdrawn = result
-                    .parts
-                    .as_slice()
-                    .iter()
-                    .any(|p| p.status == ResultStatus::Withdrawn);
-                let progression = if let Some(policy) = lifecycle.filter(|_| previous.is_some()) {
-                    let prior = staged
-                        .iter()
-                        .rev()
-                        .find(|(key, _)| key == &identity_key)
-                        .map(|(_, result)| result.clone())
-                        .map(Ok)
-                        .unwrap_or_else(|| {
-                            status::latest(&tx, &identity_key, limit)
-                                .and_then(|result| result.ok_or(Error::Corruption))
-                        })?;
-                    policy.permits(&prior, &candidate)
-                } else {
-                    lifecycle.is_none() && (*correction || withdrawn)
-                };
-                let outcome = match previous {
-                    None => RevisionOutcome::New(Revision(0)),
-                    Some(previous) if progression => RevisionOutcome::Correction(Revision(
-                        u64::try_from(previous.checked_add(1).ok_or(Error::Conflict)?)
-                            .map_err(|_| Error::Corruption)?,
-                    )),
-                    Some(_) => RevisionOutcome::Conflict,
-                };
-                match outcome {
-                    RevisionOutcome::New(revision) | RevisionOutcome::Correction(revision) => {
-                        identity.revision = revision;
-                        staged.push((identity_key.clone(), result.clone()));
-                        revisions.push((
-                            identity_key,
-                            i64::try_from(revision.0).map_err(|_| Error::Conflict)?,
-                            content,
-                        ));
-                    }
-                    RevisionOutcome::Conflict => {
-                        result.identity = IdentityStatus::Unresolved(
-                            analyte_model::Reason::new(
-                                "conflicting content under retained observation identity",
-                            )
-                            .map_err(|_| Error::InvalidInput)?,
-                        );
-                    }
-                    RevisionOutcome::Retransmission(_) | RevisionOutcome::Unresolved => {
-                        return Err(Error::InvalidInput);
-                    }
-                }
-                outcomes.push(outcome);
-            }
-        }
-        let deliveries = build(&evidence, &outcomes)?;
+        let reconciliation = Reconciliation {
+            tx: &tx,
+            machine: &stored.metadata.machine,
+            limit,
+            rows: self.limits.page_rows,
+            lifecycle,
+        };
+        let batch = reconciliation.assign_revisions(&mut evidence, receipt, corrections)?;
+        let deliveries = build(&evidence, &batch.outcomes)?;
         if deliveries.len() > count {
             return Err(Error::InvalidInput);
         }
@@ -354,144 +255,48 @@ impl Store {
         if encoded.len() > limit {
             return Err(Error::InvalidInput);
         }
-        let successful = findings.is_empty()
-            && match &evidence.outcome {
-                Reading::Failed(_) => false,
-                Reading::Results(results) => {
-                    !results.is_empty()
-                        && results.iter().all(|r| !r.requires_parking())
-                        && outcomes.iter().all(|o| {
-                            matches!(
-                                o,
-                                RevisionOutcome::New(_)
-                                    | RevisionOutcome::Correction(_)
-                                    | RevisionOutcome::Retransmission(_)
-                            )
-                        })
-                }
-            };
+        let successful = reconciliation_succeeded(&evidence, &batch.outcomes, findings.is_empty());
         let audit = action
             .map(|action| crate::reprocess::audit_evidence(action, version, successful))
             .transpose()?;
-        let mut required = encoded
-            .len()
-            .checked_add(
-                audit
-                    .as_ref()
-                    .map_or(0, String::len)
-                    .checked_mul(2)
-                    .ok_or(Error::Capacity)?,
-            )
-            .ok_or(Error::Capacity)?;
-        if audit.as_ref().is_some_and(|value| value.len() > limit) {
-            return Err(Error::InvalidInput);
-        }
-        for finding in &findings {
-            required = required.checked_add(finding.len()).ok_or(Error::Capacity)?;
-        }
-        for delivery in &deliveries {
-            required = required
-                .checked_add(delivery.payload.len())
-                .ok_or(Error::Capacity)?;
-        }
-        for (identity, _, _) in &revisions {
-            required = required
-                .checked_add(identity.len())
-                .and_then(|n| n.checked_add(128))
-                .ok_or(Error::Capacity)?;
-        }
-        Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
-        let findings_empty = findings.is_empty();
-        for finding in findings {
-            tx.execute("INSERT INTO parked(evidence) VALUES (?1)", [finding])?;
-        }
-        tx.execute(
-            "INSERT INTO interpretations VALUES (?1,?2,?3)",
-            params![receipt_key, version, encoded],
+        let required = required_capacity(
+            &encoded,
+            audit.as_deref(),
+            &findings,
+            &deliveries,
+            &batch.revisions,
+            limit,
         )?;
-        for (identity, revision, content) in revisions {
-            tx.execute(
-                "INSERT INTO observation_revisions VALUES (?1,?2,?3,?4,?5)",
-                params![
-                    identity,
-                    revision,
-                    receipt_key,
-                    version,
-                    content.0.as_slice()
-                ],
-            )?;
-        }
-        for delivery in deliveries {
-            let eligible = match &evidence.outcome {
-                Reading::Results(results) => results.iter().zip(&outcomes).any(|(r,o)| r.may_deliver_to_production() && lifecycle.is_none_or(|policy|policy.may_deliver(r)) && matches!(o, RevisionOutcome::New(_) | RevisionOutcome::Correction(_)) && matches!(&r.identity, IdentityStatus::Resolved(id) if id.observation == delivery.ordering_key.observation)),
-                Reading::Failed(_) => false,
-            };
-            if !eligible
-                || delivery.ordering_key.machine != stored.metadata.machine
-                || delivery.payload.len() > limit
-            {
-                return Err(Error::InvalidInput);
-            }
-            tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version,crate::DeliveryState::Pending])?;
-        }
-        match &evidence.outcome {
-            Reading::Failed(reason) => {
-                tx.execute(
-                    "INSERT INTO parked(evidence) VALUES (?1)",
-                    [crate::parked::evidence(
-                        "interpretation_failure",
-                        &serde_json::from_str::<String>(&receipt_key)?,
-                        reason.as_str(),
-                        Some(crate::parked::ParkingContext::Interpretation { version }),
-                    )?],
-                )?;
-            }
-            Reading::Results(results) => {
-                if action.is_some() && results.is_empty() && findings_empty {
-                    tx.execute(
-                        "INSERT INTO parked(evidence) VALUES (?1)",
-                        [crate::parked::evidence(
-                            "interpretation_failure",
-                            &serde_json::from_str::<String>(&receipt_key)?,
-                            "reprocessing produced no results",
-                            Some(crate::parked::ParkingContext::Interpretation { version }),
-                        )?],
-                    )?;
-                }
-                for (index, (result, outcome)) in results.iter().zip(&outcomes).enumerate() {
-                    if result.requires_parking()
-                        || matches!(
-                            outcome,
-                            RevisionOutcome::Conflict | RevisionOutcome::Unresolved
-                        )
-                    {
-                        tx.execute(
-                            "INSERT INTO parked(evidence) VALUES (?1)",
-                            [crate::parked::evidence(
-                                "result_reconciliation",
-                                &serde_json::from_str::<String>(&receipt_key)?,
-                                &format!("result reconciliation: {outcome:?}"),
-                                Some(crate::parked::ParkingContext::Result {
-                                    version: Some(version),
-                                    index,
-                                }),
-                            )?],
-                        )?;
-                    }
-                }
-            }
-        }
-        if let (Some(action), Some(audit)) = (action, audit) {
-            if successful && let Some(parked) = action.parked {
-                tx.execute(
-                    "UPDATE parked SET resolution=?2 WHERE id=?1 AND resolution IS NULL",
-                    params![parked, &audit],
-                )?;
-            }
-            tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [audit])?;
-        }
+        Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
+        write_history(
+            &tx,
+            &receipt_key,
+            version,
+            &encoded,
+            &findings,
+            &batch.revisions,
+        )?;
+        reconciliation.write_deliveries(
+            &receipt_key,
+            version,
+            &evidence,
+            &batch.outcomes,
+            deliveries,
+        )?;
+        park_outcomes(
+            &tx,
+            &receipt_key,
+            version,
+            &evidence,
+            &batch.outcomes,
+            (action.is_some(), findings.is_empty()),
+        )?;
+        write_reprocess_audit(&tx, action, audit, successful)?;
         tx.commit()?;
-        Ok(InterpretationCommit { version, outcomes })
+        Ok(InterpretationCommit {
+            version,
+            outcomes: batch.outcomes,
+        })
     }
 }
 
@@ -596,6 +401,400 @@ fn same_retained_content(
         }
     }
     Ok(None)
+}
+
+type AssignedRevision = (String, i64, analyte_model::Digest);
+
+#[derive(Default)]
+struct RevisionBatch {
+    outcomes: Vec<RevisionOutcome>,
+    revisions: Vec<AssignedRevision>,
+    staged: Vec<(String, ResultContent)>,
+}
+
+struct Reconciliation<'a, 'db> {
+    tx: &'a rusqlite::Transaction<'db>,
+    machine: &'a analyte_model::Identifier,
+    limit: usize,
+    rows: usize,
+    lifecycle: Option<StatusLifecycle<'a>>,
+}
+
+impl Reconciliation<'_, '_> {
+    fn assign_revisions(
+        &self,
+        evidence: &mut Interpretation,
+        receipt: ReceiptId,
+        corrections: &[bool],
+    ) -> Result<RevisionBatch, Error> {
+        let mut batch = RevisionBatch::default();
+        if let Reading::Results(results) = &mut evidence.outcome {
+            for (result, correction) in results.iter_mut().zip(corrections) {
+                self.assign_result(result, receipt, *correction, &mut batch)?;
+            }
+        }
+        Ok(batch)
+    }
+    fn assign_result(
+        &self,
+        result: &mut ResultContent,
+        receipt: ReceiptId,
+        correction: bool,
+        batch: &mut RevisionBatch,
+    ) -> Result<(), Error> {
+        if result.receipt != receipt {
+            return Err(Error::InvalidInput);
+        }
+        let candidate = result.clone();
+        let content = clinical_digest(result)?;
+        let IdentityStatus::Resolved(identity) = &mut result.identity else {
+            batch.outcomes.push(RevisionOutcome::Unresolved);
+            return Ok(());
+        };
+        let identity_key = key(&(self.machine, &identity.observation))?;
+        if let Some(policy) = self.lifecycle
+            && status::other_final_run(
+                self.tx,
+                self.machine,
+                &candidate,
+                &batch.staged,
+                policy,
+                self.rows,
+                self.limit,
+            )?
+        {
+            result.identity = IdentityStatus::Unresolved(
+                analyte_model::Reason::new("multiple final runs under the same order and test")
+                    .map_err(|_| Error::InvalidInput)?,
+            );
+            batch.outcomes.push(RevisionOutcome::Conflict);
+            return Ok(());
+        }
+        let same = self.same_revision(
+            &identity_key,
+            &identity.observation,
+            &content,
+            &batch.revisions,
+        )?;
+        if let Some(revision) = same {
+            identity.revision = Revision(u64::try_from(revision).map_err(|_| Error::Corruption)?);
+            batch
+                .outcomes
+                .push(RevisionOutcome::Retransmission(identity.revision));
+            return Ok(());
+        }
+        let previous = self.previous_revision(&identity_key, &batch.revisions)?;
+        let progression = self.permits_progression(
+            &identity_key,
+            &candidate,
+            previous,
+            correction,
+            &batch.staged,
+        )?;
+        let outcome = match previous {
+            None => RevisionOutcome::New(Revision(0)),
+            Some(previous) if progression => RevisionOutcome::Correction(Revision(
+                u64::try_from(previous.checked_add(1).ok_or(Error::Conflict)?)
+                    .map_err(|_| Error::Corruption)?,
+            )),
+            Some(_) => RevisionOutcome::Conflict,
+        };
+        match outcome {
+            RevisionOutcome::New(revision) | RevisionOutcome::Correction(revision) => {
+                identity.revision = revision;
+                batch.staged.push((identity_key.clone(), result.clone()));
+                batch.revisions.push((
+                    identity_key,
+                    i64::try_from(revision.0).map_err(|_| Error::Conflict)?,
+                    content,
+                ));
+            }
+            RevisionOutcome::Conflict => {
+                result.identity = IdentityStatus::Unresolved(
+                    analyte_model::Reason::new(
+                        "conflicting content under retained observation identity",
+                    )
+                    .map_err(|_| Error::InvalidInput)?,
+                );
+            }
+            RevisionOutcome::Retransmission(_) | RevisionOutcome::Unresolved => {
+                return Err(Error::InvalidInput);
+            }
+        }
+        batch.outcomes.push(outcome);
+        Ok(())
+    }
+    fn same_revision(
+        &self,
+        identity_key: &str,
+        observation: &analyte_model::ObservationIdentity,
+        content: &analyte_model::Digest,
+        revisions: &[AssignedRevision],
+    ) -> Result<Option<i64>, Error> {
+        // A delayed retransmission may refer to any retained revision, not just the latest.
+        let same: Option<i64> = self.tx.query_row("SELECT revision FROM observation_revisions WHERE identity_key=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1", params![identity_key, content.0.as_slice()], |r| r.get(0)).optional()?;
+        // Older digests included source offsets. Compare retained typed evidence
+        // on a miss; do not rewrite history or silently treat old results as new.
+        let same = match same {
+            Some(revision) => Some(revision),
+            None => same_retained_content(
+                self.tx,
+                identity_key,
+                observation,
+                content,
+                self.rows,
+                self.limit,
+            )?,
+        };
+        let same = revisions
+            .iter()
+            .rev()
+            .find(|(key, _, digest)| key == identity_key && digest == content)
+            .map(|(_, revision, _)| *revision)
+            .or(same);
+
+        Ok(same)
+    }
+    fn previous_revision(
+        &self,
+        identity_key: &str,
+        revisions: &[AssignedRevision],
+    ) -> Result<Option<i64>, Error> {
+        let previous: Option<i64> = self.tx.query_row(
+            "SELECT max(revision) FROM observation_revisions WHERE identity_key=?1",
+            [&identity_key],
+            |r| r.get(0),
+        )?;
+        let previous = revisions
+            .iter()
+            .rev()
+            .find(|(key, _, _)| key == identity_key)
+            .map(|(_, revision, _)| *revision)
+            .or(previous);
+
+        Ok(previous)
+    }
+    fn permits_progression(
+        &self,
+        identity_key: &str,
+        candidate: &ResultContent,
+        previous: Option<i64>,
+        correction: bool,
+        staged: &[(String, ResultContent)],
+    ) -> Result<bool, Error> {
+        let withdrawn = candidate
+            .parts
+            .as_slice()
+            .iter()
+            .any(|p| p.status == ResultStatus::Withdrawn);
+        let progression = if let Some(policy) = self.lifecycle.filter(|_| previous.is_some()) {
+            let prior = staged
+                .iter()
+                .rev()
+                .find(|(key, _)| key == identity_key)
+                .map(|(_, result)| result.clone())
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    status::latest(self.tx, identity_key, self.limit)
+                        .and_then(|result| result.ok_or(Error::Corruption))
+                })?;
+            policy.permits(&prior, candidate)
+        } else {
+            self.lifecycle.is_none() && (correction || withdrawn)
+        };
+
+        Ok(progression)
+    }
+    fn write_deliveries(
+        &self,
+        receipt_key: &str,
+        version: i64,
+        evidence: &Interpretation,
+        outcomes: &[RevisionOutcome],
+        deliveries: Vec<Delivery>,
+    ) -> Result<(), Error> {
+        for delivery in deliveries {
+            let eligible = match &evidence.outcome {
+                Reading::Results(results) => results.iter().zip(outcomes).any(|(r,o)| r.may_deliver_to_production() && self.lifecycle.is_none_or(|policy|policy.may_deliver(r)) && matches!(o, RevisionOutcome::New(_) | RevisionOutcome::Correction(_)) && matches!(&r.identity, IdentityStatus::Resolved(id) if id.observation == delivery.ordering_key.observation)),
+                Reading::Failed(_) => false,
+            };
+            if !eligible
+                || delivery.ordering_key.machine != *self.machine
+                || delivery.payload.len() > self.limit
+            {
+                return Err(Error::InvalidInput);
+            }
+            self.tx.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,0,unixepoch())", params![key(&delivery.id)?,receipt_key,version,delivery.destination.as_str(),key(&delivery.ordering_key)?,delivery.payload,digest(&delivery.payload).0.as_slice(),delivery.contract_version,crate::DeliveryState::Pending])?;
+        }
+
+        Ok(())
+    }
+}
+fn reconciliation_succeeded(
+    evidence: &Interpretation,
+    outcomes: &[RevisionOutcome],
+    findings_empty: bool,
+) -> bool {
+    findings_empty
+        && match &evidence.outcome {
+            Reading::Failed(_) => false,
+            Reading::Results(results) => {
+                !results.is_empty()
+                    && results.iter().all(|r| !r.requires_parking())
+                    && outcomes.iter().all(|o| {
+                        matches!(
+                            o,
+                            RevisionOutcome::New(_)
+                                | RevisionOutcome::Correction(_)
+                                | RevisionOutcome::Retransmission(_)
+                        )
+                    })
+            }
+        }
+}
+fn required_capacity(
+    encoded: &str,
+    audit: Option<&str>,
+    findings: &[String],
+    deliveries: &[Delivery],
+    revisions: &[AssignedRevision],
+    limit: usize,
+) -> Result<usize, Error> {
+    let mut required = encoded
+        .len()
+        .checked_add(
+            audit
+                .map_or(0, str::len)
+                .checked_mul(2)
+                .ok_or(Error::Capacity)?,
+        )
+        .ok_or(Error::Capacity)?;
+    if audit.is_some_and(|value| value.len() > limit) {
+        return Err(Error::InvalidInput);
+    }
+    for finding in findings {
+        required = required.checked_add(finding.len()).ok_or(Error::Capacity)?;
+    }
+    for delivery in deliveries {
+        required = required
+            .checked_add(delivery.payload.len())
+            .ok_or(Error::Capacity)?;
+    }
+    for (identity, _, _) in revisions {
+        required = required
+            .checked_add(identity.len())
+            .and_then(|n| n.checked_add(128))
+            .ok_or(Error::Capacity)?;
+    }
+
+    Ok(required)
+}
+fn write_history(
+    tx: &rusqlite::Transaction<'_>,
+    receipt_key: &str,
+    version: i64,
+    encoded: &str,
+    findings: &[String],
+    revisions: &[AssignedRevision],
+) -> Result<(), Error> {
+    for finding in findings {
+        tx.execute("INSERT INTO parked(evidence) VALUES (?1)", [finding])?;
+    }
+    tx.execute(
+        "INSERT INTO interpretations VALUES (?1,?2,?3)",
+        params![receipt_key, version, encoded],
+    )?;
+    for (identity, revision, content) in revisions {
+        tx.execute(
+            "INSERT INTO observation_revisions VALUES (?1,?2,?3,?4,?5)",
+            params![
+                identity,
+                revision,
+                receipt_key,
+                version,
+                content.0.as_slice()
+            ],
+        )?;
+    }
+
+    Ok(())
+}
+fn park_outcomes(
+    tx: &rusqlite::Transaction<'_>,
+    receipt_key: &str,
+    version: i64,
+    evidence: &Interpretation,
+    outcomes: &[RevisionOutcome],
+    context: (bool, bool),
+) -> Result<(), Error> {
+    let (reprocessing, findings_empty) = context;
+    match &evidence.outcome {
+        Reading::Failed(reason) => {
+            tx.execute(
+                "INSERT INTO parked(evidence) VALUES (?1)",
+                [crate::parked::evidence(
+                    "interpretation_failure",
+                    &serde_json::from_str::<String>(receipt_key)?,
+                    reason.as_str(),
+                    Some(crate::parked::ParkingContext::Interpretation { version }),
+                )?],
+            )?;
+        }
+        Reading::Results(results) => {
+            if reprocessing && results.is_empty() && findings_empty {
+                tx.execute(
+                    "INSERT INTO parked(evidence) VALUES (?1)",
+                    [crate::parked::evidence(
+                        "interpretation_failure",
+                        &serde_json::from_str::<String>(receipt_key)?,
+                        "reprocessing produced no results",
+                        Some(crate::parked::ParkingContext::Interpretation { version }),
+                    )?],
+                )?;
+            }
+            for (index, (result, outcome)) in results.iter().zip(outcomes).enumerate() {
+                if result.requires_parking()
+                    || matches!(
+                        outcome,
+                        RevisionOutcome::Conflict | RevisionOutcome::Unresolved
+                    )
+                {
+                    tx.execute(
+                        "INSERT INTO parked(evidence) VALUES (?1)",
+                        [crate::parked::evidence(
+                            "result_reconciliation",
+                            &serde_json::from_str::<String>(receipt_key)?,
+                            &format!("result reconciliation: {outcome:?}"),
+                            Some(crate::parked::ParkingContext::Result {
+                                version: Some(version),
+                                index,
+                            }),
+                        )?],
+                    )?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+fn write_reprocess_audit(
+    tx: &rusqlite::Transaction<'_>,
+    action: Option<&crate::Reprocess>,
+    audit: Option<String>,
+    successful: bool,
+) -> Result<(), Error> {
+    if let (Some(action), Some(audit)) = (action, audit) {
+        if successful && let Some(parked) = action.parked {
+            tx.execute(
+                "UPDATE parked SET resolution=?2 WHERE id=?1 AND resolution IS NULL",
+                params![parked, &audit],
+            )?;
+        }
+        tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [audit])?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
