@@ -168,6 +168,23 @@ Part A / step 4 is complete for the selected receiving scopes. Part B / step 5
 order writers remain separate; config still refuses sending for the six
 non-native editions.
 
+Writer source audit for that remaining part: OBR-4 uses CWE in 2.6
+§4.5.3.4 pp.4-41–42, 2.8.2 §4.5.3.4 pp.68–69 and 2.9.1 §4.5.3.4 pp.74–75.
+An actual coding-system version is needed for non-HL7 and user-defined systems
+(2.6 §2.A.13.7 pp.2-118–119; 2.8.2 §2.A.13.7 pp.29–30;
+2.9.1 §2A.2.13.7 pp.30–31). It must not be invented from the message edition
+or borrowed from an unrelated specimen coding system. The existing syntax
+`order::Code::with_version` represents it, but the configured test mapping and
+command mapper currently accept only the three CE components. Writer integration
+must carry an explicitly supplied test revision through that boundary.
+
+The existing order scope remains ORM/O01–ORR/O02 and OML/O21–ORL/O22.
+Later patient-optional reply variants are not implicitly selected: 2.8.2
+§4.4.7.2 uses the ORL_O41 structure, and 2.9.1 §4.4.7.2 uses ORL/O53.
+The existing O22 profile requires the patient response group for order decisions;
+no replacement family or patient information is invented here. No writer code
+or configuration capability is enabled by this audit.
+
 ### Modern rule rows and tests
 
 Production differences live in the shared edition table. Tests below are in
