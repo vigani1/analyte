@@ -5,7 +5,9 @@ use crate::support::HANG_GUARD;
 
 #[path = "client_fixture.rs"]
 mod client_fixture;
-use client_fixture::{client, client_with_setup, wait_parked_frame};
+#[cfg(feature = "test-hooks")]
+use client_fixture::client_with_setup;
+use client_fixture::{client, wait_parked_frame};
 
 #[tokio::test]
 async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions()

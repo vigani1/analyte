@@ -17,6 +17,8 @@ mod law_results;
 mod machine_definitions;
 #[path = "../orders/cases.rs"]
 mod order_cases;
+#[path = "../orders/timeout.rs"]
+mod order_timeout;
 #[cfg(feature = "test-hooks")]
 #[path = "../service/recovery.rs"]
 mod service_recovery;

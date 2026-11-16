@@ -1,5 +1,6 @@
 //! Tests HTTP delivery retries and stable delivery identities.
 use super::*;
+use crate::support::step;
 
 #[tokio::test]
 async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> Result<(), Error> {
@@ -153,63 +154,49 @@ async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and
     let receiver_path = directory.path().join("reference.db");
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let mut reference = Reference::start(&receiver_path, listener, false).await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
-    let mut peer = connect(&path, "hl7").await?;
-    assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
-    let original = reference.event().await?;
+    let service = step(
+        "start resend service",
+        Running::start(&path, &reference.url, "synthetic-api"),
+    )
+    .await?;
+    let mut peer = step("connect resend peer", connect(&path, "hl7")).await?;
+    assert!(
+        step("receive result ACK", hl7(&mut peer, ORU))
+            .await?
+            .contains("MSA|AA")
+    );
+    let original = step("receive original delivery", reference.event()).await?;
     assert!(original.outcome.contains("accepted"));
-    wait_state(&path, "done", 1).await?;
-    for suffix in [
-        vec!["--reason", "app recovery"],
-        vec!["--actor", "synthetic-operator"],
-    ] {
-        let refused = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+    step("commit original done", wait_state(&path, "done", 1)).await?;
+    refuse_incomplete_resends(&path, &original).await?;
+    let output = step(
+        "resend existing delivery CLI",
+        tokio::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .kill_on_drop(true)
             .arg("--config")
             .arg(&*path)
-            .args(["deliveries", "resend", &original.id])
-            .args(suffix)
-            .output()?;
-        assert!(!refused.status.success());
-    }
-    let unknown = uuid::Uuid::now_v7().to_string();
-    let refused = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
-        .arg("--config")
-        .arg(&*path)
-        .args([
-            "--actor",
-            "synthetic-operator",
-            "deliveries",
-            "resend",
-            &unknown,
-            "--reason",
-            "app recovery",
-        ])
-        .output()?;
-    assert!(!refused.status.success());
-    assert!(String::from_utf8_lossy(&refused.stderr).contains("UnknownDelivery"));
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
-        .arg("--config")
-        .arg(&*path)
-        .args([
-            "--actor",
-            "synthetic-operator",
-            "deliveries",
-            "resend",
-            &original.id,
-            "--reason",
-            "app data recovery requested",
-        ])
-        .output()?;
+            .args([
+                "--actor",
+                "synthetic-operator",
+                "deliveries",
+                "resend",
+                &original.id,
+                "--reason",
+                "app data recovery requested",
+            ])
+            .output(),
+    )
+    .await?;
     assert!(
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let duplicate = reference.event().await?;
+    let duplicate = step("receive duplicate delivery", reference.event()).await?;
     assert!(duplicate.outcome.contains("duplicate"));
     assert_eq!(duplicate.id, original.id);
     assert_eq!(duplicate.bytes, original.bytes);
-    wait_state(&path, "done", 1).await?;
+    step("commit duplicate done", wait_state(&path, "done", 1)).await?;
     assert_eq!(receiver_count(&receiver_path)?, 1);
     let db = database(&path)?;
     let evidence: String = db.query_row(
@@ -241,7 +228,55 @@ async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and
             .is_err()
     );
     drop(db);
-    service.stop().await?;
-    reference.close().await?;
+    step("stop resend service", service.stop()).await?;
+    step("close resend receiver", reference.close()).await?;
+    Ok(())
+}
+
+async fn refuse_incomplete_resends(path: &Fixture, original: &Captured) -> Result<(), Error> {
+    for (name, suffix) in [
+        (
+            "reject resend without actor CLI",
+            vec!["--reason", "app recovery"],
+        ),
+        (
+            "reject resend without reason CLI",
+            vec!["--actor", "synthetic-operator"],
+        ),
+    ] {
+        let refused = step(
+            name,
+            tokio::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+                .kill_on_drop(true)
+                .arg("--config")
+                .arg(path.as_ref())
+                .args(["deliveries", "resend", &original.id])
+                .args(suffix)
+                .output(),
+        )
+        .await?;
+        assert!(!refused.status.success());
+    }
+    let unknown = uuid::Uuid::now_v7().to_string();
+    let refused = step(
+        "reject unknown resend ID CLI",
+        tokio::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .kill_on_drop(true)
+            .arg("--config")
+            .arg(path.as_ref())
+            .args([
+                "--actor",
+                "synthetic-operator",
+                "deliveries",
+                "resend",
+                &unknown,
+                "--reason",
+                "app recovery",
+            ])
+            .output(),
+    )
+    .await?;
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("UnknownDelivery"));
     Ok(())
 }
