@@ -185,11 +185,13 @@ impl Orders {
                 *field = filter.value.clone();
             }
         }
-        let edition = match machine.syntax.edition {
-            Some(crate::Edition::V231) => "2.3.1",
-            Some(crate::Edition::V251) => "2.5.1",
-            None => return Err(invalid(path, "syntax.edition", "HL7 requires an edition")),
-        };
+        let edition = analyte_hl7::Version::from(
+            machine
+                .syntax
+                .edition
+                .ok_or_else(|| invalid(path, "syntax.edition", "HL7 requires an edition"))?,
+        )
+        .as_str();
         let wire = format!(
             "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02^QRY_Q02|config|P|{edition}\rQRD|{}\r",
             fields.join("|")

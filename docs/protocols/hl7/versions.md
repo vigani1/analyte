@@ -25,14 +25,25 @@ The single registry in `version/mod.rs` selects exact wire IDs, required MSH-7
 usage and truncation-character availability. Each entry explicitly identifies
 whether its typed field profile exists. Recognition never aliases a new edition
 to 2.5.1: absent field profiles refuse interpretation and writing while syntax
-retains the original bytes. Config expansion, compatibility interpretation,
-message/datatype differences and writer integration are separate remaining steps.
+retains the original bytes. Machine configuration now accepts exactly `v23`,
+`v231`, `v24`, `v25`, `v251`, `v26`, `v282` and `v291`; these map to the exact
+wire IDs below. Unsupported values fail at the positioned TOML schema boundary
+with the bad value and the allowed choices. A missing edition is not defaulted.
+Compatibility interpretation, message/datatype differences and writer
+integration are separate remaining steps. A valid configuration does not qualify
+a still-unimplemented typed profile for clinical use.
+
+Config tests in `hl7_editions.rs` cover all eight exact selections and canonical
+snapshots (`adr0012_s3_eight_configured_editions_preserve_exact_wire_identity`),
+unlisted values and their diagnostics
+(`adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values`) and
+missing declarations (`adr0012_s3_missing_config_edition_is_not_defaulted`).
 
 | Registry entry | MSH-7 | Fifth MSH-2 character | Source | Source-named test in `version/tests.rs` |
 | --- | --- | --- | --- | --- |
-| 2.3 | Optional | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-75 | `hl7_2_5_1_s2_8_recognizes_2_3_without_upgrading` |
+| 2.3 | Optional | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `hl7_2_5_1_s2_8_recognizes_2_3_without_upgrading` |
 | 2.3.1 | Optional | Refused | 2.3.1 §§2.24.1.2/.7/.12, pp.2-92–94 | `hl7_2_3_1_s2_24_1_2_7_12_recognizes_edition` |
-| 2.4 | Required | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-75 | `hl7_2_5_1_s2_8_and_s2_15_9_7_recognizes_2_4` |
+| 2.4 | Required | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `hl7_2_5_1_s2_8_and_s2_15_9_7_recognizes_2_4` |
 | 2.5 | Required | Refused | Same compatibility and MSH-7 clauses | `hl7_2_5_1_s2_8_recognizes_2_5_without_patch_upgrade` |
 | 2.5.1 | Required | Refused | 2.5.1 §§2.15.9.2/.7/.12, pp.2-74–77 | `hl7_2_5_1_s2_15_9_2_7_12_recognizes_edition` |
 | 2.6 | Required | Refused | 2.6 §§2.14.9.2/.7/.12, pp.56–58 | `hl7_2_6_s2_14_9_2_7_12_recognizes_edition_without_typed_fallback` |

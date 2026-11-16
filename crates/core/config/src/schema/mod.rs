@@ -177,17 +177,35 @@ pub enum Escapes {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Edition {
-    /// Explicit `V231` selection.
+    /// Explicit HL7 2.3 selection; no patch-edition upgrade.
+    V23,
+    /// Explicit HL7 2.3.1 selection.
     V231,
-    /// Explicit `V251` selection.
+    /// Explicit HL7 2.4 selection.
+    V24,
+    /// Explicit HL7 2.5 selection; no patch-edition upgrade.
+    V25,
+    /// Explicit HL7 2.5.1 selection.
     V251,
+    /// Explicit HL7 2.6 selection.
+    V26,
+    /// Explicit HL7 2.8.2 selection.
+    V282,
+    /// Explicit HL7 2.9.1 selection.
+    V291,
 }
 
 impl From<Edition> for analyte_hl7::Version {
     fn from(edition: Edition) -> Self {
         match edition {
+            Edition::V23 => Self::V23,
             Edition::V231 => Self::V231,
+            Edition::V24 => Self::V24,
+            Edition::V25 => Self::V25,
             Edition::V251 => Self::V251,
+            Edition::V26 => Self::V26,
+            Edition::V282 => Self::V282,
+            Edition::V291 => Self::V291,
         }
     }
 }
