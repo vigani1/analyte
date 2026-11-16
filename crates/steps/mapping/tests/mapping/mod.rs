@@ -94,8 +94,8 @@ fn qualified_hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::er
         if segment.starts_with("OBR|") {
             let mut fields = segment.split('|').map(str::to_owned).collect::<Vec<_>>();
             fields.resize(26, String::new());
-            fields[4] = "SYN^Synthetic^synthetic".into();
-            fields[25] = "F".into();
+            *fields.get_mut(4).ok_or("synthetic OBR-4")? = "SYN^Synthetic^synthetic".into();
+            *fields.get_mut(25).ok_or("synthetic OBR-25")? = "F".into();
             qualified.push_str(&fields.join("|"));
         } else {
             qualified.push_str(segment);

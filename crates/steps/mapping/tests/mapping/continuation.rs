@@ -98,6 +98,7 @@ fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResu
         let cfg =
             config(&HL7_CONFIG.replace("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
         for (segment, field, value) in [
+            ("OBX", 11, "F"),
             ("OBX", 11, ""),
             ("OBX", 11, "\"\""),
             ("OBX", 11, "UNKNOWN"),
@@ -134,7 +135,7 @@ fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResu
                 cfg.effective().hl7_options().ok_or("options")?,
             )?;
             let output = map_hl7(&message, &cfg, input())?;
-            let must_park = field != 22 || matches!(edition, "v282" | "v291");
+            let must_park = value != "F" && (field != 22 || matches!(edition, "v282" | "v291"));
             assert_eq!(
                 output.requires_parking(),
                 must_park,
