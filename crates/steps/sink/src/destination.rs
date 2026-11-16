@@ -64,8 +64,7 @@ impl Destination {
         secrets: Identifier,
         limits: Limits,
     ) -> Result<Self, Error> {
-        let url = analyte_config::HttpsUrl::parse(base).map_err(|_| Error::Configuration)?;
-        Self::from_url(id, &url, secrets, limits)
+        Self::construct(id, base, secrets, limits, false)
     }
 
     /// Accepts an HTTPS endpoint already parsed by configuration.
