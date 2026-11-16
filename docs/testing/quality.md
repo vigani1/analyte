@@ -480,3 +480,107 @@ Sixteen tests were added this continuation. The report records every run, includ
 
 
 Final verification after signed-off main merge `fdf6549`: fmt, Clippy, deny and fuzz-bin compilation exit 0. Workspace tests exit 101 at the carried size-growth regression (store: 144 passed, 1 failed, 1 ignored) while #103 remains open; that regression passes in the #103 archive. An earlier Autolyser integration timeout passed in isolation and in the final workspace rerun. PR #98 is marked ready for the completed subset with the two worker misses and #103 integration explicitly outstanding; no whole-round completion or green branch is claimed. Linux/MSRV and fuzz execution were not run locally.
+
+### Test speed and reliability investigation (PR #137)
+
+Baseline: origin/main `1e7e7776b82cd5c548e693caa31352862b026c8a`, Windows,
+Rust 1.100.0. No existing assertion, source-named test, hang guard or retry
+policy changed. No dependencies were added. The original ASTM timeout remains
+**unresolved**; these results do not establish its cause or a production fix.
+
+The original failure is first-attempt Windows shard 1/2 in
+[run 43822828564](https://github.com/vigani1/analyte/actions/runs/43822828564),
+commit `ab0a7d7c6878f94ffd024f8568df53c9876b401f`: ASTM failed after 74.777 s
+with `Elapsed(())`. Its ASTM test and shared fixture match this baseline.
+Temporary stage markers reached every stage in 20 successful nextest stress
+iterations. They were removed before committing.
+
+Load evidence (three concurrent full delivery processes, 20 total invocations):
+
+- Baseline: 19 passed, one failed. ASTM passed all 20. The failure was
+  `law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restart`,
+  Windows `AddrInUse`: the unreachable-endpoint fixture released a port and
+  rebound it after restart. A bound non-listening socket now reserves that
+  same endpoint throughout the outage, then becomes its listener. The existing
+  assertions remain intact. This is a fixture fix, not a production bug.
+- Final narrowed fixtures: 20 passed, zero failed; ASTM passed all 20.
+- Rejected intermediate broad poll override: 12 passed, eight failed, all at
+  the existing ASTM fresh-cache/absent-sample assertion. Frequent refresh can
+  make the cache correctly untrusted during a query. The override was removed
+  from shared support and limited to HL7 send-ahead and LAW send-ahead setup.
+- Additional CI-shaped reproduction: nextest 0.9.150, workspace/all features,
+  partition `count:1/2`, four test threads: 604 passed. Three competing nextest
+  processes, each constrained to CPUs 0 to 3, each repeated that shard three times:
+  all nine iterations passed (604 tests per iteration). ASTM passed all nine.
+- Final all-features delivery nextest run: 129 passed, one existing ignored test.
+
+Store fixture construction now commits related setup rows and schema statements
+in transactions before closing the fixture and exercising the real upgrade.
+It retains every row, owner/state combination, schema version and assertion;
+production migration and synchronous durability settings are unchanged.
+Matched nextest measurements used one test thread, restoring baseline source
+for the before run, then restoring the final source for the after run:
+
+| Test (suffix under `analyte-store`) | Before seconds | After seconds |
+| --- | ---: | ---: |
+| `upkeep::migration::tests::custody::adr0003_v6_every_state_owner_and_parking_shape_migrates_without_losing_meaning` | 1.220 | 0.110 |
+| `upkeep::open::tests::mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_guards` | 1.933 | 0.629 |
+
+A new **production-code test timing seam** is explicitly included:
+`Program::set_loopback_poll_interval_for_test`. It requires an existing loopback
+destination override, bounds the interval to 1 ms to 5 s and changes only that
+in-memory test program. Production entry points reject the required override.
+The new `plan11_loopback_poll_override_keeps_production_defaults_and_refuses_unbounded_waits`
+test checks refusal, bounds, unchanged default and production rejection. The
+send-ahead fixtures use 100 ms instead of the production five-second app-feed
+poll; their assertions concern lifecycle and delivery, not polling frequency.
+No production clock abstraction was introduced. The remaining host deadlines
+use real monotonic time; pausing Tokio alone cannot safely advance them.
+
+Per-test means from the 20 baseline and 20 final full-binary load runs follow.
+These runs overlap different verification workloads, so the values describe
+observations, not a controlled benchmark. Every per-test mean is also retained
+locally in `target/timing/durations.txt` (all 110 delivery tests).
+
+| Source-named test (suffix under delivery) | Before seconds | After seconds |
+| --- | ---: | ---: |
+| `hl7_send_cases::hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once` | 26.101 | 14.480 |
+| `law_queries::work::law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos` | 21.901 | 8.439 |
+| `law_queries::work::law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_replayed` | 26.170 | 17.479 |
+| `order_cases::adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends` | 4.517 | 4.403 |
+
+The sink already uses `deliver_once_with_clock` to check the exact Retry-After
+boundary on this baseline. No sink source change or new speedup is claimed.
+Its two integration tests also build a receiver child inside the test:
+`adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_after`
+measured 46.079 s in the initial loaded/cold libtest run and 2.133 s in the
+final focused nextest run; `adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0004_cache`
+measured 46.263 s and 2.697 s. Build cache, inherited environment and contention
+differ, so those are not before/after implementation comparisons. Existing
+pure timer worker tests already use paused Tokio time; store startup timeout
+tests already inject their startup clock. No shorter protocol timeout was used.
+
+Verification output on the final code:
+
+| Command | Result |
+| --- | --- |
+| `cargo fmt --check` | exit 0, no output |
+| `cargo clippy --all-targets --all-features -- -D warnings` | exit 0, finished dev profile |
+| `cargo test --workspace` | exit 0, including the new timing-seam protection test |
+| `cargo deny check` | exit 0; `advisories ok, bans ok, licenses ok, sources ok`; duplicate warnings retained |
+| `cargo check --manifest-path fuzz/Cargo.toml --bins` | exit 0, finished dev profile |
+| `bash scripts/check-layout.sh` | exit 0; `Layout passed` |
+
+Raw output stays in ignored `target/timing/`: `final-*.log`,
+`before-load-*`, `scoped-load-*`, `store-matched-{before,after}.log`,
+`sink-final-nextest.log`, `astm-nextest-stress.log`, `affinity-*`, and the
+original CI attempt log. Rejected intermediate logs are `final-load-*`;
+the final successful load logs are **`scoped-load-*`**. The initial stable
+`--report-time` attempts ran no tests and are excluded; successful direct
+libtest measurements enabled that runner flag with `RUSTC_BOOTSTRAP=1` and
+`-Z unstable-options`, without changing the pinned compiler. The nextest
+installation archive's SHA-256 matched its official release checksum.
+One initial parallel nextest build hit Windows LNK1104 while another check
+was executing the same test binary; the subsequent built shard ran successfully.
+Linux, MSRV and fuzz execution were not run locally. The original ASTM symptom
+and remaining real-time host deadline acceleration need further work.

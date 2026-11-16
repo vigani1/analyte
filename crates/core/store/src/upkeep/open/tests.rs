@@ -290,6 +290,8 @@ fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_gua
         let mut db = Connection::open(&path)?;
         let metadata = crate::test_support::receipt(b"original bytes")?;
         if version >= 1 {
+            let tx = db.transaction()?;
+            let db = &tx;
             db.execute_batch(include_str!("../schema.sql"))?;
             db.execute(
                 "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
@@ -308,6 +310,7 @@ fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_gua
                 "INSERT INTO frames(transfer,number,raw) VALUES ('original-transfer',0,x'010203')",
                 [],
             )?;
+            tx.commit()?;
         }
         migrate_fixture_to_version(&mut db, version)?;
         assert_eq!(
@@ -486,13 +489,16 @@ fn migrate_fixture_to_version(db: &mut Connection, version: i64) -> TestResult {
         Store::migrate_v3(db, 65_536)?;
     }
     if version >= 4 {
-        db.execute_batch(include_str!("../migration_v4.sql"))?;
-    }
-    if version >= 5 {
-        db.execute_batch(include_str!("../migration_v5.sql"))?;
-    }
-    if version >= 6 {
-        db.execute_batch(include_str!("../migration_v6.sql"))?;
+        // Construct the requested old schema in one durable fixture commit.
+        let tx = db.transaction()?;
+        tx.execute_batch(include_str!("../migration_v4.sql"))?;
+        if version >= 5 {
+            tx.execute_batch(include_str!("../migration_v5.sql"))?;
+        }
+        if version >= 6 {
+            tx.execute_batch(include_str!("../migration_v6.sql"))?;
+        }
+        tx.commit()?;
     }
     if version >= 7 {
         Store::migrate_v7(db, 65_536)?;

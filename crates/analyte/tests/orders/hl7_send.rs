@@ -97,7 +97,10 @@ async fn setup_with_patient_requirement(
             )
             .await?;
     }
-    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let mut program = program(&path, &reference.url)?;
+    // Send-ahead cases check lifecycle, rather than the feed polling interval.
+    program.set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))?;
+    let service = Running::start_program(program, "synthetic-api").await?;
     let peer = connect(&path, "hl7").await?;
     Ok((temp, path, reference, service, peer))
 }
