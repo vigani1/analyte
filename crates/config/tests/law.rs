@@ -48,13 +48,13 @@ fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> R
         let peer = law(&changed)?.policy().peer().capabilities();
         assert_eq!(
             [
-                peer.patient,
-                peer.container,
-                peer.specimen,
-                peer.dilution,
-                peer.manager_repeat,
-                peer.repeat_control,
-                peer.priority
+                peer.content.patient,
+                peer.content.container,
+                peer.content.specimen,
+                peer.instructions.dilution,
+                peer.instructions.repeat.manager_repeat,
+                peer.instructions.repeat.repeat_control,
+                peer.instructions.priority
             ]
             .into_iter()
             .filter(|flag| *flag)

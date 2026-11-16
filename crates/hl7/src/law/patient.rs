@@ -338,7 +338,7 @@ pub(super) fn validate(
     profile: Profile<'_>,
     direction: ControlDirection,
 ) -> Result<(), Error> {
-    if !profile.patient || profile.pooling_outside {
+    if !profile.content.patient || profile.workflow.pooling_outside {
         return excluded(
             segment.raw(),
             direction,
