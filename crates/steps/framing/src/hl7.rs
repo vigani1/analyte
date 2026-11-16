@@ -167,7 +167,7 @@ fn valid(byte: u8) -> bool {
     byte > 31 || byte == CR
 }
 
-/// Borrows the content inside one MLLP Release 1 ?1.2 block envelope.
+/// Borrows the content inside one MLLP Release 1 §1.2 block envelope.
 /// Returns `None` if SB or the EB/CR trailer is missing. This does not validate
 /// the payload repertoire or size; use [`Decoder`] before interpreting input.
 #[must_use]

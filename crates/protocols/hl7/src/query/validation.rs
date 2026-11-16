@@ -1,4 +1,4 @@
-//! Validates QRD and QRF fields (HL7 2.3.1 2.24.4?5 and 2.5.1 5.10.5.3?4).
+//! Validates QRD and QRF fields (HL7 2.3.1 2.24.4–5 and 2.5.1 5.10.5.3–4).
 use super::invalid;
 use crate::{Component, Error, Repetition, Segment, Version};
 
