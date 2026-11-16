@@ -1,6 +1,8 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
 use super::connection_input::Input;
 use super::custody::{self, ms};
+use super::transfer_end::AutolyserEnd;
+use crate::orders::outcome::Code;
 use crate::{Error, intake, invalid};
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
@@ -18,7 +20,7 @@ struct ConnectionState {
     guard: Option<analyte_store::PollIntentId>,
     active: Option<analyte_store::MachineOrder>,
     cursor: String,
-    end_code: &'static str,
+    end_code: AutolyserEnd,
 }
 
 pub(super) async fn session(
@@ -64,7 +66,7 @@ impl ConnectionState {
             guard: None,
             active: None,
             cursor: String::new(),
-            end_code: "Autolyser-transfer-error",
+            end_code: AutolyserEnd::TransferError,
         })
     }
 
@@ -77,7 +79,7 @@ impl ConnectionState {
         policy: &analyte_config::Autolyser,
     ) -> Result<(), Error> {
         loop {
-            self.end_code = "Autolyser-input-failed";
+            self.end_code = AutolyserEnd::InputFailed;
             let input = super::connection_input::journaled(
                 machine,
                 store,
@@ -95,13 +97,13 @@ impl ConnectionState {
             self.end_code = match &input {
                 Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
                     if *stop.borrow() {
-                        "Autolyser-transfer-cancelled"
+                        AutolyserEnd::TransferCancelled
                     } else {
-                        "Autolyser-transfer-disconnected"
+                        AutolyserEnd::TransferDisconnected
                     }
                 }
-                Input::Tick => "Autolyser-transfer-timeout",
-                Input::Opened { .. } | Input::Bytes { .. } => "Autolyser-transfer-error",
+                Input::Tick => AutolyserEnd::TransferTimeout,
+                Input::Opened { .. } | Input::Bytes { .. } => AutolyserEnd::TransferError,
             };
             let events = match input {
                 Input::Opened { .. } => {
@@ -192,13 +194,13 @@ impl ConnectionState {
     ) -> Result<(), Error> {
         let mut result = result;
         if let Err(effect) =
-            super::poll_custody::uncertain(store, self.guard, machine, self.end_code).await
+            super::poll_custody::uncertain(store, self.guard, machine, self.end_code.as_str()).await
         {
             result = Err(custody::effect_failure(result.err(), effect));
         }
         if let Some(order) = self.active.as_ref()
             && let Err(effect) =
-                crate::orders::sending::uncertain(store, order, self.end_code).await
+                crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await
         {
             result = Err(custody::effect_failure(result.err(), effect));
         }
@@ -216,7 +218,7 @@ impl ConnectionState {
         store: &Handle,
     ) -> Option<Error> {
         let prior_code = self.end_code;
-        self.end_code = "Autolyser-storage-failed";
+        self.end_code = AutolyserEnd::StorageFailed;
         let id = ReceiptId::new();
         let stored = custody::store_within(
             custody::budget(machine),
@@ -231,7 +233,7 @@ impl ConnectionState {
             }
             Err(error) => {
                 if error.downcast_ref::<custody::StoreTimeout>().is_some() {
-                    self.end_code = "Autolyser-storage-timeout";
+                    self.end_code = AutolyserEnd::StorageTimeout;
                 }
                 actions.extend(
                     self.dialog
@@ -285,19 +287,13 @@ impl ConnectionState {
             .active
             .as_ref()
             .ok_or_else(|| invalid("unexpected Autolyser insertion outcome"))?;
-        let (outcome, code) = match reception {
-            analyte_dialog::autolyser::Reception::Accepted(position) => (
-                analyte_model::OrderState::Sent,
-                format!("Autolyser-insertion-confirmed-position-{position:02X}"),
-            ),
-            analyte_dialog::autolyser::Reception::Rejected(error) => (
-                analyte_model::OrderState::Uncertain,
-                format!("Autolyser-insertion-rejected-{error:?}"),
-            ),
-            analyte_dialog::autolyser::Reception::Other(prefix, detail) => (
-                analyte_model::OrderState::Uncertain,
-                format!("Autolyser-insertion-unknown-{prefix:02X}-{detail:02X}"),
-            ),
+        let code = super::transfer_end::insertion(reception);
+        let outcome = match reception {
+            analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,
+            analyte_dialog::autolyser::Reception::Rejected(_)
+            | analyte_dialog::autolyser::Reception::Other(_, _) => {
+                analyte_model::OrderState::Uncertain
+            }
         };
         crate::orders::sending::complete(store, order, outcome, &code).await?;
         self.active = None;
@@ -321,9 +317,9 @@ async fn process(
     while let Some(action) = actions.pop_front() {
         match action {
             Action::Write(bytes) => {
-                state.end_code = "Autolyser-write-failed";
+                state.end_code = AutolyserEnd::WriteFailed;
                 custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
-                state.end_code = "Autolyser-transfer-error";
+                state.end_code = AutolyserEnd::TransferError;
             }
             Action::Store(token, raw) => {
                 if let Some(error) = state
@@ -341,11 +337,11 @@ async fn process(
                     let code = if matches!(error, analyte_dialog::autolyser::Error::Incomplete)
                         && matches!(
                             state.end_code,
-                            "Autolyser-transfer-timeout"
-                                | "Autolyser-transfer-disconnected"
-                                | "Autolyser-transfer-cancelled"
+                            AutolyserEnd::TransferTimeout
+                                | AutolyserEnd::TransferDisconnected
+                                | AutolyserEnd::TransferCancelled
                         ) {
-                        format!("{}-incomplete", state.end_code)
+                        state.end_code.incomplete()
                     } else {
                         park_code(&error)
                     };
@@ -403,14 +399,18 @@ async fn process(
 fn park_code(error: &analyte_dialog::autolyser::Error) -> String {
     use analyte_dialog::autolyser::Error;
     match error {
-        Error::Config => "Autolyser-parked-config".into(),
-        Error::Busy => "Autolyser-parked-busy".into(),
-        Error::Time => "Autolyser-parked-time".into(),
-        Error::Incomplete => "Autolyser-parked-incomplete".into(),
-        Error::Storage => "Autolyser-parked-storage".into(),
-        Error::Stale => "Autolyser-parked-stale".into(),
-        Error::Ack => "Autolyser-parked-ack".into(),
-        Error::Framing(cause) => format!("Autolyser-parked-framing-{cause}"),
-        Error::Record(cause) => format!("Autolyser-parked-record-{cause}"),
+        Error::Config => Code::AutolyserParkedConfig.as_str().into(),
+        Error::Busy => Code::AutolyserParkedBusy.as_str().into(),
+        Error::Time => Code::AutolyserParkedTime.as_str().into(),
+        Error::Incomplete => Code::AutolyserParkedIncomplete.as_str().into(),
+        Error::Storage => Code::AutolyserParkedStorage.as_str().into(),
+        Error::Stale => Code::AutolyserParkedStale.as_str().into(),
+        Error::Ack => Code::AutolyserParkedAck.as_str().into(),
+        Error::Framing(cause) => {
+            crate::orders::outcome::Detail::AutolyserFraming(cause.to_string()).to_string()
+        }
+        Error::Record(cause) => {
+            crate::orders::outcome::Detail::AutolyserRecord(cause.to_string()).to_string()
+        }
     }
 }

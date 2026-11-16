@@ -1,5 +1,6 @@
 //! Drives independent LAW connections with host-owned I/O (TF-2b B.6).
 use super::{Connection, Error, intake, invalid};
+use crate::orders::outcome::Code;
 use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
 use analyte_hl7::Message;
@@ -217,11 +218,11 @@ async fn worker(
                     let until = if machine.law_gates.expire_queued { std::time::Instant::now() } else { until };
                     let ready=tokio::select! {
                         biased;
-                        ()=crate::machine::stopping(&mut stop)=>Err("LAW-independent-shutdown-before-response"),
+                        ()=crate::machine::stopping(&mut stop)=>Err(Code::LawIndependentShutdownBeforeResponse.as_str()),
                         ready=tokio::time::timeout_at(until.into(),&mut job.ready)=>match ready {
                             Ok(Ok(()))=>Ok(()),
-                            Ok(Err(_))=>Err("LAW-independent-query-response-issuance-uncertain"),
-                            Err(_)=>Err("LAW-independent-queue-deadline"),
+                            Ok(Err(_))=>Err(Code::LawIndependentQueryResponseIssuanceUncertain.as_str()),
+                            Err(_)=>Err(Code::LawIndependentQueueDeadline.as_str()),
                         },
                     };
                     match ready {
@@ -238,7 +239,7 @@ async fn worker(
                     match outgoing {
                         Ok(Some(message))=>{let result=exchange(&machine,&store,&settings,&mut idle_orders,&message,stop.clone(),capture.as_deref()).await;settle(&machine,&store,&mut idle_orders,result).await?;},
                         Ok(None)=>{},
-                        Err(error)=>{idle_orders.close(&store,"LAW-independent-admission-failed").await?;report(&machine,Err(error));},
+                        Err(error)=>{idle_orders.close(&store,Code::LawIndependentAdmissionFailed.as_str()).await?;report(&machine,Err(error));},
                     }
                 }
             }
@@ -247,10 +248,12 @@ async fn worker(
     }.await;
     queue.close();
     while let Ok(mut job) = queue.try_recv() {
-        job.orders.close(&store, "LAW-independent-shutdown").await?;
+        job.orders
+            .close(&store, Code::LawIndependentShutdown.as_str())
+            .await?;
     }
     idle_orders
-        .close(&store, "LAW-independent-shutdown")
+        .close(&store, Code::LawIndependentShutdown.as_str())
         .await?;
     result
 }
@@ -263,8 +266,10 @@ async fn settle(
     result: Result<(), Error>,
 ) -> Result<(), Error> {
     let reason = result.as_ref().err().map_or_else(
-        || "LAW-independent-exchange-ended".to_owned(),
-        |error| format!("LAW-independent-failure:{error}"),
+        || Code::LawIndependentExchangeEnded.as_str().to_owned(),
+        |error| {
+            crate::orders::outcome::Detail::LawIndependentFailure(error.to_string()).to_string()
+        },
     );
     orders.close(store, &reason).await?;
     report(machine, result);

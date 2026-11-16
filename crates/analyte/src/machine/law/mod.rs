@@ -1,5 +1,6 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 use super::connection_input::{self, Input};
+use crate::orders::outcome::Code;
 pub(super) mod independent;
 use crate::orders::law::{Connection, Reply};
 use crate::{Error, intake, invalid};
@@ -47,9 +48,9 @@ async fn session_with_outbound(
         .close(
             store,
             if result.is_err() {
-                "LAW-session-error"
+                Code::LawSessionError.as_str()
             } else {
-                "LAW-disconnect"
+                Code::LawDisconnect.as_str()
             },
         )
         .await;
@@ -459,7 +460,7 @@ impl<'a, 'm> Host<'a, 'm> {
                             result = self.orders.idle(self.store, self.machine, self.settings.options()) => match result {
                                 Ok(message) => message,
                                 Err(error) => {
-                                    self.orders.close(self.store, "LAW-idle-admission-failed").await?;
+                                    self.orders.close(self.store, Code::LawIdleAdmissionFailed.as_str()).await?;
                                     tracing::error!(machine=self.machine.id.as_str(),error_kind=%error,"LAW idle admission stopped; no command retried"); None
                                 },
                             },
@@ -527,7 +528,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
                 Input::Failed(reason) => {
                     return Err(invalid(&format!(
-                        "LAW independent transport failed: {reason:?}"
+                        "LAW independent transport failed: {reason}"
                     )));
                 }
                 Input::RecordingFailed(_failure) => {}

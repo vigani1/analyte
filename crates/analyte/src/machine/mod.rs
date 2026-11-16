@@ -15,6 +15,7 @@ mod law;
 mod poct;
 mod serial;
 mod settings;
+mod transfer_end;
 mod vidas;
 mod worker;
 use crate::{Error, installation::config::Machine, invalid};

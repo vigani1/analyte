@@ -14,7 +14,7 @@ pub enum AwosExecution {
 
 /// A notification contradicts retained execution evidence and requires reconciliation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("AWOS execution conflict from {previous:?} to {incoming:?}")]
+#[error("AWOS execution conflict from {previous} to {incoming}")]
 pub struct AwosExecutionConflict {
     /// Retained execution fact.
     pub previous: AwosExecution,

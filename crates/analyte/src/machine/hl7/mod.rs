@@ -1,5 +1,6 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
 use super::connection_input::{self, Input};
+use crate::orders::outcome::Code;
 use crate::{Error, intake, invalid};
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};
 use analyte_model::ReceiptId;
@@ -530,9 +531,9 @@ impl ConnectionState {
                     store,
                     machine,
                     if result.is_err() {
-                        "HL7-DSR-session-error"
+                        Code::Hl7DsrSessionError.as_str()
                     } else {
-                        "HL7-DSR-disconnect"
+                        Code::Hl7DsrDisconnect.as_str()
                     },
                 )
                 .await;

@@ -100,3 +100,7 @@ fn build_event(record: &MachineOrder, reason: Option<&str>) -> Result<OrderEvent
 pub(crate) fn destination(machine: &Machine) -> Identifier {
     machine.snapshot.effective().site().destination.name.clone()
 }
+
+mod acceptance;
+
+pub(crate) mod outcome;

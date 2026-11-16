@@ -112,7 +112,7 @@ fn outcome_summary(items: &[MachineOrderItem], refused: bool) -> Result<SourceTe
         .iter()
         .map(|item| {
             format!(
-                "{}={:?}:{}",
+                "{}={}:{}",
                 item.index,
                 item.state,
                 item.source_code

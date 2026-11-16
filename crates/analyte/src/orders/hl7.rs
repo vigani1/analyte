@@ -1,5 +1,6 @@
 //! Drives HL7 order lookups, reservations and delivery outcomes (HL7 2.3.1 §2.18 and 2.5.1 §5.10).
 //! Kept whole: HL7 order exchange driving keeps cancellation, peer replies and durable transitions together.
+use crate::orders::outcome::Code;
 use crate::{Error, deadline, installation::config::Machine, intake, invalid};
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::{
@@ -85,7 +86,13 @@ impl Connection {
         message: Option<&Message>,
     ) -> Result<(), Error> {
         if let Some(exchange) = &self.exchange {
-            super::hl7_send::finish(store, exchange, message, "HL7-order-response-timeout").await?;
+            super::hl7_send::finish(
+                store,
+                exchange,
+                message,
+                Code::Hl7OrderResponseTimeout.as_str(),
+            )
+            .await?;
         }
         self.exchange = None;
         Ok(())
@@ -111,10 +118,10 @@ impl Connection {
                 store,
                 exchange,
                 None,
-                if code == "HL7-DSR-disconnect" {
-                    "HL7-order-disconnect"
+                if code == Code::Hl7DsrDisconnect.as_str() {
+                    Code::Hl7OrderDisconnect.as_str()
                 } else {
-                    "HL7-order-session-error"
+                    Code::Hl7OrderSessionError.as_str()
                 },
             )
             .await;
@@ -347,9 +354,12 @@ impl Connection {
                             Err(error) => {
                                 let identity = super::reservation::key(machine, cached.id);
                                 let version = fields.version;
-                                let reason = analyte_model::SourceText::new(&format!(
-                                    "HL7-display-mapping: {error}"
-                                ))?;
+                                let reason = analyte_model::SourceText::new(
+                                    &crate::orders::outcome::Detail::Hl7DisplayMapping(
+                                        error.to_string(),
+                                    )
+                                    .to_string(),
+                                )?;
                                 let rejected = super::reservation::reject(
                                     store, until, identity, version, freshness, reason,
                                 )

@@ -281,7 +281,7 @@ impl Store {
             if let law::LawDisposition::Rejected(reason) = admission.disposition {
                 evidence.outcome = Reading::Failed(
                     analyte_model::Reason::new(&format!(
-                        "LAW {:?} at OBR occurrence {}",
+                        "LAW {} at OBR occurrence {}",
                         reason.reason, reason.occurrence
                     ))
                     .map_err(Error::Text)?,
@@ -377,3 +377,5 @@ impl Store {
 
 #[cfg(test)]
 mod tests;
+
+mod evidence;

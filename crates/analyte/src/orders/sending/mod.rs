@@ -1,4 +1,5 @@
 //! Admits send-ahead orders before reserving and writing machine commands.
+use crate::orders::outcome::Code;
 use crate::{Error, deadline, installation::config::Machine};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};
@@ -210,11 +211,11 @@ pub(crate) async fn finished(
     // LIS01 confirms transfer, not the analyzer application's acceptance.
     // Only explicit application evidence may advance Sent to Accepted.
     let code = match end {
-        analyte_dialog::astm::End::Normal => "ASTM-transfer-confirmed",
-        analyte_dialog::astm::End::Abort => "ASTM-transfer-aborted",
-        analyte_dialog::astm::End::Timeout => "ASTM-transfer-timeout",
-        analyte_dialog::astm::End::Interrupt => "ASTM-transfer-interrupted",
-        analyte_dialog::astm::End::Incomplete => "ASTM-transfer-incomplete",
+        analyte_dialog::astm::End::Normal => Code::AstmTransferConfirmed.as_str(),
+        analyte_dialog::astm::End::Abort => Code::AstmTransferAborted.as_str(),
+        analyte_dialog::astm::End::Timeout => Code::AstmTransferTimeout.as_str(),
+        analyte_dialog::astm::End::Interrupt => Code::AstmTransferInterrupted.as_str(),
+        analyte_dialog::astm::End::Incomplete => Code::AstmTransferIncomplete.as_str(),
     };
     let state = if end == analyte_dialog::astm::End::Normal {
         OrderState::Sent

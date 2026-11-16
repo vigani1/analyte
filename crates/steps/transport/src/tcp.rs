@@ -125,8 +125,8 @@ async fn run_session(stream: TcpStream, side: &mut IoSide) -> Result<(), Error> 
         })?
         .to_string();
     side.start(format!(
-        "TCP peer={endpoint} local={:?}",
-        stream.local_addr()
+        "TCP peer={endpoint} local={}",
+        crate::evidence::local_address(stream.local_addr())
     ))?;
     if side.cancel.is_cancelled() {
         side.stop();

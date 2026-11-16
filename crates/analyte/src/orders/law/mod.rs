@@ -1,4 +1,5 @@
 //! Drives LAW work exchanges with cached orders, reservations and item outcomes (TF-2b 3.27/3.28).
+use crate::orders::outcome::Code;
 mod sending;
 pub(crate) mod validation;
 mod work;
@@ -51,7 +52,7 @@ impl Connection {
             .as_ref()
             .is_some_and(|exchange| exchange.protocol.expired(self.clock.elapsed()))
         {
-            self.close(store, "LAW-ORL-timeout").await?;
+            self.close(store, Code::LawOrlTimeout.as_str()).await?;
         }
         Ok(())
     }
@@ -154,7 +155,8 @@ impl Connection {
         {
             Ok(messages) => Ok(messages),
             Err(error) => {
-                self.close(store, "LAW-query-preparation-failed").await?;
+                self.close(store, Code::LawQueryPreparationFailed.as_str())
+                    .await?;
                 let reason = error
                     .source()
                     .map_or_else(|| error.to_string(), |cause| format!("{error}: {cause}"));
@@ -273,7 +275,7 @@ impl Connection {
             return Ok(());
         };
         if exchange.protocol.expired(self.clock.elapsed()) {
-            self.close(store, "LAW-ORL-late").await?;
+            self.close(store, Code::LawOrlLate.as_str()).await?;
             intake::failed_reading(
                 store,
                 machine,
@@ -291,14 +293,14 @@ impl Connection {
             let correlated = response.is_ok();
             let code = response
                 .as_ref()
-                .map(|r| format!("{:?}", r.acceptance()))
+                .map(|r| super::acceptance::acceptance(r.acceptance()).to_owned())
                 .unwrap_or_else(|_| "invalid".into());
             let actor = machine.id.clone();
             store
                 .request(deadline(), move |store| {
                     store.audit(&analyte_store::Audit {
                         actor,
-                        action: Identifier::new("LAW-negative-query-ORL")
+                        action: Identifier::new(Code::LawNegativeQueryOrl.as_str())
                             .map_err(analyte_store::Error::Text)?,
                         targets: vec![
                             Identifier::new(&uuid::Uuid::from(receipt).to_string())
@@ -480,25 +482,32 @@ fn item_outcomes(
                     .map(|decision| decision.outcome)
                 {
                     Some(law::AwosOutcome::Accepted) => {
-                        (ItemDecision::Accepted, "LAW-OK".to_owned())
+                        (ItemDecision::Accepted, Code::LawOk.as_str().to_owned())
                     }
                     Some(law::AwosOutcome::UnableToAccept) => {
-                        (ItemDecision::Rejected, "LAW-UA".to_owned())
+                        (ItemDecision::Rejected, Code::LawUa.as_str().to_owned())
                     }
-                    Some(law::AwosOutcome::CancelAccepted) => {
-                        (ItemDecision::CancelConfirmed, "LAW-CR".to_owned())
-                    }
+                    Some(law::AwosOutcome::CancelAccepted) => (
+                        ItemDecision::CancelConfirmed,
+                        Code::LawCr.as_str().to_owned(),
+                    ),
                     Some(law::AwosOutcome::UnableToCancel) => {
-                        (ItemDecision::CancelRefused, "LAW-UC".to_owned())
+                        (ItemDecision::CancelRefused, Code::LawUc.as_str().to_owned())
                     }
-                    None => (ItemDecision::Uncertain, "LAW-ORL-item-missing".to_owned()),
+                    None => (
+                        ItemDecision::Uncertain,
+                        Code::LawOrlItemMissing.as_str().to_owned(),
+                    ),
                 }
             }
             Ok(response) => (
                 ItemDecision::Uncertain,
-                format!("LAW-ORL-application-{:?}", response.acceptance()),
+                crate::orders::outcome::Detail::LawApplication(response.acceptance()).to_string(),
             ),
-            Err(error) => (ItemDecision::Uncertain, format!("LAW-invalid-ORL:{error}")),
+            Err(error) => (
+                ItemDecision::Uncertain,
+                crate::orders::outcome::Detail::LawInvalidOrl(error.to_string()).to_string(),
+            ),
         };
         let code = if let Ok(response) = response {
             response

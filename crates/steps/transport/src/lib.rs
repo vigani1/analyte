@@ -12,6 +12,7 @@ use std::{
 use thiserror::Error;
 use tokio::sync::mpsc;
 
+mod evidence;
 pub mod folder;
 pub mod recording;
 pub mod serial;
@@ -341,7 +342,7 @@ impl IoSide {
             Event::Closed(reason) | Event::Failed(reason) => (
                 recording::Kind::Close,
                 Instant::now(),
-                format!("{reason:?}").into_bytes(),
+                reason.to_string().into_bytes(),
             ),
             Event::RecordingFailed(_) => return None,
         };

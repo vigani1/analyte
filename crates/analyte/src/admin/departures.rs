@@ -71,7 +71,7 @@ pub(super) async fn receipt(
         "<p>Receipt {id}. Interpretation {}. Config version: {}. Driver: {}.</p>",
         version.version,
         escape(interpretation.config_version.as_str()),
-        escape(&format!("{:?}", interpretation.driver))
+        escape(&interpretation.driver.to_string())
     ));
     let digest = analyte_contract::content_digest(&interpretation.config)
         .iter()
@@ -85,7 +85,7 @@ pub(super) async fn receipt(
     if let analyte_store::Reading::Results(results) = &interpretation.outcome {
         html.push_str("<h2>Source and summary statuses</h2><ul>");
         for part in results.iter().flat_map(|r| r.parts.as_slice()) {
-            html.push_str(&format!("<li>Received observation status: <code>{}</code>. Summary: {:?}. Source absence stays empty.</li>",escape(part.source_status.as_str()),part.status));
+            html.push_str(&format!("<li>Received observation status: <code>{}</code>. Summary: {}. Source absence stays empty.</li>",escape(part.source_status.as_str()),part.status));
         }
         html.push_str("</ul>");
     } else if let analyte_store::Reading::Failed(reason) = &interpretation.outcome {
@@ -127,7 +127,7 @@ fn render(html: &mut String, evidence: &DepartureEvidence) {
         ) {
             html.push_str("<p><strong>Final from documentation — not a received final status. Delivery over contract v1 is parked.</strong></p>");
         }
-        html.push_str(&format!("<section><h3>{}</h3><p><a href=\"#enabled\">Protected evidence references and scope</a></p><p>Source: {}. Derived meaning: {:?}. Standard: {}. Record {}, field {}. Coordinates: {}. Spans: {:?}.</p><pre>{}</pre></section>",
+        html.push_str(&format!("<section><h3>{}</h3><p><a href=\"#enabled\">Protected evidence references and scope</a></p><p>Source: {}. Derived meaning: {}. Standard: {}. Record {}, field {}. Coordinates: {}. Spans: {}.</p><pre>{}</pre></section>",
             escape(applied.rule.as_str()),escape(applied.source.as_str()),applied.meaning,escape(applied.standard.as_str()),applied.record,applied.field,escape(applied.coordinates.as_str()),applied.spans,escape(applied.declaration.as_str())));
     }
     html.push_str("<p>Manual reference IDs and recording digests above identify protected evidence for authorized operators. Original source bytes remain in the protected store; raw disclosure requires the audited parked-item action.</p>");

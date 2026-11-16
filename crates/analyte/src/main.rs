@@ -185,8 +185,9 @@ async fn recover(
     store.shutdown(until()).await?;
     let commit = result?;
     analyte::operator::output::line(&format!(
-        "Interpretation {} recorded; decisions: {:?}. Inspect parked items for failures.",
-        commit.version, commit.outcomes
+        "Interpretation {} recorded; decisions: {}. Inspect parked items for failures.",
+        commit.version,
+        analyte::operator::display::list(&commit.outcomes)
     ))?;
     Ok(())
 }
@@ -377,8 +378,10 @@ async fn operator(
             .await?;
         for row in rows {
             analyte::operator::output::line(&format!(
-                "{} {} resolution={:?}",
-                row.id, row.evidence, row.resolution
+                "{} {} resolution={}",
+                row.id,
+                row.evidence,
+                analyte::operator::display::optional_text(row.resolution.as_deref())
             ))?;
         }
         Ok::<_, Error>(())
@@ -440,7 +443,7 @@ async fn deliveries(
                     .await?;
                 for row in rows {
                     analyte::operator::output::line(&format!(
-                        "{} {} {} {:?}",
+                        "{} {} {} {}",
                         row.sequence,
                         uuid::Uuid::from(row.id),
                         row.destination.as_str(),
