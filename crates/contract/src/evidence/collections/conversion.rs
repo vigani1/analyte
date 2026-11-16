@@ -1,58 +1,6 @@
-//! Evidence conversions belong beside contract evidence to preserve model meanings.
-use super::*;
-
-impl From<&analyte_model::SampleId> for SampleId {
-    fn from(v: &analyte_model::SampleId) -> Self {
-        Self(v.as_str().to_owned())
-    }
-}
-
-impl From<&analyte_model::Identifier> for Identifier {
-    fn from(v: &analyte_model::Identifier) -> Self {
-        Self(v.as_str().to_owned())
-    }
-}
-
-impl From<&analyte_model::SourceText> for SourceText {
-    fn from(v: &analyte_model::SourceText) -> Self {
-        Self(v.as_str().to_owned())
-    }
-}
-
-impl From<&analyte_model::Reason> for Reason {
-    fn from(v: &analyte_model::Reason) -> Self {
-        Self(v.as_str().to_owned())
-    }
-}
-
-impl From<&analyte_model::Decimal> for Decimal {
-    fn from(v: &analyte_model::Decimal) -> Self {
-        Self(v.as_str().to_owned())
-    }
-}
-
-impl From<analyte_model::ReceiptId> for ReceiptId {
-    fn from(v: analyte_model::ReceiptId) -> Self {
-        Self(Uuid::from(v))
-    }
-}
-
-impl From<analyte_model::DeliveryId> for DeliveryId {
-    fn from(v: analyte_model::DeliveryId) -> Self {
-        Self(Uuid::from(v))
-    }
-}
-
-impl From<analyte_model::Revision> for Revision {
-    fn from(v: analyte_model::Revision) -> Self {
-        Self(v.0)
-    }
-}
-impl From<analyte_model::UtcOffset> for UtcOffset {
-    fn from(v: analyte_model::UtcOffset) -> Self {
-        Self(i32::from(v))
-    }
-}
+//! Model conversions preserve meanings at the contract boundary.
+use super::super::*;
+use super::{EvidenceList, NonEmptyEvidenceList};
 
 impl From<&analyte_model::NumericValue> for NumericValue {
     fn from(v: &analyte_model::NumericValue) -> Self {
@@ -238,15 +186,6 @@ impl From<&analyte_model::ObservationIdentity> for ObservationIdentity {
     }
 }
 
-impl From<&analyte_model::Units> for Units {
-    fn from(v: &analyte_model::Units) -> Self {
-        Self {
-            original: v.original_text().into(),
-            mapping: v.mapping().map(Into::into),
-        }
-    }
-}
-
 impl From<&analyte_model::SampleSource> for SampleSource {
     fn from(v: &analyte_model::SampleSource) -> Self {
         match v {
@@ -323,11 +262,11 @@ impl From<&analyte_model::ProcessingMode> for ProcessingMode {
 }
 
 impl TryFrom<&analyte_model::OrderState> for OrderState {
-    type Error = super::super::DocumentError;
+    type Error = crate::DocumentError;
     fn try_from(v: &analyte_model::OrderState) -> Result<Self, Self::Error> {
         Ok(match v {
             analyte_model::OrderState::Sending => {
-                return Err(super::super::DocumentError::InternalOrderState);
+                return Err(crate::DocumentError::InternalOrderState);
             }
             analyte_model::OrderState::Requested => Self::Requested,
             analyte_model::OrderState::Sent => Self::Sent,

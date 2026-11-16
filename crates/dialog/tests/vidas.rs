@@ -17,8 +17,10 @@ fn config(
         Checksum {
             include_stx: false,
             include_suffix,
-            uppercase: false,
-            accept_either_case: true,
+            hex: analyte_framing::vidas::HexOptions {
+                uppercase: false,
+                accept_either_case: true,
+            },
         },
     )?)
 }

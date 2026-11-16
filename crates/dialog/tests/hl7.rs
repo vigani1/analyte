@@ -410,53 +410,7 @@ fn sending(mode: &str) -> Result<(Dialog, Vec<Action>), Box<dyn std::error::Erro
 fn hl7_251_2_9_3_sender_acceptance_and_application_condition_matrix() -> TestResult {
     for accept in ["AL", "NE", "ER", "SU"] {
         for application in ["AL", "NE", "ER", "SU"] {
-            let (mut d, initial) = sending(&format!("{accept}|{application}"))?;
-            assert!(initial.iter().any(|a| matches!(a, Action::Write(_))));
-            if accept == "NE" && application == "NE" {
-                assert!(
-                    initial.iter().any(
-                        |a| matches!(a, Action::Sent(id, Outcome::NotRequested) if id == b"001")
-                    )
-                );
-                assert!(initial.iter().any(|a| matches!(a, Action::Deadline(None))));
-                continue;
-            }
-            if matches!(accept, "AL" | "SU") {
-                let out = feed(&mut d, &ack_reply("CA"))?;
-                if application == "NE" {
-                    assert!(
-                        out.iter()
-                            .any(|a| matches!(a, Action::Sent(_, Outcome::Accepted(AckCode::Ca))))
-                    );
-                    continue;
-                }
-                assert!(
-                    out.iter()
-                        .any(|a| matches!(a, Action::CommitAccepted(id) if id == b"001"))
-                );
-                assert!(!out.iter().any(|a| matches!(a, Action::Sent(_, _))));
-            }
-            if application == "NE" {
-                let out = d.step(Duration::from_secs(5), Event::Tick)?;
-                assert!(
-                    out.iter()
-                        .any(|a| matches!(a, Action::Sent(_, Outcome::Uncertain)))
-                );
-                continue;
-            }
-            let code = if application == "ER" { "AE" } else { "AA" };
-            let out = feed(&mut d, &ack_reply(code))?;
-            if code == "AE" {
-                assert!(
-                    out.iter()
-                        .any(|a| matches!(a, Action::Sent(_, Outcome::Rejected(AckCode::Ae))))
-                );
-            } else {
-                assert!(
-                    out.iter()
-                        .any(|a| matches!(a, Action::Sent(_, Outcome::Accepted(AckCode::Aa))))
-                );
-            }
+            check_sender_conditions(accept, application)?;
         }
     }
     for (mode, wrong, right) in [
@@ -487,6 +441,57 @@ fn hl7_251_2_9_3_sender_acceptance_and_application_condition_matrix() -> TestRes
             feed(&mut d, &ack_reply(code))?
                 .iter()
                 .any(|a| matches!(a, Action::Sent(_, Outcome::Rejected(_))))
+        );
+    }
+    Ok(())
+}
+
+fn check_sender_conditions(accept: &str, application: &str) -> TestResult {
+    let (mut d, initial) = sending(&format!("{accept}|{application}"))?;
+    assert!(initial.iter().any(|a| matches!(a, Action::Write(_))));
+    if accept == "NE" && application == "NE" {
+        assert!(
+            initial
+                .iter()
+                .any(|a| matches!(a, Action::Sent(id, Outcome::NotRequested) if id == b"001"))
+        );
+        assert!(initial.iter().any(|a| matches!(a, Action::Deadline(None))));
+        return Ok(());
+    }
+    if matches!(accept, "AL" | "SU") {
+        let out = feed(&mut d, &ack_reply("CA"))?;
+        if application == "NE" {
+            assert!(
+                out.iter()
+                    .any(|a| matches!(a, Action::Sent(_, Outcome::Accepted(AckCode::Ca))))
+            );
+            return Ok(());
+        }
+        assert!(
+            out.iter()
+                .any(|a| matches!(a, Action::CommitAccepted(id) if id == b"001"))
+        );
+        assert!(!out.iter().any(|a| matches!(a, Action::Sent(_, _))));
+    }
+    if application == "NE" {
+        let out = d.step(Duration::from_secs(5), Event::Tick)?;
+        assert!(
+            out.iter()
+                .any(|a| matches!(a, Action::Sent(_, Outcome::Uncertain)))
+        );
+        return Ok(());
+    }
+    let code = if application == "ER" { "AE" } else { "AA" };
+    let out = feed(&mut d, &ack_reply(code))?;
+    if code == "AE" {
+        assert!(
+            out.iter()
+                .any(|a| matches!(a, Action::Sent(_, Outcome::Rejected(AckCode::Ae))))
+        );
+    } else {
+        assert!(
+            out.iter()
+                .any(|a| matches!(a, Action::Sent(_, Outcome::Accepted(AckCode::Aa))))
         );
     }
     Ok(())

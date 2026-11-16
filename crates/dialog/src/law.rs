@@ -321,6 +321,62 @@ impl Dialog {
         out.push(Action::Deadline(self.deadline()));
         Ok(out)
     }
+    fn receive_byte(&mut self, byte: u8, out: &mut Vec<Action>) -> Result<(), Error> {
+        if !matches!(self.state, State::Idle) {
+            return Err(Error::Busy);
+        }
+        self.started.get_or_insert(self.now);
+        if self.until.is_none() {
+            self.until = Some(self.now.checked_add(self.receive).ok_or(Error::Exhausted)?);
+        }
+        if let Some(event) = self.decoder.push(byte) {
+            match event {
+                mllp::Event::Rejected { raw, error } => {
+                    out.push(Action::Rejected(error.clone(), raw));
+                    return Err(error.into());
+                }
+                mllp::Event::Block(raw) => {
+                    let id = ReceiptId(self.next);
+                    let Some(next) = self.next.checked_add(1) else {
+                        out.push(Action::Uncommitted(id, raw));
+                        return Err(Error::Exhausted);
+                    };
+                    self.next = next;
+                    self.state = State::Commit(id, raw.clone());
+                    out.push(Action::Commit(id, raw));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn reply(
+        &mut self,
+        id: ReceiptId,
+        reply: &Reply,
+        reserved_until: Option<Duration>,
+        out: &mut Vec<Action>,
+    ) -> Result<(), Error> {
+        if !matches!(self.state, State::Query(expected) if expected == id) {
+            return Err(Error::Stale);
+        }
+        let (messages, followup) = match reply {
+            Reply::Response(message) => (vec![message], false),
+            Reply::Followup { response, work } => (vec![response, work], true),
+        };
+        if messages
+            .iter()
+            .any(|message| message.raw().len() > self.options.limits.message_bytes)
+        {
+            return Err(mllp::Error::TooLong.into());
+        }
+        let messages: VecDeque<_> = messages.into_iter().cloned().collect();
+        let until = self.until.ok_or(Error::Stale)?;
+        let until = reserved_until.map_or(until, |due| due.min(until));
+        self.write(messages, until, Completion::Reply(followup), out)?;
+        Ok(())
+    }
+
     fn input(&mut self, event: Event<'_>, out: &mut Vec<Action>) -> Result<(), Error> {
         match event {
             Event::Tick => {}
@@ -330,31 +386,7 @@ impl Dialog {
                 self.until = None;
             }
             Event::Byte(byte) => {
-                if !matches!(self.state, State::Idle) {
-                    return Err(Error::Busy);
-                }
-                self.started.get_or_insert(self.now);
-                if self.until.is_none() {
-                    self.until = Some(self.now.checked_add(self.receive).ok_or(Error::Exhausted)?);
-                }
-                if let Some(event) = self.decoder.push(byte) {
-                    match event {
-                        mllp::Event::Rejected { raw, error } => {
-                            out.push(Action::Rejected(error.clone(), raw));
-                            return Err(error.into());
-                        }
-                        mllp::Event::Block(raw) => {
-                            let id = ReceiptId(self.next);
-                            let Some(next) = self.next.checked_add(1) else {
-                                out.push(Action::Uncommitted(id, raw));
-                                return Err(Error::Exhausted);
-                            };
-                            self.next = next;
-                            self.state = State::Commit(id, raw.clone());
-                            out.push(Action::Commit(id, raw));
-                        }
-                    }
-                }
+                self.receive_byte(byte, out)?;
             }
             Event::Committed(id) => self.committed(id, out)?,
             Event::CommitFailed(id) => {
@@ -374,23 +406,7 @@ impl Dialog {
             Event::Interpreted(id, outcome) => self.interpreted(id, outcome, out)?,
             Event::Respond(id, response) => self.respond(id, response, out)?,
             Event::Reply(id, reply, reserved_until) => {
-                if !matches!(self.state, State::Query(expected) if expected == id) {
-                    return Err(Error::Stale);
-                }
-                let (messages, followup) = match reply {
-                    Reply::Response(message) => (vec![message], false),
-                    Reply::Followup { response, work } => (vec![response, work], true),
-                };
-                if messages
-                    .iter()
-                    .any(|message| message.raw().len() > self.options.limits.message_bytes)
-                {
-                    return Err(mllp::Error::TooLong.into());
-                }
-                let messages: VecDeque<_> = messages.into_iter().cloned().collect();
-                let until = self.until.ok_or(Error::Stale)?;
-                let until = reserved_until.map_or(until, |due| due.min(until));
-                self.write(messages, until, Completion::Reply(followup), out)?;
+                self.reply(id, reply, reserved_until, out)?;
             }
             Event::Send(message, until) => {
                 if self.link == Link::WorkResponse && self.now >= until {
@@ -491,6 +507,54 @@ impl Dialog {
         }
         Ok(())
     }
+    fn parse_failed(
+        &mut self,
+        id: ReceiptId,
+        payload: &[u8],
+        error: analyte_hl7::Error,
+        out: &mut Vec<Action>,
+    ) -> Result<(), Error> {
+        out.push(Action::Failed(id, error.to_string()));
+        if self.link == Link::WorkResponse {
+            return Err(error.into());
+        }
+        let (code, location) = match &error {
+            analyte_hl7::Error::Control {
+                segment: "MSH",
+                field,
+            } => (
+                AckCode::Ar,
+                u16::try_from(*field)
+                    .ok()
+                    .map(|field| header_error(field, b"102", b"LAW-control")),
+            ),
+            analyte_hl7::Error::UnsupportedCharset | analyte_hl7::Error::CharsetMismatch => {
+                (AckCode::Ar, Some(header_error(18, b"102", b"LAW-control")))
+            }
+            analyte_hl7::Error::Limit { .. }
+            | analyte_hl7::Error::Encoding
+            | analyte_hl7::Error::Truncation
+            | analyte_hl7::Error::Terminator
+            | analyte_hl7::Error::Segment(_)
+            | analyte_hl7::Error::Escape { .. }
+            | analyte_hl7::Error::CharacterEncoding
+            | analyte_hl7::Error::Control { .. }
+            | analyte_hl7::Error::NotStored
+            | analyte_hl7::Error::AckMode => (AckCode::Ae, None),
+        };
+        self.state = State::Respond(
+            id,
+            Plan::Reject(
+                payload.to_vec(),
+                code,
+                location
+                    .unwrap_or(AckError::unlocated(b"102", b"LAW-syntax"))
+                    .into(),
+            ),
+        );
+        out.push(Action::ResponseNeeded(id));
+        Ok(())
+    }
     fn committed(&mut self, id: ReceiptId, out: &mut Vec<Action>) -> Result<(), Error> {
         let state = std::mem::replace(&mut self.state, State::Idle);
         let State::Commit(expected, raw) = state else {
@@ -505,47 +569,7 @@ impl Dialog {
         let message = match law::parse_message(payload, self.options) {
             Ok(message) => message,
             Err(error) => {
-                out.push(Action::Failed(id, error.to_string()));
-                if self.link == Link::WorkResponse {
-                    return Err(error.into());
-                }
-                let (code, location) = match &error {
-                    analyte_hl7::Error::Control {
-                        segment: "MSH",
-                        field,
-                    } => (
-                        AckCode::Ar,
-                        u16::try_from(*field)
-                            .ok()
-                            .map(|field| header_error(field, b"102", b"LAW-control")),
-                    ),
-                    analyte_hl7::Error::UnsupportedCharset
-                    | analyte_hl7::Error::CharsetMismatch => {
-                        (AckCode::Ar, Some(header_error(18, b"102", b"LAW-control")))
-                    }
-                    analyte_hl7::Error::Limit { .. }
-                    | analyte_hl7::Error::Encoding
-                    | analyte_hl7::Error::Truncation
-                    | analyte_hl7::Error::Terminator
-                    | analyte_hl7::Error::Segment(_)
-                    | analyte_hl7::Error::Escape { .. }
-                    | analyte_hl7::Error::CharacterEncoding
-                    | analyte_hl7::Error::Control { .. }
-                    | analyte_hl7::Error::NotStored
-                    | analyte_hl7::Error::AckMode => (AckCode::Ae, None),
-                };
-                self.state = State::Respond(
-                    id,
-                    Plan::Reject(
-                        payload.to_vec(),
-                        code,
-                        location
-                            .unwrap_or(AckError::unlocated(b"102", b"LAW-syntax"))
-                            .into(),
-                    ),
-                );
-                out.push(Action::ResponseNeeded(id));
-                return Ok(());
+                return self.parse_failed(id, payload, error, out);
             }
         };
         let kind: Vec<_> = law::message_type(&message).take(4).collect();
