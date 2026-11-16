@@ -193,7 +193,7 @@ fn adr0003_rule7_worker_deadline_equality_refuses_execution() -> TestResult {
 
 #[test]
 fn adr0003_rule7_worker_startup_guard_cancels_before_owner_join() -> TestResult {
-    let mut startup = crate::startup::Startup::new(Instant::now() + HANG_GUARD);
+    let mut startup = startup::Startup::new(Instant::now() + HANG_GUARD);
     let fixed_now = Instant::now();
     startup.clock = Some(std::sync::Arc::new(move || fixed_now));
     let (released, release) = std::sync::mpsc::channel();
@@ -203,7 +203,7 @@ fn adr0003_rule7_worker_startup_guard_cancels_before_owner_join() -> TestResult 
         assert!(observed.is_ok());
         assert!(opening.expired());
     });
-    let handle = super::Handle {
+    let handle = Handle {
         sender: None,
         thread: Some(thread),
     };
