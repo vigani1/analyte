@@ -13,7 +13,7 @@ fn adr0014_migration_restart_attempt_identity_budget_and_immutable_bytes() -> Te
         store
             .db
             .query_row("SELECT identity FROM alert_installation", [], |r| r.get(0))?;
-    store.db.execute_batch("INSERT INTO alert_events VALUES('event','relay','condition',1,'raised',100,x'7b7d'); INSERT INTO alert_progress(event,next_attempt) VALUES('event',100); INSERT INTO alert_reminders VALUES('relay','condition',1,160);")?;
+    store.db.execute_batch("INSERT INTO alert_events VALUES('00000000000000000000000000000001','relay','condition',1,'raised',100,x'7b7d'); INSERT INTO alert_progress(event,next_attempt) VALUES('00000000000000000000000000000001',100); INSERT INTO alert_reminders VALUES('relay','condition',1,160);")?;
     assert!(
         store
             .db
@@ -71,7 +71,7 @@ fn adr0014_v11_migration_preserves_local_alert_history_and_is_restart_safe() -> 
     let path = temp.path().join("legacy.db");
     let mut store = open(&path)?;
     store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), 100)?;
-    store.db.execute_batch("DROP TABLE alert_reminders; DROP TABLE alert_progress; DROP TABLE alert_events; DROP TABLE alert_endpoints; DROP TRIGGER alert_installation_retained; DROP TABLE alert_installation; PRAGMA user_version=11;")?;
+    store.db.execute_batch("DROP INDEX alert_history_episode; DROP TABLE alert_reminders; DROP TABLE alert_progress; DROP TABLE alert_events; DROP TABLE alert_endpoints; DROP TRIGGER alert_installation_retained; DROP TABLE alert_installation; PRAGMA user_version=11;")?;
     drop(store);
     let store = open(&path)?;
     assert_eq!(store.alert_history(0)?.len(), 1);
@@ -192,5 +192,71 @@ fn adr0014_missed_intervals_generate_one_outstanding_reminder() -> TestResult {
     assert!(store.prepare_alert_event(&endpoint, 10000, 60, 100)?);
     assert!(!store.prepare_alert_event(&endpoint, 20000, 60, 100)?);
     assert_eq!(store.alert_endpoint_status()?[0].pending, 2);
+    Ok(())
+}
+
+#[test]
+fn adr0014_backoff_doubles_then_caps_and_limits_refuse_invalid_input() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("bounds.db"))?;
+    let endpoint = Identifier::new("relay")?;
+    store.register_alert_endpoint(&endpoint)?;
+    store.evaluate_alert(&AlertKey::DiskReserve, "IT officer", true, Some(10), 100)?;
+    for (reminder, capacity) in [(0, 1), (59, 1), (86401, 1), (60, 0), (60, 4097)] {
+        assert!(matches!(
+            store.prepare_alert_event(&endpoint, 100, reminder, capacity),
+            Err(Error::InvalidInput)
+        ));
+    }
+    store.prepare_alert_event(&endpoint, 100, 60, 1)?;
+    for (attempts, min, max) in [(0, 1, 1), (101, 1, 1), (1, 0, 1), (1, 2, 1), (1, 1, 86401)] {
+        assert!(matches!(
+            store.claim_alert_attempt(&endpoint, 100, attempts, min, max),
+            Err(Error::InvalidInput)
+        ));
+    }
+    for (now, due) in [(100, 105), (105, 115), (115, 125)] {
+        assert!(
+            store
+                .claim_alert_attempt(&endpoint, now, 5, 5, 10)?
+                .is_some()
+        );
+        assert_eq!(store.alert_endpoint_status()?[0].next_attempt, Some(due));
+        assert!(
+            store
+                .claim_alert_attempt(&endpoint, due - 1, 5, 5, 10)?
+                .is_none()
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn adr0014_operator_retry_is_audited_and_preserves_original_event() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("retry.db"))?;
+    let endpoint = Identifier::new("relay")?;
+    store.register_alert_endpoint(&endpoint)?;
+    store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), 100)?;
+    store.prepare_alert_event(&endpoint, 100, 60, 1)?;
+    let first = store
+        .claim_alert_attempt(&endpoint, 100, 1, 5, 10)?
+        .ok_or("first attempt")?;
+    store.fail_alert_attempt(&first.id, AlertFailure::Http)?;
+    let audit = Audit {
+        actor: Identifier::new("operator")?,
+        action: Identifier::new("alert-retry")?,
+        targets: vec![endpoint.clone()],
+        time: 200,
+        reason: analyte_model::Reason::new("Relay repaired and receipt checked")?,
+    };
+    store.retry_failed_alerts(&endpoint, &audit)?;
+    assert!(store.retry_failed_alerts(&endpoint, &audit).is_err());
+    let retry = store
+        .claim_alert_attempt(&endpoint, 200, 1, 5, 10)?
+        .ok_or("retry missing")?;
+    assert_eq!(first.id, retry.id);
+    assert_eq!(first.payload, retry.payload);
+    assert_eq!(store.audits(0)?.len(), 1);
     Ok(())
 }

@@ -76,7 +76,7 @@ impl WebhookSender {
             .post(self.url.clone())
             .header(reqwest::header::AUTHORIZATION, auth)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .header("webhook-id", &event.id)
+            .header("webhook-id", event.id.as_str())
             .body(event.payload.clone())
             .send()
             .await

@@ -69,6 +69,11 @@ pub struct AlertDelivery {
     attempts: u32,
 }
 impl AlertDelivery {
+    #[cfg(test)]
+    pub(crate) fn for_test(text: &str) -> Result<Self, crate::Error> {
+        Ok(toml::from_str::<DraftDelivery>(text)?.validate()?)
+    }
+
     /// Configured endpoints; empty means external delivery is disabled.
     #[must_use]
     pub fn endpoints(&self) -> &[AlertEndpoint] {

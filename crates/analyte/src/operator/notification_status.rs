@@ -18,6 +18,28 @@ pub(crate) fn describe(status: &AlertEndpointStatus, now: i64) -> String {
         status.failed
     )
 }
+pub(crate) async fn snapshot(
+    store: &analyte_store::Handle,
+    configured: &[analyte_model::Identifier],
+    now: i64,
+) -> Result<Vec<String>, crate::Error> {
+    let statuses = store
+        .request(crate::deadline(), |s| s.alert_endpoint_status())
+        .await?;
+    let mut lines: Vec<_> = statuses
+        .iter()
+        .map(|status| describe(status, now))
+        .collect();
+    for endpoint in configured {
+        if !statuses.iter().any(|status| &status.endpoint == endpoint) {
+            lines.push(format!(
+                "alert_endpoint={} state=unavailable pending_count=unknown",
+                endpoint.as_str()
+            ));
+        }
+    }
+    Ok(lines)
+}
 fn known(value: Option<i64>) -> String {
     value.map_or_else(|| "unknown".into(), |n| n.to_string())
 }

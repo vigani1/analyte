@@ -1,4 +1,5 @@
 -- ADR 0014: separate immutable event bytes from mutable endpoint progress.
+CREATE INDEX alert_history_episode ON alert_history(key,active,sequence);
 CREATE TABLE alert_installation(singleton INTEGER PRIMARY KEY CHECK(singleton=1), identity TEXT NOT NULL);
 INSERT INTO alert_installation VALUES(1,lower(hex(randomblob(16))));
 CREATE TABLE alert_endpoints(id TEXT PRIMARY KEY, cursor INTEGER NOT NULL DEFAULT 0, queue_full INTEGER NOT NULL DEFAULT 0 CHECK(queue_full IN (0,1)), last_success INTEGER);

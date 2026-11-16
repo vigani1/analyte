@@ -519,6 +519,28 @@ mod ownership;
 mod legacy;
 
 fn assert_empty_retention_tables(snapshot: &mut Snapshot) {
+    let installation = snapshot
+        .remove("alert_installation")
+        .expect("new alert installation");
+    assert_eq!(installation.len(), 1);
+    assert_eq!(installation[0].first(), Some(&Value::Integer(1)));
+    let Some(Value::Text(identity)) = installation[0].get(1) else {
+        panic!("missing installation identity")
+    };
+    assert_eq!(identity.len(), 32);
+    assert!(identity.bytes().all(|b| b.is_ascii_hexdigit()));
+    for table in [
+        "alert_endpoints",
+        "alert_events",
+        "alert_progress",
+        "alert_reminders",
+    ] {
+        assert_eq!(
+            snapshot.remove(table),
+            Some(Vec::new()),
+            "new {table} must be empty"
+        );
+    }
     for table in [
         "retention_orders",
         "retention_order_deliveries",

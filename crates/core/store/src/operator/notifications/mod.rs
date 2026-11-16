@@ -5,11 +5,22 @@ use crate::{Error, Store};
 use analyte_model::Identifier;
 use rusqlite::{OptionalExtension, params};
 
+/// Persisted notification identity; only the store creates one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AlertEventId(String);
+impl AlertEventId {
+    /// Borrows the stable wire identity without exposing event payloads.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Immutable bytes and identity for one queued webhook event.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PendingAlert {
     /// Stable across retries and restart, including uncertain acceptance.
-    pub id: String,
+    pub id: AlertEventId,
     /// Original JSON bytes; never log these bytes.
     pub payload: Vec<u8>,
     /// Completed or reserved attempts, including interrupted attempts.
@@ -124,8 +135,11 @@ impl Store {
         tx.execute("UPDATE alert_progress SET attempts=?2,next_attempt=?3,exhausted=?4,failure='interrupted' WHERE event=?1",
             params![id, attempts, next, attempts>=max_attempts])?;
         tx.commit()?;
+        if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(Error::Corruption);
+        }
         Ok(Some(PendingAlert {
-            id,
+            id: AlertEventId(id),
             payload,
             attempts,
         }))
@@ -134,8 +148,12 @@ impl Store {
     /// Records a fixed failure category without resetting the already reserved backoff.
     /// # Errors
     /// Reports SQLite failures or unknown event identities.
-    pub fn fail_alert_attempt(&mut self, id: &str, failure: AlertFailure) -> Result<(), Error> {
-        self.bound(id.as_bytes())?;
+    pub fn fail_alert_attempt(
+        &mut self,
+        id: &AlertEventId,
+        failure: AlertFailure,
+    ) -> Result<(), Error> {
+        let id = id.as_str();
         if self.db.execute(
             "UPDATE alert_progress SET failure=?2 WHERE event=?1",
             params![id, failure.as_str()],
@@ -151,8 +169,8 @@ impl Store {
     /// it never constructs a replacement event.
     /// # Errors
     /// Reports SQLite failures or unknown identities.
-    pub fn complete_alert_attempt(&mut self, id: &str, now: i64) -> Result<(), Error> {
-        self.bound(id.as_bytes())?;
+    pub fn complete_alert_attempt(&mut self, id: &AlertEventId, now: i64) -> Result<(), Error> {
+        let id = id.as_str();
         let tx = self.db.transaction()?;
         let endpoint: String =
             tx.query_row("SELECT endpoint FROM alert_events WHERE id=?1", [id], |r| {
@@ -163,6 +181,32 @@ impl Store {
             params![endpoint, now],
         )?;
         tx.execute("DELETE FROM alert_events WHERE id=?1", [id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Starts a new operator-authorized attempt budget for exhausted events only.
+    /// Identity and bytes never change. The reset and audit commit together; an
+    /// uncertain command can be inspected in status before being repeated.
+    /// # Errors
+    /// Refuses an empty retry selection, oversized queues or invalid audit evidence.
+    pub fn retry_failed_alerts(
+        &mut self,
+        endpoint: &Identifier,
+        audit: &crate::Audit,
+    ) -> Result<(), Error> {
+        if audit.action.as_str() != "alert-retry" || audit.targets.as_slice() != [endpoint.clone()]
+        {
+            return Err(Error::InvalidInput);
+        }
+        let encoded = self.encode(audit)?;
+        let tx = self.db.transaction()?;
+        let count: u32 = tx.query_row("SELECT count(*) FROM alert_events e JOIN alert_progress p ON p.event=e.id WHERE e.endpoint=?1 AND p.exhausted=1", [endpoint.as_str()], |r| r.get(0))?;
+        if count == 0 || count > 4096 {
+            return Err(Error::InvalidInput);
+        }
+        tx.execute("UPDATE alert_progress SET attempts=0,exhausted=0,next_attempt=?2,failure=NULL WHERE exhausted=1 AND event IN (SELECT id FROM alert_events WHERE endpoint=?1)", params![endpoint.as_str(),audit.time])?;
+        tx.execute("INSERT INTO audit(evidence) VALUES(?1)", [encoded])?;
         tx.commit()?;
         Ok(())
     }

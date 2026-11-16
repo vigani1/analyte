@@ -54,7 +54,7 @@ async fn render(state: &Context) -> Result<String, Error> {
     html.push_str("<dl>");
     let now = jiff::Timestamp::now().as_second();
     render_alerts(state, &mut html, now).await?;
-    render_alert_endpoints(&state.store, &mut html, now).await?;
+    render_alert_endpoints(&state.store, &state.alert_endpoints, &mut html, now).await?;
     row(
         &mut html,
         "Order sending paused after restore",
@@ -238,19 +238,14 @@ async fn render_machines(
 
 async fn render_alert_endpoints(
     store: &analyte_store::Handle,
+    configured: &[analyte_model::Identifier],
     html: &mut String,
     now: i64,
 ) -> Result<(), Error> {
-    let statuses = store
-        .request(deadline(), |s| s.alert_endpoint_status())
-        .await?;
-    row(html, "Alert endpoints", &statuses.len().to_string());
-    for status in statuses {
-        row(
-            html,
-            "Alert endpoint delivery",
-            &crate::operator::notification_status::describe(&status, now),
-        );
+    let lines = crate::operator::notification_status::snapshot(store, configured, now).await?;
+    row(html, "Alert endpoints", &lines.len().to_string());
+    for line in lines {
+        row(html, "Alert endpoint delivery", &line);
     }
     Ok(())
 }
@@ -296,7 +291,13 @@ mod webhook_tests {
             })
             .await?;
         let mut html = String::new();
-        render_alert_endpoints(&store, &mut html, 120).await?;
+        render_alert_endpoints(
+            &store,
+            &[analyte_model::Identifier::new("missing")?],
+            &mut html,
+            120,
+        )
+        .await?;
         for field in [
             "pending_count=1",
             "oldest_age_seconds=20",
@@ -306,6 +307,7 @@ mod webhook_tests {
         ] {
             assert!(html.contains(field));
         }
+        assert!(html.contains("alert_endpoint=missing state=unavailable pending_count=unknown"));
         let program = crate::installation::config::Program::load(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml"),
         )?;
