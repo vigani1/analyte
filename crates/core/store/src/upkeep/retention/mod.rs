@@ -1,5 +1,6 @@
 //! Retains keyed duplicate evidence and explicit operator holds (ADR 0013).
 mod eligibility;
+mod links;
 mod purge;
 mod tombstones;
 mod vacuum;
@@ -95,3 +96,6 @@ impl Store {
         )?)
     }
 }
+
+#[cfg(test)]
+mod refine_tests;

@@ -17,10 +17,5 @@ SELECT EXISTS(
   WHERE target.value=json_extract(r.metadata,'$.id') OR target.value IN
    (SELECT json_extract(o.id,'$') FROM outbox o WHERE o.receipt=r.id))
  AND NOT EXISTS(SELECT 1 FROM transfers t WHERE t.receipt=r.id AND t.state!='complete')
- -- An uncertain machine operation may lack a trustworthy receipt link; retain the machine's data.
- AND NOT EXISTS(SELECT 1 FROM poll_intents p WHERE p.machine=json_extract(r.metadata,'$.machine') AND p.state!='confirmed')
- AND NOT EXISTS(SELECT 1 FROM machine_orders m WHERE m.machine=json_extract(r.metadata,'$.machine') AND m.state NOT IN ('Done','Rejected','CancelConfirmed'))
- AND NOT EXISTS(SELECT 1 FROM machine_order_items item JOIN machine_orders m ON m.id=item.machine_order WHERE m.machine=json_extract(r.metadata,'$.machine') AND item.state NOT IN ('Done','Rejected','CancelConfirmed'))
- AND NOT EXISTS(SELECT 1 FROM retention_holds h WHERE h.active=1 AND
-  ((h.kind='receipt' AND h.target=r.id) OR h.kind='order'))
+ AND NOT EXISTS(SELECT 1 FROM retention_holds h WHERE h.active=1 AND h.kind='receipt' AND h.target=r.id)
 )

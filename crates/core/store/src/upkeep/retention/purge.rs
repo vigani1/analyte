@@ -171,7 +171,7 @@ impl Store {
             run.after = candidates.last().copied();
             let guards = tombstones::remove_delete_guards(&tx)?;
             for receipt in candidates {
-                if eligibility::eligible(&tx, receipt, days, now)? {
+                if eligibility::eligible(&tx, receipt, days, now, &self.limits)? {
                     let (deliveries, results) =
                         tombstones::purge(&tx, credential, receipt, now, self.limits.record_bytes)?;
                     run.deliveries = run

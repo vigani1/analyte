@@ -6,7 +6,9 @@ use analyte_model::{IdentityStatus, Reason};
 use rusqlite::params;
 use std::time::Instant;
 
-fn finished(store: &mut Store) -> Result<analyte_model::ReceiptId, Box<dyn std::error::Error>> {
+pub(super) fn finished(
+    store: &mut Store,
+) -> Result<analyte_model::ReceiptId, Box<dyn std::error::Error>> {
     let metadata = receipt(b"synthetic")?;
     store.receive(&metadata, b"synthetic", b"config")?;
     let result = production_result(metadata.id)?;
@@ -31,7 +33,7 @@ fn finished(store: &mut Store) -> Result<analyte_model::ReceiptId, Box<dyn std::
     store.attempted(delivery, &Attempt::Done, 100)?;
     Ok(metadata.id)
 }
-fn audit() -> Result<Audit, Box<dyn std::error::Error>> {
+pub(super) fn audit() -> Result<Audit, Box<dyn std::error::Error>> {
     Ok(Audit {
         actor: Identifier::new("synthetic-operator")?,
         action: Identifier::new("hold")?,
