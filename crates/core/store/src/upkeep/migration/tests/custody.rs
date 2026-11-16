@@ -165,6 +165,7 @@ fn adr0003_v8_custody_migration_keeps_every_parked_row_and_reconciles_typed_mach
     limits.page_rows = 1; // The first custody row lies beyond the old 128-page scan cap.
     let mut store = Store::open(&path, limits, Box::new(Space(u64::MAX)))?;
     let mut after = snapshot(&store.db)?;
+    assert_empty_retention_tables(&mut after);
     assert_eq!(
         after
             .remove("poll_intents")

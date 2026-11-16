@@ -42,6 +42,7 @@ fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_
     drop(db);
     let mut store = open(&path)?;
     let mut after = snapshot(&store.db)?;
+    assert_empty_retention_tables(&mut after);
     assert_eq!(after.remove("poll_intents"), Some(Vec::new()));
     assert_eq!(after.remove("poll_intent_history"), Some(Vec::new()));
     assert_eq!(after, before);

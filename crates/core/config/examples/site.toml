@@ -1,5 +1,6 @@
 # Synthetic installation; credential names only.
 schema_version = 1
+retention = "keep"
 endpoint = "127.0.0.1:5600"
 [destination]
 name = "demo"

@@ -6,3 +6,5 @@ pub(crate) mod open;
 pub(crate) mod restore;
 pub(crate) mod startup;
 pub(crate) mod worker;
+
+pub(crate) mod retention;

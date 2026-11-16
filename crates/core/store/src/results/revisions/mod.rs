@@ -1,7 +1,7 @@
 //! Records transactional observation revision history (ADR 0003).
 mod admission;
 mod assignment;
-mod content;
+pub(crate) mod content;
 mod history;
 mod migration;
 mod outbox;
@@ -184,6 +184,7 @@ impl Store {
             |r| r.get(0),
         )?;
         let reconciliation = Reconciliation {
+            retention_key: self.retention_key.as_ref(),
             tx: &tx,
             machine: &stored.metadata.machine,
             limit,

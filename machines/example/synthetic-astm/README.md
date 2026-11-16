@@ -39,3 +39,7 @@ All real-machine and clinical qualification is outside this example's scope.
 The original synthetic crates/core/config/examples/astm.toml definition and
 crates/testing/sim/recordings/astm.rec.jsonl recording. Protocol requirements are traced
 in docs/protocols/astm; no vendor manual or patient capture was used.
+
+The separate site file must select `retention = "keep"` or an explicit period
+from 1 to 3650 days (90 recommended). Finite retention requires the installation
+`retention-digest` credential; no credential belongs in this definition.

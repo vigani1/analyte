@@ -148,3 +148,47 @@ mod tests {
         assert_eq!(super::variable("lab-api.key"), "ANALYTE_SECRET_LAB_API_KEY");
     }
 }
+
+/// Loads the retention credential through the installation environment path.
+/// The value is exactly 64 hexadecimal characters encoding 32 random bytes.
+/// # Errors
+/// Reports missing required or malformed credentials without exposing their values.
+pub fn retention_key(required: bool) -> Result<Option<analyte_store::DigestKey>, SecretError> {
+    parse_retention_key(std::env::var(variable("retention-digest")).ok(), required)
+}
+fn parse_retention_key(
+    value: Option<String>,
+    required: bool,
+) -> Result<Option<analyte_store::DigestKey>, SecretError> {
+    let Some(value) = value else {
+        return if required {
+            Err(SecretError::Missing("retention-digest".into()))
+        } else {
+            Ok(None)
+        };
+    };
+    if value.len() != 64 {
+        return Err(SecretError::Invalid("retention-digest".into()));
+    }
+    let mut bytes = [0u8; 32];
+    for (pair, byte) in value.as_bytes().as_chunks::<2>().0.iter().zip(&mut bytes) {
+        let text = std::str::from_utf8(pair)
+            .map_err(|_| SecretError::Invalid("retention-digest".into()))?;
+        *byte = u8::from_str_radix(text, 16)
+            .map_err(|_| SecretError::Invalid("retention-digest".into()))?;
+    }
+    Ok(Some(analyte_store::DigestKey::new(bytes)))
+}
+
+#[cfg(test)]
+mod retention_tests {
+    #[test]
+    fn adr0013_item6_retention_secret_required_only_for_finite_policy()
+    -> Result<(), super::SecretError> {
+        assert!(super::parse_retention_key(None, true).is_err());
+        assert!(super::parse_retention_key(None, false)?.is_none());
+        assert!(super::parse_retention_key(Some("sensitive-invalid".into()), true).is_err());
+        assert!(super::parse_retention_key(Some("ab".repeat(32)), true)?.is_some());
+        Ok(())
+    }
+}
