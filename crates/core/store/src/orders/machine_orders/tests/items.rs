@@ -535,7 +535,7 @@ fn palm_tf2b_c8_adr0003_0011_projection_restart_keeps_command_state_and_no_resul
     let record = reserve_two(&mut store)?;
     let metadata = test_support::receipt(b"synthetic status evidence")?;
     store.receive(&metadata, b"synthetic status evidence", b"config")?;
-    let encoded = key(&test_support::interpretation()?)?;
+    let encoded = document(&test_support::interpretation()?)?;
     store.db.execute(
         "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
         params![key(&metadata.id)?, encoded],

@@ -326,7 +326,7 @@ impl Store {
         )?;
         let required = required
             .checked_add(
-                law.map(|c| key(c).map(|s| s.len().saturating_mul(3)))
+                law.map(|c| crate::document(c).map(|s| s.len().saturating_mul(3)))
                     .transpose()?
                     .unwrap_or(0),
             )

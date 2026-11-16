@@ -190,15 +190,15 @@ pub(super) fn write(
             custody.scope.as_str(),
             custody.message.as_str(),
             receipt.metadata.raw_digest.0.as_slice(),
-            key(&admission.disposition)?,
-            key(custody)?
+            crate::document(&admission.disposition)?,
+            crate::document(custody)?
         ],
     )?;
     if admission.replay || matches!(admission.disposition, LawDisposition::Rejected(_)) {
         return Ok(());
     }
     for work in &custody.work {
-        tx.execute("INSERT INTO law_work_history(receipt,version,machine_order,item_index,evidence) VALUES (?1,?2,?3,?4,?5)",params![receipt_key,version,work.order,work.item,key(work)?])?;
+        tx.execute("INSERT INTO law_work_history(receipt,version,machine_order,item_index,evidence) VALUES (?1,?2,?3,?4,?5)",params![receipt_key,version,work.order,work.item,crate::document(work)?])?;
         if let Some(execution) = work.execution {
             let order = crate::machine_orders::load(tx, work.order)?;
             let pending = order
