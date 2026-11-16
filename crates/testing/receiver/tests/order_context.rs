@@ -9,7 +9,7 @@ use guard::HANG_GUARD;
 async fn adr0008_seeded_patient_specimen_and_position_survive_the_feed()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
-    let receiver = Receiver::open(
+    let mut receiver = Receiver::open(
         &temp.path().join("receiver.db"),
         "synthetic-api".into(),
         SigningSecret::parse("whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")?,
@@ -44,6 +44,7 @@ async fn adr0008_seeded_patient_specimen_and_position_survive_the_feed()
     task.await??;
     receiver
         .shutdown()
+        .await
         .map_err(|_| "receiver worker panicked")?;
     Ok(())
 }

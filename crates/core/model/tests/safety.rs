@@ -46,11 +46,7 @@ fn rule5_no_guessed_decimal_or_lost_tokens() -> Result<(), Box<dyn std::error::E
         "1,234", "<0.1", "NaN", "1e9", ".", "1.", "--1", "", "positive",
     ] {
         assert!(Decimal::new(raw).is_err());
-        let value = ResultValue {
-            decoded_text: None,
-            original: SourceText::new(raw)?,
-            parsed: ValueInterpretation::Text,
-        };
+        let value = ResultValue::new(SourceText::new(raw)?, ValueInterpretation::Text);
         assert_eq!(value.original.as_str(), raw);
     }
     assert!(Decimal::deserialize(StringDeserializer::<Error>::new("1,234".into())).is_err());
@@ -174,14 +170,13 @@ fn plan6_analyte_revision_is_independent_of_source_action() -> Result<(), Box<dy
 
 #[test]
 fn plan6_repeated_typed_and_unsupported_values_survive() -> Result<(), Box<dyn std::error::Error>> {
-    let value = ResultValue {
-        decoded_text: None,
-        original: SourceText::new("raw composite")?,
-        parsed: ValueInterpretation::Unsupported {
+    let value = ResultValue::new(
+        SourceText::new("raw composite")?,
+        ValueInterpretation::Unsupported {
             source_type: Identifier::new("LOCAL")?,
             reason: Reason::new("unsupported value type")?,
         },
-    };
+    );
     let repeated = EvidenceList::new(vec![value.clone(), value])?;
     assert_eq!(repeated.as_slice().len(), 2);
     assert_eq!(repeated.as_slice().first(), repeated.as_slice().last());
@@ -281,23 +276,21 @@ fn replacement_parts()
     let values = [coded, structured, attachment, unsupported]
         .into_iter()
         .map(|parsed| {
-            Ok(ResultValue {
-                decoded_text: None,
-                original: SourceText::new("original composite")?,
+            Ok(ResultValue::new(
+                SourceText::new("original composite")?,
                 parsed,
-            })
+            ))
         })
         .collect::<Result<Vec<_>, TextError>>()?;
     let supported_part = ResultPart {
         test: named.clone(),
-        values: EvidenceList::new(vec![ResultValue {
-            decoded_text: None,
-            original: SourceText::new("<0.10")?,
-            parsed: ValueInterpretation::Numeric(NumericValue {
+        values: EvidenceList::new(vec![ResultValue::new(
+            SourceText::new("<0.10")?,
+            ValueInterpretation::Numeric(NumericValue {
                 number: Decimal::new("0.10")?,
                 comparator: Some(Comparator::Less),
             }),
-        }])?,
+        )])?,
         units: None,
         dilution: None,
         flags: EvidenceList::new(vec![])?,

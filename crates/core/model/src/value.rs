@@ -89,15 +89,46 @@ pub struct ResultValue {
     /// Fully decoded protocol-neutral text, only when all source encoding is understood.
     /// The original remains authoritative; absence never means an empty decoded value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub decoded_text: Option<SourceText>,
+    decoded_text: Option<SourceText>,
     /// Explicit interpretation by the mapping layer; never inferred here.
-    pub parsed: ValueInterpretation,
+    parsed: ValueInterpretation,
 }
 
 /// Decoded text is valid only for a fully interpreted textual value.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[error("decoded text requires a text interpretation")]
 pub struct DecodedTextError;
+
+impl ResultValue {
+    /// Retains an interpretation without decoded text.
+    #[must_use]
+    pub fn new(original: SourceText, parsed: ValueInterpretation) -> Self {
+        Self {
+            original,
+            parsed,
+            decoded_text: None,
+        }
+    }
+    /// Retains fully decoded text with an explicitly textual interpretation.
+    #[must_use]
+    pub fn text(original: SourceText, decoded_text: Option<SourceText>) -> Self {
+        Self {
+            original,
+            decoded_text,
+            parsed: ValueInterpretation::Text,
+        }
+    }
+    /// Returns the explicit interpretation without permitting mutation.
+    #[must_use]
+    pub fn parsed(&self) -> &ValueInterpretation {
+        &self.parsed
+    }
+    /// Returns decoded text only for textual interpretations.
+    #[must_use]
+    pub fn decoded_text(&self) -> Option<&SourceText> {
+        self.decoded_text.as_ref()
+    }
+}
 
 #[derive(Deserialize)]
 struct ResultValueWire {

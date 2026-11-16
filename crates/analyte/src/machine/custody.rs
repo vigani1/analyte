@@ -32,9 +32,19 @@ struct EffectFailure {
     effect: Error,
 }
 
-pub(super) fn effect_failure(original: Option<Error>, effect: Error) -> Error {
+pub(crate) fn effect_failure(original: Option<Error>, effect: Error) -> Error {
     match original {
         Some(original) => Box::new(EffectFailure { original, effect }),
         None => effect,
+    }
+}
+
+/// Retains the triggering failure and every independent cleanup failure.
+pub(crate) fn retain_cleanup(result: &mut Result<(), Error>, cleanup: Result<(), Error>) {
+    if let Err(error) = cleanup {
+        *result = Err(effect_failure(
+            std::mem::replace(result, Ok(())).err(),
+            error,
+        ));
     }
 }

@@ -312,7 +312,7 @@ impl ResultContent {
                 part.values
                     .as_slice()
                     .iter()
-                    .any(|value| value.parsed.is_unsupported())
+                    .any(|value| value.parsed().is_unsupported())
             })
     }
 

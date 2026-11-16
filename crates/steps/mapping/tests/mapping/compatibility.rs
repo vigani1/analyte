@@ -196,7 +196,7 @@ fn hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe() ->
         let output = map_hl7(&message, &config, input())?;
         let value = first(&output)?.values.as_slice().first().ok_or("value")?;
         assert_eq!(value.original.as_str(), "code^text^local");
-        assert!(value.parsed.is_unsupported());
+        assert!(value.parsed().is_unsupported());
         assert!(
             output
                 .results

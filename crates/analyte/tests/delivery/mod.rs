@@ -165,12 +165,13 @@ impl Reference {
             .ok_or("reference event missing")?)
     }
 
-    async fn close(self) -> Result<(), Error> {
+    async fn close(mut self) -> Result<(), Error> {
         self.capture.release.notify_one();
         self.stop.send(()).map_err(|()| "reference stopped")?;
         tokio::time::timeout(HANG_GUARD, self.task).await???;
         self.receiver
             .shutdown()
+            .await
             .map_err(|_| "reference worker panicked")?;
         Ok(())
     }

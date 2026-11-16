@@ -501,17 +501,26 @@ impl ConnectionState {
         &mut self,
         machine: &intake::Connection<'_>,
         store: &Handle,
-        result: Result<(), Error>,
+        mut result: Result<(), Error>,
     ) -> Result<(), Error> {
-        self.input_evidence.retain(store, machine).await?;
+        let cleanup = self.input_evidence.retain(store, machine).await;
+        super::custody::retain_cleanup(&mut result, cleanup);
         // A cancelled or failed host operation must expose partial input as well.
-        for action in self.dialog.step(self.start.elapsed(), Event::Disconnect)? {
+        let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnect) {
+            Ok(actions) => actions,
+            Err(error) => {
+                super::custody::retain_cleanup(&mut result, Err(error.into()));
+                Vec::new()
+            }
+        };
+        for action in actions {
             if let Action::Rejected(error, bytes) = action {
-                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                let cleanup = intake::park_bytes(store, machine, bytes, &error.to_string()).await;
+                super::custody::retain_cleanup(&mut result, cleanup);
             }
         }
         if let Some(query) = &mut self.queries {
-            query
+            let cleanup = query
                 .close(
                     store,
                     machine,
@@ -521,7 +530,8 @@ impl ConnectionState {
                         "HL7-DSR-disconnect"
                     },
                 )
-                .await?;
+                .await;
+            super::custody::retain_cleanup(&mut result, cleanup);
         }
         result
     }

@@ -23,7 +23,6 @@ pub(super) async fn receive(
     }
     let (reply, response) = oneshot::channel();
     if state
-        .sender
         .try_send(Command::Delivery {
             id: id.into(),
             kind: "alerts",

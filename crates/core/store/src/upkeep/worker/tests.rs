@@ -9,7 +9,7 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()?;
-    runtime.block_on(async {
+    let id = runtime.block_on(async {
         let deadline = Instant::now()
             .checked_add(HANG_GUARD)
             .ok_or(Error::Timeout)?;
@@ -40,9 +40,9 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
             handle.request(deadline, move |store| store.raw(id)).await,
             Err(Error::Closed)
         ));
-        Ok::<_, Error>(())
+        Ok::<_, Error>(id)
     })?;
-    assert_eq!(open(&path)?.raw(receipt(b"unused")?.id)?, None);
+    assert_eq!(open(&path)?.raw(id)?, Some(b"raw".to_vec()));
     Ok(())
 }
 

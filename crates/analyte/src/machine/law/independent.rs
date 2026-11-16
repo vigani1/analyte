@@ -29,7 +29,7 @@ pub(in crate::machine) async fn run(
     store: Arc<Handle>,
     mut stop: watch::Receiver<bool>,
     mut closing: Closing,
-    capture: Option<crate::machine::capture::Capture>,
+    capture: Option<Arc<crate::machine::capture::Capture>>,
 ) -> Result<(), Error> {
     let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() else {
         return Err(invalid("independent LAW stack absent"));
@@ -43,7 +43,6 @@ pub(in crate::machine) async fn run(
         }
     };
     let machine = Arc::new(machine);
-    let capture = capture.map(Arc::new);
     let (sender, receiver) = mpsc::channel(8);
     let (shutdown, local_stop) = watch::channel(false);
     let inbound = server(

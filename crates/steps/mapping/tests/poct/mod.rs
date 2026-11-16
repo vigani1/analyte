@@ -21,7 +21,7 @@ fn poct01_b_5_15_mapping_keeps_written_values_codes_units_and_comparators() -> T
         .ok_or("missing result value")?;
     assert_eq!(value.original.as_str(), "001.2300");
     assert!(
-        matches!(&value.parsed,ValueInterpretation::Numeric(n) if n.number.as_str() == "001.2300" && n.comparator == Some(Comparator::Less))
+        matches!(&value.parsed(),ValueInterpretation::Numeric(n) if n.number.as_str() == "001.2300" && n.comparator == Some(Comparator::Less))
     );
     assert_eq!(
         item.part
@@ -85,7 +85,7 @@ fn poct01_b_6_10_nonpatient_qc_and_null_are_never_patient_or_zero() -> TestResul
             .as_slice()
             .first()
             .ok_or("missing value")?
-            .parsed
+            .parsed()
             .is_unsupported()
     );
     Ok(())
@@ -105,7 +105,7 @@ fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
         matches!(&item.source_value,Value::Code(Nullable::Value(c)) if c.version.as_deref() == Some("v2") && c.display.as_deref() == Some("Source label"))
     );
     assert!(
-        matches!(&item.part.values.as_slice().first().ok_or("missing value")?.parsed,ValueInterpretation::Coded(c) if c.code.namespace.as_str() == "source-system" && c.code.value.as_str() == "positive")
+        matches!(&item.part.values.as_slice().first().ok_or("missing value")?.parsed(),ValueInterpretation::Coded(c) if c.code.namespace.as_str() == "source-system" && c.code.value.as_str() == "positive")
     );
     for raw in [messages::hello("h"), messages::status("s", "0")] {
         assert!(

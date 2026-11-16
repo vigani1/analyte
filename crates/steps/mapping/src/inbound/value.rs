@@ -73,18 +73,19 @@ pub(crate) fn values(
                 text_problem.unwrap_or(Problem::UnsupportedValue),
             )?;
         }
-        values.push(ResultValue {
-            decoded_text: if matches!(parsed, ValueInterpretation::Text) {
+        let original = text(&original, position)?;
+        let value = if matches!(parsed, ValueInterpretation::Text) {
+            ResultValue::text(
+                original,
                 source
                     .decoded_repetition(index, field, ordinal)?
                     .map(|value| text(&value, position))
-                    .transpose()?
-            } else {
-                None
-            },
-            original: text(&original, position)?,
-            parsed,
-        });
+                    .transpose()?,
+            )
+        } else {
+            ResultValue::new(original, parsed)
+        };
+        values.push(value);
     }
     list(values, position)
 }
@@ -219,10 +220,10 @@ pub(crate) fn check_kind(
     for value in values.as_slice() {
         let fits = match expected {
             ValueKind::Either => true,
-            ValueKind::Numeric => matches!(value.parsed, ValueInterpretation::Numeric(_)),
+            ValueKind::Numeric => matches!(value.parsed(), ValueInterpretation::Numeric(_)),
             ValueKind::Coded => {
-                matches!(value.parsed, ValueInterpretation::Coded(_))
-                    || (matches!(value.parsed, ValueInterpretation::Text)
+                matches!(value.parsed(), ValueInterpretation::Coded(_))
+                    || (matches!(value.parsed(), ValueInterpretation::Text)
                         && !value.original.as_str().is_empty()
                         && matches!(
                             decimal(value.original.as_str(), true),
