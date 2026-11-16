@@ -197,7 +197,10 @@ fn rule7_identity_run_accepts_exact_source_text_ceiling_and_rejects_larger() -> 
 
 #[test]
 fn law_tf2b_3_29_4_b3_mapping_preserves_awos_og_and_refuses_generic_entry() -> TestResult {
-    let definition = include_str!("../../../../core/config/examples/law.toml").replace("order_namespace = {field={group=\"order\",record=\"OBR\",field=2,component=2,repetition=1}}", "order_namespace = {fixed=\"manager\"}");
+    let definition = include_str!("../../../../core/config/examples/law.toml").replace(
+        "order_namespace = {fixed=\"LAB\"}",
+        "order_namespace = {fixed=\"manager\"}",
+    );
     let cfg = config(&definition)?;
     let raw = LAW_RESULT;
     let message =

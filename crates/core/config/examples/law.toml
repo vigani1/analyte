@@ -42,7 +42,7 @@ component = 1
 repetition = 1
 [mappings.identity]
 order_id = {group="order",record="OBR",field=2,component=1,repetition=1}
-order_namespace = {field={group="order",record="OBR",field=2,component=2,repetition=1}}
+order_namespace = {fixed="LAB"}
 sub_id = {group="observation",record="OBX",field=4,component=1,repetition=1}
 run = []
 correction_status_codes = ["C"]

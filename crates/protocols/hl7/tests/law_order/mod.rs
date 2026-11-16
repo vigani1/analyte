@@ -153,7 +153,7 @@ fn validate_builder_repeat_permissions(
     assert!(law::work_order(&[awos], None, address, response, repeat_caps, options()).is_err());
     law::work_order(
         &[awos.with_instructions(Instructions {
-            repeat: Some(b"O^Synthetic^HL70389"),
+            repeat: Some(b"O^Original, first run^HL70389"),
             ..Instructions::default()
         })],
         None,
@@ -170,3 +170,5 @@ mod scenarios_1;
 mod scenarios_2;
 
 mod scenarios_3;
+
+mod priority;

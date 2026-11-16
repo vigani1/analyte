@@ -2,7 +2,7 @@
 use super::*;
 
 #[tokio::test]
-async fn law_tf2b_b7_6_returned_work_must_match_downloaded_awos() -> Result<(), Error> {
+async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> Result<(), Error> {
     let (_temp, path, mut reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", Some("law"), 1)?],
         &definition().replace("specimen = false", "specimen = true"),
@@ -37,11 +37,6 @@ async fn law_tf2b_b7_6_returned_work_must_match_downloaded_awos() -> Result<(), 
         (
             "unknown",
             valid.replace(&format!("{awos}^LAB"), "never-downloaded^LAB"),
-            "OBR^1^2",
-        ),
-        (
-            "namespace",
-            valid.replace(&format!("{awos}^LAB"), &format!("{awos}^OTHER")),
             "OBR^1^2",
         ),
         (
@@ -82,6 +77,22 @@ async fn law_tf2b_b7_6_returned_work_must_match_downloaded_awos() -> Result<(), 
         assert_eq!(field(&ack, b"ERR", 2)?, location.as_bytes(), "{id}");
         assert_eq!(count(&path, "outbox")?, baseline);
         assert_eq!(count(&path, "observation_revisions")?, 0);
+    }
+    for (index, suffix) in ["", "^OTHER", "^OTHER^arbitrary^ignored"]
+        .into_iter()
+        .enumerate()
+    {
+        let accepted = valid
+            .replace(&format!("{awos}^LAB"), &format!("{awos}{suffix}"))
+            .replace("|valid|", &format!("|valid-{index}|"));
+        send(&mut peer, accepted.as_bytes()).await?;
+        let ack = packet(&mut peer).await?;
+        assert_eq!(
+            field(&ack, b"MSA", 1)?,
+            b"AA",
+            "variant {index}: {}",
+            String::from_utf8_lossy(ack.raw())
+        );
     }
     send(&mut peer, valid.as_bytes()).await?;
     assert_eq!(field(&packet(&mut peer).await?, b"MSA", 1)?, b"AA");
