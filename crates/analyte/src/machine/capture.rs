@@ -22,6 +22,7 @@ pub(crate) struct Capture {
     reserve: u64,
     header: Header,
     machine: String,
+    failures: Option<std::sync::mpsc::SyncSender<(PathBuf, String)>>,
 }
 
 impl Capture {
@@ -30,9 +31,27 @@ impl Capture {
             return None;
         }
         let stack = machine.snapshot.effective().stack();
+        let directory = root.join("captures").join(machine.id.as_str());
+        let (failures, reports) = std::sync::mpsc::sync_channel::<(PathBuf, String)>(16);
+        let failure_root = directory.clone();
+        let failure_machine = machine.id.as_str().to_owned();
+        let marker_worker = match thread::Builder::new().name("capture-markers".into()).spawn(
+            move || {
+                while let Ok((path, reason)) = reports.recv() {
+                    failure(&failure_root, &failure_machine, &path, &reason);
+                }
+            },
+        ) {
+            Ok(worker) => worker,
+            Err(error) => {
+                tracing::error!(error_kind = ?error.kind(), "capture marker worker unavailable; capture disabled");
+                return None;
+            }
+        };
         Some(Self {
+            failures: Some(failures),
             state: Arc::new(Mutex::new(State {
-                threads: Vec::new(),
+                threads: vec![(directory.clone(), marker_worker)],
             })),
             directory: root.join("captures").join(machine.id.as_str()),
             reserve,
@@ -59,6 +78,7 @@ impl Capture {
         reason = "only capture thread bookkeeping is locked; no fallible operation panics while holding it"
     )]
     pub(crate) fn factory(&self) -> impl FnMut() -> Option<recording::Tap> + Send + Sync + 'static {
+        let failures = self.failures.clone();
         let state = self.state.clone();
         let directory = self.directory.clone();
         let reserve = self.reserve;
@@ -69,7 +89,7 @@ impl Capture {
             let (tap, worker) = match recording::with_header(path.clone(), 64, header.clone()) {
                 Ok(pair) => pair,
                 Err(error) => {
-                    failure(&directory, &machine, &path, &error.to_string());
+                    report(&failures, &machine, &path, &error.to_string());
                     return None;
                 }
             };
@@ -80,7 +100,7 @@ impl Capture {
             for (path, worker) in state.threads.drain(..) {
                 if worker.is_finished() {
                     if worker.join().is_err() {
-                        failure(&directory, &machine, &path, "capture worker panicked");
+                        report(&failures, &machine, &path, "capture worker panicked");
                     }
                 } else {
                     pending.push((path, worker));
@@ -88,8 +108,8 @@ impl Capture {
             }
             state.threads = pending;
             if state.threads.len() >= 16 {
-                failure(
-                    &directory,
+                report(
+                    &failures,
                     &machine,
                     &path,
                     "capture worker capacity exceeded",
@@ -128,8 +148,8 @@ impl Capture {
                     Some(tap)
                 }
                 Err(error) => {
-                    failure(
-                        &directory,
+                    report(
+                        &failures,
                         &machine,
                         &directory,
                         &format!("capture worker start: {error}"),
@@ -193,25 +213,73 @@ fn private_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     file.sync_data()
 }
 
+fn report(
+    sender: &Option<std::sync::mpsc::SyncSender<(PathBuf, String)>>,
+    machine: &str,
+    path: &Path,
+    reason: &str,
+) {
+    tracing::error!(
+        machine,
+        reason,
+        "capture failed; clinical traffic continues"
+    );
+    if sender.as_ref().is_none_or(|sender| {
+        sender
+            .try_send((path.to_owned(), reason.to_owned()))
+            .is_err()
+    }) {
+        tracing::error!(machine, "capture failure marker queue unavailable");
+    }
+}
+
+impl Capture {
+    /// Called by the host after all transport owners exit. Cancellation retains ownership.
+    /// A stuck OS write cannot be cancelled: terminate visibly after five seconds,
+    /// as with the service watchdog, rather than detach it or block a runtime worker.
+    pub(crate) async fn close(&mut self) {
+        self.failures.take();
+        let until = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let finished = self
+                .state
+                .lock()
+                .is_ok_and(|state| state.threads.iter().all(|(_, worker)| worker.is_finished()));
+            if finished {
+                break;
+            }
+            if tokio::time::Instant::now() >= until {
+                tracing::error!(
+                    machine = self.machine,
+                    "capture shutdown exceeded five seconds; terminating host"
+                );
+                std::process::exit(3);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        if let Ok(mut state) = self.state.lock() {
+            for (_, worker) in state.threads.drain(..) {
+                if worker.join().is_err() {
+                    tracing::error!(machine = self.machine, "capture worker panicked");
+                }
+            }
+        }
+    }
+}
 impl Drop for Capture {
-    #[expect(
-        clippy::expect_used,
-        reason = "capture bookkeeping never panics while locked"
-    )]
     fn drop(&mut self) {
-        let mut state = self
+        // Host ownership must survive machine-task cancellation. An unclosed owner
+        // is a host lifecycle defect; never silently detach workers.
+        if self
             .state
             .lock()
-            .expect("capture ownership mutex is never poisoned");
-        for (path, worker) in state.threads.drain(..) {
-            if worker.join().is_err() {
-                failure(
-                    &self.directory,
-                    &self.machine,
-                    &path,
-                    "capture worker panicked",
-                );
-            }
+            .is_ok_and(|state| !state.threads.is_empty())
+        {
+            tracing::error!(
+                machine = self.machine,
+                "capture owner dropped without async close"
+            );
+            std::process::exit(3);
         }
     }
 }
@@ -225,6 +293,57 @@ mod tests {
         io::{Read, Write},
         time::Duration,
     };
+
+    // ADR 0009: optional capture admission and machine exit never wait for disk.
+    #[tokio::test]
+    async fn adr0009_failed_admission_and_machine_exit_with_stalled_capture()
+    -> Result<(), crate::Error> {
+        let (release, gate) = std::sync::mpsc::channel();
+        let (started, entered) = tokio::sync::oneshot::channel();
+        let worker = thread::spawn(move || {
+            let _ = started.send(());
+            let _ = gate.recv();
+        });
+        entered.await?;
+        let (sender, _receiver) = std::sync::mpsc::sync_channel(1);
+        sender.try_send((PathBuf::new(), "occupied".to_owned()))?;
+        let header = Header {
+            version: 1,
+            stack: std::array::from_fn(|_| "synthetic".into()),
+            machine: None,
+            software: None,
+            evidence: Evidence::Synthetic,
+            de_identification: "synthetic".into(),
+            source: "test".into(),
+            exceptions: Vec::new(),
+        };
+        let capture = Arc::new(Capture {
+            state: Arc::new(Mutex::new(State {
+                threads: vec![(PathBuf::new(), worker)],
+            })),
+            directory: PathBuf::new(),
+            reserve: 0,
+            header,
+            machine: "synthetic".into(),
+            failures: Some(sender),
+        });
+        let machine_capture = capture.clone();
+        let task = tokio::spawn(async move {
+            let mut factory = machine_capture.factory();
+            assert!(factory().is_none());
+        });
+        // Current-thread runtime: this cannot finish if admission or Drop joins the gate.
+        tokio::time::timeout(Duration::from_secs(1), task).await??;
+        assert!(
+            !capture.state.lock().map_err(|_| "mutex")?.threads[0]
+                .1
+                .is_finished()
+        );
+        release.send(())?;
+        let mut capture = Arc::try_unwrap(capture).map_err(|_| "capture owner")?;
+        capture.close().await;
+        Ok(())
+    }
 
     struct Echo(VecDeque<u8>);
     impl Read for Echo {
@@ -270,7 +389,7 @@ mod tests {
             "schema_version=1\ndata_directory='data'\n[[machines]]\nid='serial'\ncapture=true\ndefinition='machine.toml'\nsite='site.toml'\n[store]\nreserve_bytes=1024\ndatabase_bytes=100000000\nrecord_bytes=2097152\npage_rows=100\nbusy_timeout_ms=1000\n",
         )?;
         let program = crate::installation::config::Program::load(&program)?;
-        let capture = Capture::new(
+        let mut capture = Capture::new(
             program.machines().first().ok_or("machine")?,
             &root.path().join("data"),
             1024,
@@ -313,6 +432,7 @@ mod tests {
         drop(dialog);
         owner.join().map_err(|_| "serial test owner panic")??;
         result?;
+        runtime.block_on(capture.close());
         drop(capture);
         let file = std::fs::read_dir(root.path().join("data/captures/serial"))?
             .next()

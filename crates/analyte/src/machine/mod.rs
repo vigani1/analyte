@@ -47,7 +47,7 @@ pub(crate) async fn run(
     mut stop: watch::Receiver<bool>,
     file_root: std::path::PathBuf,
     mut closing: Closing,
-    capture: Option<capture::Capture>,
+    capture: Option<Arc<capture::Capture>>,
 ) -> Result<(), Error> {
     if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack()
         && matches!(
@@ -76,7 +76,7 @@ pub(crate) async fn run(
                     _ = stop.changed() => { closing.after_commits().await?; return Ok(()); },
                     accepted = listener.accept() => accepted?,
                 };
-                let (conn, side) = recorded_connection(limits, capture.as_ref());
+                let (conn, side) = recorded_connection(limits, capture.as_deref());
                 let cancel = conn.cancellation();
                 let processing = drive(&machine, session, &store, conn, stop.clone(), &mut closing);
                 let transport = analyte_transport::tcp::pump(accepted.0, side);
@@ -97,7 +97,7 @@ pub(crate) async fn run(
             session,
             ..
         } => loop {
-            let (conn, side) = recorded_connection(limits, capture.as_ref());
+            let (conn, side) = recorded_connection(limits, capture.as_deref());
             let cancel = conn.cancellation();
             let transport =
                 analyte_transport::tcp::client_session(endpoint.parse()?, side, retry()?);
@@ -134,7 +134,7 @@ pub(crate) async fn run(
                 limits,
                 stop,
                 closing,
-                capture.as_ref(),
+                capture.as_deref(),
             )
             .await
         }
@@ -146,7 +146,7 @@ pub(crate) async fn run(
                 file_root,
                 stop,
                 closing,
-                capture.as_ref(),
+                capture.as_deref(),
             )
             .await
         }
