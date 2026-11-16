@@ -402,6 +402,7 @@ async fn store_message(
         | Body::Terminate(_)
         | Body::Acknowledgement { .. }
         | Body::Escape { .. }
+        | Body::KeepAlive
         | Body::Request(_) => {}
     }
     Ok::<_, Error>(CommitOutcome::Stored)

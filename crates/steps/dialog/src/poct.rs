@@ -432,15 +432,18 @@ impl Dialog {
                 self.phase = Phase::RemoteEnd;
                 self.store(message, Purpose::Termination, actions)?;
             }
-            Body::Acknowledgement { kind, reference } => {
+            Body::Acknowledgement {
+                kind,
+                reference: acknowledged,
+            } => {
                 if let Phase::Ending(sent) = &self.phase {
-                    if sent == reference {
+                    if sent == acknowledged {
                         self.close(*kind == AckKind::Accept, actions);
                     } else {
                         self.close(false, actions);
                     }
                 } else {
-                    return self.unexpected(reference.clone(), actions);
+                    return self.unexpected(reference, actions);
                 }
             }
             Body::Escape {
@@ -455,6 +458,13 @@ impl Dialog {
                 } else {
                     self.close(false, actions);
                 }
+            }
+            Body::KeepAlive => {
+                actions.push(DialogAction::Park {
+                    message,
+                    reason: "POCT unsupported Keep Alive",
+                });
+                return self.unexpected(reference, actions);
             }
             Body::Request(_) => return self.unexpected(reference, actions),
         }

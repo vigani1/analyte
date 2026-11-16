@@ -201,6 +201,8 @@ pub enum Body {
     },
     /// Request for a topic; supported for validating reviewer output.
     Request(Nullable<data::Code>),
+    /// Recognized optional Keep Alive, retained for an unsupported-message response.
+    KeepAlive,
 }
 
 /// A structurally checked message and its exact bytes. Debug omits all content.
@@ -232,7 +234,8 @@ impl Message {
             .name();
         if !matches!(
             root,
-            "HEL.R01"
+            "KPA.R01"
+                | "HEL.R01"
                 | "DST.R01"
                 | "OBS.R01"
                 | "OBS.R02"
@@ -422,6 +425,7 @@ fn parse_body(
                 reason: structure::literal(document, esc, "ESC.detail_cd")?,
             }
         }
+        "KPA.R01" => Body::KeepAlive,
         "REQ.R01" => Body::Request(coded(
             document,
             values,

@@ -60,6 +60,7 @@ pub(crate) async fn map_retained(
             | analyte_poct::Body::Terminate(_)
             | analyte_poct::Body::Acknowledgement { .. }
             | analyte_poct::Body::Escape { .. }
+            | analyte_poct::Body::KeepAlive
             | analyte_poct::Body::Request(_) => None,
         });
         let message = analyte_poct::Message::parse(&receipt.raw, poct_limits(settings))?;

@@ -5,7 +5,7 @@ use peer_messages::{field, hello, limits, message, observation, status};
 use proptest::prelude::*;
 
 #[test]
-fn poct01_b_6_mandatory_message_bodies_and_control_ids() -> Result<(), MessageError> {
+fn poct01_b_4_4_each_mandatory_body_has_exact_meaning() -> Result<(), MessageError> {
     for (kind, body) in [
         (
             "EOT.R01",
@@ -42,6 +42,33 @@ fn poct01_b_6_mandatory_message_bodies_and_control_ids() -> Result<(), MessageEr
     ] {
         let raw = message(kind, "000A", &body);
         let parsed = Message::parse(raw.as_bytes(), limits())?;
+        match parsed.body() {
+            Body::EndTopic(Nullable::Value(code)) => assert_eq!(code.value, "OBS"),
+            Body::Terminate(Nullable::Value(code)) => assert_eq!(code.value, "NRM"),
+            Body::Acknowledgement { kind, reference } => {
+                assert_eq!(reference.as_str(), "original");
+                assert_eq!(
+                    *kind,
+                    if body.contains("AE") {
+                        analyte_poct::AckKind::Error
+                    } else {
+                        analyte_poct::AckKind::Accept
+                    }
+                );
+            }
+            Body::Escape { reference, reason } => {
+                assert_eq!(reference.as_str(), "original");
+                assert_eq!(reason, "CNC");
+            }
+            Body::Hello { .. }
+            | Body::Status { .. }
+            | Body::PatientObservations(_)
+            | Body::NonPatientObservations(_)
+            | Body::EndTopic(_)
+            | Body::Terminate(_)
+            | Body::Request(_)
+            | Body::KeepAlive => return Err(MessageError::Structure),
+        }
         assert_eq!(parsed.header().control_id.as_str(), "000A");
         assert_eq!(parsed.document().raw(), raw.as_bytes());
     }
@@ -80,6 +107,7 @@ fn poct01_b_6_10_patient_and_nonpatient_values_are_explicit() -> Result<(), Mess
             | Body::Terminate(_)
             | Body::Acknowledgement { .. }
             | Body::Escape { .. }
+            | Body::KeepAlive
             | Body::Request(_) => return Err(MessageError::Structure),
         };
         let result = services
