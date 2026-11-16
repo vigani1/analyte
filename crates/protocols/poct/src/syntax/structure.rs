@@ -2,8 +2,8 @@
 //! Rules are executable checks, not copied schema documents.
 use crate::{
     Document, Element,
-    data::{self, Kind, Value},
-    message::MessageError,
+    views::data::{self, Kind, Value},
+    views::message::MessageError,
 };
 
 pub(crate) struct Rule {

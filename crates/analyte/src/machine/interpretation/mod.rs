@@ -309,7 +309,7 @@ pub(crate) fn unpack<'a>(
 }
 
 fn unpack_mllp(raw: &[u8], frame_limit: usize) -> Result<std::borrow::Cow<'_, [u8]>, Error> {
-    use analyte_framing::mllp::{Decoder, Event, Limit};
+    use analyte_framing::hl7::{Decoder, Event, Limit};
     let mut decoder = Decoder::new(Limit::new(frame_limit)?);
     let mut complete = false;
     for byte in raw {
@@ -328,7 +328,7 @@ fn unpack_mllp(raw: &[u8], frame_limit: usize) -> Result<std::borrow::Cow<'_, [u
     if !complete {
         return Err(invalid("receipt contains incomplete MLLP block"));
     }
-    Ok(analyte_framing::mllp::payload(raw)
+    Ok(analyte_framing::hl7::payload(raw)
         .ok_or_else(|| invalid("MLLP payload"))?
         .into())
 }

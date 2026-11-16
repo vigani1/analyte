@@ -77,9 +77,9 @@ fn query(sample: &str, edition: &str) -> Vec<u8> {
     format!("MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||QRY^Q02^QRY_Q02|query1|P|{edition}\rQRD|20261115|D|D|tag|||100^LI|{sample}^^^^^^^LCL|ORD|TEST\r").into_bytes()
 }
 async fn send(peer: &mut TcpStream, payload: &[u8]) -> Result<(), Error> {
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         payload,
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     Ok(())
@@ -115,7 +115,7 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
             database(&path)?.query_row("SELECT raw FROM receipts LIMIT 1", [], |r| r.get(0))?;
         assert_eq!(
             raw,
-            analyte_framing::mllp::encode(&qry, analyte_framing::mllp::Limit::new(1048576)?)?
+            analyte_framing::hl7::encode(&qry, analyte_framing::hl7::Limit::new(1048576)?)?
         );
         let dsr = read_mllp_packet(&mut peer, "oversized HL7 response").await?;
         assert!(
@@ -230,9 +230,9 @@ async fn hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain() -> R
 async fn hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time()
 -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 1000).await?;
-    let wire = analyte_framing::mllp::encode(
+    let wire = analyte_framing::hl7::encode(
         &query("000Ab12", "2.5.1"),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?;
     peer.write_all(wire.get(..10).ok_or("prefix")?).await?;
     tokio::time::sleep(Duration::from_millis(1100)).await;

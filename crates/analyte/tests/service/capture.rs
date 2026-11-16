@@ -169,7 +169,7 @@ fn assert_captured_conversations(
                 .collect::<Vec<_>>()
         };
         assert_eq!(bytes(Direction::HostToMachine), ack.as_bytes());
-        let wire = analyte_framing::mllp::encode(ORU, analyte_framing::mllp::Limit::new(1048576)?)?;
+        let wire = analyte_framing::hl7::encode(ORU, analyte_framing::hl7::Limit::new(1048576)?)?;
         assert_eq!(bytes(Direction::MachineToHost), wire);
         #[cfg(unix)]
         {

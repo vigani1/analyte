@@ -11,7 +11,7 @@
 **Main parts:**
 
 - `astm`: ASTM frames and checksums.
-- `mllp`: MLLP boundaries, the byte envelope used around HL7.
+- `hl7`: MLLP Release 1 boundaries, the byte envelope used around HL7.
 - `poct`: POCT XML message boundaries.
 - `vidas`: VIDAS packet boundaries.
 - `autolyser`: Autolyser checksum envelopes.

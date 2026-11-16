@@ -5,7 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod astm;
-pub mod mllp;
+pub mod hl7;
 
 /// Autolyser checksum envelopes.
 pub mod autolyser;

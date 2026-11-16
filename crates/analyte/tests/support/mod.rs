@@ -197,7 +197,7 @@ pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error>
 }
 
 pub(super) async fn hl7(peer: &mut TcpStream, message: &[u8]) -> Result<String, Error> {
-    let wire = analyte_framing::mllp::encode(message, analyte_framing::mllp::Limit::new(1048576)?)?;
+    let wire = analyte_framing::hl7::encode(message, analyte_framing::hl7::Limit::new(1048576)?)?;
     peer.write_all(&wire).await?;
     tokio::time::timeout(HANG_GUARD, async {
         let mut ack = Vec::new();

@@ -10,10 +10,10 @@
 
 **Main parts:**
 
-- `schema`: Configuration fields.
+- `schema`: Configuration fields, including protocol-specific settings.
 - `validation`: Checks that settings make sense together.
 - `stack`: Validated protocol combinations.
 - `orders`: Explicit outgoing order settings.
-- `law`: Explicit LAW profile selection.
+- `schema/law`: Explicit LAW profile selection (re-exported at the crate root).
 
 [Technical details and safety guidance](DETAILS.md).

@@ -107,7 +107,7 @@ The workspace enables `too_many_lines` (100), `cognitive_complexity` (25),
 `fn_params_excessive_bools`, `struct_excessive_bools`, `items_after_statements`,
 `module_name_repetitions` and `similar_names`. An exception is a narrow
 `#[expect(..., reason = "...")]`, for a flat table that reads best whole. A
-tracked Rust file under `crates/` or `fuzz/` is limited to 800 lines; files of 601?800 lines require a `//!` header line containing `Kept whole:` and its reason, enforced by the Layout CI job.
+tracked Rust file under `crates/` or `fuzz/` is limited to 800 lines; files of 601 to 800 lines require a `//!` header line containing `Kept whole:` and its reason, enforced by the Layout CI job.
 Several related yes/no flags become one enum of named states.
 
 ### 8. Every crate and every file says what it holds
@@ -138,6 +138,9 @@ the same way, and its `README.md` states the kind first.
 | Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file per job: `syntax`, `views`, `version`, `encoder`; a profile (LAW) is a folder |
 | Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |
 | Testing | `crates/testing/` | receiver, sim | Stand-ins used only by tests |
+
+Transport is arranged by connection kind because it has no per-protocol variants.
+Sink is arranged by role because it has no per-protocol variants.
 
 A new crate joins one kind, or the plan gets a new kind through this ADR.
 

@@ -59,7 +59,7 @@ async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result
         },
     ));
     let mut peer = connect(&program).await?;
-    let wire = analyte_framing::mllp::encode(ORU, analyte_framing::mllp::Limit::new(1048576)?)?;
+    let wire = analyte_framing::hl7::encode(ORU, analyte_framing::hl7::Limit::new(1048576)?)?;
     peer.write_all(&wire).await?;
     let ack = read_ack(&mut peer).await?;
     assert!(String::from_utf8_lossy(&ack).contains("MSA|AA|message1"));
@@ -85,9 +85,9 @@ async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result
     drop(store);
     let mut bad = String::from_utf8(ORU.to_vec())?.replace("message1", "message2");
     bad.push_str("OBX|2|NM|UNKNOWN^Synthetic^synthetic||12.30|mg/L|||||F\r");
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         bad.as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     let ack = String::from_utf8(read_ack(&mut peer).await?)?;
@@ -107,9 +107,9 @@ async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result
     let conflict = String::from_utf8(ORU.to_vec())?
         .replace("message1", "message3")
         .replace("12.30", "99.10");
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         conflict.as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     let ack = String::from_utf8(read_ack(&mut peer).await?)?;
@@ -241,9 +241,9 @@ async fn adr0003_hl7_full_disk_never_returns_positive_ack() -> Result<(), Error>
         Ok(())
     }));
     let mut peer = connect(&program).await?;
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         ORU,
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     let ack = read_ack(&mut peer).await?;
@@ -280,9 +280,9 @@ async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<()
         },
     ));
     let mut peer = connect(&program).await?;
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         ORU,
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     assert!(String::from_utf8_lossy(&read_ack(&mut peer).await?).contains("MSA|AA|message1"));

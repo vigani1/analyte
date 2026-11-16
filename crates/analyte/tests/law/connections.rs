@@ -198,9 +198,9 @@ async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadline
         vendor_support::state(&path, "Uncertain"),
     )
     .await??;
-    let request = analyte_framing::mllp::encode(
+    let request = analyte_framing::hl7::encode(
         query(ALL, "late-client").as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?;
     let (first, rest) = request.split_at(12);
     peer.write_all(first).await?;

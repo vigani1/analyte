@@ -135,7 +135,7 @@ interpretation. A response never starts an ACK loop. Unconfirmed complete blocks
 partial frames and unread tails stay protected on cancellation or refusal.
 
 Evidence remains **documented** (PaLM TF-2b Rev 11 B.6/B.7 and sections
-3.27?3.29). `tests/law.rs` covers custody-before-ACK, error choices, deadline
+3.27–3.29). `tests/law.rs` covers custody-before-ACK, error choices, deadline
 boundaries, availability-before-work, independent-link rejection and uncertain
 issuance without replay. Host integration tests cover both link topologies,
 restart, failed storage and cache lookup, corrections, cancellation and ORL

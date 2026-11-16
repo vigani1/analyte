@@ -136,9 +136,9 @@ async fn reply(
         }
         response.push('\r');
     }
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         response.as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     Ok(())

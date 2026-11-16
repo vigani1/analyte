@@ -1,5 +1,5 @@
 //! Synthetic conformance cases, independent of vendor behavior.
-use analyte_framing::{astm as a, mllp as m};
+use analyte_framing::{astm as a, hl7 as m};
 use proptest::prelude::*;
 
 fn astm(bytes: &[u8]) -> Vec<a::Event> {

@@ -1,4 +1,5 @@
 //! Bounded POCT XML grammar belongs in the syntax layer, without dialog decisions.
+pub(crate) mod structure;
 use quick_xml::{Reader, events::Event};
 
 /// Hard allocation and work limits, applied before copying input.

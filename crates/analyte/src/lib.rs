@@ -32,9 +32,6 @@ pub async fn open_system_store(
 }
 
 #[cfg(test)]
-mod test_tracing;
-
-#[cfg(test)]
 #[path = "../tests/support/guard.rs"]
 mod test_guard;
 

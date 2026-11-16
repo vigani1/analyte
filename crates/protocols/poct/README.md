@@ -11,10 +11,10 @@
 **Main parts:**
 
 - `syntax`: Bounded XML grammar.
-- `data`: Values with original spelling.
-- `message`: Required Basic Profile message fields.
-- `structure`: Message structure checks.
-- `encode`: Reply message construction and XML escaping.
+- `views/data`: Values with original spelling.
+- `views/message`: Required Basic Profile message fields.
+- `syntax/structure`: Message structure checks.
+- `encoder`: Reply message construction and XML escaping.
 - `duplicate`: Bounded observation duplicate comparison.
 
 [Technical details and safety guidance](DETAILS.md).

@@ -5,7 +5,7 @@ use std::collections::HashSet;
 impl Orders {
     fn validate_stack(&self, machine: &MachineDocument, path: &str) -> Result<(), Error> {
         if machine.dialog.kind == crate::DialogKind::LawManager {
-            return crate::law::validate_orders(machine, path, self);
+            return crate::schema::law::validate_orders(machine, path, self);
         }
         if machine.syntax.kind != SyntaxKind::Hl7V2
             && (self.hl7.is_some() || self.hl7_send.is_some() || self.placer_namespace.is_some())

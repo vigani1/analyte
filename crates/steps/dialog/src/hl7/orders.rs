@@ -183,7 +183,7 @@ impl Dialog {
         } else {
             reply.failure_deadline
         };
-        let bytes = analyte_framing::mllp::encode(reply.acknowledgment.raw(), self.config.limit)?;
+        let bytes = analyte_framing::hl7::encode(reply.acknowledgment.raw(), self.config.limit)?;
         orders.issuance = Some(Issuance::Qck(DisplayReply {
             acknowledgment: reply.acknowledgment.clone(),
             display: reply.display.clone(),
@@ -216,8 +216,7 @@ impl Dialog {
                         });
                     } else {
                         let id = Msh::new(&display)?.control_id().to_vec();
-                        let bytes =
-                            analyte_framing::mllp::encode(display.raw(), self.config.limit)?;
+                        let bytes = analyte_framing::hl7::encode(display.raw(), self.config.limit)?;
                         self.await_display(
                             self.now,
                             ControlId::new(&id)?,
