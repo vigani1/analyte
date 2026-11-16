@@ -141,7 +141,7 @@ async fn reply(
         response.push_str(if edition == "2.8.2" {
             "PID|1||P1^^^LAB^MR||Synthetic\r"
         } else {
-            "PID|1\r"
+            "PID|1||P1^^^LAB||Synthetic\r"
         });
     }
     for (orc, code) in message
