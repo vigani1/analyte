@@ -77,6 +77,30 @@ chapter; this does not justify applying the older edition's wording to 2.9.1.
 
 ## Compatibility rule
 
+### Source review for the legacy compatibility implementation
+
+HL7 2.5.1 §2.8, pp.2-20–22, supplies the receiving contract for 2.3, 2.4
+and 2.5; it does not reconstruct each unavailable edition's entire schema.
+The implementation must distinguish these specific cases:
+
+- §2.8.1 admits added constituents; §2.8.2 permits datatype changes only while
+  preserving the earlier structure and meaning at the left. Unused information
+  stays in the original message rather than receiving invented semantics.
+- §2.15.9.7, p.2-76, explicitly dates required MSH-7 to 2.4.
+- §2.A.44, pp.2-180–181, dates the MSG replacement of MSH-9's CM to 2.5.
+- §2.15.5.1, p.2-67, dates ERR-1's compatibility-only status to 2.5 and
+  identifies ERR-2/3 as its replacement.
+- The 2002-04-08 errata for 2.3.1 (TS §2.8.44.1) and 2.4 (TS §2.9.47.1)
+  explain digit precision, offsets and the retained precision component.
+  Both also supply the missing order-sequencing component model. These supplied
+  errata are unpaginated; the item names and section numbers identify the source.
+- The 2.4 errata's XCN-17 item identifies the unrepresentable nested date range
+  and assigns backward-compatibility usage. OBR-32–35 also have unresolved
+  embedded-name representations. They must not silently acquire 2.5 meanings.
+
+This review does not enable config by itself. Each edition remains refused until
+its implemented typed receiving path, replies and config tests agree.
+
 HL7 2.5.1 section 2.8 (pp.2-20 onward) requires newer receivers to understand
 older messages and older receivers to tolerate new information. Additions
 and changes must preserve existing meanings: extra fields/components extend
