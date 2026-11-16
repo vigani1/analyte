@@ -121,6 +121,14 @@ pub(crate) fn acknowledgment_with_msh(
     let segment = msh.segment();
     let get = |number| segment.field(number).map_or(&[][..], |f| f.raw());
     let message_type = encode_message_type(msh, component);
+    let application_request: &[u8] = if msh.version() == Version::V291
+        && matches!(msh.mode(), AckMode::Enhanced { .. })
+        && !code.accept()
+    {
+        b"NE"
+    } else {
+        b""
+    };
     let mut raw = b"MSH".to_vec();
     for value in [
         get(2),
@@ -136,8 +144,8 @@ pub(crate) fn acknowledgment_with_msh(
         get(12),
         b"",
         b"",
-        b"",
-        b"",
+        application_request,
+        application_request,
         b"",
         get(18),
     ] {
