@@ -342,3 +342,64 @@ fn lis02_5_1_literal_controls_rejected_in_text_components() {
         ));
     }
 }
+
+// LIS02-A2 section 9.9: wire codes carry prescribed meanings.
+#[test]
+fn lis02_9_9_each_wire_code_has_specified_meaning() -> Result<(), Error> {
+    for (code, expected) in [
+        ("C", ResultStatus::Correction),
+        ("P", ResultStatus::Preliminary),
+        ("F", ResultStatus::Final),
+        ("X", ResultStatus::CannotPerform),
+        ("I", ResultStatus::Pending),
+        ("S", ResultStatus::Partial),
+        ("M", ResultStatus::Mic),
+        ("R", ResultStatus::PreviouslySent),
+        ("N", ResultStatus::NewOrder),
+        ("Q", ResultStatus::QueryResponse),
+        ("V", ResultStatus::Verified),
+        ("W", ResultStatus::Warning),
+    ] {
+        assert_eq!(ResultStatus::from_bytes(code.as_bytes()), expected);
+        let wire = format!("H|\\^&|\rP|1\rO|1\rR|1|test|value|||||{code}\rL|1\r");
+        let messages = parse(wire.as_bytes(), Limits::default())?;
+        let view = messages
+            .first()
+            .and_then(|m| m.records().get(3))
+            .and_then(analyte_astm::Result::new);
+        assert_eq!(
+            view.and_then(analyte_astm::Result::status_code),
+            Some(expected)
+        );
+    }
+    Ok(())
+}
+
+// LIS02-A2 section 14: manufacturer-defined positions remain opaque and exact.
+#[test]
+fn lis02_14_all_manufacturer_positions_are_retained() -> Result<(), Error> {
+    let wire = b"H|\\^&|\rP|1\rM|1|3|4|5|6|7|8\rL|1\r";
+    let messages = parse(wire, Limits::default())?;
+    let record = messages
+        .first()
+        .and_then(|m| m.records().get(2))
+        .expect("manufacturer");
+    let view = analyte_astm::Manufacturer::new(record).expect("manufacturer view");
+    assert_eq!(record.sequence(), Some(1));
+    assert_eq!(
+        view.sequence().map(analyte_astm::Field::raw),
+        Some(b"1".as_slice())
+    );
+    for (index, expected) in ["M", "1", "3", "4", "5", "6", "7", "8"].iter().enumerate() {
+        assert_eq!(
+            view.field(index + 1).map(analyte_astm::Field::raw),
+            Some(expected.as_bytes())
+        );
+    }
+    assert!(view.field(9).is_none());
+    assert_eq!(
+        messages.first().map(analyte_astm::Message::encode),
+        Some(wire.to_vec())
+    );
+    Ok(())
+}

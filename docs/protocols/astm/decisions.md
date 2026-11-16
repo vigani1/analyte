@@ -144,3 +144,9 @@ level intervenes. Regression: `lis02_4_1_5_6_7_comment_manufacturer_level_change
 Section 5.1 text components reject literal controls before escape expansion;
 header-selected delimiters remain syntax. Delimiter escapes and raw bytes are
 unchanged. Test: `lis02_5_1_literal_controls_rejected_in_text_components`.
+
+Status evidence now asserts every section 9.9 code against its named meaning
+and parsed result view (`lis02_9_9_each_wire_code_has_specified_meaning`).
+Manufacturer evidence checks all eight fixture positions, sequence and exact
+round-trip (`lis02_14_all_manufacturer_positions_are_retained`); this proves
+retention, not vendor field semantics. Evidence remains documented.
