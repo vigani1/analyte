@@ -40,6 +40,17 @@ impl std::fmt::Display for StartupStep {
     }
 }
 
+/// Payload-free diagnostic events; the default sink is production tracing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Progress {
+    Started(StartupStep),
+    Finished {
+        step: StartupStep,
+        elapsed_ms: u128,
+        succeeded: bool,
+    },
+}
+
 #[derive(Clone)]
 pub(crate) struct Startup {
     deadline: Instant,
@@ -48,6 +59,8 @@ pub(crate) struct Startup {
     interrupted: Arc<AtomicBool>,
     #[cfg(test)]
     pub(crate) clock: Option<Arc<dyn Fn() -> Instant + Send + Sync>>,
+    #[cfg(test)]
+    pub(crate) observer: Option<Arc<dyn Fn(Progress) + Send + Sync>>,
 }
 impl Startup {
     pub(crate) fn new(deadline: Instant) -> Self {
@@ -59,6 +72,8 @@ impl Startup {
             interrupted: Arc::new(AtomicBool::new(false)),
             #[cfg(test)]
             clock: None,
+            #[cfg(test)]
+            observer: None,
         }
     }
     fn now(&self) -> Instant {
@@ -106,27 +121,51 @@ impl Startup {
         self.check()?;
         self.step.send_replace(step);
         let started = self.now();
-        match step {
-            StartupStep::Migration { from, to } => {
-                tracing::info!(step=%step, from_version=from, to_version=to, "store startup step started");
-            }
-            StartupStep::Integrity => {}
-            StartupStep::Opening | StartupStep::Finalizing => {
-                tracing::info!(step=%step, "store startup step started");
-            }
-        }
+        self.report(Progress::Started(step));
         let result = operation().and_then(|value| {
             self.check()?;
             Ok(value)
         });
         let elapsed_ms = self.now().saturating_duration_since(started).as_millis();
-        if step != StartupStep::Integrity {
-            tracing::info!(step=%step, elapsed_ms, succeeded=result.is_ok(), "store startup step finished");
-        }
+        self.report(Progress::Finished {
+            step,
+            elapsed_ms,
+            succeeded: result.is_ok(),
+        });
         if self.expired() {
             Err(self.error())
         } else {
             result
+        }
+    }
+    fn report(&self, progress: Progress) {
+        let step = match progress {
+            Progress::Started(step) | Progress::Finished { step, .. } => step,
+        };
+        if step == StartupStep::Integrity {
+            return;
+        }
+        #[cfg(test)]
+        if let Some(observer) = &self.observer {
+            observer(progress);
+            return;
+        }
+        match progress {
+            Progress::Started(StartupStep::Migration { from, to }) => {
+                tracing::info!(step=%step, from_version=from, to_version=to, "store startup step started");
+            }
+            Progress::Started(
+                StartupStep::Opening | StartupStep::Integrity | StartupStep::Finalizing,
+            ) => {
+                tracing::info!(step=%step, "store startup step started");
+            }
+            Progress::Finished {
+                step,
+                elapsed_ms,
+                succeeded,
+            } => {
+                tracing::info!(step=%step, elapsed_ms, succeeded, "store startup step finished");
+            }
         }
     }
     #[cfg(test)]
