@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod https;
-pub use https::HttpsUrl;
+pub use https::{HttpsUrl, loopback_test_url};
 mod orders;
 mod retention;
 pub use retention::Retention;

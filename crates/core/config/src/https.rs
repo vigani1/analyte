@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 /// An HTTPS URL without credentials, whitespace, query or fragment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct HttpsUrl {
     original: String,
@@ -10,30 +10,17 @@ pub struct HttpsUrl {
 }
 
 impl HttpsUrl {
-    /// Parses a destination within the configuration's 2048-byte ceiling.
+    /// Parses an HTTPS endpoint within the shared 4096-byte endpoint ceiling.
     /// # Errors
     /// Rejects malformed or insecure destinations without echoing their contents.
     pub fn parse(value: &str) -> Result<Self, &'static str> {
-        if value.len() > 2048
-            || value.chars().any(|c| c.is_whitespace() || c.is_control())
-            || value.contains(['@', '?', '#', '\\'])
-            || !value.starts_with("https://")
-        {
-            return Err("use an HTTPS URL with a host, without credentials, query or fragment");
-        }
-        let url = reqwest::Url::parse(value).map_err(|_| "malformed HTTPS URL")?;
-        if url.scheme() != "https"
-            || url.host_str().is_none()
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.query().is_some()
-            || url.fragment().is_some()
-        {
-            return Err("use an HTTPS URL with a host, without credentials, query or fragment");
-        }
+        Self::parse_bounded(value, 4096)
+    }
+
+    fn parse_bounded(value: &str, limit: usize) -> Result<Self, &'static str> {
         Ok(Self {
             original: value.into(),
-            parsed: url,
+            parsed: parse_url(value, limit, false)?,
         })
     }
 
@@ -52,13 +39,56 @@ impl HttpsUrl {
 impl TryFrom<String> for HttpsUrl {
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::parse(&value)
+        Self::parse_bounded(&value, 2048)
     }
 }
 impl From<HttpsUrl> for String {
     fn from(value: HttpsUrl) -> Self {
         value.original
     }
+}
+
+impl std::fmt::Debug for HttpsUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("HttpsUrl([redacted])")
+    }
+}
+
+/// Parses a literal-loopback HTTP URL for synthetic reference peers only.
+/// # Errors
+/// Refuses non-loopback hosts, credentials, query, fragment and oversized input.
+pub fn loopback_test_url(value: &str) -> Result<reqwest::Url, &'static str> {
+    parse_url(value, 4096, true)
+}
+
+fn parse_url(value: &str, limit: usize, loopback: bool) -> Result<reqwest::Url, &'static str> {
+    if value.len() > limit
+        || value.chars().any(|c| c.is_whitespace() || c.is_control())
+        || value.contains(['@', '?', '#', '\\'])
+    {
+        return Err("use a bounded URL without credentials, whitespace, query or fragment");
+    }
+    let url = reqwest::Url::parse(value).map_err(|_| "malformed URL")?;
+    let allowed_scheme = if loopback {
+        url.scheme() == "http"
+            && url.host_str().is_some_and(|host| {
+                host.trim_matches(['[', ']'])
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+            })
+    } else {
+        value.starts_with("https://") && url.scheme() == "https"
+    };
+    if !allowed_scheme
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("use an HTTPS host or an explicitly permitted literal HTTP loopback test peer");
+    }
+    Ok(url)
 }
 
 #[cfg(test)]
@@ -84,6 +114,6 @@ mod tests {
         ] {
             assert!(HttpsUrl::parse(value).is_err());
         }
-        assert!(HttpsUrl::parse(&format!("https://example.com/{}", "x".repeat(2048))).is_err());
+        assert!(HttpsUrl::try_from(format!("https://example.com/{}", "x".repeat(2048))).is_err());
     }
 }

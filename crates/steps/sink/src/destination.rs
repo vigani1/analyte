@@ -64,7 +64,8 @@ impl Destination {
         secrets: Identifier,
         limits: Limits,
     ) -> Result<Self, Error> {
-        Self::construct(id, base, secrets, limits, false)
+        let base = analyte_config::HttpsUrl::parse(base).map_err(|_| Error::Configuration)?;
+        Self::from_url(id, &base, secrets, limits)
     }
 
     /// Accepts an HTTPS endpoint already parsed by configuration.
@@ -89,35 +90,14 @@ impl Destination {
         secrets: Identifier,
         limits: Limits,
     ) -> Result<Self, Error> {
-        Self::construct(id, base, secrets, limits, true)
-    }
-
-    fn construct(
-        id: Identifier,
-        base: &str,
-        secrets: Identifier,
-        limits: Limits,
-        test: bool,
-    ) -> Result<Self, Error> {
-        if base.len() > 4096 {
-            return Err(Error::Configuration);
-        }
-        let base = reqwest::Url::parse(base).map_err(|_| Error::Configuration)?;
-        let loopback = base.host_str().is_some_and(|h| {
-            h.trim_start_matches('[')
-                .trim_end_matches(']')
-                .parse::<std::net::IpAddr>()
-                .is_ok_and(|ip| ip.is_loopback())
-        });
-        if base.host_str().is_none()
-            || !base.username().is_empty()
-            || base.password().is_some()
-            || base.query().is_some()
-            || base.fragment().is_some()
-            || !(base.scheme() == "https" || (test && base.scheme() == "http" && loopback))
-        {
-            return Err(Error::Configuration);
-        }
+        let base = if base.starts_with("https://") {
+            analyte_config::HttpsUrl::parse(base)
+                .map_err(|_| Error::Configuration)?
+                .url()
+                .clone()
+        } else {
+            analyte_config::loopback_test_url(base).map_err(|_| Error::Configuration)?
+        };
         Self::from_parsed(id, base, secrets, limits)
     }
 
