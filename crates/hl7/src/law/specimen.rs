@@ -103,18 +103,18 @@ fn specimen(
     }
     for number in [2, 3] {
         if number == 3
-            && profile.pooling_outside
-            && profile.results_message
+            && profile.workflow.pooling_outside
+            && (profile.context == crate::law::profile::MessageContext::Results)
             && direction == ControlDirection::Receive
         {
             continue;
         }
-        let enabled = profile.specimen || (number == 3 && profile.pooling_outside);
+        let enabled = profile.content.specimen || (number == 3 && profile.workflow.pooling_outside);
         if option_field(segment, "SPM", number, enabled, direction, number == 3)? {
             for value in raw(segment, number).split(|b| *b == b'~') {
                 eip(value, number, direction)?;
             }
-        } else if number == 3 && profile.pooling_outside {
+        } else if number == 3 && profile.workflow.pooling_outside {
             return Err(content("SPM", 3));
         }
     }
@@ -130,7 +130,7 @@ fn specimen(
             segment,
             "SPM",
             number,
-            profile.specimen && direction == ControlDirection::Send,
+            profile.content.specimen && direction == ControlDirection::Send,
             direction,
             false,
         )? {
@@ -138,7 +138,7 @@ fn specimen(
         }
     }
     validate_specimen_times(segment, profile, direction)?;
-    if profile.pooling_outside {
+    if profile.workflow.pooling_outside {
         scalar(segment, "SPM", 13, true, 6)?;
         let value = raw(segment, 13);
         if !value.iter().all(u8::is_ascii_digit) || value.iter().all(|b| *b == b'0') {
@@ -248,7 +248,7 @@ fn container(
     // C.11: manager position identification is available only through a parent.
     // Restricted DC replies have separate query-echo predicates.
     if direction == ControlDirection::Send
-        && !profile.negative_query
+        && !(profile.context == crate::law::profile::MessageContext::NegativeQuery)
         && (!raw(segment, 3).is_empty() || raw(segment, 4).is_empty())
     {
         for number in [10, 11, 13, 14] {
@@ -259,7 +259,8 @@ fn container(
         let value = raw(segment, number);
         if number == 3
             && value == b"\"\""
-            && (direction == ControlDirection::Receive || profile.negative_query)
+            && (direction == ControlDirection::Receive
+                || (profile.context == crate::law::profile::MessageContext::NegativeQuery))
         {
             continue;
         }
@@ -268,11 +269,14 @@ fn container(
             ei(value, number, direction)?;
         }
     }
-    if !profile.negative_query && raw(segment, 3).is_empty() && raw(segment, 4).is_empty() {
+    if !(profile.context == crate::law::profile::MessageContext::NegativeQuery)
+        && raw(segment, 3).is_empty()
+        && raw(segment, 4).is_empty()
+    {
         return Err(content("SAC", 3));
     }
     if direction == ControlDirection::Send
-        && !profile.negative_query
+        && !(profile.context == crate::law::profile::MessageContext::NegativeQuery)
         && raw(segment, 3).is_empty()
         && !raw(segment, 4).is_empty()
         && raw(segment, 10).is_empty()
@@ -285,7 +289,7 @@ fn container(
         segment,
         "SAC",
         9,
-        profile.container && direction == ControlDirection::Send,
+        profile.content.container && direction == ControlDirection::Send,
         direction,
         false,
     )? {
@@ -299,7 +303,7 @@ fn container(
             segment,
             "SAC",
             number,
-            profile.container && direction == ControlDirection::Send,
+            profile.content.container && direction == ControlDirection::Send,
             direction,
             false,
         )? {
@@ -313,7 +317,7 @@ fn container(
         segment,
         "SAC",
         24,
-        profile.container && direction == ControlDirection::Send,
+        profile.content.container && direction == ControlDirection::Send,
         direction,
         false,
     )? {
@@ -323,7 +327,7 @@ fn container(
         segment,
         "SAC",
         29,
-        profile.container && direction == ControlDirection::Send,
+        profile.content.container && direction == ControlDirection::Send,
         direction,
         false,
     )? {
@@ -375,12 +379,14 @@ fn validate_role_and_type(
     if role == b"U" && system != b"IHELAW" {
         return Err(component_error("SPM", 11, 3));
     }
-    if (role == b"U" && !profile.negative_query)
-        || (direction == ControlDirection::Send && role == b"L" && !profile.pooling_outside)
+    if (role == b"U" && !(profile.context == crate::law::profile::MessageContext::NegativeQuery))
+        || (direction == ControlDirection::Send
+            && role == b"L"
+            && !profile.workflow.pooling_outside)
     {
         return Err(content("SPM", 11));
     }
-    if profile.pooling_outside && role != b"L" {
+    if profile.workflow.pooling_outside && role != b"L" {
         return Err(content("SPM", 11));
     }
     let specimen_type = raw(segment, 4);
@@ -411,7 +417,7 @@ fn validate_specimen_times(
             segment,
             "SPM",
             number,
-            profile.specimen && direction == ControlDirection::Send,
+            profile.content.specimen && direction == ControlDirection::Send,
             direction,
             false,
         )? {

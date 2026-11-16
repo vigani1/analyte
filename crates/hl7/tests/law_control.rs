@@ -724,7 +724,10 @@ fn law_tf2b_c4_work_builder_checks_all_four_hd_fields_and_response_id() -> TestR
         peer_facility: b"Lab",
     };
     let capabilities = Capabilities {
-        specimen: true,
+        content: law::PeerContent {
+            specimen: true,
+            ..Capabilities::default().content
+        },
         ..Capabilities::default()
     };
     let good = law::work_order(

@@ -357,8 +357,9 @@ pub use responses::{CacheAnswer, QueryFollowup, QueryResponse, query_response};
 mod work;
 
 pub use work::{
-    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, WorkAction, WorkCode,
-    WorkFields, WorkResponse, negative_work, work_order, work_order_with_profile,
+    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, PeerContent,
+    PeerInstructions, PeerRepeat, WorkAction, WorkCode, WorkFields, WorkResponse, negative_work,
+    work_order, work_order_with_profile,
 };
 
 mod results;

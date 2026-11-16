@@ -6,25 +6,15 @@ use crate::{Message, Segment};
 /// The profile validates content; it never resolves identities by guessing.
 #[derive(Debug, Clone, Copy)]
 pub struct Profile<'a> {
-    pub(super) mass_spectrometry: bool,
-    pub(super) contributing_substances: bool,
-    pub(super) dilution: bool,
-    pub(super) dilution_required: bool,
-    pub(super) manager_repeat: bool,
-    pub(super) repeat_control: bool,
-    pub(super) priority: bool,
-    pub(super) priority_required: bool,
-    pub(super) analyzer_reflex: bool,
-    pub(super) external_results: bool,
-    pub(super) pooling_analyzer: bool,
+    pub(super) content: super::PeerContent,
+    pub(super) repeat: super::PeerRepeat,
+    pub(super) results: ResultOptions,
+    pub(super) workflow: WorkflowOptions,
+    pub(super) dilution: OptionUsage,
+    pub(super) priority: OptionUsage,
+    pub(super) context: MessageContext,
     pub(super) dilution_bindings: &'a [super::DilutionBinding<'a>],
     pub(super) result_adjustment: super::ResultAdjustment,
-    pub(super) patient: bool,
-    pub(super) specimen: bool,
-    pub(super) container: bool,
-    pub(super) pooling_outside: bool,
-    pub(super) negative_query: bool,
-    pub(super) results_message: bool,
     pub(super) authorities: &'a [super::AuthorityBinding<'a>],
 }
 
@@ -34,25 +24,27 @@ impl<'a> Profile<'a> {
     #[must_use]
     pub fn receive() -> Self {
         Self {
-            mass_spectrometry: true,
-            contributing_substances: true,
-            dilution: true,
-            dilution_required: false,
-            manager_repeat: false,
-            repeat_control: false,
-            priority: true,
-            priority_required: false,
-            analyzer_reflex: true,
-            external_results: true,
-            pooling_analyzer: false,
+            content: super::PeerContent {
+                patient: true,
+                specimen: true,
+                container: true,
+            },
+            repeat: super::PeerRepeat::default(),
+            results: ResultOptions {
+                mass_spectrometry: true,
+                contributing_substances: true,
+                external_results: true,
+            },
+            workflow: WorkflowOptions {
+                analyzer_reflex: true,
+                pooling_analyzer: false,
+                pooling_outside: false,
+            },
+            dilution: OptionUsage::Optional,
+            priority: OptionUsage::Optional,
+            context: MessageContext::Results,
             dilution_bindings: &[],
             result_adjustment: super::ResultAdjustment::Unknown,
-            patient: true,
-            specimen: true,
-            container: true,
-            pooling_outside: false,
-            negative_query: false,
-            results_message: true,
             authorities: &[],
         }
     }
@@ -62,7 +54,7 @@ impl<'a> Profile<'a> {
     #[must_use]
     pub fn receive_work_response() -> Self {
         Self {
-            results_message: false,
+            context: MessageContext::Work,
             ..Self::receive()
         }
     }
@@ -71,15 +63,10 @@ impl<'a> Profile<'a> {
     #[must_use]
     pub fn for_peer(capabilities: super::Capabilities) -> Self {
         Self {
-            dilution: capabilities.dilution,
-            dilution_required: capabilities.dilution,
-            manager_repeat: capabilities.manager_repeat,
-            repeat_control: capabilities.repeat_control,
-            priority: capabilities.priority,
-            priority_required: capabilities.priority,
-            patient: capabilities.patient,
-            specimen: capabilities.specimen,
-            container: capabilities.container,
+            dilution: OptionUsage::selected(capabilities.instructions.dilution),
+            priority: OptionUsage::selected(capabilities.instructions.priority),
+            repeat: capabilities.instructions.repeat,
+            content: capabilities.content,
             ..Self::receive()
         }
     }
@@ -95,66 +82,64 @@ impl<'a> Profile<'a> {
     /// This does not authorize pooling or add pooling to the work-order builder.
     #[must_use]
     pub fn with_pooling_outside(mut self, selected: bool) -> Self {
-        self.pooling_outside = selected;
+        self.workflow.pooling_outside = selected;
         self
     }
 
     /// Selects `LAW_DILUTIONS`; selection requires a factor or a type in each TCD.
     #[must_use]
     pub fn with_dilution(mut self, selected: bool) -> Self {
-        self.dilution = selected;
-        self.dilution_required = selected;
+        self.dilution = OptionUsage::selected(selected);
         self
     }
 
     /// Selects received mass-spectrometry probability; manager output always excludes it.
     #[must_use]
     pub fn with_mass_spectrometry(mut self, selected: bool) -> Self {
-        self.mass_spectrometry = selected;
+        self.results.mass_spectrometry = selected;
         self
     }
 
     /// Selects contributing inventory support; unsupported input remains available as raw bytes.
     #[must_use]
     pub fn with_contributing_substances(mut self, selected: bool) -> Self {
-        self.contributing_substances = selected;
+        self.results.contributing_substances = selected;
         self
     }
 
     /// Selects analyzer reflex parent/action support.
     #[must_use]
     pub fn with_analyzer_reflex(mut self, selected: bool) -> Self {
-        self.analyzer_reflex = selected;
+        self.workflow.analyzer_reflex = selected;
         self
     }
 
     /// Selects externally persisted result handling on analyzer messages.
     #[must_use]
     pub fn with_external_results(mut self, selected: bool) -> Self {
-        self.external_results = selected;
+        self.results.external_results = selected;
         self
     }
 
     /// Selects priority segment support.
     #[must_use]
     pub fn with_priority(mut self, selected: bool) -> Self {
-        self.priority = selected;
-        self.priority_required = selected;
+        self.priority = OptionUsage::selected(selected);
         self
     }
 
     /// Selects the required manager repeat-status and permission fields independently.
     #[must_use]
     pub fn with_repeat_options(mut self, status: bool, permissions: bool) -> Self {
-        self.manager_repeat = status;
-        self.repeat_control = permissions;
+        self.repeat.manager_repeat = status;
+        self.repeat.repeat_control = permissions;
         self
     }
 
     /// Selects field validation of on-analyzer pooling; no pooling workflow is authorized.
     #[must_use]
     pub fn with_pooling_analyzer(mut self, selected: bool) -> Self {
-        self.pooling_analyzer = selected;
+        self.workflow.pooling_analyzer = selected;
         self
     }
 
@@ -185,8 +170,8 @@ impl<'a> Profile<'a> {
         super::validate_control(message, direction)?;
         let mut segments = message.segments();
         let msh = segments.next().ok_or(content("MSH", 0))?;
-        self.results_message = super::control::part(raw(msh, 9), 1) == b"OUL";
-        self.negative_query = super::control::part(raw(msh, 9), 1) == b"OML"
+        let results_message = super::control::part(raw(msh, 9), 1) == b"OUL";
+        let negative_query = super::control::part(raw(msh, 9), 1) == b"OML"
             && segments
                 .map(Segment::id)
                 .eq([b"SPM".as_slice(), b"SAC", b"ORC"])
@@ -203,6 +188,13 @@ impl<'a> Profile<'a> {
                     super::control::part(raw(s, 11), 1) == b"U"
                         && super::control::part(raw(s, 11), 3) == b"IHELAW"
                 });
+        self.context = if negative_query {
+            MessageContext::NegativeQuery
+        } else if results_message {
+            MessageContext::Results
+        } else {
+            MessageContext::Work
+        };
         super::order::validate_links(message, self, direction)?;
         let mut ordinal = 0usize;
         let mut note_sequence = 0usize;
@@ -440,4 +432,50 @@ pub(super) fn timestamp(value: &[u8], zone: bool) -> bool {
         }
     }
     true
+}
+
+// Independent negotiated receiver options, separate from conditional field usage.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ResultOptions {
+    pub(super) mass_spectrometry: bool,
+    pub(super) contributing_substances: bool,
+    pub(super) external_results: bool,
+}
+#[derive(Debug, Clone, Copy)]
+pub(super) struct WorkflowOptions {
+    pub(super) analyzer_reflex: bool,
+    pub(super) pooling_analyzer: bool,
+    pub(super) pooling_outside: bool,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MessageContext {
+    Work,
+    Results,
+    NegativeQuery,
+}
+
+// Supported-but-not-required is the receive default; selection requires the field.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum OptionUsage {
+    Excluded,
+    Optional,
+    Required,
+}
+impl OptionUsage {
+    fn selected(selected: bool) -> Self {
+        if selected {
+            Self::Required
+        } else {
+            Self::Excluded
+        }
+    }
+    pub(super) fn supported(self) -> bool {
+        matches!(self, Self::Optional | Self::Required)
+    }
+    pub(super) fn required(self) -> bool {
+        matches!(self, Self::Required)
+    }
+    pub(super) fn restrict(self, enabled: bool) -> Self {
+        if enabled { self } else { Self::Excluded }
+    }
 }
