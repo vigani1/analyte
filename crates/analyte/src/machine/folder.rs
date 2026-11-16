@@ -1,5 +1,5 @@
 //! Receives claimed files and retains the claim until receipt and interpretation are durable.
-use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
+use crate::{Error, deadline, installation::config::Machine, intake, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_transport::folder::{Disposition, Item, Watch};
@@ -90,9 +90,9 @@ pub(super) async fn session(
     root: PathBuf,
     mut stop: watch::Receiver<bool>,
     mut closing: super::Closing,
-    capture: Option<&evidence::capture::Capture>,
+    capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
-    let context = evidence::Connection::new(machine)?;
+    let context = intake::Connection::new(machine)?;
     let machine = &context;
     let (owner, mut files) = Owner::start(
         PathBuf::from(&machine.snapshot.effective().site().endpoint),
@@ -114,8 +114,8 @@ pub(super) async fn session(
                 break;
             };
             let id = ReceiptId::new();
-            evidence::receive(store, machine, id, raw).await?;
-            let accepted = evidence::interpret(store, machine, id).await?;
+            intake::receive(store, machine, id, raw).await?;
+            let accepted = intake::interpret(store, machine, id).await?;
             item.completed
                 .send(if accepted {
                     Disposition::Archive

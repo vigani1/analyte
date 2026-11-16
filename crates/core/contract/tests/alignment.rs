@@ -24,7 +24,7 @@ fn rule5_decoded_text_preserves_original_and_never_accompanies_unsupported()
     }
     for decoded in [json!(""), json!("A|B"), json!("x".repeat(16384))] {
         let value = json!({"original":r"A\F\B", "parsed":"text", "decoded_text":decoded});
-        let contract: analyte_contract::evidence::ResultValue =
+        let contract: analyte_contract::document::ResultValue =
             serde_json::from_value(value.clone())?;
         assert_eq!(serde_json::to_value(contract)?, value);
     }
@@ -33,7 +33,7 @@ fn rule5_decoded_text_preserves_original_and_never_accompanies_unsupported()
         json!({"original":"x","parsed":{"unsupported":{"source_type":"FT","reason":"Formatting"}},"decoded_text":"partial"}),
     ] {
         assert!(
-            serde_json::from_value::<analyte_contract::evidence::ResultValue>(value.clone())
+            serde_json::from_value::<analyte_contract::document::ResultValue>(value.clone())
                 .is_err()
         );
         let mut model_value = value;
@@ -375,7 +375,7 @@ fn adr0008_modes_statuses_and_provenance_variants_survive() -> Result<(), Box<dy
         (analyte_model::OrderState::Uncertain, "uncertain"),
     ] {
         assert_eq!(
-            serde_json::to_value(analyte_contract::evidence::OrderState::try_from(&model)?)?,
+            serde_json::to_value(analyte_contract::document::OrderState::try_from(&model)?)?,
             json!(expected)
         );
         let mut event: Value = serde_json::from_slice(include_bytes!(
@@ -390,10 +390,10 @@ fn adr0008_modes_statuses_and_provenance_variants_survive() -> Result<(), Box<dy
 #[test]
 fn rule8_internal_sending_has_no_contract_representation() {
     assert!(matches!(
-        analyte_contract::evidence::OrderState::try_from(&analyte_model::OrderState::Sending),
+        analyte_contract::document::OrderState::try_from(&analyte_model::OrderState::Sending),
         Err(analyte_contract::DocumentError::InternalOrderState)
     ));
-    assert!(decode::<analyte_contract::evidence::OrderState>(b"\"sending\"").is_err());
+    assert!(decode::<analyte_contract::document::OrderState>(b"\"sending\"").is_err());
 }
 
 #[test]
@@ -404,12 +404,12 @@ fn adr0008_rule6_dilution_original_survives_without_a_guessed_factor()
         factor: None,
         applied: analyte_model::DilutionApplied::Unknown,
     };
-    let wire = analyte_contract::evidence::Dilution::from(&model);
+    let wire = analyte_contract::document::Dilution::from(&model);
     assert_eq!(
         serde_json::to_value(&wire)?,
         json!({ "original": "1:10", "factor": null, "applied": "unknown" })
     );
-    let decoded: analyte_contract::evidence::Dilution =
+    let decoded: analyte_contract::document::Dilution =
         serde_json::from_value(serde_json::to_value(&wire)?)?;
     assert_eq!(decoded, wire);
     Ok(())

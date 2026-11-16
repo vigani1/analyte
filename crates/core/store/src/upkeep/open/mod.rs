@@ -1,4 +1,4 @@
-//! Opens stores and validates stored settings.
+//! Opens the store under its lock, checks integrity and applies forward-only migrations.
 use crate::{
     Error, FreeSpace, Limits, SCHEMA_VERSION, Store,
     startup::{Startup, StartupStep},

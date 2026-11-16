@@ -1,5 +1,4 @@
-//! Captures and processes protected wire evidence without logging payloads.
-pub(crate) mod capture;
+//! Stores receipts, maps results, commits interpretations, revisions and deliveries, and parks failures.
 use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};

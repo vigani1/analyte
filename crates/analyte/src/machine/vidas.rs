@@ -1,7 +1,7 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use super::connection_input::Input;
 use super::custody::{self, ms};
-use crate::{Error, evidence, invalid};
+use crate::{Error, intake, invalid};
 use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
@@ -39,7 +39,7 @@ struct ConnectionState {
 }
 
 pub(super) async fn session(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     settings: &analyte_config::VidasStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -56,7 +56,7 @@ pub(super) async fn session(
 
 impl ConnectionState {
     fn open(
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         settings: &analyte_config::VidasStack,
     ) -> Result<Self, Error> {
         let installed = &settings.policy();
@@ -91,7 +91,7 @@ impl ConnectionState {
     }
     async fn receive_loop(
         &mut self,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -153,7 +153,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         installed: &analyte_config::Vidas,
@@ -173,7 +173,7 @@ impl ConnectionState {
                     Ok(None) => None,
                     Err(error) => {
                         self.end_code = "VIDAS-framing-error";
-                        evidence::park_bytes(
+                        intake::park_bytes(
                             store,
                             machine,
                             vec![byte],
@@ -186,13 +186,8 @@ impl ConnectionState {
             } else if let Some((control, index)) = self.suffix {
                 if installed.suffix.get(index) != Some(&byte) {
                     self.end_code = "VIDAS-control-suffix-mismatch";
-                    evidence::park_bytes(
-                        store,
-                        machine,
-                        vec![byte],
-                        "VIDAS control suffix mismatch",
-                    )
-                    .await?;
+                    intake::park_bytes(store, machine, vec![byte], "VIDAS control suffix mismatch")
+                        .await?;
                     return Err(invalid("VIDAS control suffix mismatch"));
                 }
                 if index.saturating_add(1) == installed.suffix.len() {
@@ -228,7 +223,7 @@ impl ConnectionState {
     }
     async fn poll_orders(
         &mut self,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
     ) -> Result<(), Error> {
         if self.idle && self.opened && Instant::now() >= self.next_poll {
@@ -297,7 +292,7 @@ fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
 
 async fn process(
     state: &mut ConnectionState,
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     installed: &analyte_config::Vidas,
@@ -347,7 +342,7 @@ async fn process(
                 if state.end_code == "VIDAS-transfer-error" {
                     state.end_code = "VIDAS-transfer-refused-or-unexpected";
                 }
-                let parked = evidence::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
+                let parked = intake::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
                 if let Err(error) = parked {
                     return Err(custody::effect_failure(failure, error));
                 }
@@ -388,18 +383,18 @@ async fn process(
 
 async fn store_upload(
     store: &Handle,
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     id: ReceiptId,
     raw: &[u8],
 ) -> Result<(), Error> {
-    let time = evidence::receive(store, machine, id, raw.to_vec()).await?;
+    let time = intake::receive(store, machine, id, raw.to_vec()).await?;
     let reading = super::interpretation::map(machine, id, time, raw);
     match reading {
         Ok(reading) => {
-            evidence::vendor_reading(store, machine, id, reading).await?;
+            intake::vendor_reading(store, machine, id, reading).await?;
         }
         Err(error) => {
-            evidence::failed_reading(
+            intake::failed_reading(
                 store,
                 machine,
                 id,

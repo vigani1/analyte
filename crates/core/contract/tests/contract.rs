@@ -230,11 +230,11 @@ fn adr0008_invalid_signature_and_status_vectors() -> Result<(), Box<dyn std::err
 #[test]
 fn adr0008_unknown_processing_stays_unknown_and_cannot_deliver()
 -> Result<(), Box<dyn std::error::Error>> {
-    let wire = evidence::ProcessingMode::from(&analyte_model::ProcessingMode::Unknown);
+    let wire = document::ProcessingMode::from(&analyte_model::ProcessingMode::Unknown);
     assert_eq!(serde_json::to_string(&wire)?, "\"unknown\"");
-    let decoded: evidence::ProcessingMode = serde_json::from_str("\"unknown\"")?;
+    let decoded: document::ProcessingMode = serde_json::from_str("\"unknown\"")?;
     assert!(!decoded.may_deliver_to_production());
-    assert!(evidence::ProcessingMode::Production.may_deliver_to_production());
+    assert!(document::ProcessingMode::Production.may_deliver_to_production());
     Ok(())
 }
 
@@ -249,7 +249,7 @@ fn adr0008_order_context_reuses_position_and_never_defaults()
     assert!(minimal.fields().specimen_type.is_none());
     let bytes = include_bytes!("../../../../docs/contract/vectors/order-context.json");
     let order: Order = decode(bytes)?;
-    let position: &evidence::SamplePosition = order.fields().position.as_ref().ok_or("position")?;
+    let position: &document::SamplePosition = order.fields().position.as_ref().ok_or("position")?;
     assert_eq!(position.slot.as_str(), "03");
     assert_eq!(
         order

@@ -46,7 +46,7 @@ pub(super) async fn run(
     limits: Limits,
     stop: watch::Receiver<bool>,
     mut closing: super::Closing,
-    capture: Option<&crate::evidence::capture::Capture>,
+    capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
     let serial = link.settings;
     let parity = match serial.parity {

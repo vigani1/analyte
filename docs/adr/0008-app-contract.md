@@ -97,7 +97,7 @@ any app can test itself without our reference receiver.
 
 ### Frozen wire types
 
-Version 1 evidence types deliberately own separate copies of the model's text,
+Version 1 document types deliberately own separate copies of the model's text,
 value, result and identity validators. Model changes must not silently change
 accepted version 1 documents. The property tests in
 `crates/core/contract/tests/agreement.rs` compare acceptance and rejection for bounded

@@ -1,7 +1,7 @@
 //! Polls Autolyser connections and blocks R after corrupt reports until L recovery.
 use super::connection_input::Input;
 use super::custody::{self, ms};
-use crate::{Error, evidence, invalid};
+use crate::{Error, intake, invalid};
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -23,7 +23,7 @@ struct ConnectionState {
 }
 
 pub(super) async fn session(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     settings: &analyte_config::AutolyserStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -72,7 +72,7 @@ impl ConnectionState {
 
     async fn receive_loop(
         &mut self,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -173,7 +173,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         policy: &analyte_config::Autolyser,
@@ -189,7 +189,7 @@ impl ConnectionState {
 
     async fn close(
         &self,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         result: Result<(), Error>,
     ) -> Result<(), Error> {
@@ -215,7 +215,7 @@ impl ConnectionState {
         token: u64,
         raw: Vec<u8>,
         actions: &mut VecDeque<Action>,
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
         policy: &analyte_config::Autolyser,
     ) -> Option<Error> {
@@ -224,7 +224,7 @@ impl ConnectionState {
         let id = ReceiptId::new();
         let stored = tokio::time::timeout(
             ms(policy.storage_ms),
-            evidence::receive(store, machine, id, raw),
+            intake::receive(store, machine, id, raw),
         )
         .await;
         match stored {
@@ -257,7 +257,7 @@ impl ConnectionState {
     async fn interpret_report(
         &mut self,
         raw: &[u8],
-        machine: &evidence::Connection<'_>,
+        machine: &intake::Connection<'_>,
         store: &Handle,
     ) -> Result<(), Error> {
         let (id, time) = self
@@ -265,9 +265,9 @@ impl ConnectionState {
             .take()
             .ok_or_else(|| invalid("Autolyser report receipt missing"))?;
         match super::interpretation::map(machine, id, time, raw) {
-            Ok(reading) => evidence::vendor_reading(store, machine, id, reading).await?,
+            Ok(reading) => intake::vendor_reading(store, machine, id, reading).await?,
             Err(error) => {
-                evidence::failed_reading(
+                intake::failed_reading(
                     store,
                     machine,
                     id,
@@ -317,7 +317,7 @@ impl ConnectionState {
 async fn process(
     actions: Vec<Action>,
     state: &mut ConnectionState,
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     policy: &analyte_config::Autolyser,
@@ -364,8 +364,8 @@ async fn process(
                 state.recovering = true;
                 let reason = format!("Autolyser: {error}");
                 let parked = match state.receipt.take() {
-                    Some((id, _)) => evidence::failed_reading(store, machine, id, &reason).await,
-                    None => evidence::park_bytes(store, machine, Vec::new(), &reason).await,
+                    Some((id, _)) => intake::failed_reading(store, machine, id, &reason).await,
+                    None => intake::park_bytes(store, machine, Vec::new(), &reason).await,
                 };
                 if let Err(error) = parked {
                     return Err(custody::effect_failure(failure, error));

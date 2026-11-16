@@ -1,4 +1,4 @@
-//! Checks configured order capabilities against the validated protocol stack.
+//! Selects each stack's validated order settings and whether orders are sent ahead.
 use crate::{Error, installation::config::Machine, invalid};
 use analyte_config::{AstmOrders, Hl7Orders, LawStack, Stack};
 

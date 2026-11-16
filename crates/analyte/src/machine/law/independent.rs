@@ -1,5 +1,5 @@
 //! Drives independent LAW connections with host-owned I/O (TF-2b B.6).
-use super::{Connection, Error, evidence, invalid};
+use super::{Connection, Error, intake, invalid};
 use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
 use analyte_hl7::Message;
@@ -29,7 +29,7 @@ pub(in crate::machine) async fn run(
     store: Arc<Handle>,
     mut stop: watch::Receiver<bool>,
     mut closing: Closing,
-    capture: Option<evidence::capture::Capture>,
+    capture: Option<crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
     let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() else {
         return Err(invalid("independent LAW stack absent"));
@@ -86,7 +86,7 @@ async fn server(
     settings: Arc<LawStack>,
     outbound: mpsc::Sender<Work>,
     mut stop: watch::Receiver<bool>,
-    capture: Option<Arc<evidence::capture::Capture>>,
+    capture: Option<Arc<crate::machine::capture::Capture>>,
 ) -> Result<(), Error> {
     let mut sessions = JoinSet::new();
     let (sessions_stop, sessions_rx) = watch::channel(false);
@@ -139,7 +139,7 @@ async fn accepted_connection(
     settings: Arc<LawStack>,
     outbound: mpsc::Sender<Work>,
     stop: watch::Receiver<bool>,
-    capture: Option<Arc<evidence::capture::Capture>>,
+    capture: Option<Arc<crate::machine::capture::Capture>>,
 ) -> Result<(), Error> {
     let limits = analyte_transport::Limits::new(
         CHANNEL_LIMIT,
@@ -150,7 +150,7 @@ async fn accepted_connection(
         Some(capture) => capture.attach(side),
         None => side,
     };
-    let context = evidence::Connection::new(&machine)?;
+    let context = intake::Connection::new(&machine)?;
     let dialog = async move {
         let result = super::session_with_outbound(
             &context,
@@ -190,7 +190,7 @@ async fn worker(
     settings: Arc<LawStack>,
     mut queue: mpsc::Receiver<Work>,
     mut stop: watch::Receiver<bool>,
-    capture: Option<Arc<evidence::capture::Capture>>,
+    capture: Option<Arc<crate::machine::capture::Capture>>,
 ) -> Result<(), Error> {
     let mut idle_orders = Connection::new()?;
     let mut tick = tokio::time::interval(Duration::from_millis(100));
@@ -221,7 +221,7 @@ async fn worker(
                     }
                 },
                 _=tick.tick()=>{
-                    let context=evidence::Connection::new(&machine)?;
+                    let context=intake::Connection::new(&machine)?;
                     let outgoing=tokio::select! {biased; ()=crate::machine::stopping(&mut stop)=>break, result=idle_orders.idle(&store,&context,settings.options())=>result};
                     match outgoing {
                         Ok(Some(message))=>{let result=exchange(&machine,&store,&settings,&mut idle_orders,&message,stop.clone(),capture.as_deref()).await;settle(&machine,&store,&mut idle_orders,result).await?;},
@@ -267,7 +267,7 @@ async fn exchange(
     orders: &mut Connection,
     message: &Message,
     mut stop: watch::Receiver<bool>,
-    capture: Option<&evidence::capture::Capture>,
+    capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
     let LawLinks::Independent { outbound } = settings.policy().links() else {
         return Err(invalid("LAW independent destination absent"));
@@ -290,7 +290,7 @@ async fn exchange(
         Some(capture) => capture.attach(side),
         None => side,
     };
-    let context = evidence::Connection::new(machine)?;
+    let context = intake::Connection::new(machine)?;
     let dialog = async move {
         let result = transaction(
             &context, store, settings, orders, message, &mut conn, &mut stop,
@@ -306,7 +306,7 @@ async fn exchange(
 }
 
 async fn transaction(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     store: &Handle,
     settings: &LawStack,
     orders: &mut Connection,

@@ -26,7 +26,7 @@ pub(super) async fn receive(conn: &mut Connection) -> Result<Input, analyte_tran
     })
 }
 
-use crate::{Error, evidence};
+use crate::{Error, intake};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use std::time::Duration;
@@ -35,7 +35,7 @@ use tokio::sync::watch;
 /// Every transport chunk is durably journaled before a dialog sees any byte.
 /// Dropping this wait cannot cancel an already queued store request.
 pub(super) async fn journaled(
-    machine: &evidence::Connection<'_>,
+    machine: &intake::Connection<'_>,
     store: &Handle,
     conn: &mut Connection,
     stop: &mut watch::Receiver<bool>,
@@ -49,7 +49,7 @@ pub(super) async fn journaled(
     };
     match event {
         Ok(Input::Bytes { bytes }) => {
-            evidence::receive(store, machine, ReceiptId::new(), bytes.clone()).await?;
+            intake::receive(store, machine, ReceiptId::new(), bytes.clone()).await?;
             Ok(Input::Bytes { bytes })
         }
         Ok(event) => Ok(event),

@@ -2,7 +2,7 @@
 mod sending;
 pub(crate) mod validation;
 mod work;
-use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
+use crate::{Error, deadline, installation::config::Machine, intake, invalid};
 use analyte_hl7::{AckCode, AckError, Message, Options, Responsibility, law};
 use analyte_model::{Identifier, OrderState, ReceiptId, SampleId, SourceText};
 use analyte_store::{
@@ -110,7 +110,7 @@ impl Connection {
         let query = match law::receive_query(message) {
             Ok(query) => query,
             Err(error) => {
-                evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
+                intake::failed_reading(store, machine, receipt, &error.to_string()).await?;
                 return reject_query(message, &error, options);
             }
         };
@@ -129,7 +129,7 @@ impl Connection {
             | law::Scope::InformationalRack { .. } => false,
         };
         if !supported {
-            evidence::failed_reading(
+            intake::failed_reading(
                 store,
                 machine,
                 receipt,
@@ -143,7 +143,7 @@ impl Connection {
             );
         }
         if stack.orders().is_none() {
-            evidence::failed_reading(store, machine, receipt, "LAW query work layout is disabled")
+            intake::failed_reading(store, machine, receipt, "LAW query work layout is disabled")
                 .await?;
             return reply(
                 query,
@@ -152,7 +152,7 @@ impl Connection {
             );
         }
         if self.exchange.is_some() {
-            evidence::failed_reading(
+            intake::failed_reading(
                 store,
                 machine,
                 receipt,
@@ -180,7 +180,7 @@ impl Connection {
                 let reason = error
                     .source()
                     .map_or_else(|| error.to_string(), |cause| format!("{error}: {cause}"));
-                evidence::failed_reading(store, machine, receipt, &reason).await?;
+                intake::failed_reading(store, machine, receipt, &reason).await?;
                 reply(
                     query,
                     law::CacheAnswer::Unavailable(AckError::unlocated(
@@ -286,13 +286,13 @@ impl Connection {
         receipt: ReceiptId,
     ) -> Result<(), Error> {
         let Some(exchange) = self.exchange.as_ref() else {
-            evidence::failed_reading(store, machine, receipt, "LAW ORL has no pending followup")
+            intake::failed_reading(store, machine, receipt, "LAW ORL has no pending followup")
                 .await?;
             return Ok(());
         };
         if exchange.protocol.expired(self.clock.elapsed()) {
             self.close(store, "LAW-ORL-late").await?;
-            evidence::failed_reading(
+            intake::failed_reading(
                 store,
                 machine,
                 receipt,
@@ -303,7 +303,7 @@ impl Connection {
         }
         let response = exchange.protocol.response(message);
         if let Err(error) = &response {
-            evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
+            intake::failed_reading(store, machine, receipt, &error.to_string()).await?;
         }
         if let Some(query) = exchange.query {
             let correlated = response.is_ok();
