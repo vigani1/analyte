@@ -1,6 +1,6 @@
 //! Plan Â§11, ADR 0003 rules 2â€“4 and 8: the same stored bytes take the live mapping path.
 use super::*;
-use crate::config::Program;
+use crate::installation::config::Program;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Attempt, Audit, FreeSpace, RevisionOutcome};
 use std::path::Path;
@@ -73,7 +73,7 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let endpoint = receiver.local_addr()?.to_string();
     let missing = definition.replace("tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]", "tests = []");
     let old = program(temp.path(), &missing, &endpoint)?;
-    let mut store = crate::service::open_store(&old, Box::new(Space)).await?;
+    let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
     evidence::receive(
@@ -99,8 +99,44 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
             Ok((parked, original))
         })
         .await?;
+    assert_repeated_failure_stays_parked(&store, machine, id, parked).await?;
+    let current = program(temp.path(), definition, &endpoint)?;
+    let machine = current.machines().first().ok_or("missing machine")?;
+    let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
+    assert_eq!(commit.version, 3);
+    assert!(matches!(
+        commit.outcomes.as_slice(),
+        [RevisionOutcome::New(_)]
+    ));
+    assert_repair_resolves_original(&store, id, parked, original).await?;
+    assert_retransmission_and_conflict(
+        &store,
+        machine,
+        id,
+        raw,
+        temp.path(),
+        definition,
+        &endpoint,
+    )
+    .await?;
+    // Even with a reachable configured machine endpoint, reprocess opens no transport.
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(30), receiver.accept())
+            .await
+            .is_err()
+    );
+    store.shutdown(deadline()).await?;
+    Ok(())
+}
+
+async fn assert_repeated_failure_stays_parked(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    parked: i64,
+) -> Result<(), Error> {
     // Repeated failure appends a version and new reason, leaving the original item open.
-    reprocess(&store, machine, action(id, Some(parked))?).await?;
+    reprocess(store, machine, action(id, Some(parked))?).await?;
     store
         .request(deadline(), move |s| {
             assert!(
@@ -114,15 +150,16 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
             Ok(())
         })
         .await?;
-    let current = program(temp.path(), definition, &endpoint)?;
-    let machine = current.machines().first().ok_or("missing machine")?;
-    let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
-    assert_eq!(commit.version, 3);
-    assert!(matches!(
-        commit.outcomes.as_slice(),
-        [RevisionOutcome::New(_)]
-    ));
-    let original_check = original.clone();
+    Ok(())
+}
+
+async fn assert_repair_resolves_original(
+    store: &Handle,
+    id: ReceiptId,
+    parked: i64,
+    original: String,
+) -> Result<(), Error> {
+    let original_check = original;
     store
         .request(deadline(), move |s| {
             assert_eq!(
@@ -144,18 +181,30 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
             s.attempted(claim.id, &Attempt::Done, 50)
         })
         .await?;
-    let commit = reprocess(&store, machine, action(id, None)?).await?;
+    Ok(())
+}
+
+async fn assert_retransmission_and_conflict(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    raw: Vec<u8>,
+    root: &Path,
+    definition: &str,
+    endpoint: &str,
+) -> Result<(), Error> {
+    let commit = reprocess(store, machine, action(id, None)?).await?;
     assert!(matches!(
         commit.outcomes.as_slice(),
         [RevisionOutcome::Retransmission(_)]
     ));
     let changed = program(
-        temp.path(),
+        root,
         &definition.replace("app_code=\"DEMO\"", "app_code=\"CHANGED\""),
-        &endpoint,
+        endpoint,
     )?;
     let machine = changed.machines().first().ok_or("missing machine")?;
-    let commit = reprocess(&store, machine, action(id, None)?).await?;
+    let commit = reprocess(store, machine, action(id, None)?).await?;
     assert_eq!(commit.outcomes, vec![RevisionOutcome::Conflict]);
     store
         .request(deadline(), move |s| {
@@ -185,13 +234,6 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
             Ok(())
         })
         .await?;
-    // Even with a reachable configured machine endpoint, reprocess opens no transport.
-    assert!(
-        tokio::time::timeout(std::time::Duration::from_millis(30), receiver.accept())
-            .await
-            .is_err()
-    );
-    store.shutdown(deadline()).await?;
     Ok(())
 }
 
@@ -230,87 +272,7 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
         ),
     ];
     for (definition, wire) in cases {
-        let temp = crate::admin::private_tempdir()?;
-        let peer = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let current = program(
-            temp.path(),
-            &definition.replace("tcp_server", "tcp_client"),
-            &peer.local_addr()?.to_string(),
-        )?;
-        let machine = current.machines().first().ok_or("missing machine")?;
-        let raw = match wire {
-            Some(wire) => wire,
-            None => vidas_config(machine)?
-                .encode(b"mtrsl|pi|si|ci00012a|rtSYN|tt|td|qlpositive|qn<0.1|y3mg/L|qd1:10|")?,
-        };
-        let mut store = crate::service::open_store(&current, Box::new(Space)).await?;
-        let id = ReceiptId::new();
-        evidence::receive(
-            &store,
-            &evidence::Connection::new(machine)?,
-            id,
-            raw.clone(),
-        )
-        .await?;
-        assert!(!evidence::interpret(&store, machine, id).await?);
-        let parked = store.request(deadline(), move |s| {
-            let version = s.interpretation(id, 1)?.ok_or(analyte_store::Error::Corruption)?;
-            assert!(matches!(version.outcome, analyte_store::Reading::Results(results) if !results.is_empty()));
-            Ok(s.parked(0)?.first().ok_or(analyte_store::Error::Corruption)?.id)
-        }).await?;
-        let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
-        assert_eq!(commit.outcomes, vec![RevisionOutcome::Unresolved]);
-        store
-            .request(deadline(), move |s| {
-                assert_eq!(
-                    s.receipt(id)?.ok_or(analyte_store::Error::Corruption)?.raw,
-                    raw
-                );
-                assert!(s.interpretation(id, 1)?.is_some());
-                assert!(s.interpretation(id, 2)?.is_some());
-                assert!(
-                    s.parked_item(parked)?
-                        .ok_or(analyte_store::Error::Corruption)?
-                        .resolution
-                        .is_none()
-                );
-                assert_eq!(s.audits(0)?.len(), 1);
-                assert!(s.deliveries(0)?.is_empty());
-                Ok(())
-            })
-            .await?;
-        if matches!(machine.snapshot.effective().stack(), Stack::Poct(_)) {
-            // Control receipts are retained too; reprocessing them never becomes a
-            // machine query or an invented empty result success (rule 9).
-            for control in [poct_peer::hello("hello"), poct_peer::status("status", "1")] {
-                let id = ReceiptId::new();
-                evidence::receive(
-                    &store,
-                    &evidence::Connection::new(machine)?,
-                    id,
-                    control.into_bytes(),
-                )
-                .await?;
-                reprocess(&store, machine, action(id, None)?).await?;
-                store
-                    .request(deadline(), move |s| {
-                        assert!(matches!(
-                            s.interpretation(id, 1)?
-                                .ok_or(analyte_store::Error::Corruption)?
-                                .outcome,
-                            analyte_store::Reading::Failed(_)
-                        ));
-                        Ok(())
-                    })
-                    .await?;
-            }
-        }
-        assert!(
-            tokio::time::timeout(std::time::Duration::from_millis(30), peer.accept())
-                .await
-                .is_err()
-        );
-        store.shutdown(deadline()).await?;
+        assert_vendor_receipt_stays_parked(definition, wire).await?;
     }
     Ok(())
 }
@@ -322,7 +284,7 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
     let definition =
         include_str!("../../../../config/examples/hl7.toml").replace("tcp_server", "tcp_client");
     let old = program(temp.path(), &definition, "127.0.0.1:5600")?;
-    let mut store = crate::service::open_store(&old, Box::new(Space)).await?;
+    let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let original = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
     let connection = evidence::Connection::new(original)?;
@@ -415,5 +377,98 @@ fn rule9_destination_config_sets_operational_freshness_and_rejects_zero() -> Res
     }
     std::fs::write(&site, format!("{original}\nfreshness_seconds = 0\n"))?;
     assert!(Program::load(&temp.path().join("program.toml")).is_err());
+    Ok(())
+}
+
+async fn assert_vendor_receipt_stays_parked(
+    definition: &str,
+    wire: Option<Vec<u8>>,
+) -> Result<(), Error> {
+    let temp = crate::admin::private_tempdir()?;
+    let peer = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let current = program(
+        temp.path(),
+        &definition.replace("tcp_server", "tcp_client"),
+        &peer.local_addr()?.to_string(),
+    )?;
+    let machine = current.machines().first().ok_or("missing machine")?;
+    let raw = match wire {
+        Some(wire) => wire,
+        None => vidas_config(machine)?
+            .encode(b"mtrsl|pi|si|ci00012a|rtSYN|tt|td|qlpositive|qn<0.1|y3mg/L|qd1:10|")?,
+    };
+    let mut store = crate::runtime::service::open_store(&current, Box::new(Space)).await?;
+    let id = ReceiptId::new();
+    evidence::receive(
+        &store,
+        &evidence::Connection::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
+    assert!(!evidence::interpret(&store, machine, id).await?);
+    let parked = store.request(deadline(), move |s| {
+        let version = s.interpretation(id, 1)?.ok_or(analyte_store::Error::Corruption)?;
+        assert!(matches!(version.outcome, analyte_store::Reading::Results(results) if !results.is_empty()));
+        Ok(s.parked(0)?.first().ok_or(analyte_store::Error::Corruption)?.id)
+    }).await?;
+    let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
+    assert_eq!(commit.outcomes, vec![RevisionOutcome::Unresolved]);
+    store
+        .request(deadline(), move |s| {
+            assert_eq!(
+                s.receipt(id)?.ok_or(analyte_store::Error::Corruption)?.raw,
+                raw
+            );
+            assert!(s.interpretation(id, 1)?.is_some());
+            assert!(s.interpretation(id, 2)?.is_some());
+            assert!(
+                s.parked_item(parked)?
+                    .ok_or(analyte_store::Error::Corruption)?
+                    .resolution
+                    .is_none()
+            );
+            assert_eq!(s.audits(0)?.len(), 1);
+            assert!(s.deliveries(0)?.is_empty());
+            Ok(())
+        })
+        .await?;
+    assert_poct_controls_stay_failed(&store, machine).await?;
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(30), peer.accept())
+            .await
+            .is_err()
+    );
+    store.shutdown(deadline()).await?;
+    Ok(())
+}
+
+async fn assert_poct_controls_stay_failed(store: &Handle, machine: &Machine) -> Result<(), Error> {
+    if matches!(machine.snapshot.effective().stack(), Stack::Poct(_)) {
+        // Control receipts are retained too; reprocessing them never becomes a
+        // machine query or an invented empty result success (rule 9).
+        for control in [poct_peer::hello("hello"), poct_peer::status("status", "1")] {
+            let id = ReceiptId::new();
+            evidence::receive(
+                store,
+                &evidence::Connection::new(machine)?,
+                id,
+                control.into_bytes(),
+            )
+            .await?;
+            reprocess(store, machine, action(id, None)?).await?;
+            store
+                .request(deadline(), move |s| {
+                    assert!(matches!(
+                        s.interpretation(id, 1)?
+                            .ok_or(analyte_store::Error::Corruption)?
+                            .outcome,
+                        analyte_store::Reading::Failed(_)
+                    ));
+                    Ok(())
+                })
+                .await?;
+        }
+    }
     Ok(())
 }

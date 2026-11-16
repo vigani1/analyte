@@ -183,41 +183,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 Event::Committed(token)
             }
             Action::Query(token, message, started) => {
-                let mut reply = self
-                    .orders
-                    .answer(
-                        self.store,
-                        self.machine,
-                        &message,
-                        self.receipt(token)?,
-                        self.absolute(started)?,
-                        self.settings.options(),
-                    )
-                    .await?;
-                let due = self
-                    .orders
-                    .due()
-                    .map(|until| until.saturating_duration_since(self.clock));
-                if let (Reply::Followup { response, work }, Some(sender)) = (&reply, self.outbound)
-                {
-                    let (notify, wait) = oneshot::channel();
-                    let pending = independent::Work {
-                        orders: std::mem::replace(self.orders, Connection::new()?),
-                        message: work.clone(),
-                        ready: wait,
-                    };
-                    if let Err(error) = sender.try_send(pending) {
-                        *self.orders = error.into_inner().orders;
-                        return Err(invalid(
-                            "LAW outbound queue unavailable; reserved work not issued",
-                        ));
-                    }
-                    self.ready = Some(notify);
-                    reply = Reply::Response(response.clone());
-                }
-                return Ok(self
-                    .dialog
-                    .step(self.clock.elapsed(), Event::Reply(token, &reply, due))?);
+                return self.answer_query(token, message, started).await;
             }
             Action::WorkResponse(token, message) => {
                 self.orders
@@ -226,33 +192,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 Event::Complete(token)
             }
             Action::Interpret(token) => {
-                let (outcome, location) = evidence::interpret_with_location(
-                    self.store,
-                    self.machine,
-                    self.receipt(token)?,
-                )
-                .await?;
-                let detail = super::error_location::build(location.as_ref(), b"", b"");
-                let location = location.as_ref().map(|_| protocol::Location {
-                    segment: detail.segment,
-                    occurrence: detail.occurrence,
-                    field: detail.field,
-                });
-                let interpreted = match outcome {
-                    evidence::InterpretationOutcome::Accepted => Interpretation::Accepted,
-                    evidence::InterpretationOutcome::WorkConflict(location) => {
-                        Interpretation::WorkConflict(protocol::Location {
-                            segment: location.segment,
-                            occurrence: location.occurrence,
-                            field: location.field,
-                        })
-                    }
-                    evidence::InterpretationOutcome::Conflict => Interpretation::Conflict,
-                    evidence::InterpretationOutcome::Failed => Interpretation::Failed(location),
-                };
-                return Ok(self
-                    .dialog
-                    .step(self.clock.elapsed(), Event::Interpreted(token, interpreted))?);
+                return self.interpret_receipt(token).await;
             }
             Action::Failed(token, reason) => {
                 evidence::failed_reading(self.store, self.machine, self.receipt(token)?, &reason)
@@ -260,26 +200,15 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Ok(Vec::new());
             }
             Action::ResponseNeeded(token) => {
-                let metadata =
-                    crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law);
+                let metadata = crate::machine::hl7_response::response_metadata(
+                    crate::machine::hl7_response::Profile::Law,
+                );
                 return Ok(self.dialog.step(
                     self.clock.elapsed(),
                     Event::Respond(token, metadata.response()?),
                 )?);
             }
-            Action::Write(bytes, until) => {
-                self.conn
-                    .write_all(&bytes, Some(self.absolute(until)?.into()))
-                    .await
-                    .map_err(|error| {
-                        if matches!(error, analyte_transport::Error::Deadline("write all")) {
-                            invalid("LAW response send deadline expired")
-                        } else {
-                            error.into()
-                        }
-                    })?;
-                Event::Written
-            }
+            Action::Write(bytes, until) => self.write_response(bytes, until).await?,
             Action::WorkIssued => {
                 self.orders.issued(Duration::from_millis(u64::from(
                     self.settings.policy().response_ms(),
@@ -329,6 +258,93 @@ impl<'a, 'm> Host<'a, 'm> {
             Action::Deadline(_) => return Ok(Vec::new()),
         };
         Ok(self.dialog.step(self.clock.elapsed(), event)?)
+    }
+    async fn answer_query(
+        &mut self,
+        token: protocol::ReceiptId,
+        message: analyte_hl7::Message,
+        started: Duration,
+    ) -> Result<Vec<Action>, Error> {
+        let mut reply = self
+            .orders
+            .answer(
+                self.store,
+                self.machine,
+                &message,
+                self.receipt(token)?,
+                self.absolute(started)?,
+                self.settings.options(),
+            )
+            .await?;
+        let due = self
+            .orders
+            .due()
+            .map(|until| until.saturating_duration_since(self.clock));
+        if let (Reply::Followup { response, work }, Some(sender)) = (&reply, self.outbound) {
+            let (notify, wait) = oneshot::channel();
+            let pending = independent::Work {
+                orders: std::mem::replace(self.orders, Connection::new()?),
+                message: work.clone(),
+                ready: wait,
+            };
+            if let Err(error) = sender.try_send(pending) {
+                *self.orders = error.into_inner().orders;
+                return Err(invalid(
+                    "LAW outbound queue unavailable; reserved work not issued",
+                ));
+            }
+            self.ready = Some(notify);
+            reply = Reply::Response(response.clone());
+        }
+        Ok(self
+            .dialog
+            .step(self.clock.elapsed(), Event::Reply(token, &reply, due))?)
+    }
+    async fn interpret_receipt(
+        &mut self,
+        token: protocol::ReceiptId,
+    ) -> Result<Vec<Action>, Error> {
+        let (outcome, location) =
+            evidence::interpret_with_location(self.store, self.machine, self.receipt(token)?)
+                .await?;
+        let detail = super::error_location::build(location.as_ref(), b"", b"");
+        let location = location.as_ref().map(|_| protocol::Location {
+            segment: detail.segment,
+            occurrence: detail.occurrence,
+            field: detail.field,
+        });
+        let interpreted = match outcome {
+            evidence::InterpretationOutcome::Accepted => Interpretation::Accepted,
+            evidence::InterpretationOutcome::WorkConflict(location) => {
+                Interpretation::WorkConflict(protocol::Location {
+                    segment: location.segment,
+                    occurrence: location.occurrence,
+                    field: location.field,
+                })
+            }
+            evidence::InterpretationOutcome::Conflict => Interpretation::Conflict,
+            evidence::InterpretationOutcome::Failed => Interpretation::Failed(location),
+        };
+        Ok(self
+            .dialog
+            .step(self.clock.elapsed(), Event::Interpreted(token, interpreted))?)
+    }
+    async fn write_response(
+        &mut self,
+        bytes: Vec<u8>,
+        until: Duration,
+    ) -> Result<Event<'static>, Error> {
+        self.conn
+            .write_all(&bytes, Some(self.absolute(until)?.into()))
+            .await
+            .map_err(|error| {
+                if matches!(error, analyte_transport::Error::Deadline("write all")) {
+                    invalid("LAW response send deadline expired")
+                } else {
+                    error.into()
+                }
+            })?;
+        Ok(Event::Written)
     }
     async fn input(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
         if !self.pending_input.is_empty() {

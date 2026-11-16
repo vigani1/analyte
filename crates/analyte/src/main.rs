@@ -1,6 +1,6 @@
 //! Foreground service and protected operator command line.
 #![forbid(unsafe_code)]
-use analyte::{Error, config::Program, service};
+use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_model::{Identifier, Reason};
 use analyte_store::Audit;
 use clap::{Parser, Subcommand};
@@ -160,16 +160,17 @@ fn required_actor(actor: Option<Identifier>) -> Result<Identifier, Error> {
 async fn recover(
     config: &std::path::Path,
     actor: Identifier,
-    target: analyte::recovery::ReprocessTarget,
+    target: analyte::operator::recovery::ReprocessTarget,
     reason: String,
 ) -> Result<(), Error> {
     let reason = Reason::new(&reason)?;
     let program = Program::load(config)?;
     let mut store = analyte::open_system_store(&program).await?;
-    let result = analyte::recovery::reprocess(&store, &program, target, actor, reason).await;
+    let result =
+        analyte::operator::recovery::reprocess(&store, &program, target, actor, reason).await;
     store.shutdown(until()).await?;
     let commit = result?;
-    analyte::output::line(&format!(
+    analyte::operator::output::line(&format!(
         "Interpretation {} recorded; decisions: {:?}. Inspect parked items for failures.",
         commit.version, commit.outcomes
     ))?;
@@ -190,7 +191,7 @@ fn main() -> Result<(), Error> {
         },
     } = &cli.command
     {
-        return analyte::windows_service::run(
+        return analyte::runtime::windows_service::run(
             cli.config,
             Duration::from_secs(*shutdown_timeout_secs),
         );
@@ -219,7 +220,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             let token =
                 tokio::task::spawn_blocking(move || analyte::admin::rotate_token(&directory))
                     .await??;
-            analyte::output::line(&token)?;
+            analyte::operator::output::line(&token)?;
             Ok(())
         }
         #[cfg(windows)]
@@ -234,24 +235,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         Command::Orders { command } => {
             analyte::orders::run(&Program::load(&cli.config)?, actor, command).await
         }
-        Command::CheckConfig { file } => {
-            let program = Program::load(&file)?;
-            for machine in program.machines() {
-                let digest = machine
-                    .snapshot()
-                    .digest()
-                    .iter()
-                    .map(|b| format!("{b:02x}"))
-                    .collect::<String>();
-                let level = match machine.snapshot().effective().machine().evidence.level {
-                    analyte_config::EvidenceLevel::Documented => "documented",
-                    analyte_config::EvidenceLevel::Simulated => "simulated",
-                    analyte_config::EvidenceLevel::Proven => "proven",
-                };
-                analyte::output::line(&format!("{} {digest} {level}", machine.id().as_str()))?;
-            }
-            Ok(())
-        }
+        Command::CheckConfig { file } => check_config(&file),
         Command::Run {
             file,
             shutdown_timeout_secs,
@@ -262,14 +246,14 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             )
             .await
         }
-        Command::Status { file } => analyte::status::print(&Program::load(&file)?).await,
+        Command::Status { file } => analyte::operator::status::print(&Program::load(&file)?).await,
         Command::Parked {
             command: Parked::Reprocess { id, reason },
         } => {
             recover(
                 &cli.config,
                 required_actor(cli.actor)?,
-                analyte::recovery::ReprocessTarget::Parked(id),
+                analyte::operator::recovery::ReprocessTarget::Parked(id),
                 reason,
             )
             .await
@@ -281,100 +265,14 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             recover(
                 &cli.config,
                 required_actor(cli.actor)?,
-                analyte::recovery::ReprocessTarget::Receipt(id),
+                analyte::operator::recovery::ReprocessTarget::Receipt(id),
                 reason,
             )
             .await
         }
-        Command::Deliveries { command } => {
-            let actor = required_actor(cli.actor)?;
-            let program = Program::load(&cli.config)?;
-            let mut store = analyte::open_system_store(&program).await?;
-            let result = async {
-                match command {
-                    Deliveries::List { after, reason } => {
-                        let audit = Audit {
-                            actor,
-                            action: Identifier::new("deliveries-list")?,
-                            targets: Vec::new(),
-                            time: jiff::Timestamp::now().as_second(),
-                            reason: Reason::new(&reason)?,
-                        };
-                        let rows = store
-                            .request(until(), move |s| {
-                                let rows = s.deliveries(after)?;
-                                s.audit(&audit)?;
-                                Ok(rows)
-                            })
-                            .await?;
-                        for row in rows {
-                            analyte::output::line(&format!(
-                                "{} {} {} {:?}",
-                                row.sequence,
-                                uuid::Uuid::from(row.id),
-                                row.destination.as_str(),
-                                row.state
-                            ))?;
-                        }
-                        Ok::<_, Error>(())
-                    }
-                    Deliveries::Resend { id, reason } => {
-                        analyte::recovery::resend(&store, id, true, actor, Reason::new(&reason)?)
-                            .await?;
-                        analyte::output::line("Delivery queued with its original ID and bytes.")?;
-                        Ok(())
-                    }
-                }
-            }
-            .await;
-            store.shutdown(until()).await?;
-            result
-        }
-        Command::Restore { from, reason } => {
-            let program = Program::load(&cli.config)?;
-            let audit = Audit {
-                actor,
-                action: Identifier::new("store-restore")?,
-                targets: Vec::new(),
-                time: jiff::Timestamp::now().as_second(),
-                reason: Reason::new(&reason)?,
-            };
-            let kept = service::restore(program, from, audit).await?;
-            analyte::output::line(&format!(
-                "Restored; order sending paused pending reconciliation. Previous store: {}",
-                kept.display()
-            ))?;
-            Ok(())
-        }
-        Command::Backup { target } => {
-            let program = Program::load(&cli.config)?;
-            let mut store = analyte::open_system_store(&program).await?;
-            let result = store
-                .request(
-                    Instant::now()
-                        .checked_add(Duration::from_secs(30))
-                        .unwrap_or(Instant::now()),
-                    move |store| {
-                        store.backup(
-                            &target,
-                            Instant::now()
-                                .checked_add(Duration::from_secs(25))
-                                .unwrap_or(Instant::now()),
-                        )
-                    },
-                )
-                .await;
-            store
-                .shutdown(
-                    Instant::now()
-                        .checked_add(Duration::from_secs(5))
-                        .unwrap_or(Instant::now()),
-                )
-                .await?;
-            result?;
-            analyte::output::line("Backup verified.")?;
-            Ok(())
-        }
+        Command::Deliveries { command } => deliveries(&cli.config, cli.actor, command).await,
+        Command::Restore { from, reason } => restore(&cli.config, actor, from, &reason).await,
+        Command::Backup { target } => backup(&cli.config, target).await,
     }
 }
 
@@ -446,7 +344,7 @@ async fn operator(
             )
             .await?;
         for row in rows {
-            analyte::output::line(&format!(
+            analyte::operator::output::line(&format!(
                 "{} {} resolution={:?}",
                 row.id, row.evidence, row.resolution
             ))?;
@@ -462,4 +360,124 @@ async fn operator(
         )
         .await?;
     result
+}
+
+fn check_config(file: &std::path::Path) -> Result<(), Error> {
+    let program = Program::load(file)?;
+    for machine in program.machines() {
+        let digest = machine
+            .snapshot()
+            .digest()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        let level = match machine.snapshot().effective().machine().evidence.level {
+            analyte_config::EvidenceLevel::Documented => "documented",
+            analyte_config::EvidenceLevel::Simulated => "simulated",
+            analyte_config::EvidenceLevel::Proven => "proven",
+        };
+        analyte::operator::output::line(&format!("{} {digest} {level}", machine.id().as_str()))?;
+    }
+    Ok(())
+}
+
+async fn deliveries(
+    config: &std::path::Path,
+    actor: Option<Identifier>,
+    command: Deliveries,
+) -> Result<(), Error> {
+    let actor = required_actor(actor)?;
+    let program = Program::load(config)?;
+    let mut store = analyte::open_system_store(&program).await?;
+    let result = async {
+        match command {
+            Deliveries::List { after, reason } => {
+                let audit = Audit {
+                    actor,
+                    action: Identifier::new("deliveries-list")?,
+                    targets: Vec::new(),
+                    time: jiff::Timestamp::now().as_second(),
+                    reason: Reason::new(&reason)?,
+                };
+                let rows = store
+                    .request(until(), move |s| {
+                        let rows = s.deliveries(after)?;
+                        s.audit(&audit)?;
+                        Ok(rows)
+                    })
+                    .await?;
+                for row in rows {
+                    analyte::operator::output::line(&format!(
+                        "{} {} {} {:?}",
+                        row.sequence,
+                        uuid::Uuid::from(row.id),
+                        row.destination.as_str(),
+                        row.state
+                    ))?;
+                }
+                Ok::<_, Error>(())
+            }
+            Deliveries::Resend { id, reason } => {
+                analyte::operator::recovery::resend(&store, id, true, actor, Reason::new(&reason)?)
+                    .await?;
+                analyte::operator::output::line("Delivery queued with its original ID and bytes.")?;
+                Ok(())
+            }
+        }
+    }
+    .await;
+    store.shutdown(until()).await?;
+    result
+}
+
+async fn restore(
+    config: &std::path::Path,
+    actor: Identifier,
+    from: PathBuf,
+    reason: &str,
+) -> Result<(), Error> {
+    let program = Program::load(config)?;
+    let audit = Audit {
+        actor,
+        action: Identifier::new("store-restore")?,
+        targets: Vec::new(),
+        time: jiff::Timestamp::now().as_second(),
+        reason: Reason::new(reason)?,
+    };
+    let kept = service::restore(program, from, audit).await?;
+    analyte::operator::output::line(&format!(
+        "Restored; order sending paused pending reconciliation. Previous store: {}",
+        kept.display()
+    ))?;
+    Ok(())
+}
+
+async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> {
+    let program = Program::load(config)?;
+    let mut store = analyte::open_system_store(&program).await?;
+    let result = store
+        .request(
+            Instant::now()
+                .checked_add(Duration::from_secs(30))
+                .unwrap_or(Instant::now()),
+            move |store| {
+                store.backup(
+                    &target,
+                    Instant::now()
+                        .checked_add(Duration::from_secs(25))
+                        .unwrap_or(Instant::now()),
+                )
+            },
+        )
+        .await;
+    store
+        .shutdown(
+            Instant::now()
+                .checked_add(Duration::from_secs(5))
+                .unwrap_or(Instant::now()),
+        )
+        .await?;
+    result?;
+    analyte::operator::output::line("Backup verified.")?;
+    Ok(())
 }

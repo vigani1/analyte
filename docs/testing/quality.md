@@ -8,11 +8,16 @@ runs the tests again. A caught mutation makes a test fail; a missed mutation
 needs investigation because it may expose a missing check or may behave exactly
 like the original code.
 
+Raw mutation and replay logs stay out of the repository. Each triage row names
+the test that catches the mutant, or the exact reason it is equivalent, and the
+commands below regenerate any run. Attach logs to the pull request when a
+reviewer needs them.
+
 ## Completed round results
 
 Framing, dialog, mapping, contract and sink are complete historical rounds.
-The current store round has a completed custody/delivery/parked subset, with
-other modules unfinished. Coverage is available below.
+The current store round has completed custody/delivery/parked, machine-order
+and poll subsets, with lower-priority modules unfinished. Coverage is available below.
 Percentages sum covered/count across each crate's `src/` files, excluding
 integration test files. Regions are smaller than lines, so a covered line can
 still contain an untested decision. These are baseline measurements, before the
@@ -25,7 +30,7 @@ new tests; they are not a prediction of the final coverage.
 | analyte-mapping | 84.97 | 81.47 | 221 / 185 / 49 / 0 | 399 / 7 / 49 / 0 (combined replays) |
 | analyte-contract | 86.92 | 83.28 | 53 / 52 / 71 / 0 | 105 / 0 / 71 / 0 |
 | analyte-sink | 92.86 | 83.53 | 32 / 46 / 18 / 16 | 91 / 3 / 18 / 0 (combined replays; all 3 equivalent) |
-| analyte-store | 91.64 | 77.57 | Mixed focused baselines; see store report | 163 / 0 / 21 / 0 across 184 mutations; other modules pending |
+| analyte-store | 91.64 | 77.57 | Mixed focused baselines; see store report | 313 / 7 / 55 / 0 across 375 earlier-round mutations; all 7 survivors equivalent; Part 3 has two worker misses and #103 integration pending |
 | analyte | 64.60 | 58.03 | Outside requested mutation scope | Not run |
 | analyte-astm | 90.73 | 90.20 | Outside requested mutation scope | Not run |
 | analyte-autolyser | 84.79 | 77.49 | Outside requested mutation scope | Not run |
@@ -437,4 +442,41 @@ Receipts, records, transfers, revisions (including status and embedded v3 migrat
 
 Twenty tests were added in this continuation; the branch has 23 added tests relative to current main. All five required local checks pass, including the full workspace suite and separate fuzz-bin compilation. Production code and dependencies remain unchanged relative to main.
 
-**The round remains incomplete and PR #87 stays draft.** The current inventory is 566 mutations, with 382 candidates still requiring complete runs and triage: machine_orders and every submodule, polls, backup/restore, standalone migration, open/startup, worker, alerts, capacity, query, reprocess and lib. Earlier partial lib/alerts runs do not complete those modules. The report lists the exact files and candidate counts.
+PR #87 merged at `546195a`. Its completed subset and historical remaining inventory above are superseded by the next continuation below.
+
+### Store round 2: machine orders and polls
+
+[Round 2 triage](store-mutations.md#store-round-2-machine-orders-and-poll-custody) completes machine_orders plus cancel, eligibility, items, listing, ownership and reserve, and polls. This subset has **150 caught / 7 missed (all equivalent) / 34 unviable / 0 timeout** across 191 distinct mutations. Exact replay logs close 46 behavior-changing baseline misses; each of the seven survivors has a specific validated-input equivalence argument. No new production bug was found.
+
+Thirteen tests were added, with no production or dependency changes. State/clock, independent cancellation checks, per-item identity, bounded evidence, immutable command bytes and poll idempotence/reserve are checked directly. All five required local checks pass; store has 116 passed and one ignored manual benchmark. No test was skipped or weakened, and no short real-time hang deadline was added.
+
+**PR #93 is ready for this subset; the overall store round remains incomplete.** Cumulative completed outcomes: 313 caught, seven equivalent survivors and 55 unviable, across 375 of 566 candidates. The exact remaining 191 candidates are backup (5), restore (22), migration (12), open (20), startup (13), worker (17), reprocess (5), alerts (23), capacity (10), query (38) and lib (26). Earlier partial lib/alerts results do not complete those modules. Linux/MSRV and running the fuzzers were not performed locally; separate fuzz-bin compilation passed.
+
+### Store round 3 stopped on a production bug
+
+[Part 3 triage](store-mutations.md#store-round-3-stopped-on-restore-capacity-admission-bug) records a new failing test: restore publishes successfully with a zero-byte free-space probe, despite the configured disk reserve and normal admission refusing it. Production code is unchanged. PR #98 remains draft under the stop-on-real-bug rule.
+
+Five tests were added (four passing recovery cases and the failing reproducer). Combined local mutation outcomes at stop: backup 5 caught; restore 20 caught, 1 unresolved miss, 1 unviable; migration 10 caught, 2 unresolved misses. No equivalent or timeout is claimed. Only backup is complete; modules 1–5 as a group and the overall store round are unfinished. Raw logs stay local; the Markdown records every command and catching test.
+
+Part 3 checks: fmt, Clippy, deny and fuzz-bin compilation exit 0. Workspace tests exit 101 on the retained restore-capacity regression (store: 120 passed, 1 failed, 1 ignored). All logs remain local. No passing whole-store or whole-workspace result is claimed for this stop.
+
+### Store round 3 continuation: further restore size bug
+
+The original reserve bug is fixed by merged #99; origin/main was merged with signoff and main's regression kept exactly once. A new regression fails against its exact head `a22a259` and the merged branch: restore publishes 196,608 bytes under a 73,729-byte cap after upgrading a schema-1 backup. The pre-staging check measures the source image, not the final upgraded store. The regression is retained and PR #98 stays draft under the stop-on-further-real-bug rule; production code remains unchanged.
+
+The migration boundary misses and all open/startup misses are now caught in exact replays. Reprocess has five caught mutants. Worker has 12 caught, 3 unresolved misses, 2 unviable; query was interrupted after 17/38 candidates (2 caught, 7 unresolved misses, 8 unviable). Restore's Busy/Locked miss remains unresolved. No new equivalent classification is made. Eight tests were added in this continuation, including the failing size regression; raw logs remain local. See the appended store report for all runs, test names, scope and commands.
+
+
+Final post-merge verification: fmt, Clippy, deny and fuzz-bin compilation all exit 0. Workspace tests exit 101: store 128 passed, 1 failed, 1 ignored; only the new post-upgrade size regression fails, while #99's reserve regression passes. There are 12 net new tests versus main after keeping main's duplicate exactly once. The remaining work is restore's Busy/Locked miss and the new bug; three worker misses; query's seven misses plus 21 unrun candidates; alerts, capacity including restore_capacity, and lib. No production fixes or raw logs are committed. Linux/MSRV and fuzz execution were not run locally.
+
+
+### Store round 3 final continuation
+
+The third restore bug is fixed in PR #103, still pending integration at validation time. Its exact head `3dbd1bbda59238491153d8f7e415574a33d57fd4` was archived locally with this branch's tests and main's extended regression kept once: restore's complete 25-candidate rerun, including fill_stage and cleanup, had 23 caught and two unviable. This is pre-merge evidence, not a claim that #103 is on the test branch. The pre-#103 Busy/Locked miss is separately caught by a deterministic source-lock test (21 caught, one unviable across that older 22-candidate restore baseline).
+
+Query is complete at 22 caught / 16 unviable, alerts at 19 / 4, capacity including restore_capacity at 14 / 0, and lib at 24 / 2. No equivalents or unresolved mutant timeouts are claimed. Worker is 13 caught, two unresolved misses, two unviable. The exact remaining mutations are the owning-thread deadline equality at worker.rs:59:39 and CancelStartup::drop at worker.rs:72:17. Main still needs #103 merged with signoff and its extended regression kept once. The overall round remains incomplete; PR #98 is prepared for review with this exact remaining list.
+
+Sixteen tests were added this continuation. The report records every run, including zero-mutant setup failures and a timed-out broad library baseline replaced by a focused successful run. Counts combine exact replays without double-counting. The earlier query `adr` filter excluded existing `plan11` tests, so a focused miss is not evidence of absent workspace coverage; named new assertions and relevant existing tests fail in the recorded replays. Logs stay local and only Markdown triage is committed.
+
+
+Final verification after signed-off main merge `fdf6549`: fmt, Clippy, deny and fuzz-bin compilation exit 0. Workspace tests exit 101 at the carried size-growth regression (store: 144 passed, 1 failed, 1 ignored) while #103 remains open; that regression passes in the #103 archive. An earlier Autolyser integration timeout passed in isolation and in the final workspace rerun. PR #98 is marked ready for the completed subset with the two worker misses and #103 integration explicitly outstanding; no whole-round completion or green branch is claimed. Linux/MSRV and fuzz execution were not run locally.

@@ -1,5 +1,5 @@
 //! Host-owned HL7 unsolicited work and cancellation; HL7 ch.4 and ADR 0003/0004.
-use crate::{Error, config::Machine, deadline};
+use crate::{Error, deadline, installation::config::Machine};
 use analyte_hl7::{
     Options,
     order::{self, OrderMessage, OrderResponse, Outcome},
@@ -31,7 +31,8 @@ fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<Order
             tests: &item.tests,
         })
         .collect::<Vec<_>>();
-    let metadata = crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
+    let metadata =
+        crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Hl7);
     Ok(command.map(&items, cancel, metadata.response()?)?)
 }
 
@@ -43,11 +44,24 @@ pub(super) async fn next(
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
-    let freshness = machine.destination_limits.freshness.as_secs();
     let settings = super::settings::hl7(machine).ok_or("HL7 settings missing")?;
-    let Some(send) = &settings.send() else {
+    let Some(_) = &settings.send() else {
         return Ok(None);
     };
+    if let Some(exchange) = next_cancel(store, machine, owner, options, reserving).await? {
+        return Ok(Some(exchange));
+    }
+    next_work(store, machine, owner, options, after, reserving).await
+}
+
+async fn next_cancel(
+    store: &Handle,
+    machine: &Machine,
+    owner: &Identifier,
+    options: Options,
+    reserving: &mut Vec<MachineOrderKey>,
+) -> Result<Option<Exchange>, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
     let dest = super::destination(machine);
     let target = machine.id.clone();
     let cancels = store
@@ -72,19 +86,8 @@ pub(super) async fn next(
         let message = build(&command, &record, true)?;
         let id = record.id;
         reserving.push(record.key.clone());
-        let owner = owner.clone();
         let version = app.fields().version;
-        match store
-            .request(deadline(), move |store| {
-                store.request_order_cancel(
-                    id,
-                    version,
-                    jiff::Timestamp::now().as_second(),
-                    &owner,
-                    freshness,
-                    super::event,
-                )
-            })
+        match super::reservation::cancel(store, deadline(), id, version, owner.clone(), freshness)
             .await
         {
             Ok(record) => return Ok(Some(Exchange { record, message })),
@@ -95,6 +98,22 @@ pub(super) async fn next(
             Err(error) => return Err(error.into()),
         }
     }
+    Ok(None)
+}
+
+async fn next_work(
+    store: &Handle,
+    machine: &Machine,
+    owner: &Identifier,
+    options: Options,
+    after: &mut String,
+    reserving: &mut Vec<MachineOrderKey>,
+) -> Result<Option<Exchange>, Error> {
+    let freshness = machine.destination_limits.freshness.as_secs();
+    let settings = super::settings::hl7(machine).ok_or("HL7 settings missing")?;
+    let Some(send) = &settings.send() else {
+        return Ok(None);
+    };
     let candidates = super::sending::candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
@@ -108,12 +127,9 @@ pub(super) async fn next(
             machine: machine.id.clone(),
         };
         let version = app.fields().version;
-        let command = match command(machine, &app, options) {
-            Ok(command) => command,
-            Err(error) => {
-                reject(store, key, version, &error.to_string(), freshness).await?;
-                continue;
-            }
+        let Some(command) = prepare_command(store, machine, &app, options, key.clone()).await?
+        else {
+            continue;
         };
         let namespace = send.placer_namespace().clone();
         let groups = command
@@ -310,4 +326,27 @@ pub(super) async fn finish(
         })
         .await?;
     Ok(())
+}
+
+async fn prepare_command(
+    store: &Handle,
+    machine: &Machine,
+    app: &analyte_contract::Order,
+    options: Options,
+    key: MachineOrderKey,
+) -> Result<Option<Command>, Error> {
+    match command(machine, app, options) {
+        Ok(command) => Ok(Some(command)),
+        Err(error) => {
+            reject(
+                store,
+                key,
+                app.fields().version,
+                &error.to_string(),
+                machine.destination_limits.freshness.as_secs(),
+            )
+            .await?;
+            Ok(None)
+        }
+    }
 }

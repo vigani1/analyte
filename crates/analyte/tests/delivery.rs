@@ -26,7 +26,7 @@ use support::HANG_GUARD;
 mod vendor_support;
 #[path = "orders/vidas.rs"]
 mod vidas_cases;
-use analyte::{Error, config::Program, service};
+use analyte::{Error, installation::config::Program, runtime::service};
 use axum::{
     body::{Body, to_bytes},
     extract::{Request, State},
@@ -124,7 +124,7 @@ impl Reference {
             "synthetic-api".into(),
             analyte_contract::SigningSecret::parse(SECRET)?,
         )?;
-        let (events, received) = mpsc::channel(16);
+        let (events, captured_events) = mpsc::channel(16);
         let capture = Arc::new(Capture {
             events,
             hold_once: AtomicBool::new(hold),
@@ -148,7 +148,7 @@ impl Reference {
         });
         Ok(Self {
             receiver,
-            events: received,
+            events: captured_events,
             capture,
             stop,
             task,
@@ -599,7 +599,7 @@ fn adr0008_host_rotation_loads_each_named_key_and_missing_rotation_key_is_specif
             .len(),
         2
     );
-    let error = analyte::secrets::EnvironmentSecrets::load_with(&program, |name| {
+    let error = analyte::installation::secrets::Environment::load_with(&program, |name| {
         if name == "ANALYTE_SECRET_NEXT_SIGNING" {
             None
         } else {
@@ -900,7 +900,7 @@ async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_reta
         false,
     )
     .await?;
-    let (hook, control) = analyte::test_hooks::AstmCommitted::new();
+    let (hook, control) = analyte::runtime::test_hooks::AstmCommitted::new();
     let mut loaded = program(&path, &reference.url)?;
     loaded.pause_astm_committed_for_test("astm", hook)?;
     let service = Running::start_program(loaded, "synthetic-api").await?;

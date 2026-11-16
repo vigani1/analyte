@@ -1,5 +1,5 @@
 //! Host reservation views and response metadata for the pure LAW mapper.
-use crate::{Error, config::Machine};
+use crate::{Error, installation::config::Machine};
 use analyte_hl7::{Message, Options, law};
 pub(super) use analyte_mapping::{LawCommand as Command, law_address as address};
 use analyte_store::MachineOrder;
@@ -30,9 +30,10 @@ pub(super) fn render(
         .zip(&items)
         .map(|((command, _), items)| (*command, items.as_slice()))
         .collect::<Vec<_>>();
-    crate::hl7_response::response_metadata(crate::hl7_response::Profile::Law).build(|response| {
-        Ok(analyte_mapping::map_law_work(
-            &refs, action, options, response,
-        )?)
-    })
+    crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Law)
+        .build(|response| {
+            Ok(analyte_mapping::map_law_work(
+                &refs, action, options, response,
+            )?)
+        })
 }

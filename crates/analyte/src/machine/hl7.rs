@@ -155,7 +155,7 @@ pub(super) async fn session(
                             actions.extend(dialog.step(start.elapsed(), event)?);
                         }
                         Action::ResponseNeeded(token, _) => {
-                            let metadata = crate::hl7_response::response_metadata(crate::hl7_response::Profile::Hl7);
+                            let metadata = crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Hl7);
                             actions.extend(dialog.step(
                                 start.elapsed(),
                                 Event::Respond(

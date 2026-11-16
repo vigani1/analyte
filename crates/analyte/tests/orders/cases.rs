@@ -60,7 +60,11 @@ async fn receive_orders(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
     .await?
 }
 
+/// Waits until a cached order exists and a complete, trusted feed pass has been
+/// committed. A row alone can precede that commit; a query answered in between
+/// is correctly refused as untrusted, which made these tests race on slow hosts.
 async fn wait_cache(path: &Path) -> Result<(), Error> {
+    wait_feed(path).await?;
     tokio::time::timeout(HANG_GUARD, async {
         loop {
             if database(path)?

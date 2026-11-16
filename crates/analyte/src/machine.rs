@@ -9,13 +9,14 @@ mod poll_custody;
 pub use interpretation::reprocess;
 mod connection_input;
 mod custody;
+pub(crate) mod hl7_response;
 mod law;
 mod poct;
 mod serial;
 mod settings;
 mod vidas;
 mod worker;
-use crate::{Error, config::Machine, invalid};
+use crate::{Error, installation::config::Machine, invalid};
 use analyte_config::TcpRole;
 use analyte_store::Handle;
 use analyte_transport::{Backoff, Limits, connection};
@@ -45,7 +46,7 @@ pub(crate) async fn run(
     mut stop: watch::Receiver<bool>,
     file_root: std::path::PathBuf,
     mut closing: Closing,
-    capture: Option<crate::capture::Capture>,
+    capture: Option<crate::evidence::capture::Capture>,
 ) -> Result<(), Error> {
     if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack()
         && matches!(
@@ -74,11 +75,7 @@ pub(crate) async fn run(
                     _ = stop.changed() => { closing.after_commits().await?; return Ok(()); },
                     accepted = listener.accept() => accepted?,
                 };
-                let (conn, side) = connection(limits);
-                let side = match &capture {
-                    Some(capture) => capture.attach(side),
-                    None => side,
-                };
+                let (conn, side) = recorded_connection(limits, capture.as_ref());
                 let cancel = conn.cancellation();
                 let processing = drive(&machine, session, &store, conn, stop.clone(), &mut closing);
                 let transport = analyte_transport::tcp::pump(accepted.0, side);
@@ -99,11 +96,7 @@ pub(crate) async fn run(
             session,
             ..
         } => loop {
-            let (conn, side) = connection(limits);
-            let side = match &capture {
-                Some(capture) => capture.attach(side),
-                None => side,
-            };
+            let (conn, side) = recorded_connection(limits, capture.as_ref());
             let cancel = conn.cancellation();
             let transport = analyte_transport::tcp::client(endpoint.parse()?, side, retry()?);
             let (result, transport) = tokio::join!(
@@ -125,6 +118,7 @@ pub(crate) async fn run(
             if *stop.borrow() {
                 return Ok(());
             }
+            // Reconnect backoff is cancellable; this is not polling for completion.
             tokio::select! {
                 () = stopping(&mut stop) => return Ok(()),
                 () = tokio::time::sleep(Duration::from_millis(100)) => {}
@@ -155,6 +149,18 @@ pub(crate) async fn run(
             .await
         }
     }
+}
+
+fn recorded_connection(
+    limits: Limits,
+    capture: Option<&crate::evidence::capture::Capture>,
+) -> (analyte_transport::Connection, analyte_transport::IoSide) {
+    let (conn, side) = connection(limits);
+    let side = match capture {
+        Some(capture) => capture.attach(side),
+        None => side,
+    };
+    (conn, side)
 }
 
 fn retry() -> Result<Backoff, Error> {

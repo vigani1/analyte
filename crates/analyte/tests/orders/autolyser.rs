@@ -379,6 +379,8 @@ async fn adr0004_autolyser_cancelled_before_send_has_no_insertion_or_send_event(
         }
     })
     .await??;
+    // A trusted pass must exist, or "never sent" would hold without the cancel rule.
+    wait_feed(&path).await?;
     only_polls(&mut peer).await?;
     no_event(&path).await?;
     assert_eq!(

@@ -1,5 +1,5 @@
 //! LIS02-A2 §11: bounded specimen-only order queries, never historical results.
-use crate::{Error, config::Machine, invalid};
+use crate::{Error, installation::config::Machine, invalid};
 use analyte_astm::{Kind, Message, Query};
 use analyte_config::WhenUntrusted;
 use analyte_model::SampleId;

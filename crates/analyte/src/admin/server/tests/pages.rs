@@ -1,3 +1,4 @@
+//! Admin page scenarios verify the read-only presentation of retained evidence.
 use super::*;
 use analyte_model::{Digest, NamespacedId, ReceiptId, ReceiptMetadata, SampleId};
 use analyte_store::{Audit, CachedOrder, OrderPage, Parked};
@@ -65,6 +66,47 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         .await
         .map_err(|error| format!("admin pages fixture migration: {error}"))?,
     );
+    let (receipt_id, parked_id, other_receipt) = seed_pages(&store).await?;
+    let (state, stop, owner, host) = start_pages_server(directory.path(), &store).await?;
+    let session = login(&host, &bearer).await?;
+    let auth = format!("Cookie: {session}\r\n");
+    assert_paginated_lists(&host, &auth, parked_id).await?;
+    let view =
+        assert_raw_authorization(&host, &bearer, &auth, receipt_id, parked_id, other_receipt)
+            .await?;
+    assert_raw_views_audited(&store, &state, &host, &session, parked_id, &view).await?;
+    assert_cache_version_stays_distinct(&store, &host, &auth).await?;
+    assert_frame_pagination(&store, &host, &view).await?;
+    let RawPage {
+        raw_path,
+        post_auth,
+        form,
+        ..
+    } = view;
+    // Fault injection: durable audit refusal must suppress all raw output.
+    let database = directory.path().join("analyte.db");
+    rusqlite::Connection::open(&database)?.execute_batch("CREATE TRIGGER test_refuse_raw_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;")?;
+    let refused = request(&host, &raw_path, &post_auth, Some(&form)).await?;
+    assert!(refused.starts_with("HTTP/1.1 503"));
+    assert!(!refused.contains("RAW"));
+    assert!(!refused.contains("3c 73 63"));
+    rusqlite::Connection::open(database)?.execute_batch("DROP TRIGGER test_refuse_raw_audit;")?;
+    drop(state);
+    stop.send_replace(true);
+    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    let mut store = Arc::try_unwrap(store).map_err(|_| "pages retained store")?;
+    store.shutdown(fixture_deadline()?).await?;
+    Ok(())
+}
+
+struct RawPage {
+    csrf: String,
+    form: String,
+    raw_path: String,
+    post_auth: String,
+}
+
+async fn seed_pages(store: &analyte_store::Handle) -> Result<(ReceiptId, i64, ReceiptId), Error> {
     let (receipt_id, parked_id, other_receipt) = store.request(fixture_deadline()?, |store| {
         let id = |text: &str| Identifier::new(text).map_err(|_| analyte_store::Error::InvalidInput);
         let mut first = None;
@@ -87,6 +129,21 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         }
         Err(analyte_store::Error::InvalidInput)
     }).await?;
+    Ok((receipt_id, parked_id, other_receipt))
+}
+
+async fn start_pages_server(
+    root: &std::path::Path,
+    store: &Arc<analyte_store::Handle>,
+) -> Result<
+    (
+        Arc<Context>,
+        watch::Sender<bool>,
+        tokio::task::JoinHandle<Result<(), Error>>,
+        String,
+    ),
+    Error,
+> {
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
     let mut machines = Vec::new();
@@ -98,15 +155,15 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     }
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
-        config_path: directory.path().join("program.toml"),
-        token: Token::load(directory.path())?,
+        config_path: root.join("program.toml"),
+        token: Token::load(root)?,
         sessions: Sessions::default(),
         origin: format!("http://{host}"),
         host: host.clone(),
         store: store.clone(),
         machines,
         destinations: Vec::new(),
-        directory: directory.path().to_owned(),
+        directory: root.to_owned(),
         reserve: 1,
         _released: released,
     });
@@ -121,33 +178,35 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     };
     let (stop, stopped) = watch::channel(false);
     let owner = tokio::spawn(server.run(stopped));
-    let session = login(&host, &bearer).await?;
-    let auth = format!("Cookie: {session}\r\n");
+    Ok((state, stop, owner, host))
+}
+
+async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Result<(), Error> {
     for (path, sections) in [
         ("/parked", 1),
         ("/orders", 1),
         ("/machines", 50),
         ("/machines?after=50", 11),
     ] {
-        let response = request(&host, path, &auth, None).await?;
+        let response = request(host, path, auth, None).await?;
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         headers_present(&response);
         assert_eq!(response.matches("<section>").count(), sections);
         assert!(!response.contains("RAW"));
         assert!(!response.contains("TAIL"));
     }
-    let list = request(&host, "/parked", &auth, None).await?;
+    let list = request(host, "/parked", auth, None).await?;
     assert!(list.contains("&lt;script&gt;hostile reason&lt;/script&gt;"));
     assert!(list.contains("1970-01-01T00:00:00Z"));
-    let page2 = request(&host, &format!("/parked?after={parked_id}"), &auth, None).await?;
+    let page2 = request(host, &format!("/parked?after={parked_id}"), auth, None).await?;
     assert!(page2.contains("Category: second"));
     assert!(!page2.contains("Category: first"));
-    let orders = request(&host, "/orders", &auth, None).await?;
+    let orders = request(host, "/orders", auth, None).await?;
     assert!(orders.contains("Uncertain"));
     assert!(orders.contains("Order sending paused after restore: true"));
     assert!(orders.contains("&lt;script&gt;sample&lt;/script&gt;"));
     assert!(orders.contains("&lt;test&gt;"));
-    let orders2 = request(&host, "/orders?after=1", &auth, None).await?;
+    let orders2 = request(host, "/orders?after=1", auth, None).await?;
     assert!(orders2.contains("Order: second"));
     assert!(!orders2.contains("Order: first"));
     for route in ["/machines", "/orders", "/parked"] {
@@ -156,12 +215,23 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             "after=18446744073709551615",
             "after=1&limit=100000",
         ] {
-            let invalid = request(&host, &format!("{route}?{query}"), &auth, None).await?;
+            let invalid = request(host, &format!("{route}?{query}"), auth, None).await?;
             assert!(invalid.starts_with("HTTP/1.1 400"), "{invalid}");
             headers_present(&invalid);
         }
     }
-    let detail = request(&host, &format!("/parked/{parked_id}"), &auth, None).await?;
+    Ok(())
+}
+
+async fn assert_raw_authorization(
+    host: &str,
+    bearer: &str,
+    auth: &str,
+    receipt_id: ReceiptId,
+    parked_id: i64,
+    other_receipt: ReceiptId,
+) -> Result<RawPage, Error> {
+    let detail = request(host, &format!("/parked/{parked_id}"), auth, None).await?;
     assert!(detail.starts_with("HTTP/1.1 200"));
     assert!(!detail.contains("RAW"));
     assert!(!detail.contains("TAIL"));
@@ -173,19 +243,19 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     );
     let raw_path = format!("/parked/{parked_id}/raw");
     let post_auth = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
-    let get = request(&host, &raw_path, &auth, None).await?;
+    let get = request(host, &raw_path, auth, None).await?;
     assert!(get.starts_with("HTTP/1.1 405"));
     for rejected in [
         form.replace(&encode(&csrf), "wrong"),
         form.replace(&format!("csrf={}&", encode(&csrf)), ""),
     ] {
-        let response = request(&host, &raw_path, &post_auth, Some(&rejected)).await?;
+        let response = request(host, &raw_path, &post_auth, Some(&rejected)).await?;
         assert!(response.starts_with("HTTP/1.1 403"));
         assert!(!response.contains("RAW"));
     }
-    let other_session = login(&host, &bearer).await?;
+    let other_session = login(host, bearer).await?;
     let wrong_session = request(
-        &host,
+        host,
         &raw_path,
         &format!("Cookie: {other_session}\r\nContent-Type: application/x-www-form-urlencoded\r\n"),
         Some(&form),
@@ -193,7 +263,7 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     .await?;
     assert!(wrong_session.starts_with("HTTP/1.1 403"));
     let unrelated = request(
-        &host,
+        host,
         &raw_path,
         &post_auth,
         Some(&form.replace(
@@ -204,12 +274,34 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
     .await?;
     assert!(!unrelated.starts_with("HTTP/1.1 200"));
     assert!(!unrelated.contains("RAW"));
+    Ok(RawPage {
+        csrf,
+        form,
+        raw_path,
+        post_auth,
+    })
+}
+
+async fn assert_raw_views_audited(
+    store: &analyte_store::Handle,
+    state: &Context,
+    host: &str,
+    session: &str,
+    parked_id: i64,
+    view: &RawPage,
+) -> Result<(), Error> {
+    let RawPage {
+        form,
+        raw_path,
+        post_auth,
+        ..
+    } = view;
     let count = store
         .request(fixture_deadline()?, |s| Ok(s.audits(1)?.len()))
         .await?;
     assert_eq!(count, 0);
     for _ in 0..2 {
-        let response = request(&host, &raw_path, &post_auth, Some(&form)).await?;
+        let response = request(host, raw_path, post_auth, Some(form)).await?;
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         headers_present(&response);
         assert!(response.contains("&lt;script&gt;RAW&amp;&quot;&#39;"));
@@ -218,9 +310,9 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         assert!(!response.contains("TAIL"));
     }
     let tail = request(
-        &host,
-        &raw_path,
-        &post_auth,
+        host,
+        raw_path,
+        post_auth,
         Some(&form.replace("after=0", "after=4096")),
     )
     .await?;
@@ -256,6 +348,14 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         .actor
         .clone();
     assert_eq!(audit.actor, actor);
+    Ok(())
+}
+
+async fn assert_cache_version_stays_distinct(
+    store: &analyte_store::Handle,
+    host: &str,
+    auth: &str,
+) -> Result<(), Error> {
     // Current cache evidence is explicitly distinguished from a reservation's
     // historical version; operator reads never resend or reconcile an order.
     store
@@ -284,11 +384,22 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
             })
         })
         .await?;
-    let mismatch = request(&host, "/orders", &auth, None).await?;
+    let mismatch = request(host, "/orders", auth, None).await?;
     assert!(mismatch.contains("Different version; these are not the historical machine items."));
     assert!(mismatch.contains("Uncertain"));
     assert!(mismatch.contains("Machine test: local: &lt;test&gt;"));
     assert!(mismatch.contains("&lt;newtest&gt;"));
+    Ok(())
+}
+
+async fn assert_frame_pagination(
+    store: &analyte_store::Handle,
+    host: &str,
+    view: &RawPage,
+) -> Result<(), Error> {
+    let RawPage {
+        csrf, post_auth, ..
+    } = view;
     let frame_park = store
         .request(fixture_deadline()?, |s| {
             let transfer =
@@ -323,17 +434,17 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         .await?;
     let frame_form = format!(
         "csrf={}&target=transfer&source=frames&after=0&offset=0",
-        encode(&csrf)
+        encode(csrf)
     );
     let frame_path = format!("/parked/{frame_park}/raw");
-    let frame = request(&host, &frame_path, &post_auth, Some(&frame_form)).await?;
+    let frame = request(host, &frame_path, post_auth, Some(&frame_form)).await?;
     assert!(frame.starts_with("HTTP/1.1 200"));
     assert!(frame.contains("&lt;frame&gt;"));
     assert!(!frame.contains("FRAME-TAIL"));
     let frame_tail = request(
-        &host,
+        host,
         &frame_path,
-        &post_auth,
+        post_auth,
         Some(&frame_form.replace("offset=0", "offset=4096")),
     )
     .await?;
@@ -346,18 +457,5 @@ async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(
         .collect::<Vec<_>>()
         .join(" ");
     assert!(hex.contains("46 52 41 4d 45 2d 54 41 49 4c"));
-    // Fault injection: durable audit refusal must suppress all raw output.
-    let database = directory.path().join("analyte.db");
-    rusqlite::Connection::open(&database)?.execute_batch("CREATE TRIGGER test_refuse_raw_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;")?;
-    let refused = request(&host, &raw_path, &post_auth, Some(&form)).await?;
-    assert!(refused.starts_with("HTTP/1.1 503"));
-    assert!(!refused.contains("RAW"));
-    assert!(!refused.contains("3c 73 63"));
-    rusqlite::Connection::open(database)?.execute_batch("DROP TRIGGER test_refuse_raw_audit;")?;
-    drop(state);
-    stop.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
-    let mut store = Arc::try_unwrap(store).map_err(|_| "pages retained store")?;
-    store.shutdown(fixture_deadline()?).await?;
     Ok(())
 }

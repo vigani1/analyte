@@ -2,7 +2,7 @@
 mod guard;
 pub(super) use guard::HANG_GUARD;
 
-use analyte::{Error, config::Program, service};
+use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_store::FreeSpace;
 use std::{
     path::{Path, PathBuf},
@@ -91,8 +91,8 @@ pub(super) fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
 pub(super) fn secrets(
     program: &Program,
     api: &str,
-) -> Result<analyte::secrets::EnvironmentSecrets, Error> {
-    Ok(analyte::secrets::EnvironmentSecrets::load_with(
+) -> Result<analyte::installation::secrets::Environment, Error> {
+    Ok(analyte::installation::secrets::Environment::load_with(
         program,
         |name| Some(if name.ends_with("API") { api } else { SECRET }.into()),
     )?)

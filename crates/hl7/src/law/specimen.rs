@@ -118,54 +118,7 @@ fn specimen(
             return Err(content("SPM", 3));
         }
     }
-    field(segment, "SPM", 11, true, false)?;
-    let role_value = raw(segment, 11);
-    let identifier = part(role_value, 1);
-    let system = part(role_value, 3);
-    coded(
-        role_value,
-        "SPM",
-        11,
-        if identifier == b"U" {
-            b"IHELAW"
-        } else {
-            b"HL70369"
-        },
-        direction,
-    )?;
-    // A vendor may reuse a spelling; only standard-system codes carry LAW's
-    // patient/control/unknown predicates. Never infer a clinical role from text alone.
-    let role = if matches!(system, b"HL70369" | b"IHELAW") {
-        identifier
-    } else {
-        b""
-    };
-    if role == b"U" && system != b"IHELAW" {
-        return Err(component_error("SPM", 11, 3));
-    }
-    if (role == b"U" && !profile.negative_query)
-        || (direction == ControlDirection::Send && role == b"L" && !profile.pooling_outside)
-    {
-        return Err(content("SPM", 11));
-    }
-    if profile.pooling_outside && role != b"L" {
-        return Err(content("SPM", 11));
-    }
-    let specimen_type = raw(segment, 4);
-    if specimen_type != b"\"\"" {
-        field(segment, "SPM", 4, true, false)?;
-    }
-    if matches!(role, b"Q" | b"U") {
-        if specimen_type != b"\"\"" {
-            return Err(content("SPM", 4));
-        }
-    } else if specimen_type == b"\"\"" {
-        if direction == ControlDirection::Send {
-            return Err(content("SPM", 4));
-        }
-    } else {
-        coded(specimen_type, "SPM", 4, b"HL70487", direction)?;
-    }
+    validate_role_and_type(segment, profile, direction)?;
     for (number, system) in [
         (7, b"HL70488".as_slice()),
         (8, b""),
@@ -184,43 +137,7 @@ fn specimen(
             coded(raw(segment, number), "SPM", number, system, direction)?;
         }
     }
-    for number in [17, 18] {
-        if option_field(
-            segment,
-            "SPM",
-            number,
-            profile.specimen && direction == ControlDirection::Send,
-            direction,
-            false,
-        )? {
-            let start = part(raw(segment, number), 1);
-            let timestamp = if number == 17 {
-                start.split(|b| *b == b'&').next().unwrap_or_default()
-            } else {
-                start
-            };
-            let error = if number == 17 {
-                sub(17, 1)
-            } else {
-                component_error("SPM", 18, 1)
-            };
-            primitive(timestamp, true, 14, error)?;
-            if !super::profile::timestamp(timestamp, false) {
-                return Err(if number == 17 {
-                    sub(17, 1)
-                } else {
-                    component_error("SPM", 18, 1)
-                });
-            }
-            if number == 17 {
-                extras(start, b'&', &[1], direction, |position| sub(17, position))?;
-            }
-            extras(raw(segment, number), b'^', &[1], direction, |position| {
-                component_error("SPM", number, position)
-            })?;
-            super::order::limit(raw(segment, number), "SPM", number, 26, direction)?;
-        }
-    }
+    validate_specimen_times(segment, profile, direction)?;
     if profile.pooling_outside {
         scalar(segment, "SPM", 13, true, 6)?;
         let value = raw(segment, 13);
@@ -363,37 +280,7 @@ fn container(
     {
         return Err(content("SAC", 10));
     }
-    for (identity, position) in [(10, 11), (13, 14)] {
-        let value = raw(segment, position);
-        if direction == ControlDirection::Send && raw(segment, identity).is_empty() {
-            excluded(value, direction, content("SAC", position))?;
-        } else {
-            field(
-                segment,
-                "SAC",
-                position,
-                direction == ControlDirection::Send,
-                false,
-            )?;
-            if !value.is_empty() {
-                array(value, position)?;
-            }
-        }
-    }
-    let location = raw(segment, 15);
-    if direction == ControlDirection::Send
-        && raw(segment, 10).is_empty()
-        && raw(segment, 13).is_empty()
-    {
-        excluded(location, direction, content("SAC", 15))?;
-    } else {
-        field(segment, "SAC", 15, false, true)?;
-        if !location.is_empty() {
-            for value in location.split(|b| *b == b'~') {
-                coded(value, "SAC", 15, b"", direction)?;
-            }
-        }
-    }
+    validate_container_position(segment, direction)?;
     if option_field(
         segment,
         "SAC",
@@ -456,4 +343,143 @@ pub(super) fn validate(
         b"SAC" => container(segment, profile, direction),
         _ => Err(content("specimen profile", 0)),
     }
+}
+
+fn validate_role_and_type(
+    segment: Segment<'_>,
+    profile: Profile<'_>,
+    direction: ControlDirection,
+) -> Result<(), Error> {
+    field(segment, "SPM", 11, true, false)?;
+    let role_value = raw(segment, 11);
+    let identifier = part(role_value, 1);
+    let system = part(role_value, 3);
+    coded(
+        role_value,
+        "SPM",
+        11,
+        if identifier == b"U" {
+            b"IHELAW"
+        } else {
+            b"HL70369"
+        },
+        direction,
+    )?;
+    // A vendor may reuse a spelling; only standard-system codes carry LAW's
+    // patient/control/unknown predicates. Never infer a clinical role from text alone.
+    let role = if matches!(system, b"HL70369" | b"IHELAW") {
+        identifier
+    } else {
+        b""
+    };
+    if role == b"U" && system != b"IHELAW" {
+        return Err(component_error("SPM", 11, 3));
+    }
+    if (role == b"U" && !profile.negative_query)
+        || (direction == ControlDirection::Send && role == b"L" && !profile.pooling_outside)
+    {
+        return Err(content("SPM", 11));
+    }
+    if profile.pooling_outside && role != b"L" {
+        return Err(content("SPM", 11));
+    }
+    let specimen_type = raw(segment, 4);
+    if specimen_type != b"\"\"" {
+        field(segment, "SPM", 4, true, false)?;
+    }
+    if matches!(role, b"Q" | b"U") {
+        if specimen_type != b"\"\"" {
+            return Err(content("SPM", 4));
+        }
+    } else if specimen_type == b"\"\"" {
+        if direction == ControlDirection::Send {
+            return Err(content("SPM", 4));
+        }
+    } else {
+        coded(specimen_type, "SPM", 4, b"HL70487", direction)?;
+    }
+    Ok(())
+}
+
+fn validate_specimen_times(
+    segment: Segment<'_>,
+    profile: Profile<'_>,
+    direction: ControlDirection,
+) -> Result<(), Error> {
+    for number in [17, 18] {
+        if option_field(
+            segment,
+            "SPM",
+            number,
+            profile.specimen && direction == ControlDirection::Send,
+            direction,
+            false,
+        )? {
+            let start = part(raw(segment, number), 1);
+            let timestamp = if number == 17 {
+                start.split(|b| *b == b'&').next().unwrap_or_default()
+            } else {
+                start
+            };
+            let error = if number == 17 {
+                sub(17, 1)
+            } else {
+                component_error("SPM", 18, 1)
+            };
+            primitive(timestamp, true, 14, error)?;
+            if !super::profile::timestamp(timestamp, false) {
+                return Err(if number == 17 {
+                    sub(17, 1)
+                } else {
+                    component_error("SPM", 18, 1)
+                });
+            }
+            if number == 17 {
+                extras(start, b'&', &[1], direction, |position| sub(17, position))?;
+            }
+            extras(raw(segment, number), b'^', &[1], direction, |position| {
+                component_error("SPM", number, position)
+            })?;
+            super::order::limit(raw(segment, number), "SPM", number, 26, direction)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_container_position(
+    segment: Segment<'_>,
+    direction: ControlDirection,
+) -> Result<(), Error> {
+    for (identity, position) in [(10, 11), (13, 14)] {
+        let value = raw(segment, position);
+        if direction == ControlDirection::Send && raw(segment, identity).is_empty() {
+            excluded(value, direction, content("SAC", position))?;
+        } else {
+            field(
+                segment,
+                "SAC",
+                position,
+                direction == ControlDirection::Send,
+                false,
+            )?;
+            if !value.is_empty() {
+                array(value, position)?;
+            }
+        }
+    }
+    let location = raw(segment, 15);
+    if direction == ControlDirection::Send
+        && raw(segment, 10).is_empty()
+        && raw(segment, 13).is_empty()
+    {
+        excluded(location, direction, content("SAC", 15))?;
+    } else {
+        field(segment, "SAC", 15, false, true)?;
+        if !location.is_empty() {
+            for value in location.split(|b| *b == b'~') {
+                coded(value, "SAC", 15, b"", direction)?;
+            }
+        }
+    }
+    Ok(())
 }

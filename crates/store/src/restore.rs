@@ -60,14 +60,58 @@ impl Store {
         if version < 1 {
             return Err(Error::Corruption);
         }
+        Self::restore_capacity(&source_db, path, &limits, &*space)?;
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&stage)?;
         drop(file);
-        let mut copy = Connection::open(&stage)?;
+        if let Err(error) =
+            Self::fill_stage(&source_db, &stage, limits, space, &lock, audit, deadline)
         {
-            let backup = rusqlite::backup::Backup::new(&source_db, &mut copy)?;
+            // A refusal or failure seen here leaves the current store and the backup
+            // untouched; removing our own partial copy keeps startup available. Only a
+            // crash leaves the stage behind, and startup then refuses until reviewed.
+            for leftover in [
+                stage.clone(),
+                stage.with_extension("restore-pending-wal"),
+                stage.with_extension("restore-pending-shm"),
+            ] {
+                if let Err(cleanup) = std::fs::remove_file(&leftover)
+                    && cleanup.kind() != std::io::ErrorKind::NotFound
+                {
+                    return Err(cleanup.into());
+                }
+            }
+            return Err(error);
+        }
+        OpenOptions::new().write(true).open(&stage)?.sync_all()?;
+        if path.exists() {
+            let current = Connection::open(path)?;
+            current
+                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")?;
+            drop(current);
+            std::fs::rename(path, &kept)?;
+        }
+        std::fs::rename(&stage, path)?;
+        drop(lock);
+        Ok(kept)
+    }
+
+    /// Copies the backup into the stage, opens it through ordinary startup (which may
+    /// migrate it), records the audit entry and admits the final size.
+    fn fill_stage(
+        source_db: &Connection,
+        stage: &Path,
+        limits: Limits,
+        space: Box<dyn FreeSpace>,
+        lock: &File,
+        audit: &Audit,
+        deadline: Instant,
+    ) -> Result<(), Error> {
+        let mut copy = Connection::open(stage)?;
+        {
+            let backup = rusqlite::backup::Backup::new(source_db, &mut copy)?;
             loop {
                 if Instant::now() >= deadline {
                     return Err(Error::Timeout);
@@ -83,23 +127,16 @@ impl Store {
             }
         }
         drop(copy);
-        let mut restored = Self::open_locked(&stage, limits, space, lock.try_clone()?)?;
+        let mut restored = Self::open_locked(stage, limits, space, lock.try_clone()?)?;
         restored.audit(audit)?;
         restored
             .db
             .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")?;
+        // Opening the stage may migrate an older backup and grow it. Admit the
+        // final restored store under the same reserve and size rule as intake.
+        restored.capacity(0)?;
         drop(restored);
-        OpenOptions::new().write(true).open(&stage)?.sync_all()?;
-        if path.exists() {
-            let current = Connection::open(path)?;
-            current
-                .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")?;
-            drop(current);
-            std::fs::rename(path, &kept)?;
-        }
-        std::fs::rename(&stage, path)?;
-        drop(lock);
-        Ok(kept)
+        Ok(())
     }
 
     /// Reports whether the most recent restore still needs operator reconciliation.

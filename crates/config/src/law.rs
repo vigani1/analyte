@@ -12,24 +12,53 @@ pub enum LawQueryForm {
     AllPending,
 }
 
+/// Whether a LAW peer explicitly permits one enhanced-content capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "bool", into = "bool")]
+pub enum PeerSupport {
+    /// Peer did not grant this capability.
+    Unsupported,
+    /// Peer explicitly accepts this capability.
+    Supported,
+}
+
+impl From<bool> for PeerSupport {
+    fn from(supported: bool) -> Self {
+        if supported {
+            Self::Supported
+        } else {
+            Self::Unsupported
+        }
+    }
+}
+
+impl From<PeerSupport> for bool {
+    fn from(support: PeerSupport) -> Self {
+        match support {
+            PeerSupport::Unsupported => false,
+            PeerSupport::Supported => true,
+        }
+    }
+}
+
 /// Explicit peer support, with no implicit enhanced-content permissions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LawPeer {
     /// Peer accepts patient demographics.
-    pub patient: bool,
+    pub patient: PeerSupport,
     /// Peer accepts container characteristics.
-    pub container: bool,
+    pub container: PeerSupport,
     /// Peer accepts specimen characteristics.
-    pub specimen: bool,
+    pub specimen: PeerSupport,
     /// Peer accepts explicit dilution instructions.
-    pub dilution: bool,
+    pub dilution: PeerSupport,
     /// Peer accepts app-authorized manager repeats.
-    pub manager_repeat: bool,
+    pub manager_repeat: PeerSupport,
     /// Peer accepts app-supplied repeat/reflex permissions.
-    pub repeat_control: bool,
+    pub repeat_control: PeerSupport,
     /// Peer accepts explicitly mapped priority.
-    pub priority: bool,
+    pub priority: PeerSupport,
 }
 
 impl LawPeer {
@@ -37,13 +66,13 @@ impl LawPeer {
     #[must_use]
     pub fn capabilities(&self) -> analyte_hl7::law::Capabilities {
         analyte_hl7::law::Capabilities {
-            patient: self.patient,
-            container: self.container,
-            specimen: self.specimen,
-            dilution: self.dilution,
-            manager_repeat: self.manager_repeat,
-            repeat_control: self.repeat_control,
-            priority: self.priority,
+            patient: self.patient.into(),
+            container: self.container.into(),
+            specimen: self.specimen.into(),
+            dilution: self.dilution.into(),
+            manager_repeat: self.manager_repeat.into(),
+            repeat_control: self.repeat_control.into(),
+            priority: self.priority.into(),
         }
     }
 }
@@ -194,6 +223,65 @@ pub(crate) fn validate(machine: &MachineDocument, path: &str) -> Result<(), Erro
     let Some(law) = &machine.law else {
         return Ok(());
     };
+    validate_link_and_work(machine, law, path)?;
+    if machine.mappings.as_ref().is_some_and(|mapping| {
+        mapping.identity.correction_status_codes.len() != 1
+            || mapping
+                .identity
+                .correction_status_codes
+                .first()
+                .is_none_or(|code| code.as_str() != "C")
+    }) {
+        return Err(invalid(
+            path,
+            "mappings.identity.correction_status_codes",
+            "LAW corrections require exactly the explicit status C",
+        ));
+    }
+    if machine.mappings.as_ref().is_some_and(|mapping| {
+        let selects = |field: &crate::Field, group, record, number, component| {
+            field.group == group
+                && field.record.as_str() == record
+                && field.field == number
+                && field.component == component
+                && field.repetition == 1
+        };
+        !selects(&mapping.identity.order_id, crate::Group::Order, "OBR", 2, 1)
+            || match &mapping.identity.order_namespace {
+                crate::OrderNamespace::Fixed { .. } => false,
+                crate::OrderNamespace::Field { field } => {
+                    !selects(field, crate::Group::Order, "OBR", 2, 2)
+                }
+            }
+            || match &mapping.identity.sub_id {
+                crate::SubId::Field(field) => {
+                    !selects(field, crate::Group::Observation, "OBX", 4, 1)
+                }
+                crate::SubId::None(_) => true,
+            }
+            || !mapping.identity.run.is_empty()
+    }) {
+        return Err(invalid(
+            path,
+            "mappings.identity",
+            "LAW uses OBR-2 AWOS and complete OBX-4 OG; use OBR-2.2 or an explicit fixed AWOS namespace and no extra run selectors",
+        ));
+    }
+    if machine
+        .orders
+        .as_ref()
+        .is_some_and(|orders| orders.hl7.is_some() || orders.hl7_send.is_some())
+    {
+        return Err(invalid(
+            path,
+            "orders",
+            "LAW cannot use legacy queries or non-LAW work messages",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_link_and_work(machine: &MachineDocument, law: &Law, path: &str) -> Result<(), Error> {
     match law.connection_mode {
         LawConnectionMode::Persistent => {
             if law.outbound_endpoint.is_some() {
@@ -276,60 +364,6 @@ pub(crate) fn validate(machine: &MachineDocument, path: &str) -> Result<(), Erro
             path,
             "law",
             "use query and response deadlines from 1 through 60000 milliseconds",
-        ));
-    }
-    if machine.mappings.as_ref().is_some_and(|mapping| {
-        mapping.identity.correction_status_codes.len() != 1
-            || mapping
-                .identity
-                .correction_status_codes
-                .first()
-                .is_none_or(|code| code.as_str() != "C")
-    }) {
-        return Err(invalid(
-            path,
-            "mappings.identity.correction_status_codes",
-            "LAW corrections require exactly the explicit status C",
-        ));
-    }
-    if machine.mappings.as_ref().is_some_and(|mapping| {
-        let selects = |field: &crate::Field, group, record, number, component| {
-            field.group == group
-                && field.record.as_str() == record
-                && field.field == number
-                && field.component == component
-                && field.repetition == 1
-        };
-        !selects(&mapping.identity.order_id, crate::Group::Order, "OBR", 2, 1)
-            || match &mapping.identity.order_namespace {
-                crate::OrderNamespace::Fixed { .. } => false,
-                crate::OrderNamespace::Field { field } => {
-                    !selects(field, crate::Group::Order, "OBR", 2, 2)
-                }
-            }
-            || match &mapping.identity.sub_id {
-                crate::SubId::Field(field) => {
-                    !selects(field, crate::Group::Observation, "OBX", 4, 1)
-                }
-                crate::SubId::None(_) => true,
-            }
-            || !mapping.identity.run.is_empty()
-    }) {
-        return Err(invalid(
-            path,
-            "mappings.identity",
-            "LAW uses OBR-2 AWOS and complete OBX-4 OG; use OBR-2.2 or an explicit fixed AWOS namespace and no extra run selectors",
-        ));
-    }
-    if machine
-        .orders
-        .as_ref()
-        .is_some_and(|orders| orders.hl7.is_some() || orders.hl7_send.is_some())
-    {
-        return Err(invalid(
-            path,
-            "orders",
-            "LAW cannot use legacy queries or non-LAW work messages",
         ));
     }
     Ok(())
