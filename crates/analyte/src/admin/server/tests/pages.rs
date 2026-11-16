@@ -155,6 +155,7 @@ async fn start_pages_server(
     }
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
+        alert_endpoints: vec![],
         retention: Vec::new(),
         config_path: root.join("program.toml"),
         token: Token::load(root)?,

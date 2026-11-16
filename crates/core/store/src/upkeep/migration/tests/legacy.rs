@@ -30,9 +30,13 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
             .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
         1
     );
-    store.db.execute_batch("PRAGMA user_version=12")?;
+    store
+        .db
+        .pragma_update(None, "user_version", SCHEMA_VERSION + 1)?;
     drop(store);
-    assert!(matches!(open(&path), Err(Error::SchemaTooNew(12))));
+    assert!(
+        matches!(open(&path), Err(Error::SchemaTooNew(version)) if version == SCHEMA_VERSION + 1)
+    );
     Ok(())
 }
 

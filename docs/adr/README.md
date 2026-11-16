@@ -19,3 +19,4 @@ replacement.
 | [0011](0011-result-status-progression.md)       | Result status progression (refines ADR 0003)       |
 | [0012](0012-uniform-layout-and-naming.md)       | One layout and naming scheme for protocols and machines |
 | [0013](0013-retention-of-delivered-data.md)     | Retention of delivered data (refines ADR 0003)     |
+| [0014](0014-external-alert-delivery.md)         | External alert delivery                |
