@@ -1,13 +1,11 @@
 //! Turns mapper output into a stored reading with corrections and findings, and classifies the commit outcome.
-use super::{Error, InterpretationOutcome, MappedReading};
+use super::{Error, InterpretationOutcome, MappedReading, Mapping};
 use analyte_store::{Reading, RevisionOutcome};
 
-pub(super) fn map_reading(
-    mapping: Result<analyte_mapping::Output, Error>,
-) -> Result<MappedReading, Error> {
+pub(super) fn map_reading(mapping: Mapping) -> Result<MappedReading, Error> {
     let mut accepted = false;
     let (reading, corrections, findings) = match mapping {
-        Ok(output) => {
+        Mapping::Mapped(output) => {
             accepted = !output.requires_parking();
             let mut findings = output
                 .findings
@@ -44,8 +42,8 @@ pub(super) fn map_reading(
             )
         }
         // Parser diagnostics can contain source tokens; keep them only in protected evidence.
-        Err(error) => (
-            Reading::Failed(analyte_model::Reason::new(&error.to_string())?),
+        Mapping::Parked(reason) => (
+            Reading::Failed(reason.into_reason()?),
             Vec::new(),
             Vec::new(),
         ),

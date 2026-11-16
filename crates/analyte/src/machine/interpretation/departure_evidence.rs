@@ -1,4 +1,5 @@
 //! Records enabled declarations and wire applications even when syntax or mapping is parked.
+use crate::intake::{Mapping, ParkReason};
 use crate::{Error, installation::config::Machine, invalid};
 use analyte_config::{MachineDeparture, RecordTransport, Stack};
 use analyte_model::{
@@ -10,18 +11,18 @@ pub(crate) async fn for_receipt(
     store: &analyte_store::Handle,
     machine: &Machine,
     id: analyte_model::ReceiptId,
-    mapping: Result<analyte_mapping::Output, Error>,
-) -> Result<(Result<analyte_mapping::Output, Error>, DepartureEvidence), Error> {
+    mapping: Mapping,
+) -> Result<(Mapping, DepartureEvidence), Error> {
     let receipt = store
         .request(crate::deadline(), move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
     let applied = mapping
-        .as_ref()
+        .output()
         .map_or(&[][..], |output| output.applied_departures.as_slice());
     let mut evidence = collect(machine, &receipt.raw, applied)?;
-    let preserved = mapping.as_ref().is_ok_and(|output| {
+    let preserved = mapping.output().is_some_and(|output| {
         output
             .findings
             .iter()
@@ -35,9 +36,9 @@ pub(crate) async fn for_receipt(
     }
     evidence.applied = EvidenceList::new(entries)?;
     let mapping = if let Some(reason) = &evidence.incomplete
-        && mapping.is_ok()
+        && mapping.output().is_some()
     {
-        Err(invalid(reason.as_str()))
+        Mapping::Parked(ParkReason::IncompleteDepartures(reason.clone()))
     } else {
         mapping
     };
