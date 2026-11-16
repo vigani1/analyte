@@ -349,12 +349,22 @@ fn hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context() ->
     if let Order::New { specimen, .. } = &mut request {
         specimen.source = None;
     }
+    // HL7 2.3.1 section 4.2.1.1(d): known-patient new work cannot omit PID.
+    assert!(
+        order::orm(
+            &[request],
+            Subject::Identifier {
+                identifier: b"000Patient",
+                namespace: b"LAB"
+            },
+            header(Version::V231)?,
+            Options::default()
+        )
+        .is_err()
+    );
     let built = order::orm(
         &[request],
-        Subject::Identifier {
-            identifier: b"000Patient",
-            namespace: b"LAB",
-        },
+        Subject::NonPatient,
         header(Version::V231)?,
         Options::default(),
     )?;
