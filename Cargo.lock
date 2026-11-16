@@ -166,7 +166,6 @@ dependencies = [
 name = "analyte-poct"
 version = "0.1.0"
 dependencies = [
- "analyte-model",
  "jiff",
  "proptest",
  "quick-xml",

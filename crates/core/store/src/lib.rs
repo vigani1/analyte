@@ -232,7 +232,7 @@ pub struct Store {
     space: Box<dyn FreeSpace>,
 }
 
-fn key<T: Serialize>(value: &T) -> Result<String, Error> {
+fn document<T: Serialize>(value: &T) -> Result<String, Error> {
     Ok(serde_json::to_string(value)?)
 }
 
@@ -305,3 +305,6 @@ mod test_support;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+mod keys;
+use keys::key;

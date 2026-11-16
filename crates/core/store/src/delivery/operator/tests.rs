@@ -159,7 +159,7 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
     store.attempted(delivery.id, &Attempt::Done, 0)?;
     store.db.execute(
         "INSERT INTO interpretations VALUES (?1,2,?2)",
-        params![key(&metadata.id)?, key(&evidence)?],
+        params![key(&metadata.id)?, document(&evidence)?],
     )?;
     // A correction need not have an outbox row to supersede the older revision.
     let identity = key(&(

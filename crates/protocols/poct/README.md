@@ -4,7 +4,7 @@
 
 **What it does:** Reads and builds POCT Basic Profile messages while retaining the source values.
 
-**Where it sits:** Receives XML message bytes; supplies structured messages and duplicate comparisons to the host and mapping.
+**Where it sits:** Receives XML message bytes; supplies structured messages to the host and mapping.
 
 **What it must never do:** Access connections, choose acceptance or resolve trusted identities; the host owns storage and clocks.
 
@@ -15,6 +15,5 @@
 - `views/message`: Required Basic Profile message fields.
 - `syntax/structure`: Message structure checks.
 - `messages`: Reply message construction and XML escaping.
-- `duplicate`: Bounded observation duplicate comparison.
 
 [Technical details and safety guidance](DETAILS.md).

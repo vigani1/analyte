@@ -1,8 +1,7 @@
 # POCT01-A2 Observation Reviewer
 
 Evidence level: **documented**. The crate provides Basic Profile components
-as a pure library: bounded XML syntax and typed messages, reviewer builders
-and observation duplicate comparison. Conversation state and deadlines live in
+as a pure library: bounded XML syntax and typed messages, reviewer builders. Conversation state and deadlines live in
 `analyte-dialog::poct`; stream boundaries live in `analyte-framing::poct`.
 The `Dialog` and action names below refer to that dialog module. Common-model
 conversion lives in `analyte-mapping`. Tests use independently written synthetic messages. There is no real
@@ -94,8 +93,6 @@ headers creates clinical content; source offsets locate retained evidence and
 are excluded from clinical comparison. Older stored digests are compared against
 retained typed evidence on a miss, bounded by `page_rows`, without rewriting it.
 
-The standalone, bounded `DuplicateIndex` remains a library API for other hosts;
-it is not durable storage and the program does not use it as a second mechanism.
 The program recovers Hello context from complete interpreted receipts, excluding
 transport-journal fragments, for both live receive and operator reprocessing.
 
@@ -103,8 +100,7 @@ Program/reference-receiver regression:
 `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction` in
 `crates/analyte/tests/vendor_receive.rs` proves a real delivery, lost-ACK resend,
 reconnect, restart, edited revision, changed-original conflict, and missing
-time/declared sequence/device evidence. Library duplicate tests alone do not
-prove those program behaviors (Appendix B section 3.2, pp.71–72; ADR 0003).
+time/declared sequence/device evidence. These program tests cover the behavior (Appendix B section 3.2, pp.71–72; ADR 0003).
 
 Mapping preserves original numbers, codes, code systems/versions, units, flags
 and source times. Source paths retain one-based XML element positions, including
@@ -205,7 +201,7 @@ raise the documented evidence level or close the unchecked conformance gates.
 Common-model observation conversion and configured code/identity mapping now live
 in `analyte-mapping` (`poct::map_observations` and `map_poct`). The mapping tests
 are in `crates/steps/mapping/tests/poct/mod.rs`, with their original assertions unchanged.
-This crate retains POCT syntax and source-evidence duplicate comparison.
+This crate retains POCT syntax and reviewer builders.
 
 Conversation state and deadline policy live in `analyte-dialog`, in `src/poct.rs`.
 Conversation tests live in `crates/steps/dialog/tests/poct.rs`.

@@ -1,5 +1,5 @@
 //! Stores and pages order-change feed entries.
-use crate::{Error, Lookup, OrderPage, OrderTrust, Store, key};
+use crate::{Error, Lookup, OrderPage, OrderTrust, Store};
 use analyte_model::{Identifier, SampleId};
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -15,7 +15,7 @@ impl Store {
         let tx = self.db.transaction()?;
         tx.execute("INSERT INTO feed(destination,cursor,complete,trusted,polled) VALUES (?1,?2,?3,1,?4) ON CONFLICT(destination) DO UPDATE SET cursor=excluded.cursor,complete=max(feed.complete,excluded.complete),trusted=1,polled=excluded.polled",params![page.destination.as_str(),page.cursor.as_str(),page.complete,page.polled])?;
         for order in &page.orders {
-            tx.execute("INSERT INTO orders VALUES (?1,?2,?3,?4,?5,?6,(SELECT generation FROM feed WHERE destination=?1)) ON CONFLICT(destination,id) DO UPDATE SET sample=excluded.sample,evidence=excluded.evidence,tombstone=excluded.tombstone,expiry=excluded.expiry,generation=excluded.generation", params![page.destination.as_str(),order.id.as_str(),order.sample.as_str(),key(order)?,order.tombstone,order.expiry])?;
+            tx.execute("INSERT INTO orders VALUES (?1,?2,?3,?4,?5,?6,(SELECT generation FROM feed WHERE destination=?1)) ON CONFLICT(destination,id) DO UPDATE SET sample=excluded.sample,evidence=excluded.evidence,tombstone=excluded.tombstone,expiry=excluded.expiry,generation=excluded.generation", params![page.destination.as_str(),order.id.as_str(),order.sample.as_str(),crate::document(order)?,order.tombstone,order.expiry])?;
         }
         tx.commit()?;
         Ok(())

@@ -120,7 +120,7 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
     let identity_key = key(&(&first.machine, &identity.observation))?;
     store.db.execute(
         "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
-        params![receipt_key, key(&evidence)?],
+        params![receipt_key, document(&evidence)?],
     )?;
     store.db.execute(
         "INSERT INTO observation_revisions VALUES (?1,0,?2,1,?3)",
@@ -327,7 +327,7 @@ fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -
     store.receive(&metadata, b"raw", b"config")?;
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
-    store.limits.record_bytes = key(&evidence)?.len();
+    store.limits.record_bytes = document(&evidence)?.len();
     store.interpret_reconciled(metadata.id, evidence, &[false], &[], |_, _| Ok(vec![]))?;
     for delta in [0, 1] {
         let action = Reprocess {

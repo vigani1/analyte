@@ -169,7 +169,7 @@ fn parking(encoded: &str) -> Result<String, Error> {
     let value: serde_json::Value = serde_json::from_str(encoded)?;
     if value.is_object() {
         let evidence: ParkingEvidence = serde_json::from_value(value)?;
-        return crate::key(&evidence);
+        return crate::document(&evidence);
     }
     let kind: LegacyParkingKind =
         serde_json::from_value(value.get(0).ok_or(Error::Corruption)?.clone())?;

@@ -262,7 +262,7 @@ fn adr0003_v4_migration_preserves_orders_and_flags_unrecoverable_coverage() -> T
     Store::migrate_v2(&mut db)?;
     Store::migrate_v3(&mut db, 65_536)?;
     db.execute_batch(include_str!("../../../upkeep/migration_v4.sql"))?;
-    db.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app','order','machine','1',?1,101,101,'reserved')",[key(&OrderState::Sending)?])?;
+    db.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app','order','machine','1',?1,101,101,'reserved')",[document(&OrderState::Sending)?])?;
     db.execute("INSERT INTO machine_order_history(machine_order,evidence) VALUES (1,?1)",[serde_json::json!({"id":1,"key":{"destination":"app","order":"order","machine":"machine"},"version":1,"state":"Sending","created_at":101,"updated_at":101,"source_code":"reserved"}).to_string()])?;
     drop(db);
     let store = open(&path)?;
