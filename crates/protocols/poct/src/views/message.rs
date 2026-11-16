@@ -443,8 +443,8 @@ fn parse_capabilities(
         "CS" => Profile::Continuous,
         _ => return Err(MessageError::Data(data::DataError::Code)),
     };
-    let mut topics = Vec::new();
-    let mut directives = Vec::new();
+    let mut topics: Vec<data::Code> = Vec::new();
+    let mut directives: Vec<data::Code> = Vec::new();
     for (i, e) in structure::children(document, dsc) {
         if matches!(
             e.name(),
@@ -453,11 +453,20 @@ fn parse_capabilities(
             let Some(Some(Value::Code(Nullable::Value(code)))) = values.get(i) else {
                 return Err(MessageError::Structure);
             };
-            if e.name() == "DSC.topics_supported_cd" {
-                topics.push(code.clone());
+            let set = if e.name() == "DSC.topics_supported_cd" {
+                &mut topics
             } else {
-                directives.push(code.clone());
+                &mut directives
+            };
+            if set.iter().any(|member| {
+                member.value == code.value
+                    && member.system == code.system
+                    && member.system_name == code.system_name
+                    && member.version == code.version
+            }) {
+                return Err(MessageError::Data(data::DataError::Code));
             }
+            set.push(code.clone());
         }
     }
     Ok(Capabilities {

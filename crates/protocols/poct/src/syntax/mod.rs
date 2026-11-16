@@ -55,6 +55,8 @@ pub struct Element {
     parent: Option<usize>,
     attributes: Vec<(String, String)>,
     text: String,
+    first_text: String,
+    text_ended: bool,
 }
 
 impl Element {
@@ -80,6 +82,12 @@ impl Element {
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    /// Returns initial direct XML text, before any child element.
+    #[must_use]
+    pub fn first_text(&self) -> &str {
+        &self.first_text
     }
 }
 
@@ -137,12 +145,15 @@ impl Document {
                         }
                     }
                     let (name, attributes) = parse_start(&start, limits)?;
+                    end_initial_text(&mut elements, &stack)?;
                     let index = elements.len();
                     elements.push(Element {
                         name: name.to_owned(),
                         parent: stack.last().copied(),
                         attributes,
                         text: String::new(),
+                        first_text: String::new(),
+                        text_ended: false,
                     });
                     if !empty {
                         stack.push(index);
@@ -187,7 +198,9 @@ impl Document {
                 }
                 Event::DocType(_) => return Err(Error::Doctype),
                 Event::PI(_) => return Err(Error::ProcessingInstruction),
-                Event::Comment(_) => {}
+                Event::Comment(_) => {
+                    end_initial_text(&mut elements, &stack)?;
+                }
                 Event::Eof => break,
             }
         }
@@ -297,16 +310,24 @@ fn validate_declaration(
     Ok(())
 }
 
+// ED uses an initial text child only; element and comment nodes end that child.
+fn end_initial_text(elements: &mut [Element], stack: &[usize]) -> Result<(), Error> {
+    if let Some(index) = stack.last().copied() {
+        elements.get_mut(index).ok_or(Error::Root)?.text_ended = true;
+    }
+    Ok(())
+}
+
 fn append_text(elements: &mut [Element], stack: &[usize], text: &str) -> Result<(), Error> {
     if text.chars().any(|c| !xml_character(c)) {
         return Err(Error::Syntax);
     }
     if let Some(index) = stack.last() {
-        elements
-            .get_mut(*index)
-            .ok_or(Error::Root)?
-            .text
-            .push_str(text);
+        let element = elements.get_mut(*index).ok_or(Error::Root)?;
+        element.text.push_str(text);
+        if !element.text_ended {
+            element.first_text.push_str(text);
+        }
     } else if !text
         .bytes()
         .all(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))

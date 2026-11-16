@@ -590,4 +590,5 @@ async fn assert_missing_device_retained(run: &mut Running, hello: &str) -> Resul
 
 mod scenarios_1;
 
+mod edits;
 mod identity;

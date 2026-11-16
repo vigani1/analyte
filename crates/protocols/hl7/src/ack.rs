@@ -187,7 +187,7 @@ fn validate_response(
         7,
         if msh.version().uses_dtm() { 24 } else { 26 },
     )?;
-    if msh.version().uses_dtm() && !crate::datatypes::ts(&[response.timestamp]) {
+    if !crate::datatypes::ts(&[response.timestamp]) {
         return Err(Error::Control {
             segment: "MSH",
             field: 7,
@@ -266,6 +266,12 @@ fn encode_error(
         return Err(Error::Control {
             segment: "ERR",
             field: 1,
+        });
+    }
+    if error.code == b"0" || !crate::views::error_code(error.code, version) {
+        return Err(Error::Control {
+            segment: "ERR",
+            field: 3,
         });
     }
     let mut location = Vec::new();
