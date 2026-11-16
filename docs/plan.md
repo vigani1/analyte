@@ -272,6 +272,9 @@ them can be collected at any time and kept as test data.
 - **Monitoring:** pending bytes and oldest item age, storage commit time,
   order cache freshness and uncertain orders, each alert with a named
   responder.
+- **Retention:** ADR 0013 defines required site periods, keyed tombstones, explicit
+  holds and bounded audited receipt purges. Existing stores need the offline
+  incremental-vacuum conversion described in the program guide.
 - **Before a pilot:** the supported outage length, disk capacity and reserve,
   retention, and backup and restore targets are written down.
 
@@ -281,8 +284,7 @@ them can be collected at any time and kept as test data.
   certificates and rotated credentials.
 - Health data stays in the protected store; logs carry IDs, not payloads.
 - GDPR roles and retention are decided per deployment. Nothing is deleted
-  silently; if a deployment needs data to expire, that is a separate audited
-  policy.
+  silently; ADR 0013 implements the explicit audited retention policy.
 - EU: software that only moves data is often not a medical device, but sending
   work lists to analyzers needs an intended-purpose statement and an
   assessment under MDCG 2019-11 before any claim is made.

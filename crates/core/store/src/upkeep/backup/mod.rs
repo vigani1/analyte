@@ -6,8 +6,9 @@ use std::{path::Path, time::Instant};
 impl Store {
     /// Uses SQLite online backup, then checks the restored copy before reporting success.
     /// # Errors
-    /// Refuses an existing target, timeout, corruption or database/filesystem failures.
+    /// Refuses an existing target, busy maintenance, timeout, corruption or database/filesystem failures.
     pub fn backup(&self, target: &Path, deadline: Instant) -> Result<(), Error> {
+        let _maintenance = crate::upkeep::retention::maintenance(&self.path, false)?;
         let file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)

@@ -547,6 +547,7 @@ async fn start_overview_server(
     let host = socket.local_addr()?.to_string();
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
+        retention: Vec::new(),
         config_path: root.join("program.toml"),
         token: Token::load(root)?,
         sessions: Sessions::default(),

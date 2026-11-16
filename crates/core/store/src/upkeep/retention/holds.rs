@@ -87,3 +87,48 @@ impl Store {
         )?)
     }
 }
+
+/// One active hold from a bounded operator page.
+pub struct RetentionHold {
+    /// Monotonic local row identity for pagination.
+    pub sequence: i64,
+    /// Receipt or order covered by this hold.
+    pub target: HoldTarget,
+}
+impl Store {
+    /// Lists one bounded page of active holds after a local row identity.
+    /// # Errors
+    /// Refuses invalid cursors, corrupt targets and database errors.
+    pub fn retention_holds(&self, after: i64) -> Result<Vec<RetentionHold>, Error> {
+        if after < 0 {
+            return Err(Error::InvalidInput);
+        }
+        let mut statement = self.db.prepare("SELECT rowid,kind,target FROM retention_holds WHERE active=1 AND rowid>?1 ORDER BY rowid LIMIT ?2")?;
+        let rows = statement.query_map(
+            params![
+                after,
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidInput)?
+            ],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
+        )?;
+        rows.map(|row| {
+            let (sequence, kind, text) = row?;
+            let target = match kind.as_str() {
+                "receipt" => HoldTarget::Receipt(serde_json::from_str(&text)?),
+                "order" => {
+                    let (destination, order) = serde_json::from_str(&text)?;
+                    HoldTarget::Order { destination, order }
+                }
+                _ => return Err(Error::Corruption),
+            };
+            Ok(RetentionHold { sequence, target })
+        })
+        .collect()
+    }
+}

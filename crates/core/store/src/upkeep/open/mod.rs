@@ -54,7 +54,7 @@ impl Store {
         Self::open_locked_starting(path, limits, space, lock, &default_startup()?)
     }
 
-    fn open_locked_starting(
+    pub(crate) fn open_locked_starting(
         path: &Path,
         limits: Limits,
         space: Box<dyn FreeSpace>,
@@ -66,6 +66,9 @@ impl Store {
             startup.install(&mut db)?;
             db.busy_timeout(limits.busy_timeout)?;
             let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+            if version == 0 {
+                db.execute_batch("PRAGMA auto_vacuum=INCREMENTAL")?;
+            }
             Ok((db, version))
         })?;
         if version > SCHEMA_VERSION {
@@ -73,7 +76,7 @@ impl Store {
         }
         startup.run(StartupStep::Integrity, || Self::integrity(&db))?;
         db.execute_batch(
-            "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;",
         )?;
         if version == 0 {
             startup.run(StartupStep::Migration { from: 0, to: 1 }, || {

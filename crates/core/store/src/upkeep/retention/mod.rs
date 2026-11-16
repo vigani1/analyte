@@ -1,9 +1,14 @@
 //! Retains keyed duplicate evidence and explicit operator holds (ADR 0013).
 mod eligibility;
+mod purge;
+mod tombstones;
+mod vacuum;
+pub use purge::PurgeRun;
+pub(crate) use purge::maintenance;
 mod holds;
 use crate::{Error, Store};
 use hmac::{Hmac, KeyInit, Mac};
-pub use holds::HoldTarget;
+pub use holds::{HoldTarget, RetentionHold};
 use rusqlite::OptionalExtension;
 use sha2::Sha256;
 
@@ -67,3 +72,26 @@ impl Store {
 }
 #[cfg(test)]
 mod tests;
+
+impl Store {
+    pub(crate) fn receipt_was_purged(
+        &self,
+        receipt: analyte_model::ReceiptId,
+    ) -> Result<bool, Error> {
+        Ok(self.db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM retention_tombstones WHERE receipt=?1)",
+            [crate::key(&receipt)?],
+            |r| r.get(0),
+        )?)
+    }
+    pub(crate) fn delivery_was_purged(
+        &self,
+        delivery: analyte_model::DeliveryId,
+    ) -> Result<bool, Error> {
+        Ok(self.db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM retention_deliveries WHERE delivery=?1)",
+            [crate::key(&delivery)?],
+            |r| r.get(0),
+        )?)
+    }
+}

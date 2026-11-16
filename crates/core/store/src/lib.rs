@@ -3,7 +3,7 @@
 mod operator;
 use operator::{alerts, parked, query};
 mod upkeep;
-pub use upkeep::retention::{DigestKey, HoldTarget};
+pub use upkeep::retention::{DigestKey, HoldTarget, PurgeRun, RetentionHold};
 use upkeep::{startup, worker};
 mod orders;
 use orders::{machine_orders, polls};
@@ -57,6 +57,12 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Another process currently owns a backup or retention maintenance operation.
+    #[error("retention maintenance is busy; retry after the active batch or backup")]
+    MaintenanceBusy,
+    /// An existing SQLite file needs one offline conversion before finite retention.
+    #[error("retention requires incremental vacuum; stop the service and run prepare-retention")]
+    RetentionVacuumRequired,
     /// A finite policy requires the original host credential.
     #[error("retention digest key is required")]
     RetentionKeyRequired,

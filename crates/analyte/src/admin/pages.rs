@@ -14,7 +14,7 @@ use std::sync::{Arc, atomic::Ordering};
 
 pub(super) const PAGE: usize = 50;
 const RAW_PAGE: usize = 4096;
-pub(super) const NAV: &str = "<nav><a href=\"/\">Overview</a> <a href=\"/machines\">Machines</a> <a href=\"/parked\">Parked items</a> <a href=\"/orders\">Machine orders</a> <a href=\"/deliveries\">Deliveries</a></nav>";
+pub(super) const NAV: &str = "<nav><a href=\"/\">Overview</a> <a href=\"/machines\">Machines</a> <a href=\"/parked\">Parked items</a> <a href=\"/orders\">Machine orders</a> <a href=\"/deliveries\">Deliveries</a> <a href=\"/retention\">Retention and holds</a></nav>";
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
