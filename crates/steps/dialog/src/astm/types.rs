@@ -42,6 +42,7 @@ impl Default for Timers {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub(super) limit: Limit,
+    pub(super) record_boundaries: astm::RecordBoundaries,
     pub(super) timers: Timers,
     pub(super) role: Role,
     pub(super) bytes: usize,
@@ -50,6 +51,13 @@ pub struct Config {
 }
 
 impl Config {
+    /// Selects an evidenced inbound policy; outbound encoding remains record-per-frame.
+    #[must_use]
+    pub fn with_record_boundaries(mut self, policy: astm::RecordBoundaries) -> Self {
+        self.record_boundaries = policy;
+        self
+    }
+
     /// Validates timers and resource ceilings before a connection starts.
     /// # Errors
     /// Returns `InvalidConfig` for zero budgets or ceilings.
@@ -76,6 +84,7 @@ impl Config {
         }
         Ok(Self {
             limit,
+            record_boundaries: astm::RecordBoundaries::Separate,
             timers,
             role,
             bytes,
@@ -89,6 +98,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             limit: Limit::default(),
+            record_boundaries: astm::RecordBoundaries::Separate,
             timers: Timers::default(),
             role: Role::Computer,
             bytes: 16_777_216,

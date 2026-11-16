@@ -284,6 +284,12 @@ pub(crate) fn unpack<'a>(
                 if let Some(event) = decoder.push(*byte) {
                     match event {
                         Event::Frame(frame) => {
+                            if !settings
+                                .record_boundaries()
+                                .accepts(frame.text(), frame.is_final())
+                            {
+                                return Err(analyte_framing::astm::Error::RecordBoundary.into());
+                            }
                             if payload
                                 .len()
                                 .checked_add(frame.text().len())
