@@ -16,6 +16,22 @@ async fn client(
     ),
     Error,
 > {
+    client_with_setup(settings, |_| Ok(())).await
+}
+async fn client_with_setup(
+    settings: &str,
+    configure: impl FnOnce(&mut Program) -> Result<(), Error>,
+) -> Result<
+    (
+        tempfile::TempDir,
+        Fixture,
+        Reference,
+        Running,
+        TcpStream,
+        TcpListener,
+    ),
+    Error,
+> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(
         temp.path(),
@@ -49,6 +65,7 @@ async fn client(
         .await?;
     let mut loaded = Program::load(&path)?;
     loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
+    configure(&mut loaded)?;
     let running = Running::start_program(loaded, "synthetic-api").await?;
     let (peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
@@ -470,6 +487,41 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
     );
     assert_eq!(count(&path, "machine_order_items")?, 1);
     drop(peer);
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+/// IHE `PaLM` TF-2b B.6 and clinical rule 8: one dialog owner per physical connection.
+#[cfg(feature = "test-hooks")]
+#[tokio::test]
+async fn ihe_palm_tf2b_b6_rule8_reconnect_waits_for_previous_dialog_owner() -> Result<(), Error> {
+    let settings = definition().replace("send_ahead = false", "send_ahead = true");
+    let (hook, control) = analyte::runtime::test_hooks::Committed::new();
+    let (_temp, path, reference, running, mut peer, listener) =
+        client_with_setup(&settings, |program| {
+            program.pause_connection_closing_for_test("law", hook)
+        })
+        .await?;
+    packet(&mut peer).await?;
+    vendor_support::state(&path, "Sending").await?;
+    drop(peer);
+    control.reached().await?;
+    vendor_support::state(&path, "Uncertain").await?;
+    // The reconnect backoff is 100 ms. Hold the real closing owner across that
+    // boundary and observe the listener, rather than sleeping before accepting.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(500), listener.accept())
+            .await
+            .is_err(),
+        "IHE PaLM TF-2b B.6 / rule 8: reconnect opened before the previous dialog owner released its transport"
+    );
+    control.resume();
+    let (mut peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
+    quiet(&mut peer).await?;
+    assert_eq!(count(&path, "machine_orders")?, 1);
+    assert_eq!(count(&path, "machine_order_items")?, 2);
+    vendor_support::state(&path, "Uncertain").await?;
     running.stop().await?;
     reference.close().await?;
     Ok(())

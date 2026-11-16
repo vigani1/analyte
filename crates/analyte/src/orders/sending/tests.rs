@@ -19,7 +19,14 @@ async fn open(path: &Path) -> Result<Handle, Error> {
         page_rows: 100,
         busy_timeout: Duration::from_millis(20),
     };
-    Ok(Handle::start(path.to_owned(), limits, Box::new(Space), 4, deadline()).await?)
+    Ok(Handle::start(
+        path.to_owned(),
+        limits,
+        Box::new(Space),
+        4,
+        crate::test_startup_deadline()?,
+    )
+    .await?)
 }
 
 #[tokio::test]
