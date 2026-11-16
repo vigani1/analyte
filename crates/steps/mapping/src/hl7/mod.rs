@@ -25,6 +25,15 @@ pub(crate) fn validate_message(
     message: &analyte_hl7::Message,
     config: &Validated,
 ) -> Result<(), Error> {
+    message
+        .require_complete_values()
+        .map_err(|source| Error::Hl7 {
+            position: Position {
+                record: 0,
+                field: 0,
+            },
+            source,
+        })?;
     if config
         .effective()
         .hl7_options()

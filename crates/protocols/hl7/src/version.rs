@@ -9,6 +9,11 @@ pub enum Version {
 }
 
 impl Version {
+    // HL7 2.8.2 §2.14.9.2 p.59; 2.9.1 §2.13.9.2 p.69.
+    // Grammar support alone does not qualify typed message semantics.
+    pub(crate) fn defines_truncation(raw: &[u8]) -> bool {
+        matches!(raw, b"2.8.2" | b"2.9.1")
+    }
     /// Selects only an explicitly supported MSH-12 edition.
     #[must_use]
     pub fn parse(raw: &[u8]) -> Option<Self> {

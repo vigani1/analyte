@@ -17,9 +17,17 @@ pub enum Error {
     /// The first segment or its separators are invalid.
     #[error("invalid MSH encoding characters")]
     Encoding,
-    /// Later HL7 truncation syntax is outside these versions.
+    /// The selected edition does not define a truncation character.
     #[error("truncation encoding character is not defined in HL7 2.3.1/2.5.1")]
     Truncation,
+    /// A sender marked a primitive incomplete; it must not enter clinical mapping.
+    #[error("sender-marked truncation at segment {segment}, field {field}")]
+    Truncated {
+        /// One-based segment position.
+        segment: usize,
+        /// One-based field position.
+        field: usize,
+    },
     /// A segment lacks its configured terminator.
     #[error("invalid segment terminator")]
     Terminator,
@@ -134,8 +142,14 @@ pub struct Delimiters {
     pub(crate) repetition: u8,
     pub(crate) escape: u8,
     pub(crate) subcomponent: u8,
+    pub(crate) truncation: Option<u8>,
 }
 impl Delimiters {
+    /// Returns the optional fifth MSH-2 character, never an assumed default.
+    #[must_use]
+    pub fn truncation(self) -> Option<u8> {
+        self.truncation
+    }
     /// Returns field, component, repetition, escape and subcomponent bytes in that order.
     #[must_use]
     pub fn bytes(self) -> [u8; 5] {
@@ -197,18 +211,19 @@ impl Message {
             .split(|b| *b == field)
             .next()
             .ok_or(Error::Encoding)?;
-        if encoding.len() == 5 {
-            return Err(Error::Truncation);
-        }
-        let [component, repetition, escape, subcomponent] = encoding else {
+        let [component, repetition, escape, subcomponent, rest @ ..] = encoding else {
             return Err(Error::Encoding);
         };
+        if rest.len() > 1 {
+            return Err(Error::Encoding);
+        }
         let delimiters = Delimiters {
             field,
             component: *component,
             repetition: *repetition,
             escape: *escape,
             subcomponent: *subcomponent,
+            truncation: rest.first().copied(),
         };
         let bytes = delimiters.bytes();
         for (i, byte) in bytes.iter().enumerate() {
@@ -220,6 +235,11 @@ impl Message {
             {
                 return Err(Error::Encoding);
             }
+        }
+        if delimiters.truncation.is_some_and(|byte| {
+            !byte.is_ascii_graphic() || byte.is_ascii_alphanumeric() || bytes.contains(&byte)
+        }) {
+            return Err(Error::Encoding);
         }
         let message = Self {
             raw: raw.to_vec(),
@@ -239,7 +259,13 @@ impl Message {
             .split(|b| *b == delimiters.component)
             .next()
             .unwrap_or_default();
-        if crate::Version::parse_wire(version_id, law).is_none() {
+        // HL7 2.8.2 §2.14.9.2; 2.9.1 §2.13.9.2. Semantic edition
+        // validation remains the responsibility of the typed MSH view.
+        let modern_encoding = crate::Version::defines_truncation(version_id);
+        if delimiters.truncation.is_some() && !modern_encoding {
+            return Err(Error::Truncation);
+        }
+        if crate::Version::parse_wire(version_id, law).is_none() && !modern_encoding {
             return Err(Error::Control {
                 segment: "MSH",
                 field: 12,
@@ -440,6 +466,12 @@ pub struct Field<'a> {
     pub(crate) delimiters: Delimiters,
 }
 impl<'a> Field<'a> {
+    /// Reports a sender truncation marker on any primitive, retaining `raw` unchanged.
+    #[must_use]
+    pub fn is_truncated(self) -> bool {
+        self.repetitions()
+            .any(|repetition| repetition.components().any(Component::is_truncated))
+    }
     /// Returns exact field bytes.
     #[must_use]
     pub fn raw(self) -> &'a [u8] {
@@ -489,6 +521,14 @@ pub struct Component<'a> {
     delimiters: Delimiters,
 }
 impl<'a> Component<'a> {
+    /// Reports an unescaped sender truncation marker on any primitive in this component.
+    /// This conservative flag does not establish whether the datatype permits truncation.
+    #[must_use]
+    pub fn is_truncated(self) -> bool {
+        self.delimiters
+            .truncation
+            .is_some_and(|marker| self.subcomponents().any(|raw| raw.last() == Some(&marker)))
+    }
     /// Returns exact component bytes.
     #[must_use]
     pub fn raw(self) -> &'a [u8] {
@@ -536,5 +576,6 @@ impl<'a> Iterator for Parts<'a> {
 }
 
 mod text;
+mod truncation;
 pub(crate) use text::validate_escapes;
-pub use text::{TextEscape, decode_text, inspect_text_escapes};
+pub use text::{TextEscape, decode_text, encode_text, inspect_text_escapes};

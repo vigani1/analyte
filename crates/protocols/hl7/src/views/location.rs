@@ -69,9 +69,9 @@ pub fn syntax_location(error: &crate::Error, raw: &[u8], ending: Terminator) -> 
         Error::Control { segment, field } => {
             Location::named(raw, ending, segment.as_bytes(), *field)
         }
-        Error::Limit { segment, field, .. } | Error::Escape { segment, field, .. } => {
-            Location::at(raw, ending, *segment, *field)
-        }
+        Error::Limit { segment, field, .. }
+        | Error::Escape { segment, field, .. }
+        | Error::Truncated { segment, field } => Location::at(raw, ending, *segment, *field),
         Error::Encoding
         | Error::Truncation
         | Error::Terminator

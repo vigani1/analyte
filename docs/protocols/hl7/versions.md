@@ -4,6 +4,20 @@ Only **2.3.1 and 2.5.1** are implemented. MLLP Release 1 is the framing
 profile. Evidence remains documented. Documents for 2.6, 2.8.2 and 2.9.1
 are available and planned; they are not implemented versions.
 
+The lossless syntax layer now also reads 2.8.2 and 2.9.1 envelopes to retain
+their declared truncation character and marker evidence. This is grammar
+groundwork, not typed edition support: `Version`, machine configuration and
+typed message views still refuse those editions. No earlier edition is
+silently upgraded. Truncated input is refused before result mapping, while
+its exact bytes and the field/component marker flags remain available.
+
+| Grammar rule | Source | Test |
+| --- | --- | --- |
+| Optional fifth MSH-2 character; distinct separators; earlier editions refuse it | 2.8.2 §2.14.9.2, p.59; 2.9.1 §2.13.9.2, p.69 | `hl7_2_8_2_s2_14_9_2_and_2_9_1_s2_13_9_2_encoding_characters` |
+| Preserve sender-marked primitives and refuse clinical mapping | 2.8.2 §2.5.5.2, pp.12–13; 2.9.1 §2.4.5.2, pp.14–15 | `hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_preserve_and_refuse_marked_values`; mapping regression `hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping` |
+| Literal truncation-character escape; bounded encoding without shortening | 2.8.2 §§2.7.1–2, pp.20–21; 2.9.1 §§2.6.1–2, pp.22–23 | `hl7_2_9_1_s2_6_1_truncation_character_escape` |
+| Undeclared `\P\` retains the existing reject/preserve policy | Same escape sections | `hl7_2_8_2_s2_7_2_undeclared_p_escape_remains_unsupported` |
+
 | Edition | Difference that matters | Source |
 | --- | --- | --- |
 | 2.3.1 | Legacy laboratory transactions; no OBX-21 observation identifier | Existing scope and field evidence in [checklist](checklist.md) |

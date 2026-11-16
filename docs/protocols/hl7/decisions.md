@@ -14,7 +14,10 @@
   HL7 2.9.1 §§2.4.5.2–3, pp.14–15, §§2.6.1–2, pp.22–23;
   project safety rules 2 and 5. The 2.8.2 text's ambiguous unescaped-literal
   example does not override its escape requirement or justify guessing.
-- **evidence**: documented; implementation and regression coverage pending.
+- **evidence**: documented. `tests/truncation.rs` checks declarations, exact
+  retention, marker flags, escaping and size refusal; mapping regression
+  `hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping` checks that
+  marked input produces a located error before results can be mapped.
 
 The [checklist](checklist.md) owns conformance requirements; the
 [version page](versions.md) owns edition support. These entries explain

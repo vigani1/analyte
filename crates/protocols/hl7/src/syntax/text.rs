@@ -11,6 +11,7 @@ pub(crate) fn validate_escapes(
     let mut offset = parts.next().map_or(0, <[u8]>::len);
     while let Some(code) = parts.next() {
         let valid = matches!(code, b"F" | b"S" | b"T" | b"R" | b"E" | b"H" | b"N")
+            || (code == b"P" && d.truncation.is_some())
             || match code.first() {
                 Some(b'X') => {
                     code.len() > 1
@@ -84,6 +85,54 @@ fn decode(raw: &[u8], charset: Charset) -> Result<String, Error> {
         Charset::Utf8 => String::from_utf8(raw.to_vec()).map_err(|_| Error::CharacterEncoding),
     }
 }
+
+/// Escapes literal data with the message's declared delimiters, without truncating.
+/// # Errors
+/// Refuses control bytes, invalid character encoding, or output exceeding `maximum`.
+pub fn encode_text(raw: &[u8], message: &Message, maximum: usize) -> Result<Vec<u8>, Error> {
+    if raw.len() > maximum {
+        return Err(Error::Limit {
+            kind: "text bytes",
+            segment: 0,
+            field: 0,
+        });
+    }
+    decode(raw, message.charset)?;
+    let d = message.delimiters;
+    let mut output = Vec::new();
+    for byte in raw {
+        if byte.is_ascii_control() {
+            return Err(Error::Encoding);
+        }
+        let code = if *byte == d.field {
+            Some(b'F')
+        } else if *byte == d.component {
+            Some(b'S')
+        } else if *byte == d.repetition {
+            Some(b'R')
+        } else if *byte == d.subcomponent {
+            Some(b'T')
+        } else if *byte == d.escape {
+            Some(b'E')
+        } else if Some(*byte) == d.truncation {
+            Some(b'P')
+        } else {
+            None
+        };
+        let encoded = [d.escape, code.unwrap_or_default(), d.escape];
+        let bytes = if code.is_some() {
+            &encoded[..]
+        } else {
+            std::slice::from_ref(byte)
+        };
+        crate::wire::append(&mut output, bytes, maximum).map_err(|_| Error::Limit {
+            kind: "text bytes",
+            segment: 0,
+            field: 0,
+        })?;
+    }
+    Ok(output)
+}
 /// Decodes delimiter escapes only, retaining hex, local, formatting and repertoire escapes.
 /// # Errors
 /// Returns an encoding error rather than replacing an undecodable byte.
@@ -110,6 +159,7 @@ pub fn decode_text(raw: &[u8], message: &Message) -> Result<String, Error> {
             b"R" => Some(d.repetition),
             b"T" => Some(d.subcomponent),
             b"E" => Some(d.escape),
+            b"P" => d.truncation,
             _ => None,
         };
         if let (Some(byte), Some(_)) = (replacement, tail) {

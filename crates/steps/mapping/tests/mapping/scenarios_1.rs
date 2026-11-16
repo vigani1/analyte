@@ -2,6 +2,25 @@
 use super::*;
 
 #[test]
+fn hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping() -> TestResult {
+    let config = config(HL7_CONFIG)?;
+    let raw = b"MSH|^~\\&#|SYN||||202611161200||ORU^R01^ORU_R01|MSG|P|2.9.1\rOBR|1||001\rOBX|1|ST|SYN||partial#||||||F\r";
+    let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
+    assert!(matches!(
+        map_hl7(&message, &config, input()),
+        Err(analyte_mapping::Error::Hl7 {
+            source: analyte_hl7::Error::Truncated {
+                segment: 3,
+                field: 5
+            },
+            ..
+        })
+    ));
+    assert_eq!(message.raw(), raw);
+    Ok(())
+}
+
+#[test]
 fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
     for (charset, encoding, bytes) in [
         ("8859/1", "latin1", b"caf\xe9\\F\\end".as_slice()),
