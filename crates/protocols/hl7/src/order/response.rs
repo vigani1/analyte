@@ -317,7 +317,7 @@ impl<'a> OrderResponse<'a> {
         }
         let has_patient = segments.peek().is_some_and(|s| s.id() == b"PID");
         if has_patient {
-            segments.next();
+            validate_patient(segments.next().ok_or_else(|| invalid("PID", 0))?, version)?;
             while sent.family == Family::Orm && segments.peek().is_some_and(|s| s.id() == b"NTE") {
                 segments.next();
             }
@@ -395,6 +395,8 @@ fn read_orders<'a>(
         }
         let control = Control::parse(raw(common, 1))?;
         validate_order_status(common)?;
+        let rules = version.order_rules().ok_or_else(|| invalid("MSH", 12))?;
+        refuse_fields(common, rules.withdrawn_orc)?;
         let mut timing = Vec::new();
         if lab.is_some() {
             while segments.peek().is_some_and(|s| s.id() == b"TQ1") {
@@ -480,6 +482,13 @@ fn validate_order_detail(
     version: Version,
 ) -> Result<(), Error> {
     if let Some(obr) = detail {
+        refuse_fields(
+            obr,
+            version
+                .order_rules()
+                .ok_or_else(|| invalid("MSH", 12))?
+                .withdrawn_obr,
+        )?;
         let test = field(obr, 4).ok_or_else(|| invalid("OBR", 4))?;
         let max = version
             .order_rules()
@@ -568,4 +577,43 @@ fn response_acceptance<'a>(
     let msa = Msa::for_version(msa_segment, version)?;
     validate_acceptance(msa, sent_header)?;
     Ok(msa)
+}
+
+fn refuse_fields(segment: Segment<'_>, fields: &[usize]) -> Result<(), Error> {
+    for number in fields {
+        if !raw(segment, *number).is_empty() {
+            return Err(invalid(
+                std::str::from_utf8(segment.id()).map_err(|_| crate::Error::Encoding)?,
+                *number,
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_patient(segment: Segment<'_>, version: Version) -> Result<(), Error> {
+    if !version
+        .order_rules()
+        .ok_or_else(|| invalid("MSH", 12))?
+        .patient_type_required
+    {
+        return Ok(());
+    }
+    let identifiers = field(segment, 3)
+        .filter(|f| !f.is_null())
+        .ok_or_else(|| invalid("PID", 3))?;
+    for repetition in identifiers.repetitions() {
+        let parts = repetition.components().collect::<Vec<_>>();
+        for (number, maximum) in [(1_usize, 15), (5, 5)] {
+            let part = number
+                .checked_sub(1)
+                .and_then(|index| parts.get(index))
+                .ok_or_else(|| invalid("PID", 3))?;
+            super::types::scalar(part.raw(), "CX", number, maximum, true)?;
+        }
+    }
+    field(segment, 5)
+        .filter(|f| !f.is_null())
+        .ok_or_else(|| invalid("PID", 5))?;
+    Ok(())
 }

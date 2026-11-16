@@ -44,7 +44,7 @@ pub(super) fn encode_new_order(
         .version
         .order_rules()
         .ok_or_else(|| invalid("MSH", 12))?;
-    if rules.revision_required
+    if rules.test_cwe
         && (test.version.is_none()
             || specimen
                 .source
@@ -229,7 +229,7 @@ fn encode_timing(
             .version
             .order_rules()
             .ok_or_else(|| invalid("MSH", 12))?;
-        if rules.revision_required && timing.priority_version.is_none() {
+        if rules.test_cwe && timing.priority_version.is_none() {
             return Err(invalid("TQ1", 9));
         }
         if let Some(revision) = timing.priority_version {

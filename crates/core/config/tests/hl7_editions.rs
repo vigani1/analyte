@@ -138,7 +138,8 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
 
 #[test]
 fn adr0012_s3_modern_result_editions_do_not_enable_order_sending() -> Result<(), Error> {
-    for edition in ["v282", "v291"] {
+    {
+        let edition = "v291";
         let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
         let machine = format!("{base}\n{}", include_str!("../examples/hl7_send.toml"));
         let result = Draft::load(
@@ -186,7 +187,6 @@ fn adr0012_s3_config_reports_the_registry_writer_blocker() {
         ("v23", Version::V23),
         ("v24", Version::V24),
         ("v25", Version::V25),
-        ("v282", Version::V282),
         ("v291", Version::V291),
     ] {
         let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
@@ -207,28 +207,30 @@ fn adr0012_s3_config_reports_the_registry_writer_blocker() {
 }
 
 #[test]
-fn hl7_2_6_s4_4_6_s2_a_13_7_config_requires_explicit_revisions() {
-    let base = MACHINE.replace("edition = \"v251\"", "edition = \"v26\"");
-    let send = include_str!("../examples/hl7_send.toml")
-        .replace(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
-    let send = format!("{send}\npriority_version = \"prio-r1\"\n");
-    for (settings, accepted) in [
-        (send.clone(), true),
-        (send.replace("priority_version = \"prio-r1\"", ""), false),
-        (send.replace("specimen_version = \"1\"", ""), false),
-        (
-            send.replace(r#"["SYN","","L","","","","test-r1"]"#, r#"["SYN","","L"]"#),
-            false,
-        ),
-    ] {
-        let machine = format!("{base}\n{settings}");
-        let result = Draft::load(
-            ("synthetic.toml", &machine),
-            ("site.toml", SITE),
-            ("local.toml", "schema_version=1"),
-        )
-        .unwrap()
-        .validate();
-        assert_eq!(result.is_ok(), accepted, "{result:?}");
+fn hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions() {
+    for edition in ["v26", "v282"] {
+        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let send = include_str!("../examples/hl7_send.toml")
+            .replace(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
+        let send = format!("{send}\npriority_version = \"prio-r1\"\n");
+        for (settings, accepted) in [
+            (send.clone(), true),
+            (send.replace("priority_version = \"prio-r1\"", ""), false),
+            (send.replace("specimen_version = \"1\"", ""), false),
+            (
+                send.replace(r#"["SYN","","L","","","","test-r1"]"#, r#"["SYN","","L"]"#),
+                false,
+            ),
+        ] {
+            let machine = format!("{base}\n{settings}");
+            let result = Draft::load(
+                ("synthetic.toml", &machine),
+                ("site.toml", SITE),
+                ("local.toml", "schema_version=1"),
+            )
+            .unwrap()
+            .validate();
+            assert_eq!(result.is_ok(), accepted, "{result:?}");
+        }
     }
 }

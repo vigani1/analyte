@@ -160,7 +160,7 @@ pub fn oml(
     header: Header<'_>,
     options: Options,
 ) -> Result<OrderMessage, Error> {
-    if !matches!(header.version, Version::V251 | Version::V26) {
+    if !matches!(header.version, Version::V251 | Version::V26 | Version::V282) {
         return Err(invalid("MSH", 12));
     }
     build(orders, subject, header, options, Family::Oml)
@@ -296,7 +296,17 @@ pub fn context(
                     return Err(invalid("ORC", 4));
                 }
                 let mut group_number = group.to_vec();
-                group_number.extend_from_slice(authority);
+                if crate::Msh::new(sent.message())?
+                    .version()
+                    .order_rules()
+                    .ok_or_else(|| invalid("MSH", 12))?
+                    .group_eip
+                {
+                    group_number
+                        .extend(authority.iter().map(|b| if *b == b'^' { b'&' } else { *b }));
+                } else {
+                    group_number.extend_from_slice(authority);
+                }
                 *fields.get_mut(3).ok_or(Error::Limit)? = group_number;
             }
             if row.id() == b"OBR"
@@ -406,6 +416,18 @@ fn encode_subject(
             let mut identifier = patient.identifier.to_vec();
             identifier.extend_from_slice(b"^^^");
             identifier.extend_from_slice(patient.namespace);
+            let rules = header
+                .version
+                .order_rules()
+                .ok_or_else(|| invalid("MSH", 12))?;
+            if rules.patient_type_required && patient.identifier_type.is_none() {
+                return Err(invalid("PID", 3));
+            }
+            if let Some(kind) = patient.identifier_type {
+                scalar(kind, "CX", 5, 5, true)?;
+                identifier.push(b'^');
+                identifier.extend_from_slice(kind);
+            }
             if header.version == Version::V231 && identifier.len() > 20 {
                 return Err(invalid("PID", 3));
             }

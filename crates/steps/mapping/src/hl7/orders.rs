@@ -233,8 +233,10 @@ impl Command {
     ) -> Result<OrderMessage, Error> {
         match self.version {
             Version::V231 => Ok(order::orm(orders, subject, header, self.options)?),
-            Version::V251 | Version::V26 => Ok(order::oml(orders, subject, header, self.options)?),
-            Version::V23 | Version::V24 | Version::V25 | Version::V282 | Version::V291 => {
+            Version::V251 | Version::V26 | Version::V282 => {
+                Ok(order::oml(orders, subject, header, self.options)?)
+            }
+            Version::V23 | Version::V24 | Version::V25 | Version::V291 => {
                 Err(Error::Context("HL7-order-edition-rules-not-implemented"))
             }
         }

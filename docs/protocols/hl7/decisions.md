@@ -271,3 +271,13 @@ Requiring revisions for all named systems avoids guessing table ownership from
 an HL7 prefix. Sources and the field matrix are in versions.md; protocol
 `edition_orders.rs`, config edition tests and program `hl7_send_cases` establish
 the bounded behavior. Evidence remains documented; no retransmission is added.
+
+## Keep the 2.8.2 writer on the patient-required O22 response
+
+Select section 4.4.7.1 ORL_O22, not section 4.4.7.2 ORL_O41. Order decisions
+without that response group are refused. ORC-4 uses EIP with the placer authority
+as EI subcomponents (4.5.1.4). Caller-supplied patient content needs an explicit
+CX.5 identifier type (2.A.14.5); no type is inferred from a namespace. The
+contract-v1 mapper still omits the optional request PID when no name is supplied.
+The shared writer keeps conservative caps and explicit coding revisions.
+Evidence: edition order and host send/recovery tests listed in versions.md.

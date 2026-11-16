@@ -329,7 +329,7 @@ These capabilities matter to a literal “complete” claim and to future equipm
 - [x] Report specific per-edition blockers from the protocol registry in config
   (ADR 0012 section 3). Evidence:
   `adr0012_s3_config_reports_the_registry_writer_blocker`.
-- [ ] Qualify 2.8.2 and 2.9.1 order encoding and replies from their own
+- [ ] Qualify 2.9.1 order encoding and replies from their own
   chapter 4 and datatype definitions, carry explicit test revisions, and prove
   exact bytes, withdrawn-field refusal, response outcomes and no resend after
   timeout/restart before config enablement. See the version audit.
@@ -341,3 +341,8 @@ These capabilities matter to a literal “complete” claim and to future equipm
   matrix and tests: versions.md, `edition_orders.rs`, config edition tests.
   Host evidence includes 2.6 in `hl7_send_cases` acceptance/rejection,
   cancellation, timeout/disconnect and restart without resend tests (rule 8).
+
+- [x] 2.8.2 bounded O21/O22 with EIP group identity, supplied CX.5,
+  explicit revisions, withdrawn-field refusal and no replay retransmission.
+  Sources and per-field evidence: versions.md; `edition_orders.rs`, config
+  edition tests and program `hl7_send_cases`.

@@ -269,6 +269,8 @@ pub enum Order<'a> {
 /// Caller-supplied PID content for patient-related new orders.
 #[derive(Debug, Clone, Copy)]
 pub struct Patient<'a> {
+    /// Supplied CX.5 identifier type; required by modern editions.
+    pub identifier_type: Option<&'a [u8]>,
     /// Literal patient identifier, supplied by the host.
     pub identifier: &'a [u8],
     /// Explicit assigning namespace for the CX identifier.

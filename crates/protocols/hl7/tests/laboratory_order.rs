@@ -40,6 +40,7 @@ fn new_order<'a>(sample: &'a [u8], source: Code<'a>) -> Result<Order<'a>, Error>
 
 fn subject() -> Subject<'static> {
     Subject::Patient(Patient {
+        identifier_type: None,
         identifier: b"P1",
         namespace: b"LAB",
         family_name: b"Synthetic",

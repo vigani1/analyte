@@ -13,7 +13,8 @@ kept raw or refused visibly. The bounded 2.6 O21/O22 writer is qualified with ex
 see the field matrix in versions.md.
 The bounded 2.8.2 and 2.9.1 profiles receive ORU/R01 results with the modern
 typed rules; legacy queries remain refused by edition and withdrawing section.
-Their order sending also remains blocked pending writer qualification.
+The bounded 2.8.2 O21/O22 writer is qualified; 2.9.1 sending remains blocked
+pending its own writer qualification.
 See [versions](versions.md) for the precise differences,
 source sections, errata items and limitations; this is not full historical-schema
 conformance or simulator qualification.
