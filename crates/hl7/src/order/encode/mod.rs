@@ -176,78 +176,16 @@ fn build(
     if orders.len() > options.limits.segments {
         return Err(Error::Limit);
     }
-    for (value, field, required) in [
-        (header.application, 3, true),
-        (header.facility, 4, false),
-        (header.peer_application, 5, true),
-        (header.peer_facility, 6, false),
-        (header.control_id.raw(), 10, true),
-    ] {
-        scalar(value, "MSH", field, 20, required)?;
-    }
     let mut output = Vec::new();
-    let version = match header.version {
-        Version::V231 => b"2.3.1".as_slice(),
-        Version::V251 => b"2.5.1",
-    };
-    let charset = match options.charset {
-        Charset::Ascii => b"ASCII".as_slice(),
-        Charset::Latin1 => b"8859/1",
-        Charset::Utf8 => b"UNICODE UTF-8",
-    };
-    segment(
+    encode_header(
         &mut output,
-        b"MSH",
-        &[
-            b"^~\\&",
-            header.application,
-            header.facility,
-            header.peer_application,
-            header.peer_facility,
-            header.timestamp.raw(),
-            b"",
-            family.request(),
-            header.control_id.raw(),
-            header.processing.wire(),
-            version,
-            b"",
-            b"",
-            b"",
-            b"",
-            b"",
-            charset,
-        ],
-        options.limits.message_bytes,
+        BuildContext {
+            header,
+            options,
+            family,
+        },
     )?;
-    match subject {
-        // The optional patient group cannot be emitted without PID-5.
-        // HL7 2.3.1 section 3.3.2; omit it when only an identifier is known.
-        Subject::NonPatient | Subject::Unspecified | Subject::Identifier { .. } => {}
-        Subject::Patient(patient) => {
-            scalar(patient.identifier, "PID", 3, 15, true)?;
-            scalar(patient.namespace, "PID", 3, 20, true)?;
-            if patient.family_name.is_empty()
-                || patient.family_name == b"\"\""
-                || patient.family_name.len() > 48
-                || patient.family_name.iter().any(u8::is_ascii_control)
-            {
-                return Err(invalid("PID", 5));
-            }
-            let mut identifier = patient.identifier.to_vec();
-            identifier.extend_from_slice(b"^^^");
-            identifier.extend_from_slice(patient.namespace);
-            if header.version == Version::V231 && identifier.len() > 20 {
-                return Err(invalid("PID", 3));
-            }
-            let name = escape(patient.family_name, "PID", 5, 48)?;
-            segment(
-                &mut output,
-                b"PID",
-                &[b"1", b"", &identifier, b"", &name],
-                options.limits.message_bytes,
-            )?;
-        }
-    }
+    encode_subject(&mut output, header, options, subject)?;
     let mut placer_ids = IdentitySet::default();
     let mut filler_ids = IdentitySet::default();
     let mut specimen_number = 0_usize;
@@ -283,148 +221,24 @@ fn build(
                 priority,
                 timing,
             } => {
-                let mut schedule = b"^^^".to_vec();
-                if let Some(start) = timing.start {
-                    schedule.extend_from_slice(start.raw());
-                }
-                schedule.push(b'^');
-                if let Some(end) = timing.end {
-                    schedule.extend_from_slice(end.raw());
-                }
-                schedule.push(b'^');
-                schedule.extend_from_slice(priority.wire());
-                segment(
+                encode_new_order(
                     &mut output,
-                    b"ORC",
-                    &[
-                        control.wire(),
-                        &placer,
-                        &filler,
-                        b"",
-                        b"",
-                        b"F",
-                        match family {
-                            Family::Orm => &schedule,
-                            Family::Oml => b"",
-                        },
-                    ],
-                    options.limits.message_bytes,
-                )?;
-                let test = code(
-                    *test,
-                    b'^',
-                    match header.version {
-                        Version::V231 => 200,
-                        Version::V251 => 250,
+                    BuildContext {
+                        header,
+                        options,
+                        family,
                     },
-                    "OBR",
-                    4,
-                    CodeForm::Ce,
-                )?;
-                let sample_field = match family {
-                    Family::Orm => match specimen.field {
-                        SampleField::Placer1 => 18,
-                        SampleField::Placer2 => 19,
+                    NewRequest {
+                        test: *test,
+                        specimen: *specimen,
+                        priority: *priority,
+                        timing: *timing,
                     },
-                    Family::Oml => 2,
-                };
-                let (source, sample) = match family {
-                    Family::Orm => (
-                        specimen
-                            .source
-                            .map(|source| code(source, b'&', 300, "OBR", 15, CodeForm::Ce))
-                            .transpose()?
-                            .unwrap_or_default(),
-                        escape(specimen.sample.raw(), "OBR", sample_field, 60)?,
-                    ),
-                    Family::Oml => (
-                        code(
-                            specimen.source.ok_or_else(|| invalid("SPM", 4))?,
-                            b'^',
-                            250,
-                            "SPM",
-                            4,
-                            CodeForm::Cwe,
-                        )?,
-                        escape(
-                            specimen.sample.raw(),
-                            "SPM",
-                            2,
-                            super::laboratory::SPECIMEN_ID_BYTES,
-                        )?,
-                    ),
-                };
-                if family == Family::Oml {
-                    let mut priority_code = priority.wire().to_vec();
-                    priority_code.extend_from_slice(b"^^HL70485");
-                    segment(
-                        &mut output,
-                        b"TQ1",
-                        &[
-                            b"1",
-                            b"",
-                            b"",
-                            b"",
-                            b"",
-                            b"",
-                            timing.start.map_or(b"", |v| v.raw()),
-                            timing.end.map_or(b"", |v| v.raw()),
-                            &priority_code,
-                        ],
-                        options.limits.message_bytes,
-                    )?;
-                }
-                let number = match family {
-                    Family::Orm => offset.checked_add(1).ok_or(Error::Limit)?,
-                    Family::Oml => {
-                        specimen_number = specimen_number.checked_add(1).ok_or(Error::Limit)?;
-                        specimen_number
-                    }
-                }
-                .to_string();
-                if family == Family::Oml && number.len() > 4 {
-                    return Err(invalid("SPM", 1));
-                }
-                let mut fields = vec![b"".as_slice(); 27];
-                for (field, value) in [
-                    (1_usize, number.as_bytes()),
-                    (2, placer.as_slice()),
-                    (3, filler.as_slice()),
-                    (4, test.as_slice()),
-                ] {
-                    let target = field
-                        .checked_sub(1)
-                        .and_then(|n| fields.get_mut(n))
-                        .ok_or(Error::Limit)?;
-                    *target = value;
-                }
-                if family == Family::Orm {
-                    for (field, value) in [
-                        (15, source.as_slice()),
-                        (sample_field, sample.as_slice()),
-                        (27, schedule.as_slice()),
-                    ] {
-                        let target = field
-                            .checked_sub(1)
-                            .and_then(|n| fields.get_mut(n))
-                            .ok_or(Error::Limit)?;
-                        *target = value;
-                    }
-                }
-                segment(&mut output, b"OBR", &fields, options.limits.message_bytes)?;
-                if family == Family::Oml {
-                    segment(
-                        &mut output,
-                        b"SPM",
-                        &[
-                            specimen_number.to_string().as_bytes(),
-                            &sample,
-                            b"",
-                            &source,
-                        ],
-                        options.limits.message_bytes,
-                    )?;
-                }
+                    &placer,
+                    &filler,
+                    offset,
+                    &mut specimen_number,
+                )?;
             }
         }
     }
@@ -505,3 +319,101 @@ pub fn context(
         family: sent.family,
     })
 }
+
+#[derive(Clone, Copy)]
+struct BuildContext<'a> {
+    header: Header<'a>,
+    options: Options,
+    family: Family,
+}
+fn encode_header(output: &mut Vec<u8>, context: BuildContext<'_>) -> Result<(), Error> {
+    let BuildContext {
+        header,
+        options,
+        family,
+    } = context;
+    for (value, field, required) in [
+        (header.application, 3, true),
+        (header.facility, 4, false),
+        (header.peer_application, 5, true),
+        (header.peer_facility, 6, false),
+        (header.control_id.raw(), 10, true),
+    ] {
+        scalar(value, "MSH", field, 20, required)?;
+    }
+    let version = match header.version {
+        Version::V231 => b"2.3.1".as_slice(),
+        Version::V251 => b"2.5.1",
+    };
+    let charset = match options.charset {
+        Charset::Ascii => b"ASCII".as_slice(),
+        Charset::Latin1 => b"8859/1",
+        Charset::Utf8 => b"UNICODE UTF-8",
+    };
+    segment(
+        output,
+        b"MSH",
+        &[
+            b"^~\\&",
+            header.application,
+            header.facility,
+            header.peer_application,
+            header.peer_facility,
+            header.timestamp.raw(),
+            b"",
+            family.request(),
+            header.control_id.raw(),
+            header.processing.wire(),
+            version,
+            b"",
+            b"",
+            b"",
+            b"",
+            b"",
+            charset,
+        ],
+        options.limits.message_bytes,
+    )?;
+    Ok(())
+}
+
+fn encode_subject(
+    output: &mut Vec<u8>,
+    header: Header<'_>,
+    options: Options,
+    subject: Subject<'_>,
+) -> Result<(), Error> {
+    match subject {
+        // The optional patient group cannot be emitted without PID-5.
+        // HL7 2.3.1 section 3.3.2; omit it when only an identifier is known.
+        Subject::NonPatient | Subject::Unspecified | Subject::Identifier { .. } => {}
+        Subject::Patient(patient) => {
+            scalar(patient.identifier, "PID", 3, 15, true)?;
+            scalar(patient.namespace, "PID", 3, 20, true)?;
+            if patient.family_name.is_empty()
+                || patient.family_name == b"\"\""
+                || patient.family_name.len() > 48
+                || patient.family_name.iter().any(u8::is_ascii_control)
+            {
+                return Err(invalid("PID", 5));
+            }
+            let mut identifier = patient.identifier.to_vec();
+            identifier.extend_from_slice(b"^^^");
+            identifier.extend_from_slice(patient.namespace);
+            if header.version == Version::V231 && identifier.len() > 20 {
+                return Err(invalid("PID", 3));
+            }
+            let name = escape(patient.family_name, "PID", 5, 48)?;
+            segment(
+                output,
+                b"PID",
+                &[b"1", b"", &identifier, b"", &name],
+                options.limits.message_bytes,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+mod request;
+use request::{NewRequest, encode_new_order};
