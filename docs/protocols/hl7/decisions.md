@@ -1,5 +1,18 @@
 # HL7 decisions
 
+## Edition recognition precedes typed qualification
+
+- **what**: Recognize the eight explicit edition IDs in one registry. Keep each
+  typed field profile optional until its actual rules have been implemented;
+  a missing profile returns `EditionRules` with the edition's static name.
+  Do not fill a new row by copying 2.5.1's interpretation.
+- **why**: An exhaustive enum is infrastructure, not conformance evidence.
+  This lets registry and configuration work remain buildable while later
+  commits add compatibility, message/datatype rules and writer support.
+- **source**: ADR 0007 and ADR 0012 §3; HL7 2.5.1 §2.8, pp.2-20–22.
+- **test**: the eight edition cases in `version/tests.rs`; existing 2.3.1 and
+  2.5.1 conformance tests continue to guard their implemented field rules.
+
 ## Sender-marked truncation
 
 - **what**: Preserve the complete received spelling and expose whether a primitive

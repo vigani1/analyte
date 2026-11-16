@@ -145,13 +145,13 @@ fn law_tf2b_c4_msh_11_m_pt_production_only() -> TestResult {
 }
 
 #[test]
-fn law_tf2b_c4_msh_12_m_vid_compatible_25_versions_and_base_policy_unchanged() -> TestResult {
+fn law_tf2b_c4_msh_12_m_vid_compatible_versions_and_adr0012_exact_base_registry() -> TestResult {
     for version in ["2.5", "2.5.1", "2.5.2"] {
         both("query", &[(12, version)], "", true)?;
         let bytes = wire("query", &[(12, version)], "")?;
         assert_eq!(
             Message::parse(bytes.as_bytes(), options()).is_ok(),
-            version == "2.5.1"
+            matches!(version, "2.5" | "2.5.1")
         );
     }
     for version in ["", "\"\"", "2.3.1", "2.6", "2.5.1~2.5.1", "2.5&bad"] {

@@ -4,6 +4,9 @@ use thiserror::Error;
 /// Syntax failures carry positions, never message contents.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// The edition is recognized, but its typed field rules are not implemented.
+    #[error("typed field rules are not implemented for HL7 {0}; retain the raw message")]
+    EditionRules(&'static str),
     /// A configured resource ceiling was reached.
     #[error("{kind} limit exceeded at segment {segment}, field {field}")]
     Limit {

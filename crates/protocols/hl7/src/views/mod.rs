@@ -184,13 +184,12 @@ impl<'a> Msh<'a> {
                 segment: "MSH",
                 field: 12,
             })?;
+        version.require_rules()?;
         validate_message_type(segment, version)?;
         // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
         // 2.3.1 retains optional usage. Validate a supplied TS in either edition.
         let timestamp = segment.field(7);
-        if version.rules().required_timestamp
-            || timestamp.is_some_and(|field| !field.raw().is_empty())
-        {
+        if version.required_timestamp() || timestamp.is_some_and(|field| !field.raw().is_empty()) {
             let field = required(segment, 7)?;
             let mut repetitions = field.repetitions();
             let valid = repetitions.next().is_some_and(|value| {
@@ -401,6 +400,12 @@ impl<'a> ErrView<'a> {
             });
         }
         match version {
+            Version::V23
+            | Version::V24
+            | Version::V25
+            | Version::V26
+            | Version::V282
+            | Version::V291 => Err(Error::EditionRules(version.as_str())),
             Version::V231 => Ok(Self::V231(get(1)?)),
             Version::V251 => {
                 let severity = get(4)?;
@@ -426,6 +431,7 @@ mod location;
 pub use location::*;
 
 fn validate_message_type(segment: Segment<'_>, version: Version) -> Result<(), Error> {
+    let rules = version.require_rules()?;
     let message_type = required(segment, 9)?;
     let type_parts: Vec<_> = message_type
         .raw()
@@ -470,13 +476,12 @@ fn validate_message_type(segment: Segment<'_>, version: Version) -> Result<(), E
             | b"VXR"
             | b"VXX"
     );
-    let omitted_trigger = version.rules().optional_response_trigger && response;
-    if (version.rules().message_lengths.is_some() && type_parts.len() != 3)
+    let omitted_trigger = rules.optional_response_trigger && response;
+    if (rules.message_lengths.is_some() && type_parts.len() != 3)
         || type_parts.len() > 3
         || (type_parts.len() < 2 && !omitted_trigger)
         || type_parts.iter().enumerate().any(|(index, part)| {
-            (version
-                .rules()
+            (rules
                 .message_lengths
                 .is_some_and(|lengths| part.len() > lengths.get(index).copied().unwrap_or(0)))
                 || (part.is_empty() && !(index == 1 && omitted_trigger))
