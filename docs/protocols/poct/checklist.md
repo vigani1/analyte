@@ -8,7 +8,7 @@
 - [x] **R** Accept or reject Hello and acknowledge accepted Hello/Status in sequence; park parse/interpretation failures, send a classified error ACK then abnormal Terminate when the header reference is unambiguous (Appendix B section 4.1.2, p.78). Dialog test: `poct01_b_4_1_2_startup_and_rejection_in_sequence`. Program tests: `poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw`, `poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack`. Termination deadline test: `poct01_b4_1_2_invalid_capabilities_are_retained_and_termination_has_deadline`.
 - [ ] **R** Read capabilities, tailor topics and support legal repeated-topic handling (Appendix B sections 4.1.3, 5.6-5.7, pp.78,95-96). Partial evidence: `poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination` exercises repeated mandatory OBS topics; the host capacity test below covers the size limit. Remaining: the cited repeated-topic test does not exercise capability-dependent topic selection; optional topic extensions remain unimplemented.
 - [ ] **R** Request announced new observations; support patient/nonpatient results, zero/multiple messages and EOT completion (Appendix B sections 4.1.4-4.1.5, pp.78-79). Partial evidence: `poct01_b_6_10_patient_and_nonpatient_values_are_explicit` is a parser test; `poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks` and `poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination` exercise parts of the dialog. Remaining: a program-level conversation matrix covering patient/nonpatient and zero/multiple transfers through EOT, rather than inferring full receive behavior from syntax samples.
-- [x] **R** Acknowledge dynamic transfers after durable custody; configured device/time/analyte identity (plus sequence when declared) uses the store's revision history to prevent duplicate deliveries across lost ACK, reconnect and restart, with edited corrections and ambiguous/conflicting receipts parked (Appendix B section 3.2, pp.71-72; section 5.5, p.95; section 5.21 Tables 46/49, p.105; ADR 0003). Program/reference-receiver test: `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction`. Custody gate test: `poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`.
+- [ ] **R** Acknowledge dynamic transfers after durable custody; configured device/time/analyte identity (plus sequence when declared) uses the store's revision history to prevent duplicate deliveries across lost ACK, reconnect and restart, with edited corrections and ambiguous/conflicting receipts parked (Appendix B section 3.2, pp.71-72; section 5.5, p.95; section 5.21 Tables 46/49, p.105; ADR 0003). Program/reference-receiver test: `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction`. Custody gate test: `poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`.
 - [x] **R** In the dialog, application error ACK leaves OBS open, storage failure issues Escape/abnormal Terminate, a correlated peer Escape completes the topic, and normal termination requires the matching final ACK (Appendix B sections 3.4, 4.1.11-4.1.12, pp.73-74,81-86). Dialog tests: `poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes`, `poct01_b_4_1_12_escape_correlation_and_final_ack_correlation`, `poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination`.
 - [x] **R** Respect device application timeout and do not replay the prior message solely on application timeout (Appendix B §3.6, p.75). Test: `poct01_b_3_6_no_resend_on_application_timeout`.
 - [ ] **R** Implement all required objects, attributes, containment/cardinalities, order and codes for supported messages (Appendix B sections 5-6, pp.91-126). Partial evidence: `poct01_b_6_12_required_structure_and_order_are_enforced` checks selected HEL/OBS failures, not every supported object or cardinality. Remaining: the full supported-message validation matrix. Header uniqueness has its own program-tested row below; ACK correlation is covered by the dialog/builder rows.
@@ -49,3 +49,17 @@ post-ACK Keep Alive, retained bytes, OTH Escape and ABN termination. It also
 checks every emitted ACK/error ACK/REQ/ESC/END length with each ordering of
 host/device limits; the one-byte refusal test remains. This is selected
 conversation evidence, not an exhaustive capacity/latency matrix.
+
+## Identity safety follow-up
+
+`poct01_b_6_10_repeated_analyte_without_distinguishing_identity_is_parked`
+checks equal/different same-analyte siblings under NEW, RES and EDT through
+the program and reference receiver. Mapping examines the full message before
+reconciliation and marks every repeated derived identity unresolved. Both
+observations and specific reasons are retained; neither revisions nor outbox
+rows are created. XML positions remain evidence locations, never result keys.
+
+The broader correction claim remains open: clinical source-context changes
+that do not change common content can still be suppressed as retransmissions
+(P12). A durable protocol-evidence comparison needs a reviewed persistence
+choice; the current common model and revision history store no such digest.

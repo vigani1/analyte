@@ -56,7 +56,33 @@ pub fn map(
             corrections: EvidenceList::new(vec![correction])?,
         });
     }
+    park_repeated_identities(&mut output)?;
     Ok(output)
+}
+
+// Resolve the complete message before admission: the first sibling is ambiguous too.
+fn park_repeated_identities(output: &mut Output) -> Result<(), Error> {
+    let mut counts = std::collections::HashMap::new();
+    for result in &output.results {
+        if let IdentityStatus::Resolved(identity) = &result.content.identity {
+            let count = counts.entry(identity.observation.clone()).or_insert(0usize);
+            *count = count
+                .checked_add(1)
+                .ok_or(Error::Context("POCT observation count exhausted"))?;
+        }
+    }
+    for result in &mut output.results {
+        if let IdentityStatus::Resolved(identity) = &result.content.identity
+            && counts
+                .get(&identity.observation)
+                .is_some_and(|count| *count > 1)
+        {
+            result.content.identity = IdentityStatus::Unresolved(Reason::new(
+                "POCT repeated derived observation identity without a distinguishing sub-ID",
+            )?);
+        }
+    }
+    Ok(())
 }
 
 fn map_identity(
