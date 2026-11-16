@@ -1,4 +1,4 @@
-//! Declared single-persistent-link scope; TF-2b B.5/B.6 and 3.27-3.29.
+//! Tests LAW connection ownership and reconnect behavior.
 //! This is host integration evidence, not independent-link conformance.
 use super::*;
 use crate::support::HANG_GUARD;

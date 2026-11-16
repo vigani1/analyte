@@ -1,5 +1,4 @@
-//! Synthetic control-profile cases from `PaLM` TF-2b Rev 11 C.1/C.3/C.4,
-//! 2.2.1-2.2.3 and HL7 2.5.1 chapter 2A. No external peer is contacted.
+//! Tests LAW MSH, MSA and ERR segment validation.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection},

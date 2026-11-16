@@ -1,4 +1,4 @@
-//! LAW work-message grammar belongs to the HL7 profile, without order lifecycle decisions.
+//! Parses LAW work messages without order lifecycle decisions.
 use super::content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, WorkNotes};
 use super::{Error, Identity, content};
 

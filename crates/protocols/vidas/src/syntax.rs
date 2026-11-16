@@ -1,4 +1,4 @@
-//! Tagged fields, from research/vidas.md ?4 (BCI A ?4).
+//! Parses VIDAS tagged fields (BCI Appendix A chapter 4).
 use analyte_model::SampleId;
 use thiserror::Error;
 

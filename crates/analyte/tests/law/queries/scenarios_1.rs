@@ -1,4 +1,4 @@
-//! Regression scenarios for queries.
+//! Tests LAW order queries and query-triggered work downloads.
 use super::*;
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-//! Regression scenarios for results.
+//! Tests LAW result receipt and durable delivery.
 use super::*;
 
 #[tokio::test]

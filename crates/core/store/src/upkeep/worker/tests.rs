@@ -1,4 +1,4 @@
-//! upkeep/worker regression tests kept beside the storage behavior they guard.
+//! Tests bounded storage worker requests and shutdown.
 use crate::test_support::*;
 use crate::*;
 

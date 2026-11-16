@@ -1,4 +1,4 @@
-//! Caller-owned TCP sessions and reconnect/server supervision.
+//! Owns TCP sessions and supervises reconnects and listeners.
 
 use crate::{
     Backoff, CHUNK_LIMIT, Cancellation, Connection, Error, Event, IoSide, Limits, Reason,

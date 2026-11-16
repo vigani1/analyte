@@ -1,4 +1,4 @@
-//! Host bounds are from clinical rule 7; protocol assertions cite separately read sources.
+//! Tests rejection of malformed inputs without losing evidence.
 use super::*;
 
 fn segment(name: &str, count: usize, values: &[(usize, &str)]) -> Result<String, &'static str> {

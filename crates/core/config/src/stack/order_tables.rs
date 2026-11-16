@@ -1,4 +1,4 @@
-//! Shared order tables settings and conversions at the config boundary.
+//! Holds validated outbound order translation tables.
 use super::*;
 
 /// Outbound field-based translations shared by ASTM and HL7.

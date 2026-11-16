@@ -1,4 +1,4 @@
-//! Read-only header record positions belong beside the ASTM grammar.
+//! Reads ASTM header record fields.
 use crate::{Field, Kind, Record};
 /// Read-only LIS02 header positions; no clinical defaults are inferred.
 #[derive(Clone, Copy, Debug)]

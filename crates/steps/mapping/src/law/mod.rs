@@ -1,4 +1,4 @@
-//! LAW result and outgoing AWOS mapping; protocol validation stays in analyte-hl7.
+//! Maps LAW results and outgoing AWOS orders using validated protocol values.
 use crate::inbound::{grouping, source};
 use crate::{Error, Input, Output, is_law};
 use analyte_config::Validated;

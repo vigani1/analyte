@@ -1,4 +1,4 @@
-//! Regression scenarios for receive.
+//! Tests machine receipt storage and acknowledgment ordering.
 use super::*;
 
 #[tokio::test]

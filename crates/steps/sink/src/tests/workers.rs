@@ -1,4 +1,4 @@
-//! Workers regression scenarios.
+//! Tests delivery worker cancellation and retry ownership.
 use super::*;
 
 #[tokio::test]

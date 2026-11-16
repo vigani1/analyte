@@ -1,4 +1,4 @@
-//! Validated protocol selection, shared settings and dispatch at the config boundary.
+//! Selects validated protocol settings and constructs protocol stacks.
 use crate::*;
 mod astm;
 pub use astm::{AstmOrders, AstmStack, AstmSyntax};

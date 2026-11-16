@@ -1,4 +1,4 @@
-//! Only configured identity and sample evidence can resolve a result.
+//! Resolves result identities using configured sample and source evidence only.
 use crate::inbound::source::Source;
 use crate::{Error, Output, Problem, finding, identifier, present, text};
 use analyte_config::Validated;

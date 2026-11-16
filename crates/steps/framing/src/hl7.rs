@@ -1,4 +1,4 @@
-//! MLLP Release 1 §§1.2–1.3, single-byte framing only.
+//! Frames HL7 messages using single-byte MLLP Release 1 delimiters.
 use thiserror::Error;
 
 /// Start block byte.

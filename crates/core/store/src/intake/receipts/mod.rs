@@ -1,4 +1,4 @@
-//! Receipts storage responsibilities.
+//! Stores raw receipts before machine acknowledgment.
 use crate::{Error, Store, digest, key};
 use analyte_model::{ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};

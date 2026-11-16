@@ -1,4 +1,4 @@
-//! Synthetic Rev18 protocol and safety regressions.
+//! Tests Autolyser polling, checksums and order exchanges.
 use analyte_autolyser::syntax::*;
 use analyte_dialog::autolyser::{
     Action, Config, Dialog, Error as DialogError, Event, InsertionError, Reception, Recovery,

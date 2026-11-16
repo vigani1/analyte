@@ -1,4 +1,4 @@
-//! Host-polled Autolyser connection; a corrupt report blocks R until L recovery.
+//! Polls Autolyser connections and blocks R after corrupt reports until L recovery.
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::{Error, evidence, invalid};

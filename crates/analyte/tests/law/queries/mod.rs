@@ -1,4 +1,4 @@
-//! Synthetic program/reference-receiver LAB-27 and query-triggered LAB-28, TF-2b 3.27/3.28/B.7.
+//! Tests LAW order queries and query-triggered work downloads.
 use super::*;
 use crate::support::HANG_GUARD;
 #[path = "../connections.rs"]

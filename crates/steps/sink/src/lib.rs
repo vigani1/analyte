@@ -1,4 +1,4 @@
-//! Integration boundary: owns HTTP delivery and order polling, without analyzer I/O or clinical decisions.
+//! Delivers HTTP results and polls orders without analyzer I/O or clinical decisions.
 #![forbid(unsafe_code)]
 
 mod delivery;

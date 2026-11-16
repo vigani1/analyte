@@ -1,4 +1,4 @@
-//! Folder completion and recovery with an integrated connection recorder.
+//! Tests file claims, completion and crash recovery.
 
 use analyte_transport::{Event, Limits, Reason, connection, folder::Watcher, recording::recording};
 use std::{error::Error, time::Duration};

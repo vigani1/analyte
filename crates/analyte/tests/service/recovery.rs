@@ -1,4 +1,4 @@
-//! Plan §11, ADR 0003 crash recovery and AGENTS concurrency: real forced process exit.
+//! Tests store recovery after forced process exit.
 use super::*;
 use crate::support::HANG_GUARD;
 use std::io::Read as _;

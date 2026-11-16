@@ -1,4 +1,4 @@
-//! LAW work-response correlation and AWOS decisions retain the analyzer response.
+//! Correlates LAW work responses and retains analyzer AWOS decisions.
 use super::{Error, Identity, WorkAction, content};
 use crate::law;
 use crate::{Message, Msa};

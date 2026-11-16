@@ -1,4 +1,4 @@
-//! Inbound translation steps belong together to preserve source evidence in model results.
+//! Maps source evidence into model results.
 pub(crate) mod evidence;
 pub(crate) mod grouping;
 pub(crate) mod identity;

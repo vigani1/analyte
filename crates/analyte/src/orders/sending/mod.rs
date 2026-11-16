@@ -1,4 +1,4 @@
-//! Host-owned send-ahead admission. Mapping never reserves or writes commands.
+//! Admits send-ahead orders before reserving and writing machine commands.
 use crate::{Error, deadline, installation::config::Machine};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};

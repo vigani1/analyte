@@ -1,4 +1,4 @@
-//! upkeep/open regression tests kept beside the storage behavior they guard.
+//! Tests database opening and stored settings.
 use super::*;
 use crate::startup::Progress;
 use crate::test_support::{Space, TestResult, limits};

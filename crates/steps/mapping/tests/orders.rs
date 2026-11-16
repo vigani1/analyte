@@ -1,4 +1,4 @@
-//! Synthetic cases: LIS02-A2 §8 order fields and ADR 0004 explicit mapping.
+//! Tests configured outgoing orders and code mappings.
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError, map_order};
 use analyte_model::{Identifier, NamespacedId, SampleId};

@@ -1,4 +1,4 @@
-//! Recovery-oriented error classes from TF-2b B.7; no error owns patient data.
+//! Classifies LAW failures for recovery without including patient data.
 use super::{Error, Query, Results, WorkResponse, content, raw};
 use crate::{AckCode, Message, Msa};
 use thiserror::Error as ThisError;
@@ -203,13 +203,13 @@ pub fn receive_acknowledgment(message: &Message, sent: &Message) -> Result<AckCo
         if msa.control_id() != outgoing.control_id() {
             return Err(content("MSA", 2));
         }
-        super::control::received_segment(msa_segment)?;
+        super::envelope::received_segment(msa_segment)?;
         let mut errors = 0usize;
         for segment in segments {
             if segment.id() != b"ERR" {
                 return Err(content("ACK", 0));
             }
-            super::control::received_segment(segment)?;
+            super::envelope::received_segment(segment)?;
             errors = errors.checked_add(1).ok_or(content("ERR", 0))?;
         }
         if (msa.code() == AckCode::Aa) == (errors != 0) {

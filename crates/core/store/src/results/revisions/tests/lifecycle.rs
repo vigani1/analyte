@@ -1,4 +1,4 @@
-//! Caller-owned status policy and revision lifecycle regression tests.
+//! Tests allowed lifecycle transitions and retained states.
 use crate::test_support::*;
 use crate::*;
 

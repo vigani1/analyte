@@ -1,4 +1,4 @@
-//! Admin HTTP tests exercise authentication and audited operator actions.
+//! Tests server behavior with synthetic fixtures.
 use super::*;
 use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};

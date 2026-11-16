@@ -1,4 +1,4 @@
-//! Retained revision lookup and history writes within the coordinator?s transaction.
+//! Reads and writes revision history within the caller transaction.
 use super::*;
 pub(super) fn same_retained_content(
     tx: &rusqlite::Transaction<'_>,

@@ -1,7 +1,5 @@
-//! Observation, comment and inventory profiles from TF-2b C.2/C.5/C.7.
-use super::control::{
-    characters, component_error, excluded_fields, field, part, primitive, scalar,
-};
+//! Validates LAW OBX, NTE and INV segments (TF-2b C.2/C.5/C.7).
+use super::fields::{characters, component_error, excluded_fields, field, part, primitive, scalar};
 use super::order::limit;
 use super::patient::{authority_value, coded, excluded, extras};
 use super::{ControlDirection, Error, Profile, ResultStatus, content, raw};
@@ -518,5 +516,5 @@ fn validate_flags(segment: Segment<'_>, direction: ControlDirection) -> Result<(
     Ok(())
 }
 
-mod attachments;
-use attachments::{inv, nte};
+mod notes_inventory;
+use notes_inventory::{inv, nte};

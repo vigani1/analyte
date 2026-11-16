@@ -1,4 +1,4 @@
-//! Capacity storage responsibilities.
+//! Checks disk reserve and store capacity before accepting writes.
 use crate::{Error, FreeSpace, Limits, Store};
 use rusqlite::Connection;
 use std::path::Path;

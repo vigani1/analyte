@@ -1,4 +1,4 @@
-//! Plan §10 / ADR 0009: optional protected wire evidence, never clinical custody.
+//! Captures optional protected wire recordings independently of clinical custody.
 use crate::{installation::config::Machine, runtime::service::create_data_directory};
 use analyte_transport::{
     IoSide,

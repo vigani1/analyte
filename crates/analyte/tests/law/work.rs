@@ -1,4 +1,4 @@
-//! Synthetic program/reference-receiver evidence, TF-2b 3.28.4/C.8 and ADR 0003 rule 8.
+//! Tests LAW work exchanges and order lifecycle outcomes.
 use super::*;
 use crate::support::HANG_GUARD;
 

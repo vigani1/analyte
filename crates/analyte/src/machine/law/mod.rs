@@ -1,4 +1,4 @@
-//! Host services for LAW dialogs; protocol state and ACK policy live in analyte-dialog.
+//! Drives LAW connections using dialog actions and durable store calls.
 use super::connection_input::{self, Input};
 pub(super) mod independent;
 use crate::orders::law::{Connection, Reply};

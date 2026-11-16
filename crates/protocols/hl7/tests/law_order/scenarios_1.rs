@@ -1,4 +1,4 @@
-//! Regression scenarios for law order.
+//! Tests LAW order, timing and test-detail segments.
 use super::*;
 
 #[test]

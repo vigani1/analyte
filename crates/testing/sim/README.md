@@ -1,6 +1,6 @@
 # sim
 
-**Kind: core.** Parts are grouped by role; small parts currently stay in single files and grow into role folders when needed.
+**Kind: core.** Groups files by the data and operations they handle.
 
 **What it does:** Plays the machine side of synthetic recordings and compares the bridge replies byte for byte. It is a test building block.
 

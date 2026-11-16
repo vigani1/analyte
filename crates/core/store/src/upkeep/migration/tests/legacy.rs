@@ -1,4 +1,4 @@
-//! Legacy regression scenarios.
+//! Tests legacy database migration.
 use super::*;
 
 #[test]

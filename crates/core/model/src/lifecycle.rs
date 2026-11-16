@@ -1,4 +1,4 @@
-//! Explicit order lifecycle states belong to the shared model used across layers.
+//! Defines order lifecycle states and allowed transitions.
 use serde::{Deserialize, Serialize};
 
 /// Mode is explicit so training and debugging cannot silently become production.

@@ -1,4 +1,4 @@
-//! Bounded host-owned sessions; no credential or CSRF token is logged.
+//! Manages bounded operator sessions without logging credential or CSRF tokens.
 use super::Token;
 use analyte_model::Identifier;
 use std::{

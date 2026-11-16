@@ -1,4 +1,5 @@
-//! Durable machine command reservations; a reserved identity is never sent twice. Kept whole: Durable machine-order operations share reservation ownership and transactional guards.
+//! Reserves durable machine commands without sending a reserved identity twice.
+//! Kept whole: Durable machine-order operations share reservation ownership and transactional guards.
 pub(crate) mod ownership;
 use crate::sql_types::SqlOrderState;
 use ownership::OrderOwner;

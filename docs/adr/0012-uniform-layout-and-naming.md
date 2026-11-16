@@ -45,6 +45,9 @@ Every protocol, standard or vendor, uses the same places:
 A file grows into a folder of the same name (`law/mod.rs` plus its pieces)
 when it has separate responsibilities. A concern that a protocol lacks has no file.
 
+HL7 `wire.rs` writes size-capped segments without escaping; POCT `messages.rs`
+builds reviewer messages and escapes XML. These distinct jobs keep distinct names.
+
 ### 3. Versions
 
 A standard with several versions has one implementation. `version.rs` holds
@@ -112,10 +115,20 @@ Several related yes/no flags become one enum of named states.
 
 ### 8. Every crate and every file says what it holds
 
-Each crate's `lib.rs` starts with its layer, what it owns and what it must
-not do. Every other source file starts with a one-line `//!` header saying
-what it holds and why it belongs where it is; a check in CI refuses a file
-without one.
+Every Rust file starts with a `//!` line that explains its contents to a
+newcomer. Crate READMEs use the same concrete descriptions, stating the kind
+first. Apply these rules:
+
+- Write one complete sentence that can be read alone. Good: `//! Detects repeated POCT messages within a bounded window.` Bad: `//! Bounded duplicate detection. The host persists identities in the`.
+- Start with a verb and the main things the file handles, naming concrete segments, types or records. Good: `//! Validates LAW MSH, MSA and ERR segments.` Bad: `//! Manager control profiles.`
+- Put safety and I/O limits after the job. Good: `//! Maps ASTM result records to model results without I/O.` Bad: `//! No I/O or clinical decisions.`
+- Describe contents rather than where they belong. Good: `//! Reads ASTM header record fields.` Bad: `//! Header views belong beside the grammar.`
+- Prefer concrete terms to abstractions such as semantics, profiles, assembly or boundary. Good: `//! Writes HL7 segments within a byte limit.` Bad: `//! Private bounded wire assembly.`
+- Avoid words whose lab or standards meaning differs from the code. Good: `//! Holds evidence lists capped at 256 entries.` Bad: `//! Holds evidence collections.` In a lab, collection means collecting a specimen.
+- Keep any `//! Kept whole:` reason on its own line, as the second header line. Good: `//! Runs service startup and shutdown.` followed by `//! Kept whole: Preserves worker ownership order.` Bad: `//! Service ownership. Kept whole: Preserves worker ownership order.`
+
+The Layout CI job checks the opening header and finds the separate
+`Kept whole:` line in the opening documentation block.
 
 ### 9. Large folders group files by role
 
@@ -135,7 +148,7 @@ the same way, and its `README.md` states the kind first.
 | --- | --- | --- | --- |
 | Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`), one file per protocol inside |
 | Steps | `crates/steps/` | transport, framing, dialog, mapping, sink | One file or folder per protocol key, plus shared pieces named for what they hold |
-| Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file per job: `syntax`, `views`, `version`, `encoder`; a profile (LAW) is a folder |
+| Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file per job: `syntax`, `views`, `version`, `wire` (HL7 segment writer), `messages` (POCT message builders); a profile (LAW) is a folder |
 | Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |
 | Testing | `crates/testing/` | receiver, sim | Stand-ins used only by tests |
 

@@ -1,4 +1,4 @@
-//! HL7 laboratory result and outgoing order mapping; no clocks, storage or transport.
+//! Maps HL7 laboratory results and outgoing orders without clocks, storage or transport.
 use crate::inbound::{grouping, source};
 use crate::{Error, Input, Output, Position, hl7_edition, is_law};
 use analyte_config::Validated;

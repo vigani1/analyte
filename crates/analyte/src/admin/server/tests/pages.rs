@@ -1,4 +1,4 @@
-//! Admin page scenarios verify the read-only presentation of retained evidence.
+//! Tests read-only operator pages and retained evidence.
 use super::*;
 use analyte_model::{Digest, NamespacedId, ReceiptId, ReceiptMetadata, SampleId};
 use analyte_store::{Audit, CachedOrder, OrderPage, Parked};

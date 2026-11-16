@@ -1,4 +1,4 @@
-//! Laboratory ORM/O01–ORR/O02 (both editions) and non-LAW OML/O21–ORL/O22 (2.5.1).
+//! Reads HL7 ORM/O01, ORR/O02, OML/O21 and ORL/O22 laboratory orders.
 //! Evidence: documented.
 //!
 //! These pure functions never store, transmit, resend or change order state.
@@ -139,8 +139,8 @@ impl Family {
     }
 }
 
-impl From<crate::encoder::Limit> for Error {
-    fn from(_: crate::encoder::Limit) -> Self {
+impl From<crate::wire::Limit> for Error {
+    fn from(_: crate::wire::Limit) -> Self {
         Self::Limit
     }
 }

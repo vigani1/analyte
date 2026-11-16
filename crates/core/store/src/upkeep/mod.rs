@@ -1,4 +1,4 @@
-//! Upkeep operations grouped by their storage responsibility.
+//! Opens, migrates, backs up and restores stores with capacity and startup checks.
 pub(crate) mod backup;
 pub(crate) mod capacity;
 pub(crate) mod migration;

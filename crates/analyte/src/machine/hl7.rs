@@ -1,4 +1,4 @@
-//! HL7 store-and-forward ACK decisions follow durable interpretation.
+//! Drives HL7 connections and chooses ACKs after durable interpretation.
 use super::connection_input::{self, Input};
 use crate::{Error, evidence, invalid};
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};

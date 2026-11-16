@@ -1,4 +1,4 @@
-//! Delivery ownership and bounded startup recovery.
+//! Owns delivery workers and bounds startup recovery.
 use crate::{Error, deadline, installation::config::Program, invalid};
 use analyte_model::{Identifier, Reason};
 use analyte_sink::{Destination, Limits};

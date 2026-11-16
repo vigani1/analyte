@@ -1,4 +1,4 @@
-//! ADR 0002: VIDAS named policy states retain the existing boolean TOML spelling.
+//! Tests VIDAS acknowledgment and checksum policy settings.
 use analyte_config::{Draft, Stack};
 
 #[test]

@@ -1,4 +1,4 @@
-//! Bounded alert policies. Runtime evaluation is owned by the service.
+//! Holds bounded alert policies for service evaluation.
 use serde::Deserialize;
 
 /// Specific policy failures; diagnostics never echo responder text.

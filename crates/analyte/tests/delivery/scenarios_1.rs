@@ -1,4 +1,4 @@
-//! Regression scenarios for delivery.
+//! Tests HTTP delivery retries and stable delivery identities.
 use super::*;
 
 #[tokio::test]

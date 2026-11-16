@@ -1,4 +1,4 @@
-//! ADR 0002: outbound capabilities must be explicitly configured.
+//! Tests configured outgoing orders and code mappings.
 use analyte_config::{Draft, Validated};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 fn config(section: &str) -> Result<Validated, analyte_config::Error> {

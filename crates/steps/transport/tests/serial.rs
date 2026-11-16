@@ -1,4 +1,4 @@
-//! Serial tests use bounded fake I/O, never hardware.
+//! Tests serial settings and bounded fake I/O.
 
 use analyte_transport::{Backoff, Event, Limits, Reason, connection, serial};
 use std::{

@@ -1,4 +1,4 @@
-//! Appendix B sections 5.15, 5.21 and 8 faithful common-model mapping tests.
+//! Tests POCT reviewer conversations and timeouts.
 #[path = "messages.rs"]
 mod messages;
 use analyte_mapping::poct::map_observations;

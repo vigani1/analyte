@@ -1,4 +1,4 @@
-//! Custody regression scenarios.
+//! Tests retained evidence and durable acknowledgment ordering.
 use super::*;
 
 #[test]

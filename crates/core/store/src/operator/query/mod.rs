@@ -1,4 +1,4 @@
-//! Query storage operations owned by operator.
+//! Reads protected receipts, records and operator evidence.
 use crate::{Error, Interpretation, Store, key};
 use analyte_model::{Identifier, ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};

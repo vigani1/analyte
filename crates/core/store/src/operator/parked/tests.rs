@@ -1,4 +1,4 @@
-//! operator/parked regression tests kept beside the storage behavior they guard.
+//! Tests parked evidence and failure reasons.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

@@ -1,4 +1,4 @@
-//! Validated astm settings and construction at the config boundary.
+//! Constructs validated ASTM protocol settings.
 use super::*;
 
 /// LIS02 syntax settings, without HL7-only options.

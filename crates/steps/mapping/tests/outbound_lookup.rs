@@ -1,4 +1,4 @@
-//! ADR 0004 and AGENTS.md: outgoing code tables are explicit; no fallback or normalization.
+//! Tests explicit outgoing code tables without inferred mappings.
 use analyte_config::{
     MachinePriority, OrderPriority, OutboundSpecimen, OutboundTest, PriorityCode,
 };

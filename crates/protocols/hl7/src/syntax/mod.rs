@@ -1,4 +1,4 @@
-//! HL7 segment grammar belongs in the syntax layer, without transport or mapping.
+//! Parses HL7 segments without transport or mapping.
 use thiserror::Error;
 
 /// Syntax failures carry positions, never message contents.

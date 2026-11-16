@@ -1,4 +1,4 @@
-//! Synthetic localhost fixtures; no environment mutation or external peers.
+//! Tests bounded synthetic peers and local test fixtures.
 mod guard;
 pub(super) use guard::HANG_GUARD;
 

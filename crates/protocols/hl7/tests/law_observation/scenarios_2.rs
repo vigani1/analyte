@@ -1,4 +1,4 @@
-//! Regression scenarios for law observation.
+//! Tests LAW OBX, NTE and INV segment validation.
 use super::*;
 
 #[test]

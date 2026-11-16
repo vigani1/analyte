@@ -1,4 +1,4 @@
-//! Regression scenarios for law.
+//! Tests LAW message validation and host exchanges.
 use super::*;
 
 #[test]

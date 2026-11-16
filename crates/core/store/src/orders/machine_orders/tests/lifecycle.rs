@@ -1,4 +1,4 @@
-//! Lifecycle regression scenarios.
+//! Tests allowed lifecycle transitions and retained states.
 use super::*;
 
 #[test]

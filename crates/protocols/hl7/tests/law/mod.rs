@@ -1,4 +1,4 @@
-//! Synthetic LAW query regression cases; no analyzer or app is contacted.
+//! Tests LAW message validation and host exchanges.
 use analyte_hl7::{
     Message, Options,
     law::{Error, Query, Scope},

@@ -1,4 +1,4 @@
-//! Host-generated response metadata; protocol crates never read clocks or create IDs.
+//! Creates response timestamps and IDs for host-generated HL7 replies.
 use crate::Error;
 
 #[derive(Clone, Copy)]

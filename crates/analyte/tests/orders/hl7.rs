@@ -1,4 +1,4 @@
-//! HL7 2.3.1 section 2.18 / 2.5.1 section 5.10 and ADR 0003/0004/0008.
+//! Tests HL7 messages, acknowledgments and failure handling.
 use super::vendor_support::{event, no_event, state};
 use super::*;
 use crate::support::HANG_GUARD;

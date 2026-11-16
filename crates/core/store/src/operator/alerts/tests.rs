@@ -1,4 +1,4 @@
-//! operator/alerts regression tests kept beside the storage behavior they guard.
+//! Tests alert states and transition history.
 use crate::test_support::*;
 use crate::*;
 

@@ -1,4 +1,4 @@
-//! ADR 0009 resource boundaries and exact byte preservation.
+//! Tests JSONL recording limits and exact byte preservation.
 use analyte_transport::recording::*;
 use proptest::prelude::*;
 fn header() -> Header {

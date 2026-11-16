@@ -1,4 +1,4 @@
-//! Synthetic LAW dialog effects; source: `PaLM` TF-2b Rev 11 B.6/B.7 and §§3.27–3.29.
+//! Tests LAW message validation and host exchanges.
 use analyte_dialog::law::*;
 use analyte_hl7::{Charset, ControlId, Options, Response, law};
 use std::time::Duration;

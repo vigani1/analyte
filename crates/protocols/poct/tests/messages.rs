@@ -1,4 +1,4 @@
-//! Appendix B sections 5, 6, 8 and 12 typed-message regression tests.
+//! Tests typed POCT Basic Profile messages.
 mod peer_messages;
 use analyte_poct::{Body, DataError, Message, MessageError, Nullable, Timestamp, Value};
 use peer_messages::{field, hello, limits, message, observation, status};

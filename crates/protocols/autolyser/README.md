@@ -1,6 +1,6 @@
 # autolyser
 
-**Kind: protocol.** One file per job, such as `syntax.rs`, `views.rs` or `version.rs`, where that job exists.
+**Kind: protocol.** Separates message parsing, typed field access and version rules into named files.
 
 **What it does:** Reads and writes Autolyser fixed-width message records.
 

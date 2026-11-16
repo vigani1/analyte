@@ -1,4 +1,4 @@
-//! ADR 0008 / plan section 6: independent expected wire evidence and conversion.
+//! Tests model evidence conversion to contract documents.
 #![forbid(unsafe_code)]
 
 use analyte_contract::{Delivery, ResultDocument, decode};

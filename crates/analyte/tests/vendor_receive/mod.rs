@@ -1,4 +1,4 @@
-//! Synthetic program-to-peer custody tests, ADR 0003 and documented vendor scopes.
+//! Tests vendor receipt custody.
 #[path = "../support/guard.rs"]
 mod guard;
 #[path = "../../../protocols/poct/tests/peer_messages.rs"]

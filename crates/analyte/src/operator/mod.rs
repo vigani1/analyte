@@ -1,4 +1,4 @@
-//! Operator alerts, status, output and recovery expose retained host state.
+//! Exposes operator alerts, status, output and recovery actions.
 pub(crate) mod alerts;
 pub mod output;
 pub mod recovery;

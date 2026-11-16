@@ -1,4 +1,4 @@
-//! lib regression tests kept beside the storage behavior they guard.
+//! Tests src behavior with synthetic fixtures.
 use crate::test_support::*;
 use crate::*;
 

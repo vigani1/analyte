@@ -1,4 +1,4 @@
-//! File handoff stays claimed until receipt and interpretation are durable.
+//! Receives claimed files and retains the claim until receipt and interpretation are durable.
 use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;

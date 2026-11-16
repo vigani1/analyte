@@ -1,4 +1,4 @@
-//! LAW comment and inventory profiles attach content without interpreting results.
+//! Validates LAW NTE comment and INV substance segments without interpreting their content.
 use super::*;
 pub(super) fn nte(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error> {
     excluded_fields(segment, "NTE", &[1, 2, 3, 4], direction)?;

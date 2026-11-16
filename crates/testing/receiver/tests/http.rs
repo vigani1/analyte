@@ -1,4 +1,4 @@
-//! Synthetic ADR 0008 contract regression cases.
+//! Tests reference receiver HTTP contract requests.
 #![forbid(unsafe_code)]
 #[path = "../../../analyte/tests/support/guard.rs"]
 mod guard;

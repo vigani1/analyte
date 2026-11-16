@@ -1,4 +1,4 @@
-//! Read-only operator summaries belong at the admin presentation boundary.
+//! Renders a read-only HTML overview of alerts, disk reserve, uncertain orders, destinations and machines.
 use super::{escape, server::Context};
 use crate::{Error, deadline};
 use analyte_model::OrderState;

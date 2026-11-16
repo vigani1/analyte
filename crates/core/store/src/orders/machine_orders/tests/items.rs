@@ -1,4 +1,4 @@
-//! Items regression scenarios.
+//! Tests individual machine order outcomes.
 use super::*;
 
 #[test]

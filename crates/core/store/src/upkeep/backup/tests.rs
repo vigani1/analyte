@@ -1,4 +1,4 @@
-//! upkeep/backup regression tests kept beside the storage behavior they guard.
+//! Tests protected database backups.
 use crate::test_support::*;
 use crate::*;
 

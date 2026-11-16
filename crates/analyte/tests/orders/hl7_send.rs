@@ -1,4 +1,4 @@
-//! HL7 2.3.1 ch.4 / 2.5.1 sections 4.4 / ADR 0003/0004/0008 synthetic peers.
+//! Tests HL7 unsolicited orders and cancellations.
 use super::vendor_support::state;
 use super::*;
 use crate::support::HANG_GUARD;

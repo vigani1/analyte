@@ -1,4 +1,4 @@
-//! Protected admin credentials belong to the local operator access boundary.
+//! Loads and verifies protected local administrator credentials.
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::{fs::OpenOptions, io::Write, path::Path};
 

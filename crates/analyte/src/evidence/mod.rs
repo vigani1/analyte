@@ -1,4 +1,4 @@
-//! Protected evidence processing; no payload enters ordinary logs.
+//! Captures and processes protected wire evidence without logging payloads.
 pub(crate) mod capture;
 use crate::{Error, deadline, installation::config::Machine, invalid};
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};

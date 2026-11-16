@@ -1,4 +1,4 @@
-//! Regression scenarios for law control.
+//! Tests LAW MSH, MSA and ERR segment validation.
 use super::*;
 
 #[test]

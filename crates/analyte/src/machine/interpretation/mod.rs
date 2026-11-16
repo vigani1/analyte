@@ -1,4 +1,4 @@
-//! Interpretation has no transport handle and cannot send orders or acknowledgments.
+//! Maps stored receipts without transport handles, orders or acknowledgments.
 use crate::{Error, deadline, evidence, installation::config::Machine, invalid};
 use analyte_config::Stack;
 use analyte_model::{ReceiptId, Revision};

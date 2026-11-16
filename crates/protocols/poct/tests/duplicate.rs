@@ -1,4 +1,4 @@
-//! Appendix B section 3.2 and ADR 0003 observation identity tests.
+//! Tests POCT duplicate comparison and observation identity.
 mod peer_messages;
 use analyte_model::{
     Identifier, IdentityStatus, NamespacedId, ObservationIdentity, Reason, ResultIdentity,

@@ -1,3 +1,3 @@
-//! Revision regression tests grouped by identity and caller-owned lifecycle rules.
+//! Tests result revisions and caller-supplied status policies.
 mod identity;
 mod lifecycle;

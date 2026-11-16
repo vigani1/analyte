@@ -1,4 +1,4 @@
-//! Host reservation views and response metadata for the pure LAW mapper.
+//! Supplies LAW order reservations and response metadata to the mapper.
 use crate::{Error, installation::config::Machine};
 use analyte_hl7::{Message, Options, law};
 pub(super) use analyte_mapping::{LawCommand as Command, law_address as address};

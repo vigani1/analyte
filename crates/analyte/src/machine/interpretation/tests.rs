@@ -1,4 +1,4 @@
-//! Plan Â§11, ADR 0003 rules 2â€“4 and 8: the same stored bytes take the live mapping path.
+//! Tests interpretation behavior with synthetic fixtures.
 use super::*;
 use crate::installation::config::Program;
 use analyte_model::{Identifier, Reason};

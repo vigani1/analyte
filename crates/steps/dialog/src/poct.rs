@@ -1,4 +1,5 @@
-//! Per-connection reviewer dialog: events in, ordered host actions out, no I/O. Kept whole: The POCT conversation state transitions and timeout decisions form one protocol dialog.
+//! Turns POCT reviewer events into ordered host actions without I/O.
+//! Kept whole: The POCT conversation state transitions and timeout decisions form one protocol dialog.
 use analyte_poct::{
     AckKind, ApplicationError, Body, Capabilities, ControlId, EscapeReason, Message, Nullable,
     Outbound, TerminationReason,

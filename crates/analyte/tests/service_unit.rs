@@ -1,4 +1,4 @@
-//! Plan §11 and AGENTS concurrency: portable structural check, without installing a unit.
+//! Tests portable service installation settings.
 use std::collections::BTreeMap;
 
 #[test]

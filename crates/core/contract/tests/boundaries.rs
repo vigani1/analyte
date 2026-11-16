@@ -1,4 +1,4 @@
-//! Contract v1 HTTP/authentication, results, orders and retry boundaries; clinical rules 4–7.
+//! Tests input limits and clinical data retention.
 #![forbid(unsafe_code)]
 use analyte_contract::*;
 use serde_json::{Value, json};

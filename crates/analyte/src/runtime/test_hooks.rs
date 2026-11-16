@@ -1,4 +1,4 @@
-//! Test-only host-boundary control. Never enable `test-hooks` in release builds.
+//! Controls test-only service startup and crash points.
 use crate::{Error, invalid};
 use std::sync::{
     Arc,

@@ -1,4 +1,4 @@
-//! Worker storage operations owned by upkeep.
+//! Runs blocking storage requests on an owned worker thread.
 use crate::{Error, FreeSpace, Limits, Store};
 use std::{
     path::PathBuf,

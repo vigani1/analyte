@@ -1,4 +1,4 @@
-//! Backup storage responsibilities.
+//! Creates protected database backups.
 use crate::{Error, Store};
 use rusqlite::Connection;
 use std::{path::Path, time::Instant};

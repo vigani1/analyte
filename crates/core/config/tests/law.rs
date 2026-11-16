@@ -1,4 +1,4 @@
-//! Synthetic configuration evidence; IHE `PaLM` TF-2b Rev 11 sections 2.2, 3.27, 3.29.
+//! Tests LAW message validation and host exchanges.
 use analyte_config::{Draft, Error, EvidenceLevel, LawQueryForm};
 
 const LAW: &str = include_str!("../examples/law.toml");

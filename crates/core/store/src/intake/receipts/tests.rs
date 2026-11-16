@@ -1,4 +1,4 @@
-//! intake/receipts regression tests kept beside the storage behavior they guard.
+//! Tests receipt durability and retained raw bytes.
 use crate::test_support::*;
 use crate::*;
 use proptest::prelude::*;

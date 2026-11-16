@@ -1,4 +1,4 @@
-//! VIDAS BCI Appendix A chapter 4 mapping assertions, moved without changed expectations.
+//! Tests VIDAS result uploads and work downloads.
 use analyte_vidas::syntax::{Message, SampleLimit};
 
 #[test]

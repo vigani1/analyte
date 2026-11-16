@@ -1,4 +1,4 @@
-//! Synthetic conformance cases, independent of vendor behavior.
+//! Tests protocol framing and checksums.
 use analyte_framing::{astm as a, hl7 as m};
 use proptest::prelude::*;
 

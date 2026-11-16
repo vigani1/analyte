@@ -1,4 +1,4 @@
-//! Source evidence accompanying each observation, without clinical decisions.
+//! Preserves source evidence for each observation without clinical decisions.
 use crate::FieldSyntax;
 use crate::inbound::source::Source;
 use crate::inbound::time;

@@ -1,4 +1,4 @@
-//! Result and revision types belong to the shared model to preserve clinical evidence.
+//! Holds result content and revision evidence.
 use crate::{
     Dilution, Identifier, IdentityStatus, ProcessingMode, ReceiptId, ResultValue, SampleId,
     SourceText, Units,

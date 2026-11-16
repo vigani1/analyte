@@ -1,4 +1,4 @@
-//! ADR 0001/0002: validated stacks preserve the existing layered TOML interface.
+//! Tests validated protocol stack construction.
 use analyte_config::{Draft, Stack, StreamKind, TcpRole};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;

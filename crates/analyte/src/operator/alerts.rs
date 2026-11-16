@@ -1,4 +1,4 @@
-//! One cancellable owner evaluates bounded nonclinical policies (plan section 11).
+//! Evaluates bounded nonclinical alert policies in a cancellable worker.
 use crate::{
     Error, deadline,
     installation::config::{Alert, Condition},

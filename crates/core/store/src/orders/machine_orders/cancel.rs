@@ -1,4 +1,4 @@
-//! Cancel for durable machine orders.
+//! Cancels eligible durable machine orders.
 use super::*;
 
 impl Store {

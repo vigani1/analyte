@@ -1,4 +1,4 @@
-//! ASTM order tests guard the host order conversation without changing custody.
+//! Tests astm behavior with synthetic fixtures.
 use super::*;
 use analyte_model::Identifier;
 use std::{path::Path, time::Duration};

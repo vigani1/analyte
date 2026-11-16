@@ -1,4 +1,4 @@
-//! Raw TOML configuration shapes belong at the configuration input boundary.
+//! Holds raw TOML configuration types.
 pub(crate) mod law;
 pub use law::*;
 mod vidas;

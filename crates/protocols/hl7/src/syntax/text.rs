@@ -1,4 +1,4 @@
-//! HL7 text escapes and character decoding preserve unsupported formatting explicitly.
+//! Decodes HL7 escapes and character sets while preserving unsupported formatting.
 use super::*;
 /// Checks bounded escape grammar without decoding or executing escapes.
 pub(crate) fn validate_escapes(

@@ -1,4 +1,4 @@
-//! Synthetic host-callback, deadline and custody cases (ADRs 0003/0010, rule 7).
+//! Tests HL7 custody callbacks and absolute deadlines.
 //! HL7 2.5.1 §§2.9.2–2.9.3 define response responsibility. Receipt ordinals,
 //! callback phases, a non-extending timeout and diagnostic byte ceilings are
 //! Analyte host policies; MLLP R1 does not prescribe a timeout duration.

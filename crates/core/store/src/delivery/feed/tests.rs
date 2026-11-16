@@ -1,4 +1,4 @@
-//! delivery/feed regression tests kept beside the storage behavior they guard.
+//! Tests order-change feed storage and pagination.
 use crate::test_support::*;
 use crate::*;
 

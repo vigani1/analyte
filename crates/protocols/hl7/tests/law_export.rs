@@ -1,4 +1,4 @@
-//! IHE `PaLM` TF-2b Appendix C: original synthetic export regression.
+//! Tests synthetic LAW message exports.
 #[path = "../examples/law_messages.rs"]
 mod law_messages;
 

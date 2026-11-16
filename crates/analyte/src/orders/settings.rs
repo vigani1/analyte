@@ -1,4 +1,4 @@
-//! Capability admission follows the validated stack, never independent section presence.
+//! Checks configured order capabilities against the validated protocol stack.
 use crate::{Error, installation::config::Machine, invalid};
 use analyte_config::{AstmOrders, Hl7Orders, LawStack, Stack};
 

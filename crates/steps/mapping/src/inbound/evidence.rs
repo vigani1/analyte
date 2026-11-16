@@ -1,4 +1,4 @@
-//! Conservative vendor adapters retain unresolved identities and exact values.
+//! Adapts vendor evidence while retaining unresolved identities and exact values.
 use crate::{MappedResult, Output};
 use analyte_config::Validated;
 use analyte_model::*;

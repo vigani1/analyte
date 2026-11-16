@@ -1,4 +1,4 @@
-//! LAW work exchanges, TF-2b 3.27/3.28; shared cache, reservations and item outcomes.
+//! Drives LAW work exchanges with cached orders, reservations and item outcomes (TF-2b 3.27/3.28).
 mod sending;
 pub(crate) mod validation;
 mod work;

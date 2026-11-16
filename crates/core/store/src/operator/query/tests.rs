@@ -1,4 +1,4 @@
-//! operator/query regression tests kept beside the storage behavior they guard.
+//! Tests protected evidence queries.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

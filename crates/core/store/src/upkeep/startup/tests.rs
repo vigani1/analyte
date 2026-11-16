@@ -1,4 +1,4 @@
-//! upkeep/startup regression tests kept beside the storage behavior they guard.
+//! Tests startup progress and cancellation.
 use crate::test_support::*;
 use crate::*;
 

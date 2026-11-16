@@ -1,4 +1,4 @@
-//! Independently written synthetic peer messages, never standard examples.
+//! Tests independent synthetic POCT peer messages.
 use analyte_poct::Limits;
 
 pub(crate) fn limits() -> Limits {

@@ -1,4 +1,4 @@
-//! Negative replies when transaction validation cannot construct a query/result view.
+//! Builds negative LAW replies when transaction validation fails.
 use super::{Error, content, responses::Wire};
 use crate::{AckCode, AckError, Message, Options, Response};
 

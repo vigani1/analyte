@@ -1,4 +1,4 @@
-//! SCM adapter. Installation belongs to the packaging scripts, never this module.
+//! Runs the Windows service control adapter.
 use crate::{Error, installation::config::Program, invalid, runtime::service};
 use std::{
     path::PathBuf,

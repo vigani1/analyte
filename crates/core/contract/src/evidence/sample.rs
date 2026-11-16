@@ -1,4 +1,4 @@
-//! Version-1 sample evidence owns its wire types and validation.
+//! Defines version-1 sample evidence types and validates their wire values.
 use super::{Identifier, SampleId};
 use serde::{Deserialize, Serialize};
 

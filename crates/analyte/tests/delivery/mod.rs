@@ -1,4 +1,4 @@
-//! Phase 1 synthetic program-to-reference-receiver tests (ADR 0008, plan 13).
+//! Tests HTTP delivery retries and stable delivery identities.
 #[path = "../orders/autolyser.rs"]
 mod autolyser_cases;
 #[path = "../service/capture.rs"]

@@ -1,4 +1,4 @@
-//! Ownership regression scenarios.
+//! Tests retained machine connection ownership.
 use super::*;
 
 #[test]

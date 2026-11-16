@@ -1,4 +1,4 @@
-//! Safety rule 8 and ADR 0004: restart distinguishes reservation from transfer.
+//! Tests sending behavior with synthetic fixtures.
 use super::*;
 use analyte_model::{Identifier, SampleId};
 use std::{path::Path, time::Duration};

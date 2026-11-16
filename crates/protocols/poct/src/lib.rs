@@ -1,4 +1,4 @@
-//! Syntax layer: owns POCT Basic Profile messages, without framing, I/O or custody decisions.
+//! Parses POCT Basic Profile messages without framing, I/O or custody decisions.
 //!
 //! Pure message syntax, reviewer builders, duplicate comparison.
 //! The host owns transport, clocks, protected storage and trusted identity resolution.
@@ -18,8 +18,8 @@ pub use views::message::{
     Role, Service, hello_error_reference,
 };
 
-mod encoder;
-pub use encoder::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
+mod messages;
+pub use messages::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
 
 mod duplicate;
 pub use duplicate::{

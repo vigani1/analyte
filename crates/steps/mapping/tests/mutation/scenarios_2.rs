@@ -1,4 +1,4 @@
-//! Regression scenarios for mutation.
+//! Tests rejection of malformed inputs without losing evidence.
 use super::*;
 
 #[test]

@@ -1,4 +1,4 @@
-//! ADR 0008: independent frozen wire validators must agree with the current model.
+//! Tests agreement between frozen contract validators and current documents.
 use analyte_contract::evidence as wire;
 use analyte_model as model;
 use proptest::prelude::*;

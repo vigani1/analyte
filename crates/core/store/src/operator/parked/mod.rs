@@ -1,4 +1,4 @@
-//! Parked storage responsibilities.
+//! Parks failed processing outcomes with retained reasons.
 use crate::{Audit, Error, Parked, Store};
 use analyte_model::{Identifier, Reason};
 use rusqlite::params;

@@ -1,4 +1,4 @@
-//! Synthetic cases from plan §6, ADR 0002/0003 and AGENTS clinical rules 3–8.
+//! Tests identity, value and dilution preservation.
 use analyte_model::OrderTransition;
 use analyte_model::*;
 use proptest::prelude::*;

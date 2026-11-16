@@ -1,4 +1,4 @@
-//! ADR 0012 section 5: shipped machine definitions and ADR 0009 conversations.
+//! Tests shipped machine definitions and recorded conversations.
 use super::*;
 use analyte_config::{Draft, EvidenceLevel};
 use std::path::PathBuf;

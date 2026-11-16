@@ -1,4 +1,4 @@
-//! Operator operations grouped by their storage responsibility.
+//! Stores operator alerts, parked items and protected evidence queries.
 pub(crate) mod alerts;
 pub(crate) mod parked;
 pub(crate) mod query;

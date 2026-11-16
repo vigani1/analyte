@@ -1,4 +1,4 @@
-//! Regression scenarios for vendor receive.
+//! Tests vendor receipt custody.
 use super::*;
 
 #[tokio::test]

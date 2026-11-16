@@ -1,4 +1,4 @@
-//! Syntax layer: owns bounded ASTM records and typed access, without I/O or model mapping.
+//! Parses bounded ASTM records and exposes typed fields without I/O or model mapping.
 #![forbid(unsafe_code)]
 
 mod syntax;

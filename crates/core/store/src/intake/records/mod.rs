@@ -1,4 +1,4 @@
-//! Records storage operations owned by intake.
+//! Stores parsed records and their receipt associations.
 use analyte_model::{DeliveryId, Identifier, Reason, ResultContent, SampleId};
 use serde::{Deserialize, Serialize};
 

@@ -1,4 +1,4 @@
-//! Lab-app response shapes belong to the published integration contract.
+//! Defines lab-app response documents for deliveries and order polling.
 use serde::{Deserialize, Serialize};
 /// Successful durable delivery outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

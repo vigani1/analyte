@@ -1,4 +1,4 @@
-//! Typed outbound order fields belong to the HL7 order syntax boundary.
+//! Holds typed outbound HL7 order fields.
 use super::{Error, invalid};
 
 pub(super) fn scalar(

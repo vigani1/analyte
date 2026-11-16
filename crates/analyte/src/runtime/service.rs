@@ -1,4 +1,5 @@
-//! Service ownership, signal handling and bounded shutdown. Kept whole: Service startup and shutdown retain the ownership order of supervised workers.
+//! Starts supervised service workers and handles signals and bounded shutdown.
+//! Kept whole: Service startup and shutdown retain the ownership order of supervised workers.
 use crate::{
     Error, deadline, installation::config::Program, invalid, machine, runtime::space::Volume,
 };

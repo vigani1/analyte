@@ -1,4 +1,4 @@
-//! Regression scenarios for order.
+//! Tests HL7 order messages and acknowledgments.
 use super::*;
 
 #[test]

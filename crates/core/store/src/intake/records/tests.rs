@@ -1,4 +1,4 @@
-//! intake/records regression tests kept beside the storage behavior they guard.
+//! Tests parsed record storage and receipt associations.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

@@ -1,4 +1,4 @@
-//! Storage layer: owns durable evidence, revisions and delivery custody; never interprets clinical data or resends machine orders.
+//! Stores durable evidence, revisions and deliveries without interpreting results or resending machine orders.
 #![forbid(unsafe_code)]
 mod operator;
 use operator::{alerts, parked, query};
@@ -7,7 +7,7 @@ use upkeep::{startup, worker};
 mod orders;
 use orders::{machine_orders, polls};
 mod delivery;
-use delivery::resend;
+use delivery::operator as delivery_operator;
 mod results;
 use results::revisions;
 mod intake;
@@ -24,7 +24,7 @@ pub use transfers::{FrameSequence, TransferOutcome};
 
 pub use reprocess::Reprocess;
 
-pub use resend::{DeliveryState, StoredDelivery};
+pub use delivery_operator::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
 pub const SCHEMA_VERSION: i64 = 9;

@@ -1,4 +1,4 @@
-//! Pure host-driven conversation (Rev18 pp.175–179); host owns I/O and deadlines.
+//! Runs host-driven Autolyser conversations with host-owned I/O and deadlines.
 use analyte_autolyser::syntax::{self as records, Report, Worklist};
 use std::time::Duration;
 use thiserror::Error;

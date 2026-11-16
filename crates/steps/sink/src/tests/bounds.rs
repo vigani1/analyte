@@ -1,4 +1,4 @@
-//! Bounds regression scenarios.
+//! Tests HTTP request and response limits.
 use super::*;
 
 #[test]

@@ -1,4 +1,4 @@
-//! Open storage responsibilities.
+//! Opens stores and validates stored settings.
 use crate::{
     Error, FreeSpace, Limits, SCHEMA_VERSION, Store,
     startup::{Startup, StartupStep},

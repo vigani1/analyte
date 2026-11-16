@@ -1,4 +1,4 @@
-//! Explicit outbound settings, independent of result mappings.
+//! Holds explicit outbound order settings independently of result mappings.
 use crate::{Error, Field, Group, MachineDocument, SyntaxKind, invalid};
 use analyte_model::{Identifier, NamespacedId};
 use serde::{Deserialize, Serialize};

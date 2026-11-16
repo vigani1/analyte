@@ -1,4 +1,4 @@
-//! Regression scenarios for syntax.
+//! Tests message grammar and input size limits.
 use super::*;
 
 #[test]

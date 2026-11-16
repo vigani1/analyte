@@ -1,12 +1,12 @@
-//! Syntax layer: owns bounded HL7 messages and LAW profile grammar, without I/O or model mapping.
+//! Parses bounded HL7 messages and LAW grammar without I/O or model mapping.
 #![forbid(unsafe_code)]
 
 mod ack;
 mod datatypes;
-mod encoder;
 mod syntax;
 mod version;
 mod views;
+mod wire;
 pub use ack::*;
 pub use syntax::*;
 pub use version::Version;

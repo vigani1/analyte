@@ -1,4 +1,4 @@
-//! Order-specific validation and encoding belong beside typed HL7 order fields.
+//! Validates and encodes typed HL7 orders.
 use super::{
     Code, Control, Error, Family, Header, Order, OrderId, OrderMessage, SampleField, Subject,
     invalid, types::scalar,
@@ -28,7 +28,7 @@ impl<'a> IdentitySet<'a> {
 }
 
 fn append(output: &mut Vec<u8>, value: &[u8], maximum: usize) -> Result<(), Error> {
-    crate::encoder::append(output, value, maximum).map_err(|_| Error::Limit)
+    crate::wire::append(output, value, maximum).map_err(|_| Error::Limit)
 }
 
 fn segment(
@@ -37,7 +37,7 @@ fn segment(
     fields: &[&[u8]],
     maximum: usize,
 ) -> Result<(), Error> {
-    crate::encoder::segment(output, name, fields, maximum, b'|').map_err(Into::into)
+    crate::wire::segment(output, name, fields, maximum, b'|').map_err(Into::into)
 }
 
 fn escape(value: &[u8], segment: &str, field: usize, maximum: usize) -> Result<Vec<u8>, Error> {

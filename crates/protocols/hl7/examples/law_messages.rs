@@ -1,4 +1,4 @@
-//! Original synthetic messages for manual IHE `PaLM` TF-2b Appendix C validation.
+//! Generates synthetic LAW messages for manual IHE validation.
 #![forbid(unsafe_code)]
 use analyte_hl7::{
     AckCode, AckError, Charset, Message, Options, Response, Responsibility,

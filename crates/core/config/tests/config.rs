@@ -1,4 +1,4 @@
-//! Synthetic configuration cases traceable to the project decisions.
+//! Tests configuration loading and validation.
 use analyte_config::{Draft, Error, EvidenceLevel};
 use sha2::{Digest, Sha256};
 const ASTM: &str = include_str!("../examples/astm.toml");

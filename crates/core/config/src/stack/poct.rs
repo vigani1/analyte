@@ -1,4 +1,4 @@
-//! Validated poct settings and construction at the config boundary.
+//! Constructs validated POCT protocol settings.
 use super::*;
 
 /// Poct stack with its required installed policy.

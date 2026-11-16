@@ -1,4 +1,4 @@
-//! Recoverable file handoff. Call blocking operations on a dedicated storage thread.
+//! Claims and completes recoverable file handoffs on a dedicated storage thread.
 
 use std::{
     fs::{self, File},

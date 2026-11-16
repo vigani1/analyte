@@ -1,4 +1,4 @@
-//! Synthetic BCI A sections 3-5 / PC sections 10-24 to 10-26 and ADR 0004/0008.
+//! Tests VIDAS result uploads and work downloads.
 use super::vendor_support::*;
 use super::*;
 use crate::support::HANG_GUARD;

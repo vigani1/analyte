@@ -1,4 +1,4 @@
-//! upkeep/capacity regression tests kept beside the storage behavior they guard.
+//! Tests disk reserve and storage capacity refusal.
 use crate::test_support::*;
 use crate::*;
 

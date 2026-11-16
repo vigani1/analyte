@@ -1,4 +1,4 @@
-//! Version-1 text evidence owns its wire types and validation.
+//! Defines version-1 text evidence types and validates their wire values.
 use serde::{Deserialize, Serialize};
 /// Failure to construct bounded source text.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]

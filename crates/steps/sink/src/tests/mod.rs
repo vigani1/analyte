@@ -1,4 +1,5 @@
-//! Sink behavior tests belong beside delivery and polling to guard the HTTP boundary. Kept whole: Shared receiver, proxy and store fixtures keep delivery scenarios on the same controlled HTTP harness.
+//! Tests src behavior with synthetic fixtures.
+//! Kept whole: Shared receiver, proxy and store fixtures keep delivery scenarios on the same controlled HTTP harness.
 #[path = "../../../../analyte/tests/support/guard.rs"]
 mod guard;
 use super::*;

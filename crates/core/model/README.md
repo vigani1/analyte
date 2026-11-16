@@ -1,6 +1,6 @@
 # model
 
-**Kind: core.** Parts are grouped by role; small parts currently stay in single files and grow into role folders when needed.
+**Kind: core.** Groups files by the data and operations they handle.
 
 **What it does:** Defines shared results, orders, values and identities across protocols.
 

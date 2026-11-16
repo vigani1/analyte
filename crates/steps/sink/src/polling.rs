@@ -1,4 +1,4 @@
-//! Lab-app order polling belongs to the sink HTTP boundary, without analyzer I/O.
+//! Polls lab-app orders over HTTP without analyzer I/O.
 use crate::{Destination, Error, SecretsSource, body, cancelled, deadline};
 use analyte_model::{Identifier, SampleId};
 use analyte_store::{CachedOrder, Handle, OrderPage};

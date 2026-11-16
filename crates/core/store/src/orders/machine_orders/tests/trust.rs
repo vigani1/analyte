@@ -1,4 +1,4 @@
-//! Trust regression scenarios.
+//! Tests machine order provenance and ownership checks.
 use super::*;
 
 #[test]

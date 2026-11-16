@@ -1,4 +1,4 @@
-//! Validated serial settings and a replaceable blocking port boundary.
+//! Validates serial settings and supplies a replaceable blocking port.
 
 use crate::Error;
 use serialport::{DataBits, FlowControl, Parity, StopBits};

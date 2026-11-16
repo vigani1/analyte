@@ -1,4 +1,4 @@
-//! LIS02-A2 §11: bounded specimen-only order queries, never historical results.
+//! Answers bounded ASTM specimen order queries without returning historical results (LIS02-A2 ?11).
 use crate::{Error, installation::config::Machine, invalid};
 use analyte_astm::{Kind, Message, Query};
 use analyte_config::WhenUntrusted;

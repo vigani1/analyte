@@ -1,4 +1,4 @@
-//! Semantic stack checks owned by config validation.
+//! Checks protocol stack settings and supported combinations.
 use super::*;
 
 pub(super) fn validate_transport(m: &MachineDocument, path: &str) -> Result<(), Error> {

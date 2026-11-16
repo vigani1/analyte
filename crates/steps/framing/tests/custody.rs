@@ -1,4 +1,4 @@
-//! Synthetic evidence-retention checks from ADR 0003 and MLLP Release 1.
+//! Tests retained evidence and durable acknowledgment ordering.
 //! MLLP R1 §1.2 defines framing/repertoire. Size ceilings come from rule 7;
 //! disconnect evidence and reset behavior come from ADR 0003, not MLLP timers.
 use analyte_framing::hl7 as m;

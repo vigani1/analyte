@@ -1,4 +1,4 @@
-//! Synthetic transport behavior tests.
+//! Tests bounded transport I/O and recordings.
 use analyte_transport::{Event, Limits, connection, tcp};
 use std::{error::Error, time::Duration};
 use tokio::{

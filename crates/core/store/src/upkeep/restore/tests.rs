@@ -1,4 +1,4 @@
-//! upkeep/restore regression tests kept beside the storage behavior they guard.
+//! Tests offline restore and displaced database retention.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

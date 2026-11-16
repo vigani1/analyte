@@ -1,4 +1,4 @@
-//! Revision identity, retransmission and atomicity regression tests.
+//! Tests result identity, retransmission and atomic revision writes.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

@@ -1,4 +1,4 @@
-//! Synthetic patient/visit profile cases: TF-2b C.9/C.10 and HL7 2.5.1 2A.
+//! Tests LAW patient and visit segments.
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, AuthorityBinding, Capabilities, ControlDirection, Error, Profile},

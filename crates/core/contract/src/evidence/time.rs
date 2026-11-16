@@ -1,4 +1,4 @@
-//! Version-1 time evidence owns its wire types and validation.
+//! Defines version-1 time evidence types and validates their wire values.
 use super::{Identifier, SourceText};
 use serde::{Deserialize, Serialize};
 /// Written time precision; the original text retains fractional digits exactly.

@@ -1,4 +1,4 @@
-//! Regression scenarios for query validation.
+//! Tests HL7 QRD and QRF field validation.
 use super::*;
 
 #[test]

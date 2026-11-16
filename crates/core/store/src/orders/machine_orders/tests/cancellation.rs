@@ -1,4 +1,4 @@
-//! Cancellation regression scenarios.
+//! Tests machine order cancellation transitions.
 use super::*;
 
 #[test]

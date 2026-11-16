@@ -1,4 +1,4 @@
-//! Reserve for durable machine orders.
+//! Reserves machine orders with durable identities.
 use super::*;
 
 impl Store {

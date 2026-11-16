@@ -1,4 +1,4 @@
-//! Regression scenarios for law specimen.
+//! Tests LAW specimen and container segments.
 use super::*;
 
 #[test]

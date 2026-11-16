@@ -1,4 +1,4 @@
-//! Synthetic legacy query regressions; no vendor fixtures.
+//! Tests protected evidence queries.
 use analyte_hl7::{ControlId, Message, Options, Response, query};
 
 fn request(version: &str) -> Result<Message, analyte_hl7::Error> {

@@ -1,4 +1,4 @@
-//! Appendix B sections 5 and 6 reviewer output tests.
+//! Tests POCT reviewer XML message output.
 mod peer_messages;
 use analyte_poct::{
     AckKind, ApplicationError, Body, ControlId, EscapeReason, Header, Message, MessageError,

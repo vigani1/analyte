@@ -1,4 +1,4 @@
-//! Validated autolyser settings and construction at the config boundary.
+//! Constructs validated AUTOLYSER protocol settings.
 use super::*;
 use analyte_model::Identifier;
 

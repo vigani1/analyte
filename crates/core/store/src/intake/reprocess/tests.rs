@@ -1,4 +1,4 @@
-//! intake/reprocess regression tests kept beside the storage behavior they guard.
+//! Tests receipt reprocessing and immutable originals.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

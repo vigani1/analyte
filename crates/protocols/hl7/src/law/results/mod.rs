@@ -1,4 +1,4 @@
-//! LAW result grouping belongs to the HL7 profile syntax boundary.
+//! Groups LAW result segments into typed result views.
 use super::responses::Wire;
 use super::{Error, Identity, content, raw};
 use crate::{AckCode, AckError, Field, Message, Options, Response, Responsibility, Segment};
@@ -332,8 +332,8 @@ impl<'a> Results<'a> {
             let count = code_counts
                 .entry((
                     observation.order_ordinal,
-                    super::control::part(observation.code(), 1),
-                    super::control::part(observation.code(), 3),
+                    super::fields::part(observation.code(), 1),
+                    super::fields::part(observation.code(), 3),
                 ))
                 .or_insert(0usize);
             *count = count.checked_add(1).ok_or(content("OBX", 4))?;
@@ -342,8 +342,8 @@ impl<'a> Results<'a> {
             let repeated_code = code_counts
                 .get(&(
                     observation.order_ordinal,
-                    super::control::part(observation.code(), 1),
-                    super::control::part(observation.code(), 3),
+                    super::fields::part(observation.code(), 1),
+                    super::fields::part(observation.code(), 3),
                 ))
                 .is_some_and(|count| *count > 1);
             if repeated_code {
@@ -437,7 +437,7 @@ pub fn result_acknowledgment(
         wire.field(if field == 21 {
             &profile
         } else {
-            super::control::reply_field(msh, field)
+            super::envelope::reply_field(msh, field)
         })?;
     }
     wire.append(b"\r")?;

@@ -1,4 +1,4 @@
-//! Integration contract: owns versioned wire documents and signatures, without clinical interpretation.
+//! Defines versioned integration documents and HTTP signatures without clinical interpretation.
 #![forbid(unsafe_code)]
 pub mod evidence;
 mod response;

@@ -1,4 +1,4 @@
-//! LAW response interpretation belongs to the HL7 profile syntax boundary.
+//! Builds and interprets LAW responses.
 use super::{Error, Query, content, raw};
 use crate::{AckCode, AckError, Message, Options, Response, Responsibility};
 
@@ -113,7 +113,7 @@ pub fn query_response(
         let value = match field {
             9 => message_type.as_slice(),
             21 => profile.as_slice(),
-            _ => super::control::reply_field(source, field),
+            _ => super::envelope::reply_field(source, field),
         };
         wire.field(value)?;
     }
@@ -167,4 +167,4 @@ pub(super) fn append_ack_segments(wire: &mut Wire, ack: &Message) -> Result<(), 
     Ok(())
 }
 
-pub(super) use crate::encoder::Wire;
+pub(super) use crate::wire::Wire;

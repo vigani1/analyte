@@ -1,4 +1,4 @@
-//! ADR 0004 explicit outbound context and rule 7 host-configured bounds.
+//! Tests vendor outgoing orders and configured bounds.
 //! These assertions do not claim vendor conformance; no vendor evidence level changes.
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{AppOrder, AppOrderPriority, MachineOrder, OrderMappingError, map_order};

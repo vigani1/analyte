@@ -1,4 +1,4 @@
-//! Synthetic localhost receive-path tests, tied to ADR 0003 and protocol scopes.
+//! Tests machine receipt storage and acknowledgment ordering.
 #[path = "../support/guard.rs"]
 mod guard;
 use analyte::{Error, installation::config::Program, runtime::service};

@@ -1,4 +1,4 @@
-//! Synthetic ADR 0008 contract regression cases.
+//! Tests versioned integration documents.
 #![forbid(unsafe_code)]
 use analyte_contract::*;
 use serde_json::Value;

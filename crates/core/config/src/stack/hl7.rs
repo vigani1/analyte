@@ -1,4 +1,4 @@
-//! Validated hl7 settings and construction at the config boundary.
+//! Constructs validated HL7 protocol settings.
 use super::*;
 use analyte_model::Identifier;
 

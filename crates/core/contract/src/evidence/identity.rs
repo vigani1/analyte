@@ -1,4 +1,4 @@
-//! Version-1 identity evidence owns its wire types and validation.
+//! Defines version-1 identity evidence types and validates their wire values.
 use super::{Identifier, Reason, SourceText};
 use serde::{Deserialize, Serialize};
 use uuid::{Uuid, Variant, Version};

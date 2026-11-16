@@ -1,4 +1,4 @@
-//! Program orchestration owns host I/O, custody and operator actions; it must not interpret clinical results.
+//! Runs program workers, host I/O, custody and operator actions without interpreting clinical results.
 #![forbid(unsafe_code)]
 
 pub mod admin;

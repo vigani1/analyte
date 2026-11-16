@@ -1,4 +1,4 @@
-//! Host-owned order lookup, command reservation and operator reconciliation.
+//! Looks up orders, reserves machine commands and reconciles operator decisions.
 pub(crate) mod astm;
 pub(crate) mod hl7;
 mod hl7_send;

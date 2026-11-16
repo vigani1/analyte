@@ -1,4 +1,4 @@
-//! Synthetic XML security and source-preservation tests.
+//! Tests POCT XML limits and source preservation.
 use analyte_poct::{Document, Error, Limits};
 use proptest::prelude::*;
 

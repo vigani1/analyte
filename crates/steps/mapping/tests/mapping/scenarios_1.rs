@@ -1,4 +1,4 @@
-//! Regression scenarios for mapping.
+//! Tests machine field mapping and exact value retention.
 use super::*;
 
 #[test]

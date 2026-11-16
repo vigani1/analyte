@@ -1,4 +1,4 @@
-//! Plan sections 11/12 and ADR 0003: real HTTP action confirmation, CSRF and audit atomicity.
+//! Tests operator action confirmation, CSRF checks and audit writes.
 use super::pages::{csrf, encode, login};
 use super::*;
 

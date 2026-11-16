@@ -1,4 +1,4 @@
-//! Supervision, failure and recording behavior using synthetic localhost peers.
+//! Tests TCP connection supervision, failures and recordings.
 
 use analyte_transport::{Backoff, Cancellation, Event, Limits, Reason, connection, tcp};
 use std::{error::Error, io, time::Duration};

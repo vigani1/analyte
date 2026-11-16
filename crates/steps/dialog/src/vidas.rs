@@ -1,4 +1,4 @@
-//! Pure one-result upload and one-request download conversations (notes ?3/?5).
+//! Runs VIDAS result upload and work download conversations.
 //! Host owns byte journaling, storage, timer generations and cancellation.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.

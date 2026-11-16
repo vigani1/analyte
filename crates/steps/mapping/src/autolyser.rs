@@ -1,4 +1,4 @@
-//! Autolyser code, result evidence and outgoing work-list mapping.
+//! Maps Autolyser results and outgoing work lists.
 use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient, map_specimen};

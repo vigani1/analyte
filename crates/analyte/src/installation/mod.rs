@@ -1,3 +1,3 @@
-//! Validated installation settings and host credentials configure program admission.
+//! Loads installation settings and host credentials for program startup.
 pub mod config;
 pub mod secrets;

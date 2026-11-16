@@ -1,4 +1,4 @@
-//! intake/transfers regression tests kept beside the storage behavior they guard.
+//! Tests durable transfer chunks and acknowledgment evidence.
 use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;

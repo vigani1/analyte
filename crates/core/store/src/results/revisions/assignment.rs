@@ -1,4 +1,4 @@
-//! Per-result revision assignment using one borrowed transaction and bounded batch state.
+//! Assigns result revisions within one transaction and bounded batch state.
 use super::*;
 pub(super) type AssignedRevision = (String, i64, analyte_model::Digest);
 
@@ -50,7 +50,7 @@ impl Reconciliation<'_, '_> {
         };
         let identity_key = key(&(self.machine, &identity.observation))?;
         if let Some(policy) = self.lifecycle
-            && status::other_final_run(
+            && status_policy::other_final_run(
                 self.tx,
                 self.machine,
                 &candidate,

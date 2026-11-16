@@ -1,4 +1,4 @@
-//! Outbound capability and translation validation at the config boundary.
+//! Validates outbound capabilities and code translations.
 use super::*;
 use std::collections::HashSet;
 

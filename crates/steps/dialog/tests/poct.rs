@@ -1,4 +1,4 @@
-//! Appendix B sections 3, 4 and 9 deterministic reviewer conversation tests.
+//! Tests POCT reviewer conversations and timeouts.
 use analyte_dialog::poct::{
     CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent, Error as DialogError,
 };

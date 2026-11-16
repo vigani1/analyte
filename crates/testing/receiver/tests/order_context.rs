@@ -1,4 +1,4 @@
-//! ADR 0008: the reference app retains optional order context without normalization.
+//! Tests optional order context without normalization.
 #[path = "../../../analyte/tests/support/guard.rs"]
 mod guard;
 use analyte_contract::{Order, SigningSecret, decode};

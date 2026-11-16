@@ -1,4 +1,4 @@
-//! orders/polls regression tests kept beside the storage behavior they guard.
+//! Tests order poll cursors and reconciliation.
 use super::*;
 use crate::test_support::{TestResult, open};
 

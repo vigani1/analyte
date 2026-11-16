@@ -1,4 +1,4 @@
-//! New-order timing, specimen and OBR encoding share one bounded encoding context.
+//! Encodes new-order timing, specimens and OBR segments within a bounded buffer.
 use super::*;
 use crate::order;
 #[derive(Clone, Copy)]

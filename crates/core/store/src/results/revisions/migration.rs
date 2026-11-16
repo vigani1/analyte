@@ -1,4 +1,4 @@
-//! Legacy revision history migration with its original separate startup transaction.
+//! Migrates legacy revision history in a separate startup transaction.
 use super::*;
 impl Store {
     pub(crate) fn migrate_v3(db: &mut rusqlite::Connection, limit: usize) -> Result<(), Error> {
