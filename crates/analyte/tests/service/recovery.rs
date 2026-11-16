@@ -156,44 +156,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
     assert_eq!(duplicate.bytes, original.bytes);
     wait_state(&path, "done", 2).await?; // Result retry and one Uncertain order event.
     assert_eq!(receipts(&path)?, before);
-    let db = database(&path)?;
-    let (state, reason): (String, String) =
-        db.query_row("SELECT state,source_code FROM machine_orders", [], |r| {
-            Ok((r.get(0)?, r.get(1)?))
-        })?;
-    assert_eq!(state, "Uncertain");
-    assert_eq!(reason, "host-restart");
-    assert_eq!(
-        db.query_row("SELECT count(*) FROM observation_revisions", [], |r| r
-            .get::<_, i64>(0))?,
-        1
-    );
-    assert_eq!(
-        db.query_row(
-            "SELECT count(*) FROM attempts WHERE outcome=?1",
-            ["\"uncertain (interrupted)\""],
-            |r| r.get::<_, i64>(0)
-        )?,
-        1
-    );
-    // One result at the receiver despite the HTTP retry; the other document is an order event.
-    let receiver = rusqlite::Connection::open(&receiver_path)?;
-    assert_eq!(
-        receiver.query_row(
-            "SELECT count(*) FROM deliveries WHERE kind='results'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )?,
-        1
-    );
-    assert_eq!(
-        receiver.query_row(
-            "SELECT count(*) FROM deliveries WHERE kind='order-events'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )?,
-        1
-    );
+    assert_recovered_order_and_delivery_counts(&path, &receiver_path)?;
     let mut peer = connect(&path, "astm").await?;
     // LIS02 §11 and safety rule 8: reconnecting never replays the reserved machine order.
     assert!(
@@ -244,5 +207,50 @@ async fn assert_forced_shutdown(child: &mut Child, root: &Path) -> Result<(), Er
     assert_eq!(log.matches("shutdown bound exceeded").count(), 1);
     assert!(log.contains("store"));
     assert!(!log.contains("00012a"));
+    Ok(())
+}
+
+fn assert_recovered_order_and_delivery_counts(
+    path: &Path,
+    receiver_path: &Path,
+) -> Result<(), Error> {
+    let db = database(path)?;
+    let (state, reason): (String, String) =
+        db.query_row("SELECT state,source_code FROM machine_orders", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
+    assert_eq!(state, "Uncertain");
+    assert_eq!(reason, "host-restart");
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM observation_revisions", [], |r| r
+            .get::<_, i64>(0))?,
+        1
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM attempts WHERE outcome=?1",
+            ["\"uncertain (interrupted)\""],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    // One result at the receiver despite the HTTP retry; the other document is an order event.
+    let receiver = rusqlite::Connection::open(receiver_path)?;
+    assert_eq!(
+        receiver.query_row(
+            "SELECT count(*) FROM deliveries WHERE kind='results'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    assert_eq!(
+        receiver.query_row(
+            "SELECT count(*) FROM deliveries WHERE kind='order-events'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
     Ok(())
 }
