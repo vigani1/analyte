@@ -395,6 +395,38 @@ impl Program {
         Ok(())
     }
 
+    /// Shortens feed polling for an already overridden synthetic destination.
+    /// Production entry points reject the required loopback destination override.
+    /// # Errors
+    /// Rejects destinations without an override and intervals outside 1 ms to 5 s.
+    pub fn set_loopback_poll_interval_for_test(
+        &mut self,
+        name: &str,
+        interval: Duration,
+    ) -> Result<(), Error> {
+        if !self.loopback_destinations.contains_key(name)
+            || !(Duration::from_millis(1)..=Duration::from_secs(5)).contains(&interval)
+        {
+            return Err(invalid(
+                "test polling requires a loopback override and a bounded interval",
+            ));
+        }
+        for machine in &mut self.machines {
+            if machine
+                .snapshot
+                .effective()
+                .site()
+                .destination
+                .name
+                .as_str()
+                == name
+            {
+                machine.destination_limits.poll_interval = interval;
+            }
+        }
+        Ok(())
+    }
+
     /// Borrows the protected directory without permitting mutation of validated settings.
     #[must_use]
     pub fn data_directory(&self) -> &Path {
@@ -425,6 +457,41 @@ impl Machine {
 #[cfg(test)]
 mod admin_tests {
     use super::*;
+
+    #[test]
+    fn plan11_loopback_poll_override_keeps_production_defaults_and_refuses_unbounded_waits()
+    -> Result<(), Error> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml");
+        let mut program = Program::load(&path)?;
+        let interval = |program: &Program| -> Result<Duration, Error> {
+            Ok(program
+                .machines
+                .first()
+                .ok_or("machine absent")?
+                .destination_limits
+                .poll_interval)
+        };
+        assert_eq!(interval(&program)?, Duration::from_secs(5));
+        assert!(
+            program
+                .set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))
+                .is_err()
+        );
+        program.set_loopback_destination_for_test("demo", "http://127.0.0.1:12345".into())?;
+        for invalid in [Duration::ZERO, Duration::from_secs(6)] {
+            assert!(
+                program
+                    .set_loopback_poll_interval_for_test("demo", invalid)
+                    .is_err()
+            );
+            assert_eq!(interval(&program)?, Duration::from_secs(5));
+        }
+        program.set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))?;
+        assert_eq!(interval(&program)?, Duration::from_millis(100));
+        assert!(crate::runtime::delivery::destinations(&program, false).is_err());
+        assert_eq!(interval(&Program::load(&path)?)?, Duration::from_secs(5));
+        Ok(())
+    }
 
     // Plan section 11: admission is restricted to the local operator interface.
     #[test]
