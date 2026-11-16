@@ -432,7 +432,7 @@ async fn check_cache_changes(
             s.cursor(&Identifier::new("app").map_err(|_| analyte_store::Error::InvalidInput)?)
         })
         .await?;
-    let receiver = analyte_receiver::Receiver::open(
+    let mut receiver = analyte_receiver::Receiver::open(
         &directory.join("receiver.db"),
         "key".into(),
         analyte_contract::SigningSecret::parse(SECRET)?,
@@ -447,6 +447,7 @@ async fn check_cache_changes(
         .await?;
     receiver
         .shutdown()
+        .await
         .map_err(|_| "receiver seed thread failed")?;
     poller.poll_once().await?;
     let cached = store

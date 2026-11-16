@@ -32,7 +32,7 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
     let database = directory.path().join("receiver.sqlite");
-    let receiver = Receiver::open(&database, "key".into(), SigningSecret::parse(SECRET)?)?;
+    let mut receiver = Receiver::open(&database, "key".into(), SigningSecret::parse(SECRET)?)?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let url = format!("http://{}", listener.local_addr()?);
     let router = receiver.router();
@@ -78,13 +78,13 @@ async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
     assert!(receiver.seed(vec![old]).await.is_err());
     stop.send(()).map_err(|()| "server stopped")?;
     server.await??;
-    receiver.shutdown().map_err(|_| "worker panicked")?;
-    let receiver = Receiver::open(&database, "key".into(), SigningSecret::parse(SECRET)?)?;
+    receiver.shutdown().await.map_err(|_| "worker panicked")?;
+    let mut receiver = Receiver::open(&database, "key".into(), SigningSecret::parse(SECRET)?)?;
     let connection = rusqlite::Connection::open(&database)?;
     let count: i64 =
         connection.query_row("SELECT COUNT(*) FROM deliveries", [], |row| row.get(0))?;
     assert_eq!(count, 2);
-    receiver.shutdown().map_err(|_| "worker panicked")?;
+    receiver.shutdown().await.map_err(|_| "worker panicked")?;
     Ok(())
 }
 
