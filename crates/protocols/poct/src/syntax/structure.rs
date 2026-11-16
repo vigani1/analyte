@@ -116,6 +116,7 @@ pub(crate) fn validate(document: &Document) -> Result<Vec<Option<Value>>, Messag
             }
             let value = data::parse(element, kind).map_err(MessageError::Data)?;
             validate_codes(element)?;
+            validate_field_format(element)?;
             values.push(Some(value));
         }
     }
@@ -467,4 +468,33 @@ fn validate_codes(element: &Element) -> Result<(), MessageError> {
         return Err(MessageError::Data(data::DataError::Code));
     }
     Ok(())
+}
+
+// POCT01-A2 B 5.2, 5.5, 5.9 and 5.13: object constraints beyond ST/INT.
+fn validate_field_format(element: &Element) -> Result<(), MessageError> {
+    let Some(value) = data::attr(element, "V") else {
+        return Ok(());
+    };
+    let valid = match element.name() {
+        "DEV.device_id" | "AP.ap_id" => {
+            value.len() == 23
+                && value.split('-').count() == 8
+                && value
+                    .split('-')
+                    .all(|octet| octet.len() == 2 && octet.bytes().all(|b| b.is_ascii_hexdigit()))
+        }
+        "HDR.encoding_chars" => value.chars().count() == 4,
+        "DST.new_observations_qty" | "DST.new_events_qty" | "AP.port_nbr" => {
+            !value.starts_with('-')
+                || value
+                    .get(1..)
+                    .is_some_and(|digits| digits.bytes().all(|b| b == b'0'))
+        }
+        _ => true,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(MessageError::Data(data::DataError::Code))
+    }
 }
