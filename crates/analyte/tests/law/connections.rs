@@ -3,76 +3,9 @@
 use super::*;
 use crate::support::HANG_GUARD;
 
-async fn client(
-    settings: &str,
-) -> Result<
-    (
-        tempfile::TempDir,
-        Fixture,
-        Reference,
-        Running,
-        TcpStream,
-        TcpListener,
-    ),
-    Error,
-> {
-    client_with_setup(settings, |_| Ok(())).await
-}
-async fn client_with_setup(
-    settings: &str,
-    configure: impl FnOnce(&mut Program) -> Result<(), Error>,
-) -> Result<
-    (
-        tempfile::TempDir,
-        Fixture,
-        Reference,
-        Running,
-        TcpStream,
-        TcpListener,
-    ),
-    Error,
-> {
-    let temp = tempfile::tempdir()?;
-    let path = vendor_config(
-        temp.path(),
-        "law",
-        &settings.replace("kind = \"tcp_server\"", "kind = \"tcp_client\""),
-    )?;
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let loaded = Program::load(&path)?;
-    let old = &loaded
-        .machines()
-        .first()
-        .ok_or("machine")?
-        .snapshot()
-        .effective()
-        .site()
-        .endpoint;
-    let site = temp.path().join("hl7-site.toml");
-    std::fs::write(
-        &site,
-        std::fs::read_to_string(&site)?.replace(old, &listener.local_addr()?.to_string()),
-    )?;
-    let reference = Reference::start(
-        &temp.path().join("receiver.db"),
-        TcpListener::bind("127.0.0.1:0").await?,
-        false,
-    )
-    .await?;
-    reference
-        .receiver
-        .seed(vec![order("order-1", "000Ab12", Some("law"), 2)?])
-        .await?;
-    let mut loaded = Program::load(&path)?;
-    loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
-    configure(&mut loaded)?;
-    let running = Running::start_program(loaded, "synthetic-api").await?;
-    let (peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
-        .await
-        .map_err(|e| format!("reconnect after disconnect: {e}"))??;
-    wait_feed(&path).await?;
-    Ok((temp, path, reference, running, peer, listener))
-}
+#[path = "client_fixture.rs"]
+mod client_fixture;
+use client_fixture::{client, client_with_setup, wait_parked_frame};
 
 #[tokio::test]
 async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions()
@@ -144,7 +77,7 @@ async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions
 }
 
 #[tokio::test]
-async fn law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work()
+async fn law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect()
 -> Result<(), Error> {
     let settings = definition()
         .replace("send_ahead = false", "send_ahead = true")
@@ -158,12 +91,38 @@ async fn law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work(
         .map_err(|e| format!("reconnect after disconnect: {e}"))??;
     vendor_support::state(&path, "Uncertain").await?;
     quiet(&mut peer).await?;
-    // A first-byte deadline closes only this session. Original bytes survive and
-    // reconnect cannot grant permission to resend its already-reserved work.
-    peer.write_all(&[11, b'M', b'S', b'H']).await?;
+    // PaLM TF-2b B.6 / ADR 0003: retain unrelated framing evidence first.
+    // A complete query would require storage and a response inside this test's
+    // deliberately short 100 ms receive budget, racing slow CI storage.
+    peer.write_all(b"?").await?;
+    assert_eq!(
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut [0]))
+            .await
+            .map_err(|e| format!("unrelated EOF: {e}"))??,
+        0
+    );
+    wait_parked_frame(&path, b"?", "byte outside block")
+        .await
+        .map_err(|e| format!("unrelated parking: {e}"))?;
+    let unrelated: Vec<u8> = database(&path)?.query_row(
+        "SELECT raw FROM receipts WHERE raw=?1",
+        [b"?".as_slice()],
+        |r| r.get(0),
+    )?;
+    assert_eq!(unrelated, b"?");
+    drop(peer);
+    // Observe the replacement session after the unrelated framing rejection;
+    // only this newly accepted connection receives the partial block.
+    let (mut peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
+        .await
+        .map_err(|e| format!("replacement accept: {e}"))??;
+    let partial = [11, b'M', b'S', b'H'];
+    peer.write_all(&partial).await?;
     let mut byte = [0];
     assert_eq!(
-        tokio::time::timeout(HANG_GUARD, peer.read(&mut byte)).await??,
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut byte))
+            .await
+            .map_err(|e| format!("partial EOF: {e}"))??,
         0
     );
     drop(peer);
@@ -173,10 +132,37 @@ async fn law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work(
     quiet(&mut peer).await?;
     assert_eq!(count(&path, "machine_orders")?, 1);
     assert_eq!(count(&path, "machine_order_items")?, 2);
-    assert!(
-        count(&path, "receipts")? >= 1,
-        "partial input must remain retained"
-    );
+    // EOF/reconnect observes transport closure, not completion of evidence custody.
+    wait_parked_frame(&path, &partial, "incomplete block")
+        .await
+        .map_err(|e| format!("partial parking: {e}"))?;
+    let retained: (String, Vec<u8>) = database(&path)?.query_row(
+        "SELECT id,raw FROM receipts WHERE raw=?1",
+        [&partial[..]],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    assert_eq!(retained.1, partial);
+    assert!(count(&path, "receipts")? >= 2);
+    let evidence: String = database(&path)?.query_row(
+        "SELECT evidence FROM parked WHERE json_extract(evidence,'$.targets[0]')=?1",
+        [serde_json::from_str::<String>(&retained.0)?],
+        |r| r.get(0),
+    )?;
+    let parked: serde_json::Value = serde_json::from_str(&evidence)?;
+    assert_eq!(parked["reason"], "incomplete block");
+    running.stop().await?;
+    let mut loaded = Program::load(&path)?;
+    loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
+    let running = Running::start_program(loaded, "synthetic-api").await?;
+    let (mut peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
+        .await
+        .map_err(|e| format!("replacement accept: {e}"))??;
+    quiet(&mut peer).await?;
+    let after: Vec<u8> =
+        database(&path)?.query_row("SELECT raw FROM receipts WHERE id=?1", [&retained.0], |r| {
+            r.get(0)
+        })?;
+    assert_eq!(after, partial);
     running.stop().await?;
     reference.close().await?;
     Ok(())
@@ -261,6 +247,14 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
     let work = packet(&mut outbound).await?;
     assert_eq!(field(&work, b"MSH", 9)?, b"OML^O33^OML_O33");
     orl(&mut outbound, &work, &["OK"], false).await?;
+    // PaLM TF-2b B.6: the manager owns transaction closure; peer stays open.
+    assert_eq!(
+        tokio::time::timeout(HANG_GUARD, outbound.read_u8())
+            .await?
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
     drop(outbound);
     vendor_support::state(&path, "Accepted").await?;
     wait_state(&path, "done", 1).await?;
@@ -287,6 +281,14 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
     let negative = packet(&mut outbound).await?;
     assert!(!negative.segments().any(|s| s.id() == b"OBR"));
     orl(&mut outbound, &negative, &[], false).await?;
+    // PaLM TF-2b B.6: the manager owns transaction closure; peer stays open.
+    assert_eq!(
+        tokio::time::timeout(HANG_GUARD, outbound.read_u8())
+            .await?
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
     drop(outbound);
     wait_audit(&path).await?;
     running.stop().await?;
@@ -423,17 +425,34 @@ async fn law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos() -> R
         &definition().replace("send_ahead = false", "send_ahead = true"),
         listener.local_addr()?,
     );
-    let (_temp, path, reference, running, peer) = setup(
-        vec![order("order-1", "000Ab12", Some("law"), 1)?],
-        &settings,
+    let temp = tempfile::tempdir()?;
+    let path = vendor_config(temp.path(), "law", &settings)?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
         false,
     )
     .await?;
-    drop(peer);
+    reference
+        .receiver
+        .seed(vec![order("order-1", "000Ab12", Some("law"), 1)?])
+        .await?;
+    let mut loaded = program(&path, &reference.url)?;
+    loaded.set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))?;
+    let running = Running::start_program(loaded, "synthetic-api").await?;
+    // B.6: no inbound analyzer connection has ever been established.
     let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
     let sent = packet(&mut outbound).await?;
     let placer = field(&sent, b"OBR", 2)?.to_vec();
     orl(&mut outbound, &sent, &["OK"], false).await?;
+    // PaLM TF-2b B.6: the manager owns transaction closure; peer stays open.
+    assert_eq!(
+        tokio::time::timeout(HANG_GUARD, outbound.read_u8())
+            .await?
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::UnexpectedEof
+    );
     drop(outbound);
     vendor_support::state(&path, "Accepted").await?;
     work::cancel_cache(&path, &reference).await?;

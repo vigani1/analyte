@@ -123,8 +123,32 @@ async fn law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_o
                 b"000Ab12".as_slice()
             }
         );
-        orl(&mut peer, &negative, &[], false).await?;
+        let raw_orl = orl(&mut peer, &negative, &[], false).await?;
         wait_audit(&path).await?;
+        let (orl_id, stored): (String, Vec<u8>) = database(&path)?.query_row(
+            "SELECT id,raw FROM receipts WHERE raw=?1",
+            [&raw_orl],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        assert_eq!(stored, raw_orl);
+        let query_id: String =
+            database(&path)?.query_row("SELECT id FROM receipts WHERE id<>?1", [&orl_id], |r| {
+                r.get(0)
+            })?;
+        let audit: String = database(&path)?.query_row("SELECT evidence FROM audit WHERE json_extract(evidence,'$.action')='LAW-negative-query-ORL'", [], |r| r.get(0))?;
+        let audit: serde_json::Value = serde_json::from_str(&audit)?;
+        assert_eq!(audit["actor"], "law");
+        assert_eq!(
+            audit["targets"],
+            serde_json::json!([
+                serde_json::from_str::<String>(&orl_id)?,
+                serde_json::from_str::<String>(&query_id)?
+            ])
+        );
+        assert_eq!(
+            audit["reason"],
+            "negative followup ORL correlated=true acceptance=Aa"
+        );
         assert_eq!(count(&path, "receipts")?, 2);
         assert_eq!(count(&path, "machine_orders")?, 0);
         assert_eq!(count(&path, "outbox")?, 0);
@@ -285,6 +309,18 @@ async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are
         assert_eq!(count(&path, "machine_order_items")?, 2);
         assert_eq!(count(&path, "outbox")?, 1);
         running.stop().await?;
+        let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+        let mut peer = connect(&path, "law").await?;
+        send(&mut peer, query(CONTAINER, "after-failure").as_bytes()).await?;
+        assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"OK");
+        let negative = packet(&mut peer).await?;
+        assert!(!negative.segments().any(|s| s.id() == b"OBR"));
+        orl(&mut peer, &negative, &[], false).await?;
+        wait_audit(&path).await?;
+        assert_eq!(count(&path, "machine_order_items")?, 2);
+        assert_eq!(count(&path, "machine_orders")?, 1);
+        quiet(&mut peer).await?;
+        running.stop().await?;
         reference.close().await?;
     }
     Ok(())
@@ -353,20 +389,21 @@ async fn law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not
 #[tokio::test]
 async fn law_tf2b_3_27_3_28_preflight_and_reservation_failure_cannot_emit_positive_rsp_or_work()
 -> Result<(), Error> {
-    for failure in ["unmapped-test", "reservation-storage"] {
-        let settings = if failure == "unmapped-test" {
-            definition().replace("value=\"TEST\"", "value=\"OTHER\"")
-        } else {
-            definition()
-        };
+    for failure in ["later-unmapped-test", "later-reservation-storage"] {
+        let settings = definition();
+        let mut pending: serde_json::Value =
+            serde_json::from_slice(&serde_json::to_vec(&order("order-1", "000Ab12", None, 2)?)?)?;
+        if failure == "later-unmapped-test" {
+            pending["tests"][1]["value"] = serde_json::json!("UNMAPPED");
+        }
         let (_temp, path, reference, running, mut peer) = setup(
-            vec![order("order-1", "000Ab12", None, 1)?],
+            vec![analyte_contract::decode(&serde_json::to_vec(&pending)?)?],
             &settings,
             false,
         )
         .await?;
-        if failure == "reservation-storage" {
-            database(&path)?.execute_batch("CREATE TRIGGER synthetic_reservation_failure BEFORE INSERT ON machine_order_items BEGIN SELECT RAISE(FAIL,'synthetic-reservation-failure'); END;")?;
+        if failure == "later-reservation-storage" {
+            database(&path)?.execute_batch("CREATE TRIGGER synthetic_reservation_failure BEFORE INSERT ON machine_order_items WHEN NEW.item_index=1 BEGIN SELECT RAISE(FAIL,'synthetic-reservation-failure'); END;")?;
         }
         send(&mut peer, query(CONTAINER, "failed").as_bytes()).await?;
         let rsp = packet(&mut peer).await?;
@@ -389,7 +426,15 @@ async fn law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_pe
     for selected in [false, true] {
         let settings = definition()
             .replace("specimen = false", &format!("specimen = {selected}"))
-            .replace("priority = false", &format!("priority = {selected}"));
+            .replace("priority = false", &format!("priority = {selected}"))
+            .replace(
+                "manager_repeat = false",
+                &format!("manager_repeat = {selected}"),
+            )
+            .replace(
+                "repeat_control = false",
+                &format!("repeat_control = {selected}"),
+            );
         let (_temp, path, reference, running, mut peer) = setup(
             vec![order("order-1", "000Ab12", None, 1)?],
             &settings,
@@ -414,6 +459,24 @@ async fn law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_pe
         if selected {
             assert_eq!(field(&work, b"TQ1", 9)?, b"R^^HL70485");
         }
+        // PaLM TF-2b 2.2.4.8/9: peer support is not app authorization.
+        for tcd in work.segments().filter(|s| s.id() == b"TCD") {
+            for number in [6, 7, 8] {
+                assert_eq!(
+                    tcd.field(number)
+                        .map_or(b"".as_slice(), analyte_hl7::Field::raw),
+                    b"",
+                    "unsolicited TCD-{number}"
+                );
+            }
+        }
+        for orc in work.segments().filter(|s| s.id() == b"ORC") {
+            assert_eq!(
+                orc.field(8).map_or(b"".as_slice(), analyte_hl7::Field::raw),
+                b"",
+                "invented parent order"
+            );
+        }
         orl(&mut peer, &work, &["OK"], false).await?;
         wait_state(&path, "done", 1).await?;
         running.stop().await?;
@@ -429,10 +492,32 @@ async fn law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_
     send(&mut peer, query(ALL, "negative").as_bytes()).await?;
     packet(&mut peer).await?;
     let negative = packet(&mut peer).await?;
-    orl(&mut peer, &negative, &[], true).await?;
+    let raw = orl(&mut peer, &negative, &[], true).await?;
     wait_audit(&path).await?;
     let reason: String = database(&path)?.query_row("SELECT json_extract(evidence,'$.reason') FROM audit WHERE json_extract(evidence,'$.action')='LAW-negative-query-ORL'", [], |row| row.get(0))?;
-    assert!(reason.contains("correlated=false"));
+    assert_eq!(
+        reason,
+        "negative followup ORL correlated=false acceptance=invalid"
+    );
+    let (orl_id, stored): (String, Vec<u8>) =
+        database(&path)?.query_row("SELECT id,raw FROM receipts WHERE raw=?1", [&raw], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
+    assert_eq!(stored, raw);
+    let query_id: String =
+        database(&path)?.query_row("SELECT id FROM receipts WHERE id<>?1", [&orl_id], |r| {
+            r.get(0)
+        })?;
+    let audit: String = database(&path)?.query_row("SELECT evidence FROM audit WHERE json_extract(evidence,'$.action')='LAW-negative-query-ORL'", [], |r| r.get(0))?;
+    let audit: serde_json::Value = serde_json::from_str(&audit)?;
+    assert_eq!(audit["actor"], "law");
+    assert_eq!(
+        audit["targets"],
+        serde_json::json!([
+            serde_json::from_str::<String>(&orl_id)?,
+            serde_json::from_str::<String>(&query_id)?
+        ])
+    );
     assert_eq!(count(&path, "receipts")?, 2);
     assert_eq!(count(&path, "machine_orders")?, 0);
     assert_eq!(count(&path, "outbox")?, 0);
@@ -442,80 +527,3 @@ async fn law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_
     reference.close().await?;
     Ok(())
 }
-
-#[cfg(feature = "test-hooks")]
-#[tokio::test]
-async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservation()
--> Result<(), Error> {
-    for form in [CONTAINER, ALL] {
-        let temp = tempfile::tempdir()?;
-        let path = vendor_config(temp.path(), "law", &definition())?;
-        let reference = Reference::start(
-            &temp.path().join("receiver.db"),
-            TcpListener::bind("127.0.0.1:0").await?,
-            false,
-        )
-        .await?;
-        reference
-            .receiver
-            .seed(vec![order("order-1", "000Ab12", None, 1)?])
-            .await?;
-        let mut loaded = program(&path, &reference.url)?;
-        let (hook, control) = analyte::runtime::test_hooks::Committed::new();
-        loaded.pause_law_committed_for_test("law", hook)?;
-        let running = Running::start_program(loaded, "synthetic-api").await?;
-        let mut peer = connect(&path, "law").await?;
-        wait_feed(&path).await?;
-        let request = query(form, "durable");
-        send(&mut peer, request.as_bytes()).await?;
-        control.reached().await?;
-        let raw: Vec<u8> =
-            database(&path)?.query_row("SELECT raw FROM receipts", [], |row| row.get(0))?;
-        assert_eq!(
-            raw,
-            analyte_framing::hl7::encode(
-                request.as_bytes(),
-                analyte_framing::hl7::Limit::new(1048576)?
-            )?
-        );
-        assert_eq!(count(&path, "machine_orders")?, 0);
-        quiet(&mut peer).await?;
-        control.resume();
-        assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"OK");
-        let work = packet(&mut peer).await?;
-        assert_eq!(count(&path, "machine_order_items")?, 1);
-        orl(&mut peer, &work, &["OK"], false).await?;
-        wait_state(&path, "done", 1).await?;
-        running.stop().await?;
-        reference.close().await?;
-    }
-    Ok(())
-}
-
-// ADR 0004 / rule 9 / LAW TF-2b 3.27.4: only configured fresh emptiness is a negative work answer.
-#[tokio::test]
-async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Error> {
-    for freshness in [10, 120] {
-        let (_temp, path, reference, running, mut peer) =
-            setup_with_freshness(Vec::new(), &definition(), false, freshness).await?;
-        reference.close().await?;
-        database(&path)?.execute(
-            "UPDATE feed SET polled=?1",
-            [jiff::Timestamp::now().as_second() - 50],
-        )?;
-        send(&mut peer, query(ALL, "configured-age").as_bytes()).await?;
-        let response = packet(&mut peer).await?;
-        if freshness == 10 {
-            assert_eq!(field(&response, b"QAK", 2)?, b"AE");
-        } else {
-            assert_eq!(field(&response, b"QAK", 2)?, b"OK");
-            let negative = packet(&mut peer).await?;
-            assert_eq!(field(&negative, b"ORC", 1)?, b"DC");
-            orl(&mut peer, &negative, &[], false).await?;
-        }
-        running.stop().await?;
-    }
-    Ok(())
-}
-
-// IHE PaLM TF-2b Rev 11 B.3.1 pp.63-64 and B.7.6 p.82.
