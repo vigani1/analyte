@@ -259,7 +259,7 @@ pub enum Failure {
     #[error("recording record too large")]
     Oversized,
     /// File failure, with protected path and portable error kind.
-    #[error("recording {path}: {kind:?}")]
+    #[error("recording {path}: {stable_kind}", stable_kind = crate::evidence::io_kind(*.kind))]
     Io {
         /// Recording file path.
         path: PathBuf,

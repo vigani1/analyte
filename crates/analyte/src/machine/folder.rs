@@ -173,7 +173,7 @@ async fn receive(
             Event::Closed(Reason::Disconnect) if opened => return Ok(Some(raw)),
             Event::Closed(reason) | Event::Failed(reason) => {
                 return Err(invalid(&format!(
-                    "file transport interrupted; source remains claimed: {reason:?}"
+                    "file transport interrupted; source remains claimed: {reason}"
                 )));
             }
             Event::RecordingFailed(_) => {}

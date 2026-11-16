@@ -528,7 +528,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
                 Input::Failed(reason) => {
                     return Err(invalid(&format!(
-                        "LAW independent transport failed: {reason:?}"
+                        "LAW independent transport failed: {reason}"
                     )));
                 }
                 Input::RecordingFailed(_failure) => {}
