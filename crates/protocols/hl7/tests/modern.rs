@@ -459,3 +459,28 @@ fn hl7_2_8_2_s2_14_9_18_and_2_9_1_s2_13_9_18_utf8_and_literal_p() -> Result<(), 
     }
     Ok(())
 }
+
+// HL7 2.8.2 section 2.A.50 and 7.4.2.4; 2.9.1 section 2A.2.50 and 7.4.2.4.
+#[test]
+fn hl7_282_s2_a_50_291_s7_4_2_4_enhanced_og_requires_full_grouping_contract() -> Result<(), Error> {
+    for edition in ["2.8.2", "2.9.1"] {
+        for group in ["^1^1", "^1^2", "legacy^1", "legacy^^^isolate"] {
+            let message = message(edition, "^~\\&", &observation(4, group)?)?;
+            assert!(matches!(
+                validate_result_fields(&message),
+                Err(Error::Control {
+                    segment: "OBX",
+                    field: 4
+                })
+            ));
+            assert!(
+                message
+                    .raw()
+                    .windows(group.len())
+                    .any(|bytes| bytes == group.as_bytes())
+            );
+        }
+        validate_result_fields(&message(edition, "^~\\&", &observation(4, "legacy")?)?)?;
+    }
+    Ok(())
+}
