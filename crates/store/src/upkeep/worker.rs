@@ -14,6 +14,23 @@ struct Request {
     operation: Operation,
 }
 
+impl Request {
+    fn run(self, store: &mut Store, now: Instant) {
+        if now < self.deadline {
+            (self.operation)(store);
+        }
+    }
+}
+
+// This guard is declared after Handle so cancellation precedes its joining Drop.
+struct CancelStartup(crate::startup::Startup);
+
+impl Drop for CancelStartup {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
+
 /// Owns the dedicated storage thread and a bounded request queue.
 /// Dropping closes the queue and joins the worker; explicitly shut down before runtime exit.
 pub struct Handle {
@@ -57,22 +74,13 @@ impl Handle {
                     }
                 };
                 while let Some(request) = receiver.blocking_recv() {
-                    if Instant::now() < request.deadline {
-                        (request.operation)(&mut store);
-                    }
+                    request.run(&mut store, Instant::now());
                 }
             })?;
         let handle = Self {
             sender: Some(sender),
             thread: Some(thread),
         };
-        // Cancellation must interrupt startup before Handle's Drop joins its worker.
-        struct CancelStartup(crate::startup::Startup);
-        impl Drop for CancelStartup {
-            fn drop(&mut self) {
-                self.0.cancel();
-            }
-        }
         let _cancel = CancelStartup(startup.clone());
         tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), opened)
             .await
