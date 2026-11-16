@@ -9,7 +9,9 @@ use tokio::{
 fn configure_orders(root: &Path, send: bool) -> Result<(), Error> {
     let path = root.join("astm.toml");
     let text = std::fs::read_to_string(&path)?;
+    // Normal query outcomes must not depend on a loaded runner meeting the teaching deadline.
     let section = include_str!("../../../config/examples/orders.toml")
+        .replace("deadline_ms = 1000", "deadline_ms = 30000")
         .replace("send_ahead = true", &format!("send_ahead = {send}"))
         .replace(
             "namespace=\"demo\",value=\"DEMO\"",
@@ -357,7 +359,7 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
     let definition = temp.path().join("astm.toml");
     std::fs::write(
         &definition,
-        std::fs::read_to_string(&definition)?.replace("deadline_ms = 1000", "deadline_ms = 20"),
+        std::fs::read_to_string(&definition)?.replace("deadline_ms = 30000", "deadline_ms = 20"),
     )?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),

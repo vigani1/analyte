@@ -1,26 +1,10 @@
 //! Admin HTTP tests exercise authentication and audited operator actions.
 use super::*;
 use analyte_model::{OrderState, Reason};
-use std::{io::Write, sync::Mutex};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
 mod pages;
-
-#[derive(Clone)]
-struct Capture(Arc<Mutex<Vec<u8>>>);
-impl Write for Capture {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .map_err(|_| std::io::Error::other("log capture poisoned"))?
-            .extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
 
 struct Space;
 impl analyte_store::FreeSpace for Space {
@@ -175,13 +159,7 @@ fn headers_present(response: &str) {
 // bounded metadata reads, honest health and no credential/payload in logs.
 #[tokio::test(flavor = "multi_thread")]
 async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(), Error> {
-    let logs = Capture(Arc::new(Mutex::new(Vec::new())));
-    let writer = logs.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_writer(move || writer.clone())
-        .finish();
-    tracing::subscriber::set_global_default(subscriber)?;
+    let logs = crate::test_tracing::init();
     let directory = crate::admin::private_tempdir()?;
     #[cfg(unix)]
     {
@@ -223,7 +201,7 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
     drop(slow);
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retained store after shutdown")?;
     store.shutdown(fixture_deadline()?).await?;
-    let captured = logs.0.lock().map_err(|_| "log capture poisoned")?;
+    let captured = logs.lock().map_err(|_| "log capture poisoned")?;
     let captured = String::from_utf8_lossy(&captured);
     assert!(captured.contains("admin authentication refused"));
     for secret in [

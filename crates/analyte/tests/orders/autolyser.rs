@@ -12,10 +12,7 @@ fn definition(clone: bool) -> String {
         "{}\n[orders]\nsend_ahead=true\npatient_namespace='synthetic'\nclone={clone}\n{}",
         include_str!("../../../config/examples/autolyser.toml")
             .replace("download = false", "download = true")
-            .replace("poll_ms = 1000", "poll_ms = 200")
-            .replace("acknowledgment_ms = 5000", "acknowledgment_ms = 1000")
-            .replace("interbyte_ms = 5000", "interbyte_ms = 1000")
-            .replace("response_ms = 10000", "response_ms = 3000"),
+            .replace("poll_ms = 1000", "poll_ms = 200"),
         r#"
 tests=[{app={namespace="synthetic",value="TEST"},machine_components=["SYN "]}]
 priorities=[{app="routine",machine="T"}]
@@ -32,8 +29,14 @@ async fn setup(
     value: serde_json::Value,
     clone: bool,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_with_definition(value, &definition(clone)).await
+}
+async fn setup_with_definition(
+    value: serde_json::Value,
+    definition: &str,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
-    let path = vendor_config(temp.path(), "autolyser", &definition(clone))?;
+    let path = vendor_config(temp.path(), "autolyser", definition)?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),
         TcpListener::bind("127.0.0.1:0").await?,
@@ -152,7 +155,11 @@ async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_sta
 #[tokio::test]
 async fn autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_order()
 -> Result<(), Error> {
-    let (temp, path, reference, service, mut peer) = setup(order()?, false).await?;
+    // Exercise the acknowledgment_ms deadline with the peer deliberately withholding input.
+    let settings =
+        definition(false).replace("acknowledgment_ms = 5000", "acknowledgment_ms = 1000");
+    let (temp, path, reference, service, mut peer) =
+        setup_with_definition(order()?, &settings).await?;
     assert_eq!(byte(&mut peer).await?, 2);
     assert_eq!(
         database(&path)?.query_row(
@@ -185,7 +192,11 @@ async fn autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_or
 }
 #[tokio::test]
 async fn autolyser_rev18_ch23_unanswered_insertion_is_uncertain_not_sent() -> Result<(), Error> {
-    let (temp, path, reference, service, mut peer) = setup(order()?, false).await?;
+    // Exercise the acknowledgment_ms deadline with the peer deliberately withholding input.
+    let settings =
+        definition(false).replace("acknowledgment_ms = 5000", "acknowledgment_ms = 1000");
+    let (temp, path, reference, service, mut peer) =
+        setup_with_definition(order()?, &settings).await?;
     empty_poll(&mut peer).await?;
     assert_eq!(byte(&mut peer).await?, 2);
     state(&path, "Sending").await?;
@@ -205,7 +216,10 @@ async fn autolyser_rev18_ch23_unanswered_insertion_is_uncertain_not_sent() -> Re
 #[tokio::test]
 async fn autolyser_rev18_ch23_parked_partial_reply_is_uncertain_same_round_with_timeout_code()
 -> Result<(), Error> {
-    let (temp, path, reference, service, mut peer) = setup(order()?, false).await?;
+    // Exercise the interbyte_ms deadline with the peer deliberately withholding input.
+    let settings = definition(false).replace("interbyte_ms = 5000", "interbyte_ms = 1000");
+    let (temp, path, reference, service, mut peer) =
+        setup_with_definition(order()?, &settings).await?;
     insertion(&mut peer, &path, false).await?;
     peer.write_all(b"Y").await?;
     event(

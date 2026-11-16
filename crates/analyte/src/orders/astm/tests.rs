@@ -35,6 +35,8 @@ fn machine(policy: &str) -> Result<Machine, Error> {
         law_committed: None,
         #[cfg(feature = "test-hooks")]
         astm_committed: None,
+        #[cfg(feature = "test-hooks")]
+        connection_closing: None,
         id: Identifier::new("synthetic")?,
         snapshot,
         listener: None,
@@ -57,7 +59,7 @@ async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never
         limits,
         Box::new(Space),
         4,
-        crate::deadline(),
+        crate::test_startup_deadline()?,
     )
     .await?;
     for policy in ["error", "no_answer"] {
@@ -125,7 +127,7 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
             },
             Box::new(Space),
             4,
-            crate::deadline(),
+            crate::test_startup_deadline()?,
         )
         .await?;
         let destination = crate::orders::destination(&machine);

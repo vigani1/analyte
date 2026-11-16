@@ -263,9 +263,6 @@ impl Peer {
                 value.get("executable")?.as_str().map(str::to_owned)
             })
             .ok_or("receiver artifact missing")?;
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let address = listener.local_addr()?;
-        drop(listener);
         let seed = directory.join("seed.json");
         std::fs::write(
             &seed,
@@ -274,34 +271,37 @@ impl Peer {
                 include_str!("../../../docs/contract/vectors/order.json")
             ),
         )?;
-        let child = tokio::process::Command::new(executable)
-            .args(["--listen", &address.to_string(), "--database"])
+        let mut child = tokio::process::Command::new(executable)
+            .args(["--listen", "127.0.0.1:0", "--database"])
             .arg(directory.join("receiver.db"))
             .arg("--seed")
             .arg(seed)
             .env("ANALYTE_API_KEY", "key")
             .env("ANALYTE_SIGNING_SECRET", SECRET)
             .kill_on_drop(true)
-            .stdout(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .spawn()?;
-        let mut peer = Self {
+        // This address comes from our child after it has seeded and bound its own
+        // socket. Another process cannot satisfy readiness on a released port.
+        use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or("receiver startup output missing")?;
+        let mut output = tokio::io::BufReader::new(stdout.take(128));
+        let mut line = String::new();
+        if tokio::time::timeout(HANG_GUARD, output.read_line(&mut line)).await?? == 0 {
+            return Err("receiver exited before reporting its bound address".into());
+        }
+        let address: std::net::SocketAddr = line.trim().parse()?;
+        if !address.ip().is_loopback() || address.port() == 0 {
+            return Err("receiver did not report a bound loopback address".into());
+        }
+        Ok(Self {
             child,
             url: format!("http://{address}"),
-        };
-        tokio::time::timeout(HANG_GUARD, async {
-            loop {
-                if peer.child.try_wait()?.is_some() {
-                    return Err(std::io::Error::other("receiver exited before readiness"));
-                }
-                if tokio::net::TcpStream::connect(address).await.is_ok() {
-                    return Ok(());
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
         })
-        .await??;
-        Ok(peer)
     }
 
     async fn stop(mut self) -> TestResult {

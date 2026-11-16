@@ -31,6 +31,8 @@ async fn forced_exit_child() -> Result<(), Error> {
     let path = config(&root, true)?;
     let definition = root.join("astm.toml");
     let orders = include_str!("../../../config/examples/orders.toml")
+        // This test exercises crash recovery, not query response expiry.
+        .replace("deadline_ms = 1000", "deadline_ms = 30000")
         .replace("send_ahead = true", "send_ahead = false")
         .replace(
             "namespace=\"demo\",value=\"DEMO\"",
@@ -43,17 +45,10 @@ async fn forced_exit_child() -> Result<(), Error> {
     let mut loaded = program(&path, &url)?;
     loaded.stall_store_on_shutdown_for_test()?;
     let running = Running::start_program(loaded, "synthetic-api").await?;
+    // A row can precede the trusted feed commit; only that commit permits an order answer.
+    wait_feed(&path).await?;
+    wait_database_count(&path, "SELECT count(*) FROM orders", [], 1).await?;
     let mut astm_peer = connect(&path, "astm").await?;
-    tokio::time::timeout(HANG_GUARD, async {
-        while database(&path)?
-            .query_row("SELECT count(*) FROM orders", [], |r| r.get::<_, i64>(0))?
-            == 0
-        {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        Ok::<_, Error>(())
-    })
-    .await??;
     // LIS02 §11: reserve the query answer; withhold ENQ acknowledgment so it stays Sending.
     astm(
         &mut astm_peer,
@@ -123,7 +118,20 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
             .stderr(std::process::Stdio::piped())
             .spawn()?,
     );
-    let original = reference.event().await?;
+    let original = tokio::select! {
+        result = reference.event() => result?,
+        result = async {
+            loop {
+                if let Some(status) = child.0.try_wait()? {
+                    let mut log = String::new();
+                    use std::io::Read as _;
+                    child.0.stderr.take().ok_or("missing child log")?.read_to_string(&mut log)?;
+                    return Err::<(), Error>(format!("child exited before receiver commit ({status}): {log}").into());
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        } => { result?; return Err("child monitor unexpectedly completed".into()); }
+    };
     assert!(original.outcome.contains("accepted"));
     let started = std::time::Instant::now();
     while !directory.path().join("shutdown-ready").exists() {

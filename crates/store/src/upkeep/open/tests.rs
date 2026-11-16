@@ -421,48 +421,58 @@ fn mutation_plan11_startup_progress_names_and_completed_steps_are_visible() -> T
     ] {
         assert_eq!(step.to_string(), expected);
     }
-    let buffer = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
-    struct TraceWriter(Arc<std::sync::Mutex<Vec<u8>>>);
-    impl std::io::Write for TraceWriter {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0
-                .lock()
-                .map_err(|_| std::io::Error::other("trace buffer poisoned"))?
-                .extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let sink = buffer.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .without_time()
-        .with_ansi(false)
-        .with_writer(move || TraceWriter(sink.clone()))
-        .finish();
+    use crate::startup::Progress;
+    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = events.clone();
+    let elapsed = Arc::new(AtomicU64::new(0));
+    let clock = elapsed.clone();
     let base = Instant::now();
     let mut startup = Startup::new(base + crate::test_support::HANG_GUARD);
-    startup.clock = Some(Arc::new(move || base));
-    tracing::subscriber::with_default(subscriber, || -> Result<(), Error> {
-        startup.run(StartupStep::Opening, || Ok(()))?;
-        startup.run(StartupStep::Integrity, || Ok(()))?;
-        startup.run(StartupStep::Finalizing, || Ok(()))?;
-        Ok(())
-    })?;
-    let output = String::from_utf8(buffer.lock().map_err(|_| "trace buffer poisoned")?.clone())?;
-    for step in ["opening", "finalizing"] {
-        assert!(
-            output
-                .lines()
-                .any(|line| line.contains("store startup step finished")
-                    && line.contains(&format!("step={step}"))),
-            "missing completion for {step}"
-        );
+    startup.clock = Some(Arc::new(move || {
+        base.checked_add(Duration::from_millis(clock.load(Ordering::SeqCst)))
+            .expect("test clock stays within 26 milliseconds")
+    }));
+    startup.observer = Some(Arc::new(move |event| {
+        observed
+            .lock()
+            .expect("progress collector is not poisoned")
+            .push(event);
+    }));
+    for (step, finished_at) in [
+        (StartupStep::Opening, 7),
+        (StartupStep::Integrity, 10),
+        (StartupStep::Migration { from: 7, to: 8 }, 21),
+        (StartupStep::Finalizing, 26),
+    ] {
+        startup.run(step, || {
+            elapsed.store(finished_at, Ordering::SeqCst);
+            Ok(())
+        })?;
     }
-    assert!(!output.lines().any(
-        |line| line.contains("store startup step finished") && line.contains("integrity check")
-    ));
+    assert_eq!(
+        *events.lock().map_err(|_| "progress collector poisoned")?,
+        vec![
+            Progress::Started(StartupStep::Opening),
+            Progress::Finished {
+                step: StartupStep::Opening,
+                elapsed_ms: 7,
+                succeeded: true
+            },
+            Progress::Started(StartupStep::Migration { from: 7, to: 8 }),
+            Progress::Finished {
+                step: StartupStep::Migration { from: 7, to: 8 },
+                elapsed_ms: 11,
+                succeeded: true
+            },
+            Progress::Started(StartupStep::Finalizing),
+            Progress::Finished {
+                step: StartupStep::Finalizing,
+                elapsed_ms: 5,
+                succeeded: true
+            },
+        ],
+        "every visible startup step must report its start and timed completion; integrity is intentionally silent"
+    );
     Ok(())
 }
 
