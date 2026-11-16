@@ -1,6 +1,7 @@
 //! Loads bounded program TOML and machine snapshots without secret values.
 //! Kept whole: Program configuration types and boundary validation express one installation contract.
 mod alerts;
+mod webhooks;
 use crate::{Error, invalid};
 pub(crate) use alerts::Condition;
 pub use alerts::{Alert, AlertConfigError, AlertKind};
@@ -11,6 +12,7 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+pub use webhooks::{AlertDelivery, AlertEndpoint, WebhookConfigError};
 
 /// A machine's installation identity and validated effective settings.
 pub struct Machine {
@@ -38,6 +40,7 @@ pub struct Program {
     pub(crate) source_path: PathBuf,
     alerts: Vec<Alert>,
     alert_interval: Duration,
+    alert_delivery: AlertDelivery,
     admin_address: Option<std::net::SocketAddrV4>,
     #[cfg(feature = "test-hooks")]
     pub(crate) stall_store_on_shutdown: bool,
@@ -55,6 +58,8 @@ pub struct Program {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
+    #[serde(default)]
+    alert_delivery: webhooks::DraftDelivery,
     #[serde(default)]
     alerts: Vec<alerts::DraftAlert>,
     #[serde(default = "alerts::interval_default")]
@@ -370,6 +375,7 @@ impl Program {
         Ok(Self {
             source_path: std::path::absolute(path)?,
             alerts,
+            alert_delivery: file.alert_delivery.validate()?,
             alert_interval: Duration::from_secs(file.alert_interval_seconds),
             admin_address,
             #[cfg(feature = "test-hooks")]
@@ -391,6 +397,12 @@ impl Program {
 }
 
 impl Program {
+    /// Borrows validated external alert delivery settings.
+    #[must_use]
+    pub fn alert_delivery(&self) -> &AlertDelivery {
+        &self.alert_delivery
+    }
+
     /// Total bounded store-opening, integrity-check and migration budget.
     #[must_use]
     pub fn store_startup_timeout(&self) -> Duration {

@@ -1,5 +1,6 @@
 //! Receives durable contract deliveries and serves orders without clinical decisions.
 #![forbid(unsafe_code)]
+mod alerts;
 use analyte_contract::{Delivery, OrderEvent, SigningSecret, content_digest, decode};
 use axum::{
     Json, Router,
@@ -161,9 +162,31 @@ impl Receiver {
             })
     }
 
+    /// Serves a local synthetic receiver until its owner requests shutdown.
+    /// The returned future owns its router; callers must await it before joining storage.
+    /// # Errors
+    /// Reports listener or server I/O failures.
+    pub fn serve_until(
+        &self,
+        listener: tokio::net::TcpListener,
+        mut stop: tokio::sync::watch::Receiver<bool>,
+    ) -> impl Future<Output = std::io::Result<()>> + Send + 'static {
+        let router = self.router();
+        async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async move {
+                    if !*stop.borrow() {
+                        let _ = stop.changed().await;
+                    }
+                })
+                .await
+        }
+    }
+
     /// Builds bounded HTTP routes; dropping an interrupted handler does not roll back a committed delivery.
     pub fn router(&self) -> Router {
         Router::new()
+            .route("/alerts", post(alerts::receive))
             .route("/results", post(results))
             .route("/order-events", post(events))
             .route("/orders", get(orders))

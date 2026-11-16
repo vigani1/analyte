@@ -498,6 +498,18 @@ fn start_alerts(
     watchdog: &crate::runtime::shutdown::Watchdog,
 ) -> JoinSet<Result<(), Error>> {
     let mut alert_owners = JoinSet::new();
+    for endpoint in program.alert_delivery().endpoints() {
+        let store = store.clone();
+        let endpoint = endpoint.clone();
+        let policy = program.alert_delivery().clone();
+        let stop = stopping.clone();
+        let component = watchdog.component(format!("alert-endpoint-{}", endpoint.id().as_str()));
+        alert_owners.spawn(async move {
+            let _component = component;
+            crate::runtime::alert_delivery::run(store, endpoint, policy, stop).await
+        });
+    }
+
     {
         let store = store.clone();
         let policies: Vec<_> = crate::runtime::retention::policies(program)

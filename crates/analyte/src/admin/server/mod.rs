@@ -28,6 +28,7 @@ pub(super) struct Machine {
 }
 
 pub(super) struct Context {
+    pub(super) alert_endpoints: Vec<Identifier>,
     pub(super) retention: Vec<(Identifier, Option<u16>)>,
     pub(super) config_path: std::path::PathBuf,
     token: Token,
@@ -76,6 +77,12 @@ pub(crate) async fn prepare(
         .collect();
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
+        alert_endpoints: program
+            .alert_delivery()
+            .endpoints()
+            .iter()
+            .map(|e| e.id().clone())
+            .collect(),
         retention: crate::runtime::retention::policies(program),
         config_path: program.source_path.clone(),
         token,

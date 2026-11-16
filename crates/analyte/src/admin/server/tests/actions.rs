@@ -266,6 +266,7 @@ async fn start_action_server(
     let host = socket.local_addr()?.to_string();
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
+        alert_endpoints: vec![],
         retention: crate::runtime::retention::policies(program),
         config_path: config_path.to_owned(),
         token: Token::load(program.data_directory())?,

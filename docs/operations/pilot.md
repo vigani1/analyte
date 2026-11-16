@@ -13,7 +13,7 @@ qualify a machine.
 | Secrets | Protected recovery location, access owners and original digest key recoverability; no values here. |
 | Capacity | Measured traffic, supported outage length, database budget, free-space reserve and maintenance headroom. |
 | Backups | Schedule, local/off-host targets, access protection, rotation, maximum data loss and recovery time. |
-| Alerts | Each enabled signal, threshold, named responder, cover, checking schedule and escalation contact. |
+| Alerts | Each enabled signal, threshold, webhook endpoint identity, relay owner, named responder, cover, checking schedule and fallback escalation contact. |
 | Restore rehearsal | Date, verified backup, elapsed recovery time, original-key check, restore pause observed and reconciliation completed. |
 | Machines | Every README blocker resolved, actual settings, de-identified recordings and reviewed capability evidence captured. |
 | Clinical route | Lab-approved sample identity, values, units, dilution, flags and corrections checked through the final report. |
@@ -25,7 +25,7 @@ qualify a machine.
 - [ ] No automatic replay of uncertain machine orders.
 - [ ] Lab app contract and duplicate handling validated with its support team.
 - [ ] Scope is limited to recorded, reviewed capabilities; evidence levels are accurate.
-- [ ] External alert delivery gap and manual escalation coverage accepted.
+- [ ] Webhook raise/reminder/resolution, outage, exhaustion, deduplication and restore rehearsed; named responder receipt and fallback cover recorded.
 - [ ] Restore rehearsal completed and evidence location recorded.
 - [ ] All six machine evidence records completed before claiming the phase 9 six-machine pilot is done.
 
