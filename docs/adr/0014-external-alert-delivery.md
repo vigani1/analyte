@@ -1,6 +1,6 @@
 # 0014. External alert delivery
 
-Status: proposed, 2026-11-16.
+Status: accepted, 2026-11-16.
 
 ## Context
 
