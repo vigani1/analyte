@@ -232,36 +232,8 @@ impl<'a> Query<'a> {
     /// Returns a located content error or the underlying HL7 control error.
     /// This is not a complete LAW profile validator (see the crate README).
     pub fn new(message: &'a Message) -> Result<Self, Error> {
-        profile::header(message, b"LAB-27", true)?;
-        let msh = msh(message)?;
-        if msh.version() != Version::V251 {
-            return Err(content("MSH", 12));
-        }
-        let header = msh.segment();
+        validate_query_header(message)?;
         let d = message.delimiters();
-        let components: Vec<_> = raw(header, 9)
-            .split(|b| *b == d.component)
-            .take(3)
-            .collect();
-        if components != [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
-            return Err(content("MSH", 9));
-        }
-        for (field, value) in [(15, b"NE".as_slice()), (16, b"AL")] {
-            if raw(header, field) != value {
-                return Err(content("MSH", field));
-            }
-        }
-        let profile = raw(header, 21)
-            .split(|b| *b == d.repetition)
-            .next()
-            .unwrap_or_default();
-        if !profile
-            .split(|b| *b == d.component)
-            .take(2)
-            .eq([b"LAB-27".as_slice(), b"IHE"])
-        {
-            return Err(content("MSH", 21));
-        }
         let mut segments = message.segments().skip(1);
         let qpd = segments
             .next()
@@ -274,23 +246,7 @@ impl<'a> Query<'a> {
         if segments.next().is_some() {
             return Err(content("RCP", 0));
         }
-        if raw(rcp, 1) != b"I" {
-            return Err(content("RCP", 1));
-        }
-        let modality: Vec<_> = raw(rcp, 3).split(|b| *b == d.component).collect();
-        if modality.first().copied() != Some(b"R".as_slice())
-            || modality.get(2).copied() != Some(b"HL70394".as_slice())
-            || modality.len() != 3
-            || !matches!(modality.get(1).copied(), Some(b"" | b"Real Time"))
-        {
-            return Err(content("RCP", 3));
-        }
-        for (offset, field) in rcp.fields().enumerate().skip(1) {
-            // RCP-2 and fields after RCP-3 are excluded by the LAW static definition.
-            if offset != 2 && !field.raw().is_empty() {
-                return Err(content("RCP", 0));
-            }
-        }
+        validate_query_response_control(rcp)?;
         let name = required(qpd, 1, 80)?;
         let mut name_parts = name.split(|b| *b == d.component);
         let kind = name_parts.next().unwrap_or_default();
@@ -486,4 +442,61 @@ impl From<crate::encoder::Limit> for Error {
         }
         .into()
     }
+}
+
+fn validate_query_header(message: &Message) -> Result<(), Error> {
+    profile::header(message, b"LAB-27", true)?;
+    let msh = msh(message)?;
+    if msh.version() != Version::V251 {
+        return Err(content("MSH", 12));
+    }
+    let header = msh.segment();
+    let d = message.delimiters();
+    let components: Vec<_> = raw(header, 9)
+        .split(|b| *b == d.component)
+        .take(3)
+        .collect();
+    if components != [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
+        return Err(content("MSH", 9));
+    }
+    for (field, value) in [(15, b"NE".as_slice()), (16, b"AL")] {
+        if raw(header, field) != value {
+            return Err(content("MSH", field));
+        }
+    }
+    let profile = raw(header, 21)
+        .split(|b| *b == d.repetition)
+        .next()
+        .unwrap_or_default();
+    if !profile
+        .split(|b| *b == d.component)
+        .take(2)
+        .eq([b"LAB-27".as_slice(), b"IHE"])
+    {
+        return Err(content("MSH", 21));
+    }
+    Ok(())
+}
+
+fn validate_query_response_control(rcp: Segment<'_>) -> Result<(), Error> {
+    if raw(rcp, 1) != b"I" {
+        return Err(content("RCP", 1));
+    }
+    let modality: Vec<_> = raw(rcp, 3)
+        .split(|b| *b == rcp.delimiters.component)
+        .collect();
+    if modality.first().copied() != Some(b"R".as_slice())
+        || modality.get(2).copied() != Some(b"HL70394".as_slice())
+        || modality.len() != 3
+        || !matches!(modality.get(1).copied(), Some(b"" | b"Real Time"))
+    {
+        return Err(content("RCP", 3));
+    }
+    for (offset, field) in rcp.fields().enumerate().skip(1) {
+        // RCP-2 and fields after RCP-3 are excluded by the LAW static definition.
+        if offset != 2 && !field.raw().is_empty() {
+            return Err(content("RCP", 0));
+        }
+    }
+    Ok(())
 }
