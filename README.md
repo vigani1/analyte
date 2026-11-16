@@ -19,4 +19,6 @@ See [Adding a machine](docs/adding-a-machine.md) for configuration and qualifica
 
 [Testing](docs/testing/quality.md): coverage, mutation testing and repeatable commands.
 
+[Repository map](crates/README.md): what each part does and where to look.
+
 Licensed under the [Apache License 2.0](LICENSE).
