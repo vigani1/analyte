@@ -133,41 +133,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
         } => { result?; return Err("child monitor unexpectedly completed".into()); }
     };
     assert!(original.outcome.contains("accepted"));
-    let started = std::time::Instant::now();
-    while !directory.path().join("shutdown-ready").exists() {
-        if started.elapsed() > HANG_GUARD {
-            return Err("child did not reach shutdown boundary".into());
-        }
-        if child.0.try_wait()?.is_some() {
-            return Err("child exited before shutdown boundary".into());
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    // Deliberate shutdown bound, also asserted below.
-    let shutdown_started = std::time::Instant::now();
-    std::fs::write(directory.path().join("stop-request"), b"stop")?;
-    let status = loop {
-        if let Some(status) = child.0.try_wait()? {
-            break status;
-        }
-        if shutdown_started.elapsed() > Duration::from_secs(3) {
-            return Err("child exceeded shutdown bound plus margin".into());
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    };
-    assert_eq!(status.code(), Some(3));
-    assert!(shutdown_started.elapsed() < Duration::from_secs(3));
-    let mut log = String::new();
-    use std::io::Read as _;
-    child
-        .0
-        .stderr
-        .take()
-        .ok_or("missing child log")?
-        .read_to_string(&mut log)?;
-    assert_eq!(log.matches("shutdown bound exceeded").count(), 1);
-    assert!(log.contains("store"));
-    assert!(!log.contains("00012a"));
+    assert_forced_shutdown(&mut child, directory.path()).await?;
     let path = directory.path().join("program.toml");
     let before = receipts(&path)?;
     let wire = analyte_framing::mllp::encode(ORU, analyte_framing::mllp::Limit::new(1_048_576)?)?;
@@ -239,5 +205,44 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
     peer.shutdown().await?;
     restarted.stop().await?;
     reference.close().await?;
+    Ok(())
+}
+
+async fn assert_forced_shutdown(child: &mut Child, root: &Path) -> Result<(), Error> {
+    let started = std::time::Instant::now();
+    while !root.join("shutdown-ready").exists() {
+        if started.elapsed() > HANG_GUARD {
+            return Err("child did not reach shutdown boundary".into());
+        }
+        if child.0.try_wait()?.is_some() {
+            return Err("child exited before shutdown boundary".into());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    // Deliberate shutdown bound, also asserted below.
+    let shutdown_started = std::time::Instant::now();
+    std::fs::write(root.join("stop-request"), b"stop")?;
+    let status = loop {
+        if let Some(status) = child.0.try_wait()? {
+            break status;
+        }
+        if shutdown_started.elapsed() > Duration::from_secs(3) {
+            return Err("child exceeded shutdown bound plus margin".into());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    };
+    assert_eq!(status.code(), Some(3));
+    assert!(shutdown_started.elapsed() < Duration::from_secs(3));
+    let mut log = String::new();
+    use std::io::Read as _;
+    child
+        .0
+        .stderr
+        .take()
+        .ok_or("missing child log")?
+        .read_to_string(&mut log)?;
+    assert_eq!(log.matches("shutdown bound exceeded").count(), 1);
+    assert!(log.contains("store"));
+    assert!(!log.contains("00012a"));
     Ok(())
 }
