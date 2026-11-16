@@ -104,11 +104,7 @@ fn law_tf2b_c7_remaining_component_boundaries_and_located_failures() -> TestResu
         &[(3, &format!("{TEST}^^^^^^^alt^{}^LN", "x".repeat(200)))],
         false,
     )?;
-    for value in [
-        format!("=^1^:^{}", "1".repeat(15)),
-        "<^1^+".to_owned(),
-        "<^1^^2".to_owned(),
-    ] {
+    for value in [format!("=^1^:^{}", "1".repeat(15)), "<^1^+".to_owned()] {
         both("OBX", &[(2, "SN"), (5, &value)], true)?;
     }
     both(

@@ -229,6 +229,10 @@ impl Connection {
         };
         let cached = query_orders(store, machine, sample, until, options).await?;
         let prepared = self.reserve(store, machine, cached, until, options).await?;
+        #[cfg(feature = "test-hooks")]
+        if let Some(gate) = &machine.law_gates.reserved {
+            gate.operation().await?;
+        }
         if Instant::now() >= until {
             return Err(invalid("LAW query deadline after reservation"));
         }
@@ -412,6 +416,12 @@ async fn query_orders(
     let destination = super::destination(machine);
     let target = machine.id.clone();
     let bound = options.limits.segments;
+    #[cfg(feature = "test-hooks")]
+    if let Some(gate) = &machine.law_gates.lookup {
+        gate.operation().await?;
+    }
+    #[cfg(feature = "test-hooks")]
+    let pages_gate = machine.law_gates.pages.clone();
     let cached = store
         .request(until, move |store| {
             let now = jiff::Timestamp::now().as_second();
@@ -455,6 +465,10 @@ async fn query_orders(
                                 return Err(analyte_store::Error::InvalidInput);
                             }
                             found.extend(orders);
+                            #[cfg(feature = "test-hooks")]
+                            if let Some(gate) = &pages_gate {
+                                gate.pause()?;
+                            }
                             match cursor {
                                 Some(cursor) => after = cursor.as_str().to_owned(),
                                 None => return Ok(found),

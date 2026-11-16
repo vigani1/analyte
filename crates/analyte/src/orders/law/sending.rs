@@ -83,9 +83,18 @@ impl Connection {
             let version = app.fields().version;
             let owner = self.owner.clone();
             self.reserving.push(record.key.clone());
-            match super::super::reservation::cancel(store, until, id, version, owner, freshness)
-                .await
-            {
+            #[cfg(feature = "test-hooks")]
+            if let Some(gate) = &machine.law_gates.cancel {
+                gate.operation().await?;
+            }
+            let admission =
+                super::super::reservation::cancel(store, until, id, version, owner, freshness)
+                    .await;
+            #[cfg(feature = "test-hooks")]
+            if let Some(gate) = &machine.law_gates.cancel_result {
+                gate.operation().await?;
+            }
+            match admission {
                 Ok(record) => {
                     self.exchange = Some(Exchange {
                         records: vec![record],

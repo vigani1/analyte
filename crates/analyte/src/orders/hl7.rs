@@ -555,6 +555,8 @@ mod tests {
             law_committed: None,
             #[cfg(feature = "test-hooks")]
             law_precommit: None,
+            #[cfg(feature = "test-hooks")]
+            law_gates: crate::runtime::test_hooks::LawGates::default(),
             id: Identifier::new("synthetic")?,
             snapshot,
             listener: None,

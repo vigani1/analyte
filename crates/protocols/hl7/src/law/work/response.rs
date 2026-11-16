@@ -79,7 +79,7 @@ impl<'a> WorkResponse<'a> {
             .collect();
         let requests = sent_requests(sent)?;
         let mut decisions = Vec::new();
-        let mut has_specimen = false;
+        let mut group = ResponseGroup::Empty;
         let mut response_specimen = b"".as_slice();
         let mut response_container = b"".as_slice();
         let mut error_count = 0usize;
@@ -87,41 +87,30 @@ impl<'a> WorkResponse<'a> {
         profile.validate_segment(msa_segment, law::ControlDirection::Receive)?;
         for s in segments {
             profile.validate_segment(s, law::ControlDirection::Receive)?;
+            if s.id() != b"ERR"
+                && (error_count != 0 || expected.is_empty() || msa.code() != crate::AckCode::Aa)
+            {
+                return Err(content("ORL", 0));
+            }
+            group = group.next(s.id())?;
             match s.id() {
                 b"ERR" => {
-                    if has_specimen {
-                        return Err(content("ERR", 0));
-                    }
                     error_count = error_count.checked_add(1).ok_or(content("ERR", 0))?;
                     continue;
                 }
-                b"PID" => {
-                    if has_specimen || !seen.is_empty() {
-                        return Err(content("PID", 0));
-                    }
-                    continue;
-                }
+                b"PID" => continue,
                 b"SPM" => {
-                    has_specimen = true;
                     response_specimen = law::raw(s, 2);
                     response_container = b"";
                     continue;
                 }
                 b"SAC" => {
-                    if !has_specimen {
-                        return Err(content("SAC", 0));
-                    }
                     response_container = law::raw(s, 3);
                     continue;
                 }
-                b"ORC" => {
-                    if !has_specimen || error_count != 0 {
-                        return Err(content("ORC", 0));
-                    }
-                }
+                b"ORC" => {}
                 _ => return Err(content("ORL", 0)),
             }
-
             decisions.push(parse_decision(
                 s,
                 &expected,
@@ -130,6 +119,12 @@ impl<'a> WorkResponse<'a> {
                 response_specimen,
                 response_container,
             )?);
+        }
+        if !matches!(
+            group,
+            ResponseGroup::Empty | ResponseGroup::Error | ResponseGroup::Orders
+        ) {
+            return Err(content("ORL", 0));
         }
         if (msa.code() == crate::AckCode::Aa) == (error_count != 0) {
             return Err(content("ERR", 0));
@@ -293,4 +288,55 @@ fn parse_decision<'a>(
         outcome,
         status,
     })
+}
+
+#[derive(Clone, Copy)]
+enum ResponseGroup {
+    Empty,
+    Error,
+    Patient,
+    Specimen,
+    Container,
+    Orders,
+}
+impl ResponseGroup {
+    fn next(self, segment: &[u8]) -> Result<Self, Error> {
+        match (self, segment) {
+            (Self::Empty | Self::Error, b"ERR") => Ok(Self::Error),
+            (Self::Empty, b"PID") => Ok(Self::Patient),
+            (Self::Empty | Self::Patient | Self::Orders, b"SPM") => Ok(Self::Specimen),
+            (Self::Specimen, b"SAC") => Ok(Self::Container),
+            (Self::Container | Self::Orders, b"ORC") => Ok(Self::Orders),
+            (
+                Self::Empty
+                | Self::Error
+                | Self::Patient
+                | Self::Specimen
+                | Self::Container
+                | Self::Orders,
+                _,
+            ) => Err(content("ORL", 0)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod grammar_tests {
+    use super::ResponseGroup;
+    #[test]
+    fn law_tf2b_3_28_4_1_2_2_orl_response_group_cardinality_and_error_exclusion() {
+        for segments in [
+            vec![b"SPM".as_slice(), b"ORC"],
+            vec![b"PID", b"PID"],
+            vec![b"SPM", b"SAC", b"SAC"],
+            vec![b"ERR", b"SPM"],
+            vec![b"SPM", b"SAC", b"ORC", b"ERR"],
+        ] {
+            let mut state = Ok(ResponseGroup::Empty);
+            for segment in segments {
+                state = state.and_then(|state| state.next(segment));
+            }
+            assert!(state.is_err());
+        }
+    }
 }

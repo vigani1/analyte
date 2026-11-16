@@ -262,6 +262,10 @@ fn error(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error>
             {
                 return Err(component_error("ERR", 2, 1));
             }
+            // HL7 2.5.1 2.A.28.4: an occurrence must identify a field.
+            if part(value, 3).is_empty() && !part(value, 4).is_empty() {
+                return Err(component_error("ERR", 2, 4));
+            }
             for position in 2..=6 {
                 let number = part(value, position);
                 if !number.is_empty()
@@ -316,7 +320,15 @@ fn error(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error>
     }
     // C.1's 250# is truncatable, not a hard maximum. Preserve the entire TX;
     // the parser's message bound remains the resource ceiling (TF-2b 2.2.3).
-    scalar(segment, "ERR", 8, false, usize::MAX)
+    field(segment, "ERR", 8, false, false)?;
+    text(
+        raw(segment, 8),
+        false,
+        usize::MAX,
+        content("ERR", 8),
+        TextKind::Tx,
+        direction,
+    )
 }
 
 // Reply headers use only supported incoming components. Ignored X content must

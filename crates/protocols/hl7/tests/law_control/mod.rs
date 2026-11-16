@@ -101,7 +101,7 @@ fn response<'a>(id: &'a [u8]) -> Result<analyte_hl7::Response<'a>, analyte_hl7::
 }
 
 fn query_with(changes: &[(usize, &str)]) -> Result<Message, Box<dyn std::error::Error>> {
-    let body = "QPD|WOS^Synthetic^IHELAW|tag|000tube\rRCP|I||R^Real Time^HL70394\r";
+    let body = "QPD|WOS^Work Order Step^IHELAW|tag|000tube\rRCP|I||R^Real Time^HL70394\r";
     let bytes = wire("query", changes, body)?;
     Ok(law::parse_message(bytes.as_bytes(), options())?)
 }

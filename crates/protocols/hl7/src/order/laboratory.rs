@@ -60,7 +60,8 @@ fn rule(
         crate::law::Error::Syntax(error) => Error::Syntax(error),
         crate::law::Error::Content { segment, field } => invalid(segment, field),
         crate::law::Error::Inconsistent { segment, field } => Error::Correlation { segment, field },
-        error @ (crate::law::Error::AtSegment { .. }
+        error @ (crate::law::Error::UnsupportedText { .. }
+        | crate::law::Error::AtSegment { .. }
         | crate::law::Error::DilutionDefinition { .. }
         | crate::law::Error::Subcomponent { .. }
         | crate::law::Error::Authority { .. }

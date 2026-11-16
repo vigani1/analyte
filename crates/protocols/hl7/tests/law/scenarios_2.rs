@@ -555,7 +555,7 @@ fn law_tf2b_c1_error_codes_severity_and_available_fields() -> Result<(), Box<dyn
 #[test]
 fn law_tf2b_c4_namespaces_and_profile_identifier_components()
 -> Result<(), Box<dyn std::error::Error>> {
-    let message = query("QPD|WOS_ALL^Synthetic^IHELAW|tag")?;
+    let message = query("QPD|WOS_ALL^Work Order Step All^IHELAW|tag")?;
     let original = std::str::from_utf8(message.raw())?;
     for replacement in ["", "A", "12345678901234567890"] {
         let bytes = original.replacen("|A|AF|", &format!("|{replacement}|AF|"), 1);

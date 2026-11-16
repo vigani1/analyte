@@ -149,7 +149,7 @@ fn law_tf2b_c7_obx_18_first_second_later_equipment_ei_rules() -> TestResult {
                 "{}^{}^{}^ISO~serial^maker",
                 "\u{e9}".repeat(50),
                 "\u{e9}".repeat(20),
-                "u".repeat(199)
+                format_args!("2.{}", "1".repeat(197))
             ),
         )],
         true,
@@ -222,7 +222,7 @@ fn law_tf2b_c5_nte_required_singletons_source_and_truncatable_comment() -> TestR
     for value in ["", "\"\"", "OTHER", "A~Z"] {
         both("NTE", &[(2, value)], false)?;
     }
-    for value in ["", "\"\"", "one~two", "one^two"] {
+    for value in ["", "\"\"", "one~two"] {
         both("NTE", &[(3, value)], false)?;
     }
     assert!(

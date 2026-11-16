@@ -208,6 +208,7 @@ fn reprocess_deadline() -> Result<std::time::Instant, &'static str> {
 mod scenarios_1;
 
 mod scenarios_2;
+mod text;
 
 // ADR 0003: the failed interpretation owns exactly this operator audit.
 fn assert_conflict_audit(
