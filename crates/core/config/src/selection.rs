@@ -151,3 +151,35 @@ pub(crate) fn dialog<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D
 pub(crate) fn syntax<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     wire_name(d, 3)
 }
+
+// Display preserves historical evidence names, independently of the TOML keys.
+impl std::fmt::Display for StackChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::AstmLis02 => "AstmLis02",
+            Self::Hl7V2 => "Hl7V2",
+            Self::FileAstm => "FileAstm",
+            Self::FileHl7 => "FileHl7",
+            Self::LawManager => "LawManager",
+            Self::Poct => "Poct",
+            Self::VidasLiteral => "VidasLiteral",
+            Self::Autolyser => "Autolyser",
+        })
+    }
+}
+
+#[test]
+fn stack_evidence_spellings_are_compatible() {
+    for (value, expected) in [
+        (StackChoice::AstmLis02, "AstmLis02"),
+        (StackChoice::Hl7V2, "Hl7V2"),
+        (StackChoice::FileAstm, "FileAstm"),
+        (StackChoice::FileHl7, "FileHl7"),
+        (StackChoice::LawManager, "LawManager"),
+        (StackChoice::Poct, "Poct"),
+        (StackChoice::VidasLiteral, "VidasLiteral"),
+        (StackChoice::Autolyser, "Autolyser"),
+    ] {
+        assert_eq!(value.to_string(), expected);
+    }
+}

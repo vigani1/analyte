@@ -76,7 +76,7 @@ pub enum Error {
     #[error("connection busy")]
     Busy,
     /// A correlated response belongs to another acknowledgment phase.
-    #[error("unexpected acknowledgment {received:?} while awaiting {expected:?}")]
+    #[error("unexpected acknowledgment {received} while awaiting {expected}")]
     AckPhase {
         /// Negotiated pending phase.
         expected: AckPhase,
@@ -84,7 +84,7 @@ pub enum Error {
         received: AckCode,
     },
     /// The code reports an outcome that the negotiated condition suppresses.
-    #[error("acknowledgment {received:?} violates condition {condition:?}")]
+    #[error("acknowledgment {received} violates condition {condition}")]
     AckCondition {
         /// Negotiated outcome condition.
         condition: Condition,
@@ -787,3 +787,5 @@ impl OwnedError {
         }
     }
 }
+
+mod evidence;

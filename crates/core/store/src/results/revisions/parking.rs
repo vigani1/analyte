@@ -73,7 +73,7 @@ pub(super) fn park_outcomes(
                                 {
                                     guard.to_owned()
                                 }
-                                _ => format!("result reconciliation: {outcome:?}"),
+                                _ => format!("result reconciliation: {outcome}"),
                             },
                             Some(crate::parked::ParkingContext::Result {
                                 version: Some(version),

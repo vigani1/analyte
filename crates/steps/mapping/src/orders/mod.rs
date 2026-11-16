@@ -103,7 +103,7 @@ pub enum OrderMappingError {
     #[error("VIDAS request is not representable: {0}")]
     Vidas(#[from] analyte_vidas::syntax::Error),
     /// No exact app-system and code match exists.
-    #[error("unmapped test {0:?}")]
+    #[error("unmapped test {0}")]
     UnmappedTest(NamespacedId),
     /// The app did not provide the required position.
     #[error("required specimen position was not supplied")]

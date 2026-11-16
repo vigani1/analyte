@@ -53,7 +53,7 @@ pub enum FieldSyntax {
 
 /// Vendor syntax must use its own parser and model mapping.
 #[derive(Debug, thiserror::Error)]
-#[error("{0:?} is not a field-position syntax")]
+#[error("{0} is not a field-position syntax")]
 pub struct UnsupportedFieldSyntax(pub SyntaxKind);
 
 impl TryFrom<SyntaxKind> for FieldSyntax {

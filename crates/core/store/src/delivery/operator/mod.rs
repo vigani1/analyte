@@ -161,3 +161,30 @@ impl Store {
 
 #[cfg(test)]
 mod tests;
+
+impl std::fmt::Display for DeliveryState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Pending => "Pending",
+            Self::InFlight => "InFlight",
+            Self::Done => "Done",
+            Self::Parked => "Parked",
+            Self::Paused => "Paused",
+            Self::Conflict => "Conflict",
+        })
+    }
+}
+
+#[test]
+fn delivery_state_spellings_are_compatible() {
+    for (value, expected) in [
+        (DeliveryState::Pending, "Pending"),
+        (DeliveryState::InFlight, "InFlight"),
+        (DeliveryState::Done, "Done"),
+        (DeliveryState::Parked, "Parked"),
+        (DeliveryState::Paused, "Paused"),
+        (DeliveryState::Conflict, "Conflict"),
+    ] {
+        assert_eq!(value.to_string(), expected);
+    }
+}

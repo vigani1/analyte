@@ -58,7 +58,7 @@ pub enum OrderState {
 
 /// An attempted state change is not supported by lifecycle evidence.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
-#[error("illegal order transition from {from:?} to {to:?}")]
+#[error("illegal order transition from {from} to {to}")]
 pub struct TransitionError {
     /// Current persisted state.
     pub from: OrderState,

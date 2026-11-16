@@ -34,7 +34,7 @@ pub enum Failure {
     InconsistentOrl(#[source] Error),
 
     /// Host query processing failed; QAK reports the error, never no work.
-    #[error("LAW query processing rejected at {location:?}")]
+    #[error("LAW query processing rejected at {location}")]
     QueryRejected {
         /// Error location supplied by the host.
         location: ErrorLocation,
@@ -223,4 +223,50 @@ pub fn receive_acknowledgment(message: &Message, sent: &Message) -> Result<AckCo
         Ok(msa.code())
     };
     validate().map_err(Failure::InvalidAcknowledgment)
+}
+
+impl std::fmt::Display for ErrorLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Write;
+        f.write_str("ErrorLocation { segment: \"")?;
+        for character in self.segment.chars() {
+            if character == '\'' {
+                f.write_char(character)?;
+            } else {
+                for escaped in character.escape_debug() {
+                    f.write_char(escaped)?;
+                }
+            }
+        }
+        write!(f, "\", field: {}, occurrence: ", self.field)?;
+        match self.occurrence {
+            Some(value) => write!(f, "Some({value})")?,
+            None => f.write_str("None")?,
+        }
+        f.write_str(" }")
+    }
+}
+#[test]
+fn query_location_spellings_are_compatible() {
+    for (occurrence, expected) in [
+        (
+            None,
+            "ErrorLocation { segment: \"QPD\", field: 3, occurrence: None }",
+        ),
+        (
+            Some(2),
+            "ErrorLocation { segment: \"QPD\", field: 3, occurrence: Some(2) }",
+        ),
+    ] {
+        let location = ErrorLocation {
+            segment: "QPD",
+            field: 3,
+            occurrence,
+        };
+        assert_eq!(location.to_string(), expected);
+        assert_eq!(
+            Failure::QueryRejected { location }.to_string(),
+            format!("LAW query processing rejected at {expected}")
+        );
+    }
 }
