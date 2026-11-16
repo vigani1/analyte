@@ -22,7 +22,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Tests: `law_tf2b_c11_c12_explicit_profile_cannot_enlarge_peer_send_capabilities`, `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`.
   Outgoing supported builders intersect explicit content selection with peer capabilities.
 - [x] **R** Use directional MLLP initiating connections; tolerate peer closure and independent establishment (TF-2b B.6, pp.79-80; TF-2x ?2.2.4 dependency).
-  Tests: `law_tf2b_b6_independent_query_followup_survives_inbound_close_and_restarts`, `law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restart`, `law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work`, `law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos` in `crates/analyte/tests/law/connections.rs`. The existing persistent topology is covered by `law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions` and `law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work`. Independent mode listens for LAB-27/LAB-29 and opens a separate LAB-28 connection per transaction. Synthetic tests remain documented evidence, not simulator qualification.
+  Tests: `law_tf2b_b6_independent_query_followup_survives_inbound_close_and_restarts`, `law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restart`, `law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work`, `law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos` in `crates/analyte/tests/law/connections.rs`. The existing persistent topology is covered by `law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions` and `law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect`. Independent mode listens for LAB-27/LAB-29 and opens a separate LAB-28 connection per transaction. Synthetic tests remain documented evidence, not simulator qualification.
 - [x] **R** Use NE/AL application acknowledgement mode and correct header reversal/MSA-2 correlation; do not reject incoming application/facility names merely for differing from configured values (TF-2b B.5, pp.78–79; HL7 §2.9, pp.2-24–2-28, §2.15.8.2).
   Tests: `law_tf2b_c4_msh_15_16_c_m_x_predicate_is_trigger_versus_response`, `law_tf2b_c4_c3_b5_receive_query_reply_reversal_correlation_ignored_content`.
   Pure header/acknowledgment policy; host storage evidence is a separate gate.
@@ -195,7 +195,7 @@ Send-ahead and cancellation reuse that path. Both link topologies have local tes
 - [x] ORL bytes are durable before per-AWOS OK/UA reaches `finish_order_items`. Matching uses AWOS IDs, including reordered replies; no reply/disconnect/invalid correlation becomes Uncertain, with no resend. Tests: `law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`, `law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain`.
 - [x] Supplied specimen/priority work content is intersected with explicit peer support; repeat/reflex permissions are never generated. Test: `law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_peer_support`.
 
-These thirteen tests live in `crates/analyte/tests/law/queries.rs`, compiled in
+These tests live in `crates/analyte/tests/law/queries/`, compiled in
 `tests/delivery.rs`, and use synthetic peers, a temporary store and the reference
 receiver. The store read has its own two tests in `crates/core/store/src/order_tests.rs`:
 `law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay`
@@ -245,11 +245,23 @@ Evidence remains **documented**. `law.connection_mode = "persistent"` keeps all 
 - [x] Both topology choices, required independent listener role/destination, and rejected unused/invalid destinations. Test: `crates/core/config/tests/law.rs::law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint`.
 - [x] Both roles validate without startup I/O. Test: `crates/analyte/tests/receive.rs::law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io`.
 - [x] All three transactions share one persistent connection in both configured directions (B.5 and the declared B.6 subset). Test: `crates/analyte/tests/law/connections.rs::law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions`.
-- [x] Client disconnect/first-byte timeout retains evidence, reconnects and never replays reserved work. Test: `crates/analyte/tests/law/connections.rs::law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work`.
+- [x] Client disconnect/first-byte timeout retains evidence, reconnects and never replays reserved work. Test: `crates/analyte/tests/law/connections.rs::law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect`.
 - [x] Independent query/result and work links, peer closure, concurrent inbound handling, restart without replay, restore pause and original cancellation identities. Tests: `law_tf2b_b6_independent_query_followup_survives_inbound_close_and_restarts`, `law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restart`, `law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work`, `law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos`, `law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_resend`.
 - [ ] Gazelle qualification: record tool build, profile revision, actor/options, scenarios and validation results. Local synthetic tests are not simulator evidence.
 - [ ] Full actor/workflow qualification: remaining enhanced content/groups, pooling/relationships and complete workflows remain as listed above. Isolate/parent needs app-supplied identities in a future contract; rack/tray forms are still explicitly rejected.
 - [x] Shared stored-byte reprocessing (ADR 0003 rules 2-4; TF-2b 3.29.4). The shared reprocessing path uses LAB-29 calls `evidence::interpret(store, machine, id)`; `machine/interpretation.rs` selects the LAW parser/views/mapper. Test: `law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix`. It repairs a mapping, preserves original raw/config and interpretation version 1, appends audited versions, resolves parking, delivers once and creates no second delivery or machine traffic on repeated reprocessing. Reprocessing a retained non-C conflict adds one failed version/audit and no revisions or deliveries. A 50-character LAW control ID prevents generic-HL7 fallback.
+
+### Review pass 4 regression evidence
+
+Evidence remains documented; no open qualification row is promoted.
+
+- L8: `law_tf2b_c9_c10_builder_and_receive_validate_profile` now compares emitted PID/PV1 values and absent demographics. `law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields` compares each supplied SPM/SAC detail and omitted optional details, including unchanged volume units and dilution.
+- L9: `law_tf2b_3_28_4_adr0003_orl_commit_precedes_each_item_outcome` holds raw ORL custody while every item remains Sending, then checks mixed indexed outcomes. `law_tf2b_3_28_4_adr0003_failed_orl_write_never_finishes_items` rejects the write and requires every item Uncertain. The preflight/reservation failure case now fails the second item; the failed query follow-up case requeries after restart without reissuing the original AWOS. Lookup observation, reservation-before-first-byte gates and cancellation admission trust invalidation still need dedicated regressions.
+- L10: `law_tf2b_3_27_4_pending_aggregate_bound_never_returns_partial_work` exceeds the aggregate bound and requires AE, no positive work and no reservations. A competing feed update held during page collection remains untested.
+- L11: negative follow-up tests compare exact retained ORL frames and audit actor, correlation, acceptance and both receipt targets. `law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix` checks audit action, actor, reason and receipt/version targets for success, repeated interpretation and conflict rollback.
+- L12: the specimen/priority intersection test also enables peer repeat options and asserts empty TCD-6/7/8 and ORC-8 without app authorization.
+- L13: independent successful query, negative work and send-ahead peers remain open until manager-owned EOF. Send-ahead is exercised before any inbound establishment. Gated RSP-to-dial handover, queued expiry and shutdown during handover remain untested.
+- L14: `law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect` selects the exact partial frame, its receipt and incomplete-block parking reason with an unrelated receipt present, then checks the same receipt after restart and absence of replay.
 
 ### Program end-to-end evidence index
 
@@ -280,7 +292,7 @@ only the stated behavior; unchecked actor and simulator gates stay open.
 | Independent query/work/result sockets, closure, restart and restore pause | `law_tf2b_b6_independent_query_followup_survives_inbound_close_and_restarts`, `law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restart`, `law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work`, `law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos` |
 | Both TCP roles, all transactions on one persistent link | `law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions` |
 | Client query and ORL deadlines use config | `law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines` |
-| Client reconnect/deadline retains partial data, no replay | `law_tf2b_b6_single_persistent_client_reconnects_without_replaying_work` |
+| Client reconnect/deadline retains partial data, no replay | `law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect` |
 
 LAB-29 cases are in `crates/analyte/tests/law/results.rs`, query cases in
 `queries.rs`, send/cancel cases in `work.rs`, and role cases in `connections.rs`.

@@ -399,6 +399,45 @@ fn law_tf2b_c9_c10_builder_and_receive_validate_profile() -> TestResult {
         capabilities,
         options(),
     )?;
+    // PaLM TF-2b 2.2.4.5/C.9/C.10: supplied demographics survive rendering.
+    let output = law::work_order(
+        &[awos],
+        Some(patient),
+        address,
+        response,
+        capabilities,
+        options(),
+    )?;
+    for (id, fields) in [
+        (
+            b"PID".as_slice(),
+            vec![
+                (3, b"id".as_slice()),
+                (5, b"Family^Given^^^^^L"),
+                (7, b"20240229"),
+                (8, b"U"),
+                (10, b""),
+                (35, b""),
+            ],
+        ),
+        (b"PV1".as_slice(), vec![(2, b"I".as_slice()), (3, b"^Room")]),
+    ] {
+        let segment = output
+            .segments()
+            .find(|s| s.id() == id)
+            .ok_or("demographic segment")?;
+        for (number, expected) in fields {
+            assert_eq!(
+                segment
+                    .field(number)
+                    .map_or(b"".as_slice(), analyte_hl7::Field::raw),
+                expected,
+                "{id:?}-{number}"
+            );
+        }
+    }
+    let absent = law::work_order(&[awos], None, address, response, capabilities, options())?;
+    assert!(!absent.segments().any(|s| matches!(s.id(), b"PID" | b"PV1")));
     validate_patient_builder_cases(awos, patient, address, response, capabilities)?;
     Ok(())
 }

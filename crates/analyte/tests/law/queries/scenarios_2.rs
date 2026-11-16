@@ -136,3 +136,188 @@ async fn law_tf2b_b7_1_b7_2_host_correlates_errors_without_ack_loops() -> Result
     reference.close().await?;
     Ok(())
 }
+
+// PaLM TF-2b 3.27.4 and ADR 0003: bound exhaustion cannot issue a subset.
+#[tokio::test]
+async fn law_tf2b_3_27_4_pending_aggregate_bound_never_returns_partial_work() -> Result<(), Error> {
+    let orders = (0..17)
+        .map(|i| order(&format!("order-{i:02}"), &format!("tube-{i:02}"), None, 1))
+        .collect::<Result<Vec<_>, _>>()?;
+    let settings = definition().replace("records = 4096", "records = 16");
+    let (_temp, path, reference, running, mut peer) = setup(orders, &settings, false).await?;
+    send(&mut peer, query(ALL, "oversized").as_bytes()).await?;
+    let rsp = packet(&mut peer).await?;
+    assert_eq!(field(&rsp, b"QAK", 2)?, b"AE");
+    quiet(&mut peer).await?;
+    assert_eq!(count(&path, "machine_orders")?, 0);
+    assert_eq!(count(&path, "machine_order_items")?, 0);
+    assert!(count(&path, "parked")? > 0);
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+// PaLM TF-2b 3.28.4 / ADR 0003: failed raw custody cannot accept any item.
+#[tokio::test]
+async fn law_tf2b_3_28_4_adr0003_failed_orl_write_never_finishes_items() -> Result<(), Error> {
+    let (_temp, path, reference, running, mut peer) = setup(
+        vec![order("order-1", "000Ab12", None, 2)?],
+        &definition(),
+        false,
+    )
+    .await?;
+    send(&mut peer, query(CONTAINER, "orl-storage").as_bytes()).await?;
+    packet(&mut peer).await?;
+    let work = packet(&mut peer).await?;
+    database(&path)?.execute_batch("CREATE TRIGGER fail_orl BEFORE INSERT ON receipts BEGIN SELECT RAISE(FAIL,'synthetic-ORL-custody-failure'); END;")?;
+    orl(&mut peer, &work, &["OK", "OK"], false).await?;
+    assert_eq!(
+        tokio::time::timeout(HANG_GUARD, peer.read(&mut [0])).await??,
+        0
+    );
+    vendor_support::state(&path, "Uncertain").await?;
+    let states = database(&path)?
+        .prepare("SELECT state FROM machine_order_items ORDER BY item_index")?
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(states, ["Uncertain", "Uncertain"]);
+    assert_eq!(count(&path, "receipts")?, 1);
+    database(&path)?.execute_batch("DROP TRIGGER fail_orl")?;
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+// PaLM TF-2b 3.28.4 and ADR 0003: raw custody precedes every AWOS decision.
+#[cfg(feature = "test-hooks")]
+#[tokio::test]
+async fn law_tf2b_3_28_4_adr0003_orl_commit_precedes_each_item_outcome() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = vendor_config(temp.path(), "law", &definition())?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![order("order-1", "000Ab12", None, 2)?])
+        .await?;
+    let mut loaded = program(&path, &reference.url)?;
+    let (hook, control) = analyte::runtime::test_hooks::Committed::new();
+    loaded.pause_law_precommit_for_test("law", hook)?;
+    let running = Running::start_program(loaded, "synthetic-api").await?;
+    let mut peer = connect(&path, "law").await?;
+    wait_feed(&path).await?;
+    send(&mut peer, query(CONTAINER, "custody").as_bytes()).await?;
+    control.reached().await?;
+    assert_eq!(count(&path, "receipts")?, 0);
+    assert_eq!(count(&path, "machine_order_items")?, 0);
+    quiet(&mut peer).await?;
+    control.resume();
+    packet(&mut peer).await?;
+    let work = packet(&mut peer).await?;
+    control.arm_next();
+    let raw = orl(&mut peer, &work, &["OK", "UA"], false).await?;
+    control.reached().await?;
+    assert_eq!(count(&path, "receipts")?, 1);
+    let states = database(&path)?
+        .prepare("SELECT state FROM machine_order_items ORDER BY item_index")?
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(states, ["Sending", "Sending"]);
+    assert_eq!(count(&path, "outbox")?, 0);
+    control.resume();
+    vendor_support::state(&path, "Uncertain").await?;
+    let stored: Vec<u8> =
+        database(&path)?.query_row("SELECT raw FROM receipts WHERE raw=?1", [&raw], |r| {
+            r.get(0)
+        })?;
+    assert_eq!(stored, raw);
+    let states = database(&path)?
+        .prepare("SELECT state FROM machine_order_items ORDER BY item_index")?
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(states, ["Accepted", "Rejected"]);
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+#[cfg(feature = "test-hooks")]
+#[tokio::test]
+async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservation()
+-> Result<(), Error> {
+    for form in [CONTAINER, ALL] {
+        let temp = tempfile::tempdir()?;
+        let path = vendor_config(temp.path(), "law", &definition())?;
+        let reference = Reference::start(
+            &temp.path().join("receiver.db"),
+            TcpListener::bind("127.0.0.1:0").await?,
+            false,
+        )
+        .await?;
+        reference
+            .receiver
+            .seed(vec![order("order-1", "000Ab12", None, 1)?])
+            .await?;
+        let mut loaded = program(&path, &reference.url)?;
+        let (hook, control) = analyte::runtime::test_hooks::Committed::new();
+        loaded.pause_law_committed_for_test("law", hook)?;
+        let running = Running::start_program(loaded, "synthetic-api").await?;
+        let mut peer = connect(&path, "law").await?;
+        wait_feed(&path).await?;
+        let request = query(form, "durable");
+        send(&mut peer, request.as_bytes()).await?;
+        control.reached().await?;
+        let raw: Vec<u8> =
+            database(&path)?.query_row("SELECT raw FROM receipts", [], |row| row.get(0))?;
+        assert_eq!(
+            raw,
+            analyte_framing::hl7::encode(
+                request.as_bytes(),
+                analyte_framing::hl7::Limit::new(1048576)?
+            )?
+        );
+        assert_eq!(count(&path, "machine_orders")?, 0);
+        quiet(&mut peer).await?;
+        control.resume();
+        assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"OK");
+        let work = packet(&mut peer).await?;
+        assert_eq!(count(&path, "machine_order_items")?, 1);
+        orl(&mut peer, &work, &["OK"], false).await?;
+        wait_state(&path, "done", 1).await?;
+        running.stop().await?;
+        reference.close().await?;
+    }
+    Ok(())
+}
+
+// ADR 0004 / rule 9 / LAW TF-2b 3.27.4: only configured fresh emptiness is a negative work answer.
+#[tokio::test]
+async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Error> {
+    for freshness in [10, 120] {
+        let (_temp, path, reference, running, mut peer) =
+            setup_with_freshness(Vec::new(), &definition(), false, freshness).await?;
+        reference.close().await?;
+        database(&path)?.execute(
+            "UPDATE feed SET polled=?1",
+            [jiff::Timestamp::now().as_second() - 50],
+        )?;
+        send(&mut peer, query(ALL, "configured-age").as_bytes()).await?;
+        let response = packet(&mut peer).await?;
+        if freshness == 10 {
+            assert_eq!(field(&response, b"QAK", 2)?, b"AE");
+        } else {
+            assert_eq!(field(&response, b"QAK", 2)?, b"OK");
+            let negative = packet(&mut peer).await?;
+            assert_eq!(field(&negative, b"ORC", 1)?, b"DC");
+            orl(&mut peer, &negative, &[], false).await?;
+        }
+        running.stop().await?;
+    }
+    Ok(())
+}
+
+// IHE PaLM TF-2b Rev 11 B.3.1 pp.63-64 and B.7.6 p.82.
