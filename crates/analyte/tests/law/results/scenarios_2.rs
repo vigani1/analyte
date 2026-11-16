@@ -42,9 +42,9 @@ async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(
         )?;
         assert_eq!(
             raw,
-            analyte_framing::mllp::encode(
+            analyte_framing::hl7::encode(
                 payload.as_bytes(),
-                analyte_framing::mllp::Limit::new(1048576)?
+                analyte_framing::hl7::Limit::new(1048576)?
             )?
         );
     }

@@ -1,12 +1,10 @@
 //! Configuration boundary: owns bounded loading and validated settings, without connection I/O.
 #![forbid(unsafe_code)]
 
-mod law;
 mod orders;
 mod schema;
 mod stack;
 mod validation;
-pub use law::*;
 pub use orders::*;
 pub use schema::*;
 use serde::{Deserialize, Serialize};

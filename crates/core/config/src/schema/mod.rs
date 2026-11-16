@@ -1,4 +1,6 @@
 //! Raw TOML configuration shapes belong at the configuration input boundary.
+pub(crate) mod law;
+pub use law::*;
 mod vidas;
 pub use vidas::{AckPoint, ChecksumAcceptance, ChecksumInclusion, HexCase, Settings as Vidas};
 
@@ -373,7 +375,7 @@ pub(crate) struct MachineDocument {
     pub protocol: Protocol,
     /// Required only for the LAW Analyzer Manager stack.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub law: Option<crate::Law>,
+    pub law: Option<Law>,
     /// Explicit outbound behavior; omission disables queries and work lists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub orders: Option<crate::Orders>,
@@ -439,7 +441,7 @@ pub struct Site {
 #[serde(deny_unknown_fields)]
 pub struct Overrides {
     /// Explicit replacement of LAW peer declarations and query policy.
-    pub law: Option<crate::Law>,
+    pub law: Option<Law>,
     /// Explicit replacement of outbound behavior.
     pub orders: Option<crate::Orders>,
     /// Must be one.

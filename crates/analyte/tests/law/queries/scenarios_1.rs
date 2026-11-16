@@ -30,9 +30,9 @@ async fn law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_
             )?;
             assert_eq!(
                 raw,
-                analyte_framing::mllp::encode(
+                analyte_framing::hl7::encode(
                     request.as_bytes(),
-                    analyte_framing::mllp::Limit::new(1048576)?
+                    analyte_framing::hl7::Limit::new(1048576)?
                 )?
             );
             let work = packet(&mut peer).await?;
@@ -235,9 +235,9 @@ async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage()
             false,
         )
         .await?;
-        let bytes = analyte_framing::mllp::encode(
+        let bytes = analyte_framing::hl7::encode(
             query(form, "late").as_bytes(),
-            analyte_framing::mllp::Limit::new(1048576)?,
+            analyte_framing::hl7::Limit::new(1048576)?,
         )?;
         peer.write_all(bytes.get(..12).ok_or("prefix")?).await?;
         // Deliberately exceed the configured 50 ms first-byte query budget.
@@ -473,9 +473,9 @@ async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservat
             database(&path)?.query_row("SELECT raw FROM receipts", [], |row| row.get(0))?;
         assert_eq!(
             raw,
-            analyte_framing::mllp::encode(
+            analyte_framing::hl7::encode(
                 request.as_bytes(),
-                analyte_framing::mllp::Limit::new(1048576)?
+                analyte_framing::hl7::Limit::new(1048576)?
             )?
         );
         assert_eq!(count(&path, "machine_orders")?, 0);

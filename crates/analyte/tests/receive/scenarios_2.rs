@@ -72,9 +72,9 @@ async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_a
         },
     ));
     let mut peer = connect(&program).await?;
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         ORU,
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     assert!(String::from_utf8(read_ack(&mut peer).await?)?.contains("MSA|AE"));
@@ -159,9 +159,9 @@ async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Erro
     let mut peer = connect(&program).await?;
     for control in ["message1", "message2"] {
         let raw = String::from_utf8(ORU.to_vec())?.replace("message1", control);
-        peer.write_all(&analyte_framing::mllp::encode(
+        peer.write_all(&analyte_framing::hl7::encode(
             raw.as_bytes(),
-            analyte_framing::mllp::Limit::new(1048576)?,
+            analyte_framing::hl7::Limit::new(1048576)?,
         )?)
         .await?;
         read_ack(&mut peer).await?;
@@ -169,9 +169,9 @@ async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Erro
     drop(peer);
     let mut peer = connect(&program).await?;
     let raw = String::from_utf8(ORU.to_vec())?.replace("message1", "message3");
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         raw.as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     read_ack(&mut peer).await?;

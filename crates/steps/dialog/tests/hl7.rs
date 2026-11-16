@@ -642,7 +642,7 @@ fn hl7_231_2_18_qck_precedes_dsr_and_failed_or_expired_qck_never_issues_work() -
     ] {
         let mut d = dialog()?;
         d.enable_orders(analyte_hl7::Version::V251)?;
-        let payload = analyte_framing::mllp::payload(&message(""))
+        let payload = analyte_framing::hl7::payload(&message(""))
             .ok_or("synthetic envelope")?
             .to_vec();
         let qck = analyte_hl7::Message::parse(&payload, Options::default())?;
@@ -689,7 +689,7 @@ fn hl7_231_2_18_qck_precedes_dsr_and_failed_or_expired_qck_never_issues_work() -
 fn hl7_231_2_18_dsr_issuance_starts_ack_budget_without_retry() -> TestResult {
     let mut d = dialog()?;
     d.enable_orders(analyte_hl7::Version::V251)?;
-    let payload = analyte_framing::mllp::payload(&message(""))
+    let payload = analyte_framing::hl7::payload(&message(""))
         .ok_or("synthetic envelope")?
         .to_vec();
     let qck = analyte_hl7::Message::parse(&payload, Options::default())?;

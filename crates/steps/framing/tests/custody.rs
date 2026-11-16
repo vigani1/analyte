@@ -1,7 +1,7 @@
 //! Synthetic evidence-retention checks from ADR 0003 and MLLP Release 1.
 //! MLLP R1 §1.2 defines framing/repertoire. Size ceilings come from rule 7;
 //! disconnect evidence and reset behavior come from ADR 0003, not MLLP timers.
-use analyte_framing::mllp as m;
+use analyte_framing::hl7 as m;
 
 #[test]
 fn rule7_mllp_r1_1_2_encoder_payload_limit_is_inclusive() -> Result<(), m::Error> {

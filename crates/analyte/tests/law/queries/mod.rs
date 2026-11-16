@@ -139,9 +139,9 @@ fn options() -> analyte_hl7::Options {
     }
 }
 async fn send(peer: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
-    peer.write_all(&analyte_framing::mllp::encode(
+    peer.write_all(&analyte_framing::hl7::encode(
         bytes,
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
     Ok(())
@@ -210,9 +210,9 @@ async fn orl(
         body.push_str(&reply);
     }
     send(peer, body.as_bytes()).await?;
-    Ok(analyte_framing::mllp::encode(
+    Ok(analyte_framing::hl7::encode(
         body.as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?)
 }
 fn count(path: &Path, table: &str) -> Result<i64, Error> {

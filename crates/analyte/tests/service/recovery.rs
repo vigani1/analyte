@@ -136,7 +136,7 @@ async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncer
     assert_forced_shutdown(&mut child, directory.path()).await?;
     let path = directory.path().join("program.toml");
     let before = receipts(&path)?;
-    let wire = analyte_framing::mllp::encode(ORU, analyte_framing::mllp::Limit::new(1_048_576)?)?;
+    let wire = analyte_framing::hl7::encode(ORU, analyte_framing::hl7::Limit::new(1_048_576)?)?;
     assert!(before.iter().any(|(_, raw)| raw == &wire));
     assert_eq!(
         database(&path)?.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))?,

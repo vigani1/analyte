@@ -37,7 +37,7 @@ pub(super) mod tests {
     }
 
     pub(in crate::machine) fn capture(action: impl FnOnce()) -> String {
-        crate::test_tracing::init();
+        crate::runtime::test_tracing::init();
         let bytes = Arc::new(Mutex::new(Vec::new()));
         let writer = Capture(bytes.clone());
         let subscriber = tracing_subscriber::fmt()

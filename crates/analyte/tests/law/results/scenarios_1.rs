@@ -144,9 +144,9 @@ async fn law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_deli
         )?;
         assert_eq!(
             raw,
-            analyte_framing::mllp::encode(
+            analyte_framing::hl7::encode(
                 message.as_bytes(),
-                analyte_framing::mllp::Limit::new(1048576)?
+                analyte_framing::hl7::Limit::new(1048576)?
             )?
         );
     }
@@ -260,9 +260,9 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     loaded.pause_law_committed_for_test("law", hook)?;
     let running = Running::start_program(loaded, "synthetic-api").await?;
     let mut peer = connect(&path, "law").await?;
-    let wire = analyte_framing::mllp::encode(
+    let wire = analyte_framing::hl7::encode(
         result("durable", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?;
     peer.write_all(wire.get(..12).ok_or("synthetic prefix missing")?)
         .await?;
@@ -311,9 +311,9 @@ async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), 
         let running = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         database(&path)?.execute_batch(&format!("CREATE TRIGGER synthetic_storage_failure BEFORE INSERT ON {table} BEGIN SELECT RAISE(FAIL,'synthetic-storage-failure'); END;"))?;
-        let wire = analyte_framing::mllp::encode(
+        let wire = analyte_framing::hl7::encode(
             result("storage-failure", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
-            analyte_framing::mllp::Limit::new(1048576)?,
+            analyte_framing::hl7::Limit::new(1048576)?,
         )?;
         peer.write_all(&wire).await?;
         let mut buffer = [0; 1024];
@@ -363,9 +363,9 @@ async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<
         None,
     ));
     let mut peer = connect(&path, "law").await?;
-    let wire = analyte_framing::mllp::encode(
+    let wire = analyte_framing::hl7::encode(
         result("full", "\"\"", "awos-1^LAB", "12.30", "F").as_bytes(),
-        analyte_framing::mllp::Limit::new(1048576)?,
+        analyte_framing::hl7::Limit::new(1048576)?,
     )?;
     peer.write_all(&wire).await?;
     assert_eq!(

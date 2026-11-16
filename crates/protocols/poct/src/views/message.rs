@@ -1,8 +1,8 @@
 //! Typed mandatory Basic Profile messages with exact source evidence. Kept whole: POCT message variants and their typed field accessors define one message vocabulary.
 use crate::{
     Document, Limits,
-    data::{self, Nullable, Timestamp, Value},
-    structure,
+    syntax::structure,
+    views::data::{self, Nullable, Timestamp, Value},
 };
 
 /// Typed message decoding failures, without patient data in display text.

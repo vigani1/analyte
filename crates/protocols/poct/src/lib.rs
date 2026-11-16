@@ -11,17 +11,15 @@ pub mod syntax;
 
 pub use syntax::{Document, Element, Error, Limits};
 
-mod data;
-mod message;
-mod structure;
-pub use data::{Code, DataError, Null, Nullable, Quantity, Timestamp, Value};
-pub use message::{
+mod views;
+pub use views::data::{Code, DataError, Null, Nullable, Quantity, Timestamp, Value};
+pub use views::message::{
     AckKind, Body, Capabilities, ControlId, Header, Message, MessageError, Observation, Profile,
     Role, Service, hello_error_reference,
 };
 
-mod encode;
-pub use encode::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
+mod encoder;
+pub use encoder::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
 
 mod duplicate;
 pub use duplicate::{
@@ -29,6 +27,6 @@ pub use duplicate::{
     RecordedObservation, observation_evidence,
 };
 
-pub use structure::{child, children, literal};
+pub use syntax::structure::{child, children, literal};
 
-pub use data::{EncapsulatedData, Encoding};
+pub use views::data::{EncapsulatedData, Encoding};

@@ -47,7 +47,7 @@ async fn plan11_adr0003_mapping_repaired_once_retransmission_conflict_and_origin
     let hl7 = include_str!("../../../../core/config/examples/hl7.toml")
         .replace("tcp_server", "tcp_client");
     let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
-    let raw = analyte_framing::mllp::encode(raw, analyte_framing::mllp::Limit::new(1048576)?)?;
+    let raw = analyte_framing::hl7::encode(raw, analyte_framing::hl7::Limit::new(1048576)?)?;
     exercise(&hl7, raw).await?;
     let astm = include_str!("../../../../core/config/examples/astm.toml")
         .replace("kind = \"serial\"", "kind = \"tcp_client\"")

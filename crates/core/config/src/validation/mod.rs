@@ -66,7 +66,7 @@ pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> R
 }
 
 pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Error> {
-    crate::law::validate(m, path)?;
+    validate(m, path)?;
     if let Some(orders) = &m.orders {
         orders.validate(m, path)?;
     }

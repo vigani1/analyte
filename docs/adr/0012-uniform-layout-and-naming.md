@@ -139,6 +139,9 @@ the same way, and its `README.md` states the kind first.
 | Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |
 | Testing | `crates/testing/` | receiver, sim | Stand-ins used only by tests |
 
+Transport is arranged by connection kind because it has no per-protocol variants.
+Sink is arranged by role because it has no per-protocol variants.
+
 A new crate joins one kind, or the plan gets a new kind through this ADR.
 
 ## Consequences
