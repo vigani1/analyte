@@ -846,18 +846,7 @@ async fn failure_recording_case(name: &str, completes: bool) -> Result<(), Error
     let interpretations: i64 = db.query_row("SELECT count(*) FROM outbox", [], |r| r.get(0))?;
     assert_eq!(interpretations, i64::from(completes));
     if completes {
-        let (_, original) = recording("astm")?;
-        let expected = &original.get(2).ok_or("frame absent")?.bytes;
-        assert_eq!(
-            recording_frames(&path)?,
-            vec![expected.clone()],
-            "repeated frame must not be journaled twice in one transfer"
-        );
-        let raw: Vec<u8> =
-            db.query_row("SELECT raw FROM receipts WHERE raw=?1", [expected], |r| {
-                r.get(0)
-            })?;
-        assert_eq!(&raw, expected);
+        assert_completed_recording_retained(&path, &db)?;
     } else {
         assert!(
             recording_frames(&path)?.is_empty(),
@@ -1239,5 +1228,23 @@ async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and
     drop(db);
     service.stop().await?;
     reference.close().await?;
+    Ok(())
+}
+
+fn assert_completed_recording_retained(
+    path: &Path,
+    db: &rusqlite::Connection,
+) -> Result<(), Error> {
+    let (_, original) = recording("astm")?;
+    let expected = &original.get(2).ok_or("frame absent")?.bytes;
+    assert_eq!(
+        recording_frames(path)?,
+        vec![expected.clone()],
+        "repeated frame must not be journaled twice in one transfer"
+    );
+    let raw: Vec<u8> = db.query_row("SELECT raw FROM receipts WHERE raw=?1", [expected], |r| {
+        r.get(0)
+    })?;
+    assert_eq!(&raw, expected);
     Ok(())
 }

@@ -17,6 +17,13 @@ pub struct Checksum {
     pub include_stx: bool,
     /// Include configured control suffix bytes in the sum.
     pub include_suffix: bool,
+    /// Independent hex output and input options.
+    pub hex: HexOptions,
+}
+
+/// Independent choices for checksum output spelling and accepted input spelling.
+#[derive(Debug, Clone, Copy)]
+pub struct HexOptions {
     /// Emit uppercase rather than lowercase hex.
     pub uppercase: bool,
     /// Accept either hex letter case on input.
@@ -92,7 +99,7 @@ impl Config {
         }
         raw.extend(self.control(29));
         let sum = checksum(&raw, self);
-        raw.extend(hex(sum, self.checksum.uppercase).bytes());
+        raw.extend(hex(sum, self.checksum.hex.uppercase).bytes());
         if self.mode == Mode::Alternate {
             raw.extend(self.control(3));
         }
@@ -260,8 +267,8 @@ impl Decoder {
             State::HexFirst => self.state = State::HexLast(byte),
             State::HexLast(first) => {
                 let received = [first, byte];
-                let expected = hex(self.sum, self.config.checksum.uppercase);
-                let valid = if self.config.checksum.accept_either_case {
+                let expected = hex(self.sum, self.config.checksum.hex.uppercase);
+                let valid = if self.config.checksum.hex.accept_either_case {
                     received.eq_ignore_ascii_case(expected.as_bytes())
                 } else {
                     received == expected.as_bytes()
