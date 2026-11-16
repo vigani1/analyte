@@ -121,6 +121,8 @@ answers "no orders" when unsure, and every result keeps the three identities.
 
 ## Guides
 
+- [Pilot operations](operations/README.md): installation, daily operation,
+  recovery and the lab sign-off record.
 - [Adding a machine](adding-a-machine.md): settings, configuration, recordings and evidence.
 
 ## Next steps
