@@ -64,7 +64,7 @@ impl Store {
         self.reconcile(
             receipt,
             evidence,
-            (corrections, findings, None),
+            (corrections, findings, None, None),
             None,
             build,
         )
@@ -93,7 +93,7 @@ impl Store {
         self.reconcile(
             action.receipt,
             evidence,
-            (corrections, findings, None),
+            (corrections, findings, None, None),
             Some(action),
             build,
         )
@@ -117,7 +117,7 @@ impl Store {
         self.reconcile(
             receipt,
             evidence,
-            (mapping.0, mapping.1, Some(lifecycle)),
+            (mapping.0, mapping.1, Some(lifecycle), None),
             None,
             build,
         )
@@ -142,8 +142,38 @@ impl Store {
         self.reconcile(
             action.receipt,
             evidence,
-            (mapping.0, mapping.1, Some(lifecycle)),
+            (mapping.0, mapping.1, Some(lifecycle), None),
             Some(action),
+            build,
+        )
+    }
+
+    /// Parks corrections matching the latest common content under a caller-owned reason.
+    /// The guard runs inside revision reconciliation; it changes no stored format.
+    /// Reprocessing keeps the usual audit and custody boundary.
+    /// # Errors
+    /// Rejects invalid reprocess actions, bounds and transactional storage failures.
+    pub fn interpret_with_edit_guard<F>(
+        &mut self,
+        receipt: ReceiptId,
+        evidence: Interpretation,
+        mapping: (&[bool], &[crate::Parked], &str),
+        action: Option<&crate::Reprocess>,
+        build: F,
+    ) -> Result<InterpretationCommit, Error>
+    where
+        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
+    {
+        if action
+            .is_some_and(|a| a.receipt != receipt || a.audit.action.as_str() != "receipt-reprocess")
+        {
+            return Err(Error::InvalidInput);
+        }
+        self.reconcile(
+            receipt,
+            evidence,
+            (mapping.0, mapping.1, None, Some(mapping.2)),
+            action,
             build,
         )
     }
@@ -152,14 +182,19 @@ impl Store {
         &mut self,
         receipt: ReceiptId,
         mut evidence: Interpretation,
-        mapping: (&[bool], &[crate::Parked], Option<StatusLifecycle<'_>>),
+        mapping: (
+            &[bool],
+            &[crate::Parked],
+            Option<StatusLifecycle<'_>>,
+            Option<&str>,
+        ),
         action: Option<&crate::Reprocess>,
         build: F,
     ) -> Result<InterpretationCommit, Error>
     where
         F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
     {
-        let (corrections, findings, lifecycle) = mapping;
+        let (corrections, findings, lifecycle, edit_guard) = mapping;
         let stored = self.receipt(receipt)?.ok_or(Error::UnknownReceipt)?;
         let (count, findings) = self.validate_reconciliation(
             &stored,
@@ -190,6 +225,7 @@ impl Store {
             limit,
             rows: self.limits.page_rows,
             lifecycle,
+            edit_guard,
         };
         let batch = reconciliation.assign_revisions(&mut evidence, receipt, corrections)?;
         let deliveries = build(&evidence, &batch.outcomes)?;
@@ -234,7 +270,7 @@ impl Store {
             version,
             &evidence,
             &batch.outcomes,
-            (action.is_some(), findings.is_empty()),
+            (action.is_some(), findings.is_empty(), edit_guard),
         )?;
         write_reprocess_audit(&tx, action, audit, successful)?;
         tx.commit()?;

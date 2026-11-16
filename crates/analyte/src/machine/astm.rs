@@ -35,6 +35,7 @@ struct ConnectionState<'a, 'm> {
     raw: Vec<u8>,
     payload: Vec<u8>,
     partial: Vec<u8>,
+    input_evidence: connection_input::Custody,
     pending: Option<Pending<'a>>,
     response: Option<crate::orders::astm::Reply>,
     response_deadline: Option<Instant>,
@@ -95,6 +96,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             raw,
             payload,
             partial,
+            input_evidence: connection_input::Custody::default(),
             pending,
             response,
             response_deadline,
@@ -156,9 +158,11 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         stop: &mut watch::Receiver<bool>,
     ) -> Result<(), Error> {
         let settings = self.settings;
+        self.input_evidence.begin(&bytes);
         let events = self.outgoing_events(bytes).await?;
         for event in events {
             if let Event::Byte(byte) = &event {
+                self.input_evidence.fed();
                 if *byte == analyte_framing::astm::STX {
                     self.partial.clear();
                 }
@@ -171,6 +175,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             }
             self.process(event, conn, stop).await?;
         }
+        self.input_evidence.complete();
         Ok(())
     }
     async fn outgoing_events(&mut self, bytes: Vec<u8>) -> Result<Vec<Event>, Error> {
@@ -449,6 +454,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         Ok(())
     }
     async fn close(&mut self, result: Result<(), Error>) -> Result<(), Error> {
+        self.input_evidence.retain(self.store, self.machine).await?;
         for order in self.active_orders.drain(..) {
             crate::orders::sending::uncertain(
                 self.store,

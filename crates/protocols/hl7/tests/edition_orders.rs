@@ -200,6 +200,8 @@ fn hl7_2_8_2_s4_4_6_7_s4_5_1_4_s2_a_14_5_order_qualification() -> Result<(), Err
             raw.replace("ORL^O22^ORL_O22", "ORL^O22^ORL_O41"),
             raw.replace("^LAB^MR", "^LAB"),
             raw.replace("MSA|AA|sent1", "MSA|AA|sent1|withdrawn"),
+            raw.replace("MSA|AA|sent1", "MSA|AA|sent1|\"\""),
+            raw.replace("MSA|AA|sent1", "MSA|AA|sent1\rERR|\"\"||207|E"),
         ] {
             let message = Message::parse(invalid.as_bytes(), Options::default())?;
             assert!(OrderResponse::new(&message, &sent).is_err());

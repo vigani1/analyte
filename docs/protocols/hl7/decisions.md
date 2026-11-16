@@ -271,7 +271,7 @@ for OBR-4 and scalar DTM for timing. A test revision is carried in component 7;
 priority table 0485 and specimen coding revisions are supplied separately.
 Requiring revisions for all named systems avoids guessing table ownership from
 an HL7 prefix. Sources and the field matrix are in versions.md; protocol
-`edition_orders.rs`, config edition tests and program `hl7_send_cases` establish
+`edition_orders.rs`, config edition tests and program `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items` establish
 the bounded behavior. Evidence remains documented; no retransmission is added.
 
 ## Keep the 2.8.2 writer on the patient-required O22 response
@@ -420,3 +420,21 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   later ORU section 7.3.1; ADR 0007, explicit supported scope.
 - **tests**: `hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused`,
   `plan6_notes_keep_parent_paths_even_without_a_result`.
+
+## Control boundary regressions (standards pass 2)
+
+Response timestamps use the calendar and precision parser in every edition,
+including TS editions (2.5.1 §2.15.9.7 and §2.A.77). The selected ACK output
+profile writes the time component only; it does not emit a TS precision component.
+
+ERR-3 uses table 0357; zero requires informational severity (2.5.1 §2.15.5.3–4).
+The error-only ACK renderer refuses zero. Fatal severity starts with the selected
+2.6 profile; code 104 starts with the selected 2.8.2 profile. Unknown codes are
+refused, with local application codes carried separately. Tests are in
+[standards_pass2.rs](../../../crates/protocols/hl7/tests/standards_pass2.rs).
+
+The strict modern withdrawal profile refuses explicit null as well as other
+nonempty encodings in withdrawn MSA/ERR fields (2.8.2 §2.14.8 and 2.9.1 §2.13.8).
+This is the declared profile's refusal policy, not a claim that explicit null
+carries clinical content. View regressions and the O22 response regressions in
+[edition_orders.rs](../../../crates/protocols/hl7/tests/edition_orders.rs) cover it.
