@@ -123,3 +123,30 @@ rules and their coverage belong only in [checklist.md](checklist.md).
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities;
   [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
 - **test**: `adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart`.
+
+## Consecutive comments (standards pass 2)
+
+LIS02-A2 sections 10 and 4.1 attach consecutive comments to the first preceding
+noncomment record; manufacturer ownership remains immediate. Regression:
+`lis02_10_consecutive_comments_share_noncomment_owner` checks parser parents
+and delivered result annotations. Previously interpreted receipts containing
+consecutive result comments could have omitted later annotations or retained a
+comment as their parent. Raw receipts are unchanged. No deployed store was
+inspected. Identify affected receipts in the protected store and reprocess the
+original bytes with the fixed parser and recorded config. Reprocessing adds a
+new interpretation version, preserving the raw receipt and old interpretations;
+review prior deliveries for reconciliation rather than overwriting their history.
+
+Contextual C/M levels are tracked independently of P/O/R ancestry. Section
+5.6.7 resets the counter when the same type changes level or a lower numbered
+level intervenes. Regression: `lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence`.
+
+Section 5.1 text components reject literal controls before escape expansion;
+header-selected delimiters remain syntax. Delimiter escapes and raw bytes are
+unchanged. Test: `lis02_5_1_literal_controls_rejected_in_text_components`.
+
+Status evidence now asserts every section 9.9 code against its named meaning
+and parsed result view (`lis02_9_9_each_wire_code_has_specified_meaning`).
+Manufacturer evidence checks all eight fixture positions, sequence and exact
+round-trip (`lis02_14_all_manufacturer_positions_are_retained`); this proves
+retention, not vendor field semantics. Evidence remains documented.

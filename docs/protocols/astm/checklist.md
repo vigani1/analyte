@@ -49,9 +49,9 @@ Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its
 ### LIS2 logical structure and syntax
 
 - [ ] M — §4.1 pp.3–4: H/L level zero, P/Q/S level one, O two, R three; O needs P, R needs O; same/higher level closes prior scope. Test: `lis02_4_1_parents_and_context_closure`. Remaining: explicit parent assertions for every listed level and closure.
-- [ ] M — §4.1 p.3, §5.5.5/.8 pp.8–9: C/M contextual attachment, variable level, never after L. Test: `lis02_4_1_parents_and_context_closure`. Remaining: variable C/M contextual levels need broader assertions.
+- [ ] M — §4.1 p.3, §5.5.5/.8 pp.8–9: C/M contextual attachment, variable level, never after L. Test: `lis02_4_1_parents_and_context_closure`. Tests: `lis02_10_consecutive_comments_share_noncomment_owner`, `lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence`. Remaining: full contextual permutations.
 - [ ] M — §4.2.1–.2 pp.4–5: save on upward hierarchy transition; repeat ancestors needed to restart last unsaved logical record. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
-- [ ] M — §5.1 p.5: specified Latin-1 repertoire and allowed controls, excluded values; scalar data excludes active separators; case-sensitive content except record IDs. Test: `lis02_5_1_latin1_is_not_utf8_or_lossy`. Remaining: separator exclusion and case sensitivity are not fully asserted.
+- [ ] M — §5.1 p.5: specified Latin-1 repertoire and allowed controls, excluded values; scalar data excludes active separators; case-sensitive content except record IDs. Test: `lis02_5_1_latin1_is_not_utf8_or_lossy`. Literal text controls: `lis02_5_1_literal_controls_rejected_in_text_components`. Remaining: separator exclusion and case sensitivity are not fully asserted.
 - [x] C — §§5.2–5.3 pp.5–6: no standard maximum field/record; document agreed implementation limits and never silently truncate. Test: `lis02_5_2_5_3_limits_reject_instead_of_truncating`.
 - [ ] M — §§5.4.1–.4 p.6,5.4.6 p.7,6.2 p.11: CR termination, distinct header-selected field/repeat/component/escape, consistent until L. Test: `lis02_6_2_bootstrap_and_5_4_6_message_delimiters`. Remaining: duplicate separator rejection and complete delimiter consistency assertions.
 - [ ] M — §5.4.5 pp.6–7: escape-aware parsing, no nesting. Test: `lis02_5_4_5_escapes_never_change_boundaries`. Remaining: nested escapes need an explicit rejection assertion.
@@ -64,7 +64,7 @@ Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its
 - [ ] C — §5.6.3 p.10: phones free text, repeats allowed, first primary/daytime. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] C — §5.6.4 p.10: field-specific fixed-observation default units; alternate units in components, distinct from absent result-unit guessing. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] C — §§5.6.5–.6 pp.10–11: address/provider/name positions and repeated identities retained. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
-- [ ] M — §5.6.7 p.11: record sequence required for repeatable types, resets on higher context/changed level; independent of frame number. Test: `lis02_5_6_7_sequence_numbers_reset_with_context`. Remaining: the cited test checks invalid sequences, not successful resets.
+- [ ] M — §5.6.7 p.11: record sequence required for repeatable types, resets on higher context/changed level; independent of frame number. Test: `lis02_5_6_7_sequence_numbers_reset_with_context`. Changed-level reset and invalid continuation: `lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence`. Remaining: full reset matrix.
 
 ### LIS2 records and conditional semantics
 
@@ -93,7 +93,7 @@ Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its
 - [ ] C — §9.5 p.23: retain units, standard abbreviations where available; not necessarily UCUM. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] C — §9.6 p.23: repeated ranges with component descriptions retained. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] C — §§9.7–.8 p.23: flags including LL/HH, combined A/S/R population basis or generic N. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
-- [x] C — §9.9 pp.23–24: C/P/F/X/I/S/M/R/N/Q/V/W status meanings distinct. Test: `lis02_9_9_all_result_codes_remain_distinct`.
+- [x] C — §9.9 pp.23–24: C/P/F/X/I/S/M/R/N/Q/V/W status meanings distinct. Tests: `lis02_9_9_each_wire_code_has_specified_meaning`, `lis02_9_9_all_result_codes_remain_distinct`.
 - [ ] C — §9.10 p.24: normative/units change date empty if irrelevant; relevant changes trigger review rather than silent historical comparability. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] C — §§9.11–.14 p.24: operator/verifier, started/completed and instrument identities distinct. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] C — §§10.1–.5 pp.24–25: comment sequence/source/type and coded/text components with correct parent. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
@@ -139,7 +139,7 @@ positions, not complete semantic validation. All rows use
 | Query | 13 | Selection criteria retained for host interpretation |
 | Terminator | 3 | Completion reason |
 | Scientific context | 21 | Source methods/material metadata retained |
-| Manufacturer | Variable | Opaque vendor fields retained; test uses 8 positions |
+| Manufacturer | Variable | All 8 fixture positions, sequence and exact round-trip asserted by `lis02_14_all_manufacturer_positions_are_retained` |
 
 ## Comparison-derived test scope
 
