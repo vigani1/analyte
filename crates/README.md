@@ -29,9 +29,8 @@ Crates of the same kind share a layout:
 | **core** | Folders group parts by role; small roles can stay in a single file. |
 | **program** | Role folders, with per-protocol files inside where needed. |
 
-A module is a named part of the code. Under the incoming layout rule, a module
-with children has a folder and a `mod.rs` front file. The file moves happen
-separately; the guides below name modules rather than their current file paths.
+A module is a named part of the code. A module with children has a folder and
+a `mod.rs` front file; the guides below name modules.
 
 The table follows an incoming message: transport -> framing -> dialog -> protocol
 grammar -> mapping -> model, then the supporting parts. Grammar means the rules
@@ -64,4 +63,4 @@ Protocol keys stay the same across layers: per-protocol files are `astm.rs`,
 `law.rs` holds the LAW profile; its grammar lives inside `hl7`. HL7 byte
 boundaries use the `mllp` module in framing, named for that envelope. Inside each
 grammar crate, the `syntax` module holds the grammar. A module with children
-will use a folder with a `mod.rs` front file. See [the layout decision](../docs/adr/0012-uniform-layout-and-naming.md).
+uses a folder with a `mod.rs` front file. See [the layout decision](../docs/adr/0012-uniform-layout-and-naming.md).

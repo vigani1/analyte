@@ -99,10 +99,11 @@ expiry selects AR/CR; interpretation expiry selects AR. Response metadata expiry
 closes the dialog without a fabricated response. Late replies are refused.
 
 The interpreter must distinguish generic ACK transactions from functional
-order/query exchanges: those replies require their own later transaction layer,
-not Interpreted as a substitute for a functional response. This module does not
-implement query/order semantics, deferred MCF, application-ACK conversations,
-restart replay, durable duplicate detection or clinical order lifecycle. A
+order/query exchanges: the `hl7/orders` state machine routes deferred QRY/QCK/DSR
+exchanges and outgoing order response waits separately from generic Interpreted
+ACK handling. The host supplies lookup outcomes, durably reserved work and
+functional reply bytes. The dialog does not implement deferred MCF, restart
+replay, durable duplicate detection or clinical order lifecycle. A
 received MSA is reported without generating another ACK. Sender outcomes retain
 the six codes and MSA-2 correlation; timeout/disconnect means uncertain, never
 an automatic retry. An enhanced CA means durable acceptance only, not completion

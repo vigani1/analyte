@@ -1,8 +1,10 @@
 # POCT01-A2 Observation Reviewer
 
 Evidence level: **documented**. The crate provides Basic Profile components
-as a pure library: bounded XML syntax and typed messages, reviewer builders,
-conversation state machine and observation duplicate comparison. Common-model
+as a pure library: bounded XML syntax and typed messages, reviewer builders
+and observation duplicate comparison. Conversation state and deadlines live in
+`analyte-dialog::poct`; stream boundaries live in `analyte-framing::poct`.
+The `Dialog` and action names below refer to that dialog module. Common-model
 conversion lives in `analyte-mapping`. Tests use independently written synthetic messages. There is no real
 machine recording or official simulator evidence, so this is not a simulated or
 proven driver.

@@ -265,10 +265,13 @@ them can be collected at any time and kept as test data.
   reconciles deliveries and orders before any machine gets a command.
 - **Machine configs:** the shipped definition, the site settings and local
   overrides are kept apart. Every interpretation stores the exact effective
-  config and its digest. A config goes draft → validated → active and
-  switches only between conversations; activation never changes queued
-  deliveries or resends an order. Store and config formats are versioned,
-  with rehearsed migrations.
+  config and its digest. Files are loaded and validated at service startup;
+  applying changed files to the running service requires a restart. Reprocessing
+  separately loads the current files and appends a new interpretation; it does
+  not change the running service's snapshot, queued deliveries or machine orders.
+  The config library provides draft, validated and active types, but there is no
+  operator hot-reload command. Activation between conversations remains future
+  work. Store and config formats are versioned, with rehearsed migrations.
 - **Monitoring:** pending bytes and oldest item age, storage commit time,
   order cache freshness and uncertain orders, each alert with a named
   responder.

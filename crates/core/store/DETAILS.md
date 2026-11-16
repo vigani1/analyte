@@ -7,7 +7,7 @@ and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 9 is
+Opening runs `integrity_check` and `foreign_key_check`. Schema version 11 is
 created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
 Existing enqueue times are backfilled with migration time and explicitly marked.
 Migrations only move forward. WAL and `synchronous=FULL` deliberately require
@@ -21,8 +21,10 @@ filesystem and storage hardware that honor flush requests. See SQLite's
 Incomplete and aborted transfers retain every frame; recovery is paged by
 transfer ID and sequence. `finish_transfer` can link only to an existing receipt.
 Receipts include exact effective config bytes and checked SHA-256 digests.
-There is no receipt/frame/interpretation deletion or update API, and SQL triggers
-reject accidental changes. Reprocessing creates another interpretation version.
+Ordinary APIs cannot update or delete receipt/frame/interpretation evidence;
+SQL triggers reject accidental changes. ADR 0013 retention transactions can purge
+eligible finished bundles while retaining keyed tombstones and an audit.
+Reprocessing creates another interpretation version.
 
 Interpretations and their deliveries commit together. A parse failure, an unsafe
 result or a rejected/conflicting delivery creates operator evidence. Outbox IDs,
@@ -79,7 +81,7 @@ reset/stale cache behavior and restore. A property test reopens the database
 through randomized receipt sequences and checks all previously stored bytes.
 
 This crate does not implement delivery HTTP/backoff calculation, clinical
-interpretation, native volume probing, credentials, retention, machine order
+interpretation, native volume probing, credential loading, machine order
 transmission or pilot hardware flush/latency certification. Those are host or
 other-crate responsibilities. The worker's Tokio timer paths require the host's
 Tokio runtime; the crate enables only `sync` and `time` features.
@@ -191,14 +193,18 @@ typed states in bounded pages rather than comparing state text in SQL.
 
 ## Implementation ownership
 
-`open` owns integrity checks and forward migrations; `capacity` owns admission
-and size limits. `receipts` retains raw inputs, `transfers` journals frames and
-provenance, `outbox` owns claims and attempts, `parked` owns operator parking and
-audit writes, `feed` owns cache writes and trust, and `backup` owns online copies.
-`revisions` owns interpretation transactions.
+`upkeep/open` owns integrity checks and forward migrations; `upkeep/capacity`
+owns admission and size limits. `intake/records` retains raw inputs,
+`intake/transfers` journals frames and
+provenance, `delivery/outbox` owns claims and attempts, `operator/parked` owns
+operator parking and audit writes, `delivery/feed` owns cache writes and trust,
+and `upkeep/backup` owns online copies.
+`results/revisions` owns interpretation transactions. `upkeep/retention` owns
+eligibility, holds, keyed tombstones, bounded purges and space reclamation; the
+host supplies the credential and schedules batches.
 
 Machine-order eligibility, reservation, listing, cancellation admission and item
-exchange completion live under `machine_orders/`. The parent module retains
+exchange completion live under `orders/machine_orders/`. The parent module retains
 shared lifecycle types and transaction helpers so state changes and history
 writes still have one implementation. These boundaries do not change the
 schema, public API, transaction boundaries or evidence formats. Existing store

@@ -12,7 +12,7 @@ Checksum arithmetic sums payload bytes modulo 256 and emits three decimal
 digits, excluding initialization, checksum digits and EOT. That span is inferred
 and checked against the consistent standard examples in the research notes.
 
-`dialog` owns one serialized connection: STX, ACK, request/data plus EOT,
+`analyte-dialog::autolyser` owns one serialized connection: STX, ACK, request/data plus EOT,
 response. Journal transport input before feeding individual bytes, including unexpected
 bytes and input arriving at expired deadlines. Split/merged reads behave alike.
 Every complete response (including NAK and insertion replies) is emitted for
@@ -91,8 +91,9 @@ Raw bytes and patient/order context stay in protected storage, not ordinary logs
 
 Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
 parking, operator visibility, zero reference-receiver result deliveries and storage
-failure. They do not raise the documented evidence level. No current vendor
-crate path supplies a resolved result identity for a delivery test.
+failure. They do not raise the documented evidence level. The Autolyser receive
+path does not supply a resolved result identity for a delivery test; POCT has a
+separate configured identity path and delivery coverage.
 
 Before R, the program stores a poll-custody guard. A complete durably stored
 response clears it; corrupt input keeps it through L recovery. An empty L does
