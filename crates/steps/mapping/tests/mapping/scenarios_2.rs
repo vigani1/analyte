@@ -343,3 +343,38 @@ fn hl7_251_2_7_unsupported_escapes_never_become_clean_text() -> TestResult {
     }
     Ok(())
 }
+
+// LIS02-A2 sections 10 and 4.1: consecutive comments share the noncomment owner.
+#[test]
+fn lis02_10_consecutive_comments_share_noncomment_owner() -> TestResult {
+    let body = "R|1|^^^SYN|1|||||F\rC|1|I|first|G\rC|2|I|second|G\r";
+    let wire = format!("H|\\^&|\rP|1\rO|1\r{body}L|1\r");
+    let messages = analyte_astm::parse(wire.as_bytes(), analyte_astm::Limits::default())?;
+    let message = messages.first().ok_or("message")?;
+    assert_eq!(
+        message
+            .records()
+            .get(4)
+            .and_then(analyte_astm::Record::parent),
+        Some(3)
+    );
+    assert_eq!(
+        message
+            .records()
+            .get(5)
+            .and_then(analyte_astm::Record::parent),
+        Some(3)
+    );
+    assert_eq!(message.encode(), wire.as_bytes());
+    let output = astm(body, "P")?;
+    assert_eq!(
+        first(&output)?
+            .comments
+            .as_slice()
+            .iter()
+            .map(SourceText::as_str)
+            .collect::<Vec<_>>(),
+        ["first", "second"]
+    );
+    Ok(())
+}

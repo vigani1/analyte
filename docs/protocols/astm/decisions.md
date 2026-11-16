@@ -123,3 +123,16 @@ rules and their coverage belong only in [checklist.md](checklist.md).
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities;
   [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
 - **test**: `adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart`.
+
+## Consecutive comments (standards pass 2)
+
+LIS02-A2 sections 10 and 4.1 attach consecutive comments to the first preceding
+noncomment record; manufacturer ownership remains immediate. Regression:
+`lis02_10_consecutive_comments_share_noncomment_owner` checks parser parents
+and delivered result annotations. Previously interpreted receipts containing
+consecutive result comments could have omitted later annotations or retained a
+comment as their parent. Raw receipts are unchanged. No deployed store was
+inspected. Identify affected receipts in the protected store and reprocess the
+original bytes with the fixed parser and recorded config. Reprocessing adds a
+new interpretation version, preserving the raw receipt and old interpretations;
+review prior deliveries for reconciliation rather than overwriting their history.

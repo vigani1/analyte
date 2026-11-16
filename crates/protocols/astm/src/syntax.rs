@@ -429,7 +429,11 @@ fn record_parent(
     let parent = match kind {
         Kind::Header => None,
 
-        Kind::Comment | Kind::Manufacturer => message.records.len().checked_sub(1),
+        Kind::Comment => message
+            .records
+            .iter()
+            .rposition(|r| r.kind != Kind::Comment),
+        Kind::Manufacturer => message.records.len().checked_sub(1),
         Kind::Terminator | Kind::Patient | Kind::Query | Kind::Scientific => Some(0),
         Kind::Order => ancestors.get(1).copied().filter(|i| {
             message
