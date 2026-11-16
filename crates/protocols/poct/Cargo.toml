@@ -29,9 +29,6 @@ name = "xml"
 name = "messages"
 
 [[test]]
-name = "duplicate"
-
-[[test]]
 name = "builders"
 
 [[test]]
