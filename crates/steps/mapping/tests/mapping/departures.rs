@@ -32,7 +32,7 @@ fn report(
 #[test]
 fn adr0015_hl7_s74125_only_qualified_absence_is_discharged_and_v1_parks() -> TestResult {
     let definition = definition("hl7_absent_obr25_means_final", "absent_obr25_final");
-    let mapped = report("", "F", &definition)?;
+    let mut mapped = report("", "F", &definition)?;
     assert_eq!(mapped.applied_departures.len(), 1);
     assert!(
         mapped
@@ -48,6 +48,11 @@ fn adr0015_hl7_s74125_only_qualified_absence_is_discharged_and_v1_parks() -> Tes
     );
     assert!(mapped.requires_parking());
     assert_eq!(first(&mapped)?.source_status.as_str(), "F");
+    mapped.findings.clear();
+    assert!(
+        mapped.requires_parking(),
+        "derived status remains ineligible even without diagnostic display"
+    );
     for value in ["\"\"", "UNKNOWN", "P", "C", "R", "X", "D"] {
         let mapped = report(value, "F", &definition)?;
         assert!(mapped.applied_departures.is_empty());

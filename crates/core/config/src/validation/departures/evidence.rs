@@ -97,15 +97,7 @@ pub(super) fn validate(
                     path,
                 )?;
                 packing |= origin != RecordingEvidence::Synthetic;
-                let capability = m.evidence.capabilities.iter().any(|c| {
-                    c.model == declaration.scope.model
-                        && c.firmware == declaration.scope.firmware
-                        && c.transport == m.transport.kind
-                        && c.evidence_files.contains(file)
-                        && c.dialogs
-                            .iter()
-                            .any(|dialog| dialog.as_str() == departure.tag())
-                });
+                let capability = exercised_capability(m, departure, file);
                 simulated |= capability
                     && matches!(
                         origin,
@@ -130,6 +122,29 @@ pub(super) fn validate(
         }
     }
     Ok(())
+}
+
+fn exercised_capability(
+    m: &MachineDocument,
+    departure: &MachineDeparture,
+    file: &analyte_model::Identifier,
+) -> bool {
+    m.evidence.capabilities.iter().any(|c| {
+        c.model == departure.declaration().scope.model
+            && c.firmware == departure.declaration().scope.firmware
+            && c.transport == m.transport.kind
+            && c.config_digest.as_str().len() == 64
+            && c.config_digest
+                .as_str()
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+            && !matches!(c.driver.as_str(), "untested" | "unknown")
+            && !matches!(c.platform.as_str(), "untested" | "unknown")
+            && c.evidence_files.contains(file)
+            && c.dialogs
+                .iter()
+                .any(|dialog| dialog.as_str() == departure.tag())
+    })
 }
 
 fn recording(

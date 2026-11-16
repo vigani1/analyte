@@ -334,6 +334,14 @@ impl Output {
     #[must_use]
     pub fn requires_parking(&self) -> bool {
         !self.findings.is_empty()
+            || self
+                .applied_departures
+                .iter()
+                .any(|entry| match entry.meaning {
+                    DepartureMeaning::FinalReportFromDocumentation
+                    | DepartureMeaning::FinalObservationFromDocumentation => true,
+                    DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => false,
+                })
             || !self.unmapped.is_empty()
             || self.results.iter().any(|r| r.content.requires_parking())
     }
