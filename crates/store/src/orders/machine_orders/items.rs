@@ -81,34 +81,7 @@ impl Store {
         // even when one item is terminal. It never manufactures a Sent event.
         order.state = state;
         order.updated_at = now;
-        let prefix = if refused {
-            "CancelRefused"
-        } else {
-            "item-outcomes"
-        };
-        let summary =
-            order
-                .items
-                .iter()
-                .map(|item| {
-                    format!(
-                        "{}={:?}:{}",
-                        item.index,
-                        item.state,
-                        item.source_code
-                            .as_str()
-                            .split(':')
-                            .next()
-                            .filter(|code| code.len() <= 64
-                                && code.bytes().all(|byte| byte.is_ascii_alphanumeric()
-                                    || matches!(byte, b'-' | b'_')))
-                            .unwrap_or("see-item-history")
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; ");
-        order.source_code =
-            SourceText::new(&format!("{prefix}: {summary}")).map_err(|_| Error::InvalidInput)?;
+        order.source_code = outcome_summary(&order.items, refused)?;
         tx.execute(
             "UPDATE machine_orders SET state=?1,updated_at=?2,source_code=?3 WHERE id=?4",
             params![
@@ -122,4 +95,35 @@ impl Store {
         tx.commit()?;
         Ok(order)
     }
+}
+
+fn outcome_summary(items: &[MachineOrderItem], refused: bool) -> Result<SourceText, Error> {
+    let prefix = if refused {
+        "CancelRefused"
+    } else {
+        "item-outcomes"
+    };
+    let summary = items
+        .iter()
+        .map(|item| {
+            format!(
+                "{}={:?}:{}",
+                item.index,
+                item.state,
+                item.source_code
+                    .as_str()
+                    .split(':')
+                    .next()
+                    .filter(|code| {
+                        code.len() <= 64
+                            && code.bytes().all(|byte| {
+                                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
+                            })
+                    })
+                    .unwrap_or("see-item-history")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    SourceText::new(&format!("{prefix}: {summary}")).map_err(|_| Error::InvalidInput)
 }
