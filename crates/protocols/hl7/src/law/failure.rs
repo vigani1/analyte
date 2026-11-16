@@ -65,7 +65,8 @@ impl Failure {
                 field: *field,
                 occurrence,
             }),
-            Error::AtSegment { .. }
+            Error::UnsupportedText { .. }
+            | Error::AtSegment { .. }
             | Error::Syntax(
                 crate::Error::EditionRules(_)
                 | crate::Error::WithdrawnQuery { .. }
@@ -144,7 +145,8 @@ fn triggered(error: Error) -> Failure {
             segment: "MSH",
             field: 9 | 12 | 15 | 16 | 18 | 21,
         }) => true,
-        Error::AtSegment { .. }
+        Error::UnsupportedText { .. }
+        | Error::AtSegment { .. }
         | Error::DilutionDefinition { .. }
         | Error::Subcomponent { .. }
         | Error::Authority { .. }

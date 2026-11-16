@@ -1,5 +1,7 @@
 //! Validates LAW OBX observation segments per direction (TF-2b C.2/C.5/C.7); NTE and INV are in `notes_inventory`.
-use super::fields::{characters, component_error, excluded_fields, field, part, primitive, scalar};
+use super::fields::{
+    TextKind, characters, component_error, excluded_fields, field, part, primitive, scalar, text,
+};
 use super::order::limit;
 use super::patient::{authority_value, coded, excluded, extras};
 use super::{ControlDirection, Error, Profile, ResultStatus, content, raw};
@@ -179,14 +181,17 @@ fn embedded(value: &[u8], direction: ControlDirection) -> Result<(), Error> {
             subcomponent,
         }
     })?;
-    for (pos, required, maximum) in [
-        (2, true, 9),
-        (3, false, 18),
-        (4, true, 6),
-        (5, true, usize::MAX),
-    ] {
+    for (pos, required, maximum) in [(2, true, 9), (3, false, 18), (4, true, 6)] {
         primitive(part(value, pos), required, maximum, location(5, pos))?;
     }
+    text(
+        part(value, 5),
+        true,
+        usize::MAX,
+        location(5, 5),
+        TextKind::Tx,
+        direction,
+    )?;
     if !data_type(part(value, 2)) {
         return Err(location(5, 2));
     }
@@ -255,6 +260,9 @@ fn structured(value: &[u8], direction: ControlDirection) -> Result<(), Error> {
         return Err(location(5, 3));
     }
     if !part(value, 4).is_empty() {
+        if part(value, 3).is_empty() {
+            return Err(location(5, 3));
+        }
         numeric(part(value, 4), 15, location(5, 4))?;
     }
     extras(value, b'^', &[1, 2, 3, 4], direction, |pos| {
@@ -308,7 +316,14 @@ fn observation_value(
             b"RP" => pointer(value, profile, direction)?,
             b"SN" => structured(value, direction)?,
             b"ST" => primitive(value, true, 200, content("OBX", 5))?,
-            b"TX" => primitive(value, true, 65536, content("OBX", 5))?,
+            b"TX" => text(
+                value,
+                true,
+                65536,
+                content("OBX", 5),
+                TextKind::Tx,
+                direction,
+            )?,
             _ => return Err(content("OBX", 2)),
         }
     }

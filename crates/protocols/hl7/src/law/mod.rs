@@ -12,6 +12,15 @@ use thiserror::Error;
 /// A LAW validation failure, without payload in its diagnostic.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Error {
+    /// Text requires an unsupported or inapplicable escape/formatting interpretation.
+    #[error("unsupported LAW text handling ({reason}): {source}")]
+    UnsupportedText {
+        /// Fixed policy reason; never contains the message payload.
+        reason: &'static str,
+        /// Precise field or leaf location, preserved for acknowledgments.
+        #[source]
+        source: Box<Error>,
+    },
     /// Validation retained the actual one-based occurrence of the offending segment.
     #[error("LAW segment occurrence {occurrence}: {source}")]
     AtSegment {
@@ -91,7 +100,7 @@ pub enum Error {
 impl Error {
     pub(super) fn base(&self) -> &Self {
         let mut error = self;
-        while let Self::AtSegment { source, .. } = error {
+        while let Self::AtSegment { source, .. } | Self::UnsupportedText { source, .. } = error {
             error = source;
         }
         error
@@ -114,7 +123,7 @@ impl Error {
             | Self::Inconsistent { segment, .. }
             | Self::Content { segment, .. }
             | Self::Syntax(crate::Error::Control { segment, .. }) => Some(*segment),
-            Self::AtSegment { .. } | Self::Syntax(_) => None,
+            Self::AtSegment { .. } | Self::UnsupportedText { .. } | Self::Syntax(_) => None,
         };
         if self.occurrence().is_none() && named.is_some_and(|name| name.as_bytes() == segment.id())
         {

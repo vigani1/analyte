@@ -153,6 +153,14 @@ container and test comparisons still reject conflicting returned work as a whole
 Test: `law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match`.
 The combined receive/structure qualification row remains open.
 
+## Text-kind applicability and FT evidence
+
+HL7 2.5.1 sections 2.7.1, 2.7.2 and 2.7.6 apply at each supported LAW text leaf. ST accepts delimiter escapes, TX additionally accepts highlighting and uninterpreted hex/local escapes, and FT additionally accepts layout commands. Repertoire switching is refused under LAW's UTF-8 contract. Non-applicable escapes produce a located unsupported-text error on both directions: inbound raw receipts remain protected and parked with the specific reason. Ignored receive-X content is not examined.
+
+NTE-3 FT accepts literal component separators as line syntax (section 2.7.6 and 2.A.31), including the historical spacing form. No formatting is executed or rewritten. Mapping retains the complete comment and marks line syntax or formatting escapes UnsupportedFormatting, preventing automatic delivery. Escaped S remains a literal separator, not a layout instruction. Authoring indentation commands (.in/.ti) is explicitly unsupported until placement checking is implemented; incoming instructions remain original evidence.
+
+ERL repetition requires a field position (section 2.A.28.4); omitted repetition with a field retains its implicit-first meaning without adding bytes. OBX SN with a second numeric component requires its separator (section 2.A.70); no relationship is inferred. Separate dilution profiles remain unchanged.
+
 ## Status-only LAB-29 restriction
 
 TF-2b section 3.29.4.1.2.1 permits IP without observations and SC/CA without RESULT groups. Analyte currently parks these valid notifications with `UnsupportedLawStatusOnly`, retaining the original receipt, delivering no fabricated result and issuing no work command. Durable status-only lifecycle support needs a representation decision and ADR.

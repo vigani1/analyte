@@ -43,6 +43,32 @@ pub(super) fn primitive(
     maximum: usize,
     error: Error,
 ) -> Result<(), Error> {
+    text(
+        value,
+        required,
+        maximum,
+        error,
+        TextKind::St,
+        ControlDirection::Receive,
+    )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum TextKind {
+    St,
+    Tx,
+    Ft,
+}
+
+// HL7 2.5.1 2.7.1/2.7.2/2.7.6: grammar is not datatype applicability.
+pub(super) fn text(
+    value: &[u8],
+    required: bool,
+    maximum: usize,
+    error: Error,
+    kind: TextKind,
+    direction: ControlDirection,
+) -> Result<(), Error> {
     let delimiters = crate::Delimiters {
         truncation: None,
         field: b'|',
@@ -57,11 +83,38 @@ pub(super) fn primitive(
     if (required && value.is_empty())
         || value == b"\"\""
         || characters(value) > maximum
-        || value.iter().any(|b| matches!(b, b'^' | b'&'))
+        || value
+            .iter()
+            .any(|b| *b == b'&' || (*b == b'^' && kind != TextKind::Ft))
         || std::str::from_utf8(value).is_err()
         || std::str::from_utf8(value).is_ok_and(|text| text.chars().any(char::is_control))
     {
         return Err(error);
+    }
+    let mut parts = value.split(|b| *b == b'\\');
+    parts.next();
+    while let Some(code) = parts.next() {
+        parts.next(); // Grammar above proved that every escape is closed.
+        let reason = match code.first() {
+            Some(b'C' | b'M') => Some("repertoire switching is unsupported in LAW UTF-8"),
+            Some(b'H' | b'N' | b'X' | b'Z' | b'.') if kind == TextKind::St => {
+                Some("escape is not applicable to ST")
+            }
+            Some(b'.') if kind == TextKind::Tx => Some("layout commands require FT"),
+            Some(b'.')
+                if direction == ControlDirection::Send
+                    && (code.starts_with(b".in") || code.starts_with(b".ti")) =>
+            {
+                Some("indentation authoring is unsupported")
+            }
+            _ => None,
+        };
+        if let Some(reason) = reason {
+            return Err(Error::UnsupportedText {
+                reason,
+                source: Box::new(error),
+            });
+        }
     }
     Ok(())
 }
