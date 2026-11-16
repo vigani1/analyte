@@ -184,6 +184,15 @@ impl AppOutage {
         let socket = tokio::net::TcpSocket::new_v4()?;
         socket.bind("127.0.0.1:0".parse()?)?;
         let address = socket.local_addr()?;
+        // ADR 0008: another reference receiver must not claim this endpoint during the outage.
+        assert_eq!(
+            TcpListener::bind(address)
+                .await
+                .err()
+                .ok_or("outage endpoint was not reserved")?
+                .kind(),
+            std::io::ErrorKind::AddrInUse
+        );
         let outage = if refused {
             let error = tokio::time::timeout(HANG_GUARD, tokio::net::TcpStream::connect(address))
                 .await?
@@ -937,7 +946,22 @@ async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_reta
     );
     service.stop().await?;
     assert_eq!(recording_frames(&path)?, vec![expected.clone()]);
-    assert_eq!(receiver_count(&receiver_path)?, 0);
+    let received = receiver_count(&receiver_path)?;
+    let details = if received == 0 {
+        Vec::new()
+    } else {
+        let db = rusqlite::Connection::open(&receiver_path)?;
+        let mut statement = db.prepare("SELECT kind,body FROM deliveries LIMIT 2")?;
+        statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    assert_eq!(
+        received, 0,
+        "unexpected delivery after stopping before ACK: {details:?}"
+    );
     drop(peer);
     let restarted = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
