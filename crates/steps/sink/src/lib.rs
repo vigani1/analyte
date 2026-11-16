@@ -4,6 +4,8 @@
 mod delivery;
 mod destination;
 mod polling;
+mod webhook;
+pub use webhook::WebhookUrl;
 
 pub use delivery::{DeliveryOutcome, Worker, build_delivery, build_order_event};
 pub use destination::{Credentials, Destination, Limits, SecretsSource};
