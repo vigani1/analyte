@@ -132,7 +132,13 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
         "key".into(),
         analyte_contract::SigningSecret::parse(SECRET)?,
     )?;
-    let listener = tokio::net::TcpListener::bind(address).await?;
+    // A fresh port avoids racing other tests for the released one; the retry
+    // identity and bytes come from the store, not from the endpoint address.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let sender = WebhookSender::for_loopback_test(
+        &format!("http://{}/alerts", listener.local_addr()?),
+        Duration::from_secs(1),
+    )?;
     let (stop, stopped) = watch::channel(false);
     let server = tokio::spawn(receiver.serve_until(listener, stopped));
     let retry = store
