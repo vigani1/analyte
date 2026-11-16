@@ -9,6 +9,19 @@ building blocks, owns connections and storage calls, and runs operator tools.
 The other crates provide building blocks; `receiver` also has a separate test
 program. They are not separate services needed to run the bridge.
 
+Crates of the same kind share a layout:
+
+| Kind | How its parts are arranged |
+| --- | --- |
+| **step** | One file per protocol, such as `astm.rs` or `hl7.rs`; transport uses connection kinds instead. |
+| **protocol** | One file per job, such as `syntax.rs`, `views.rs` or `version.rs`, where needed. |
+| **core** | Folders group parts by role; small roles can stay in a single file. |
+| **program** | Role folders, with per-protocol files inside where needed. |
+
+A module is a named part of the code. Under the incoming layout rule, a module
+with children has a folder and a `mod.rs` front file. The file moves happen
+separately; the guides below name modules rather than their current file paths.
+
 The table follows an incoming message: transport -> framing -> dialog -> protocol
 grammar -> mapping -> model, then the supporting parts. Grammar means the rules
 for reading and writing message fields. The five grammar crates are alternatives
@@ -38,6 +51,6 @@ simply passing each message along once. Outgoing orders use these parts too.
 Protocol keys stay the same across layers: per-protocol files are `astm.rs`,
 `hl7.rs`, `poct.rs`, `vidas.rs` and `autolyser.rs` wherever that concern exists.
 `law.rs` holds the LAW profile; its grammar lives inside `hl7`. HL7 byte
-boundaries use `framing/src/mllp.rs`, named for that envelope. Inside each
-grammar crate, `syntax.rs` holds the grammar. Larger parts can have a matching
-folder. See [the layout decision](../docs/adr/0012-uniform-layout-and-naming.md).
+boundaries use the `mllp` module in framing, named for that envelope. Inside each
+grammar crate, the `syntax` module holds the grammar. A module with children
+will use a folder with a `mod.rs` front file. See [the layout decision](../docs/adr/0012-uniform-layout-and-naming.md).

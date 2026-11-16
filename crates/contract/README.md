@@ -1,5 +1,7 @@
 # contract
 
+**Kind: core.** Parts are grouped by role; small parts currently stay in single files and grow into role folders when needed.
+
 **What it does:** Defines the versioned documents and signatures exchanged with lab apps.
 
 **Where it sits:** Receives model evidence for app documents and checks incoming documents; sink and receiver use this shared agreement.
@@ -8,7 +10,7 @@
 
 **Main parts:**
 
-- [lib.rs](src/lib.rs): Versioned documents and input limits.
-- [evidence.rs](src/evidence.rs): Independent app-facing evidence fields.
-- [response.rs](src/response.rs): Lab-app response shapes.
-- [signing.rs](src/signing.rs): Signature rules without network access.
+- `lib`: Versioned documents and input limits.
+- `evidence`: Independent app-facing evidence fields.
+- `response`: Lab-app response shapes.
+- `signing`: Signature rules without network access.

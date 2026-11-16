@@ -1,5 +1,7 @@
 # config
 
+**Kind: core.** Parts are grouped by role; small parts currently stay in single files and grow into role folders when needed.
+
 **What it does:** Loads size-limited configuration and checks settings before use.
 
 **Where it sits:** Receives machine definitions and site settings; gives validated choices to the host and mapping.
@@ -8,10 +10,10 @@
 
 **Main parts:**
 
-- [schema.rs](src/schema.rs): Configuration fields.
-- [validation.rs](src/validation.rs): Checks that settings make sense together.
-- [stack.rs](src/stack.rs): Validated protocol combinations.
-- [orders.rs](src/orders.rs): Explicit outgoing order settings.
-- [law.rs](src/law.rs): Explicit LAW profile selection.
+- `schema`: Configuration fields.
+- `validation`: Checks that settings make sense together.
+- `stack`: Validated protocol combinations.
+- `orders`: Explicit outgoing order settings.
+- `law`: Explicit LAW profile selection.
 
 [Technical details and safety guidance](DETAILS.md).

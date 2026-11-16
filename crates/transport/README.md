@@ -1,5 +1,7 @@
 # transport
 
+**Kind: step.** One part per connection kind (network, serial or files), rather than per message protocol; it is the byte-moving step before protocol-specific steps.
+
 **What it does:** Moves bytes through network connections, serial cables or files.
 
 **Where it sits:** Receives bytes from a connection or file and hands them to the host for framing; carries outgoing bytes back.
@@ -8,9 +10,9 @@
 
 **Main parts:**
 
-- [tcp.rs](src/tcp.rs): Network sessions, reconnection and connection supervision.
-- [serial.rs](src/serial.rs): Serial port settings and access.
-- [folder.rs](src/folder.rs): Recoverable file handoff.
-- [recording.rs](src/recording.rs): Protected, append-only conversation recordings.
+- `tcp`: Network sessions, reconnection and connection supervision.
+- `serial`: Serial port settings and access.
+- `folder`: Recoverable file handoff.
+- `recording`: Protected, append-only conversation recordings.
 
 [Technical details and safety guidance](DETAILS.md).

@@ -1,5 +1,7 @@
 # mapping
 
+**Kind: step.** One file per protocol where it has a role here (`astm.rs`, `hl7.rs` and so on).
+
 **What it does:** Translates machine fields and codes into the common model using explicit settings, and maps outgoing work.
 
 **Where it sits:** Receives structured protocol messages and configuration; hands model evidence and findings to the host.
@@ -8,8 +10,8 @@
 
 **Main parts:**
 
-- [astm.rs](src/astm.rs), [hl7.rs](src/hl7.rs), [law.rs](src/law.rs), [poct.rs](src/poct.rs), [vidas.rs](src/vidas.rs), [autolyser.rs](src/autolyser.rs): Translations for each protocol.
-- [inbound.rs](src/inbound.rs): Incoming translation steps that preserve evidence.
-- [orders.rs](src/orders.rs): Outgoing mappings, separate from incoming code tables.
+- `astm`, `hl7`, `law`, `poct`, `vidas`, `autolyser`: Translations for each protocol.
+- `inbound`: Incoming translation steps that preserve evidence.
+- `orders`: Outgoing mappings, separate from incoming code tables.
 
 [Technical details and safety guidance](DETAILS.md).

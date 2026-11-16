@@ -1,5 +1,7 @@
 # sim
 
+**Kind: core.** Parts are grouped by role; small parts currently stay in single files and grow into role folders when needed.
+
 **What it does:** Plays the machine side of synthetic recordings and compares the bridge replies byte for byte. It is a test building block.
 
 **Where it sits:** Receives recordings and a test connection; sends recorded machine events and checks host output.
@@ -8,7 +10,7 @@
 
 **Main parts:**
 
-- [lib.rs](src/lib.rs): Recorded conversation replay and exact-byte comparison.
-- [recordings/](recordings/): Synthetic conversations, including failure cases.
+- `lib`: Recorded conversation replay and exact-byte comparison.
+- `recordings`: Synthetic conversations, including failure cases.
 
 [Technical details and safety guidance](DETAILS.md).

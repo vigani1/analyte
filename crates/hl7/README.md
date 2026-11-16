@@ -1,5 +1,7 @@
 # hl7
 
+**Kind: protocol.** One file per job, such as `syntax.rs`, `views.rs` or `version.rs`, where that job exists.
+
 **What it does:** Reads and writes HL7 messages, including the IHE LAW laboratory profile.
 
 **Where it sits:** Receives message bytes from the host; supplies structured fields to mapping and message builders for replies.
@@ -8,12 +10,12 @@
 
 **Main parts:**
 
-- [syntax.rs](src/syntax.rs): Message grammar.
-- [views.rs](src/views.rs): Named field access.
-- [version.rs](src/version.rs): Explicit edition rules.
-- [ack.rs](src/ack.rs): Acknowledgment message syntax.
-- [order.rs](src/order.rs): Order messages and responses.
-- [query.rs](src/query.rs): Legacy display query messages.
-- [law.rs](src/law.rs): LAW queries, work and results.
+- `syntax`: Message grammar.
+- `views`: Named field access.
+- `version`: Explicit edition rules.
+- `ack`: Acknowledgment message syntax.
+- `order`: Order messages and responses.
+- `query`: Legacy display query messages.
+- `law`: LAW queries, work and results.
 
 [Technical details and safety guidance](DETAILS.md).

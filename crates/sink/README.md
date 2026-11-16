@@ -1,5 +1,7 @@
 # sink
 
+**Kind: core.** Parts are grouped by role; small parts currently stay in single files and grow into role folders when needed.
+
 **What it does:** Delivers results to lab apps over HTTP and polls apps for order changes.
 
 **Where it sits:** Receives pending deliveries and saved order progress from the store; sends app requests and retains their outcomes.
@@ -8,8 +10,8 @@
 
 **Main parts:**
 
-- [delivery.rs](src/delivery.rs): Delivery work with stable retry identity.
-- [destination.rs](src/destination.rs): Validated destinations and credentials.
-- [polling.rs](src/polling.rs): Order polling from the lab app.
+- `delivery`: Delivery work with stable retry identity.
+- `destination`: Validated destinations and credentials.
+- `polling`: Order polling from the lab app.
 
 [Technical details and safety guidance](DETAILS.md).

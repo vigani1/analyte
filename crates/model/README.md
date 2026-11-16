@@ -1,5 +1,7 @@
 # model
 
+**Kind: core.** Parts are grouped by role; small parts currently stay in single files and grow into role folders when needed.
+
 **What it does:** Defines shared results, orders, values and identities across protocols.
 
 **Where it sits:** Receives validated evidence from mapping and supplies shared representations to storage and app integration.
@@ -8,10 +10,10 @@
 
 **Main parts:**
 
-- [identity.rs](src/identity.rs): Validated identities.
-- [result.rs](src/result.rs): Results and their revisions.
-- [lifecycle.rs](src/lifecycle.rs): Distinct order states.
-- [text.rs](src/text.rs): Text with size limits.
-- [value.rs](src/value.rs): Exact values and explicit unit mappings.
+- `identity`: Validated identities.
+- `result`: Results and their revisions.
+- `lifecycle`: Distinct order states.
+- `text`: Text with size limits.
+- `value`: Exact values and explicit unit mappings.
 
 [Technical details and safety guidance](DETAILS.md).
