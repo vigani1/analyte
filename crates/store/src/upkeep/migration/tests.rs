@@ -1128,7 +1128,7 @@ type LegacyParking = (
 fn seed_adr0003_v6_parking(
     db: &Connection,
     receipt_id: ReceiptId,
-    expected_deliveries: &[(DeliveryId, DeliveryState, DeliveryKind)],
+    expected_deliveries: &[LegacyDelivery],
 ) -> Result<Vec<LegacyParking>, Box<dyn std::error::Error>> {
     let encoded_target = key(&receipt_id)?;
     let target = serde_json::from_str::<String>(&encoded_target)?;
@@ -1230,7 +1230,7 @@ fn seed_adr0003_v6_parking(
 fn seed_adr0003_v6_deliveries(
     db: &Connection,
     receipt_id: ReceiptId,
-) -> Result<Vec<(DeliveryId, DeliveryState, DeliveryKind)>, Box<dyn std::error::Error>> {
+) -> Result<Vec<LegacyDelivery>, Box<dyn std::error::Error>> {
     let mut expected_deliveries = Vec::new();
     for (name, state) in [
         ("pending", DeliveryState::Pending),
@@ -1257,3 +1257,5 @@ fn seed_adr0003_v6_deliveries(
 
     Ok(expected_deliveries)
 }
+
+type LegacyDelivery = (DeliveryId, DeliveryState, DeliveryKind);
