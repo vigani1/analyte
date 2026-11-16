@@ -22,7 +22,55 @@ pub enum Version {
     V291,
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Independent edition capabilities form an explicit flat rule table"
+)]
 struct EditionRules {
+    // HL7 2.5.1 §2.15.5: structured ERR and MSG.
+    modern_error_layout: bool,
+    // HL7 2.5.1 §2.A.44: ACK message structure component.
+    ack_structure: bool,
+    // HL7 2.6 §2.14.5: ERR severity F.
+    fatal_error_severity: bool,
+    // HL7 2.8.2 §7.4.2.4: OG observation identity.
+    enhanced_result_identity: bool,
+    // HL7 2.8.2 §7.4.1: report status timestamp qualification.
+    report_status_time: bool,
+    // HL7 2.8.2 table 0357: error code 104.
+    unknown_key_error: bool,
+    // HL7 2.9.1 §2.13.9.15–16: paired acknowledgment requests.
+    paired_application_ack: bool,
+    // HL7 2.5.1 §5.3: original query structure identifiers.
+    legacy_query_structure: bool,
+    // HL7 2.3.1 §4.2.1: ORM patient requirements.
+    orm_patient_name_required: bool,
+    // HL7 2.3.1 §4.2.1: qualified ORM writer.
+    orm_writer: bool,
+    // Named 2.3.1 UTF-8 receiving departure (ADR 0002).
+    utf8_departure: bool,
+    // HL7 2.3.1 §4.3.1: ORM position in the other placer field.
+    placer_position: bool,
+    // HL7 2.3.1 §4.4: legacy specimen coding has no explicit version.
+    specimen_code_version: bool,
+    // HL7 2.3.1 §3.3.2.3: bounded patient identifier.
+    short_patient_identifier: bool,
+    // HL7 2.3.1 §4.2.2: one ERR in an order response.
+    single_order_error: bool,
+    // HL7 2.5.1 §4.4.6: qualified OML writer editions.
+    oml_writer: bool,
+    // HL7 2.5.1 §2.A.13: selected CWE validation.
+    legacy_cwe: bool,
+    // HL7 2.5.1 §7.3.7: selected OUL R22 receiving profile.
+    oul_reception: bool,
+    // HL7 2.5.1 §7.4.2: analysis timestamp field.
+    analysis_time: bool,
+    // IHE LAW: HL7 2.5.1 profile binding.
+    law_edition: bool,
+    // HL7 2.3.1 §5.4 / 2.5.1 §5.5: QRD person and coded field limits.
+    query_person_bytes: Option<usize>,
+    // HL7 2.3.1 §5.4 / 2.5.1 §5.5: QRF trailing quantity field.
+    query_filter_fields: Option<usize>,
     edition: Version,
     wire: &'static str,
     truncation: bool,
@@ -35,6 +83,28 @@ struct EditionRules {
 const EDITIONS: [EditionRules; 8] = [
     // HL7 2.5.1 sections 2.8.1-2, pp.2-20-22: receive the established earlier prefix.
     EditionRules {
+        modern_error_layout: false,
+        ack_structure: false,
+        fatal_error_severity: false,
+        enhanced_result_identity: false,
+        report_status_time: false,
+        unknown_key_error: false,
+        paired_application_ack: false,
+        legacy_query_structure: false,
+        orm_patient_name_required: false,
+        orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
+        specimen_code_version: true,
+        short_patient_identifier: false,
+        single_order_error: false,
+        oml_writer: false,
+        legacy_cwe: false,
+        oul_reception: false,
+        analysis_time: false,
+        law_edition: false,
+        query_person_bytes: Some(60),
+        query_filter_fields: Some(9),
         edition: Version::V23,
         wire: "2.3",
         truncation: false,
@@ -44,6 +114,28 @@ const EDITIONS: [EditionRules; 8] = [
     },
     // HL7 2.3.1 sections 2.24.1.2/.7/.12, pp.2-94-95, 2-107.
     EditionRules {
+        modern_error_layout: false,
+        ack_structure: false,
+        fatal_error_severity: false,
+        enhanced_result_identity: false,
+        report_status_time: false,
+        unknown_key_error: false,
+        paired_application_ack: false,
+        legacy_query_structure: false,
+        orm_patient_name_required: true,
+        orm_writer: true,
+        utf8_departure: true,
+        placer_position: true,
+        specimen_code_version: false,
+        short_patient_identifier: true,
+        single_order_error: true,
+        oml_writer: false,
+        legacy_cwe: false,
+        oul_reception: false,
+        analysis_time: false,
+        law_edition: false,
+        query_person_bytes: Some(60),
+        query_filter_fields: Some(9),
         edition: Version::V231,
         wire: "2.3.1",
         truncation: false,
@@ -53,6 +145,28 @@ const EDITIONS: [EditionRules; 8] = [
     },
     // HL7 2.5.1 sections 2.8, 2.15.9.7: MSH-7 became required in 2.4.
     EditionRules {
+        modern_error_layout: false,
+        ack_structure: false,
+        fatal_error_severity: false,
+        enhanced_result_identity: false,
+        report_status_time: false,
+        unknown_key_error: false,
+        paired_application_ack: false,
+        legacy_query_structure: false,
+        orm_patient_name_required: false,
+        orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
+        specimen_code_version: true,
+        short_patient_identifier: false,
+        single_order_error: false,
+        oml_writer: false,
+        legacy_cwe: false,
+        oul_reception: false,
+        analysis_time: false,
+        law_edition: false,
+        query_person_bytes: Some(60),
+        query_filter_fields: Some(9),
         edition: Version::V24,
         wire: "2.4",
         truncation: false,
@@ -62,6 +176,28 @@ const EDITIONS: [EditionRules; 8] = [
     },
     // HL7 2.5.1 sections 2.8, 2.A.44 and 2.15.5.1: common prefix plus 2.5 control changes.
     EditionRules {
+        modern_error_layout: true,
+        ack_structure: true,
+        fatal_error_severity: false,
+        enhanced_result_identity: false,
+        report_status_time: false,
+        unknown_key_error: false,
+        paired_application_ack: false,
+        legacy_query_structure: true,
+        orm_patient_name_required: false,
+        orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
+        specimen_code_version: true,
+        short_patient_identifier: false,
+        single_order_error: false,
+        oml_writer: false,
+        legacy_cwe: false,
+        oul_reception: false,
+        analysis_time: false,
+        law_edition: false,
+        query_person_bytes: Some(60),
+        query_filter_fields: Some(9),
         edition: Version::V25,
         wire: "2.5",
         truncation: false,
@@ -71,6 +207,28 @@ const EDITIONS: [EditionRules; 8] = [
     },
     // HL7 2.5.1 sections 2.15.9.2/.7/.12, pp.2-74-77.
     EditionRules {
+        modern_error_layout: true,
+        ack_structure: true,
+        fatal_error_severity: false,
+        enhanced_result_identity: false,
+        report_status_time: false,
+        unknown_key_error: false,
+        paired_application_ack: false,
+        legacy_query_structure: true,
+        orm_patient_name_required: false,
+        orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
+        specimen_code_version: true,
+        short_patient_identifier: false,
+        single_order_error: false,
+        oml_writer: true,
+        legacy_cwe: true,
+        oul_reception: true,
+        analysis_time: true,
+        law_edition: true,
+        query_person_bytes: Some(250),
+        query_filter_fields: Some(10),
         edition: Version::V251,
         wire: "2.5.1",
         truncation: false,
@@ -81,6 +239,28 @@ const EDITIONS: [EditionRules; 8] = [
     // HL7 2.6 sections 2.14.9.2/.7/.12, pp.56-58;
     // section 5.10.2, pp.95-96 retains original queries for backward compatibility.
     EditionRules {
+        modern_error_layout: true,
+        ack_structure: true,
+        fatal_error_severity: true,
+        enhanced_result_identity: false,
+        report_status_time: false,
+        unknown_key_error: false,
+        paired_application_ack: false,
+        legacy_query_structure: true,
+        orm_patient_name_required: false,
+        orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
+        specimen_code_version: true,
+        short_patient_identifier: false,
+        single_order_error: false,
+        oml_writer: true,
+        legacy_cwe: false,
+        oul_reception: false,
+        analysis_time: true,
+        law_edition: false,
+        query_person_bytes: Some(250),
+        query_filter_fields: Some(10),
         edition: Version::V26,
         wire: "2.6",
         truncation: false,
@@ -90,6 +270,28 @@ const EDITIONS: [EditionRules; 8] = [
     },
     // HL7 2.8.2 sections 2.14.9.2/.7/.12, pp.59-61.
     EditionRules {
+        modern_error_layout: true,
+        ack_structure: true,
+        fatal_error_severity: true,
+        enhanced_result_identity: true,
+        report_status_time: true,
+        unknown_key_error: true,
+        paired_application_ack: false,
+        legacy_query_structure: false,
+        orm_patient_name_required: false,
+        orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
+        specimen_code_version: true,
+        short_patient_identifier: false,
+        single_order_error: false,
+        oml_writer: true,
+        legacy_cwe: false,
+        oul_reception: false,
+        analysis_time: true,
+        law_edition: false,
+        query_person_bytes: None,
+        query_filter_fields: None,
         edition: Version::V282,
         wire: "2.8.2",
         truncation: true,
@@ -100,6 +302,28 @@ const EDITIONS: [EditionRules; 8] = [
     },
     // HL7 2.9.1 sections 2.13.9.2/.7/.12, pp.69-71.
     EditionRules {
+        modern_error_layout: true,
+        ack_structure: true,
+        fatal_error_severity: true,
+        enhanced_result_identity: true,
+        report_status_time: true,
+        unknown_key_error: true,
+        paired_application_ack: true,
+        legacy_query_structure: false,
+        orm_patient_name_required: false,
+        orm_writer: false,
+        utf8_departure: false,
+        placer_position: false,
+        specimen_code_version: true,
+        short_patient_identifier: false,
+        single_order_error: false,
+        oml_writer: false,
+        legacy_cwe: false,
+        oul_reception: false,
+        analysis_time: true,
+        law_edition: false,
+        query_person_bytes: None,
+        query_filter_fields: None,
         edition: Version::V291,
         wire: "2.9.1",
         truncation: true,
@@ -111,6 +335,119 @@ const EDITIONS: [EditionRules; 8] = [
 ];
 
 impl Version {
+    /// Named 2.3.1 UTF-8 receiving departure (ADR 0002).
+    #[must_use]
+    pub fn utf8_departure(self) -> bool {
+        self.entry().utf8_departure
+    }
+    /// HL7 2.3.1 §4.3.1: ORM position in the other placer field.
+    #[must_use]
+    pub fn placer_position(self) -> bool {
+        self.entry().placer_position
+    }
+    /// HL7 2.5.1 §2.A.44: ACK message structure component.
+    #[must_use]
+    pub fn ack_structure(self) -> bool {
+        self.entry().ack_structure
+    }
+    /// HL7 2.3.1 §4.2.1: qualified ORM writer.
+    #[must_use]
+    pub fn orm_writer(self) -> bool {
+        self.entry().orm_writer
+    }
+    /// HL7 2.3.1 §4.4: legacy specimen coding has no explicit version.
+    #[must_use]
+    pub fn specimen_code_version(self) -> bool {
+        self.entry().specimen_code_version
+    }
+    /// HL7 2.3.1 §3.3.2.3: bounded patient identifier.
+    #[must_use]
+    pub fn short_patient_identifier(self) -> bool {
+        self.entry().short_patient_identifier
+    }
+    /// HL7 2.3.1 §4.2.2: one ERR in an order response.
+    #[must_use]
+    pub fn single_order_error(self) -> bool {
+        self.entry().single_order_error
+    }
+    /// HL7 2.8.2 §7.4.1: report status timestamp qualification.
+    #[must_use]
+    pub fn report_status_time(self) -> bool {
+        self.entry().report_status_time
+    }
+    /// HL7 2.8.2 table 0357: error code 104.
+    #[must_use]
+    pub fn unknown_key_error(self) -> bool {
+        self.entry().unknown_key_error
+    }
+    /// HL7 2.5.1 §2.15.5: structured ERR and MSG.
+    #[must_use]
+    pub fn modern_error_layout(self) -> bool {
+        self.entry().modern_error_layout
+    }
+    /// HL7 2.6 §2.14.5: ERR severity F.
+    #[must_use]
+    pub fn fatal_error_severity(self) -> bool {
+        self.entry().fatal_error_severity
+    }
+    /// HL7 2.8.2 §7.4.2.4: OG observation identity.
+    #[must_use]
+    pub fn enhanced_result_identity(self) -> bool {
+        self.entry().enhanced_result_identity
+    }
+    /// HL7 2.9.1 §2.13.9.15–16: paired acknowledgment requests.
+    #[must_use]
+    pub fn paired_application_ack(self) -> bool {
+        self.entry().paired_application_ack
+    }
+    /// HL7 2.5.1 §5.3: original query structure identifiers.
+    #[must_use]
+    pub fn legacy_query_structure(self) -> bool {
+        self.entry().legacy_query_structure
+    }
+    /// HL7 2.3.1 §4.2.1: ORM patient requirements.
+    #[must_use]
+    pub fn orm_patient_name_required(self) -> bool {
+        self.entry().orm_patient_name_required
+    }
+    /// HL7 2.5.1 §4.4.6: qualified OML writer editions.
+    #[must_use]
+    pub fn oml_writer(self) -> bool {
+        self.entry().oml_writer
+    }
+    /// HL7 2.5.1 §2.A.13: selected CWE validation.
+    #[must_use]
+    pub fn legacy_cwe(self) -> bool {
+        self.entry().legacy_cwe
+    }
+    /// HL7 2.5.1 §7.3.7: selected OUL R22 receiving profile.
+    #[must_use]
+    pub fn oul_reception(self) -> bool {
+        self.entry().oul_reception
+    }
+    /// HL7 2.5.1 §7.4.2: analysis timestamp field.
+    #[must_use]
+    pub fn analysis_time(self) -> bool {
+        self.entry().analysis_time
+    }
+    /// IHE LAW: HL7 2.5.1 profile binding.
+    #[must_use]
+    pub fn law_edition(self) -> bool {
+        self.entry().law_edition
+    }
+    /// Returns the qualified original-query limit, or refuses withdrawn queries.
+    pub(crate) fn query_person_bytes(self) -> Result<usize, Error> {
+        self.entry()
+            .query_person_bytes
+            .ok_or(Error::EditionRules(self.as_str()))
+    }
+    /// Returns the qualified original-query limit, or refuses withdrawn queries.
+    pub(crate) fn query_filter_fields(self) -> Result<usize, Error> {
+        self.entry()
+            .query_filter_fields
+            .ok_or(Error::EditionRules(self.as_str()))
+    }
+
     /// Returns why order sending remains unqualified for this exact edition.
     /// Receiving compatibility never establishes permission to write older fields.
     #[must_use]
@@ -235,202 +572,10 @@ impl Version {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TimeFormat {
-    Ts,
-    Dtm,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CodingVersions {
-    LocalSystems,
-    Explicit,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ZeroOffset {
-    Known,
-    UtcOnly,
-}
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum AckPair {
-    Independent,
-    Paired,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct Rules {
-    pub observation_authority: Option<usize>,
-    pub observation_dependencies: &'static [(usize, usize)],
-    pub zero_offset: ZeroOffset,
-    pub ack_pair: AckPair,
-    pub withdrawn_obr: &'static [usize],
-    pub withdrawn_msa: &'static [usize],
-    pub withdrawn_err: &'static [usize],
-    pub coded_field_bytes: usize,
-    // HL7 2.6 section 7.3.1; Analyte's selected core group scope (ADR 0007).
-    pub core_groups_only: bool,
-    pub result_fields: &'static [ResultField],
-    // HL7 2.6 sections 2.14.9.7/.10, 2.14.8.2 and 2.A.22.
-    pub time_format: TimeFormat,
-    pub control_bytes: usize,
-    // HL7 2.6 sections 2.A.6/.13, 2.A.20/.76/.86 and 5.10.4.2.9.
-    pub coding_versions: CodingVersions,
-    pub coded_components: usize,
-    pub query_timing_bytes: Option<usize>,
-    pub refused_deprecated: &'static [usize],
-    // HL7 2.3.1 section 2.24.1.9; 2.5.1 section 2.15.9.9 and section 2.A.44 (MSG).
-    pub optional_response_trigger: bool,
-    pub message_lengths: Option<[usize; 3]>,
-    // HL7 2.3.1 section 2.8.44; 2.5.1 section 2.A.22, section 2.A.77.
-    // Existing shared acceptance, including hour precision, is unchanged.
-    pub timestamp_precisions: &'static [usize],
-    // HL7 2.3.1 section 2.8.3; 2.5.1 section 2.A.6, section 2.A.13.
-    pub coded_lengths: &'static [usize],
-    // HL7 2.3.1 section 2.8.20 table 0301; 2.5.1 section 2.A.33 table 0301.
-    pub uri: bool,
-    // HL7 2.3.1 section 2.8.49; 2.5.1 section 2.A.86 and section 2.A.30.
-    pub xcn_components: usize,
-    pub family_components: usize,
-    pub family_lengths: &'static [usize],
-    pub xcn_lengths: &'static [usize],
-    pub name_types: &'static [&'static [u8]],
-    // HL7 2.3.1 section 4.4 quantity/timing; 2.5.1 section 2.A.50, section 2.A.63, section 2.A.76.
-    pub sequence_required: &'static [usize],
-    pub sequence_lengths: &'static [usize],
-    pub interval_lengths: &'static [usize],
-    pub timing_lengths: &'static [usize],
-}
-
-const GRAMMARS: [Rules; 2] = [
-    Rules {
-        observation_authority: None,
-        observation_dependencies: &[],
-        zero_offset: ZeroOffset::Known,
-        ack_pair: AckPair::Independent,
-        withdrawn_obr: &[],
-        withdrawn_msa: &[],
-        withdrawn_err: &[],
-        coded_field_bytes: 705,
-        core_groups_only: false,
-        result_fields: &[],
-        time_format: TimeFormat::Ts,
-        control_bytes: 20,
-        coding_versions: CodingVersions::LocalSystems,
-        coded_components: 6,
-        query_timing_bytes: Some(60),
-        refused_deprecated: &[],
-        optional_response_trigger: true,
-        message_lengths: None,
-        timestamp_precisions: &[4, 6, 8, 10, 12, 14],
-        coded_lengths: &[],
-        uri: false,
-        xcn_components: 15,
-        family_components: 2,
-        family_lengths: &[],
-        xcn_lengths: &[],
-        name_types: &[b"A", b"D", b"L", b"M", b"C", b"B", b"P", b"S", b"T", b"U"],
-        sequence_required: &[],
-        sequence_lengths: &[],
-        interval_lengths: &[],
-        timing_lengths: &[],
-    },
-    Rules {
-        observation_authority: None,
-        observation_dependencies: &[],
-        zero_offset: ZeroOffset::Known,
-        ack_pair: AckPair::Independent,
-        withdrawn_obr: &[],
-        withdrawn_msa: &[],
-        withdrawn_err: &[],
-        coded_field_bytes: 705,
-        core_groups_only: false,
-        result_fields: &[],
-        time_format: TimeFormat::Ts,
-        control_bytes: 20,
-        coding_versions: CodingVersions::LocalSystems,
-        coded_components: 6,
-        query_timing_bytes: Some(60),
-        refused_deprecated: &[],
-        optional_response_trigger: false,
-        message_lengths: Some([3, 3, 7]),
-        timestamp_precisions: &[4, 6, 8, 10, 12, 14],
-        coded_lengths: &[20, 199, 20, 20, 199, 20, 10, 10, 199],
-        uri: true,
-        xcn_components: 23,
-        family_components: 5,
-        family_lengths: &[50, 20, 50, 20, 50],
-        xcn_lengths: &[
-            15, 194, 30, 30, 20, 20, 5, 4, 227, 1, 1, 3, 5, 227, 1, 483, 53, 1, 26, 26, 199, 705,
-            705,
-        ],
-        name_types: &[
-            b"A", b"B", b"C", b"D", b"I", b"L", b"M", b"N", b"P", b"R", b"S", b"T", b"U",
-        ],
-        sequence_required: &[1, 2, 4, 8, 10],
-        sequence_lengths: &[1, 15, 6, 15, 6, 12, 3, 15, 6, 15, 6],
-        interval_lengths: &[6, 199],
-        timing_lengths: &[267, 206, 6, 26, 26, 6, 199, 200, 1, 110, 483, 4],
-    },
-];
-
-// HL7 2.5.1 section 2.8.2: interpret the established shared prefix, not
-// unverified later extensions. Section 2.A.44 explicitly dates MSG to 2.5.
-const COMPATIBILITY_25: Rules = Rules {
-    optional_response_trigger: false,
-    message_lengths: Some([3, 3, 7]),
-    ..GRAMMARS[0]
-};
-
-// HL7 2.6 sections 2.14.9/.8, 2.A.6/.13/.22/.86 and 5.10.4.
-// Reuse unchanged constraints; differing lengths and component meanings stay here.
-const GRAMMAR_26: Rules = Rules {
-    core_groups_only: true,
-    result_fields: RESULT_FIELDS_26,
-    time_format: TimeFormat::Dtm,
-    control_bytes: 199,
-    coding_versions: CodingVersions::Explicit,
-    coded_components: 9,
-    query_timing_bytes: None,
-    refused_deprecated: &[17],
-    xcn_lengths: &[
-        15, 194, 30, 30, 20, 20, 5, 4, 227, 1, 4, 3, 5, 227, 1, 705, 49, 1, 24, 24, 199, 705, 705,
-    ],
-    ..GRAMMARS[1]
-};
-
-// HL7 2.8.2 sections 2.A.13 (pp.24-32), 2.5.5.3-4 (pp.13-14),
-// 2.14.5.1/.8.3/.5/.6 and 7.4.1.5/.6/.14/.15/.27.
-// Composite bytes are an operational cap, not a normative HL7 composite maximum.
-const GRAMMAR_282: Rules = Rules {
-    // Section 7.4.2.3 and chapter 2A CWE authority rules: selected named-primary
-    // mapping contract; OID-only authority stays unresolved without a registry.
-    observation_authority: Some(3),
-    // Both editions section 7.4.2.12: effective range date requires a reference range.
-    observation_dependencies: &[(12, 7)],
-    coded_components: 22,
-    coded_field_bytes: 16384,
-    coded_lengths: &[
-        16384, 16384, 12, 16384, 16384, 12, 16384, 16384, 16384, 16384, 16384, 12, 16384, 16384,
-        16384, 24, 16384, 16384, 24, 16384, 16384, 24,
-    ],
-    withdrawn_obr: &[5, 6, 14, 15, 27],
-    withdrawn_msa: &[3, 5, 6],
-    withdrawn_err: &[1],
-    ..GRAMMAR_26
-};
-
-// HL7 2.9.1 sections 2A.2.13 (pp.25-33), 2A.2.22 (pp.39-40),
-// 2.13.9.15-16 (pp.71-72), 7.4.1.16/.28/.32-.35.
-const GRAMMAR_291: Rules = Rules {
-    zero_offset: ZeroOffset::UtcOnly,
-    ack_pair: AckPair::Paired,
-    withdrawn_obr: &[5, 6, 14, 15, 16, 27, 28, 32, 33, 34, 35],
-    ..GRAMMAR_282
-};
+mod rules;
+pub(crate) use rules::*;
 
 mod result;
-use result::RESULT_FIELDS_26;
 pub(crate) use result::{FieldKind, ResultField};
 
 #[cfg(test)]

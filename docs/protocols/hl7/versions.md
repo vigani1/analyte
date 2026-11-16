@@ -467,3 +467,27 @@ are durably retained and parked before any response or interpretation.
 The generic result receiver does not negotiate the sequence-number protocol or
 assemble continuation messages. Populated MSH-13, populated MSH-14 and DSC
 are refused with specific reasons; exact receipts remain retained.
+
+
+## Adding an edition
+
+All edition-dependent decisions live in `crates/protocols/hl7/src/version/`.
+`EditionRules` names the control, query, result and writer capabilities;
+`rules.rs` holds the datatype constraints, and `order.rs` holds writer fields.
+Every edition row supplies every capability explicitly. `Version::entry()` is
+exhaustive, so a new variant cannot compile until its row is selected. A shared
+parser, dialog or mapping asks for a rule rather than comparing editions.
+The capability tests pin every current row independently of its consumers.
+
+Adding an edition changes that folder, its tests, this document and config's
+edition declaration/conversion and enablement tests. It does not require new
+edition arms in ACK, query, result, dialog or mapping code. Fixed 2.5.1 bindings
+remain for LAW and shared datatype helpers; those are profile selections, not
+fallback decisions for an incoming edition.
+
+ORU/OUL segment ordering belongs to the validated `ResultMessage` view in
+`views/grammar/`, with named states for pending control, specimen and order
+positions. Mapping consumes its selected family and cached header edition.
+The state tests cover valid transitions and refusals under HL7 2.3.1 §7.2.1
+and 2.5.1 §7.3.1/§7.3.7. Changing an edition's scope still needs source evidence;
+this refactor raises no evidence level and enables no new edition or writer.

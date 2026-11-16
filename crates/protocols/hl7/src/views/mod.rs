@@ -454,13 +454,12 @@ impl<'a> ErrView<'a> {
                 });
             }
         }
-        match version {
-            Version::V23 | Version::V231 | Version::V24 => Ok(Self::V231(get(1)?)),
-            Version::V25 | Version::V251 | Version::V26 | Version::V282 | Version::V291 => {
+        match version.modern_error_layout() {
+            false => Ok(Self::V231(get(1)?)),
+            true => {
                 let severity = get(4)?;
                 if !matches!(severity.raw(), b"W" | b"I" | b"E")
-                    && !(matches!(version, Version::V26 | Version::V282 | Version::V291)
-                        && severity.raw() == b"F")
+                    && !(version.fatal_error_severity() && severity.raw() == b"F")
                     || (get(3)?
                         .repetitions()
                         .flat_map(crate::Repetition::components)
@@ -570,7 +569,7 @@ fn validate_message_type(segment: Segment<'_>, version: Version) -> Result<(), E
 
 // HL7 table 0357, shared by the selected editions; local codes belong in ERR-5.
 pub(crate) fn error_code(code: &[u8], version: Version) -> bool {
-    (matches!(version, Version::V282 | Version::V291) && code == b"104")
+    (version.unknown_key_error() && code == b"104")
         || matches!(
             code,
             b"0" | b"100"
@@ -587,3 +586,6 @@ pub(crate) fn error_code(code: &[u8], version: Version) -> bool {
                 | b"207"
         )
 }
+
+mod grammar;
+pub use grammar::{ResultGrammarError, ResultMessage};

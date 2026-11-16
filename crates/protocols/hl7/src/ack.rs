@@ -121,7 +121,7 @@ pub(crate) fn acknowledgment_with_msh(
     let segment = msh.segment();
     let get = |number| segment.field(number).map_or(&[][..], |f| f.raw());
     let message_type = encode_message_type(msh, component);
-    let application_request: &[u8] = if msh.version() == Version::V291
+    let application_request: &[u8] = if msh.version().paired_application_ack()
         && matches!(msh.mode(), AckMode::Enhanced { .. })
         && !code.accept()
     {
@@ -292,8 +292,8 @@ fn encode_error(
     }
     raw.extend_from_slice(b"ERR");
     raw.push(field);
-    match version {
-        Version::V23 | Version::V231 | Version::V24 => {
+    match version.modern_error_layout() {
+        false => {
             if unlocated {
                 location.extend_from_slice(&[component, component]);
             }
@@ -301,7 +301,7 @@ fn encode_error(
             raw.push(component);
             raw.extend_from_slice(error.code);
         }
-        Version::V25 | Version::V251 | Version::V26 | Version::V282 | Version::V291 => {
+        true => {
             raw.push(field);
             raw.extend_from_slice(&location);
             raw.push(field);
@@ -323,10 +323,7 @@ fn encode_message_type(msh: Msh<'_>, component: u8) -> Vec<u8> {
         message_type.push(component);
         message_type.extend_from_slice(trigger);
     }
-    if matches!(
-        msh.version(),
-        Version::V25 | Version::V251 | Version::V26 | Version::V282 | Version::V291
-    ) {
+    if msh.version().ack_structure() {
         message_type.push(component);
         message_type.extend_from_slice(b"ACK");
     }
