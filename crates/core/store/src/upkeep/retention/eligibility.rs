@@ -14,7 +14,7 @@ impl Store {
         days: u16,
         now: i64,
     ) -> Result<bool, Error> {
-        eligible(&self.db, receipt, days, now)
+        eligible(&self.db, receipt, days, now, &self.limits)
     }
 }
 pub(super) fn eligible(
@@ -22,6 +22,7 @@ pub(super) fn eligible(
     receipt: ReceiptId,
     days: u16,
     now: i64,
+    limits: &crate::Limits,
 ) -> Result<bool, Error> {
     if !(1..=3650).contains(&days) {
         return Err(Error::InvalidInput);
@@ -33,9 +34,18 @@ pub(super) fn eligible(
                 .ok_or(Error::InvalidInput)?,
         )
         .ok_or(Error::InvalidInput)?;
-    Ok(db.query_row(
+    let finished: bool = db.query_row(
         include_str!("eligibility.sql"),
         params![key(&receipt)?, cutoff],
         |r| r.get(0),
-    )?)
+    )?;
+    if !finished {
+        return Ok(false);
+    }
+    let machine: String = db.query_row(
+        "SELECT json_extract(metadata,'$.machine') FROM receipts WHERE id=?1",
+        [key(&receipt)?],
+        |r| r.get(0),
+    )?;
+    Ok(!super::links::blocked(db, receipt, &machine, limits)?)
 }

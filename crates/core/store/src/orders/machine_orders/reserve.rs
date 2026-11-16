@@ -63,6 +63,10 @@ impl Store {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if crate::upkeep::retention::orders::was_purged(&tx, self.retention_key.as_ref(), identity)?
+        {
+            return Err(Error::Purged);
+        }
         let trust = Self::order_trust_on(&tx, &identity.destination, now, freshness)?;
         if trust == crate::OrderTrust::RestorePaused {
             return Ok(Err(SendRefusal::RestoreUnreconciled));

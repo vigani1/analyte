@@ -18,6 +18,15 @@ impl Store {
                 |row| row.get::<_, i64>(0),
             )
             .optional()?;
+        if id.is_none()
+            && crate::upkeep::retention::orders::was_purged(
+                &self.db,
+                self.retention_key.as_ref(),
+                identity,
+            )?
+        {
+            return Err(Error::Purged);
+        }
         id.map(|id| load(&self.db, id)).transpose()
     }
 

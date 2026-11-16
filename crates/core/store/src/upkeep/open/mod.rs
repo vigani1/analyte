@@ -146,13 +146,10 @@ impl Store {
         if version <= 9 {
             migrate_retention(&mut db, startup)?;
         }
-        startup.run(StartupStep::Finalizing, || {
-        // SQL constraints also protect evidence from accidental maintenance updates.
-        for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
-            db.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER IF NOT EXISTS immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
+        if version <= 10 {
+            migrate_orders(&mut db, startup)?;
         }
-            Ok(())
-        })?;
+        install_guards(&db, startup)?;
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
             retention_key: None,
@@ -207,4 +204,24 @@ fn migrate_retention(db: &mut Connection, startup: &Startup) -> Result<(), Error
         tx.commit()?;
         Ok(())
     })
+}
+
+fn migrate_orders(db: &mut Connection, startup: &Startup) -> Result<(), Error> {
+    startup.run(StartupStep::Migration { from: 10, to: 11 }, || {
+        let tx = db.transaction()?;
+        tx.execute_batch(include_str!("../migration_v11.sql"))?;
+        Store::integrity(&tx)?;
+        tx.commit()?;
+        Ok(())
+    })
+}
+
+fn install_guards(db: &Connection, startup: &Startup) -> Result<(), Error> {
+    startup.run(StartupStep::Finalizing, || {
+        // SQL constraints also protect evidence from accidental maintenance updates.
+        for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
+            db.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER IF NOT EXISTS immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
+        }
+            Ok(())
+        })
 }

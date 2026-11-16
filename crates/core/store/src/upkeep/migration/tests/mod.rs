@@ -75,12 +75,16 @@ use std::{collections::BTreeMap, num::NonZeroU64, path::Path};
 
 fn legacy(path: &Path) -> Result<Connection, Error> {
     let mut db = Connection::open(path)?;
-    db.execute_batch(include_str!("../../schema.sql"))?;
+    let tx = db.transaction()?;
+    tx.execute_batch(include_str!("../../schema.sql"))?;
+    tx.commit()?;
     Store::migrate_v2(&mut db)?;
     Store::migrate_v3(&mut db, 65_536)?;
-    db.execute_batch(include_str!("../../migration_v4.sql"))?;
-    db.execute_batch(include_str!("../../migration_v5.sql"))?;
-    db.execute_batch(include_str!("../../migration_v6.sql"))?;
+    let tx = db.transaction()?;
+    tx.execute_batch(include_str!("../../migration_v4.sql"))?;
+    tx.execute_batch(include_str!("../../migration_v5.sql"))?;
+    tx.execute_batch(include_str!("../../migration_v6.sql"))?;
+    tx.commit()?;
     Ok(db)
 }
 
@@ -516,6 +520,8 @@ mod legacy;
 
 fn assert_empty_retention_tables(snapshot: &mut Snapshot) {
     for table in [
+        "retention_orders",
+        "retention_order_deliveries",
         "retention_key",
         "retention_holds",
         "retention_tombstones",

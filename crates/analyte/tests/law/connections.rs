@@ -309,13 +309,17 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
 -> Result<(), Error> {
     for failure in ["unreachable", "disconnect", "timeout"] {
         let unreachable = failure == "unreachable";
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let endpoint = listener.local_addr()?;
+        // A bound, non-listening socket refuses connections while reserving the
+        // address for restart. Releasing it lets parallel tests claim the port.
+        let socket = tokio::net::TcpSocket::new_v4()?;
+        socket.bind("127.0.0.1:0".parse()?)?;
+        let endpoint = socket.local_addr()?;
+        let mut reserved = None;
         let listener = if unreachable {
-            drop(listener);
+            reserved = Some(socket);
             None
         } else {
-            Some(listener)
+            Some(socket.listen(1024)?)
         };
         let settings = independent(&definition(), endpoint);
         let settings = if failure == "timeout" {
@@ -357,7 +361,10 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
         running.stop().await?;
         let listener = match listener {
             Some(listener) => listener,
-            None => TcpListener::bind(endpoint).await?,
+            None => reserved
+                .take()
+                .ok_or("reserved socket missing")?
+                .listen(1024)?,
         };
         std::fs::write(
             temp.path().join("hl7.toml"),

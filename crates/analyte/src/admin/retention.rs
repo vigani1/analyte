@@ -68,8 +68,8 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
     html.push_str("</ul><h2>Last run</h2>");
     if let Some(run) = last {
         html.push_str(&format!(
-            "<p>Unix time {}. Examined: {}. Purged: {}. Paused: {}. Failed: {}.</p>",
-            run.time, run.examined, run.purged, run.paused, run.failed
+            "<p>Unix time {}. Examined: {}. Purged receipts: {}. Purged orders: {}. Paused: {}. Failed: {}.</p>",
+            run.time, run.examined, run.purged, run.orders, run.paused, run.failed
         ));
     } else {
         html.push_str("<p>No retention run recorded.</p>");

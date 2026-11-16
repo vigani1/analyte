@@ -88,7 +88,12 @@ async fn setup_with_freshness(
     if paused {
         pause(&path, &reference.url).await?;
     }
-    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let mut program = program(&path, &reference.url)?;
+    if settings.contains("send_ahead = true") {
+        // Unsolicited lifecycle cases do not specify the app feed poll interval.
+        program.set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))?;
+    }
+    let running = Running::start_program(program, "synthetic-api").await?;
     let peer = connect(&path, "law").await?;
     wait_feed(&path).await?;
     Ok((temp, path, reference, running, peer))

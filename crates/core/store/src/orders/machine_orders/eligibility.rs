@@ -47,6 +47,17 @@ impl Store {
         for encoded in encoded {
             let cached: CachedOrder = serde_json::from_str(&encoded)?;
             cursor = Some(cached.id.clone());
+            if crate::upkeep::retention::orders::was_purged(
+                &self.db,
+                self.retention_key.as_ref(),
+                &MachineOrderKey {
+                    destination: destination.clone(),
+                    order: cached.id.clone(),
+                    machine: machine.clone(),
+                },
+            )? {
+                continue;
+            }
             let fields: CachedFields = serde_json::from_str(&cached.document)?;
             if fields
                 .state
@@ -97,8 +108,21 @@ impl Store {
                 |r| r.get::<_, String>(0),
             )?
             .collect::<Result<Vec<_>, _>>()?;
-        rows.iter()
-            .map(|row| Ok(serde_json::from_str(row)?))
-            .collect()
+        let mut candidates = Vec::new();
+        for row in rows {
+            let cached: CachedOrder = serde_json::from_str(&row)?;
+            if !crate::upkeep::retention::orders::was_purged(
+                &self.db,
+                self.retention_key.as_ref(),
+                &MachineOrderKey {
+                    destination: destination.clone(),
+                    order: cached.id.clone(),
+                    machine: machine.clone(),
+                },
+            )? {
+                candidates.push(cached);
+            }
+        }
+        Ok(candidates)
     }
 }
