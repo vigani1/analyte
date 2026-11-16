@@ -12,7 +12,13 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
     let paused = store
         .request(deadline(), |store| store.restore_unreconciled())
         .await?;
-    let mut lines = vec![format!("order_sending_paused_after_restore={paused}")];
+    let cancelled = store
+        .request(deadline(), |s| s.analyzer_cancelled_count())
+        .await?;
+    let mut lines = vec![
+        format!("order_sending_paused_after_restore={paused}"),
+        format!("analyzer_cancelled_awos={cancelled}"),
+    ];
     let configured: Vec<_> = program
         .alert_delivery()
         .endpoints()

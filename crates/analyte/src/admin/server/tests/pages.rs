@@ -187,6 +187,7 @@ async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Resul
     for (path, sections) in [
         ("/parked", 1),
         ("/orders", 1),
+        ("/analyzer-cancelled", 0),
         ("/machines", 50),
         ("/machines?after=50", 11),
     ] {
@@ -211,7 +212,7 @@ async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Resul
     let orders2 = request(host, "/orders?after=1", auth, None).await?;
     assert!(orders2.contains("Order: second"));
     assert!(!orders2.contains("Order: first"));
-    for route in ["/machines", "/orders", "/parked"] {
+    for route in ["/machines", "/orders", "/parked", "/analyzer-cancelled"] {
         for query in [
             "after=-1",
             "after=18446744073709551615",

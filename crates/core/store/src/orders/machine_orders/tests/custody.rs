@@ -339,3 +339,37 @@ fn palm_tf2b_c8_adr0003_ca_during_pending_cancel_needs_correlated_cr_or_uc() -> 
     }
     Ok(())
 }
+
+#[test]
+fn adr0016_admin_cancellation_is_one_condition_per_awos_with_bounded_full_history() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("listing.db"))?;
+    let order = setup(&mut store)?;
+    let first = notice(&order, AwosExecution::AnalyzerCancelled, "first-ca")?;
+    commit(&mut store, &first, b"first")?;
+    let page = store.analyzer_cancelled_items(0)?;
+    let anchor = page.first().ok_or("condition")?.cursor;
+    assert_eq!(store.analyzer_cancelled_count()?, 1);
+    let second = notice(&order, AwosExecution::AnalyzerCancelled, "second-ca")?;
+    commit(&mut store, &second, b"second")?;
+    assert_eq!(store.analyzer_cancelled_count()?, 1);
+    let page = store.analyzer_cancelled_items(0)?;
+    assert_eq!(page.len(), 1);
+    assert_eq!(page.first().ok_or("condition")?.cursor, anchor);
+    assert!(store.analyzer_cancelled_items(anchor)?.is_empty());
+    store.limits.page_rows = 1;
+    let evidence = store.law_work_evidence(order.id, 1, 0)?;
+    assert_eq!(evidence.len(), 1);
+    let next = store.law_work_evidence(order.id, 1, evidence.first().ok_or("history")?.cursor)?;
+    assert_eq!(next.len(), 1);
+    assert_eq!(
+        next.first().ok_or("history")?.custody.message.as_str(),
+        "second-ca"
+    );
+    assert_eq!(
+        next.first().ok_or("history")?.received_at.as_str(),
+        "1970-01-01T00:00:00Z"
+    );
+    assert!(store.law_work_evidence(order.id, 2, 0)?.is_empty());
+    Ok(())
+}

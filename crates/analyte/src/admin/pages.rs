@@ -14,7 +14,7 @@ use std::sync::{Arc, atomic::Ordering};
 
 pub(super) const PAGE: usize = 50;
 const RAW_PAGE: usize = 4096;
-pub(super) const NAV: &str = "<nav><a href=\"/\">Overview</a> <a href=\"/machines\">Machines</a> <a href=\"/parked\">Parked items</a> <a href=\"/orders\">Machine orders</a> <a href=\"/deliveries\">Deliveries</a> <a href=\"/retention\">Retention and holds</a></nav>";
+pub(super) const NAV: &str = "<nav><a href=\"/\">Overview</a> <a href=\"/machines\">Machines</a> <a href=\"/parked\">Parked items</a> <a href=\"/orders\">Machine orders</a> <a href=\"/analyzer-cancelled\">Analyzer cancellations</a> <a href=\"/deliveries\">Deliveries</a> <a href=\"/retention\">Retention and holds</a></nav>";
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,7 +29,7 @@ fn cursor_value<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64
     Ok(value)
 }
 
-fn start(title: &str) -> String {
+pub(super) fn start(title: &str) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>{}</title>{NAV}<h1>{}</h1>",
         escape(title),
@@ -37,7 +37,7 @@ fn start(title: &str) -> String {
     )
 }
 
-fn finish(result: Result<String, Error>) -> Response {
+pub(super) fn finish(result: Result<String, Error>) -> Response {
     match result {
         Ok(mut html) => {
             html.push_str("</html>");
@@ -54,7 +54,7 @@ fn finish(result: Result<String, Error>) -> Response {
     }
 }
 
-fn next(html: &mut String, route: &str, after: impl std::fmt::Display) {
+pub(super) fn next(html: &mut String, route: &str, after: impl std::fmt::Display) {
     html.push_str(&format!(
         "<a rel=\"next\" href=\"{}?after={}\">Next page</a>",
         escape(route),
@@ -515,6 +515,7 @@ pub(super) async fn orders(
                 }
                 if order.items.is_empty() { html.push_str("<li>Historical items unavailable; none are inferred.</li>"); }
                 html.push_str("</ul>");
+                for item in &order.items { html.push_str(&super::awos::projection(item)); }
                 if let Some(cached) = s.cached_order(&order.key.destination, &order.key.order)? {
                     html.push_str(&format!("<p>Retained cache sample: {}. Tombstone: {}. Expiry (Unix seconds): {}.</p>", escape(cached.sample.as_str()), escape(&cached.tombstone.to_string()), escape(&cached.expiry.to_string())));
                     match analyte_contract::decode::<analyte_contract::Order>(cached.document.as_bytes()) {
