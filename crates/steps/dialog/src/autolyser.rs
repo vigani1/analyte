@@ -299,6 +299,7 @@ impl Dialog {
     #[must_use]
     pub fn next_deadline(&self) -> Option<Duration> {
         if matches!(self.state, State::Closed)
+            || (matches!(self.state, State::Idle) && self.deadline.is_zero())
             || (matches!(self.state, State::Idle)
                 && self.recovery
                 && self.config.recovery == Recovery::ManualLast)

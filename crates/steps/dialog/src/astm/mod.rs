@@ -114,12 +114,17 @@ impl Dialog {
                 Event::Capacity(value) => self.capacity = value,
                 Event::Interrupt(value) => self.interrupt = value,
                 Event::Byte(byte) => {
-                    if matches!(self.state, State::Receiving(_) | State::Commit { .. }) {
-                        if let Some(event) = self.decoder.push(byte) {
-                            self.wire(event, &mut out)?;
+                    if let Some(event) = self.decoder.push(byte) {
+                        self.wire(event, &mut out)?;
+                    }
+                    // Unsolicited partial frames still belong to the dialog and
+                    // must be bounded and returned as evidence on timeout/EOF.
+                    if matches!(self.state, State::Neutral) {
+                        if self.decoder.pending().is_empty() {
+                            self.deadline = None;
+                        } else if self.deadline.is_none() {
+                            self.set_timer(self.config.timers.receive);
                         }
-                    } else {
-                        self.control(byte, &mut out)?;
                     }
                 }
                 Event::Committed(id) => self.commit(id, true, &mut out)?,

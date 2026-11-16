@@ -212,6 +212,7 @@ fn adr0001_0010_vidas_owns_commit_and_session_deadlines() -> Result<(), Box<dyn 
             .contains(&Action::Park)
     );
     assert_eq!(dialog.next_deadline(), None);
+    assert_eq!(dialog.expired_timer(), Some(Timer::Session));
 
     let mut dialog = Dialog::upload(c.clone(), policy())?;
     let _ = dialog.start();

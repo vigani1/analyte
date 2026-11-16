@@ -114,6 +114,7 @@ pub struct Dialog {
     outbound: Option<Vec<u8>>,
     clock: crate::Clock,
     timers: Deadlines,
+    expired: Option<Timer>,
 }
 
 impl Dialog {
@@ -158,6 +159,7 @@ impl Dialog {
             outbound,
             clock: crate::Clock::default(),
             timers: Deadlines::default(),
+            expired: None,
         })
     }
 
@@ -191,6 +193,12 @@ impl Dialog {
         .into_iter()
         .flatten()
         .min()
+    }
+
+    /// Identifies the deadline that ended this transfer, for durable diagnostics.
+    #[must_use]
+    pub fn expired_timer(&self) -> Option<Timer> {
+        self.expired
     }
 
     /// Applies time before input; received fragments never postpone session or commit deadlines.
@@ -256,6 +264,11 @@ impl Dialog {
     pub fn on(&mut self, event: Event) -> Vec<Action> {
         if matches!(event, Event::Tick | Event::Activity) {
             return Vec::new();
+        }
+        if let Event::Expired(timer) = event
+            && !matches!(self.state, State::Finished)
+        {
+            self.expired = Some(timer);
         }
         let mut actions = vec![
             Action::Cancel(Timer::Interbyte),

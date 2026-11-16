@@ -518,3 +518,17 @@ fn adr0001_0003_disconnect_returns_partial_frame_and_never_writes_or_reopens() -
     );
     Ok(())
 }
+
+#[test]
+fn adr0003_rule2_unsolicited_partial_frame_is_owned_and_bounded_without_ack() {
+    let mut dialog = Dialog::new(Config::default(), Epoch(2));
+    assert!(
+        !feed(&mut dialog, 0, b"\x021R|unsolicited")
+            .iter()
+            .any(|a| matches!(a, Action::Write(_)))
+    );
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(30)));
+    let actions = step(&mut dialog, 1, Event::Disconnect);
+    assert!(actions.iter().any(|a| matches!(a, Action::Rejected(astm::Error::Incomplete, raw) if raw == b"\x021R|unsolicited")));
+    assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
+}

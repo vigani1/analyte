@@ -2,7 +2,7 @@
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::{Error, intake, invalid};
-use analyte_dialog::vidas::{Action, Dialog, Event, Policy};
+use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -277,7 +277,7 @@ async fn process(
                 let operation = store_upload(store, machine, id, &packet.raw);
                 match custody::store_within(custody::budget(machine), operation).await {
                     Ok(()) => {
-                        // Completion effects precede previously queued timer changes.
+                        // The dialog expired its own commit deadline before accepting completion.
                         state
                             .actions
                             .extend(state.dialog.step(state.start.elapsed(), Event::Stored)?);
@@ -295,7 +295,13 @@ async fn process(
             Action::Arm(_, _) | Action::Cancel(_) => {}
             Action::Park => {
                 if state.end_code == "VIDAS-transfer-error" {
-                    state.end_code = "VIDAS-transfer-refused-or-unexpected";
+                    state.end_code = match state.dialog.expired_timer() {
+                        Some(Timer::Acknowledgment) => "VIDAS-acknowledgment-timeout",
+                        Some(Timer::Interbyte) => "VIDAS-interbyte-timeout",
+                        Some(Timer::Session) => "VIDAS-session-timeout",
+                        Some(Timer::Commit) => "VIDAS-commit-timeout",
+                        None => "VIDAS-transfer-refused-or-unexpected",
+                    };
                 }
                 let parked = intake::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
                 if let Err(error) = parked {

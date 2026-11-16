@@ -483,7 +483,8 @@ fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() 
 #[test]
 fn adr0001_autolyser_manual_recovery_has_no_polling_wake() -> TestResult {
     let mut dialog = Dialog::new(config())?;
-    assert_eq!(dialog.next_deadline(), Some(Duration::ZERO));
+    // Before the transport opens, there is no protocol operation to time.
+    assert_eq!(dialog.next_deadline(), None);
     start(&mut dialog, Request::Next, 0);
     assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(2)));
     receive(
