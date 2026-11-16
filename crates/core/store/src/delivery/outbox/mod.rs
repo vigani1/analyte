@@ -38,7 +38,7 @@ impl Store {
     /// # Errors
     /// Refuses outcomes for items that are not in flight.
     pub fn attempted(&mut self, id: DeliveryId, outcome: &Attempt, now: i64) -> Result<(), Error> {
-        self.bound(key(outcome)?.as_bytes())?;
+        self.bound(crate::document(outcome)?.as_bytes())?;
         let (state, next) = match outcome {
             Attempt::Done => (DeliveryState::Done, 0),
             Attempt::RetryAt(time) => (DeliveryState::Pending, *time),
@@ -58,7 +58,7 @@ impl Store {
         }
         tx.execute(
             "INSERT INTO attempts(delivery,outcome,time) VALUES (?1,?2,?3)",
-            params![id, key(outcome)?, now],
+            params![id, crate::document(outcome)?, now],
         )?;
         match outcome {
             Attempt::Parked(reason) | Attempt::Conflict(reason) => {
@@ -123,11 +123,11 @@ impl Store {
                 time: now,
                 reason: audit.reason.clone(),
             };
-            let encoded = key(&entry)?;
+            let encoded = crate::document(&entry)?;
             if encoded.len() > self.limits.record_bytes {
                 return Err(Error::InvalidInput);
             }
-            let outcome = key(&Attempt::Interrupted)?;
+            let outcome = crate::document(&Attempt::Interrupted)?;
             required = required
                 .checked_add(encoded.len())
                 .and_then(|bytes| bytes.checked_add(outcome.len()))

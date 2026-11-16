@@ -297,7 +297,7 @@ fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit(
         db.execute_batch(include_str!("../schema.sql"))?;
         db.execute(
             "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
-            params![key(&metadata.id)?, key(metadata)?, raw, b"config"],
+            params![key(&metadata.id)?, document(metadata)?, raw, b"config"],
         )?;
         let pages: i64 = db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
         let page: i64 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;

@@ -363,7 +363,7 @@ fn mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit
         .ok_or("missing intent")?
         .parked;
     let evidence = audit(id, "retained operator evidence")?;
-    assert!(crate::key(&evidence)?.len() > 2);
+    assert!(crate::document(&evidence)?.len() > 2);
     // Two available bytes above the reserve cannot hold even one retained audit.
     store.space = Box::new(crate::test_support::Space(
         store.limits.reserve_bytes.checked_add(2).ok_or("space")?,

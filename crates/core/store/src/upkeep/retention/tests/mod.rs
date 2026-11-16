@@ -23,7 +23,7 @@ pub(super) fn finished(
     evidence.outcome = Reading::Results(vec![result]);
     store.db.execute(
         "INSERT INTO interpretations VALUES (?1,1,?2)",
-        params![key(&metadata.id)?, key(&evidence)?],
+        params![key(&metadata.id)?, crate::document(&evidence)?],
     )?;
     let delivery = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     seed_delivery(store, metadata.id, delivery, &key(&ordering)?)?;
@@ -158,7 +158,7 @@ fn adr0013_item2_parking_unresolved_orders_and_polls_prevent_purge() -> TestResu
                 evidence.outcome = Reading::Results(vec![result]);
                 store.db.execute(
                     "INSERT INTO interpretations VALUES (?1,2,?2)",
-                    params![key(&id)?, key(&evidence)?],
+                    params![key(&id)?, crate::document(&evidence)?],
                 )?;
             }
             "order" => {
@@ -465,7 +465,7 @@ fn property_batch(mask: u8) -> TestResult {
         evidence.outcome = Reading::Results(vec![result]);
         store.db.execute(
             "INSERT INTO interpretations VALUES (?1,2,?2)",
-            params![key(&id)?, key(&evidence)?],
+            params![key(&id)?, crate::document(&evidence)?],
         )?;
     }
     let run = store.purge_batch(

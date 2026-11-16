@@ -100,7 +100,7 @@ fn mutation_adr0003_rule1_lib_sqlite_errors_keep_specific_recovery_actions() -> 
 fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestResult {
     use std::io::Write;
     assert_eq!(
-        key(&serde_json::json!({"sample":"001"}))?,
+        document(&serde_json::json!({"sample":"001"}))?,
         r#"{"sample":"001"}"#
     );
     assert_eq!(

@@ -75,7 +75,7 @@ fn mutation_adr0003_query_connection_lookup_requires_interpretation_and_exact_sc
     store.receive(&second, b"interpreted", b"config")?;
     store.db.execute(
         "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
-        params![key(&second.id)?, key(&interpretation()?)?],
+        params![key(&second.id)?, document(&interpretation()?)?],
     )?;
     let found = store
         .first_interpreted_connection_receipt(&first.machine, &first.connection)?
@@ -127,7 +127,7 @@ fn mutation_adr0003_query_receipt_checks_each_retained_identity_and_digest() -> 
             .execute_batch("DROP TRIGGER immutable_receipts_update")?;
         store.db.execute(
             "UPDATE receipts SET metadata=?1 WHERE id=?2",
-            params![key(&corrupt)?, key(&metadata.id)?],
+            params![document(&corrupt)?, key(&metadata.id)?],
         )?;
         assert!(
             matches!(store.receipt(metadata.id), Err(Error::Corruption)),
@@ -178,7 +178,7 @@ fn mutation_rule8_query_cached_order_checks_identity_without_authorizing_resend(
     corrupt.id = Identifier::new("different")?;
     store.db.execute(
         "UPDATE orders SET evidence=?1 WHERE destination=?2 AND id=?3",
-        params![key(&corrupt)?, app.as_str(), found.id.as_str()],
+        params![document(&corrupt)?, app.as_str(), found.id.as_str()],
     )?;
     assert!(matches!(
         store.cached_order(&app, &found.id),
@@ -222,13 +222,15 @@ fn mutation_adr0003_query_pages_preserve_evidence_and_resume_after_the_cursor() 
     let evidence = interpretation()?;
     store.db.execute(
         "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
-        params![key(&first.id)?, key(&evidence)?],
+        params![key(&first.id)?, document(&evidence)?],
     )?;
     assert_eq!(
-        key(&store
-            .interpretation(first.id, 1)?
-            .ok_or("missing interpretation")?)?,
-        key(&evidence)?
+        document(
+            &store
+                .interpretation(first.id, 1)?
+                .ok_or("missing interpretation")?
+        )?,
+        document(&evidence)?
     );
     assert!(store.interpretation(first.id, 2)?.is_none());
     store.limits.page_rows = 1;
