@@ -49,3 +49,18 @@ fn adr0002_every_example_keeps_legacy_canonical_bytes() -> Result<(), Box<dyn st
     }
     Ok(())
 }
+
+#[test]
+fn adr0002_stack_conversion_returns_missing_setting_without_validation() -> Result<(), Error> {
+    let mut machine: MachineDocument = load("machine", ASTM)?;
+    machine.framing.checksum_hex = None;
+    assert!(
+        matches!(Stack::parse(&machine, "machine"), Err(Error::Invalid { key, .. }) if key == "framing.checksum_hex")
+    );
+    let mut machine: MachineDocument = load("machine", HL7)?;
+    machine.syntax.edition = None;
+    assert!(
+        matches!(Stack::parse(&machine, "machine"), Err(Error::Invalid { key, .. }) if key == "syntax.edition")
+    );
+    Ok(())
+}
