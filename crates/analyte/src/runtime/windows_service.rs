@@ -176,4 +176,23 @@ mod tests {
         assert!(report.try_recv().is_err());
         Ok(())
     }
+    #[test]
+    fn plan11_scm_closed_completion_channel_reports_stopped_without_deadline_ack() {
+        let (events, received) = mpsc::sync_channel(1);
+        let (reported, report) = mpsc::sync_channel(1);
+        drop(events);
+        let mut stopped = false;
+        report_stop(&received, &reported, || stopped = true);
+        assert!(stopped);
+        assert!(report.try_recv().is_err());
+    }
+
+    #[test]
+    fn plan11_scm_invalid_shutdown_bounds_refuse_before_dispatch() {
+        for seconds in [0, 29, 301] {
+            let error = run(PathBuf::from("unused-config"), Duration::from_secs(seconds))
+                .expect_err("invalid bound must not reach SCM");
+            assert!(error.to_string().contains("shutdown bound must be"));
+        }
+    }
 }

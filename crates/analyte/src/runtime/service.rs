@@ -657,3 +657,51 @@ pub async fn prepare_retention(program: Program) -> Result<(), Error> {
     })
     .await??)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn plan11_supervision_preserves_stop_failure_and_refuses_unexpected_admin_exit() {
+        let mut alerts = JoinSet::new();
+        let mut admin = JoinSet::new();
+        let mut deliveries = JoinSet::new();
+        let mut machines = JoinSet::new();
+        let result = supervise(
+            async { Err(invalid("synthetic stop signal failure")) },
+            &mut alerts,
+            &mut admin,
+            &mut deliveries,
+            &mut machines,
+        )
+        .await;
+        assert_eq!(
+            result.expect_err("signal failure").to_string(),
+            "synthetic stop signal failure"
+        );
+        admin.spawn(async { Ok(()) });
+        let result = supervise(
+            std::future::pending(),
+            &mut alerts,
+            &mut admin,
+            &mut deliveries,
+            &mut machines,
+        )
+        .await;
+        assert_eq!(
+            result.expect_err("admin exit must be visible").to_string(),
+            "admin owner stopped unexpectedly"
+        );
+        assert!(admin.is_empty());
+        supervise(
+            async { Ok(()) },
+            &mut alerts,
+            &mut admin,
+            &mut deliveries,
+            &mut machines,
+        )
+        .await
+        .expect("normal stop succeeds without owners");
+    }
+}

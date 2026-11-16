@@ -103,3 +103,49 @@ impl AsyncWrite for Stream {
         Pin::new(&mut self.socket).poll_shutdown(cx)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    #[tokio::test]
+    async fn rule7_expired_connection_refuses_reads_and_writes_and_releases_slot() -> io::Result<()>
+    {
+        let socket = TcpListener::bind("127.0.0.1:0").await?;
+        let client = TcpStream::connect(socket.local_addr()?).await?;
+        let (peer, _) = socket.accept().await?;
+        let slots = Arc::new(Semaphore::new(1));
+        let mut stream = Stream {
+            socket: peer,
+            _slot: slots
+                .clone()
+                .try_acquire_owned()
+                .map_err(io::Error::other)?,
+            // Inject an already elapsed deadline; no wall-clock wait determines the result.
+            expires: Box::pin(tokio::time::sleep_until(tokio::time::Instant::now())),
+        };
+        let mut byte = [0];
+        assert_eq!(
+            stream
+                .read(&mut byte)
+                .await
+                .expect_err("expired read")
+                .kind(),
+            io::ErrorKind::TimedOut
+        );
+        assert_eq!(
+            stream
+                .write(b"private")
+                .await
+                .expect_err("expired write")
+                .kind(),
+            io::ErrorKind::TimedOut
+        );
+        assert_eq!(slots.available_permits(), 0);
+        drop(stream);
+        assert_eq!(slots.available_permits(), 1);
+        drop(client);
+        Ok(())
+    }
+}

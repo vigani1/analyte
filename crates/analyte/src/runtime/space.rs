@@ -15,3 +15,15 @@ impl analyte_store::FreeSpace for Volume {
         fs4::available_space(path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use analyte_store::FreeSpace as _;
+
+    #[test]
+    fn adr0003_rule1_disk_probe_failure_is_not_available_capacity() {
+        let missing = Path::new("\0");
+        assert!(Volume.available(missing).is_err());
+    }
+}

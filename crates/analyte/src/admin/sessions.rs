@@ -107,4 +107,34 @@ mod tests {
         );
         Ok(())
     }
+    #[test]
+    fn plan12_expired_challenges_and_authenticated_sessions_are_refused() -> Result<(), crate::Error>
+    {
+        for (authenticated, lifetime) in [(false, 300), (true, 3600)] {
+            let sessions = Sessions::default();
+            let mut session = sessions.issue(authenticated, None)?;
+            let cookie = session.id.form_value().to_owned();
+            assert!(sessions.lookup(Some(&cookie))?.is_some());
+            sessions.entries.lock().map_err(|_| "session lock")?.clear();
+            Arc::get_mut(&mut session)
+                .ok_or("unexpected session owner")?
+                .created = Instant::now()
+                .checked_sub(Duration::from_secs(lifetime))
+                .ok_or("clock range")?;
+            sessions
+                .entries
+                .lock()
+                .map_err(|_| "session lock")?
+                .push(session);
+            assert!(sessions.lookup(Some(&cookie))?.is_none());
+            assert!(
+                sessions
+                    .entries
+                    .lock()
+                    .map_err(|_| "session lock")?
+                    .is_empty()
+            );
+        }
+        Ok(())
+    }
 }
