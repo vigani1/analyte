@@ -26,13 +26,19 @@ pub(crate) struct Source<'a> {
 }
 
 impl Source<'_> {
-    // Earlier field availability is not established by the compatibility contract.
-    // Keep those extensions in the receipt instead of assigning later semantics.
-    pub(crate) fn uses_compatibility_contract(&self) -> bool {
-        self.message.is_some_and(|message| {
-            analyte_hl7::Msh::new(message)
-                .is_ok_and(|msh| msh.version().uses_compatibility_contract())
-        })
+    // Source constructors already validate their control profile. Inspect only the
+    // edition here; LAW's negotiated VID compatibility is a different contract.
+    pub(crate) fn uses_compatibility_contract(&self, config: &analyte_config::Validated) -> bool {
+        if crate::is_law(config) {
+            return false;
+        }
+        self.message
+            .and_then(|message| message.segments().next())
+            .and_then(|header| header.field(12))
+            .and_then(|field| field.repetitions().next())
+            .and_then(|value| value.components().next())
+            .and_then(|component| analyte_hl7::Version::parse(component.raw()))
+            .is_some_and(analyte_hl7::Version::uses_compatibility_contract)
     }
 
     pub(crate) fn text_problem(&self, raw: &str) -> Option<crate::Problem> {

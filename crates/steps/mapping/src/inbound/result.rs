@@ -44,7 +44,7 @@ pub(crate) fn part(
     let qc_class = classify(source, index, config, output)?;
     let ancestors = source.ancestors(index)?;
     let path = source_path(source, index)?;
-    let times = source_times(source, &ancestors, position, output)?;
+    let times = source_times(source, config, &ancestors, position, output)?;
     let mut comments = Vec::new();
     for ancestor in &ancestors {
         let Some(node) = source.nodes.get(*ancestor) else {
@@ -181,6 +181,7 @@ fn classify(
 
 fn source_times(
     source: &Source<'_>,
+    config: &Validated,
     ancestors: &[usize],
     position: crate::Position,
     output: &mut Output,
@@ -202,7 +203,7 @@ fn source_times(
             _ => &[],
         };
         for field in fields {
-            if node.name == "OBX" && *field == 19 && source.uses_compatibility_contract() {
+            if node.name == "OBX" && *field == 19 && source.uses_compatibility_contract(config) {
                 continue;
             }
             if let Some(raw) = present(source.component(*ancestor, *field, 1, 1)?) {

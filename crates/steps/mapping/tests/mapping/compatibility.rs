@@ -2,6 +2,35 @@
 use super::*;
 
 #[test]
+fn law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time() -> TestResult {
+    let definition = include_str!("../../../../core/config/examples/law.toml").replace(
+        "order_namespace = {field={group=\"order\",record=\"OBR\",field=2,component=2,repetition=1}}",
+        "order_namespace = {fixed=\"manager\"}",
+    );
+    let config = config(&definition)?;
+    for version in ["2.5", "2.5.1", "2.5.2"] {
+        let raw = std::str::from_utf8(LAW_RESULT)?.replace("|2.5.1|", &format!("|{version}|"));
+        let message = analyte_hl7::law::parse_message(
+            raw.as_bytes(),
+            config.effective().hl7_options().ok_or("options")?,
+        )?;
+        let results = analyte_hl7::law::Results::new(&message)?;
+        let output = analyte_mapping::map_law(&results, &config, input())?;
+        assert!(!output.requires_parking(), "{output:?}");
+        let time = first(&output)?
+            .times
+            .as_slice()
+            .iter()
+            .find(|time| time.role.as_str() == "OBX.19")
+            .ok_or("LAW analysis time was lost")?;
+        assert_eq!(time.time.original.as_str(), "20261115120000");
+        assert!(time.time.parsed.is_some());
+        assert_eq!(message.raw(), raw.as_bytes());
+    }
+    Ok(())
+}
+
+#[test]
 fn hl7_2_5_1_s2_8_1_legacy_extension_groups_are_not_assigned_later_specimen_meanings() -> TestResult
 {
     for (edition, version) in [("v23", "2.3"), ("v24", "2.4"), ("v25", "2.5")] {

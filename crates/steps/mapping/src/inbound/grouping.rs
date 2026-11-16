@@ -67,7 +67,7 @@ pub(crate) fn message(
         let finding_start = output.findings.len();
         let astm = source.syntax == FieldSyntax::AstmLis02;
         let value_field = if astm { 4 } else { 5 };
-        let values = value::values(source, index, value_field, &mut output)?;
+        let values = value::values(source, index, value_field, config, &mut output)?;
         let sample = identity::sample(source, index, config, &mut output)?;
         let Some(codes) = map_codes(source, index, config, &mut output)? else {
             output.unmapped_test(source.position(index, 3), values)?;

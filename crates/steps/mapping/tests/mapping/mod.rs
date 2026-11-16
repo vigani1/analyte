@@ -79,3 +79,6 @@ mod scenarios_2;
 const ASTM_CONFIG: &str = include_str!("../../../../core/config/examples/astm.toml");
 const HL7_CONFIG: &str = include_str!("../../../../core/config/examples/hl7.toml");
 const SITE: &str = include_str!("../../../../core/config/examples/site.toml");
+
+// Synthetic LAB-29 result shared by profile and edition-boundary regressions.
+const LAW_RESULT: &[u8] = b"MSH|^~\\&|A|AF|M|MF|20261115120000+0000||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01&99LAB||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||000tube\rOBR||awos-1||SYN^Synthetic^99LAB\rORC|SC||||CM\rOBX|1|NM|SYN^Synthetic^99LAB|1^1^1|1|mg/L^mg/L^UCUM||N^Normal^HL70078|||F|||||operator||instrument^99LAB~module^99LAB|20261115120000||||||||||RSLT\r";

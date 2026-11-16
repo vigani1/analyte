@@ -121,6 +121,10 @@ These are selected receiving-profile limits, not claims about every historical
 edition's normative maxima. Extended filters are refused at their field, never
 ignored to return a falsely trusted lookup. The 2.5 row adds only its sourced
 control constraints to this common prefix; it does not copy the 2.5.1 profile.
+These restrictions apply only to the base HL7 configuration. LAW uses its own
+negotiated profile even when its compatible MSH-12 is `2.5` or another accepted
+`2.5`-prefixed VID (TF-2b C.4); its known analysis time is still interpreted.
+`law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time` guards that boundary.
 
 ### Content left raw or refused
 
