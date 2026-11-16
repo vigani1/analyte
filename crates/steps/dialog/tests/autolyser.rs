@@ -43,8 +43,11 @@ fn receive(dialog: &mut Dialog, raw: &[u8], time: u64) -> Vec<Action> {
 
 #[test]
 fn autolyser_rev18_p179_checksum_is_decimal_sum() -> TestResult {
-    let report = Report::parse(RESULT, false)?;
-    assert_eq!(report.raw, RESULT);
+    let report = Report::parse(analyte_framing::autolyser::verified(RESULT)?, false)?;
+    assert_eq!(
+        analyte_framing::autolyser::finish(report.raw.clone()),
+        RESULT
+    );
     assert_eq!(report.patient.bytes(), b"TEST0042       ");
     let rebuilt = Report::build(
         &report.patient,
@@ -53,7 +56,7 @@ fn autolyser_rev18_p179_checksum_is_decimal_sum() -> TestResult {
         None,
         &report.values,
     )?;
-    assert_eq!(rebuilt.raw, RESULT);
+    assert_eq!(analyte_framing::autolyser::finish(rebuilt.raw), RESULT);
     let order = Worklist::new(
         PatientCode::from_eight(b"TEST0042")?,
         List::Routine,
@@ -62,8 +65,11 @@ fn autolyser_rev18_p179_checksum_is_decimal_sum() -> TestResult {
         5,
         vec![Field::new(b"ALB ")?, Field::new(b"CRE ")?],
     )?;
-    assert_eq!(order.encode(), ORDER);
-    assert_eq!(Worklist::parse(ORDER)?, order);
+    assert_eq!(analyte_framing::autolyser::finish(order.encode()), ORDER);
+    assert_eq!(
+        Worklist::parse(analyte_framing::autolyser::verified(ORDER)?)?,
+        order
+    );
     Ok(())
 }
 
@@ -94,17 +100,20 @@ fn autolyser_rev18_p178_controls_are_explicit_and_values_stay_written() -> TestR
         % 256;
     let mut wire = expected.to_vec();
     wire.extend_from_slice(format!("{sum:03}\x04").as_bytes());
-    assert_eq!(report.raw, wire);
+    assert_eq!(analyte_framing::autolyser::finish(report.raw.clone()), wire);
     let mut shifted = wire.clone();
     shifted.insert(17, b' ');
     assert!(Report::parse(&shifted, true).is_err());
     let mut corrupt = wire;
     *corrupt.get_mut(0).ok_or("fixture")? = b'X';
     assert!(matches!(
-        Report::parse(&corrupt, true),
-        Err(Error::Checksum)
+        analyte_framing::autolyser::verified(&corrupt),
+        Err(analyte_framing::autolyser::Error::Checksum)
     ));
-    assert_eq!(report.raw.len(), 60);
+    assert_eq!(
+        analyte_framing::autolyser::finish(report.raw.clone()).len(),
+        60
+    );
     assert_eq!(report.control, Some(control));
     assert_eq!(report.values, values);
     assert!(Report::parse(&report.raw, false).is_err());
@@ -129,7 +138,9 @@ fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
     );
     assert!(matches!(
         dialog.step(Duration::ZERO, Event::Stored(1)).first(),
-        Some(Action::Park(DialogError::Record(Error::Checksum)))
+        Some(Action::Park(DialogError::Framing(
+            analyte_framing::autolyser::Error::Checksum
+        )))
     ));
     assert!(matches!(
         dialog
@@ -180,7 +191,7 @@ fn autolyser_rev18_p177_empty_queue_still_requires_storage() -> TestResult {
 
 #[test]
 fn autolyser_rev18_p175_download_serializes_and_preserves_binary_reply() -> TestResult {
-    let order = Worklist::parse(ORDER)?;
+    let order = Worklist::parse(analyte_framing::autolyser::verified(ORDER)?)?;
     let mut dialog = Dialog::new(config())?;
     assert!(
         matches!(dialog.step(Duration::ZERO, Event::Download(&order)).first(), Some(Action::Write(bytes)) if bytes == &[2])
@@ -354,7 +365,7 @@ fn autolyser_rev18_p177_l_empty_does_not_resolve_corruption() -> TestResult {
 
 #[test]
 fn autolyser_rev18_p175_lost_download_reply_is_uncertain_without_retry() -> TestResult {
-    let order = Worklist::parse(ORDER)?;
+    let order = Worklist::parse(analyte_framing::autolyser::verified(ORDER)?)?;
     let mut dialog = Dialog::new(config())?;
     let _ = dialog.step(Duration::ZERO, Event::Download(&order));
     let _ = dialog.step(Duration::ZERO, Event::Byte(6));
@@ -466,5 +477,25 @@ fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() 
                 .any(|a| matches!(a, Action::Write(_)))
         );
     }
+    Ok(())
+}
+
+#[test]
+fn adr0001_autolyser_manual_recovery_has_no_polling_wake() -> TestResult {
+    let mut dialog = Dialog::new(config())?;
+    // Before the transport opens, there is no protocol operation to time.
+    assert_eq!(dialog.next_deadline(), None);
+    start(&mut dialog, Request::Next, 0);
+    assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(2)));
+    receive(
+        &mut dialog,
+        b"TEST0042       TS002ALB 0004.21CRE 00087.5190\x04",
+        0,
+    );
+    let actions = dialog.step(Duration::ZERO, Event::Stored(1));
+    assert!(matches!(actions.first(), Some(Action::Park(_))));
+    assert_eq!(dialog.next_deadline(), None);
+    assert!(dialog.step(Duration::from_secs(10), Event::Tick).is_empty());
+    assert_eq!(dialog.next_deadline(), None);
     Ok(())
 }

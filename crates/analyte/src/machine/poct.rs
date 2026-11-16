@@ -6,10 +6,7 @@ use analyte_dialog::poct::{CommitOutcome, Dialog, DialogAction, DialogConfig, Di
 use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
-};
+use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 pub(super) async fn session(
@@ -81,12 +78,15 @@ impl ConnectionState {
         stop: &mut watch::Receiver<bool>,
     ) -> Result<Close, Error> {
         loop {
+            let Some(deadline) = self.dialog.next_deadline() else {
+                return Ok(Close::Drain);
+            };
             let input = super::connection_input::journaled(
                 machine,
                 store,
                 conn,
                 stop,
-                Duration::from_millis(10),
+                Some(deadline.saturating_sub(self.start.elapsed())),
             )
             .await?;
             // Incoming fragments must not postpone the absolute dialog deadline.

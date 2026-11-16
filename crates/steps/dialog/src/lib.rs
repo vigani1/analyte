@@ -13,3 +13,8 @@ pub mod autolyser;
 pub mod poct;
 /// VIDAS Literal conversation.
 pub mod vidas;
+
+mod clock;
+pub use clock::Clock;
+/// Failures applying connection time.
+pub use clock::Error as ClockError;

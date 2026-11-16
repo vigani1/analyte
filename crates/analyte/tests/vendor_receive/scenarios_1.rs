@@ -163,7 +163,7 @@ async fn autolyser_rev18_rule2_unknown_test_is_unmapped_and_operator_visible() -
     let mut run =
         Running::start(include_str!("../../../core/config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
-    let mut report = Report::parse(&report()?, false)?;
+    let mut report = Report::parse(analyte_framing::autolyser::verified(&report()?)?, false)?;
     report.values.first_mut().ok_or("fixture value")?.code = Field::new(b"MISS")?;
     let raw = Report::build(
         &report.patient,
@@ -173,6 +173,7 @@ async fn autolyser_rev18_rule2_unknown_test_is_unmapped_and_operator_visible() -
         &report.values,
     )?
     .raw;
+    let raw = analyte_framing::autolyser::finish(raw);
     run.peer.write_all(&raw).await?;
     run.parked("UnknownTest").await?;
     run.stored(&raw, "analyte-autolyser")?;

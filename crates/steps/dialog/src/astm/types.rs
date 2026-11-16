@@ -180,6 +180,8 @@ pub enum Action {
 pub enum Event {
     /// Next wire byte; TCP packet boundaries have no meaning.
     Byte(u8),
+    /// Transport ended or was cancelled; return partial framing evidence without writing.
+    Disconnect,
     /// Wakeup without input.
     Tick,
     /// Host has reserved capacity for accepting ENQ.

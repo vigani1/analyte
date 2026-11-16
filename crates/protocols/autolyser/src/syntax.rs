@@ -10,9 +10,6 @@ pub enum Error {
     /// Invalid field repertoire or discriminator.
     #[error("invalid field: {0}")]
     Field(&'static str),
-    /// Decimal checksum differs from the payload sum.
-    #[error("checksum mismatch")]
-    Checksum,
     /// Count exceeds the wire representation.
     #[error("count outside wire bound")]
     Count,
@@ -203,7 +200,7 @@ impl Worklist {
         })
     }
 
-    /// Serializes payload, decimal checksum and EOT; no STX or command letter.
+    /// Serializes the record body; framing adds its checksum and EOT.
     #[must_use]
     pub fn encode(&self) -> Vec<u8> {
         let mut out = self.patient.bytes().to_vec();
@@ -216,14 +213,17 @@ impl Worklist {
         for test in &self.tests {
             out.extend_from_slice(test.bytes());
         }
-        analyte_framing::autolyser::finish(out)
+        out
     }
 
-    /// Parses after checking length and checksum, retaining every fixed-width field.
+    /// Parses a verified record body, retaining every fixed-width field.
     /// # Errors
-    /// Reports checksum, count, length or field defects.
+    /// Reports count, length or field defects.
     pub fn parse(raw: &[u8]) -> Result<Self, Error> {
-        let mut c = Cursor(analyte_framing::autolyser::verified(raw).map_err(Error::from)?);
+        if raw.len() > 11034 {
+            return Err(Error::Length);
+        }
+        let mut c = Cursor(raw);
         let patient = PatientCode::new(c.take(15)?)?;
         let list = List::parse(c.byte()?)?;
         let sample = Sample::parse(c.byte()?)?;
@@ -267,10 +267,10 @@ pub struct Value {
     pub text: Field<7>,
 }
 
-/// Parsed report with exact original response retained.
+/// Parsed report with the exact record body retained.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Report {
-    /// Original response including checksum and EOT.
+    /// Original record body, excluding checksum and EOT.
     pub raw: Vec<u8>,
     /// Exact patient field.
     pub patient: PatientCode,
@@ -285,11 +285,14 @@ pub struct Report {
 }
 
 impl Report {
-    /// Parses the configured layout only after validating its checksum.
+    /// Parses the configured layout from a checksum-verified record body.
     /// # Errors
-    /// Rejects length, checksum, count and field defects; callers must store raw first.
+    /// Rejects length, count and field defects; callers must store raw wire bytes first.
     pub fn parse(raw: &[u8], controls: bool) -> Result<Self, Error> {
-        let mut c = Cursor(analyte_framing::autolyser::verified(raw).map_err(Error::from)?);
+        if raw.len() > 11034 {
+            return Err(Error::Length);
+        }
+        let mut c = Cursor(raw);
         let patient = PatientCode::new(c.take(15)?)?;
         let list = List::parse(c.byte()?)?;
         let sample = Sample::parse(c.byte()?)?;
@@ -370,17 +373,6 @@ impl Report {
             out.extend_from_slice(v.code.bytes());
             out.extend_from_slice(v.text.bytes());
         }
-        Self::parse(&analyte_framing::autolyser::finish(out), control.is_some())
-    }
-}
-
-impl From<analyte_framing::autolyser::Error> for Error {
-    fn from(error: analyte_framing::autolyser::Error) -> Self {
-        match error {
-            analyte_framing::autolyser::Error::Length => Self::Length,
-            analyte_framing::autolyser::Error::Field(field) => Self::Field(field),
-            analyte_framing::autolyser::Error::Checksum => Self::Checksum,
-            analyte_framing::autolyser::Error::Count => Self::Count,
-        }
+        Self::parse(&out, control.is_some())
     }
 }

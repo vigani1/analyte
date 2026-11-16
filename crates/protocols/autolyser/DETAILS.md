@@ -4,7 +4,10 @@ Evidence level: **documented**, from the Autolyser / Autolyser ISE Operator's
 Manual Rev18, chapter 23 (pp.175-187). No machine or official simulator tested.
 Tests use our synthetic research fixtures, never copied vendor examples.
 
-`syntax` parses and builds fixed-width worklists and both result layouts.
+`syntax` parses and builds fixed-width record bodies for worklists and both
+result layouts. `analyte-framing::autolyser` verifies incoming checksums and
+adds the checksum/EOT envelope to outgoing bodies. Parsed `Report::raw` holds
+only the exact body; protected receipts retain the original full wire response.
 Patient codes and values retain spaces, leading zeroes and case. The optional
 8+7 constructor appends seven spaces to exactly eight supplied characters;
 it does not normalize arbitrary identifiers. Analysis codes occupy four bytes.

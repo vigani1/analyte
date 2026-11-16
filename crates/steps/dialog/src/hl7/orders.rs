@@ -159,7 +159,7 @@ impl Dialog {
         if wait.is_zero() {
             return Err(Error::Configuration);
         }
-        if now < self.now {
+        if now < self.clock.now() {
             return Err(Error::TimeReversed);
         }
         let until = now.checked_add(wait).ok_or(Error::Exhausted)?;
@@ -207,7 +207,7 @@ impl Dialog {
         match (orders.issuance.take(), part) {
             (Some(Issuance::Qck(reply)), ReplyPart::Qck) => {
                 if let Some(display) = reply.display {
-                    if self.now >= reply.query_deadline {
+                    if self.clock.now() >= reply.query_deadline {
                         out.push(Action::DisplayOutcome {
                             receipt: None,
                             accepted: false,
@@ -218,7 +218,7 @@ impl Dialog {
                         let id = Msh::new(&display)?.control_id().to_vec();
                         let bytes = analyte_framing::hl7::encode(display.raw(), self.config.limit)?;
                         self.await_display(
-                            self.now,
+                            self.clock.now(),
                             ControlId::new(&id)?,
                             reply.acknowledgment_wait,
                         )?;
@@ -291,7 +291,7 @@ impl Dialog {
             id,
             message.clone(),
             kind,
-            self.frame_started.unwrap_or(self.now),
+            self.frame_started.unwrap_or(self.clock.now()),
         ));
         self.deadline = None;
         out.push(Action::Commit(id, raw.to_vec()));

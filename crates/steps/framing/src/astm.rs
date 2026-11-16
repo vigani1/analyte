@@ -447,3 +447,62 @@ pub fn encode(
         Some(raw)
     }))
 }
+
+/// A retained transfer cannot be decoded as accepted data frames.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ReceiptError {
+    /// Incremental frame verification failed.
+    #[error(transparent)]
+    Frame(#[from] Error),
+    /// A stored transfer contains non-frame bytes.
+    #[error("receipt contains bytes outside ASTM frames")]
+    Outside,
+    /// Reassembled syntax exceeds its configured limit.
+    #[error("ASTM assembled receipt exceeds syntax bound")]
+    Limit,
+    /// The last frame or transfer is unfinished.
+    #[error("receipt contains incomplete ASTM transfer")]
+    Incomplete,
+}
+
+/// Reassembles retained accepted frames using the live frame decoder.
+/// Sequence admission and durable custody remain the live dialog's responsibility.
+/// # Errors
+/// Rejects framing defects, record boundaries, excessive assembly and incomplete transfers.
+pub fn decode(
+    raw: &[u8],
+    limit: Limit,
+    checksum: HexPolicy,
+    boundaries: RecordBoundaries,
+    maximum: usize,
+) -> Result<Vec<u8>, ReceiptError> {
+    let mut decoder = Decoder::new(limit, checksum);
+    let mut payload = Vec::new();
+    let mut final_frame = false;
+    for byte in raw {
+        if let Some(event) = decoder.push(*byte) {
+            match event {
+                Event::Frame(frame) => {
+                    if !boundaries.accepts(frame.text(), frame.is_final()) {
+                        return Err(Error::RecordBoundary.into());
+                    }
+                    if payload
+                        .len()
+                        .checked_add(frame.text().len())
+                        .is_none_or(|n| n > maximum)
+                    {
+                        return Err(ReceiptError::Limit);
+                    }
+                    payload.extend_from_slice(frame.text());
+                    final_frame = frame.is_final();
+                }
+                Event::Rejected { error, .. } => return Err(error.into()),
+                Event::Outside(_) => return Err(ReceiptError::Outside),
+            }
+        }
+    }
+    if decoder.finish().is_some() || !final_frame {
+        return Err(ReceiptError::Incomplete);
+    }
+    Ok(payload)
+}
