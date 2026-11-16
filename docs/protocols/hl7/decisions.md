@@ -469,8 +469,8 @@ carries clinical content. View regressions and the O22 response regressions in
   meaning. Receipt interpretation pages distinguish source status from a
   conspicuous final-from-documentation label. Legacy missing ledgers are
   labelled unrecorded. An incomplete bounded ledger stops delivery visibly.
-- **source**: HL7 2.3.1 ?7.3.2; later supported editions ??7.4.1.25 and
-  7.4.2.11; modern ?7.4.1.22; ADRs 0003, 0005, 0008 and 0015.
+- **source**: HL7 2.3.1 §7.3.2; later supported editions §§7.4.1.25 and
+  7.4.2.11; modern §7.4.1.22; ADRs 0003, 0005, 0008 and 0015.
 - **tests**: [paired mapping cases](../../../crates/steps/mapping/tests/mapping/departures.rs),
   [durable v1 refusal](../../../crates/analyte/src/machine/interpretation/departure_tests.rs),
   [admin origin labels](../../../crates/analyte/src/admin/departures.rs).

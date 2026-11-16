@@ -5,7 +5,7 @@ use thiserror::Error;
 /// Inbound record boundaries; checksums and envelopes are independent of this policy.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum RecordBoundaries {
-    /// LIS01-A2 ??3.3.2, 6.3.1.1, 8.3.1.1: each record begins in a separate frame.
+    /// LIS01-A2 §§3.3.2, 6.3.1.1, 8.3.1.1: each record begins in a separate frame.
     #[default]
     Separate,
     /// ADR 0015: evidenced CR-ended records may share a verified inbound frame.

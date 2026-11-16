@@ -193,19 +193,19 @@ fn compatibility(
     for declaration in &effective.machine().deviations {
         let (exercised, standard) = match declaration {
             MachineDeparture::Hl7CrLfTerminators(_) => {
-                (hl7.is_some_and(|v| v.0), "HL7 ?2.4 segment boundaries")
+                (hl7.is_some_and(|v| v.0), "HL7 §2.4 segment boundaries")
             }
             MachineDeparture::Hl7LfTerminators(_) => {
-                (hl7.is_some_and(|v| v.1), "HL7 ?2.4 segment boundaries")
+                (hl7.is_some_and(|v| v.1), "HL7 §2.4 segment boundaries")
             }
             MachineDeparture::Hl7Utf8InV231(_) => {
-                (hl7.is_some_and(|v| v.2), "HL7 2.3.1 ?2.24.1.18")
+                (hl7.is_some_and(|v| v.2), "HL7 2.3.1 §2.24.1.18")
             }
             MachineDeparture::Hl7PreserveUnsupportedEscapes(_) => {
-                (preserved_escape, "HL7 ?2.7 escape sequences")
+                (preserved_escape, "HL7 §2.7 escape sequences")
             }
             MachineDeparture::AstmLowercaseChecksumHex(_) => {
-                (lowercase_checksum(machine, raw)?, "LIS01-A2 ??6.3.3, 8.3")
+                (lowercase_checksum(machine, raw)?, "LIS01-A2 §§6.3.3, 8.3")
             }
             MachineDeparture::Hl7AbsentObr25MeansFinal(_)
             | MachineDeparture::Hl7AbsentObx11MeansFinal(_)

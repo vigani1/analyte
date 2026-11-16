@@ -189,7 +189,7 @@ therefore remains empty when no peer identity is agreed. Sites may configure
   framing-only packed results on contract v1 unchanged; the applied departure
   remains in the protected receipt interpretation and admin page. It changes no
   clinical meaning and does not require a contract version in this task.
-- **source**: LIS01-A2 ??3.3.2, 6.3.1.1 and 8.3.1.1; custody under ADRs 0003
+- **source**: LIS01-A2 §§3.3.2, 6.3.1.1 and 8.3.1.1; custody under ADRs 0003
   and 0010; named scope and evidence under ADR 0015. Manual or qualified ADR
   0009 recording evidence must establish the installed packing mode; synthetic
   tests do not qualify any machine.
