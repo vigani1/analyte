@@ -60,7 +60,8 @@ the data, flag it and stop; never guess.
   crate of a kind has the same inner layout; a module with children is a
   folder with a `mod.rs` front file, never a file beside a same-named folder;
   every file starts with a `//!` line saying what it holds; folders over about
-  ten files group them by role; Layout CI limits tracked Rust files to 800 lines and requires a `//! Kept whole:` reason at 601?800 lines.
+  ten files group them by role. The Layout check in CI limits Rust files to
+  800 lines, and a file of 601 to 800 lines needs a `//! Kept whole:` reason.
 - **Folders:** group files by a clear owner (layer, then role). Split a module
   when it has a separate responsibility, not to meet a file count. File names
   never repeat their folder (`astm/frame.rs`, not `astm/astm_frame.rs`).
