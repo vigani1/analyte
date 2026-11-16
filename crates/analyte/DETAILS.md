@@ -504,7 +504,7 @@ transport evidence; a failed parking write is reported alongside its original er
 
 ## Capturing conversations
 
-Plan ?10 and ADR 0009: set `capture = true` on a `[[machines]]` entry in the
+Plan §10 and ADR 0009: set `capture = true` on a `[[machines]]` entry in the
 **program** TOML, then restart. It defaults to false and does not belong in the
 shipped machine definition. Capture-enabled machine IDs use ASCII letters,
 digits, underscores or hyphens so each names exactly one directory.
