@@ -1,0 +1,3 @@
+# Synthetic declaration only; the cited guarantee exercises validation, not machine qualification.
+deviations = [{ rule = "astm_frame_limit", declaration = { scope = {model="synthetic",firmware="test-1",mode="test",edition={protocol="astm"},direction="machine_to_host",message="astm_results"}, level="documented", evidence=[{kind="manual",reference="synthetic-test-policy",title="Synthetic policy",revision="1",section="ADR 0015 test",guarantee="compatibility",covers_unknown_firmware=false,contradicts=false}] } }]
+departure_scope = {model="synthetic",firmware="test-1",mode="test",edition={protocol="astm"},direction="machine_to_host",message="astm_results"}

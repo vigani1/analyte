@@ -154,7 +154,7 @@ fn adr_0005_claims_require_capability_evidence() -> Result<(), Error> {
 fn adr_0007_vendor_departures_need_named_reasons() -> Result<(), Error> {
     let smaller = ASTM.replace("limit = 64000", "limit = 247");
     assert!(draft(&smaller, OVERRIDES)?.validate().is_err());
-    let declared = smaller.replace("deviations = []", "deviations = [{name='small-frame',key='framing.limit',reason='Synthetic vendor requires 247 bytes'}]");
+    let declared = smaller.replace("deviations = []", include_str!("fixtures/departure.toml"));
     assert_eq!(
         astm_frame_limit(&draft(&declared, OVERRIDES)?.validate()?)?,
         247
@@ -397,7 +397,13 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
         "escapes = \"reject\"\nallow_utf8_in_v231 = true",
     );
     assert!(draft(&selected, OVERRIDES)?.validate().is_err());
-    let declared = selected.replace("deviations = []", "deviations = [{name='synthetic-legacy-utf8',key='syntax.allow_utf8_in_v231',reason='Synthetic vendor uses the later UTF-8 code'}]");
+    let declared = selected.replace(
+        "deviations = []",
+        &include_str!("fixtures/departure.toml")
+            .replace("astm_frame_limit", "hl7_utf8_in_v231")
+            .replace("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v231\"")
+            .replace("astm_results", "oru_r01_patient"),
+    );
     let config = draft(&declared, OVERRIDES)?.validate()?;
     let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
         config.effective().stack()

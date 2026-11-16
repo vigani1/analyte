@@ -65,7 +65,11 @@ pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> R
     Ok(())
 }
 
-pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Error> {
+pub(super) fn validate_machine(
+    m: &MachineDocument,
+    path: &str,
+    reference_path: &str,
+) -> Result<(), Error> {
     validate(m, path)?;
     if let Some(orders) = &m.orders {
         orders.validate(m, path)?;
@@ -75,7 +79,7 @@ pub(super) fn validate_machine(m: &MachineDocument, path: &str) -> Result<(), Er
     validate_protocol_selection(m, path)?;
     validate_dialog_and_framing(m, path)?;
     validate_syntax(m, path)?;
-    validate_departures(m, path)?;
+    validate_departures(m, path, reference_path)?;
     validate_protocol(m, path)?;
     validate_mappings(m, path)?;
     validate_evidence(m, path)?;
@@ -127,3 +131,6 @@ use mappings::*;
 
 mod stack;
 use stack::*;
+
+mod departures;
+use departures::validate_departures;

@@ -78,6 +78,7 @@ dependencies = [
  "analyte-framing",
  "analyte-hl7",
  "analyte-model",
+ "analyte-transport",
  "serde",
  "sha2",
  "thiserror",
