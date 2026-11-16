@@ -1,4 +1,5 @@
 //! Tests vendor receipt custody.
+//! Kept whole: shared service fixture and durable identity assertions stay together.
 #[path = "../support/guard.rs"]
 mod guard;
 #[path = "../../../protocols/poct/tests/peer_messages.rs"]
@@ -521,32 +522,50 @@ async fn assert_missing_identity_and_conflict_retained(
         db.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
         2
     );
-    let mut statement = db.prepare(
-        "SELECT i.evidence FROM interpretations i JOIN receipts r ON i.receipt=r.id WHERE r.raw=?1",
-    )?;
-    let encoded: String = statement
-        .query_row([missing_time.as_bytes()], |r| r.get(0))
-        .map_err(|e| format!("missing time interpretation: {e}"))?;
-    let evidence: analyte_store::Interpretation = serde_json::from_str(&encoded)?;
-    assert!(
-        matches!(evidence.outcome, analyte_store::Reading::Results(results) if results.iter().all(|r| matches!(r.identity, analyte_model::IdentityStatus::Unresolved(_))))
-    );
-    assert!(
-        db.query_row(
-            "SELECT count(*) FROM parked WHERE evidence LIKE '%identity evidence missing%'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )? >= 2
-    );
-    assert!(
-        db.query_row(
-            "SELECT count(*) FROM parked WHERE evidence LIKE '%conflict%'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )? >= 1
-    );
-    drop(statement);
-    drop(db);
+    for (raw, reason, unresolved) in [
+        (&missing_time, "result reconciliation: Unresolved", true),
+        (&missing_sequence, "result reconciliation: Unresolved", true),
+        (&conflict, "result reconciliation: Conflict", true),
+    ] {
+        run.stored(raw.as_bytes(), "analyte-poct")?;
+        let encoded: String = db.query_row(
+            "SELECT i.evidence FROM interpretations i JOIN receipts r ON i.receipt=r.id WHERE r.raw=?1",
+            [raw.as_bytes()], |r| r.get(0))?;
+        let evidence: analyte_store::Interpretation = serde_json::from_str(&encoded)?;
+        let analyte_store::Reading::Results(results) = evidence.outcome else {
+            return Err("expected retained results".into());
+        };
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            matches!(
+                results.first().ok_or("missing retained result")?.identity,
+                analyte_model::IdentityStatus::Unresolved(_)
+            ),
+            unresolved
+        );
+        let analyte_model::IdentityStatus::Unresolved(identity_reason) =
+            &results.first().ok_or("missing retained result")?.identity
+        else {
+            return Err("expected unresolved identity".into());
+        };
+        assert_eq!(
+            identity_reason.as_str(),
+            if raw == &conflict {
+                "conflicting content under retained observation identity"
+            } else {
+                "POCT configured device/time/sequence identity evidence missing"
+            }
+        );
+        let count: i64 = db.query_row(
+            "SELECT count(*) FROM parked p JOIN receipts r ON EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=json_extract(r.id,'$')) WHERE r.raw=?1 AND json_extract(p.evidence,'$.reason')=?2",
+            rusqlite::params![raw.as_bytes(), reason], |r| r.get(0))?;
+        assert_eq!(count, 1, "receipt-specific parking: {reason}");
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
+            2
+        );
+    }
+    poct_deliveries(run, 2).await?;
     Ok(())
 }
 
@@ -576,13 +595,11 @@ async fn assert_missing_device_retained(run: &mut Running, hello: &str) -> Resul
             .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
         2
     );
-    assert!(
-        run.database()?.query_row(
-            "SELECT count(*) FROM parked WHERE evidence LIKE '%DEV.device_id%'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )? >= 1
-    );
+    let count: i64 = run.database()?.query_row(
+        "SELECT count(*) FROM parked p JOIN receipts r ON EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=json_extract(r.id,'$')) WHERE r.raw=?1 AND json_extract(p.evidence,'$.reason') = 'POCT syntax: required message part missing: DEV.device_id'",
+        [missing_device.as_bytes()], |r| r.get(0))?;
+    assert_eq!(count, 1);
+    poct_deliveries(run, 2).await?;
     Ok(())
 }
 

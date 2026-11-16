@@ -64,6 +64,7 @@ pub fn map(
         | Body::Terminate(_)
         | Body::Acknowledgement { .. }
         | Body::Escape { .. }
+        | Body::KeepAlive
         | Body::Request(_) => return Err(MappingError::NotObservations),
     };
     let mut mapped = Vec::new();

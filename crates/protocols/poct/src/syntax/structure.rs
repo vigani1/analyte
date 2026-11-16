@@ -195,6 +195,7 @@ fn object_rules(name: &str, patient: bool) -> Option<Vec<Rule>> {
         "DST.R01" => vec![one("HDR"), one("DST")],
         "OBS.R01" | "OBS.R02" => vec![one("HDR"), several("SVC")],
         "EOT.R01" => vec![one("HDR"), one("EOT")],
+        "KPA.R01" => vec![one("HDR")],
         "END.R01" => vec![one("HDR"), one("TRM")],
         "ACK.R01" => vec![one("HDR"), one("ACK")],
         "ESC.R01" => vec![one("HDR"), one("ESC")],

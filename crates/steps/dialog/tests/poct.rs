@@ -1,4 +1,5 @@
 //! Tests POCT reviewer conversations and timeouts.
+//! Kept whole: reviewer state transitions share custody and startup helpers.
 use analyte_dialog::poct::{
     CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent, Error as DialogError,
 };
@@ -104,7 +105,7 @@ fn poct01_b_4_1_2_startup_and_rejection_in_sequence() -> Result<(), DialogError>
     let actions = step(&mut rejected, DialogEvent::HelloDecision(false))?;
     assert!(matches!(
         sends(&actions).as_slice(),
-        [Outbound::ApplicationError { .. }]
+        [Outbound::ApplicationError { reference, error: ApplicationError::UnsupportedValue }] if reference.as_str() == "h"
     ));
     assert!(
         actions
@@ -118,7 +119,10 @@ fn poct01_b_4_1_2_startup_and_rejection_in_sequence() -> Result<(), DialogError>
     )?;
     assert!(matches!(
         sends(&actions).as_slice(),
-        [Outbound::Escape { .. }, Outbound::Terminate(_)]
+        [
+            Outbound::Escape { .. },
+            Outbound::Terminate(analyte_poct::TerminationReason::Abnormal)
+        ]
     ));
     Ok(())
 }
@@ -179,13 +183,16 @@ fn poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes() -> Result<()
     )?;
     assert!(matches!(
         sends(&actions).as_slice(),
-        [Outbound::ApplicationError { .. }]
+        [Outbound::ApplicationError { reference, error: ApplicationError::UnsupportedValue }] if reference.as_str() == "bad"
     ));
     let t = ticket(&step(&mut dialog, received(&observation("retry"))?)?)?;
     let actions = complete(&mut dialog, t, CommitOutcome::Failed)?;
     assert!(matches!(
         sends(&actions).as_slice(),
-        [Outbound::Escape { .. }, Outbound::Terminate(_)]
+        [
+            Outbound::Escape { reference, reason: analyte_poct::EscapeReason::CannotComplete },
+            Outbound::Terminate(analyte_poct::TerminationReason::Abnormal)
+        ] if reference.as_str() == "retry"
     ));
     Ok(())
 }
@@ -240,7 +247,7 @@ fn poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination()
         .find_map(|a| {
             if let DialogAction::Send {
                 control_id,
-                body: Outbound::Terminate(_),
+                body: Outbound::Terminate(analyte_poct::TerminationReason::Normal),
             } = a
             {
                 Some(control_id.clone())
@@ -458,7 +465,7 @@ fn poct01_b5_13_reused_id_before_commit_is_retained_not_accepted() -> Result<(),
         matches!(actions.first(), Some(DialogAction::Park { message, .. }) if message.document().raw() == repeated.as_bytes())
     );
     assert!(
-        matches!(sends(&actions).as_slice(), [Outbound::Escape { reference, .. }, Outbound::Terminate(_)] if reference.as_str() == "same")
+        matches!(sends(&actions).as_slice(), [Outbound::Escape { reference, .. }, Outbound::Terminate(analyte_poct::TerminationReason::Abnormal)] if reference.as_str() == "same")
     );
     assert!(
         !actions
@@ -511,7 +518,7 @@ fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
                     reason,
                     ..
                 },
-                Outbound::Terminate(_)
+                Outbound::Terminate(analyte_poct::TerminationReason::Abnormal)
             ] if *reason == expected_reason
         ));
         // Even at capacity the correlated, unique terminal ACK must be usable.
@@ -520,7 +527,7 @@ fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
             .find_map(|a| {
                 if let DialogAction::Send {
                     control_id,
-                    body: Outbound::Terminate(_),
+                    body: Outbound::Terminate(analyte_poct::TerminationReason::Abnormal),
                 } = a
                 {
                     Some(control_id.as_str())
@@ -566,7 +573,7 @@ fn poct01_b5_13_rejected_hello_reference_cannot_be_reused_by_terminal_ack()
         .find_map(|a| {
             if let DialogAction::Send {
                 control_id,
-                body: Outbound::Terminate(_),
+                body: Outbound::Terminate(analyte_poct::TerminationReason::Abnormal),
             } = a
             {
                 Some(control_id.as_str())
@@ -593,5 +600,42 @@ fn poct01_b5_13_rejected_hello_reference_cannot_be_reused_by_terminal_ack()
         actions.last(),
         Some(DialogAction::Close { normal: false, .. })
     ));
+    Ok(())
+}
+
+// POCT01-A2 Appendix B 5.12 Table 29 and 3.4.2.
+#[test]
+fn poct01_b_5_12_unexpected_ack_escape_references_incoming_header() -> Result<(), DialogError> {
+    let mut dialog = dialog(4)?;
+    startup(&mut dialog)?;
+    let raw = peer_messages::message(
+        "ACK.R01",
+        "unexpected-ack",
+        "<ACK><ACK.type_cd V=\"AA\"/><ACK.ack_control_id V=\"prior-request\"/></ACK>",
+    );
+    let actions = step(&mut dialog, received(&raw)?)?;
+    assert!(
+        matches!(sends(&actions).as_slice(), [Outbound::Escape { reference, reason: analyte_poct::EscapeReason::Other }, Outbound::Terminate(analyte_poct::TerminationReason::Abnormal)] if reference.as_str() == "unexpected-ack")
+    );
+    for action in &actions {
+        if let DialogAction::Send { control_id, body } = action {
+            let encoded = analyte_poct::encode(
+                &analyte_poct::Header {
+                    control_id: control_id.clone(),
+                    created: analyte_poct::Timestamp::parse("2026-06-09T08:00:00+02:00")
+                        .map_err(analyte_poct::MessageError::from)?,
+                },
+                body,
+                peer_messages::limits(),
+            )?;
+            let raw = std::str::from_utf8(encoded.document().raw()).expect("encoder emits UTF-8");
+            if matches!(body, Outbound::Escape { .. }) {
+                assert!(raw.contains("<ESC.esc_control_id V=\"unexpected-ack\"/>"));
+                assert!(raw.contains("<ESC.detail_cd V=\"OTH\"/>"));
+            } else {
+                assert!(raw.contains("<TRM.reason_cd V=\"ABN\"/>"));
+            }
+        }
+    }
     Ok(())
 }

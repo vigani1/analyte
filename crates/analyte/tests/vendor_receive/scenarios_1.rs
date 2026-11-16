@@ -1,4 +1,5 @@
 //! Tests vendor receipt custody.
+//! Kept whole: vendor custody conversations share the same program fixture.
 use super::*;
 
 #[tokio::test]
@@ -357,6 +358,36 @@ async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Resu
                 .get::<_, i64>(0))?,
         1
     );
+    // POCT01-A2 B 3.2 and 5.21; clinical rule 4: compare delivered meanings.
+    let receiver = rusqlite::Connection::open(run.directory.path().join("reference.db"))?;
+    let mut statement = receiver.prepare("SELECT body FROM deliveries ORDER BY rowid")?;
+    let bodies = statement
+        .query_map([], |r| r.get::<_, Vec<u8>>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(bodies.len(), 2);
+    let first: serde_json::Value =
+        serde_json::from_slice(bodies.first().ok_or("missing original")?)?;
+    let corrected: serde_json::Value =
+        serde_json::from_slice(bodies.get(1).ok_or("missing correction")?)?;
+    assert_ne!(first["delivery_id"], corrected["delivery_id"]);
+    assert_ne!(first["receipt"]["id"], corrected["receipt"]["id"]);
+    for (body, revision, value) in [(&first, 0, "12.30"), (&corrected, 1, "13.30")] {
+        assert_eq!(body["results"].as_array().ok_or("results array")?.len(), 1);
+        assert_eq!(
+            body["results"][0]["identity"]["resolved"]["revision"],
+            revision
+        );
+        assert_eq!(
+            body["results"][0]["parts"][0]["values"][0]["original"],
+            value
+        );
+    }
+    let identity = &first["results"][0]["identity"]["resolved"]["observation"];
+    assert!(identity.is_object());
+    assert_eq!(
+        identity,
+        &corrected["results"][0]["identity"]["resolved"]["observation"]
+    );
     assert_missing_identity_and_conflict_retained(&mut run, &resent, &original).await?;
     assert_missing_device_retained(&mut run, &hello).await?;
     run.close_with_deliveries(2).await
@@ -489,4 +520,107 @@ async fn poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes() -> 
         run.close().await?;
     }
     Ok(())
+}
+
+// POCT01-A2 Appendix B 3.5, 5.7, 5.12 and 6.9; synthetic peer bytes.
+#[tokio::test]
+async fn poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape() -> Result<(), Error> {
+    for (host, device) in [(2048, 1024), (1024, 2048)] {
+        let definition = include_str!("../../../core/config/examples/poct.toml")
+            .replace("bytes = 1048576", &format!("bytes = {host}"));
+        let mut run = Running::start(&definition).await?;
+        let hello = poct_peer::hello("hello").replace(
+            "<DSC.max_message_sz NULL=\"PINF\"/>",
+            &format!("<DSC.max_message_sz V=\"{device}\"/>"),
+        );
+        run.peer.write_all(hello.as_bytes()).await?;
+        let ack = xml(&mut run.peer).await?;
+        assert!(ack.len() <= host.min(device));
+        assert_accept(&ack, "hello")?;
+        run.peer
+            .write_all(poct_peer::status("status", "1").as_bytes())
+            .await?;
+        let ack = xml(&mut run.peer).await?;
+        assert!(ack.len() <= host.min(device));
+        assert_accept(&ack, "status")?;
+        let request = xml(&mut run.peer).await?;
+        assert!(request.len() <= host.min(device));
+        assert!(
+            matches!(analyte_poct::Message::parse(&request, poct_peer::limits())?.body(), analyte_poct::Body::Request(analyte_poct::Nullable::Value(code)) if code.value == "ROBS")
+        );
+        let observation =
+            poct_peer::observation("obs", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>");
+        run.peer.write_all(observation.as_bytes()).await?;
+        let ack = xml(&mut run.peer).await?;
+        assert!(ack.len() <= host.min(device));
+        assert_accept(&ack, "obs")?;
+        // A syntactically valid null analyte cannot be mapped; it gets a classified error ACK.
+        let invalid = observation.replace("V=\"obs\"", "V=\"bad-map\"").replace(
+            "<OBS.observation_id V=\"synthetic-analyte\" SN=\"synthetic-system\"><TRANSLTN V=\"alternate\" SN=\"alternate-system\"/></OBS.observation_id>",
+            "<OBS.observation_id NULL=\"UNK\"/>",
+        );
+        run.peer.write_all(invalid.as_bytes()).await?;
+        let error_ack = xml(&mut run.peer).await?;
+        assert!(error_ack.len() <= host.min(device));
+        assert!(
+            matches!(analyte_poct::Message::parse(&error_ack, poct_peer::limits())?.body(), analyte_poct::Body::Acknowledgement { kind: analyte_poct::AckKind::Error, reference } if reference.as_str() == "bad-map")
+        );
+        let keep_alive = poct_peer::message("KPA.R01", "keep-alive", "");
+        run.peer.write_all(keep_alive.as_bytes()).await?;
+        let escape = xml(&mut run.peer).await?;
+        assert!(escape.len() <= host.min(device));
+        assert!(
+            matches!(analyte_poct::Message::parse(&escape, poct_peer::limits())?.body(), analyte_poct::Body::Escape { reference, reason } if reference.as_str() == "keep-alive" && reason == "OTH")
+        );
+        run.stored(keep_alive.as_bytes(), "analyte-poct")?;
+        let end = xml(&mut run.peer).await?;
+        assert!(end.len() <= host.min(device));
+        let parsed = analyte_poct::Message::parse(&end, poct_peer::limits())?;
+        assert!(
+            matches!(parsed.body(), analyte_poct::Body::Terminate(analyte_poct::Nullable::Value(code)) if code.value == "ABN")
+        );
+        let reply = poct_peer::message(
+            "ACK.R01",
+            "end-ack",
+            &format!(
+                "<ACK><ACK.type_cd V=\"AA\"/><ACK.ack_control_id V=\"{}\"/></ACK>",
+                parsed.header().control_id.as_str()
+            ),
+        );
+        run.peer.write_all(reply.as_bytes()).await?;
+        assert_eq!(
+            tokio::time::timeout(HANG_GUARD, run.peer.read(&mut [0])).await??,
+            0
+        );
+        run.close().await?;
+    }
+    Ok(())
+}
+
+fn assert_accept(raw: &[u8], expected: &str) -> Result<(), Error> {
+    assert!(
+        matches!(analyte_poct::Message::parse(raw, poct_peer::limits())?.body(), analyte_poct::Body::Acknowledgement { kind: analyte_poct::AckKind::Accept, reference } if reference.as_str() == expected)
+    );
+    Ok(())
+}
+
+// POCT01-A2 Appendix B 5.7: a later error reply must also be refused whole.
+#[tokio::test]
+async fn poct01_b_5_7_later_error_ack_cannot_exceed_device_capacity() -> Result<(), Error> {
+    let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
+    let hello = poct_peer::hello("hello").replace(
+        "<DSC.max_message_sz NULL=\"PINF\"/>",
+        "<DSC.max_message_sz V=\"300\"/>",
+    );
+    poct_start(&mut run, &hello).await?;
+    let raw = poct_peer::observation(&"x".repeat(256), true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>").replace(
+        "<OBS.observation_id V=\"synthetic-analyte\" SN=\"synthetic-system\"><TRANSLTN V=\"alternate\" SN=\"alternate-system\"/></OBS.observation_id>",
+        "<OBS.observation_id NULL=\"UNK\"/>");
+    run.peer.write_all(raw.as_bytes()).await?;
+    assert_eq!(
+        tokio::time::timeout(HANG_GUARD, run.peer.read(&mut [0])).await??,
+        0
+    );
+    run.stored(raw.as_bytes(), "analyte-poct")?;
+    run.close().await
 }
