@@ -17,40 +17,89 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let mut options = settings.syntax().options();
-    options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit());
-    let config = Config::new(
-        options,
-        Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
-        1,
-    )?;
-    let mut dialog = Dialog::new(config, 0);
-    let start = Instant::now();
-    let mut wake = None;
-    let mut pending = BTreeMap::new();
-    let enabled = settings
-        .orders()
-        .as_ref()
-        .is_some_and(|o| o.query().is_some() || o.send().is_some());
-    let mut queries = if enabled {
-        Some(crate::orders::hl7::Connection::new(options)?)
-    } else {
-        None
-    };
-    if enabled {
-        dialog.enable_orders(settings.syntax().edition().into())?;
+    let mut state = ConnectionState::open(settings)?;
+    let result = state.receive_loop(machine, store, conn, &mut stop).await;
+    state.close(machine, store, result).await
+}
+
+struct DisplayOutcome {
+    receipt: Option<analyte_dialog::hl7::ReceiptId>,
+    accepted: bool,
+    code: &'static str,
+    detail: Option<String>,
+}
+
+struct QueryRequest {
+    token: analyte_dialog::hl7::ReceiptId,
+    message: analyte_hl7::Message,
+    started: Duration,
+    edition_matches: bool,
+}
+
+struct ConnectionState {
+    dialog: Dialog,
+    start: Instant,
+    wake: Option<Duration>,
+    pending: BTreeMap<(u64, u64), ReceiptId>,
+    queries: Option<crate::orders::hl7::Connection>,
+    enabled: bool,
+    input_evidence: Vec<u8>,
+    write_error: Option<analyte_transport::Error>,
+}
+
+impl ConnectionState {
+    fn open(settings: &analyte_config::Hl7Stack) -> Result<Self, Error> {
+        let mut options = settings.syntax().options();
+        options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit());
+        let config = Config::new(
+            options,
+            Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
+            1,
+        )?;
+        let mut dialog = Dialog::new(config, 0);
+        let start = Instant::now();
+        let wake = None;
+        let pending = BTreeMap::new();
+        let enabled = settings
+            .orders()
+            .as_ref()
+            .is_some_and(|o| o.query().is_some() || o.send().is_some());
+        let queries = if enabled {
+            Some(crate::orders::hl7::Connection::new(options)?)
+        } else {
+            None
+        };
+        if enabled {
+            dialog.enable_orders(settings.syntax().edition().into())?;
+        }
+        let input_evidence = Vec::new();
+        let write_error = None;
+        Ok(Self {
+            dialog,
+            start,
+            wake,
+            pending,
+            queries,
+            enabled,
+            input_evidence,
+            write_error,
+        })
     }
-    let mut input_evidence = Vec::new();
-    let mut write_error = None;
-    let result = async {
+    async fn receive_loop(
+        &mut self,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+    ) -> Result<(), Error> {
         loop {
-            let wait = wake.map_or(Duration::from_secs(1), |d: Duration| {
-                d.saturating_sub(start.elapsed())
+            let wait = self.wake.map_or(Duration::from_secs(1), |d: Duration| {
+                d.saturating_sub(self.start.elapsed())
             });
 
             let event = tokio::select! {
                 biased;
-                () = super::stopping(&mut stop) => break,
+                () = super::stopping(stop) => break,
                 () = tokio::time::sleep(wait) => None,
                 event = connection_input::receive(conn) => match event {
                     Ok(event) => Some(event),
@@ -69,182 +118,420 @@ pub(super) async fn session(
                 }
                 Some(Input::Bytes { bytes }) => bytes,
                 Some(Input::Closed(_)) => break,
-                Some(
-                    Input::Failed(_)
-                    | Input::RecordingFailed(_),
-                )
-                | Some(Input::Tick) | None => transport_failure_as_empty_input(),
-            };
-            input_evidence = bytes.clone();
-            let events = if bytes.is_empty() {
-                vec![Event::Tick]
-            } else {
-                bytes.into_iter().map(Event::Byte).collect()
-            };
-            for event in events {
-                let mut actions: VecDeque<_> = dialog.step(start.elapsed(), event)?.into();
-                while let Some(action) = actions.pop_front() {
-                    match action {
-                        Action::ReceiptRetained(token) => {
-                            pending.remove(&(token.epoch(), token.ordinal())).ok_or("late receipt absent")?;
-                        }
-                        Action::Query { receipt: token, message, started, edition_matches } => {
-                            let id = pending.remove(&(token.epoch(), token.ordinal())).ok_or("query receipt absent")?;
-                            if !edition_matches {
-                                evidence::failed_reading(store,machine,id,"HL7 query edition differs from configured edition").await?;
-                            } else {
-                                let query = queries.as_mut().ok_or("HL7 query services absent")?;
-                                let reply = tokio::select! { biased; () = super::stopping(&mut stop) => return Ok(()), result = query.answer(store,machine,crate::orders::hl7::Request { message: &message, started: start.checked_add(started).ok_or("query clock overflow")?, receipt: id },&dialog,start) => result? };
-                                if let Some(reply) = reply { actions.extend(dialog.step(start.elapsed(), Event::QueryReply(&reply))?); }
-                            }
-                            actions.extend(dialog.step(start.elapsed(), Event::Tick)?);
-                        }
-                        Action::OrderResponse { receipt: token, message } => {
-                            pending.remove(&(token.epoch(), token.ordinal())).ok_or("order response receipt absent")?;
-                            queries.as_mut().ok_or("HL7 order services absent")?.order_response(store,Some(&message)).await?;
-                        }
-                        Action::OrderResponseTimeout => {
-                            queries.as_mut().ok_or("HL7 order services absent")?.order_response(store,None).await?;
-                        }
-                        Action::DisplayOutcome { receipt, accepted, code, detail } => {
-                            if let Some(token) = receipt {
-                                let id = pending.remove(&(token.epoch(), token.ordinal())).ok_or("display receipt absent")?;
-                                if let Some(detail) = detail { evidence::failed_reading(store,machine,id,&detail).await?; }
-                            }
-                            queries.as_mut().ok_or("HL7 display services absent")?.outcome(store,code,accepted).await?;
-                        }
-                        Action::Commit(token, raw) => {
-                            let id = ReceiptId::new();
-                            match evidence::receive(store, machine, id, raw).await {
-                                Ok(_) => {
-                                    if pending.len() >= 2 {
-                                        return Err(invalid("HL7 pending receipt limit exceeded"));
-                                    }
-                                    pending.insert((token.epoch(), token.ordinal()), id);
-                                    actions.extend(
-                                        dialog.step(start.elapsed(), Event::Committed(token))?,
-                                    );
-                                }
-                                Err(error) => {
-                                    tracing::error!(
-                                        machine = machine.id.as_str(),
-                                        error_kind = %error,
-                                        "HL7 durable commit refused"
-                                    );
-                                    actions.extend(
-                                        dialog.step(start.elapsed(), Event::CommitFailed(token))?,
-                                    );
-                                }
-                            }
-                        }
-                        Action::Interpret(token, _payload) => {
-                            let id = pending
-                                .remove(&(token.epoch(), token.ordinal()))
-                                .ok_or_else(|| invalid("HL7 receipt correlation missing"))?;
-                            let (outcome, location) =
-                                evidence::interpret_with_location(store, machine, id).await?;
-                            let event = if matches!(outcome,evidence::InterpretationOutcome::Accepted) {
-                                Event::Interpreted(token)
-                            } else {
-                                Event::NotInterpretable(
-                                    token,
-                                    super::error_location::build(location.as_ref(), b"207", b"operator-review"),
-                                    false,
-                                )
-                            };
-                            actions.extend(dialog.step(start.elapsed(), event)?);
-                        }
-                        Action::ResponseNeeded(token, _) => {
-                            let metadata = crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Hl7);
-                            actions.extend(dialog.step(
-                                start.elapsed(),
-                                Event::Respond(
-                                    token,
-                                    metadata.response()?,
-                                ),
-                            )?);
-                        }
-                        Action::QueryWrite { bytes, until, part } => {
-                            match conn.write_all(&bytes, Some(tokio::time::Instant::from_std(start.checked_add(until).ok_or("query write deadline overflow")?))).await {
-                                Ok(()) => actions.extend(dialog.step(start.elapsed(), Event::QueryWritten(part))?),
-                                Err(error) => {
-                                    actions.extend(dialog.step(start.elapsed(), Event::QueryWriteFailed(part))?);
-                                    write_error = Some(error);
-                                },
-                            }
-                        }
-                        Action::Write(bytes) => {
-                            conn.write_all(&bytes, None).await?;
-                        }
-                        Action::Deadline(next) => wake = next,
-                        Action::Rejected(error, bytes) => {
-                            evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
-                        }
-                        Action::Parked(bytes, error) => {
-                            pending.clear();
-                            evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
-                        }
-                        Action::QueueFull(bytes) | Action::Unmatched(bytes) => {
-                            evidence::park_bytes(
-                                store,
-                                machine,
-                                bytes,
-                                "HL7 unsolicited message or queue overflow",
-                            )
-                            .await?;
-                            return Err(invalid("HL7 message refused"));
-                        }
-                        Action::Refused(error) => return Err(error.into()),
-                        Action::TimedOut(_) => {
-                            return Err(invalid(
-                                "HL7 host phase timed out; receipt requires reconciliation",
-                            ));
-                        }
-                        Action::Sent(_, _) | Action::CommitAccepted(_) => {
-                            return Err(invalid("unexpected outgoing HL7 outcome"));
-                        }
-                    }
+                Some(Input::Failed(_) | Input::RecordingFailed(_)) | Some(Input::Tick) | None => {
+                    transport_failure_as_empty_input()
                 }
-                if let Some(error) = write_error.take() { return Err(error.into()); }
+            };
+            if self
+                .receive_bytes(bytes, machine, store, conn, stop)
+                .await?
+            {
+                return Ok(());
             }
-            input_evidence.clear();
-            if let Some(query) = &mut queries {
-                tokio::select! {biased; ()=super::stopping(&mut stop)=>break,result=query.idle(store,machine,conn,&mut dialog,start)=>result?,}
+            self.input_evidence.clear();
+            if let Some(query) = &mut self.queries {
+                tokio::select! {biased; ()=super::stopping(stop)=>break,result=query.idle(store,machine,conn,&mut self.dialog,self.start)=>result?,}
             }
-            wake = dialog.next_deadline();
+            self.wake = self.dialog.next_deadline();
         }
         Ok::<_, Error>(())
     }
-    .await;
-    // A cancelled or failed host operation must expose partial input as well.
-    for action in dialog.step(start.elapsed(), Event::Disconnect)? {
-        if let Action::Rejected(error, bytes) = action {
-            evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+    async fn receive_bytes(
+        &mut self,
+        bytes: Vec<u8>,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+    ) -> Result<bool, Error> {
+        self.input_evidence = bytes.clone();
+        let events = if bytes.is_empty() {
+            vec![Event::Tick]
+        } else {
+            bytes.into_iter().map(Event::Byte).collect()
+        };
+        for event in events {
+            if self.process(event, machine, store, conn, stop).await? {
+                return Ok(true);
+            }
         }
+        Ok(false)
     }
-    if enabled && !input_evidence.is_empty() {
+    async fn process(
+        &mut self,
+        event: Event<'_>,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+    ) -> Result<bool, Error> {
+        let mut actions: VecDeque<_> = self.dialog.step(self.start.elapsed(), event)?.into();
+        while let Some(action) = actions.pop_front() {
+            if self
+                .effect(action, machine, store, conn, stop, &mut actions)
+                .await?
+            {
+                return Ok(true);
+            }
+        }
+        if let Some(error) = self.write_error.take() {
+            return Err(error.into());
+        }
+        Ok(false)
+    }
+    async fn effect(
+        &mut self,
+        action: Action,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+        actions: &mut VecDeque<Action>,
+    ) -> Result<bool, Error> {
+        match action {
+            Action::ReceiptRetained(token) => {
+                self.pending
+                    .remove(&(token.epoch(), token.ordinal()))
+                    .ok_or("late receipt absent")?;
+            }
+            Action::Query {
+                receipt: token,
+                message,
+                started,
+                edition_matches,
+            } => {
+                return self
+                    .answer_query(
+                        QueryRequest {
+                            token,
+                            message,
+                            started,
+                            edition_matches,
+                        },
+                        machine,
+                        store,
+                        stop,
+                        actions,
+                    )
+                    .await;
+            }
+            Action::OrderResponse {
+                receipt: token,
+                message,
+            } => {
+                self.order_response(token, &message, store).await?;
+            }
+            Action::OrderResponseTimeout => {
+                self.queries
+                    .as_mut()
+                    .ok_or("HL7 order services absent")?
+                    .order_response(store, None)
+                    .await?;
+            }
+            Action::DisplayOutcome {
+                receipt,
+                accepted,
+                code,
+                detail,
+            } => {
+                self.display_outcome(
+                    DisplayOutcome {
+                        receipt,
+                        accepted,
+                        code,
+                        detail,
+                    },
+                    machine,
+                    store,
+                )
+                .await?;
+            }
+            Action::Commit(token, raw) => {
+                self.commit(token, raw, machine, store, actions).await?;
+            }
+            Action::Interpret(token, _payload) => {
+                self.interpret(token, machine, store, actions).await?;
+            }
+            Action::ResponseNeeded(token, _) => {
+                self.respond(token, actions)?;
+            }
+            Action::QueryWrite { bytes, until, part } => {
+                self.write_query(&bytes, until, part, conn, actions).await?;
+            }
+            Action::Write(bytes) => {
+                conn.write_all(&bytes, None).await?;
+            }
+            Action::Deadline(next) => self.wake = next,
+            Action::Rejected(error, bytes) => {
+                evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+            }
+            Action::Parked(bytes, error) => {
+                self.pending.clear();
+                evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+            }
+            Action::QueueFull(bytes) | Action::Unmatched(bytes) => {
+                return self.refuse_message(machine, store, bytes).await;
+            }
+            Action::Refused(error) => return Err(error.into()),
+            Action::TimedOut(_) => {
+                return Err(invalid(
+                    "HL7 host phase timed out; receipt requires reconciliation",
+                ));
+            }
+            Action::Sent(_, _) | Action::CommitAccepted(_) => {
+                return Err(invalid("unexpected outgoing HL7 outcome"));
+            }
+        }
+        Ok(false)
+    }
+    async fn answer_query(
+        &mut self,
+        request: QueryRequest,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        stop: &mut watch::Receiver<bool>,
+        actions: &mut VecDeque<Action>,
+    ) -> Result<bool, Error> {
+        let QueryRequest {
+            token,
+            message,
+            started,
+            edition_matches,
+        } = request;
+
+        let id = self
+            .pending
+            .remove(&(token.epoch(), token.ordinal()))
+            .ok_or("query receipt absent")?;
+        if !edition_matches {
+            evidence::failed_reading(
+                store,
+                machine,
+                id,
+                "HL7 query edition differs from configured edition",
+            )
+            .await?;
+        } else {
+            let query = self.queries.as_mut().ok_or("HL7 query services absent")?;
+            let reply = tokio::select! { biased; () = super::stopping(stop) => return Ok(true), result = query.answer(store,machine,crate::orders::hl7::Request { message: &message, started: self.start.checked_add(started).ok_or("query clock overflow")?, receipt: id },&self.dialog,self.start) => result? };
+            if let Some(reply) = reply {
+                actions.extend(
+                    self.dialog
+                        .step(self.start.elapsed(), Event::QueryReply(&reply))?,
+                );
+            }
+        }
+        actions.extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
+
+        Ok(false)
+    }
+    async fn commit(
+        &mut self,
+        token: analyte_dialog::hl7::ReceiptId,
+        raw: Vec<u8>,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        actions: &mut VecDeque<Action>,
+    ) -> Result<(), Error> {
+        let id = ReceiptId::new();
+        match evidence::receive(store, machine, id, raw).await {
+            Ok(_) => {
+                if self.pending.len() >= 2 {
+                    return Err(invalid("HL7 pending receipt limit exceeded"));
+                }
+                self.pending.insert((token.epoch(), token.ordinal()), id);
+                actions.extend(
+                    self.dialog
+                        .step(self.start.elapsed(), Event::Committed(token))?,
+                );
+            }
+            Err(error) => {
+                tracing::error!(
+                    machine = machine.id.as_str(),
+                    error_kind = %error,
+                    "HL7 durable commit refused"
+                );
+                actions.extend(
+                    self.dialog
+                        .step(self.start.elapsed(), Event::CommitFailed(token))?,
+                );
+            }
+        }
+
+        Ok(())
+    }
+    async fn interpret(
+        &mut self,
+        token: analyte_dialog::hl7::ReceiptId,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        actions: &mut VecDeque<Action>,
+    ) -> Result<(), Error> {
+        let id = self
+            .pending
+            .remove(&(token.epoch(), token.ordinal()))
+            .ok_or_else(|| invalid("HL7 receipt correlation missing"))?;
+        let (outcome, location) = evidence::interpret_with_location(store, machine, id).await?;
+        let event = if matches!(outcome, evidence::InterpretationOutcome::Accepted) {
+            Event::Interpreted(token)
+        } else {
+            Event::NotInterpretable(
+                token,
+                super::error_location::build(location.as_ref(), b"207", b"operator-review"),
+                false,
+            )
+        };
+        actions.extend(self.dialog.step(self.start.elapsed(), event)?);
+
+        Ok(())
+    }
+    async fn display_outcome(
+        &mut self,
+        outcome: DisplayOutcome,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+    ) -> Result<(), Error> {
+        let DisplayOutcome {
+            receipt,
+            accepted,
+            code,
+            detail,
+        } = outcome;
+
+        if let Some(token) = receipt {
+            let id = self
+                .pending
+                .remove(&(token.epoch(), token.ordinal()))
+                .ok_or("display receipt absent")?;
+            if let Some(detail) = detail {
+                evidence::failed_reading(store, machine, id, &detail).await?;
+            }
+        }
+        self.queries
+            .as_mut()
+            .ok_or("HL7 display services absent")?
+            .outcome(store, code, accepted)
+            .await?;
+
+        Ok(())
+    }
+    async fn write_query(
+        &mut self,
+        bytes: &[u8],
+        until: Duration,
+        part: analyte_dialog::hl7::ReplyPart,
+        conn: &mut analyte_transport::Connection,
+        actions: &mut VecDeque<Action>,
+    ) -> Result<(), Error> {
+        match conn
+            .write_all(
+                bytes,
+                Some(tokio::time::Instant::from_std(
+                    self.start
+                        .checked_add(until)
+                        .ok_or("query write deadline overflow")?,
+                )),
+            )
+            .await
+        {
+            Ok(()) => actions.extend(
+                self.dialog
+                    .step(self.start.elapsed(), Event::QueryWritten(part))?,
+            ),
+            Err(error) => {
+                actions.extend(
+                    self.dialog
+                        .step(self.start.elapsed(), Event::QueryWriteFailed(part))?,
+                );
+                self.write_error = Some(error);
+            }
+        }
+
+        Ok(())
+    }
+    async fn order_response(
+        &mut self,
+        token: analyte_dialog::hl7::ReceiptId,
+        message: &analyte_hl7::Message,
+        store: &Handle,
+    ) -> Result<(), Error> {
+        self.pending
+            .remove(&(token.epoch(), token.ordinal()))
+            .ok_or("order response receipt absent")?;
+        self.queries
+            .as_mut()
+            .ok_or("HL7 order services absent")?
+            .order_response(store, Some(message))
+            .await?;
+
+        Ok(())
+    }
+    fn respond(
+        &mut self,
+        token: analyte_dialog::hl7::ReceiptId,
+        actions: &mut VecDeque<Action>,
+    ) -> Result<(), Error> {
+        let metadata = crate::machine::hl7_response::response_metadata(
+            crate::machine::hl7_response::Profile::Hl7,
+        );
+        actions.extend(self.dialog.step(
+            self.start.elapsed(),
+            Event::Respond(token, metadata.response()?),
+        )?);
+
+        Ok(())
+    }
+    async fn refuse_message(
+        &self,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        bytes: Vec<u8>,
+    ) -> Result<bool, Error> {
         evidence::park_bytes(
             store,
             machine,
-            input_evidence,
-            "HL7 input processing interrupted",
+            bytes,
+            "HL7 unsolicited message or queue overflow",
         )
         .await?;
+        Err(invalid("HL7 message refused"))
     }
-    if let Some(query) = &mut queries {
-        query
-            .close(
+    async fn close(
+        &mut self,
+        machine: &evidence::Connection<'_>,
+        store: &Handle,
+        result: Result<(), Error>,
+    ) -> Result<(), Error> {
+        // A cancelled or failed host operation must expose partial input as well.
+        for action in self.dialog.step(self.start.elapsed(), Event::Disconnect)? {
+            if let Action::Rejected(error, bytes) = action {
+                evidence::park_bytes(store, machine, bytes, &error.to_string()).await?;
+            }
+        }
+        if self.enabled && !self.input_evidence.is_empty() {
+            evidence::park_bytes(
                 store,
                 machine,
-                if result.is_err() {
-                    "HL7-DSR-session-error"
-                } else {
-                    "HL7-DSR-disconnect"
-                },
+                std::mem::take(&mut self.input_evidence),
+                "HL7 input processing interrupted",
             )
             .await?;
+        }
+        if let Some(query) = &mut self.queries {
+            query
+                .close(
+                    store,
+                    machine,
+                    if result.is_err() {
+                        "HL7-DSR-session-error"
+                    } else {
+                        "HL7-DSR-disconnect"
+                    },
+                )
+                .await?;
+        }
+        result
     }
-    result
 }
 
 // Compatibility: a failed transport attempt advances the dialog with empty input.
