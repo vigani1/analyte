@@ -499,10 +499,14 @@ async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_reta
     wait_state(&path, "done", 1).await?;
     restarted.stop().await?;
     // Distinct transfer evidence is retained; only the completed transfer becomes a result.
-    assert_eq!(
-        recording_frames(&path)?,
-        vec![expected.clone(), expected.clone()]
+    let mut expected_frames = vec![expected.clone()];
+    expected_frames.extend(
+        retransmission
+            .iter()
+            .filter(|event| event.bytes.first() == Some(&2))
+            .map(|event| event.bytes.clone()),
     );
+    assert_eq!(recording_frames(&path)?, expected_frames);
     let original: Vec<u8> = database(&path)?.query_row(
         "SELECT raw FROM frames WHERE transfer=?1",
         [&original_transfer],

@@ -105,6 +105,8 @@ pub struct OrderPriority {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AstmOrderFields {
+    /// Intended H-10 peer identity; absent when the installation has not agreed one.
+    pub receiver: Option<Identifier>,
     /// Specimen ID destination.
     pub specimen: Field,
     /// Instrument specimen ID or position; presence requires supplied app data.
