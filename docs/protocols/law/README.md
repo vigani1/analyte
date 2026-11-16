@@ -3,6 +3,10 @@
 Evidence level: documented. Phase 4. A recorded Gazelle simulator conversation
 is the next qualification step.
 
+Empty SC/IP/CA notifications now have durable per-AWOS execution custody and
+protected admin visibility under ADR 0016. This adds no contract v1 event and
+raises no evidence level; see the status-notice policy in [decisions](decisions.md#status-only-lab-29-custody).
+
 Conformance checklist, written in our own words from the standard and checked
 in an independent review on 2026-11-15. Field-profile implementation now covers
 all five Appendix C groups. Evidence is still **documented**, not simulated.
