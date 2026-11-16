@@ -124,7 +124,7 @@ impl Reference {
             "synthetic-api".into(),
             analyte_contract::SigningSecret::parse(SECRET)?,
         )?;
-        let (events, received) = mpsc::channel(16);
+        let (events, captured_events) = mpsc::channel(16);
         let capture = Arc::new(Capture {
             events,
             hold_once: AtomicBool::new(hold),
@@ -148,7 +148,7 @@ impl Reference {
         });
         Ok(Self {
             receiver,
-            events: received,
+            events: captured_events,
             capture,
             stop,
             task,

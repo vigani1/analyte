@@ -279,3 +279,213 @@ fn adr0003_rule7_completed_startup_does_not_expire_later_store_operations() -> T
     );
     Ok(())
 }
+
+#[test]
+fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_guards() -> TestResult
+{
+    for version in 0..=9 {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("upgrade.db");
+        let mut db = Connection::open(&path)?;
+        let metadata = crate::tests::receipt(b"original bytes")?;
+        if version >= 1 {
+            db.execute_batch(include_str!("../schema.sql"))?;
+            db.execute(
+                "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
+                rusqlite::params![
+                    crate::key(&metadata.id)?,
+                    crate::key(&metadata)?,
+                    b"original bytes",
+                    b"config"
+                ],
+            )?;
+            db.execute(
+                "INSERT INTO transfers VALUES ('original-transfer','open',NULL)",
+                [],
+            )?;
+            db.execute(
+                "INSERT INTO frames(transfer,number,raw) VALUES ('original-transfer',0,x'010203')",
+                [],
+            )?;
+        }
+        if version >= 2 {
+            Store::migrate_v2(&mut db)?;
+        }
+        if version >= 3 {
+            Store::migrate_v3(&mut db, 65_536)?;
+        }
+        if version >= 4 {
+            db.execute_batch(include_str!("../migration_v4.sql"))?;
+        }
+        if version >= 5 {
+            db.execute_batch(include_str!("../migration_v5.sql"))?;
+        }
+        if version >= 6 {
+            db.execute_batch(include_str!("../migration_v6.sql"))?;
+        }
+        if version >= 7 {
+            Store::migrate_v7(&mut db, 65_536)?;
+        }
+        if version >= 8 {
+            db.execute_batch(include_str!("../migration_v8.sql"))?;
+        }
+        if version >= 9 {
+            Store::migrate_v9(&mut db, 65_536)?;
+        }
+        assert_eq!(
+            db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+            version
+        );
+        drop(db);
+        let mut store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+        assert_eq!(
+            store
+                .db
+                .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+            SCHEMA_VERSION
+        );
+        assert_eq!(
+            store
+                .db
+                .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
+            1
+        );
+        assert_eq!(
+            store
+                .db
+                .query_row("PRAGMA synchronous", [], |r| r.get::<_, i64>(0))?,
+            2
+        );
+        let _ = store.db.prepare("SELECT original_evidence FROM parked")?;
+        let _ = store
+            .db
+            .prepare("SELECT owner_kind,owner_id,cancel_version FROM machine_order_history")?;
+        if version >= 1 {
+            assert_eq!(store.raw(metadata.id)?, Some(b"original bytes".to_vec()));
+            assert_eq!(
+                store
+                    .frames(&analyte_model::Identifier::new("original-transfer")?, 0)?
+                    .first()
+                    .ok_or("missing frame")?
+                    .raw,
+                vec![1, 2, 3]
+            );
+            assert!(store.db.execute("DELETE FROM receipts", []).is_err());
+        }
+        let provenance = crate::FrameProvenance {
+            machine: metadata.machine,
+            driver: metadata.driver,
+            config: b"config".to_vec(),
+        };
+        store.journal_frame(
+            &analyte_model::Identifier::new("new-transfer")?,
+            crate::FrameSequence::new(31, 31)?,
+            b"new frame",
+            &provenance,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_startup_interrupts_sqlite_once_then_allows_cleanup() -> TestResult {
+    let base = Instant::now();
+    let mut startup = Startup::new(base + crate::tests::HANG_GUARD);
+    startup.clock = Some(Arc::new(move || base));
+    let mut db = Connection::open_in_memory()?;
+    startup.install(&mut db)?;
+    startup.cancel();
+    let first = db.query_row("SELECT 1", [], |r| r.get::<_, i64>(0));
+    assert_eq!(
+        first
+            .err()
+            .ok_or("cancelled query succeeded")?
+            .sqlite_error_code(),
+        Some(rusqlite::ErrorCode::OperationInterrupted)
+    );
+    assert_eq!(db.query_row("SELECT 2", [], |r| r.get::<_, i64>(0))?, 2);
+    Ok(())
+}
+
+#[test]
+fn mutation_plan11_startup_progress_names_and_completed_steps_are_visible() -> TestResult {
+    use crate::startup::StartupStep;
+    for (step, expected) in [
+        (StartupStep::Opening, "opening"),
+        (StartupStep::Integrity, "integrity check"),
+        (
+            StartupStep::Migration { from: 7, to: 8 },
+            "migration 7 to 8",
+        ),
+        (StartupStep::Finalizing, "finalizing"),
+    ] {
+        assert_eq!(step.to_string(), expected);
+    }
+    let buffer = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+    struct TraceWriter(Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for TraceWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .map_err(|_| std::io::Error::other("trace buffer poisoned"))?
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let sink = buffer.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_writer(move || TraceWriter(sink.clone()))
+        .finish();
+    let base = Instant::now();
+    let mut startup = Startup::new(base + crate::tests::HANG_GUARD);
+    startup.clock = Some(Arc::new(move || base));
+    tracing::subscriber::with_default(subscriber, || -> Result<(), Error> {
+        startup.run(StartupStep::Opening, || Ok(()))?;
+        startup.run(StartupStep::Integrity, || Ok(()))?;
+        startup.run(StartupStep::Finalizing, || Ok(()))?;
+        Ok(())
+    })?;
+    let output = String::from_utf8(buffer.lock().map_err(|_| "trace buffer poisoned")?.clone())?;
+    for step in ["opening", "finalizing"] {
+        assert!(
+            output
+                .lines()
+                .any(|line| line.contains("store startup step finished")
+                    && line.contains(&format!("step={step}"))),
+            "missing completion for {step}"
+        );
+    }
+    assert!(!output.lines().any(
+        |line| line.contains("store startup step finished") && line.contains("integrity check")
+    ));
+    Ok(())
+}
+
+#[test]
+fn mutation_adr0003_startup_foreign_key_corruption_refuses_without_rewriting_raw() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("broken-custody.db");
+    drop(Store::open(&path, limits(), Box::new(Space(u64::MAX)))?);
+    let db = Connection::open(&path)?;
+    db.execute_batch("PRAGMA foreign_keys=OFF")?;
+    db.execute(
+        "INSERT INTO frames(transfer,number,raw) VALUES ('missing-transfer',0,x'010203')",
+        [],
+    )?;
+    drop(db);
+    assert!(matches!(
+        Store::open(&path, limits(), Box::new(Space(u64::MAX))),
+        Err(Error::Corruption)
+    ));
+    let db = Connection::open(&path)?;
+    assert_eq!(
+        db.query_row("SELECT raw FROM frames", [], |r| r.get::<_, Vec<u8>>(0))?,
+        vec![1, 2, 3]
+    );
+    Ok(())
+}

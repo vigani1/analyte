@@ -430,30 +430,7 @@ mod tests {
     #[tokio::test]
     async fn adr0003_rule8_cancelled_query_cleanup_never_claims_another_connection()
     -> Result<(), Error> {
-        let definition = format!(
-            "{}\n{}",
-            include_str!("../../../config/examples/hl7.toml"),
-            include_str!("../../../config/examples/hl7_orders.toml")
-        );
-        let snapshot = analyte_config::Draft::load(
-            ("machine", &definition),
-            ("site", include_str!("../../../config/examples/site.toml")),
-            ("overrides", "schema_version=1"),
-        )?
-        .validate()?;
-        let machine = Machine {
-            capture: false,
-            destination_limits: crate::runtime::delivery::limits(30),
-            #[cfg(feature = "test-hooks")]
-            law_committed: None,
-            id: Identifier::new("synthetic")?,
-            snapshot,
-            listener: None,
-            #[cfg(feature = "test-hooks")]
-            astm_committed: None,
-            #[cfg(feature = "test-hooks")]
-            connection_closing: None,
-        };
+        let machine = query_machine()?;
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
             temp.path().join("cleanup.db"),
@@ -475,6 +452,79 @@ mod tests {
             machine: machine.id.clone(),
         };
         let owner = Identifier::new("original-connection")?;
+        reserve_original_connection(&store, &key, &owner).await?;
+        let options = machine
+            .snapshot
+            .effective()
+            .hl7_options()
+            .ok_or("options")?;
+        let mut other = Connection::new(options)?;
+        other.reserving.push(key.clone());
+        other
+            .close(
+                &store,
+                &evidence::Connection::new(&machine)?,
+                "HL7-DSR-disconnect",
+            )
+            .await?;
+        let identity = key.clone();
+        let current = store
+            .request(deadline(), move |store| store.machine_order(&identity))
+            .await?
+            .ok_or("reservation")?;
+        assert_eq!(current.state, analyte_model::OrderState::Sending);
+        assert!(current.reserved_by(&owner));
+        let mut original = Connection::new(options)?;
+        original.owner = owner;
+        original.reserving.push(key.clone());
+        original
+            .close(
+                &store,
+                &evidence::Connection::new(&machine)?,
+                "HL7-DSR-disconnect",
+            )
+            .await?;
+        let current = store
+            .request(deadline(), move |store| store.machine_order(&key))
+            .await?
+            .ok_or("reservation")?;
+        assert_eq!(current.state, analyte_model::OrderState::Uncertain);
+        assert_eq!(current.source_code.as_str(), "HL7-DSR-disconnect");
+        store.shutdown(deadline()).await?;
+        Ok(())
+    }
+    fn query_machine() -> Result<Machine, Error> {
+        let definition = format!(
+            "{}\n{}",
+            include_str!("../../../config/examples/hl7.toml"),
+            include_str!("../../../config/examples/hl7_orders.toml")
+        );
+        let snapshot = analyte_config::Draft::load(
+            ("machine", &definition),
+            ("site", include_str!("../../../config/examples/site.toml")),
+            ("overrides", "schema_version=1"),
+        )?
+        .validate()?;
+        Ok(Machine {
+            capture: false,
+            destination_limits: crate::runtime::delivery::limits(30),
+            #[cfg(feature = "test-hooks")]
+            law_committed: None,
+            id: Identifier::new("synthetic")?,
+            snapshot,
+            listener: None,
+            #[cfg(feature = "test-hooks")]
+            astm_committed: None,
+            #[cfg(feature = "test-hooks")]
+            connection_closing: None,
+        })
+    }
+
+    async fn reserve_original_connection(
+        store: &Handle,
+        key: &analyte_store::MachineOrderKey,
+        owner: &Identifier,
+    ) -> Result<(), Error> {
         let identity = key.clone();
         let original_owner = owner.clone();
         store
@@ -514,44 +564,6 @@ mod tests {
                     .map_err(|_| analyte_store::Error::Conflict)
             })
             .await?;
-        let options = machine
-            .snapshot
-            .effective()
-            .hl7_options()
-            .ok_or("options")?;
-        let mut other = Connection::new(options)?;
-        other.reserving.push(key.clone());
-        other
-            .close(
-                &store,
-                &evidence::Connection::new(&machine)?,
-                "HL7-DSR-disconnect",
-            )
-            .await?;
-        let identity = key.clone();
-        let current = store
-            .request(deadline(), move |store| store.machine_order(&identity))
-            .await?
-            .ok_or("reservation")?;
-        assert_eq!(current.state, analyte_model::OrderState::Sending);
-        assert!(current.reserved_by(&owner));
-        let mut original = Connection::new(options)?;
-        original.owner = owner;
-        original.reserving.push(key.clone());
-        original
-            .close(
-                &store,
-                &evidence::Connection::new(&machine)?,
-                "HL7-DSR-disconnect",
-            )
-            .await?;
-        let current = store
-            .request(deadline(), move |store| store.machine_order(&key))
-            .await?
-            .ok_or("reservation")?;
-        assert_eq!(current.state, analyte_model::OrderState::Uncertain);
-        assert_eq!(current.source_code.as_str(), "HL7-DSR-disconnect");
-        store.shutdown(deadline()).await?;
         Ok(())
     }
 }
