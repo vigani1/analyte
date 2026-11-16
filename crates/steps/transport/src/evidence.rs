@@ -88,7 +88,7 @@ impl fmt::Display for Reason {
     }
 }
 
-fn quoted(f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
+pub(crate) fn quoted(f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
     f.write_char('"')?;
     for character in value.chars() {
         match character {
@@ -182,4 +182,60 @@ mod tests {
             assert_eq!(reason.to_string(), expected);
         }
     }
+}
+
+/// Writes the local-address result retained in TCP open records.
+pub(crate) fn local_address(address: io::Result<std::net::SocketAddr>) -> String {
+    match address {
+        Ok(address) => format!("Ok({address})"),
+        Err(error) => format!("Err({})", IoEvidence(&error)),
+    }
+}
+
+struct IoEvidence<'a>(&'a io::Error);
+impl fmt::Display for IoEvidence<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let error = self.0;
+        if let Some(code) = error.raw_os_error() {
+            write!(
+                f,
+                "Os {{ code: {code}, kind: {}, message: ",
+                io_kind(error.kind())
+            )?;
+            let message = error.to_string();
+            let suffix = format!(" (os error {code})");
+            quoted(f, message.strip_suffix(&suffix).unwrap_or(&message))?;
+            f.write_str(" }")
+        } else if error.get_ref().is_some() {
+            write!(f, "Custom {{ kind: {}, error: ", io_kind(error.kind()))?;
+            quoted(f, &error.to_string())?;
+            f.write_str(" }")
+        } else {
+            write!(f, "Kind({})", io_kind(error.kind()))
+        }
+    }
+}
+
+#[test]
+fn tcp_open_spellings_are_compatible() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(
+        local_address(Ok("127.0.0.1:1234".parse()?)),
+        "Ok(127.0.0.1:1234)"
+    );
+    assert_eq!(local_address(Ok("[::1]:1234".parse()?)), "Ok([::1]:1234)");
+    assert_eq!(
+        local_address(Err(io::ErrorKind::NotConnected.into())),
+        "Err(Kind(NotConnected))"
+    );
+    assert_eq!(
+        local_address(Err(io::Error::other("synthetic"))),
+        "Err(Custom { kind: Other, error: \"synthetic\" })"
+    );
+    // OS messages are localized. Compare the legacy representation only in this
+    // test; production evidence never depends on the external error's Debug impl.
+    for code in [0, 1, 5, 10057] {
+        let error = io::Error::from_raw_os_error(code);
+        assert_eq!(IoEvidence(&error).to_string(), format!("{error:?}"));
+    }
+    Ok(())
 }

@@ -25,6 +25,100 @@ pub struct Settings {
     timeout: Duration,
 }
 
+// Display is a compatibility format for protected transport-open recordings.
+impl std::fmt::Display for Settings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Settings { name: ")?;
+        crate::evidence::quoted(f, &self.name)?;
+        let bits = match self.bits {
+            DataBits::Five => "Five",
+            DataBits::Six => "Six",
+            DataBits::Seven => "Seven",
+            DataBits::Eight => "Eight",
+        };
+        let parity = match self.parity {
+            Parity::None => "None",
+            Parity::Odd => "Odd",
+            Parity::Even => "Even",
+        };
+        let stops = match self.stops {
+            StopBits::One => "One",
+            StopBits::Two => "Two",
+        };
+        let flow = match self.flow {
+            FlowControl::None => "None",
+            FlowControl::Software => "Software",
+            FlowControl::Hardware => "Hardware",
+        };
+        write!(
+            f,
+            ", baud: {}, bits: {bits}, parity: {parity}, stops: {stops}, flow: {flow}, timeout: ",
+            self.baud
+        )?;
+        if self.timeout == Duration::from_secs(1) {
+            f.write_str("1s")?;
+        } else {
+            // Settings validates 1ms..=1s; retain fractional milliseconds exactly.
+            let millis = self.timeout.as_millis();
+            let fraction = self.timeout.subsec_nanos() % 1_000_000;
+            if fraction == 0 {
+                write!(f, "{millis}ms")?;
+            } else {
+                write!(
+                    f,
+                    "{millis}.{}ms",
+                    format!("{fraction:06}").trim_end_matches('0')
+                )?;
+            }
+        }
+        f.write_str(" }")
+    }
+}
+
+#[test]
+fn serial_recording_spellings_are_compatible() -> Result<(), Error> {
+    for (bits, parity, stops, flow, timeout, expected) in [
+        (
+            DataBits::Five,
+            Parity::None,
+            StopBits::One,
+            FlowControl::None,
+            Duration::from_millis(1),
+            "Settings { name: \"COM1\", baud: 9600, bits: Five, parity: None, stops: One, flow: None, timeout: 1ms }",
+        ),
+        (
+            DataBits::Six,
+            Parity::Odd,
+            StopBits::Two,
+            FlowControl::Software,
+            Duration::from_micros(1500),
+            "Settings { name: \"COM1\", baud: 9600, bits: Six, parity: Odd, stops: Two, flow: Software, timeout: 1.5ms }",
+        ),
+        (
+            DataBits::Seven,
+            Parity::Even,
+            StopBits::One,
+            FlowControl::Hardware,
+            Duration::from_nanos(1_000_001),
+            "Settings { name: \"COM1\", baud: 9600, bits: Seven, parity: Even, stops: One, flow: Hardware, timeout: 1.000001ms }",
+        ),
+        (
+            DataBits::Eight,
+            Parity::None,
+            StopBits::One,
+            FlowControl::None,
+            Duration::from_secs(1),
+            "Settings { name: \"COM1\", baud: 9600, bits: Eight, parity: None, stops: One, flow: None, timeout: 1s }",
+        ),
+    ] {
+        assert_eq!(
+            Settings::new("COM1".into(), 9600, bits, parity, stops, flow, timeout)?.to_string(),
+            expected
+        );
+    }
+    Ok(())
+}
+
 impl Settings {
     /// Validates a fixed port name, nonzero baud rate and 1ms..=1s I/O timeout.
     ///
@@ -114,7 +208,7 @@ where
                     match open(settings) {
                         Ok(mut port) => {
                             retry.reset();
-                            side.start(format!("serial {settings:?}"))?;
+                            side.start(format!("serial {settings}"))?;
                             let session = side.generation;
                             emit(&mut side, crate::Event::Opened { session })?;
                             let reason = transfer(&mut side, port.as_mut(), &settings.name);
