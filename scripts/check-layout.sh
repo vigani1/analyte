@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Enforce ADR 0012 without installing dependencies.
 set -euo pipefail
+python3 scripts/test-code-page.py
+python3 scripts/check-code-page.py
 failed=0
 while IFS= read -r -d '' file; do
   if [[ "$file" == crates/* || "$file" == fuzz/* ]] && ! head -n 1 "$file" | grep -q '^//!'; then
