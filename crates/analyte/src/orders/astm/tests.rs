@@ -35,6 +35,8 @@ fn machine(policy: &str) -> Result<Machine, Error> {
         law_committed: None,
         #[cfg(feature = "test-hooks")]
         astm_committed: None,
+        #[cfg(feature = "test-hooks")]
+        connection_closing: None,
         id: Identifier::new("synthetic")?,
         snapshot,
         listener: None,

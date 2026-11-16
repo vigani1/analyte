@@ -451,6 +451,8 @@ mod tests {
             listener: None,
             #[cfg(feature = "test-hooks")]
             astm_committed: None,
+            #[cfg(feature = "test-hooks")]
+            connection_closing: None,
         };
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(

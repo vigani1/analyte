@@ -221,7 +221,32 @@ fn count(path: &Path, table: &str) -> Result<i64, Error> {
 async fn quiet(peer: &mut TcpStream) -> Result<(), Error> {
     // Deliberate quiet window: no reply may arrive.
     let outcome = tokio::time::timeout(Duration::from_millis(60), peer.read_u8()).await;
-    assert!(outcome.is_err(), "unexpected work or ACK loop: {outcome:?}");
+    let mut received = Vec::new();
+    let mut collection = None;
+    if let Ok(Ok(first)) = &outcome {
+        received.push(*first);
+        if *first == 11 {
+            // The assertion already failed; retain the complete bounded synthetic
+            // MLLP message so work replay can be distinguished from a late reply.
+            collection = Some(
+                tokio::time::timeout(HANG_GUARD, async {
+                    while !received.ends_with(&[28, 13]) {
+                        if received.len() >= 1_048_576 {
+                            return Err::<(), Error>("oversized unexpected LAW frame".into());
+                        }
+                        received.push(peer.read_u8().await?);
+                    }
+                    Ok::<(), Error>(())
+                })
+                .await,
+            );
+        }
+    }
+    assert!(
+        outcome.is_err(),
+        "unexpected work or ACK loop: {outcome:?}; message: {:?}; collection: {collection:?}",
+        String::from_utf8_lossy(&received)
+    );
     Ok(())
 }
 /// Waits until `table` holds at least `expected` rows. Messages the host

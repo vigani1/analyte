@@ -311,6 +311,8 @@ mod tests {
                 law_committed: None,
                 #[cfg(feature = "test-hooks")]
                 astm_committed: None,
+                #[cfg(feature = "test-hooks")]
+                connection_closing: None,
             };
             let mut store = Handle::start(
                 temp.path().join("store.db"),
