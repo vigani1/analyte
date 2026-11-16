@@ -126,7 +126,7 @@ Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its
 The parser retains positional fields without requiring every optional field.
 Counts include type/sequence/delimiter positions. They describe retained field
 positions, not complete semantic validation. All rows use
-[syntax.rs](../../../crates/protocols/astm/tests/syntax/mod.rs),
+[syntax field-position tests](../../../crates/protocols/astm/tests/syntax/scenarios_1.rs),
 `lis02_sections_6_through_14_read_only_field_positions`.
 
 | Record role | Positions handled | Coverage |
