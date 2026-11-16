@@ -102,3 +102,5 @@ pub(crate) fn destination(machine: &Machine) -> Identifier {
 }
 
 mod acceptance;
+
+pub(crate) mod outcome;

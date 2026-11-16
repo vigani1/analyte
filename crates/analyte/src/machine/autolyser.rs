@@ -2,6 +2,7 @@
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use super::transfer_end::AutolyserEnd;
+use crate::orders::outcome::Code;
 use crate::{Error, intake, invalid};
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
@@ -407,13 +408,13 @@ async fn process(
 fn park_code(error: &analyte_dialog::autolyser::Error) -> String {
     use analyte_dialog::autolyser::Error;
     match error {
-        Error::Config => "Autolyser-parked-config".into(),
-        Error::Busy => "Autolyser-parked-busy".into(),
-        Error::Time => "Autolyser-parked-time".into(),
-        Error::Incomplete => "Autolyser-parked-incomplete".into(),
-        Error::Storage => "Autolyser-parked-storage".into(),
-        Error::Stale => "Autolyser-parked-stale".into(),
-        Error::Ack => "Autolyser-parked-ack".into(),
+        Error::Config => Code::AutolyserParkedConfig.as_str().into(),
+        Error::Busy => Code::AutolyserParkedBusy.as_str().into(),
+        Error::Time => Code::AutolyserParkedTime.as_str().into(),
+        Error::Incomplete => Code::AutolyserParkedIncomplete.as_str().into(),
+        Error::Storage => Code::AutolyserParkedStorage.as_str().into(),
+        Error::Stale => Code::AutolyserParkedStale.as_str().into(),
+        Error::Ack => Code::AutolyserParkedAck.as_str().into(),
         Error::Framing(cause) => format!("Autolyser-parked-framing-{cause}"),
         Error::Record(cause) => format!("Autolyser-parked-record-{cause}"),
     }

@@ -3,6 +3,7 @@ use super::{
     Connection, Exchange,
     work::{Command, render},
 };
+use crate::orders::outcome::Code;
 use crate::{Error, installation::config::Machine, invalid};
 use analyte_hl7::{Message, Options, law};
 use analyte_model::SourceText;
@@ -117,7 +118,10 @@ impl Connection {
             {
                 Ok(prepared) => prepared,
                 Err(error) => {
-                    if let Err(cleanup) = self.close(store, "LAW-send-preparation-failed").await {
+                    if let Err(cleanup) = self
+                        .close(store, Code::LawSendPreparationFailed.as_str())
+                        .await
+                    {
                         return Err(crate::machine::custody::effect_failure(
                             Some(error),
                             cleanup,

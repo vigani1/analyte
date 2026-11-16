@@ -1,4 +1,5 @@
 //! Sends unsolicited HL7 work and cancellations (HL7 ch.4).
+use crate::orders::outcome::Code;
 use crate::{Error, deadline, installation::config::Machine};
 use analyte_hl7::{
     Options,
@@ -150,7 +151,7 @@ async fn next_work(
                     store,
                     key,
                     version,
-                    "HL7-placer-identity-too-long",
+                    Code::Hl7PlacerIdentityTooLong.as_str(),
                     freshness,
                 )
                 .await?;
@@ -200,11 +201,13 @@ pub(super) async fn finish(
                     let (decision, code) = if response.acceptance() != analyte_hl7::AckCode::Aa {
                         (
                             ItemDecision::Uncertain,
-                            "HL7-application-negative".to_owned(),
+                            Code::Hl7ApplicationNegative.as_str().to_owned(),
                         )
                     } else {
                         match decision.outcome() {
-                            Outcome::Accepted => (ItemDecision::Accepted, "HL7-OK".to_owned()),
+                            Outcome::Accepted => {
+                                (ItemDecision::Accepted, Code::Hl7Ok.as_str().to_owned())
+                            }
                             Outcome::Rejected { reason } => (
                                 ItemDecision::Rejected,
                                 format!(
@@ -214,9 +217,10 @@ pub(super) async fn finish(
                                         .escape_ascii()
                                 ),
                             ),
-                            Outcome::CancelAccepted => {
-                                (ItemDecision::CancelConfirmed, "HL7-CR".to_owned())
-                            }
+                            Outcome::CancelAccepted => (
+                                ItemDecision::CancelConfirmed,
+                                Code::Hl7Cr.as_str().to_owned(),
+                            ),
                             Outcome::UnableToCancel { reason } => (
                                 ItemDecision::CancelRefused,
                                 format!(
@@ -226,9 +230,10 @@ pub(super) async fn finish(
                                         .escape_ascii()
                                 ),
                             ),
-                            Outcome::NotReported => {
-                                (ItemDecision::Uncertain, "HL7-order-not-reported".to_owned())
-                            }
+                            Outcome::NotReported => (
+                                ItemDecision::Uncertain,
+                                Code::Hl7OrderNotReported.as_str().to_owned(),
+                            ),
                         }
                     };
                     outcomes.push(ItemOutcome {
