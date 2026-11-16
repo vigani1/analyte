@@ -180,8 +180,8 @@ fn law_tf2b_3_29_4_b3_config_cannot_replace_awos_or_truncate_og_identity() {
             "record=\"OBR\",field=3,component=1",
         ),
         LAW.replace(
-            "record=\"OBR\",field=2,component=2",
-            "record=\"OBR\",field=3,component=2",
+            "order_namespace = {fixed=\"LAB\"}",
+            "order_namespace = {field={group=\"order\",record=\"OBR\",field=2,component=2,repetition=1}}",
         ),
         LAW.replace(
             "record=\"OBX\",field=4,component=1",

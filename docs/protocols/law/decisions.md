@@ -145,6 +145,8 @@ Test: `law_tf2b_c7_repeated_observation_requires_unique_complete_og`.
 ## Retained work matching
 
 Received OBR-2 uses only EI.1 to find retained work for the configured machine.
+Result mapping requires an explicit fixed AWOS namespace; selecting a received
+OBR-2 authority component is rejected at configuration loading.
 Other OBR-2 components are X under TF-2b 2.2.1/2.2.2 and C.6-2: they remain
 in protected original bytes but do not authorize or reject a match. Specimen,
 container and test comparisons still reject conflicting returned work as a whole.
