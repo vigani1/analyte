@@ -154,3 +154,58 @@ fn poct01_b_6_10_source_paths_keep_distinct_real_element_positions() -> TestResu
     assert_ne!(observed_positions.first(), observed_positions.get(1));
     Ok(())
 }
+
+// POCT01-A2 Appendix B 8.11 and clarification p.287.
+#[test]
+fn poct01_b_8_11_clarification_p287_utc_z_preserves_original_and_precision() -> TestResult {
+    for (suffix, offset) in [("Z", Some(0)), ("+00:00", Some(0)), ("", None)] {
+        for (local, precision) in [
+            ("2026-03-12T09:35", analyte_model::TimePrecision::Minute),
+            ("2026-03-12T09:35:00", analyte_model::TimePrecision::Second),
+            (
+                "2026-03-12T09:35:00.120",
+                analyte_model::TimePrecision::FractionalSecond,
+            ),
+        ] {
+            let written = format!("{local}{suffix}");
+            let raw = messages::observation("o", true, "<OBS.value V=\"1.20\" U=\"mg/L\"/>")
+                .replace("2026-03-12T09:35:00+01:00", &written);
+            let message = Message::parse(raw.as_bytes(), messages::limits())?;
+            let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
+            let time = &mapped
+                .first()
+                .ok_or("observation")?
+                .part
+                .times
+                .as_slice()
+                .first()
+                .ok_or("time")?
+                .time;
+            assert_eq!(time.original.as_str(), written);
+            assert_eq!(time.precision, precision);
+            assert_eq!(time.offset.map(i32::from), offset);
+            if !matches!(precision, analyte_model::TimePrecision::Minute) {
+                assert!(time.parsed.is_some());
+            }
+        }
+    }
+    Ok(())
+}
+
+// POCT01-A2 B 8.9 p.135 and 6.5.2.1 p.116: numeric grammar must retain literal spelling.
+#[test]
+fn poct01_b_8_9_trailing_point_quantity_survives_mapping() -> TestResult {
+    let raw = messages::observation("o", true, "<OBS.value V=\"10.\" U=\"mg/L\"/>");
+    let message = Message::parse(raw.as_bytes(), messages::limits())?;
+    let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
+    let value = mapped
+        .first()
+        .ok_or("observation")?
+        .part
+        .values
+        .as_slice()
+        .first()
+        .ok_or("value")?;
+    assert_eq!(value.original.as_str(), "10.");
+    Ok(())
+}
