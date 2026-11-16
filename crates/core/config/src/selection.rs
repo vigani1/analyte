@@ -133,8 +133,9 @@ fn wire_name<'de, D: serde::Deserializer<'de>>(
                 allowed.push(*name);
             }
         }
+        let value = quoted_layer(&value);
         Err(serde::de::Error::custom(format!(
-            "unknown layer name {value:?}; expected one of {}",
+            "unknown layer name {value}; expected one of {}",
             allowed.join(", ")
         )))
     }
@@ -182,4 +183,23 @@ fn stack_evidence_spellings_are_compatible() {
     ] {
         assert_eq!(value.to_string(), expected);
     }
+}
+
+// Configuration refusals keep their historical quotation without relying on Debug.
+fn quoted_layer(value: &str) -> String {
+    let mut result = String::from("\"");
+    for character in value.chars() {
+        if character == '\'' {
+            result.push(character);
+        } else {
+            result.extend(character.escape_debug());
+        }
+    }
+    result.push('"');
+    result
+}
+#[test]
+fn layer_refusal_quotation_is_compatible() {
+    assert_eq!(quoted_layer("a'\"?\n"), "\"a'\\\"?\\n\"");
+    assert_eq!(quoted_layer(""), "\"\"");
 }
