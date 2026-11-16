@@ -6,7 +6,7 @@
 /// Maximum manager-authored AWOS identity bytes (TF-2b C.6/C.11, OBR-2).
 pub const AWOS_ID_MAX_BYTES: usize = 50;
 
-use crate::{Field, Message, Msh, Segment, Version};
+use crate::{Field, Message, Msh, Segment};
 use thiserror::Error;
 
 /// A LAW validation failure, without payload in its diagnostic.
@@ -460,7 +460,7 @@ impl From<crate::wire::Limit> for Error {
 fn validate_query_header(message: &Message) -> Result<(), Error> {
     profile::header(message, b"LAB-27", true)?;
     let msh = msh(message)?;
-    if msh.version() != Version::V251 {
+    if !msh.version().law_edition() {
         return Err(content("MSH", 12));
     }
     let header = msh.segment();

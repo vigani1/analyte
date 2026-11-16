@@ -142,7 +142,7 @@ fn specimen(segment: Segment<'_>, version: Version) -> Result<(), Error> {
             .repetitions()
             .next()
             .ok_or_else(|| invalid("SPM", 4))?;
-        if !if version == Version::V251 {
+        if !if version.legacy_cwe() {
             crate::datatypes::cwe(&repetition.components().collect::<Vec<_>>())
         } else {
             crate::datatypes::coded(&repetition.components().collect::<Vec<_>>(), version)
@@ -223,7 +223,7 @@ pub(super) fn timing(segment: Segment<'_>, version: Version) -> Result<(), Error
             .next()
             .ok_or_else(|| invalid("TQ1", 9))?;
         if field.is_null()
-            || !if version == Version::V251 {
+            || !if version.legacy_cwe() {
                 crate::datatypes::cwe(&repetition.components().collect::<Vec<_>>())
             } else {
                 crate::datatypes::coded(&repetition.components().collect::<Vec<_>>(), version)

@@ -12,7 +12,7 @@ pub fn validate_result_fields(message: &Message) -> Result<(), Error> {
     for segment in message.segments() {
         validate_context(segment, rules)?;
         // Enhanced OG identity needs a full grouping contract, which this profile does not select.
-        if matches!(version, crate::Version::V282 | crate::Version::V291)
+        if version.enhanced_result_identity()
             && segment.id() == b"OBX"
             && segment.field(4).is_some_and(|field| {
                 field.repetitions().any(|value| {

@@ -20,6 +20,7 @@ pub(crate) struct Node<'a> {
 
 pub(crate) struct Source<'a> {
     message: Option<&'a analyte_hl7::Message>,
+    version: Option<analyte_hl7::Version>,
     pub nodes: Vec<Node<'a>>,
     pub syntax: FieldSyntax,
     pub component_separator: u8,
@@ -36,9 +37,9 @@ impl Source<'_> {
 
     pub(crate) fn has_analysis_time(&self, config: &analyte_config::Validated) -> bool {
         crate::is_law(config)
-            || self.base_version(config).is_some_and(|version| {
-                version != analyte_hl7::Version::V231 && !version.uses_compatibility_contract()
-            })
+            || self
+                .base_version(config)
+                .is_some_and(analyte_hl7::Version::analysis_time)
     }
 
     pub(crate) fn uses_dtm(&self, config: &analyte_config::Validated) -> bool {
@@ -58,12 +59,7 @@ impl Source<'_> {
         if crate::is_law(config) {
             return None;
         }
-        self.message
-            .and_then(|message| message.segments().next())
-            .and_then(|header| header.field(12))
-            .and_then(|field| field.repetitions().next())
-            .and_then(|value| value.components().next())
-            .and_then(|component| analyte_hl7::Version::parse(component.raw()))
+        self.version
     }
 
     pub(crate) fn text_problem(&self, raw: &str) -> Option<crate::Problem> {
@@ -384,6 +380,7 @@ pub(crate) fn astm(message: &analyte_astm::Message) -> Source<'_> {
         .collect();
     Source {
         message: None,
+        version: None,
         nodes,
         syntax: FieldSyntax::AstmLis02,
         component_separator: message.delimiters().bytes().get(2).copied().unwrap_or(b'^'),
@@ -448,33 +445,25 @@ pub(crate) fn hl7(message: &analyte_hl7::Message) -> Result<Source<'_>, Error> {
             }
         }
     }
-    let parts: Vec<_> = msh.message_type().collect();
-    let oul = match parts.as_slice() {
-        [b"ORU", b"R01"] | [b"ORU", b"R01", b"ORU_R01"] => false,
-        [b"OUL", b"R22"] | [b"OUL", b"R22", b"OUL_R22"]
-            if msh.version() == analyte_hl7::Version::V251 =>
-        {
-            true
-        }
-        _ => {
-            return Err(Error::Structure {
-                position: Position {
-                    record: 1,
-                    field: 9,
-                },
-                reason: "only ORU R01 and edition 2.5.1 OUL R22 are supported",
-            });
-        }
-    };
-    super::grammar::validate(message, oul)?;
-    hl7_segments(
+    let result =
+        analyte_hl7::ResultMessage::new(message, msh).map_err(|error| Error::Structure {
+            position: Position {
+                record: error.record,
+                field: error.field,
+            },
+            reason: error.reason,
+        })?;
+    let message = result.message();
+    let mut source = hl7_segments(
         message,
-        if oul {
+        if result.is_oul() {
             Hl7Structure::Oul
         } else {
             Hl7Structure::Oru
         },
-    )
+    )?;
+    source.version = Some(result.version());
+    Ok(source)
 }
 
 #[derive(Clone, Copy)]
@@ -494,6 +483,7 @@ fn hl7_segments(
 ) -> Result<Source<'_>, Error> {
     let mut source = Source {
         message: Some(message),
+        version: None,
         nodes: Vec::new(),
         syntax: FieldSyntax::Hl7V2,
         component_separator: message.delimiters().bytes().get(1).copied().unwrap_or(b'^'),

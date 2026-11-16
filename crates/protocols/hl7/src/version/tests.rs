@@ -101,3 +101,106 @@ fn adr0012_s3_writer_qualification_is_separate_from_receiving() {
         assert_eq!(version.order_sending_blocker(), None);
     }
 }
+
+#[test]
+fn hl7_chapters_2_4_5_7_pin_edition_capabilities() {
+    let rows = [
+        (
+            Version::V23,
+            [
+                false, false, false, false, false, false, false, false, false, false, false,
+            ],
+        ),
+        (
+            Version::V231,
+            [
+                false, false, false, false, false, true, false, false, false, false, false,
+            ],
+        ),
+        (
+            Version::V24,
+            [
+                false, false, false, false, false, false, false, false, false, false, false,
+            ],
+        ),
+        (
+            Version::V25,
+            [
+                true, false, false, false, true, false, false, false, false, false, false,
+            ],
+        ),
+        (
+            Version::V251,
+            [
+                true, false, false, false, true, false, true, true, true, true, true,
+            ],
+        ),
+        (
+            Version::V26,
+            [
+                true, true, false, false, true, false, true, false, false, true, false,
+            ],
+        ),
+        (
+            Version::V282,
+            [
+                true, true, true, false, false, false, true, false, false, true, false,
+            ],
+        ),
+        (
+            Version::V291,
+            [
+                true, true, true, true, false, false, false, false, false, true, false,
+            ],
+        ),
+    ];
+    for (version, expected) in rows {
+        assert_eq!(
+            [
+                version.modern_error_layout(),
+                version.fatal_error_severity(),
+                version.enhanced_result_identity(),
+                version.paired_application_ack(),
+                version.legacy_query_structure(),
+                version.orm_patient_name_required(),
+                version.oml_writer(),
+                version.legacy_cwe(),
+                version.oul_reception(),
+                version.analysis_time(),
+                version.law_edition(),
+            ],
+            expected,
+            "{}",
+            version.as_str()
+        );
+    }
+}
+
+#[test]
+fn hl7_chapters_2_4_5_7_pin_each_independent_rule() {
+    for (version, modern, legacy_order, later, query) in [
+        (Version::V23, false, false, false, Some((60, 9))),
+        (Version::V231, false, true, false, Some((60, 9))),
+        (Version::V24, false, false, false, Some((60, 9))),
+        (Version::V25, true, false, false, Some((60, 9))),
+        (Version::V251, true, false, false, Some((250, 10))),
+        (Version::V26, true, false, false, Some((250, 10))),
+        (Version::V282, true, false, true, None),
+        (Version::V291, true, false, true, None),
+    ] {
+        assert_eq!(version.ack_structure(), modern);
+        assert_eq!(version.orm_writer(), legacy_order);
+        assert_eq!(version.single_order_error(), legacy_order);
+        assert_eq!(version.short_patient_identifier(), legacy_order);
+        assert_eq!(version.specimen_code_version(), !legacy_order);
+        assert_eq!(version.unknown_key_error(), later);
+        assert_eq!(version.report_status_time(), later);
+        assert_eq!(
+            version
+                .query_person_bytes()
+                .ok()
+                .zip(version.query_filter_fields().ok()),
+            query
+        );
+    }
+}

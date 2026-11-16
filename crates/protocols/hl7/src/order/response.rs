@@ -303,7 +303,7 @@ impl<'a> OrderResponse<'a> {
         while segments.peek().is_some_and(|s| s.id() == b"ERR") {
             let error = segments.next().ok_or_else(|| invalid("ERR", 0))?;
             errors = errors.checked_add(1).ok_or(Error::Limit)?;
-            if version == Version::V231 && errors > 1 {
+            if version.single_order_error() && errors > 1 {
                 return Err(invalid("ERR", 0));
             }
             crate::ErrView::new(error, version)?;

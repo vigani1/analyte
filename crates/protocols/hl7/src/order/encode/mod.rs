@@ -141,7 +141,7 @@ pub fn orm(
     if header.version.uses_dtm() {
         return Err(invalid("MSH", 9));
     }
-    if header.version == Version::V231
+    if header.version.orm_patient_name_required()
         && matches!(subject, Subject::Identifier { .. })
         && orders
             .iter()
@@ -168,7 +168,7 @@ pub fn oml(
     header: Header<'_>,
     options: Options,
 ) -> Result<OrderMessage, Error> {
-    if !matches!(header.version, Version::V251 | Version::V26 | Version::V282) {
+    if !header.version.oml_writer() {
         return Err(invalid("MSH", 12));
     }
     build(orders, subject, header, options, Family::Oml)
@@ -436,7 +436,7 @@ fn encode_subject(
                 identifier.push(b'^');
                 identifier.extend_from_slice(kind);
             }
-            if header.version == Version::V231 && identifier.len() > 20 {
+            if header.version.short_patient_identifier() && identifier.len() > 20 {
                 return Err(invalid("PID", 3));
             }
             let name = escape(patient.family_name, "PID", 5, 48)?;
