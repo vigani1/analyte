@@ -201,7 +201,7 @@ pub struct Dialog {
     counter: u64,
     phase: Phase,
     pending: VecDeque<Pending>,
-    now: Duration,
+    clock: crate::Clock,
     response_deadline: Duration,
     ack_timeout: Duration,
     device_message_limit: usize,
@@ -234,7 +234,7 @@ impl Dialog {
             counter: 0,
             phase: Phase::Hello,
             pending: VecDeque::new(),
-            now: Duration::ZERO,
+            clock: crate::Clock::default(),
             reads: true,
             hello_received: Duration::ZERO,
             last_sent: None,
@@ -265,14 +265,15 @@ impl Dialog {
     /// Rejects reversed/unrepresentable time, unknown completion tickets and host
     /// commands in the wrong phase. Refused received data is returned as Deferred.
     pub fn step(&mut self, now: Duration, event: DialogEvent) -> Result<Vec<DialogAction>, Error> {
-        if now < self.now {
-            return Err(Error::TimeReversed);
-        }
+        self.clock
+            .advance(now, self.config.response_timeout.max(self.ack_timeout))
+            .map_err(|error| match error {
+                crate::ClockError::Reversed => Error::TimeReversed,
+                crate::ClockError::Exhausted => Error::Exhausted,
+            })?;
         let response_deadline = now
             .checked_add(self.config.response_timeout)
             .ok_or(Error::Exhausted)?;
-        now.checked_add(self.ack_timeout).ok_or(Error::Exhausted)?;
-        self.now = now;
         let mut actions = Vec::new();
         if !matches!(self.phase, Phase::Closed)
             && (now >= self.response_deadline || self.pending.iter().any(|p| now >= p.deadline))
@@ -408,14 +409,15 @@ impl Dialog {
                     device_id: device_id.clone(),
                     capabilities: capabilities.clone(),
                 });
-                self.hello_received = self.now;
+                self.hello_received = self.clock.now();
                 if let Some(Nullable::Value(seconds)) = application_timeout
                     && let Some(timeout) = parse_seconds(seconds)
                 {
                     self.ack_timeout = timeout;
                 }
                 self.response_deadline = self
-                    .now
+                    .clock
+                    .now()
                     .checked_add(self.ack_timeout)
                     .ok_or(Error::Exhausted)?;
                 self.phase = Phase::Inspect(message);
@@ -585,7 +587,7 @@ impl Dialog {
         let received = if matches!(purpose, Purpose::Hello) {
             self.hello_received
         } else {
-            self.now
+            self.clock.now()
         };
         let deadline = received
             .checked_add(self.ack_timeout)
@@ -669,7 +671,8 @@ impl Dialog {
         let control_id = self.send(Outbound::RequestObservations, actions)?;
         self.phase = Phase::Observations(control_id);
         self.response_deadline = self
-            .now
+            .clock
+            .now()
             .checked_add(self.config.response_timeout)
             .ok_or(Error::Exhausted)?;
         Ok(())
@@ -724,7 +727,8 @@ impl Dialog {
         let id = self.send(Outbound::Terminate(reason), actions)?;
         self.phase = Phase::Ending(id);
         self.response_deadline = self
-            .now
+            .clock
+            .now()
             .checked_add(self.config.response_timeout)
             .ok_or(Error::Exhausted)?;
         Ok(())
@@ -738,7 +742,8 @@ impl Dialog {
         let sequence = self.next()?;
         let id = ControlId::new(&format!("{}-{sequence}", self.session.as_str()))?;
         self.response_deadline = self
-            .now
+            .clock
+            .now()
             .checked_add(self.config.response_timeout)
             .ok_or(Error::Exhausted)?;
         self.last_sent = Some(id.clone());

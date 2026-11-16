@@ -113,7 +113,7 @@ pub struct Dialog {
     state: State,
     outbound: Option<Vec<u8>>,
     clock: crate::Clock,
-    timers: [Option<Duration>; 4],
+    timers: Deadlines,
 }
 
 impl Dialog {
@@ -157,7 +157,7 @@ impl Dialog {
             state,
             outbound,
             clock: crate::Clock::default(),
-            timers: [None; 4],
+            timers: Deadlines::default(),
         })
     }
 
@@ -182,7 +182,15 @@ impl Dialog {
     /// Returns the next absolute connection-clock wake time.
     #[must_use]
     pub fn next_deadline(&self) -> Option<Duration> {
-        self.timers.iter().flatten().copied().min()
+        [
+            self.timers.session,
+            self.timers.commit,
+            self.timers.acknowledgment,
+            self.timers.interbyte,
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     /// Applies time before input; received fragments never postpone session or commit deadlines.
@@ -208,7 +216,11 @@ impl Dialog {
                 Timer::Acknowledgment,
                 Timer::Interbyte,
             ] {
-                if self.timers[timer.index()].is_some_and(|deadline| now >= deadline) {
+                if self
+                    .timers
+                    .get_mut(timer)
+                    .is_some_and(|deadline| now >= deadline)
+                {
                     return Ok(self.on(Event::Expired(timer)));
                 }
             }
@@ -217,8 +229,8 @@ impl Dialog {
             return Ok(Vec::new());
         }
         if matches!(event, Event::Activity) {
-            if self.timers[Timer::Interbyte.index()].is_some() {
-                self.timers[Timer::Interbyte.index()] = now.checked_add(self.policy.interbyte);
+            if self.timers.interbyte.is_some() {
+                self.timers.interbyte = now.checked_add(self.policy.interbyte);
             }
             return Ok(Vec::new());
         }
@@ -229,9 +241,9 @@ impl Dialog {
         for action in actions {
             match action {
                 Action::Arm(timer, wait) => {
-                    self.timers[timer.index()] = self.clock.now().checked_add(*wait)
+                    *self.timers.get_mut(*timer) = self.clock.now().checked_add(*wait);
                 }
-                Action::Cancel(timer) => self.timers[timer.index()] = None,
+                Action::Cancel(timer) => *self.timers.get_mut(*timer) = None,
                 Action::Send(_) | Action::Store(_) | Action::Park | Action::Complete => {}
             }
         }
@@ -340,13 +352,20 @@ impl Dialog {
     }
 }
 
-impl Timer {
-    fn index(self) -> usize {
-        match self {
-            Self::Acknowledgment => 0,
-            Self::Interbyte => 1,
-            Self::Session => 2,
-            Self::Commit => 3,
+#[derive(Default)]
+struct Deadlines {
+    acknowledgment: Option<Duration>,
+    interbyte: Option<Duration>,
+    session: Option<Duration>,
+    commit: Option<Duration>,
+}
+impl Deadlines {
+    fn get_mut(&mut self, timer: Timer) -> &mut Option<Duration> {
+        match timer {
+            Timer::Acknowledgment => &mut self.acknowledgment,
+            Timer::Interbyte => &mut self.interbyte,
+            Timer::Session => &mut self.session,
+            Timer::Commit => &mut self.commit,
         }
     }
 }
