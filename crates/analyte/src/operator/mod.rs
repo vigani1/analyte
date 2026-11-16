@@ -5,3 +5,5 @@ pub mod recovery;
 pub mod status;
 
 pub mod holds;
+
+pub(crate) mod notification_status;

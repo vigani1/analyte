@@ -13,6 +13,14 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
         .request(deadline(), |store| store.restore_unreconciled())
         .await?;
     let mut lines = vec![format!("order_sending_paused_after_restore={paused}")];
+    for endpoint in store
+        .request(deadline(), |store| store.alert_endpoint_status())
+        .await?
+    {
+        lines.push(crate::operator::notification_status::describe(
+            &endpoint, now,
+        ));
+    }
     for alert in crate::operator::alerts::active(store).await? {
         let (kind, machine) = crate::operator::alerts::signal(&alert.key);
         lines.push(format!(

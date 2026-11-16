@@ -54,6 +54,7 @@ async fn render(state: &Context) -> Result<String, Error> {
     html.push_str("<dl>");
     let now = jiff::Timestamp::now().as_second();
     render_alerts(state, &mut html, now).await?;
+    render_alert_endpoints(&state.store, &mut html, now).await?;
     row(
         &mut html,
         "Order sending paused after restore",
@@ -233,4 +234,90 @@ async fn render_machines(
         );
     }
     Ok(())
+}
+
+async fn render_alert_endpoints(
+    store: &analyte_store::Handle,
+    html: &mut String,
+    now: i64,
+) -> Result<(), Error> {
+    let statuses = store
+        .request(deadline(), |s| s.alert_endpoint_status())
+        .await?;
+    row(html, "Alert endpoints", &statuses.len().to_string());
+    for status in statuses {
+        row(
+            html,
+            "Alert endpoint delivery",
+            &crate::operator::notification_status::describe(&status, now),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod webhook_tests {
+    use super::*;
+    #[tokio::test]
+    async fn adr0014_overview_exposes_failed_and_full_webhook_queue() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let mut store = analyte_store::Handle::start(
+            temp.path().join("status.db"),
+            analyte_store::Limits {
+                reserve_bytes: 0,
+                database_bytes: 100_000_000,
+                record_bytes: 2_097_152,
+                page_rows: 100,
+                busy_timeout: std::time::Duration::from_millis(100),
+            },
+            Box::new(crate::runtime::space::Volume),
+            8,
+            crate::test_startup_deadline()?,
+        )
+        .await?;
+        store
+            .request(deadline(), |s| {
+                let endpoint = analyte_model::Identifier::new("relay")
+                    .map_err(|_| analyte_store::Error::InvalidInput)?;
+                s.register_alert_endpoint(&endpoint)?;
+                s.evaluate_alert(
+                    &analyte_store::AlertKey::ParkedItems,
+                    "Duty officer",
+                    true,
+                    Some(1),
+                    100,
+                )?;
+                s.prepare_alert_event(&endpoint, 100, 60, 1)?;
+                s.prepare_alert_event(&endpoint, 100, 60, 1)?;
+                let event = s
+                    .claim_alert_attempt(&endpoint, 100, 1, 5, 10)?
+                    .ok_or(analyte_store::Error::Corruption)?;
+                s.fail_alert_attempt(&event.id, analyte_store::AlertFailure::Network)
+            })
+            .await?;
+        let mut html = String::new();
+        render_alert_endpoints(&store, &mut html, 120).await?;
+        for field in [
+            "pending_count=1",
+            "oldest_age_seconds=20",
+            "exhausted=1",
+            "queue_full=true",
+            "failed=1",
+        ] {
+            assert!(html.contains(field));
+        }
+        let program = crate::installation::config::Program::load(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml"),
+        )?;
+        let lines = crate::operator::status::snapshot(&program, &store).await?;
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("alert_endpoint=relay")
+                    && line.contains("queue_full=true")
+                    && line.contains("exhausted=1"))
+        );
+        store.shutdown(deadline()).await?;
+        Ok(())
+    }
 }
