@@ -1,4 +1,4 @@
-//! Defines version-1 sample evidence types and validates their wire values.
+//! Defines the version-1 sample identity: the string ID, how it reached the analyzer and its carrier position.
 use super::{Identifier, SampleId};
 use serde::{Deserialize, Serialize};
 

@@ -1,4 +1,4 @@
-//! Selects validated protocol settings and constructs protocol stacks.
+//! Turns a validated machine document into a `Stack`: one typed settings bundle per supported protocol combination.
 use crate::*;
 mod astm;
 pub use astm::{AstmOrders, AstmStack, AstmSyntax};

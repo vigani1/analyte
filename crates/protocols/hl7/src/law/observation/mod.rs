@@ -1,4 +1,4 @@
-//! Validates LAW OBX, NTE and INV segments (TF-2b C.2/C.5/C.7).
+//! Validates LAW OBX observation segments per direction (TF-2b C.2/C.5/C.7); NTE and INV are in `notes_inventory`.
 use super::fields::{characters, component_error, excluded_fields, field, part, primitive, scalar};
 use super::order::limit;
 use super::patient::{authority_value, coded, excluded, extras};
