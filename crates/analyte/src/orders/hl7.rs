@@ -188,7 +188,6 @@ impl Connection {
             started,
             receipt,
         } = request;
-        let freshness = machine.destination_limits.freshness.as_secs();
         let request = match query::Request::new(message) {
             Ok(request) => request,
             Err(error) => {
@@ -207,27 +206,91 @@ impl Connection {
         let until = started
             .checked_add(Duration::from_millis(u64::from(policy.deadline_ms)))
             .ok_or_else(|| invalid("HL7 query deadline overflow"))?;
+        let (mut answer, lines, candidates) = self
+            .lookup_display(
+                store,
+                machine,
+                request,
+                receipt,
+                until,
+                dialog.orders_busy(),
+            )
+            .await?;
+        if Instant::now() >= until {
+            answer = CacheAnswer::Unavailable;
+        }
+        let qck_metadata = crate::machine::hl7_response::response_metadata(
+            crate::machine::hl7_response::Profile::Hl7,
+        );
+        let mut dsr_metadata = crate::machine::hl7_response::response_metadata(
+            crate::machine::hl7_response::Profile::Hl7,
+        );
+        dsr_metadata.timestamp.clone_from(&qck_metadata.timestamp);
+        let mut dsr = None;
+        if answer == CacheAnswer::Found {
+            let refs = lines.iter().map(Vec::as_slice).collect::<Vec<_>>();
+            match query::display(
+                request,
+                dsr_metadata.response()?,
+                qck_metadata.response()?.control_id,
+                &refs,
+                self.options,
+            ) {
+                Ok(message) => dsr = Some(message),
+                Err(_) => answer = CacheAnswer::Unavailable,
+            }
+        }
+        if answer == CacheAnswer::Found {
+            self.reserving = candidates
+                .iter()
+                .map(|candidate| candidate.identity.clone())
+                .collect();
+            if !super::sending::reserve_candidates(
+                store,
+                candidates,
+                until,
+                &mut self.active,
+                Some(self.owner.clone()),
+                machine.destination_limits.freshness.as_secs(),
+            )
+            .await?
+            {
+                answer = CacheAnswer::Unavailable;
+                dsr = None;
+            }
+            self.reserving.clear();
+        }
+        let qck = query::acknowledgment(request, qck_metadata.response()?, answer, self.options)?;
+        Ok(Some(analyte_dialog::hl7::DisplayReply {
+            acknowledgment: qck,
+            display: dsr,
+            query_deadline: until.duration_since(clock),
+            failure_deadline: deadline().duration_since(clock),
+            acknowledgment_wait: Duration::from_millis(u64::from(layout.acknowledgment_ms)),
+        }))
+    }
+    async fn lookup_display(
+        &self,
+        store: &Handle,
+        machine: &Machine,
+        request: query::Request<'_>,
+        receipt: ReceiptId,
+        until: Instant,
+        busy: bool,
+    ) -> Result<(CacheAnswer, Vec<Vec<u8>>, Vec<super::Candidate>), Error> {
+        let freshness = machine.destination_limits.freshness.as_secs();
+        let settings =
+            super::settings::hl7(machine).ok_or_else(|| invalid("HL7 orders missing"))?;
+        let query = settings
+            .query()
+            .as_ref()
+            .ok_or_else(|| invalid("HL7 query policy missing"))?;
+        let layout = &query.layout();
         let mut answer = CacheAnswer::Unavailable;
         let mut lines = Vec::new();
         let mut candidates = Vec::new();
-        let selected = match sample(request, layout) {
-            Ok(Some(sample)) => Some(sample),
-            Ok(None) => {
-                evidence::failed_reading(
-                    store,
-                    machine,
-                    receipt,
-                    "HL7 query selectors are outside the configured scope",
-                )
-                .await?;
-                None
-            }
-            Err(error) => {
-                evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
-                None
-            }
-        };
-        if !dialog.orders_busy()
+        let selected = select_sample(store, machine, request, receipt, layout).await?;
+        if !busy
             && Instant::now() < until
             && let Some(sample) = selected
         {
@@ -306,58 +369,7 @@ impl Connection {
                 }
             }
         }
-        if Instant::now() >= until {
-            answer = CacheAnswer::Unavailable;
-        }
-        let qck_metadata = crate::machine::hl7_response::response_metadata(
-            crate::machine::hl7_response::Profile::Hl7,
-        );
-        let mut dsr_metadata = crate::machine::hl7_response::response_metadata(
-            crate::machine::hl7_response::Profile::Hl7,
-        );
-        dsr_metadata.timestamp.clone_from(&qck_metadata.timestamp);
-        let mut dsr = None;
-        if answer == CacheAnswer::Found {
-            let refs = lines.iter().map(Vec::as_slice).collect::<Vec<_>>();
-            match query::display(
-                request,
-                dsr_metadata.response()?,
-                qck_metadata.response()?.control_id,
-                &refs,
-                self.options,
-            ) {
-                Ok(message) => dsr = Some(message),
-                Err(_) => answer = CacheAnswer::Unavailable,
-            }
-        }
-        if answer == CacheAnswer::Found {
-            self.reserving = candidates
-                .iter()
-                .map(|candidate| candidate.identity.clone())
-                .collect();
-            if !super::sending::reserve_candidates(
-                store,
-                candidates,
-                until,
-                &mut self.active,
-                Some(self.owner.clone()),
-                machine.destination_limits.freshness.as_secs(),
-            )
-            .await?
-            {
-                answer = CacheAnswer::Unavailable;
-                dsr = None;
-            }
-            self.reserving.clear();
-        }
-        let qck = query::acknowledgment(request, qck_metadata.response()?, answer, self.options)?;
-        Ok(Some(analyte_dialog::hl7::DisplayReply {
-            acknowledgment: qck,
-            display: dsr,
-            query_deadline: until.duration_since(clock),
-            failure_deadline: deadline().duration_since(clock),
-            acknowledgment_wait: Duration::from_millis(u64::from(layout.acknowledgment_ms)),
-        }))
+        Ok((answer, lines, candidates))
     }
 }
 
@@ -417,6 +429,33 @@ async fn write(
     Ok(())
 }
 
+async fn select_sample(
+    store: &Handle,
+    machine: &Machine,
+    request: query::Request<'_>,
+    receipt: ReceiptId,
+    layout: &analyte_config::Hl7OrderQuery,
+) -> Result<Option<SampleId>, Error> {
+    let selected = match sample(request, layout) {
+        Ok(Some(sample)) => Some(sample),
+        Ok(None) => {
+            evidence::failed_reading(
+                store,
+                machine,
+                receipt,
+                "HL7 query selectors are outside the configured scope",
+            )
+            .await?;
+            None
+        }
+        Err(error) => {
+            evidence::failed_reading(store, machine, receipt, &error.to_string()).await?;
+            None
+        }
+    };
+    Ok(selected)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,28 +469,7 @@ mod tests {
     #[tokio::test]
     async fn adr0003_rule8_cancelled_query_cleanup_never_claims_another_connection()
     -> Result<(), Error> {
-        let definition = format!(
-            "{}\n{}",
-            include_str!("../../../config/examples/hl7.toml"),
-            include_str!("../../../config/examples/hl7_orders.toml")
-        );
-        let snapshot = analyte_config::Draft::load(
-            ("machine", &definition),
-            ("site", include_str!("../../../config/examples/site.toml")),
-            ("overrides", "schema_version=1"),
-        )?
-        .validate()?;
-        let machine = Machine {
-            capture: false,
-            destination_limits: crate::runtime::delivery::limits(30),
-            #[cfg(feature = "test-hooks")]
-            law_committed: None,
-            id: Identifier::new("synthetic")?,
-            snapshot,
-            listener: None,
-            #[cfg(feature = "test-hooks")]
-            astm_committed: None,
-        };
+        let machine = query_machine()?;
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
             temp.path().join("cleanup.db"),
@@ -473,6 +491,77 @@ mod tests {
             machine: machine.id.clone(),
         };
         let owner = Identifier::new("original-connection")?;
+        reserve_original_connection(&store, &key, &owner).await?;
+        let options = machine
+            .snapshot
+            .effective()
+            .hl7_options()
+            .ok_or("options")?;
+        let mut other = Connection::new(options)?;
+        other.reserving.push(key.clone());
+        other
+            .close(
+                &store,
+                &evidence::Connection::new(&machine)?,
+                "HL7-DSR-disconnect",
+            )
+            .await?;
+        let identity = key.clone();
+        let current = store
+            .request(deadline(), move |store| store.machine_order(&identity))
+            .await?
+            .ok_or("reservation")?;
+        assert_eq!(current.state, analyte_model::OrderState::Sending);
+        assert!(current.reserved_by(&owner));
+        let mut original = Connection::new(options)?;
+        original.owner = owner;
+        original.reserving.push(key.clone());
+        original
+            .close(
+                &store,
+                &evidence::Connection::new(&machine)?,
+                "HL7-DSR-disconnect",
+            )
+            .await?;
+        let current = store
+            .request(deadline(), move |store| store.machine_order(&key))
+            .await?
+            .ok_or("reservation")?;
+        assert_eq!(current.state, analyte_model::OrderState::Uncertain);
+        assert_eq!(current.source_code.as_str(), "HL7-DSR-disconnect");
+        store.shutdown(deadline()).await?;
+        Ok(())
+    }
+    fn query_machine() -> Result<Machine, Error> {
+        let definition = format!(
+            "{}\n{}",
+            include_str!("../../../config/examples/hl7.toml"),
+            include_str!("../../../config/examples/hl7_orders.toml")
+        );
+        let snapshot = analyte_config::Draft::load(
+            ("machine", &definition),
+            ("site", include_str!("../../../config/examples/site.toml")),
+            ("overrides", "schema_version=1"),
+        )?
+        .validate()?;
+        Ok(Machine {
+            capture: false,
+            destination_limits: crate::runtime::delivery::limits(30),
+            #[cfg(feature = "test-hooks")]
+            law_committed: None,
+            id: Identifier::new("synthetic")?,
+            snapshot,
+            listener: None,
+            #[cfg(feature = "test-hooks")]
+            astm_committed: None,
+        })
+    }
+
+    async fn reserve_original_connection(
+        store: &Handle,
+        key: &analyte_store::MachineOrderKey,
+        owner: &Identifier,
+    ) -> Result<(), Error> {
         let identity = key.clone();
         let original_owner = owner.clone();
         store
@@ -512,44 +601,6 @@ mod tests {
                     .map_err(|_| analyte_store::Error::Conflict)
             })
             .await?;
-        let options = machine
-            .snapshot
-            .effective()
-            .hl7_options()
-            .ok_or("options")?;
-        let mut other = Connection::new(options)?;
-        other.reserving.push(key.clone());
-        other
-            .close(
-                &store,
-                &evidence::Connection::new(&machine)?,
-                "HL7-DSR-disconnect",
-            )
-            .await?;
-        let identity = key.clone();
-        let current = store
-            .request(deadline(), move |store| store.machine_order(&identity))
-            .await?
-            .ok_or("reservation")?;
-        assert_eq!(current.state, analyte_model::OrderState::Sending);
-        assert!(current.reserved_by(&owner));
-        let mut original = Connection::new(options)?;
-        original.owner = owner;
-        original.reserving.push(key.clone());
-        original
-            .close(
-                &store,
-                &evidence::Connection::new(&machine)?,
-                "HL7-DSR-disconnect",
-            )
-            .await?;
-        let current = store
-            .request(deadline(), move |store| store.machine_order(&key))
-            .await?
-            .ok_or("reservation")?;
-        assert_eq!(current.state, analyte_model::OrderState::Uncertain);
-        assert_eq!(current.source_code.as_str(), "HL7-DSR-disconnect");
-        store.shutdown(deadline()).await?;
         Ok(())
     }
 }
