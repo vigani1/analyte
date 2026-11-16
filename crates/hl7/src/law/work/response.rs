@@ -51,7 +51,7 @@ impl<'a> WorkResponse<'a> {
         sent: &'a Message,
         mut profile: law::Profile<'_>,
     ) -> Result<Self, Error> {
-        profile.results_message = false;
+        profile.context = law::profile::MessageContext::Work;
         profile.validate_message(message, law::ControlDirection::Receive)?;
         law::profile::header(message, b"LAB-28", false)?;
         let msh = law::msh(message)?;

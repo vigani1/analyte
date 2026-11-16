@@ -317,8 +317,7 @@ impl<'a> Results<'a> {
         for (ordinal, segment) in message.segments().enumerate().skip(1) {
             let occurrence = occurrences.entry(segment.id()).or_default();
             *occurrence = occurrence.checked_add(1).ok_or(content("OUL", 0))?;
-            let checked =
-                groups.parse_segment(segment, ordinal, profile);
+            let checked = groups.parse_segment(segment, ordinal, profile);
             checked.map_err(|error| error.at_segment(segment, *occurrence))?;
         }
         check_complete(groups.order_status, groups.observation_count)?;

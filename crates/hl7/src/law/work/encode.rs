@@ -81,13 +81,22 @@ fn header(
     }
     let mut profiles = b"LAB-28^IHE".to_vec();
     for (enabled, name) in [
-        (capabilities.patient, b"LAW_PAT_DEM".as_slice()),
-        (capabilities.container, b"LAW_CONTAINER".as_slice()),
-        (capabilities.specimen, b"LAW_SPECIMEN".as_slice()),
-        (capabilities.dilution, b"LAW_DILUTIONS".as_slice()),
-        (capabilities.manager_repeat, b"LAW_AM_RR"),
-        (capabilities.repeat_control, b"LAW_AM_RR_CONTROL"),
-        (capabilities.priority, b"LAW_AWOS_PRIORITY"),
+        (capabilities.content.patient, b"LAW_PAT_DEM".as_slice()),
+        (capabilities.content.container, b"LAW_CONTAINER".as_slice()),
+        (capabilities.content.specimen, b"LAW_SPECIMEN".as_slice()),
+        (
+            capabilities.instructions.dilution,
+            b"LAW_DILUTIONS".as_slice(),
+        ),
+        (
+            capabilities.instructions.repeat.manager_repeat,
+            b"LAW_AM_RR",
+        ),
+        (
+            capabilities.instructions.repeat.repeat_control,
+            b"LAW_AM_RR_CONTROL",
+        ),
+        (capabilities.instructions.priority, b"LAW_AWOS_PRIORITY"),
     ] {
         if enabled {
             profiles.extend_from_slice(b"~");
@@ -159,15 +168,17 @@ pub fn work_order_with_profile(
     mut profile: law::Profile<'_>,
 ) -> Result<Message, Error> {
     // A validation context may narrow, but cannot enlarge, the peer's capabilities.
-    profile.patient &= capabilities.patient;
-    profile.specimen &= capabilities.specimen;
-    profile.container &= capabilities.container;
-    profile.dilution &= capabilities.dilution;
-    profile.dilution_required &= capabilities.dilution;
-    profile.manager_repeat &= capabilities.manager_repeat;
-    profile.repeat_control &= capabilities.repeat_control;
-    profile.priority &= capabilities.priority;
-    profile.priority_required &= capabilities.priority;
+    profile.content.patient &= capabilities.content.patient;
+    profile.content.specimen &= capabilities.content.specimen;
+    profile.content.container &= capabilities.content.container;
+    profile.dilution = profile
+        .dilution
+        .restrict(capabilities.instructions.dilution);
+    profile.repeat.manager_repeat &= capabilities.instructions.repeat.manager_repeat;
+    profile.repeat.repeat_control &= capabilities.instructions.repeat.repeat_control;
+    profile.priority = profile
+        .priority
+        .restrict(capabilities.instructions.priority);
     if work.is_empty() || work.len() > options.limits.segments {
         return Err(content("OBR", 0));
     }
@@ -282,7 +293,7 @@ fn encode_patient(
     capabilities: Capabilities,
 ) -> Result<(), Error> {
     if let Some(patient) = patient {
-        if !capabilities.patient {
+        if !capabilities.content.patient {
             return Err(content("PID", 0));
         }
         let mut fields: [&[u8]; 35] = [b""; 35];
@@ -334,7 +345,7 @@ fn encode_awos(
     }
     let instruction = awos.instructions;
     if let Some(priority) = instruction.priority {
-        if !capabilities.priority {
+        if !capabilities.instructions.priority {
             return Err(content("TQ1", 9));
         }
         safe(priority, "TQ1", 9, 250)?;
@@ -380,15 +391,15 @@ fn encode_instructions(
             || instruction.rerun_dilution.is_some()
             || instruction.predilution_content.is_some()
             || instruction.dilution_type.is_some())
-            && !capabilities.dilution
+            && !capabilities.instructions.dilution
         {
             return Err(content("TCD", 2));
         }
-        if instruction.repeat.is_some() && !capabilities.manager_repeat {
+        if instruction.repeat.is_some() && !capabilities.instructions.repeat.manager_repeat {
             return Err(content("TCD", 8));
         }
         if (instruction.automatic_repeat.is_some() || instruction.reflex.is_some())
-            && !capabilities.repeat_control
+            && !capabilities.instructions.repeat.repeat_control
         {
             return Err(content("TCD", 6));
         }
@@ -440,7 +451,7 @@ fn encode_specimen_group(
     let mut specimen: [&[u8]; 27] = [b""; 27];
     for (position, value) in [
         (1, Some(sequence.as_bytes())),
-        (2, capabilities.specimen.then_some(awos.specimen)),
+        (2, capabilities.content.specimen.then_some(awos.specimen)),
         (4, Some(awos.specimen_type)),
         (
             11,

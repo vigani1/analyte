@@ -1276,7 +1276,7 @@ fn law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively(
 
 #[test]
 fn law_tf2b_c8_c6_c13_work_builder_preserves_supplied_event_and_validates_details() -> TestResult {
-    use law::{Address, Awos, Capabilities, Instructions, OrderDetails, WorkAction};
+    use law::{Address, Awos, Capabilities, Instructions, WorkAction};
     let address = Address {
         application: b"M",
         facility: b"L",
@@ -1298,7 +1298,10 @@ fn law_tf2b_c8_c6_c13_work_builder_preserves_supplied_event_and_validates_detail
     )?
     .with_transaction_time(b"20251231235959");
     let capabilities = Capabilities {
-        dilution: true,
+        instructions: law::PeerInstructions {
+            dilution: true,
+            ..Capabilities::default().instructions
+        },
         ..Capabilities::default()
     };
     assert!(law::work_order(&[awos], None, address, response, capabilities, options()).is_err());
@@ -1370,55 +1373,7 @@ fn law_tf2b_c8_c6_c13_work_builder_preserves_supplied_event_and_validates_detail
         options(),
         Profile::for_peer(capabilities).with_dilution_bindings(&bindings),
     )?;
-    let invalid_group = OrderDetails {
-        group: Some(b"group&namespace"),
-        ..OrderDetails::default()
-    };
-    assert!(
-        law::work_order(
-            &[work.with_order_details(&invalid_group)],
-            None,
-            address,
-            response,
-            capabilities,
-            options()
-        )
-        .is_err()
-    );
-    let permission_caps = Capabilities {
-        repeat_control: true,
-        ..Capabilities::default()
-    };
-    assert!(law::work_order(&[awos], None, address, response, permission_caps, options()).is_err());
-    let permissions = awos.with_instructions(Instructions {
-        automatic_repeat: Some(false),
-        reflex: Some(false),
-        ..Instructions::default()
-    });
-    law::work_order(
-        &[permissions],
-        None,
-        address,
-        response,
-        permission_caps,
-        options(),
-    )?;
-    let repeat_caps = Capabilities {
-        manager_repeat: true,
-        ..Capabilities::default()
-    };
-    assert!(law::work_order(&[awos], None, address, response, repeat_caps, options()).is_err());
-    law::work_order(
-        &[awos.with_instructions(Instructions {
-            repeat: Some(b"O^Synthetic^HL70389"),
-            ..Instructions::default()
-        })],
-        None,
-        address,
-        response,
-        repeat_caps,
-        options(),
-    )?;
+    validate_builder_repeat_permissions(awos, work, address, response, capabilities)?;
     Ok(())
 }
 
@@ -1594,5 +1549,77 @@ fn law_tf2b_c13_safety_rule_6_type_only_dilution_has_adjustment_metadata() -> Te
         assert!(!ignored.requires_reconciliation());
         assert_eq!(ignored.segment().raw(), detail.segment().raw());
     }
+    Ok(())
+}
+
+fn validate_builder_repeat_permissions(
+    awos: law::Awos<'_>,
+    work: law::Awos<'_>,
+    address: law::Address<'_>,
+    response: analyte_hl7::Response<'_>,
+    capabilities: law::Capabilities,
+) -> TestResult {
+    use law::{Capabilities, Instructions, OrderDetails};
+    let invalid_group = OrderDetails {
+        group: Some(b"group&namespace"),
+        ..OrderDetails::default()
+    };
+    assert!(
+        law::work_order(
+            &[work.with_order_details(&invalid_group)],
+            None,
+            address,
+            response,
+            capabilities,
+            options()
+        )
+        .is_err()
+    );
+    let permission_caps = Capabilities {
+        instructions: law::PeerInstructions {
+            repeat: law::PeerRepeat {
+                repeat_control: true,
+                ..Capabilities::default().instructions.repeat
+            },
+            ..Capabilities::default().instructions
+        },
+        ..Capabilities::default()
+    };
+    assert!(law::work_order(&[awos], None, address, response, permission_caps, options()).is_err());
+    let permissions = awos.with_instructions(Instructions {
+        automatic_repeat: Some(false),
+        reflex: Some(false),
+        ..Instructions::default()
+    });
+    law::work_order(
+        &[permissions],
+        None,
+        address,
+        response,
+        permission_caps,
+        options(),
+    )?;
+    let repeat_caps = Capabilities {
+        instructions: law::PeerInstructions {
+            repeat: law::PeerRepeat {
+                manager_repeat: true,
+                ..Capabilities::default().instructions.repeat
+            },
+            ..Capabilities::default().instructions
+        },
+        ..Capabilities::default()
+    };
+    assert!(law::work_order(&[awos], None, address, response, repeat_caps, options()).is_err());
+    law::work_order(
+        &[awos.with_instructions(Instructions {
+            repeat: Some(b"O^Synthetic^HL70389"),
+            ..Instructions::default()
+        })],
+        None,
+        address,
+        response,
+        repeat_caps,
+        options(),
+    )?;
     Ok(())
 }

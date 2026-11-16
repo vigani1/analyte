@@ -63,13 +63,21 @@ impl OrderControl {
     fn permitted(self, profile: Profile<'_>, direction: ControlDirection) -> bool {
         match self {
             Self::New | Self::Cancel => {
-                direction == ControlDirection::Send && !profile.negative_query
+                direction == ControlDirection::Send
+                    && !(profile.context == crate::law::profile::MessageContext::NegativeQuery)
             }
-            Self::Discontinue => direction == ControlDirection::Send && profile.negative_query,
+            Self::Discontinue => {
+                direction == ControlDirection::Send
+                    && (profile.context == crate::law::profile::MessageContext::NegativeQuery)
+            }
             Self::Accepted | Self::UnableToAccept | Self::Cancelled | Self::UnableToCancel => {
-                direction == ControlDirection::Receive && !profile.results_message
+                direction == ControlDirection::Receive
+                    && !(profile.context == crate::law::profile::MessageContext::Results)
             }
-            Self::StatusChange => direction == ControlDirection::Receive && profile.results_message,
+            Self::StatusChange => {
+                direction == ControlDirection::Receive
+                    && (profile.context == crate::law::profile::MessageContext::Results)
+            }
         }
     }
 }
@@ -279,13 +287,13 @@ fn orc(
         return Err(content("ORC", 1));
     }
     if direction == ControlDirection::Receive {
-        if !profile.results_message {
+        if !(profile.context == crate::law::profile::MessageContext::Results) {
             field(segment, "ORC", 2, true, false)?;
             ei(raw(segment, 2), "ORC", 2, direction)?;
         }
         scalar(segment, "ORC", 5, true, 2)?;
         OrderStatus::parse(raw(segment, 5))?;
-        if profile.analyzer_reflex {
+        if profile.workflow.analyzer_reflex {
             field(segment, "ORC", 8, false, true)?;
             if !raw(segment, 8).is_empty() {
                 for value in raw(segment, 8).split(|b| *b == b'~') {
@@ -349,7 +357,7 @@ fn obr(
         if !raw(segment, 3).is_empty() {
             ei(raw(segment, 3), "OBR", 3, direction)?;
         }
-        if profile.analyzer_reflex {
+        if profile.workflow.analyzer_reflex {
             scalar(segment, "OBR", 11, false, 1)?;
             if !raw(segment, 11).is_empty() && raw(segment, 11) != b"G" {
                 return Err(content("OBR", 11));
@@ -358,7 +366,7 @@ fn obr(
     }
     // C.6.1's AM column is RE (the following prose says X). Follow the
     // requested manager-column schema and make that discrepancy explicit in docs.
-    if direction == ControlDirection::Send || profile.external_results {
+    if direction == ControlDirection::Send || profile.results.external_results {
         scalar(segment, "OBR", 49, false, 2)?;
         if !raw(segment, 49).is_empty() && raw(segment, 49) != b"RE" {
             return Err(content("OBR", 49));
@@ -377,7 +385,7 @@ pub(super) fn validate(
         b"ORC" => orc(segment, profile, direction),
         b"OBR" => obr(segment, profile, direction),
         b"TQ1" => {
-            if !profile.priority {
+            if !profile.priority.supported() {
                 return excluded(segment.raw(), direction, content("TQ1", 0));
             }
             excluded_fields(segment, "TQ1", &[9], direction)?;
@@ -409,12 +417,14 @@ pub(super) fn validate_links(
 ) -> Result<(), Error> {
     let required = match direction {
         ControlDirection::Send => {
-            profile.dilution_required
-                || profile.manager_repeat
-                || profile.repeat_control
-                || profile.pooling_analyzer
+            profile.dilution.required()
+                || profile.repeat.manager_repeat
+                || profile.repeat.repeat_control
+                || profile.workflow.pooling_analyzer
         }
-        ControlDirection::Receive => profile.dilution_required || profile.pooling_analyzer,
+        ControlDirection::Receive => {
+            profile.dilution.required() || profile.workflow.pooling_analyzer
+        }
     };
     let mut reference = None;
     let mut awaiting = false;
@@ -434,7 +444,8 @@ pub(super) fn validate_links(
                 if needs_priority {
                     return Err(content("TQ1", 0));
                 }
-                needs_priority = profile.priority_required && profile.results_message;
+                needs_priority = profile.priority.required()
+                    && (profile.context == crate::law::profile::MessageContext::Results);
                 if awaiting {
                     return Err(content("TCD", 0));
                 }

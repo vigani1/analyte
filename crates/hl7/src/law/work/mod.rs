@@ -2,23 +2,41 @@
 use super::content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, WorkNotes};
 use super::{Error, Identity, content};
 
-/// Negotiated outgoing options. Absence never authorizes clinical decisions.
+/// Independent peer content and instruction options; absence never authorizes clinical decisions.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Capabilities {
+    /// Negotiated patient, specimen and container content.
+    pub content: PeerContent,
+    /// Negotiated work instructions.
+    pub instructions: PeerInstructions,
+}
+/// Independent negotiated content options.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PeerContent {
     /// Peer accepts patient/encounter demographics.
     pub patient: bool,
     /// Peer accepts extended container characteristics.
     pub container: bool,
     /// Peer accepts supplied specimen identity and characteristics.
     pub specimen: bool,
-    /// Peer accepts explicit requested dilution.
-    pub dilution: bool,
+}
+/// Independent negotiated repeat options.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PeerRepeat {
     /// Peer accepts app-authorized manager rerun/reflex status.
     pub manager_repeat: bool,
     /// Peer accepts app-authorized automatic repeat/reflex permissions.
     pub repeat_control: bool,
+}
+/// Independent negotiated instructions options.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PeerInstructions {
+    /// Peer accepts explicit requested dilution.
+    pub dilution: bool,
     /// Peer accepts explicit priority.
     pub priority: bool,
+    /// Independently negotiated repeat status and permissions.
+    pub repeat: PeerRepeat,
 }
 
 /// New work versus cancellation of a previously sent AWOS.

@@ -325,7 +325,7 @@ impl<'a> ResultGroups<'a> {
                 {
                     return Err(content("INV", 0));
                 }
-                if profile.contributing_substances
+                if profile.results.contributing_substances
                     && (law::control::part(raw(segment, 3), 1) != b"CO"
                         || law::control::part(raw(segment, 3), 3) != b"HL70384")
                 {

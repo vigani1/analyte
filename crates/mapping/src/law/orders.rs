@@ -29,8 +29,8 @@ impl Command {
                     .ok_or(Error::Context("LAW order mappings absent"))?
                     .clone(),
             ),
-            priority: peer.priority,
-            specimen: peer.specimen,
+            priority: peer.instructions.priority,
+            specimen: peer.content.specimen,
         })
     }
     /// Exact app tests for the host's atomic AWOS reservation.
@@ -142,8 +142,14 @@ pub fn map_order(
         })
         .collect::<Result<Vec<_>, Error>>()?;
     let capabilities = law::Capabilities {
-        priority: first.priority,
-        specimen: first.specimen,
+        content: law::PeerContent {
+            specimen: first.specimen,
+            ..law::Capabilities::default().content
+        },
+        instructions: law::PeerInstructions {
+            priority: first.priority,
+            ..law::Capabilities::default().instructions
+        },
         ..law::Capabilities::default()
     };
     Ok(law::work_order(
