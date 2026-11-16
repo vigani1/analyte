@@ -491,3 +491,30 @@ fn lis01_6_3_1_1_8_3_1_1_separate_records_never_share_strict_frame() -> TestResu
     }
     Ok(())
 }
+
+#[test]
+fn adr0001_0003_disconnect_returns_partial_frame_and_never_writes_or_reopens() -> TestResult {
+    let mut dialog = receiver();
+    feed(&mut dialog, 0, b"\x021R|partial");
+    let actions = step(&mut dialog, 1, Event::Disconnect);
+    assert!(actions.iter().any(|action| matches!(action,
+        Action::Rejected(astm::Error::Incomplete, raw) if raw == b"\x021R|partial")));
+    assert!(actions.contains(&Action::Ended(End::Incomplete)));
+    assert!(
+        !actions
+            .iter()
+            .any(|action| matches!(action, Action::Write(_)))
+    );
+    assert_eq!(dialog.next_deadline(), None);
+    assert!(
+        !feed(&mut dialog, 2, &[ENQ])
+            .iter()
+            .any(|action| matches!(action, Action::Write(_)))
+    );
+    assert!(
+        !step(&mut dialog, 2, Event::Disconnect)
+            .iter()
+            .any(|action| matches!(action, Action::Rejected(_, _)))
+    );
+    Ok(())
+}
