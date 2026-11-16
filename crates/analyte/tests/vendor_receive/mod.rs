@@ -588,3 +588,5 @@ async fn assert_missing_device_retained(run: &mut Running, hello: &str) -> Resul
 // POCT01-A2 Appendix B 4.1.2 p.78, 3.4.1 p.73: error ACK precedes abnormal END.
 
 mod scenarios_1;
+
+mod identity;
