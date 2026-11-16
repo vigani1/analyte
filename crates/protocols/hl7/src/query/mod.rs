@@ -39,7 +39,7 @@ impl<'a> Request<'a> {
             return Err(invalid("MSH", 9));
         }
         let mut segments = message.segments().skip(1).peekable();
-        if msh.version() == Version::V251 {
+        if matches!(msh.version(), Version::V25 | Version::V251) {
             while segments.peek().is_some_and(|s| s.id() == b"SFT") {
                 segments.next();
             }
@@ -127,7 +127,7 @@ impl<'a> DisplayAck<'a> {
             return Err(invalid("MSH", 9));
         }
         let mut segments = message.segments().skip(1).peekable();
-        if msh.version() == Version::V251 {
+        if matches!(msh.version(), Version::V25 | Version::V251) {
             while segments.peek().is_some_and(|s| s.id() == b"SFT") {
                 segments.next();
             }
@@ -307,7 +307,7 @@ fn encode_response_segments(
                     output.extend_from_slice(message_type);
                     output.push(d.component);
                     output.extend_from_slice(event);
-                    if version == Version::V251 {
+                    if matches!(version, Version::V25 | Version::V251) {
                         output.push(d.component);
                         output.extend_from_slice(structure);
                     }

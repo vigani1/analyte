@@ -145,14 +145,18 @@ fn law_tf2b_c4_msh_11_m_pt_production_only() -> TestResult {
 }
 
 #[test]
-fn law_tf2b_c4_msh_12_m_vid_compatible_25_versions_and_base_policy_unchanged() -> TestResult {
+fn law_tf2b_c4_msh_12_compatible_versions_and_base_legacy_charset_refusal() -> TestResult {
     for version in ["2.5", "2.5.1", "2.5.2"] {
         both("query", &[(12, version)], "", true)?;
         let bytes = wire("query", &[(12, version)], "")?;
-        assert_eq!(
-            Message::parse(bytes.as_bytes(), options()).is_ok(),
-            version == "2.5.1"
-        );
+        let base = Message::parse(bytes.as_bytes(), options());
+        if version == "2.5" {
+            // Section 2.8 permits table changes; base compatibility does not
+            // establish the earlier edition's UTF-8 code. LAW agrees it separately.
+            assert!(matches!(base, Err(analyte_hl7::Error::UnsupportedCharset)));
+        } else {
+            assert_eq!(base.is_ok(), version == "2.5.1");
+        }
     }
     for version in ["", "\"\"", "2.3.1", "2.6", "2.5.1~2.5.1", "2.5&bad"] {
         both("query", &[(12, version)], "", false)?;

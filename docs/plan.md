@@ -48,7 +48,8 @@ Existing options were researched before this plan:
 
 ## 3. Scope
 
-**In:** serial, TCP and file transports; ASTM, HL7 v2 (2.3.1 and 2.5.1), IHE
+**In:** serial, TCP and file transports; ASTM, HL7 v2 (native 2.3.1/2.5.1 and
+bounded 2.3/2.4/2.5 receiving/query compatibility; see the HL7 version notes), IHE
 LAW and POCT1-A protocols; vendor formats as small pieces; durable storage;
 delivery to apps; order lookup and work lists; a local admin page; Windows and
 Linux service installs.

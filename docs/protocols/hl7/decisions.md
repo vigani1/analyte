@@ -1,5 +1,62 @@
 # HL7 decisions
 
+## Bound compatibility to the established legacy receiving prefix
+
+- **what**: Receive ORU/R01 and the selected legacy query exchange in 2.3,
+  2.4 and 2.5 under the later receiver contract. Preserve the exact edition and
+  original bytes. Use the common datatype/query prefix; apply the explicitly
+  dated MSH-7, MSG and ERR changes. Enable receiving/query config only with
+  tested typed paths and replies; keep command sending gated until implemented.
+- **why**: Compatibility guarantees existing meanings, not a chronology of
+  every addition. Unknown extensions must not gain later clinical meanings.
+  Keep OBR interpreter composites and OBX-19 raw; park unsupported CWE values;
+  refuse unverified URI/UTF-8 codes, extended query filters and specimen groups.
+  The exact limitations and per-edition sources are in `versions.md`.
+- **source**: HL7 2.5.1 §§2.8–2.8.2 pp.2-20–22, §2.15.9.7 p.2-76,
+  §2.A.44 pp.2-180–181, §2.15.5.1 p.2-67; 2002-04-08 2.3.1/2.4 errata,
+  TS, sequencing, XCN-17 and OBR-32–35 items (unpaginated).
+- **test**: protocol `tests/compatibility.rs`, mapping
+  `tests/mapping/compatibility.rs`, the errata sequencing datatype test,
+  `config/tests/hl7_editions.rs` and dialog `tests/hl7_compatibility.rs`.
+
+## Edition recognition precedes typed qualification
+
+- **what**: Recognize the eight explicit edition IDs in one registry. Keep each
+  typed field profile optional until its actual rules have been implemented;
+  a missing profile returns `EditionRules` with the edition's static name.
+  Do not fill a new row by copying 2.5.1's interpretation.
+  Configuration validation refuses a recognized edition without typed support
+  using `UnsupportedHl7Edition`; such a machine must not start and park all input.
+  Enabling an edition in config is part of implementing its typed support.
+- **why**: An exhaustive enum is infrastructure, not conformance evidence.
+  This lets registry and configuration work remain buildable while later
+  commits add compatibility, message/datatype rules and writer support.
+- **source**: ADR 0007 and ADR 0012 §3; HL7 2.5.1 §2.8, pp.2-20–22.
+- **test**: the eight edition cases in `version/tests.rs`; existing 2.3.1 and
+  2.5.1 conformance tests continue to guard their implemented field rules.
+  `adr0012_s3_recognized_editions_without_typed_support_fail_config_validation`
+  checks that all six other editions fail before activation with an actionable
+  diagnostic naming the edition and the supported alternatives.
+
+## Sender-marked truncation
+
+- **what**: Preserve the complete received spelling and expose whether a primitive
+  ends in the declared truncation character. Park messages containing such a
+  marker before clinical mapping; never reconstruct the omitted suffix. A literal
+  character escaped with `\P\` is not a truncation marker. Analyte never truncates
+  outgoing values and escapes literal occurrences when declaring the character.
+- **why**: The standards describe both rejection and limited use of truncated
+  information, but do not establish that a truncated laboratory value or identity
+  is safe to deliver. Parking preserves the evidence for an operator.
+- **source**: HL7 2.8.2 §§2.5.5.2–3, pp.12–13, §§2.7.1–2, pp.20–21;
+  HL7 2.9.1 §§2.4.5.2–3, pp.14–15, §§2.6.1–2, pp.22–23;
+  project safety rules 2 and 5. The 2.8.2 text's ambiguous unescaped-literal
+  example does not override its escape requirement or justify guessing.
+- **evidence**: documented. `tests/truncation.rs` checks declarations, exact
+  retention, marker flags, escaping and size refusal; mapping regression
+  `hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping` checks that
+  marked input produces a located error before results can be mapped.
+
 The [checklist](checklist.md) owns conformance requirements; the
 [version page](versions.md) owns edition support. These entries explain
 choices within that scope, not additional promises of conformance.

@@ -44,6 +44,7 @@ pub(super) fn primitive(
     error: Error,
 ) -> Result<(), Error> {
     let delimiters = crate::Delimiters {
+        truncation: None,
         field: b'|',
         component: b'^',
         repetition: b'~',

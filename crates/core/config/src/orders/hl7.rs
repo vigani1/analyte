@@ -84,6 +84,15 @@ impl Orders {
         path: &str,
     ) -> Result<(), Error> {
         if let Some(send) = &self.hl7_send {
+            if machine.syntax.edition.is_some_and(|edition| {
+                analyte_hl7::Version::from(edition).uses_compatibility_contract()
+            }) {
+                return Err(invalid(
+                    path,
+                    "orders.hl7_send",
+                    "order writers for compatibility editions are not yet implemented; disable send_ahead",
+                ));
+            }
             let plain = |value: &Identifier| {
                 value.as_str().is_ascii()
                     && value
@@ -185,11 +194,13 @@ impl Orders {
                 *field = filter.value.clone();
             }
         }
-        let edition = match machine.syntax.edition {
-            Some(crate::Edition::V231) => "2.3.1",
-            Some(crate::Edition::V251) => "2.5.1",
-            None => return Err(invalid(path, "syntax.edition", "HL7 requires an edition")),
-        };
+        let edition = analyte_hl7::Version::from(
+            machine
+                .syntax
+                .edition
+                .ok_or_else(|| invalid(path, "syntax.edition", "HL7 requires an edition"))?,
+        )
+        .as_str();
         let wire = format!(
             "MSH|^~\\&|HOST|LAB|PEER|LAB|20000101||QRY^Q02^QRY_Q02|config|P|{edition}\rQRD|{}\r",
             fields.join("|")

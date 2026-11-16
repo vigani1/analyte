@@ -6,6 +6,12 @@ fn hl7_231_2_7_and_251_2_5_4_response_delimiters_are_independent() -> Result<(),
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let edition = match version {
+            Version::V23
+            | Version::V24
+            | Version::V25
+            | Version::V26
+            | Version::V282
+            | Version::V291 => unreachable!("fixture enumerates only 2.3.1 and 2.5.1"),
             Version::V231 => "2.3.1",
             Version::V251 => "2.5.1",
         };
@@ -169,6 +175,7 @@ fn hl7_231_4_2_2_and_251_4_4_2_header_error_and_patient_context_retained() -> Re
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let body=match version {
+            Version::V23 | Version::V24 | Version::V25 | Version::V26 | Version::V282 | Version::V291 => unreachable!("fixture enumerates only 2.3.1 and 2.5.1"),
             Version::V231=>b"ERR|ORC^1^1^102\rNTE|1||Header note\rPID|1||P1^^^LAB||Synthetic\rNTE|1||Patient note\rORC|UA|001^LAB\r".as_slice(),
             Version::V251=>b"ERR||ORC^1^1|102|E\rNTE|1||Header note\rPID|1||P1^^^LAB||Synthetic\rNTE|1||Patient note\rORC|UA|001^LAB\r",
         };
@@ -292,6 +299,12 @@ fn hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors() -
         let message = reply(version, b"AA", b"ORC|OK|001^LAB\r")?;
         let text = String::from_utf8(message.raw().to_vec()).map_err(|_| Error::Limit)?;
         let families: &[&str] = match version {
+            Version::V23
+            | Version::V24
+            | Version::V25
+            | Version::V26
+            | Version::V282
+            | Version::V291 => unreachable!("fixture enumerates only 2.3.1 and 2.5.1"),
             Version::V231 => &["OSR^Q06^OSR_Q06"],
             Version::V251 => &[
                 "OSR^Q06^OSR_Q06",
