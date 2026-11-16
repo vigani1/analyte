@@ -155,10 +155,7 @@ impl Command {
                 _ => order::Subject::Unspecified,
             }
         };
-        let sent = match self.version {
-            Version::V231 => order::orm(&orders, subject, header, self.options)?,
-            Version::V251 => order::oml(&orders, subject, header, self.options)?,
-        };
+        let sent = self.encode(&orders, subject, header)?;
         let position = if cancel {
             None
         } else {
@@ -221,20 +218,31 @@ impl Command {
                 filler: None,
             });
         }
-        let sent = match self.version {
-            Version::V231 => {
-                order::orm(&orders, order::Subject::Unspecified, header, self.options)?
-            }
-            Version::V251 => {
-                order::oml(&orders, order::Subject::Unspecified, header, self.options)?
-            }
-        };
+        let sent = self.encode(&orders, order::Subject::Unspecified, header)?;
         Ok(order::context(
             &sent,
             self.group.as_bytes(),
             None,
             self.options,
         )?)
+    }
+
+    fn encode(
+        &self,
+        orders: &[order::Order<'_>],
+        subject: order::Subject<'_>,
+        header: order::Header<'_>,
+    ) -> Result<OrderMessage, Error> {
+        match self.version {
+            Version::V231 => Ok(order::orm(orders, subject, header, self.options)?),
+            Version::V251 => Ok(order::oml(orders, subject, header, self.options)?),
+            Version::V23
+            | Version::V24
+            | Version::V25
+            | Version::V26
+            | Version::V282
+            | Version::V291 => Err(Error::Context("HL7-order-edition-rules-not-implemented")),
+        }
     }
 
     fn map_specimen<'a>(

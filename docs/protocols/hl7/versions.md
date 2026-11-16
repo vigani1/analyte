@@ -1,13 +1,14 @@
 # HL7 versions
 
-Only **2.3.1 and 2.5.1** are implemented. MLLP Release 1 is the framing
+Only **2.3.1 and 2.5.1** have implemented typed field profiles. MLLP Release 1 is the framing
 profile. Evidence remains documented. Documents for 2.6, 2.8.2 and 2.9.1
 are available and planned; they are not implemented versions.
 
 The lossless syntax layer now also reads 2.8.2 and 2.9.1 envelopes to retain
 their declared truncation character and marker evidence. This is grammar
-groundwork, not typed edition support: `Version`, machine configuration and
-typed message views still refuse those editions. No earlier edition is
+groundwork, not typed edition support: `Version` recognizes all eight requested
+editions, but typed message views still refuse the six additional editions with
+an edition-specific `EditionRules` error. No earlier edition is
 silently upgraded. Truncated input is refused before result mapping, while
 its exact bytes and the field/component marker flags remain available.
 
@@ -17,6 +18,55 @@ its exact bytes and the field/component marker flags remain available.
 | Preserve sender-marked primitives and refuse clinical mapping | 2.8.2 §2.5.5.2, pp.12–13; 2.9.1 §2.4.5.2, pp.14–15 | `hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_preserve_and_refuse_marked_values`; mapping regression `hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping` |
 | Literal truncation-character escape; bounded encoding without shortening | 2.8.2 §§2.7.1–2, pp.20–21; 2.9.1 §§2.6.1–2, pp.22–23 | `hl7_2_9_1_s2_6_1_truncation_character_escape` |
 | Undeclared `\P\` retains the existing reject/preserve policy | Same escape sections | `hl7_2_8_2_s2_7_2_undeclared_p_escape_remains_unsupported` |
+
+### Edition registry and implementation stages
+
+The single registry in `version/mod.rs` selects exact wire IDs, required MSH-7
+usage and truncation-character availability. Each entry explicitly identifies
+whether its typed field profile exists. Recognition never aliases a new edition
+to 2.5.1: absent field profiles refuse interpretation and writing while syntax
+retains the original bytes. Configuration parsing recognizes `v23`, `v231`,
+`v24`, `v25`, `v251`, `v26`, `v282` and `v291`, which map to the exact wire IDs
+below. Validation accepts only **`v231` and `v251`**, whose typed profiles exist.
+The other six return `UnsupportedHl7Edition` before a stack can be activated;
+the diagnostic names the requested edition and the currently supported editions.
+Unlisted values fail at the positioned TOML schema boundary with the bad value
+and the recognized choices. A missing edition is not defaulted.
+Compatibility interpretation, message/datatype differences and writer
+integration are separate remaining steps. Enabling another edition in config
+must accompany its implemented typed support and the corresponding tests.
+
+The registry tests retain exact wire identity for all eight editions. Config
+tests in `hl7_editions.rs` cover the two supported selections and canonical
+snapshots (`adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`),
+refusal and actionable diagnostics for the other six
+(`adr0012_s3_recognized_editions_without_typed_support_fail_config_validation`),
+unlisted values and their diagnostics
+(`adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values`) and
+missing declarations (`adr0012_s3_missing_config_edition_is_not_defaulted`).
+
+| Registry entry | MSH-7 | Fifth MSH-2 character | Source | Source-named test in `version/tests.rs` |
+| --- | --- | --- | --- | --- |
+| 2.3 | Optional | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `hl7_2_5_1_s2_8_recognizes_2_3_without_upgrading` |
+| 2.3.1 | Optional | Refused | 2.3.1 §§2.24.1.2/.7/.12, pp.2-92–94 | `hl7_2_3_1_s2_24_1_2_7_12_recognizes_edition` |
+| 2.4 | Required | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `hl7_2_5_1_s2_8_and_s2_15_9_7_recognizes_2_4` |
+| 2.5 | Required | Refused | Same compatibility and MSH-7 clauses | `hl7_2_5_1_s2_8_recognizes_2_5_without_patch_upgrade` |
+| 2.5.1 | Required | Refused | 2.5.1 §§2.15.9.2/.7/.12, pp.2-74–77 | `hl7_2_5_1_s2_15_9_2_7_12_recognizes_edition` |
+| 2.6 | Required | Refused | 2.6 §§2.14.9.2/.7/.12, pp.56–58 | `hl7_2_6_s2_14_9_2_7_12_recognizes_edition_without_typed_fallback` |
+| 2.8.2 | Required | Accepted | 2.8.2 §§2.14.9.2/.7/.12, pp.59–61 | `hl7_2_8_2_s2_14_9_2_7_12_recognizes_edition_without_typed_fallback` |
+| 2.9.1 | Required | Accepted | 2.9.1 §§2.13.9.2/.7/.12, pp.69–71 | `hl7_2_9_1_s2_13_9_2_7_12_recognizes_edition_without_typed_fallback` |
+
+`adr0012_s3_no_unlisted_edition_or_prefix_match` checks unlisted versions,
+patch-prefix lookalikes and whitespace. LAW's separately agreed 2.5-compatible
+VID policy remains confined to LAW and never widens the base registry.
+
+### Standard cross-reference discrepancy
+
+HL7 2.9.1 chapter 2A refers to chapter 2 §2.5.5.2 for the truncation pattern
+(for example in §2A.2.77). That reference is inconsistent with chapter 2's own
+numbering: the actual 2.9.1 truncation-pattern clause is **§2.4.5.2**, pp.14–15.
+Analyte cites the actual clause. The older number does match the 2.8.2 control
+chapter; this does not justify applying the older edition's wording to 2.9.1.
 
 | Edition | Difference that matters | Source |
 | --- | --- | --- |
@@ -34,7 +84,8 @@ the existing structure, and the earlier part of a changed datatype must keep
 its earlier interpretation. Changes outside the stated rules cannot be
 assumed compatible. Local extensions are a separate agreement (section 2.11).
 This covers 2.3, 2.4 and 2.5 within the declared message scope; it does not
-promise every transaction from those editions or add version enum variants.
+promise every transaction from those editions. Registry variants now exist;
+concrete typed compatibility remains a separate implementation step.
 Unexpected information must not by itself cause application failure under
 section 2.8.1; Analyte retains original bytes even when it cannot use a constituent.
 Unsupported message semantics, invalid headers and unsupported configured
@@ -43,7 +94,7 @@ identity or clinical meaning. See the checklist for current evidence gaps.
 
 ## Implemented grammar rule owner
 
-`crates/protocols/hl7/src/version.rs` owns edition selection and the grammar difference
+`crates/protocols/hl7/src/version/mod.rs` owns edition selection and the grammar difference
 table. The refactor preserves existing acceptance, including the shared
 timestamp precision forms and the explicit LAW and UTF-8 policies.
 

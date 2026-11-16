@@ -180,6 +180,12 @@ fn reason(orc: Segment<'_>, version: Version) -> Result<Option<Field<'_>>, Error
     let value = field(orc, 16);
     if let Some(value) = value {
         let max = match version {
+            Version::V23
+            | Version::V24
+            | Version::V25
+            | Version::V26
+            | Version::V282
+            | Version::V291 => return Err(invalid("MSH", 12)),
             Version::V231 => 200,
             Version::V251 => 250,
         };
@@ -482,6 +488,12 @@ fn validate_order_detail(
     if let Some(obr) = detail {
         let test = field(obr, 4).ok_or_else(|| invalid("OBR", 4))?;
         let max = match version {
+            Version::V23
+            | Version::V24
+            | Version::V25
+            | Version::V26
+            | Version::V282
+            | Version::V291 => return Err(invalid("MSH", 12)),
             Version::V231 => 200,
             Version::V251 => 250,
         };

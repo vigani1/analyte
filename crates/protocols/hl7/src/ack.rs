@@ -257,6 +257,12 @@ fn encode_error(
     raw.extend_from_slice(b"ERR");
     raw.push(field);
     match version {
+        Version::V23
+        | Version::V24
+        | Version::V25
+        | Version::V26
+        | Version::V282
+        | Version::V291 => return Err(Error::EditionRules(version.as_str())),
         Version::V231 => {
             if unlocated {
                 location.extend_from_slice(&[component, component]);

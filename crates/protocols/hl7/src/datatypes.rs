@@ -70,7 +70,7 @@ fn date_time(value: &[u8]) -> Option<usize> {
     let mut components = time.split(|b| *b == b'.');
     let whole = components.next()?;
     if !Version::V251
-        .rules()
+        .rules()?
         .timestamp_precisions
         .contains(&whole.len())
         || !whole.iter().all(u8::is_ascii_digit)
@@ -174,10 +174,13 @@ pub(crate) fn cwe(parts: &[Component<'_>]) -> bool {
 }
 
 fn coded_parts(parts: &[&[u8]], extended: bool, version: Version) -> bool {
+    let Some(rules) = version.rules() else {
+        return false;
+    };
     if !simple_parts(parts, if extended { 9 } else { 6 }) {
         return false;
     }
-    if !lengths(parts, version.rules().coded_lengths) {
+    if !lengths(parts, rules.coded_lengths) {
         return false;
     }
     // A local CWE code remains opaque, but its non-HL7 coding system needs
@@ -202,7 +205,10 @@ fn simple_parts(parts: &[&[u8]], maximum: usize) -> bool {
 }
 
 pub(crate) fn uid(value: &[u8], version: Version) -> bool {
-    (version.rules().uri || value != b"URI")
+    let Some(rules) = version.rules() else {
+        return false;
+    };
+    (rules.uri || value != b"URI")
         && choice(
             value,
             &[
@@ -248,8 +254,11 @@ pub(super) fn quantity(value: Repetition<'_>) -> bool {
 }
 
 pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
+    let Some(rules) = version.rules() else {
+        return false;
+    };
     let components: Vec<_> = value.components().collect();
-    let limit = version.rules().xcn_components;
+    let limit = rules.xcn_components;
     if components.len() > limit {
         return false;
     }
@@ -268,11 +277,10 @@ pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
         }
         let valid = match n {
             2 => {
-                simple_parts(&parts, version.rules().family_components)
-                    && (version.rules().family_lengths.is_empty()
+                simple_parts(&parts, rules.family_components)
+                    && (rules.family_lengths.is_empty()
                         || component.raw().is_empty()
-                        || (!at(&parts, 1).is_empty()
-                            && lengths(&parts, version.rules().family_lengths)))
+                        || (!at(&parts, 1).is_empty() && lengths(&parts, rules.family_lengths)))
             }
             9 | 14 => hd(&parts, version),
             16 => coded_parts(&parts, false, version),
@@ -289,8 +297,7 @@ pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
         if !valid {
             return false;
         }
-        if version
-            .rules()
+        if rules
             .xcn_lengths
             .get(offset)
             .is_some_and(|length| component.raw().len() > *length)
@@ -298,7 +305,7 @@ pub(super) fn xcn(value: Repetition<'_>, version: Version) -> bool {
             return false;
         }
     }
-    let name_types = version.rules().name_types;
+    let name_types = rules.name_types;
     choice(at(&raw, 10), name_types)
         && choice(at(&raw, 12), &[b"M10", b"M11", b"ISO", b"NPI"])
         && (at(&raw, 11).is_empty() || !at(&raw, 12).is_empty())
@@ -327,11 +334,13 @@ fn explicit_times(value: &[u8]) -> bool {
 }
 
 fn sequence(parts: &[&[u8]], version: Version) -> bool {
+    let Some(rules) = version.rules() else {
+        return false;
+    };
     if !simple_parts(parts, 11) || !matches!(at(parts, 1), b"S" | b"C") {
         return false;
     }
-    if version
-        .rules()
+    if rules
         .sequence_required
         .iter()
         .any(|n| at(parts, *n).is_empty())
@@ -360,10 +369,13 @@ fn sequence(parts: &[&[u8]], version: Version) -> bool {
             return false;
         }
     }
-    lengths(parts, version.rules().sequence_lengths)
+    lengths(parts, rules.sequence_lengths)
 }
 
 pub(super) fn timing(value: Repetition<'_>, version: Version) -> bool {
+    let Some(rules) = version.rules() else {
+        return false;
+    };
     let components: Vec<_> = value.components().collect();
     if components.len() > 12 {
         return false;
@@ -386,7 +398,7 @@ pub(super) fn timing(value: Repetition<'_>, version: Version) -> bool {
             2 => {
                 simple_parts(&parts, 2)
                     && explicit_times(at(&parts, 2))
-                    && lengths(&parts, version.rules().interval_lengths)
+                    && lengths(&parts, rules.interval_lengths)
             }
             3 => scalar(*component) && duration(component.raw()),
             4 | 5 => ts(&parts),
@@ -400,8 +412,7 @@ pub(super) fn timing(value: Repetition<'_>, version: Version) -> bool {
         if !valid {
             return false;
         }
-        if version
-            .rules()
+        if rules
             .timing_lengths
             .get(offset)
             .is_some_and(|maximum| component.raw().len() > *maximum)

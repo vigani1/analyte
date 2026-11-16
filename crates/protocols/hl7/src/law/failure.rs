@@ -67,7 +67,8 @@ impl Failure {
             }),
             Error::AtSegment { .. }
             | Error::Syntax(
-                crate::Error::Limit { .. }
+                crate::Error::EditionRules(_)
+                | crate::Error::Limit { .. }
                 | crate::Error::Encoding
                 | crate::Error::Truncated { .. }
                 | crate::Error::Truncation
