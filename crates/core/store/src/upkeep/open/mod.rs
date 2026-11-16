@@ -149,6 +149,7 @@ impl Store {
         if version <= 10 {
             migrate_orders(&mut db, startup)?;
         }
+        migrate_alerts(&mut db, startup, version)?;
         install_guards(&db, startup)?;
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
@@ -224,4 +225,16 @@ fn install_guards(db: &Connection, startup: &Startup) -> Result<(), Error> {
         }
             Ok(())
         })
+}
+fn migrate_alerts(db: &mut Connection, startup: &Startup, version: i64) -> Result<(), Error> {
+    if version > 11 {
+        return Ok(());
+    }
+    startup.run(StartupStep::Migration { from: 11, to: 12 }, || {
+        let tx = db.transaction()?;
+        tx.execute_batch(include_str!("../migration_v12.sql"))?;
+        Store::integrity(&tx)?;
+        tx.commit()?;
+        Ok(())
+    })
 }

@@ -24,6 +24,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Retries exhausted alert events with their original identities and bytes.
+    RetryAlerts {
+        #[arg(value_parser = Identifier::new)]
+        endpoint: Identifier,
+        #[arg(long)]
+        reason: String,
+    },
     /// Converts an existing store for incremental vacuum; stop the service first.
     PrepareRetention,
     /// Places or releases an indefinite retention hold.
@@ -219,6 +226,15 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         .clone()
         .unwrap_or(Identifier::new("local-operator")?);
     match cli.command {
+        Command::RetryAlerts { endpoint, reason } => {
+            analyte::operator::alert_recovery::retry(
+                &Program::load(&cli.config)?,
+                required_actor(cli.actor)?,
+                endpoint,
+                Reason::new(&reason)?,
+            )
+            .await
+        }
         Command::PrepareRetention => service::prepare_retention(Program::load(&cli.config)?).await,
         Command::Holds { command } => {
             analyte::operator::holds::run(

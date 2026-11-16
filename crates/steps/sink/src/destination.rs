@@ -121,12 +121,7 @@ impl Destination {
         if !base.path().ends_with('/') {
             base.set_path(&format!("{}/", base.path()));
         }
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .retry(reqwest::retry::never())
-            .no_proxy()
-            .timeout(limits.request_timeout)
-            .build()?;
+        let client = crate::http_client(limits.request_timeout)?;
         Ok(Self {
             id,
             base,

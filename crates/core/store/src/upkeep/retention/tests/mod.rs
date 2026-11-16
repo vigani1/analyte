@@ -121,6 +121,7 @@ fn adr0013_item3_migration_from_v9_preserves_evidence() -> TestResult {
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
     let id = finished(&mut store)?;
+    remove_alert_schema_for_legacy_fixture(&store.db)?;
     store.db.execute_batch("DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; DROP TABLE retention_results; DROP TABLE retention_deliveries; DROP TABLE retention_tombstones; DROP TABLE retention_key; DROP TABLE retention_holds; PRAGMA user_version=9;")?;
     drop(store);
     let store = open(&path)?;

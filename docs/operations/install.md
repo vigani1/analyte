@@ -8,7 +8,7 @@
 | Windows | PowerShell 5.1 and administrator access for service installation. |
 | Linux | systemd for the supplied unit; administrator access to install it. |
 | Devices | Confirmed serial adapters, drivers, cable pinouts and stable COM/device paths, or agreed lab-network TCP/file handoff. |
-| Network | Outbound HTTPS to the lab app with a valid trusted certificate; correct clock for signatures. No inbound internet port. |
+| Network | Outbound HTTPS to the lab app and configured alert relays with valid trusted certificates; correct clock for signatures. No inbound internet port. |
 | Storage | Dedicated protected local data directory, measured outage capacity, disk reserve and separate protected backups. |
 | People | Lab operator, IT recovery lead and app support, with cover and contact procedures. |
 

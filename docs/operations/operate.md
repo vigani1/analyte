@@ -97,11 +97,124 @@ Each policy requires a nonempty named role/person, with cover recorded outside
 Analyte. The evaluation interval accepts 1–3600 seconds; default is 30.
 
 Alerts appear in status and the admin overview. Raise/clear transitions are
-durable and logged without responder text or patient data. Naming a responder
-does not contact them. **There is no email, chat, SMS or notification webhook
-sender.** Agree a staffed checking schedule and escalation route before pilot
-use, including independent detection of a stopped service or unreadable store.
-Removing a policy does not clear its retained active state.
+stored durably and logged without responder text or patient data. External
+notification is opt-in through the HTTPS webhook setup below. Removing a policy
+does not clear its retained active state or invent a resolution.
+
+### Configure the external relay
+
+The lab owns the relay to email, chat or SMS and its staffed responder cover.
+Analyte sends operational JSON, not clinical results. Use only operational names
+for configured machine IDs and responders; never put patient or sample details
+in these settings. SMTP, SMS providers and escalation chains are not built in.
+
+Append this synthetic example to the program TOML, outside the `[[alerts]]`
+policy tables:
+
+```toml
+[alert_delivery]
+reminder_interval_seconds = 3600
+queue_capacity = 256
+request_timeout_seconds = 10
+backoff_min_seconds = 5
+backoff_max_seconds = 300
+max_attempts = 10
+
+[[alert_delivery.endpoints]]
+id = "lab-relay"
+url = "https://relay.example.invalid/analyte-alerts"
+secret = "alerts-key"
+```
+
+Replace the URL with the lab's relay. Each endpoint receives all alert policies,
+with the responder from each policy. Multiple endpoints have independent queues
+and workers; at most eight can be configured. No endpoints means no external
+sender. A new endpoint starts at retained transition history, so qualification
+must account for historical raises and resolutions as well as current conditions.
+
+Provision `ANALYTE_SECRET_ALERTS_KEY` in the service account's protected installation
+environment. The `secret` reference uses the existing name convention: uppercase
+ASCII letters/digits, other characters replaced with underscores, prefixed with
+`ANALYTE_SECRET_`. The value is a nonempty single-line ASCII bearer token of at
+most 4096 bytes. It is never a TOML value or repository file. Missing or invalid
+credentials fail visibly in the endpoint queue; they do not stop clinical intake.
+After rotating the service environment, restart the service to load that environment.
+
+URLs must use HTTPS with a verified certificate and have no embedded credentials,
+query or fragment. Requests go to the exact configured path; Analyte does not
+append `/alerts`. Redirects and proxies are disabled. A request carries
+`Authorization: Bearer ...`, `Content-Type: application/json`, and `webhook-id`
+matching the body's `event_id`. A 2xx response means the relay accepted the event.
+Other statuses, transport failures and timeouts consume the bounded attempt budget.
+Response bodies are not read into alerts or ordinary logs. Events for one
+condition are delivered in queue order; a failed raise holds its later reminders
+and resolution until recovery. Other conditions can still make progress.
+
+The version 1 body has only these fields: `version`, `event_id`, `condition_id`,
+`episode_id`, `event`, `kind`, `machine_id`, `responder`, `observed_at`, `episode_at`
+and `measurement`. `event` is `raised`, `reminder` or `resolved`. Timestamps are
+Unix seconds; observation time is the last actual evaluation, not a guessed fresh
+measurement. `measurement` has `unit` (`seconds`, `bytes`, `count` or `paused`) and
+`value`; an unknown value is JSON null. No patient data, sample IDs, raw messages,
+clinical values, URLs, credentials or parking explanations are included.
+
+The relay must store `event_id` and its effects before returning 2xx. An identical
+retry must have one effect; reject conflicting bytes under that ID. A crash after
+acceptance can repeat the same ID and bytes. `condition_id` groups a condition
+across repeats; `episode_id` distinguishes a later raise after resolution. Do not
+deduplicate solely by condition: that would hide reminders and later episodes.
+Restoring an older backup can repeat events, so retain relay deduplication records
+according to the site's backup and outage policy.
+
+| Setting | Accepted range |
+| --- | --- |
+| Reminder interval | 60?86400 seconds; missed intervals do not create a burst. |
+| Queue capacity | 1?4096 pending events per endpoint, including exhausted events. |
+| Request timeout | 1?300 seconds. |
+| Retry minimum/maximum | 1?86400 seconds, minimum no greater than maximum. |
+| Attempt budget | 1?100 attempts per event, including interrupted reserved attempts. |
+
+Attempts reserve their retry deadline before sending. Delay doubles from the
+minimum and is capped at the maximum. The queue has at most one outstanding
+reminder per condition and endpoint. Full queues stop admission, preserve the
+retained transition cursor, and show `queue_full=true`; they never delete pending
+notifications or stop clinical workers. Admission catches up when space returns.
+
+### Rehearse and respond
+
+1. Use an isolated synthetic installation and the lab's test relay. Enable a safe
+   synthetic condition such as parked-item count. Verify the named responder
+   actually receives a raise, one reminder at the configured interval and a
+   resolution. A relay HTTP success alone does not prove a person was contacted.
+2. Stop the relay, observe `failed`, `next_attempt`, `exhausted` and `queue_full`
+   in admin overview or `analyte status analyte.toml`. Restore the relay before
+   the budget expires and verify retry identity and bytes remain unchanged.
+3. Exercise queue exhaustion and a slow relay. Confirm intake and app delivery
+   continue and queued transition evidence remains. Rehearse restart and restore
+   with relay deduplication, and record the results in the pilot sign-off.
+4. If attempts are exhausted, fix the relay or credentials, check possible prior
+   acceptance, then explicitly authorize a fresh attempt budget:
+
+   ```text
+   analyte --config analyte.toml --actor pilot-it retry-alerts lab-relay --reason "Relay repaired; acceptance checked"
+   ```
+
+   This audited command retries exhausted events with their original IDs and
+   bytes. It does not resend any clinical delivery or machine order. Repeating
+   the command with no exhausted work refuses. Inspect status after an uncertain
+   command outcome rather than assuming the reset did not commit.
+
+`oldest_age_seconds` uses the oldest queued observation; a clock rollback is
+unknown. Status also shows pending count, last success, next retry, failed and
+exhausted counts and queue-full state. A configured endpoint whose durable state
+is unavailable is shown explicitly as unavailable. Removed endpoint queues stay
+visible; restoring the same identity resumes their progress. Up to 128 endpoint
+identities can be retained over the installation lifetime. Do not rename an
+endpoint merely to bypass failure or erase queued evidence.
+
+Agree a staffed checking schedule, cover and fallback escalation route before
+pilot use. Independently monitor stopped services, unreadable stores and failed
+disks; Analyte cannot guarantee delivery of an alert about its own total failure.
 
 ## Storage and refusal
 
