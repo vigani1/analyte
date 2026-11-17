@@ -6,6 +6,7 @@ use analyte_sink::{Destination, Limits};
 use analyte_store::{Audit, Handle};
 use std::time::Duration;
 
+/// Allows the active HTTP attempt and its store outcome to finish on shutdown.
 pub(crate) const SHUTDOWN_BUDGET: Duration = Duration::from_secs(5);
 
 pub(crate) fn destinations(program: &Program, loopback: bool) -> Result<Vec<Destination>, Error> {
@@ -80,15 +81,31 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     }
 }
 
+// HTTP and retry defaults are host policy, independent of analyzer dialog timers.
+/// Bounds the complete outbound HTTP attempt.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+/// Reserves time to persist an accepted or uncertain delivery outcome.
+const STORE_TIMEOUT: Duration = Duration::from_secs(2);
+/// Initial retry delay matches the store's one-second scheduling precision.
+const BACKOFF_MIN: Duration = Duration::from_secs(1);
+/// Caps outage traffic and Retry-After waits.
+const BACKOFF_MAX: Duration = Duration::from_secs(60);
+/// Bounds load on order feeds; freshness remains site-configured.
+const POLL_INTERVAL: Duration = Duration::from_secs(5);
+/// Contract v1 permits at most 100 orders per page.
+const PAGE_SIZE: u16 = 100;
+/// Bounds a single paged snapshot even when the peer never finishes it.
+const MAX_PAGES: u16 = 100;
+
 pub(crate) fn limits(freshness: u64) -> Limits {
     Limits {
-        request_timeout: Duration::from_secs(3),
-        store_timeout: Duration::from_secs(2),
-        backoff_min: Duration::from_secs(1),
-        backoff_max: Duration::from_secs(60),
+        request_timeout: REQUEST_TIMEOUT,
+        store_timeout: STORE_TIMEOUT,
+        backoff_min: BACKOFF_MIN,
+        backoff_max: BACKOFF_MAX,
         freshness: Duration::from_secs(freshness),
-        poll_interval: Duration::from_secs(5),
-        page_size: 100,
-        max_pages: 100,
+        poll_interval: POLL_INTERVAL,
+        page_size: PAGE_SIZE,
+        max_pages: MAX_PAGES,
     }
 }

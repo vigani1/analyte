@@ -9,6 +9,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Bounds ordinary local CLI requests and explicit store shutdown.
+const STORE_OPERATION_BUDGET: Duration = Duration::from_secs(5);
+/// Allows backup execution plus queue and response overhead.
+const BACKUP_REQUEST_BUDGET: Duration = Duration::from_secs(30);
+/// Leaves five seconds of the request budget for host overhead.
+const BACKUP_WORK_BUDGET: Duration = Duration::from_secs(25);
+
 #[derive(Parser)]
 #[command(version, about = "Faithful analyzer receive service")]
 struct Cli {
@@ -193,7 +200,7 @@ async fn recover(
 }
 fn until() -> Instant {
     Instant::now()
-        .checked_add(Duration::from_secs(5))
+        .checked_add(STORE_OPERATION_BUDGET)
         .unwrap_or(Instant::now())
 }
 
@@ -351,7 +358,7 @@ async fn operator(
         let rows = store
             .request(
                 Instant::now()
-                    .checked_add(Duration::from_secs(5))
+                    .checked_add(STORE_OPERATION_BUDGET)
                     .unwrap_or(Instant::now()),
                 move |store| match command {
                     Parked::Reprocess { .. } => Err(analyte_store::Error::InvalidHostInput),
@@ -392,7 +399,7 @@ async fn operator(
     store
         .shutdown(
             Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(STORE_OPERATION_BUDGET)
                 .unwrap_or(Instant::now()),
         )
         .await?;
@@ -495,13 +502,13 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
     let result = store
         .request(
             Instant::now()
-                .checked_add(Duration::from_secs(30))
+                .checked_add(BACKUP_REQUEST_BUDGET)
                 .unwrap_or(Instant::now()),
             move |store| {
                 store.backup(
                     &target,
                     Instant::now()
-                        .checked_add(Duration::from_secs(25))
+                        .checked_add(BACKUP_WORK_BUDGET)
                         .unwrap_or(Instant::now()),
                 )
             },
@@ -510,7 +517,7 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
     store
         .shutdown(
             Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(STORE_OPERATION_BUDGET)
                 .unwrap_or(Instant::now()),
         )
         .await?;

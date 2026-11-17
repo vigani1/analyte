@@ -9,6 +9,27 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{sync::watch, task::JoinSet};
+/// Bounds pending storage work while allowing machine and operator requests.
+const STORE_QUEUE_CAPACITY: usize = 32;
+
+/// Default minimum process budget covers all ordered shutdown stages.
+const SHUTDOWN_MIN: Duration = Duration::from_secs(30);
+
+/// Upper bound prevents an installation from waiting indefinitely on exit.
+const SHUTDOWN_MAX: Duration = Duration::from_secs(300);
+
+/// Bounds each local owner drain after admission stops.
+const OWNER_SHUTDOWN_BUDGET: Duration = Duration::from_secs(5);
+
+/// Allows admitted durable receive commits to finish before transports close.
+const RECEIVE_COMMIT_BUDGET: Duration = Duration::from_secs(15);
+
+/// Bounds offline restore and verification on the blocking owner.
+const RESTORE_BUDGET: Duration = Duration::from_secs(30);
+
+/// Shortens only the explicit child-process stuck-store test.
+#[cfg(feature = "test-hooks")]
+const STALLED_STORE_TEST_BUDGET: Duration = Duration::from_millis(500);
 
 // Dropping the task also marks it stopped on panic or cancellation.
 struct AdminOwner(Option<Arc<std::sync::atomic::AtomicBool>>);
@@ -57,15 +78,15 @@ pub(crate) async fn open_store_with_deadline(
         )
     });
     let key = crate::installation::secrets::retention_key(finite)?;
-    let handle = Handle::start(
+    let mut handle = Handle::start(
         program.data_directory.join("analyte.db"),
         limits,
         space,
-        32,
+        STORE_QUEUE_CAPACITY,
         until,
     )
     .await?;
-    handle
+    let result = handle
         .request(until, move |store| {
             store.configure_retention_key(key, finite)?;
             if finite {
@@ -73,7 +94,11 @@ pub(crate) async fn open_store_with_deadline(
             }
             Ok(())
         })
-        .await?;
+        .await;
+    if let Err(error) = result {
+        handle.shutdown(deadline()).await?;
+        return Err(error.into());
+    }
     Ok(handle)
 }
 
@@ -99,7 +124,7 @@ pub(crate) async fn serve_bounded(
     bound: Duration,
     watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
-    if !(Duration::from_secs(30)..=Duration::from_secs(300)).contains(&bound) {
+    if !(SHUTDOWN_MIN..=SHUTDOWN_MAX).contains(&bound) {
         return Err(Failure::ShutdownBoundMustBe30Through300Seconds.into());
     }
     serve_with(
@@ -136,7 +161,7 @@ pub async fn serve(
         secrets,
         Supervision {
             loopback: false,
-            shutdown_bound: Duration::from_secs(30),
+            shutdown_bound: SHUTDOWN_MIN,
             watchdog: None,
             ready: None,
         },
@@ -164,7 +189,7 @@ pub async fn serve_loopback_test(
         secrets,
         Supervision {
             loopback: true,
-            shutdown_bound: Duration::from_secs(30),
+            shutdown_bound: SHUTDOWN_MIN,
             watchdog: None,
             ready,
         },
@@ -197,7 +222,7 @@ async fn serve_with(
         if !loopback || watchdog.is_some() {
             return Err(Failure::StuckShutdownHookRequiresTheLoopbackTestService.into());
         }
-        Duration::from_millis(500)
+        STALLED_STORE_TEST_BUDGET
     } else {
         shutdown_bound
     };
@@ -211,21 +236,7 @@ async fn serve_with(
     let store_component = watchdog.component("store".into());
     let destinations = crate::runtime::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
-    let store = open_service_store(&program, space).await?;
-    #[cfg(feature = "test-hooks")]
-    super::test_hooks::publish_store_probes(&program, &store)?;
-    let paused = store
-        .request(deadline(), |store| store.restore_unreconciled())
-        .await?;
-    tracing::info!(
-        order_sending_paused_after_restore = paused,
-        "store restore reconciliation status"
-    );
-    crate::runtime::delivery::recover(&store).await?;
-    super::law_recovery::run(&program, &store).await?;
-    let admin = crate::admin::prepare(&program, store.clone(), loopback)
-        .await
-        .map_err(admin_startup_error)?;
+    let (store, admin) = prepare_service(&program, space, loopback).await?;
     let admin_states = admin
         .as_ref()
         .map(|server| server.owners.clone())
@@ -283,6 +294,40 @@ async fn serve_with(
     .finish(store, store_component)
     .await?;
     result
+}
+
+// Startup owns the store until all fallible preparations have completed.
+async fn prepare_service(
+    program: &Program,
+    space: Box<dyn FreeSpace>,
+    loopback: bool,
+) -> Result<(Arc<Handle>, Option<crate::admin::Server>), Error> {
+    let store = open_service_store(program, space).await?;
+    let startup = async {
+        #[cfg(feature = "test-hooks")]
+        super::test_hooks::publish_store_probes(program, &store)?;
+        let paused = store
+            .request(deadline(), |store| store.restore_unreconciled())
+            .await?;
+        tracing::info!(
+            order_sending_paused_after_restore = paused,
+            "store restore reconciliation status"
+        );
+        crate::runtime::delivery::recover(&store).await?;
+        super::law_recovery::run(program, &store).await?;
+        crate::admin::prepare(program, store.clone(), loopback)
+            .await
+            .map_err(admin_startup_error)
+    }
+    .await;
+    let admin = match startup {
+        Ok(admin) => admin,
+        Err(error) => {
+            close_store(store).await?;
+            return Err(error);
+        }
+    };
+    Ok((store, admin))
 }
 
 struct Machines {
@@ -375,18 +420,18 @@ impl Draining {
             captures,
         } = self;
         let until = tokio::time::Instant::now()
-            .checked_add(Duration::from_secs(15))
+            .checked_add(RECEIVE_COMMIT_BUDGET)
             .unwrap_or(tokio::time::Instant::now());
         // Admin reads drain alongside machine commits, without adding a new stage
         // to the process shutdown budget or delaying machine admission shutdown.
         let (alerts_drained, admin_drained, commits_drained) = tokio::join!(
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(OWNER_SHUTDOWN_BUDGET, async {
                 while let Some(owner) = alert_owners.join_next().await {
                     owner??;
                 }
                 Ok::<_, Error>(())
             }),
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(OWNER_SHUTDOWN_BUDGET, async {
                 while let Some(owner) = admin_owners.join_next().await {
                     owner??;
                 }
@@ -420,7 +465,7 @@ impl Draining {
             while delivery_owners.join_next().await.is_some() {}
         }
         close_transports.send_replace(true);
-        let drained = tokio::time::timeout(Duration::from_secs(5), async {
+        let drained = tokio::time::timeout(OWNER_SHUTDOWN_BUDGET, async {
             while let Some(owner) = owners.join_next().await {
                 owner?;
             }
@@ -455,7 +500,7 @@ async fn close_store(store: Arc<Handle>) -> Result<(), Error> {
     store
         .shutdown(
             Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(OWNER_SHUTDOWN_BUDGET)
                 .unwrap_or(Instant::now()),
         )
         .await?;
@@ -487,14 +532,16 @@ fn start_delivery(
                 .await
         });
     }
-    {
+    for destination in destinations {
         let store = store.clone();
         let secrets = secrets.clone();
-        let component = watchdog.component("delivery-worker".into());
+        let stop = delivery_stopped.clone();
+        let component =
+            watchdog.component(format!("delivery-worker:{}", destination.id().as_str()));
         delivery_owners.spawn(async move {
             let _component = component;
-            analyte_sink::Worker::new(&store, &destinations, secrets.as_ref())
-                .run_draining(delivery_stopped, crate::runtime::delivery::SHUTDOWN_BUDGET)
+            analyte_sink::Worker::for_destination(&store, &destination, secrets.as_ref())
+                .run_draining(stop, crate::runtime::delivery::SHUTDOWN_BUDGET)
                 .await
         });
     }
@@ -664,7 +711,7 @@ pub async fn restore(
             Box::new(Volume),
             &audit,
             Instant::now()
-                .checked_add(Duration::from_secs(30))
+                .checked_add(RESTORE_BUDGET)
                 .unwrap_or(Instant::now()),
         )
     })
@@ -736,49 +783,4 @@ fn admin_startup_error(error: crate::admin::Error) -> Error {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn plan11_supervision_preserves_stop_failure_and_refuses_unexpected_admin_exit() {
-        let mut alerts = JoinSet::new();
-        let mut admin = JoinSet::new();
-        let mut deliveries = JoinSet::new();
-        let mut machines = JoinSet::new();
-        let result = supervise(
-            async { Err(crate::invalid("synthetic stop signal failure")) },
-            &mut alerts,
-            &mut admin,
-            &mut deliveries,
-            &mut machines,
-        )
-        .await;
-        assert_eq!(
-            result.expect_err("signal failure").to_string(),
-            "synthetic stop signal failure"
-        );
-        admin.spawn(async { Ok(()) });
-        let result = supervise(
-            std::future::pending(),
-            &mut alerts,
-            &mut admin,
-            &mut deliveries,
-            &mut machines,
-        )
-        .await;
-        assert_eq!(
-            result.expect_err("admin exit must be visible").to_string(),
-            "admin owner stopped unexpectedly"
-        );
-        assert!(admin.is_empty());
-        supervise(
-            async { Ok(()) },
-            &mut alerts,
-            &mut admin,
-            &mut deliveries,
-            &mut machines,
-        )
-        .await
-        .expect("normal stop succeeds without owners");
-    }
-}
+mod tests;
