@@ -54,7 +54,7 @@ fn rule7_display_text_bound_is_inclusive_and_refuses_delimiter_injection() -> Te
     for text in ["injected|field", "injected^component", "café"] {
         assert!(matches!(
             analyte_mapping::map_display(&order()?, text, &cfg),
-            Err(OrderMappingError::Representation)
+            Err(OrderMappingError::DisplayLineBounds)
         ));
     }
     Ok(())
@@ -97,7 +97,7 @@ fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResul
             if accepted {
                 assert_eq!(mapped?.record()?, expected);
             } else {
-                assert!(matches!(mapped, Err(OrderMappingError::Representation)));
+                assert!(matches!(mapped, Err(OrderMappingError::AstmRecordLimit)));
             }
         }
     }
@@ -115,7 +115,7 @@ fn rule5_outbound_sample_reserved_characters_are_refused_without_rewriting() -> 
         assert!(
             matches!(
                 map_order(&input, &settings),
-                Err(OrderMappingError::Representation)
+                Err(OrderMappingError::AstmTextRepertoire)
             ),
             "{sample}"
         );
@@ -148,7 +148,7 @@ fn rule7_outbound_test_count_is_nonempty_and_inclusive() -> TestResult {
         let mapped = map_order(&input, &settings);
         assert_eq!(mapped.is_ok(), accepted, "count={count}");
         if !accepted {
-            assert!(matches!(mapped, Err(OrderMappingError::Representation)));
+            assert!(matches!(mapped, Err(OrderMappingError::AstmTestCount)));
         }
     }
     Ok(())
@@ -323,7 +323,7 @@ fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> 
     wrong.sample = SampleId::new("bad|delimiter")?;
     assert!(matches!(
         analyte_mapping::map_display(&wrong, "order-a", &settings),
-        Err(OrderMappingError::Representation)
+        Err(OrderMappingError::DisplayLineBounds)
     ));
     wrong = order()?;
     wrong.tests.first_mut().ok_or("test")?.namespace = Identifier::new("unmapped-system")?;

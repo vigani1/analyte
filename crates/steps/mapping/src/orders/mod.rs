@@ -96,9 +96,12 @@ pub enum OrderMappingError {
     /// An Autolyser field fails the documented fixed-width rules.
     #[error("Autolyser request is not representable: {0}")]
     Autolyser(#[from] analyte_autolyser::syntax::Error),
-    /// A field exceeds its documented or installed ceiling.
-    #[error("overlong-{0}")]
-    Overlong(&'static str),
+    /// Patient identity exceeds the vendor field width.
+    #[error("overlong-patient-id")]
+    PatientIdTooLong,
+    /// Sample identity exceeds the vendor field width.
+    #[error("overlong-sample-id")]
+    SampleIdTooLong,
     /// Vendor syntax refuses the mapped request, without exposing patient content.
     #[error("VIDAS request is not representable: {0}")]
     Vidas(#[from] analyte_vidas::syntax::Error),
@@ -111,9 +114,60 @@ pub enum OrderMappingError {
     /// Priority has no explicit translation.
     #[error("unmapped order priority")]
     UnmappedPriority,
-    /// Input cannot be represented under the selected protocol repertoire and bounds.
-    #[error("order cannot be represented within the configured protocol bounds")]
-    Representation,
+    /// VIDAS test count is empty or exceeds configured bounds.
+    #[error("VIDAS test count is empty or exceeds configured bounds")]
+    VidasTestCount,
+    /// VIDAS assay mapping must contain exactly one component.
+    #[error("VIDAS assay mapping must contain exactly one component")]
+    VidasAssayComponents,
+    /// VIDAS request exceeds the frame limit.
+    #[error("VIDAS request exceeds the frame limit")]
+    VidasFrameLimit,
+    /// VIDAS request byte count overflow.
+    #[error("VIDAS request byte count overflow")]
+    VidasByteCountOverflow,
+    /// VIDAS requests exceed the message byte limit.
+    #[error("VIDAS requests exceed the message byte limit")]
+    VidasMessageLimit,
+    /// Autolyser test count is empty or exceeds protocol or configured bounds.
+    #[error("Autolyser test count is empty or exceeds protocol or configured bounds")]
+    AutolyserTestCount,
+    /// Autolyser assay mapping must contain exactly one component.
+    #[error("Autolyser assay mapping must contain exactly one component")]
+    AutolyserAssayComponents,
+    /// Autolyser worklist exceeds the message byte limit.
+    #[error("Autolyser worklist exceeds the message byte limit")]
+    AutolyserMessageLimit,
+    /// ASTM test count is empty or exceeds the repetition limit.
+    #[error("ASTM test count is empty or exceeds the repetition limit")]
+    AstmTestCount,
+    /// ASTM test components exceed the configured limit.
+    #[error("ASTM test components exceed the configured limit")]
+    AstmTestComponents,
+    /// ASTM order fields do not cover the selected record layout.
+    #[error("ASTM order fields do not cover the selected record layout")]
+    AstmRecordLayout,
+    /// ASTM order exceeds record or byte limits.
+    #[error("ASTM order exceeds record or byte limits")]
+    AstmRecordLimit,
+    /// ASTM selector component is zero or exceeds the configured limit.
+    #[error("ASTM selector component is zero or exceeds the configured limit")]
+    AstmSelectorComponent,
+    /// ASTM selector field is outside the order record.
+    #[error("ASTM selector field is outside the order record")]
+    AstmSelectorField,
+    /// ASTM text is empty or contains unsupported bytes or delimiters.
+    #[error("ASTM text is empty or contains unsupported bytes or delimiters")]
+    AstmTextRepertoire,
+    /// HL7 display assay mapping has no component.
+    #[error("HL7 display assay mapping has no component")]
+    DisplayAssayComponents,
+    /// HL7 display line violates repertoire, width or record limits.
+    #[error("HL7 display line violates repertoire, width or record limits")]
+    DisplayLineBounds,
+    /// HL7 display contains no lines.
+    #[error("HL7 display contains no lines")]
+    DisplayEmpty,
 }
 
 /// Maps every requested test before constructing complete protocol commands.

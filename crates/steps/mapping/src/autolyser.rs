@@ -70,12 +70,12 @@ pub fn map_order(
     let clone = settings.clone_enabled();
     let settings = &settings.tables();
     if patient.len() > 15 {
-        return Err(OrderMappingError::Overlong("patient-id"));
+        return Err(OrderMappingError::PatientIdTooLong);
     }
     let mut padded = [b' '; 15];
     padded
         .get_mut(..patient.len())
-        .ok_or(OrderMappingError::Overlong("patient-id"))?
+        .ok_or(OrderMappingError::PatientIdTooLong)?
         .copy_from_slice(patient.as_bytes());
     let patient = PatientCode::new(&padded)?;
     let sample = match map_specimen(order, settings)? {
@@ -116,19 +116,19 @@ pub fn map_order(
         || order.tests.len() > 99
         || order.tests.len() > machine.limits().repetitions()
     {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::AutolyserTestCount);
     }
     let mut tests = Vec::new();
     for test in &order.tests {
         let mapped = outbound_test(settings.tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
-            return Err(OrderMappingError::Representation);
+            return Err(OrderMappingError::AutolyserAssayComponents);
         };
         tests.push(Field::<4>::new(code.as_bytes())?);
     }
     let worklist = Worklist::new(patient, list, sample, clone, position, tests)?;
     if worklist.encode().len() > machine.limits().bytes() {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::AutolyserMessageLimit);
     }
     Ok(MachineOrder::Autolyser(worklist))
 }

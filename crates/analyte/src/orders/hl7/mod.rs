@@ -64,7 +64,7 @@ impl Connection {
         {
             let wait = crate::orders::settings::hl7(machine)
                 .and_then(|orders| orders.send().as_ref())
-                .ok_or(Error::SendSettings)?
+                .ok_or(Error::Hl7SendSettingsMissing)?
                 .settings()
                 .response_ms;
             let until = Instant::now()
@@ -76,7 +76,7 @@ impl Connection {
             let message = self
                 .exchange
                 .as_ref()
-                .ok_or(Error::ExchangeAbsent)?
+                .ok_or(Error::Hl7ExchangeAbsent)?
                 .message
                 .message();
             write(conn, message.raw(), self.options, until).await?;
@@ -343,10 +343,11 @@ impl Connection {
                                     break;
                                 }
                                 lines.extend(mapped);
-                                candidates.push(crate::orders::Candidate {
-                                    identity: crate::orders::reservation::key(machine, cached.id),
-                                    version: fields.version,
-                                });
+                                candidates.push(crate::orders::reservation::pending(
+                                    machine,
+                                    cached.id,
+                                    fields.version,
+                                ));
                                 answer = CacheAnswer::Found;
                             }
                             Err(error) => {
@@ -552,7 +553,7 @@ mod tests {
                 .close(
                     &store,
                     &intake::Connection::new(&machine)?,
-                    "HL7-DSR-session-error",
+                    Code::Hl7DsrSessionError.as_str(),
                 )
                 .await
                 .map_err(Into::into),
@@ -614,7 +615,7 @@ mod tests {
             .close(
                 &store,
                 &intake::Connection::new(&machine)?,
-                "HL7-DSR-disconnect",
+                Code::Hl7DsrDisconnect.as_str(),
             )
             .await?;
         let identity = key.clone();
@@ -631,7 +632,7 @@ mod tests {
             .close(
                 &store,
                 &intake::Connection::new(&machine)?,
-                "HL7-DSR-disconnect",
+                Code::Hl7DsrDisconnect.as_str(),
             )
             .await?;
         let current = store

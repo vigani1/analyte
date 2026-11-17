@@ -66,7 +66,7 @@ pub fn map_order(
     let astm = &settings.layout();
     let settings = &settings.tables();
     if order.tests.is_empty() || order.tests.len() > limits.repetitions() {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::AstmTestCount);
     }
     let mut tests = Vec::new();
     for requested in &order.tests {
@@ -112,7 +112,7 @@ pub fn map_order(
             .checked_add(prefix.len())
             .is_none_or(|n| n > limits.components())
     }) {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::AstmTestComponents);
     }
     fields[4] = tests
         .iter()
@@ -134,7 +134,7 @@ pub fn map_order(
     let last_field = if astm.specimen_type.is_some() { 16 } else { 12 };
     let mut record = fields
         .get(..last_field)
-        .ok_or(OrderMappingError::Representation)?
+        .ok_or(OrderMappingError::AstmRecordLayout)?
         .join("|")
         .into_bytes();
     if record.len() > limits.record_bytes()
@@ -143,7 +143,7 @@ pub fn map_order(
             .checked_add(1)
             .is_none_or(|n| n > limits.bytes())
     {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::AstmRecordLimit);
     }
     record.push(b'\r');
     Ok(MachineOrder::Astm(record))
@@ -158,11 +158,11 @@ fn set(
     validate_text(value)?;
     let component = usize::from(selected.component);
     if component == 0 || component > limit {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::AstmSelectorComponent);
     }
     let field = fields
         .get_mut(usize::from(selected.field).saturating_sub(1))
-        .ok_or(OrderMappingError::Representation)?;
+        .ok_or(OrderMappingError::AstmSelectorField)?;
     *field = format!("{}{value}", "^".repeat(component.saturating_sub(1)));
     Ok(())
 }
@@ -176,7 +176,7 @@ fn validate_text(value: &str) -> Result<(), OrderMappingError> {
             .bytes()
             .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b))
     {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::AstmTextRepertoire);
     }
     Ok(())
 }

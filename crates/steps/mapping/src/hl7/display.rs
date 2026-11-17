@@ -29,7 +29,7 @@ pub fn map(
     for test in &order.tests {
         let mapped = outbound_test(settings.tests(), test)?;
         let Some(code) = mapped.machine_components.first() else {
-            return Err(OrderMappingError::Representation);
+            return Err(OrderMappingError::DisplayAssayComponents);
         };
         for line in &layout.lines {
             let value = match line {
@@ -66,13 +66,13 @@ pub fn map(
                     .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
                 || lines.len() >= config.effective().stack().limits().records()
             {
-                return Err(OrderMappingError::Representation);
+                return Err(OrderMappingError::DisplayLineBounds);
             }
             lines.push(value.as_bytes().to_vec());
         }
     }
     if lines.is_empty() {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::DisplayEmpty);
     }
     Ok(lines)
 }
