@@ -41,7 +41,7 @@ impl AutolyserOrders {
     pub fn patient_namespace(&self) -> &Identifier {
         &self.patient_namespace
     }
-    /// Independent copy of these immutable validated settings.
+    /// Whether work lists request sample cloning (explicit, including false).
     #[must_use]
     pub fn clone_enabled(&self) -> bool {
         self.clone

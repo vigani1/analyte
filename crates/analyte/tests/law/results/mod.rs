@@ -4,6 +4,7 @@ use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 mod custody;
 mod delivery;
+mod input;
 mod text;
 
 #[derive(Debug, thiserror::Error)]

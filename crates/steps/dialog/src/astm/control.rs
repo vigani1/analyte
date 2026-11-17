@@ -11,6 +11,15 @@ pub enum Role {
     Instrument,
 }
 
+/// Whether to honor receiver interruption requests (LIS01-A2 §6.3.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interrupt {
+    /// End transmission and yield the link.
+    Honor,
+    /// Continue sending after accepting the frame.
+    Ignore,
+}
+
 /// Named timer values; zero durations are rejected by configuration validation.
 #[derive(Debug, Clone, Copy)]
 pub struct Timers {
@@ -48,7 +57,7 @@ pub struct Config {
     pub(super) role: Role,
     pub(super) bytes: usize,
     pub(super) frames: usize,
-    pub(super) honor_interrupt: bool,
+    pub(super) honor_interrupt: Interrupt,
 }
 
 impl Config {
@@ -74,7 +83,7 @@ impl Config {
         role: Role,
         bytes: usize,
         frames: usize,
-        honor_interrupt: bool,
+        honor_interrupt: Interrupt,
     ) -> Result<Self, Error> {
         if bytes == 0
             || frames == 0
@@ -112,7 +121,7 @@ impl Default for Config {
             role: Role::Computer,
             bytes: 16_777_216,
             frames: 65_536,
-            honor_interrupt: true,
+            honor_interrupt: Interrupt::Honor,
         }
     }
 }
