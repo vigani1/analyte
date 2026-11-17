@@ -206,3 +206,23 @@ fn hl7_chapters_2_4_5_7_pin_each_independent_rule() {
         );
     }
 }
+
+#[test]
+fn config_keys_pin_all_hl7_editions_without_wire_fallback() {
+    for (edition, key) in [
+        (Version::V23, "v23"),
+        (Version::V231, "v231"),
+        (Version::V24, "v24"),
+        (Version::V25, "v25"),
+        (Version::V251, "v251"),
+        (Version::V26, "v26"),
+        (Version::V282, "v282"),
+        (Version::V291, "v291"),
+    ] {
+        assert_eq!(edition.config_key(), key);
+        assert_eq!(Version::from_config_key(key), Some(edition));
+        assert_eq!(Version::from_config_key(edition.as_str()), None);
+    }
+    assert_eq!(Version::from_config_key("V251"), None);
+    assert_eq!(Version::from_config_key("v27"), None);
+}
