@@ -46,10 +46,10 @@ async fn law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_
             assert_eq!(ids, [b"1-1".to_vec(), b"1-2".to_vec()]);
             assert_eq!(field(&work, b"SAC", 3)?, b"000Ab12");
             assert_eq!(count(&path, "machine_order_items")?, 2);
-            vendor_support::state(&path, "Sending").await?;
+            vendor::state(&path, "Sending").await?;
             assert_eq!(count(&path, "outbox")?, 0);
             let raw_orl = orl(&mut peer, &work, &codes, false).await?;
-            vendor_support::state(&path, expected).await?;
+            vendor::state(&path, expected).await?;
             let states = database(&path)?
                 .prepare(
                     "SELECT state,placer_namespace FROM machine_order_items ORDER BY item_index",
@@ -314,7 +314,7 @@ async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are
         } else {
             quiet(&mut peer).await?;
         }
-        vendor_support::state(&path, "Uncertain").await?;
+        vendor::state(&path, "Uncertain").await?;
         wait_state(&path, "done", 1).await?;
         assert_eq!(count(&path, "machine_order_items")?, 2);
         assert_eq!(count(&path, "outbox")?, 1);

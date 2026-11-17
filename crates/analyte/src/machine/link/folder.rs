@@ -121,7 +121,7 @@ pub(in crate::machine) async fn session(
                 } else {
                     Disposition::Quarantine
                 })
-                .map_err(Error::FileCompletionReplyLostSourceRemainsClaimed)?;
+                .map_err(Error::CompletionReplyLost)?;
         }
         Ok(())
     }
@@ -151,7 +151,7 @@ async fn receive(
             () = analyte_sink::stopped(stop) => return Ok(None),
             event = connection.receive() => event?,
         }
-        .ok_or_else(|| Error::FileTransportEndedBeforeCompletionSourceRemainsClaimed)?;
+        .ok_or_else(|| Error::CompletionInterrupted)?;
         match event {
             Event::Opened { .. } => {
                 if opened {
@@ -331,7 +331,9 @@ mod tests {
                     .as_ref()
                     .err()
                     .and_then(|error| error.downcast_ref::<analyte_store::IntakeError>()),
-                Some(analyte_store::IntakeError::Capacity)
+                Some(analyte_store::IntakeError::Storage(
+                    analyte_store::StorageError::Capacity
+                ))
             ));
             assert_eq!(std::fs::read_dir(root.join("archive"))?.count(), 0);
             assert_eq!(std::fs::read_dir(root.join("quarantine"))?.count(), 0);

@@ -7,7 +7,7 @@ pub enum IntakeError {
     Deadline(#[from] crate::DeadlineError),
     /// Protocol-specific intake failed before durable acceptance.
     #[error(transparent)]
-    Protocol(#[from] crate::machine::law::custody::Error),
+    Protocol(#[from] crate::WorkPolicyError),
     /// Durable custody or reconciliation failed; do not acknowledge success.
     #[error(transparent)]
     Store(#[from] analyte_store::IntakeError),
@@ -43,4 +43,8 @@ pub enum IntakeError {
     WrongMachine,
 }
 
-crate::runtime::service::conversions::causes!(IntakeError; worker analyte_store::IntakeError);
+impl From<analyte_store::WorkerError> for IntakeError {
+    fn from(cause: analyte_store::WorkerError) -> Self {
+        Self::Store(analyte_store::IntakeError::from(cause))
+    }
+}

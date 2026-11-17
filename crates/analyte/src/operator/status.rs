@@ -157,8 +157,11 @@ mod tests {
                 )?;
                 store.evaluate_alert(
                     &analyte_store::AlertKey::MachineSilent(
-                        analyte_model::Identifier::new("busy")
-                            .map_err(analyte_store::OperatorError::Text)?,
+                        analyte_model::Identifier::new("busy").map_err(|cause| {
+                            analyte_store::OperatorError::Storage(
+                                analyte_store::StorageError::Text(cause),
+                            )
+                        })?,
                     ),
                     "analyzer operator",
                     true,

@@ -194,7 +194,9 @@ fn adr0003_0010_law_projection_commit_failure_leaves_raw_pending_and_retry_safe(
         assert!(
             matches!(
                 refusal.downcast_ref::<ReconciliationError>(),
-                Some(ReconciliationError::ConstraintViolation(_))
+                Some(ReconciliationError::Storage(
+                    StorageError::ConstraintViolation(_)
+                ))
             ),
             "unexpected refusal: {refusal:?}"
         );

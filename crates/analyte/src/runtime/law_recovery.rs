@@ -61,7 +61,7 @@ pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> 
             }
         }
         if !complete {
-            return Err(Error::PendingLawRecoveryPageBoundExceededMachineStartupRefused);
+            return Err(Error::RecoveryPageLimit);
         }
     }
     Ok(())

@@ -1,15 +1,35 @@
 //! Shares one parsed retained HL7 message across mapping, custody, diagnostics and departure evidence.
-use super::{Error, InterpretationOutcome, Machine, Mapping, ParkReason};
+use crate::installation::config::Machine;
+use crate::intake::{Error, InterpretationOutcome, Mapping, ParkReason};
 use crate::machine::interpretation::ReadError;
 use analyte_config::{RecordTransport, Stack};
 use analyte_hl7::{Message, WireCompatibility, law};
 use analyte_store::{Handle, InterpretationCommit, Receipt, Reprocess};
 
-pub(super) struct Context<'a> {
+pub(crate) struct Context<'a> {
     pub receipt: &'a Receipt,
     pub results: Option<&'a law::Results<'a>>,
     pub wire: Option<WireCompatibility>,
     payload: Option<&'a [u8]>,
+}
+
+impl Context<'_> {
+    pub(crate) async fn policy(
+        &self,
+        store: &Handle,
+        machine: &Machine,
+    ) -> Result<super::policy::Policy, Error> {
+        use super::policy::Policy;
+        match machine.snapshot.effective().stack() {
+            Stack::Law(_) => Ok(Policy::Execution(
+                crate::machine::law::policy::Policy::prepare(store, machine, self.results).await?,
+            )),
+            Stack::Poct(_) => Ok(crate::machine::poct::policy::policy()),
+            Stack::Astm(_) | Stack::Hl7(_) | Stack::Vidas(_) | Stack::Autolyser(_) => {
+                Ok(Policy::standard())
+            }
+        }
+    }
 }
 
 pub(crate) type Outcome = (
@@ -200,6 +220,6 @@ async fn finish(
         }
     });
     let (outcome, commit) =
-        super::persist_prepared(store, machine, &context, mapping, action).await?;
+        crate::intake::persist_prepared(store, machine, &context, mapping, action).await?;
     Ok((outcome, commit, location))
 }

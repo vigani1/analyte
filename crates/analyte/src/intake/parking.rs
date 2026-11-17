@@ -9,16 +9,13 @@ pub(crate) enum ParkReason {
     /// A validated departure ledger could not establish complete evidence.
     IncompleteDepartures(Reason),
     /// Returned work contradicts the retained immutable command.
-    WorkConflict,
+    WorkConflict(Reason),
 }
 impl ParkReason {
-    pub(super) fn into_reason(self) -> Result<Reason, TextError> {
+    pub(crate) fn into_reason(self) -> Result<Reason, TextError> {
         match self {
             Self::Diagnostic(text) => Reason::new(&text),
-            Self::IncompleteDepartures(reason) => Ok(reason),
-            Self::WorkConflict => Reason::new(
-                "LAW returned work differs from retained downloaded command; operator review required",
-            ),
+            Self::IncompleteDepartures(reason) | Self::WorkConflict(reason) => Ok(reason),
         }
     }
 }
@@ -59,10 +56,6 @@ fn parked_reason_text_is_preserved_without_an_error_roundtrip() -> Result<(), Te
             .into_reason()?
             .as_str(),
         "departure-evidence failure: exact detail"
-    );
-    assert_eq!(
-        ParkReason::WorkConflict.into_reason()?.as_str(),
-        "LAW returned work differs from retained downloaded command; operator review required"
     );
     assert!(ParkReason::Diagnostic(String::new()).into_reason().is_err());
     Ok(())

@@ -1,5 +1,6 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 //! Kept whole: Keeps connection modes, ordered effects and reservation cleanup together.
+pub(crate) mod policy;
 use super::connection_input::Input;
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake::ByteReason;
@@ -328,7 +329,7 @@ impl<'a, 'm> Host<'a, 'm> {
             };
             if let Err(error) = sender.try_send(pending) {
                 *self.orders = error.into_inner().orders;
-                return Err(Error::OutboundQueueUnavailableReservedWorkNotIssued);
+                return Err(Error::OutboundQueueUnavailable);
             }
             self.ready = Some(notify);
 

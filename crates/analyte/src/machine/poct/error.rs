@@ -22,10 +22,10 @@ pub(crate) enum Error {
     /// The incoming POCT document failed message validation.
     #[error(transparent)]
     Syntax(#[from] analyte_poct::MessageError),
-    /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
+    /// Retains link, store and evidence causes from [`crate::machine::receive::error::Error`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
     Refusal(#[from] crate::machine::receive::custody::Refusal<Self>),
 }
 
-crate::runtime::service::conversions::causes!(Error; protocol);
+crate::machine::receive::custody::refusal_conversions!(Error);

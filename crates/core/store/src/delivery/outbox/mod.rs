@@ -149,16 +149,16 @@ impl Store {
             };
             let encoded = crate::document(&entry)?;
             if encoded.len() > self.limits.record_bytes {
-                return Err(Error::LimitExceeded {
+                return Err(Error::Storage(crate::StorageError::LimitExceeded {
                     what: "record_bytes",
-                });
+                }));
             }
             let outcome = crate::document(&Attempt::Interrupted)?;
             required = required
                 .checked_add(encoded.len())
                 .and_then(|bytes| bytes.checked_add(outcome.len()))
                 .and_then(|bytes| bytes.checked_add(128))
-                .ok_or(Error::Capacity)?;
+                .ok_or(Error::Storage(crate::StorageError::Capacity))?;
             Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
             tx.execute(
                 "INSERT INTO attempts(delivery,outcome,time) VALUES (?1,?2,?3)",

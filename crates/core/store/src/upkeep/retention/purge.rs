@@ -63,7 +63,7 @@ pub(crate) fn maintenance(path: &Path, exclusive: bool) -> Result<File, Error> {
     };
     outcome.map_err(|error| match error {
         std::fs::TryLockError::WouldBlock => Error::MaintenanceBusy,
-        std::fs::TryLockError::Error(error) => Error::Io(error),
+        std::fs::TryLockError::Error(error) => Error::Storage(crate::StorageError::Io(error)),
     })?;
     Ok(file)
 }
@@ -256,9 +256,9 @@ impl Store {
         }
         let encoded = audit_evidence(&run)?;
         if encoded.len() > self.limits.record_bytes {
-            return Err(Error::LimitExceeded {
+            return Err(Error::Storage(crate::StorageError::LimitExceeded {
                 what: "record_bytes",
-            });
+            }));
         }
         tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [encoded])?;
         tx.commit()?;
@@ -309,12 +309,12 @@ fn audit_evidence(run: &PurgeRun) -> Result<String, Error> {
         .chain(run.last)
         .map(|id| {
             let text: String = serde_json::from_str(&key(&id)?)?;
-            Identifier::new(&text).map_err(Error::Text)
+            Identifier::new(&text).map_err(|cause| Error::Storage(crate::StorageError::Text(cause)))
         })
         .collect::<Result<Vec<_>, Error>>()?;
     let audit = crate::Audit {
-        actor: Identifier::new("retention-worker").map_err(Error::Text)?,
-        action: Identifier::new("retention-purge").map_err(Error::Text)?,
+        actor: Identifier::new("retention-worker").map_err(crate::StorageError::Text)?,
+        action: Identifier::new("retention-purge").map_err(crate::StorageError::Text)?,
         targets,
         time: run.time,
         reason: analyte_model::Reason::new(if run.failed {
@@ -322,7 +322,7 @@ fn audit_evidence(run: &PurgeRun) -> Result<String, Error> {
         } else {
             "finished-data retention run"
         })
-        .map_err(Error::Text)?,
+        .map_err(crate::StorageError::Text)?,
     };
     let mut evidence = serde_json::to_value(audit)?;
     evidence

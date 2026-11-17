@@ -1,5 +1,5 @@
 //! Tests HL7 messages, acknowledgments and failure handling.
-use super::vendor_support::{event, no_event, state};
+use super::vendor::{event, no_event, state};
 use super::*;
 use crate::support::HANG_GUARD;
 use analyte_fixtures::ConfigEdit as _;

@@ -6,7 +6,10 @@ use crate::*;
 fn adr0003_admission_check_matches_the_write_guard_without_writing() -> TestResult {
     let temp = tempfile::tempdir()?;
     let full = Store::open(&temp.path().join("full.db"), limits(), Box::new(Space(0)))?;
-    assert!(matches!(full.admission(1), Err(IntakeError::Capacity)));
+    assert!(matches!(
+        full.admission(1),
+        Err(IntakeError::Storage(StorageError::Capacity))
+    ));
     let roomy = open(&temp.path().join("roomy.db"))?;
     roomy.admission(1)?;
     assert_eq!(roomy.incomplete("")?, Vec::<String>::new());
@@ -20,7 +23,7 @@ fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
     let metadata = receipt(b"raw")?;
     assert!(matches!(
         store.receive(&metadata, b"raw", b"config"),
-        Err(IntakeError::Capacity)
+        Err(IntakeError::Storage(StorageError::Capacity))
     ));
     assert!(matches!(
         store.frame(
@@ -28,7 +31,7 @@ fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
             FrameSequence::new(0, 7)?,
             b"frame"
         ),
-        Err(IntakeError::Capacity)
+        Err(IntakeError::Storage(StorageError::Capacity))
     ));
     assert_eq!(store.raw(metadata.id)?, None);
     Ok(())
@@ -41,7 +44,7 @@ fn plan11_corruption_and_database_size_limit_refuse_visibly() -> TestResult {
     std::fs::write(&path, b"this is not SQLite")?;
     assert!(matches!(
         open(&path),
-        Err(MaintenanceError::StorageCorruption(_))
+        Err(MaintenanceError::Storage(StorageError::Corruption(_)))
     ));
     let mut small = limits();
     small.database_bytes = 1;
@@ -52,7 +55,7 @@ fn plan11_corruption_and_database_size_limit_refuse_visibly() -> TestResult {
     )?;
     assert!(matches!(
         store.receive(&receipt(b"raw")?, b"raw", b"config"),
-        Err(IntakeError::Capacity)
+        Err(IntakeError::Storage(StorageError::Capacity))
     ));
     Ok(())
 }
@@ -93,7 +96,10 @@ fn mutation_adr0003_rule7_capacity_checks_reserve_and_database_bound_independent
                 if free_ok && size_ok {
                     admitted?;
                 } else {
-                    assert!(matches!(admitted, Err(IntakeError::Capacity)));
+                    assert!(matches!(
+                        admitted,
+                        Err(IntakeError::Storage(StorageError::Capacity))
+                    ));
                 }
             }
         }
@@ -101,11 +107,14 @@ fn mutation_adr0003_rule7_capacity_checks_reserve_and_database_bound_independent
     store.limits.reserve_bytes = u64::MAX;
     store.limits.database_bytes = u64::MAX;
     store.space = Box::new(Space(u64::MAX));
-    assert!(matches!(store.admission(1), Err(IntakeError::Capacity)));
+    assert!(matches!(
+        store.admission(1),
+        Err(IntakeError::Storage(StorageError::Capacity))
+    ));
     store.limits.reserve_bytes = 0;
     store.space = Box::new(FailedProbe);
     assert!(
-        matches!(store.admission(0),Err(IntakeError::Io(error)) if error.kind()==std::io::ErrorKind::PermissionDenied)
+        matches!(store.admission(0),Err(IntakeError::Storage(StorageError::Io(error))) if error.kind()==std::io::ErrorKind::PermissionDenied)
     );
     Ok(())
 }

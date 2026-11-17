@@ -16,7 +16,7 @@ pub enum Error {
     AlertRetryEndpointIsNotConfigured,
     /// The operator action or snapshot cannot proceed.
     #[error("receipt machine is absent from current configuration")]
-    ReceiptMachineIsAbsentFromCurrentConfiguration,
+    ReceiptMachineMissing,
     /// The operator action or snapshot cannot proceed.
     #[error("receipt page lost cursor")]
     ReceiptPageLostCursor,

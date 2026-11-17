@@ -80,9 +80,9 @@ pub(super) fn build(
         measurement,
     })?;
     if bytes.len() > 16384 {
-        return Err(Error::LimitExceeded {
+        return Err(Error::Storage(crate::StorageError::LimitExceeded {
             what: "record_bytes",
-        });
+        }));
     }
     Ok(bytes)
 }

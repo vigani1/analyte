@@ -679,13 +679,18 @@ mod tests {
                 let now = jiff::Timestamp::now().as_second();
                 store.order_page(&analyte_store::OrderPage {
                     destination: identity.destination.clone(),
-                    cursor: Identifier::new("page").map_err(analyte_store::OrderError::Text)?,
+                    cursor: Identifier::new("page").map_err(|cause| {
+                        analyte_store::OrderError::Storage(analyte_store::StorageError::Text(cause))
+                    })?,
                     complete: true,
                     polled: now,
                     orders: vec![analyte_store::CachedOrder {
                         id: identity.order.clone(),
-                        sample: SampleId::new("000Ab12")
-                            .map_err(analyte_store::OrderError::Text)?,
+                        sample: SampleId::new("000Ab12").map_err(|cause| {
+                            analyte_store::OrderError::Storage(analyte_store::StorageError::Text(
+                                cause,
+                            ))
+                        })?,
                         document: include_str!("../../../../../docs/contract/vectors/order.json")
                             .rewrite("order-1", identity.order.as_str()),
                         tombstone: false,

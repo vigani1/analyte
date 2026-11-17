@@ -115,14 +115,17 @@ pub(super) fn other_final_run(
                 machine.as_str(),
                 key(&id.observation.order)?,
                 key(&id.observation.code)?,
-                i64::try_from(rows.checked_add(1).ok_or(Error::Capacity)?)
-                    .map_err(|_| Error::Capacity)?
+                i64::try_from(
+                    rows.checked_add(1)
+                        .ok_or(Error::Storage(crate::StorageError::Capacity))?
+                )
+                .map_err(|_| Error::Storage(crate::StorageError::Capacity))?
             ],
             |r| r.get::<_, String>(0),
         )?
         .collect::<Result<Vec<_>, _>>()?;
     if keys.len() > rows {
-        return Err(Error::Capacity);
+        return Err(Error::Storage(crate::StorageError::Capacity));
     }
     for identity in keys {
         if let Some(other) = latest(db, &identity, limit)?

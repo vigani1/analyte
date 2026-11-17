@@ -83,7 +83,7 @@ pub enum OrderError {
     AstmQueryDeadlineOverflow,
     /// ASTM specimen selector contains unsupported escapes.
     #[error("ASTM specimen selector contains unsupported escapes")]
-    AstmSpecimenSelectorContainsUnsupportedEscapes,
+    UnsupportedSpecimenEscapes,
     /// ASTM limits missing.
     #[error("ASTM limits missing")]
     AstmLimitsMissing,
@@ -107,10 +107,10 @@ pub enum OrderError {
     Hl7QueryPolicyMissing,
     /// LAW container assigning authority outside configured `SampleId` binding.
     #[error("LAW container assigning authority outside configured SampleId binding")]
-    LawContainerAssigningAuthorityOutsideConfiguredSampleidBinding,
+    ContainerAuthorityMismatch,
     /// LAW malformed query lacks recoverable correlation.
     #[error("LAW malformed query lacks recoverable correlation")]
-    LawMalformedQueryLacksRecoverableCorrelation,
+    QueryCorrelationMissing,
     /// LAW query deadline after reservation.
     #[error("LAW query deadline after reservation")]
     LawQueryDeadlineAfterReservation,

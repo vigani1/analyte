@@ -29,7 +29,7 @@ fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() ->
             &audit,
             Instant::now() + HANG_GUARD
         ),
-        Err(MaintenanceError::StorageCorruption(_))
+        Err(MaintenanceError::Storage(StorageError::Corruption(_)))
     ));
     std::fs::remove_file(&source)?;
     Connection::open(&source)?.execute_batch("PRAGMA user_version=999")?;
@@ -254,7 +254,10 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
     drop(current);
     // No available bytes can admit even one byte above the configured disk reserve.
     let probe = Store::open(&temp.path().join("probe.db"), limits(), Box::new(Space(0)))?;
-    assert!(matches!(probe.admission(1), Err(IntakeError::Capacity)));
+    assert!(matches!(
+        probe.admission(1),
+        Err(IntakeError::Storage(StorageError::Capacity))
+    ));
     drop(probe);
     let audit = Audit {
         actor: Identifier::new("operator")?,
@@ -272,7 +275,10 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
         Instant::now() + HANG_GUARD,
     );
     assert!(
-        matches!(result, Err(MaintenanceError::Capacity)),
+        matches!(
+            result,
+            Err(MaintenanceError::Storage(StorageError::Capacity))
+        ),
         "restore published despite exhausted disk reserve: {result:?}"
     );
     assert_eq!(
@@ -335,7 +341,10 @@ fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit(
     let page: i64 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
     let actual = pages.checked_mul(page).ok_or("restored size")?;
     assert!(
-        matches!(result, Err(MaintenanceError::Capacity)),
+        matches!(
+            result,
+            Err(MaintenanceError::Storage(StorageError::Capacity))
+        ),
         "restore result {result:?}; published size {actual} exceeds configured limit {limit}"
     );
     assert_eq!(

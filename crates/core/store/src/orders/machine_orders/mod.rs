@@ -289,7 +289,7 @@ impl Store {
         {
             return Err(Error::InvalidOrderInput);
         }
-        let code = SourceText::new("operator-reconciled").map_err(Error::Text)?;
+        let code = SourceText::new("operator-reconciled").map_err(crate::StorageError::Text)?;
         self.change_order(
             id,
             outcome,
@@ -397,9 +397,9 @@ impl Store {
         if let Some(audit) = audit {
             let evidence = crate::document(audit)?;
             if evidence.len() > limit {
-                return Err(Error::LimitExceeded {
+                return Err(Error::Storage(crate::StorageError::LimitExceeded {
                     what: "record_bytes",
-                });
+                }));
             }
             tx.execute("INSERT INTO audit(evidence) VALUES (?1)", [evidence])?;
         }
@@ -432,9 +432,9 @@ fn append(
 ) -> Result<(), Error> {
     let evidence = crate::document(record)?;
     if evidence.len() > limit {
-        return Err(Error::LimitExceeded {
+        return Err(Error::Storage(crate::StorageError::LimitExceeded {
             what: "record_bytes",
-        });
+        }));
     }
     let (kind, owner, version) = record.owner.columns();
     tx.execute(
@@ -545,9 +545,9 @@ fn create_items(
 fn write_item(tx: &Transaction<'_>, item: &MachineOrderItem, limit: usize) -> Result<(), Error> {
     let evidence = crate::document(item)?;
     if evidence.len() > limit {
-        return Err(Error::LimitExceeded {
+        return Err(Error::Storage(crate::StorageError::LimitExceeded {
             what: "record_bytes",
-        });
+        }));
     }
     tx.execute(
         "UPDATE machine_order_items SET state=?1 WHERE machine_order=?2 AND item_index=?3",

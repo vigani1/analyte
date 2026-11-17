@@ -1,6 +1,7 @@
 //! Runs the Windows service control adapter.
 use crate::runtime::Error as Failure;
-use crate::{Error, installation::config::Program, runtime::service};
+use crate::runtime::Error;
+use crate::{installation::config::Program, runtime::service};
 use std::{
     path::PathBuf,
     sync::{
@@ -23,7 +24,7 @@ enum Event {
 /// Reports dispatcher, startup, worker and graceful shutdown errors.
 pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
     if !(Duration::from_secs(30)..=Duration::from_secs(300)).contains(&bound) {
-        return Err(Failure::ShutdownBoundMustBe30Through300Seconds.into());
+        return Err(Failure::ShutdownBoundMustBe30Through300Seconds);
     }
     let (start, started) = mpsc::sync_channel(1);
     let (stop, stopped) = tokio::sync::oneshot::channel();
@@ -98,9 +99,7 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
             .join()
             .map_err(|_| Failure::ScmRuntimeOwnerPanicked)?;
         dispatch.map_err(|source| {
-            Failure::ScmDispatcherUnavailableUseAnalyteRunInsteadOutsideTheServiceControlManager(
-                crate::runtime::error::DispatchCause(source),
-            )
+            Failure::ScmDispatcherUnavailable(crate::runtime::error::DispatchCause(source))
         })?;
         result
     })
@@ -139,16 +138,13 @@ fn run_host(
             .with_ansi(false)
             .with_writer(log)
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init()?;
+            .try_init()
+            .map_err(Error::Tracing)?;
         let secrets = crate::installation::secrets::Environment::load(&program)?;
         drop(startup);
         service::serve_bounded(
             program,
-            async {
-                stopped
-                    .await
-                    .map_err(|source| Error::from(Failure::ScmStopSenderClosed(source)))
-            },
+            async { stopped.await.map_err(Failure::ScmStopSenderClosed) },
             secrets,
             bound,
             Some(runtime_watchdog),

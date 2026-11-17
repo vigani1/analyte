@@ -1,4 +1,7 @@
 //! Maps stored receipts without transport handles, orders or acknowledgments.
+mod mapping_reading;
+pub(crate) mod policy;
+pub(crate) mod retained;
 #[cfg(test)]
 use crate::Error;
 pub(super) use crate::machine::poct::settings::limits as poct_limits;
@@ -8,9 +11,8 @@ use analyte_config::Stack;
 use analyte_model::ReceiptId;
 use analyte_model::Revision;
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
+pub(crate) use mapping_reading::map_reading;
 pub(crate) mod departure_evidence;
-#[cfg(test)]
-mod departure_tests;
 #[cfg(test)]
 mod tests;
 
@@ -36,7 +38,7 @@ pub async fn reprocess(
         return Err(intake::Error::WrongMachine);
     }
     Ok(
-        intake::retained::process(store, machine, &receipt, None, Some(action))
+        retained::process(store, machine, &receipt, None, Some(action))
             .await?
             .1,
     )
@@ -92,4 +94,8 @@ pub(crate) enum ReadError {
     Mapping(#[from] crate::reading::Error),
 }
 
-crate::runtime::service::conversions::causes!(ReadError; worker analyte_store::OperatorError);
+impl From<analyte_store::WorkerError> for ReadError {
+    fn from(cause: analyte_store::WorkerError) -> Self {
+        Self::Store(analyte_store::OperatorError::from(cause))
+    }
+}

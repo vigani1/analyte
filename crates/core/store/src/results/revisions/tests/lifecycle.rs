@@ -154,7 +154,8 @@ fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
             Ok(vec![Delivery {
                 id: DeliveryId::try_from(uuid::Uuid::now_v7())
                     .map_err(ReconciliationError::Identity)?,
-                destination: Identifier::new("app").map_err(ReconciliationError::Text)?,
+                destination: Identifier::new("app")
+                    .map_err(|cause| ReconciliationError::Storage(StorageError::Text(cause)))?,
                 ordering_key: OrderingKey {
                     machine: metadata.machine.clone(),
                     observation: identity.observation.clone(),

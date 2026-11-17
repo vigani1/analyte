@@ -275,7 +275,7 @@ pub(super) async fn reprocess(
             tokio::task::spawn_blocking(move || crate::installation::config::Program::load(&path))
                 .await??;
         if program.data_directory().canonicalize()? != state.directory.canonicalize()? {
-            return Err(Error::CurrentConfigurationPointsToADifferentStore);
+            return Err(Error::StoreMismatch);
         }
         crate::operator::recovery::reprocess(
             &state.store,

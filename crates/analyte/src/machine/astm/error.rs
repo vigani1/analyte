@@ -39,11 +39,13 @@ pub(crate) enum Error {
     /// ASTM record syntax could not be decoded.
     #[error(transparent)]
     Syntax(#[from] analyte_astm::Error),
-    /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
+    /// Retains link, store and evidence causes from [`crate::machine::receive::error::Error`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
     Refusal(#[from] crate::machine::receive::custody::Refusal<Self>),
 }
+
+crate::machine::receive::custody::refusal_conversions!(Error);
 
 #[cfg(test)]
 mod tests {
@@ -54,7 +56,7 @@ mod tests {
     async fn adr0003_astm_refusal_preserves_custody_cause_and_operator_text() {
         use crate::machine::receive::custody::{StoreWaitError, store_within};
         let storage = Error::CommitRefused(StoreWaitError::Operation(
-            analyte_store::IntakeError::Capacity,
+            analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity),
         ));
         let expired = store_within(
             std::time::Duration::from_millis(1),
@@ -66,7 +68,7 @@ mod tests {
         assert!(matches!(
             &storage,
             Error::CommitRefused(StoreWaitError::Operation(
-                analyte_store::IntakeError::Capacity
+                analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity)
             ))
         ));
         assert!(matches!(
@@ -88,5 +90,3 @@ mod tests {
         }
     }
 }
-
-crate::runtime::service::conversions::causes!(Error; protocol);

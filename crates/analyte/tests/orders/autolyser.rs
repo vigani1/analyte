@@ -1,5 +1,5 @@
 //! Tests Autolyser polling, checksums and order exchanges.
-use super::vendor_support::*;
+use super::vendor::*;
 use super::*;
 use crate::support::{
     HANG_GUARD,

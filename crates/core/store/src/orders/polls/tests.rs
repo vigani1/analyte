@@ -2,6 +2,7 @@
 use super::*;
 use crate::test_support::assert_constraint;
 use crate::test_support::{TestResult, open};
+use crate::{OperatorError, StorageError};
 
 fn audit(id: PollIntentId, reason: &str) -> Result<Audit, analyte_model::TextError> {
     Ok(Audit {
@@ -157,10 +158,9 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
             .begin_poll_intent(&machine, &reason)
             .map(|_| ())
             .expect_err("input must be refused");
-        assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
-            "unexpected refusal: {refusal:?}"
-        );
+        let Error::Storage(StorageError::ConstraintViolation(_)) = &refusal else {
+            panic!("unexpected refusal: {refusal:?}");
+        };
     }
     for table in ["parked", "poll_intents", "poll_intent_history"] {
         assert_eq!(
@@ -185,10 +185,9 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
                 .record_poll_outcome(id, outcome, &evidence)
                 .map(|_| ())
                 .expect_err("input must be refused");
-            assert!(
-                matches!(&refusal, Error::ConstraintViolation(_)),
-                "unexpected refusal: {refusal:?}"
-            );
+            let Error::Storage(StorageError::ConstraintViolation(_)) = &refusal else {
+                panic!("unexpected refusal: {refusal:?}");
+            };
         }
         assert_eq!(
             store
@@ -210,10 +209,9 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
             .resolve(parked, &evidence)
             .map(|_| ())
             .expect_err("input must be refused");
-        assert!(
-            matches!(&refusal, crate::OperatorError::ConstraintViolation(_)),
-            "unexpected refusal: {refusal:?}"
-        );
+        let OperatorError::Storage(StorageError::ConstraintViolation(_)) = &refusal else {
+            panic!("unexpected refusal: {refusal:?}");
+        };
     }
     assert!(
         store
@@ -242,7 +240,7 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
     assert_eq!(store.audits(0)?.len(), 1);
     assert!(matches!(
         store.resolve(parked, &evidence),
-        Err(crate::OperatorError::Conflict)
+        Err(OperatorError::Conflict)
     ));
     Ok(())
 }
@@ -260,7 +258,7 @@ fn adr0003_poll_capacity_refusal_never_admits_or_reconciles_a_cursor_movement() 
     )?;
     assert!(matches!(
         store.begin_poll_intent(&machine, &reason),
-        Err(Error::Capacity)
+        Err(Error::Storage(StorageError::Capacity))
     ));
     assert!(store.unconfirmed_poll_intent(&machine)?.is_none());
     assert!(store.parked(0)?.is_empty());
@@ -281,12 +279,12 @@ fn adr0003_poll_capacity_refusal_never_admits_or_reconciles_a_cursor_movement() 
     for outcome in [PollOutcome::Uncertain, PollOutcome::Confirmed] {
         assert!(matches!(
             store.record_poll_outcome(id, outcome, &audit),
-            Err(Error::Capacity)
+            Err(Error::Storage(StorageError::Capacity))
         ));
     }
     assert!(matches!(
         store.resolve(parked, &audit),
-        Err(crate::OperatorError::Capacity)
+        Err(OperatorError::Storage(StorageError::Capacity))
     ));
     assert_eq!(
         store
@@ -388,12 +386,12 @@ fn mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit
     for outcome in [PollOutcome::Uncertain, PollOutcome::Confirmed] {
         assert!(matches!(
             store.record_poll_outcome(id, outcome, &evidence),
-            Err(Error::Capacity)
+            Err(Error::Storage(StorageError::Capacity))
         ));
     }
     assert!(matches!(
         store.resolve(parked, &evidence),
-        Err(crate::OperatorError::Capacity)
+        Err(OperatorError::Storage(StorageError::Capacity))
     ));
     assert_eq!(
         store

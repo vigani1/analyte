@@ -65,7 +65,7 @@ impl Sessions {
             if let Some(index) = entries.iter().position(|s| !s.authenticated) {
                 entries.remove(index);
             } else {
-                return Err(super::Error::AdminSessionCapacityReachedRestartOrWaitForExpiry);
+                return Err(super::Error::SessionCapacity);
             }
         }
         entries.push(session.clone());

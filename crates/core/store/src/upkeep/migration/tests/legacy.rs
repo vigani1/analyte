@@ -247,9 +247,9 @@ fn mutation_adr0003_migration_bounds_metadata_and_interpretation_independently_a
             assert!(
                 matches!(
                     result,
-                    Err(MaintenanceError::LimitExceeded {
+                    Err(MaintenanceError::Storage(StorageError::LimitExceeded {
                         what: "record_bytes"
-                    })
+                    }))
                 ),
                 "case {case}"
             );

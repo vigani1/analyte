@@ -1,5 +1,7 @@
 //! Runs program workers, host I/O, custody and operator actions without interpreting clinical results.
 #![forbid(unsafe_code)]
+/// Failures retaining returned work and execution custody.
+pub use machine::law::custody::Error as WorkPolicyError;
 
 pub mod admin;
 pub mod installation;
@@ -22,7 +24,8 @@ use analyte_fixtures as test_guard;
 /// Bounds ordinary orchestration storage requests independently of machine protocol timers.
 const STORE_OPERATION_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// The orchestration boundary retains concrete errors as their original causes.
+#[cfg(test)]
+/// Test fixtures retain arbitrary setup failures.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 //! Tests HL7 unsolicited orders and cancellations.
-use super::vendor_support::state;
+use super::vendor::state;
 use super::*;
 use crate::support::HANG_GUARD;
 use analyte_fixtures::ConfigEdit as _;

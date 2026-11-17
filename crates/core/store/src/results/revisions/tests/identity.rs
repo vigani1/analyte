@@ -440,10 +440,13 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
                 };
                 Ok(vec![Delivery {
                     id,
-                    destination: Identifier::new("app").map_err(ReconciliationError::Text)?,
+                    destination: Identifier::new("app")
+                        .map_err(|cause| ReconciliationError::Storage(StorageError::Text(cause)))?,
                     ordering_key: OrderingKey {
                         machine: if wrong_machine {
-                            Identifier::new("wrong-machine").map_err(ReconciliationError::Text)?
+                            Identifier::new("wrong-machine").map_err(|cause| {
+                                ReconciliationError::Storage(StorageError::Text(cause))
+                            })?
                         } else {
                             metadata.machine.clone()
                         },

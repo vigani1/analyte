@@ -1,73 +1,97 @@
 //! Classifies startup, backup, restore and finite-retention failures.
+use crate::StorageError;
 use crate::{SCHEMA_VERSION, StartupStep};
-storage_boundary! {
-    /// Failures of store maintenance, preserving migration and timeout causes.
-    #[derive(Debug, thiserror::Error)]
-    pub enum MaintenanceError {
-        /// Protected receipt evidence could not be read for a maintenance decision.
-        #[error(transparent)]
-        Receipt(#[from] crate::OperatorError),
-        /// The host cannot represent a storage operation deadline.
-        #[error("storage operation deadline overflow")]
-        DeadlineOverflow,
-        /// Another process currently owns a backup or retention maintenance operation.
-        #[error("retention maintenance is busy; retry after the active batch or backup")]
-        MaintenanceBusy,
-        /// An existing SQLite file needs one offline conversion before finite retention.
-        #[error("retention requires incremental vacuum; stop the service and run prepare-retention")]
-        RetentionVacuumRequired,
-        /// A finite policy requires the original host credential.
-        #[error("retention digest key is required")]
-        RetentionKeyRequired,
-        /// Changing the digest key would lose duplicate recognition.
-        #[error("retention digest key fingerprint mismatch; key rotation is unsupported")]
-        RetentionKeyMismatch,
-        /// Startup exceeded its budget; the active migration transaction is rolled back.
-        #[error("store startup deadline expired during {step}")]
-        StartupTimeout {
-            /// The operation active when the deadline expired.
-            step: StartupStep,
-        },
-        /// Limits cannot establish bounded store operations.
-        #[error("invalid storage limits")]
-        InvalidLimits,
-        /// Another owner prevents exclusive restore access.
-        #[error("store is in use; stop the service before restoring")]
-        InUse,
-        /// The database belongs to a newer implementation.
-        #[error("schema version {0} is newer than supported version {SCHEMA_VERSION}")]
-        SchemaTooNew(i64),
-        /// A legacy row cannot be converted without guessing; migration is rolled back.
-        #[error("cannot migrate {table} row {row}: {cause}")]
-        MigrationEvidence {
-            /// Table containing the refused legacy record.
-            table: &'static str,
-            /// Stable row identity retained for diagnosis.
-            row: i64,
-            /// Specific decoding, bound or storage failure.
-            #[source]
-            cause: Box<MaintenanceError>,
-        },
-        /// Restore, retention or startup input cannot authorize maintenance.
-        #[error("invalid maintenance input")]
-        InvalidMaintenanceInput,
-        /// A bounded operation expired; a submitted write may have committed.
-        #[error("storage deadline expired; reconcile using the original identity")]
-        Timeout,
-        /// An operator action or target does not match the operation being authorized.
-        #[error("audit action or target mismatch")]
-        AuditMismatch,
-        /// An immutable identity or state transition conflicted.
-        #[error("identity or state constraint conflict")]
-        Conflict,
-        /// Requested receipt has never been stored.
-        #[error("receipt does not exist")]
-        UnknownReceipt,
-        /// A keyed retention digest could not be initialized.
-        #[error("retention digest key rejected")]
-        DigestKey(#[from] hmac::digest::InvalidLength),
-        /// Retained order evidence could not be decoded for a maintenance decision.
-        #[error(transparent)]
-        OrderEvidence(#[from] crate::OrderError),
+/// Failures of store maintenance, preserving migration and timeout causes.
+#[derive(Debug, thiserror::Error)]
+pub enum MaintenanceError {
+    /// A persistence primitive failed; its recovery classification is retained.
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+    /// Retained evidence failed an application integrity check.
+    #[error("stored evidence is corrupt")]
+    Corruption,
+    /// The worker could not establish completion of this operation.
+    #[error("{0}")]
+    Worker(#[from] crate::WorkerError),
+    /// Protected receipt evidence could not be read for a maintenance decision.
+    #[error(transparent)]
+    Receipt(#[from] crate::OperatorError),
+    /// The host cannot represent a storage operation deadline.
+    #[error("storage operation deadline overflow")]
+    DeadlineOverflow,
+    /// Another process currently owns a backup or retention maintenance operation.
+    #[error("retention maintenance is busy; retry after the active batch or backup")]
+    MaintenanceBusy,
+    /// An existing SQLite file needs one offline conversion before finite retention.
+    #[error("retention requires incremental vacuum; stop the service and run prepare-retention")]
+    RetentionVacuumRequired,
+    /// A finite policy requires the original host credential.
+    #[error("retention digest key is required")]
+    RetentionKeyRequired,
+    /// Changing the digest key would lose duplicate recognition.
+    #[error("retention digest key fingerprint mismatch; key rotation is unsupported")]
+    RetentionKeyMismatch,
+    /// Startup exceeded its budget; the active migration transaction is rolled back.
+    #[error("store startup deadline expired during {step}")]
+    StartupTimeout {
+        /// The operation active when the deadline expired.
+        step: StartupStep,
+    },
+    /// Limits cannot establish bounded store operations.
+    #[error("invalid storage limits")]
+    InvalidLimits,
+    /// Another owner prevents exclusive restore access.
+    #[error("store is in use; stop the service before restoring")]
+    InUse,
+    /// The database belongs to a newer implementation.
+    #[error("schema version {0} is newer than supported version {SCHEMA_VERSION}")]
+    SchemaTooNew(i64),
+    /// A legacy row cannot be converted without guessing; migration is rolled back.
+    #[error("cannot migrate {table} row {row}: {cause}")]
+    MigrationEvidence {
+        /// Table containing the refused legacy record.
+        table: &'static str,
+        /// Stable row identity retained for diagnosis.
+        row: i64,
+        /// Specific decoding, bound or storage failure.
+        #[source]
+        cause: Box<MaintenanceError>,
+    },
+    /// Restore, retention or startup input cannot authorize maintenance.
+    #[error("invalid maintenance input")]
+    InvalidMaintenanceInput,
+    /// A bounded operation expired; a submitted write may have committed.
+    #[error("storage deadline expired; reconcile using the original identity")]
+    Timeout,
+    /// An operator action or target does not match the operation being authorized.
+    #[error("audit action or target mismatch")]
+    AuditMismatch,
+    /// An immutable identity or state transition conflicted.
+    #[error("identity or state constraint conflict")]
+    Conflict,
+    /// Requested receipt has never been stored.
+    #[error("receipt does not exist")]
+    UnknownReceipt,
+    /// A keyed retention digest could not be initialized.
+    #[error("retention digest key rejected")]
+    DigestKey(#[from] hmac::digest::InvalidLength),
+    /// Retained order evidence could not be decoded for a maintenance decision.
+    #[error(transparent)]
+    OrderEvidence(#[from] crate::OrderError),
+}
+
+impl From<rusqlite::Error> for MaintenanceError {
+    fn from(error: rusqlite::Error) -> Self {
+        StorageError::from(error).into()
+    }
+}
+impl From<std::io::Error> for MaintenanceError {
+    fn from(error: std::io::Error) -> Self {
+        StorageError::from(error).into()
+    }
+}
+impl From<serde_json::Error> for MaintenanceError {
+    fn from(error: serde_json::Error) -> Self {
+        StorageError::from(error).into()
     }
 }

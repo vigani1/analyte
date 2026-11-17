@@ -47,17 +47,19 @@ pub(crate) fn audit_evidence(
 ) -> Result<String, Error> {
     let id: String = serde_json::from_str(&key(&action.receipt)?)?;
     let mut targets = vec![
-        Identifier::new(&id).map_err(Error::Text)?,
-        Identifier::new(&format!("interpretation:{id}:{version}")).map_err(Error::Text)?,
+        Identifier::new(&id).map_err(crate::StorageError::Text)?,
+        Identifier::new(&format!("interpretation:{id}:{version}"))
+            .map_err(crate::StorageError::Text)?,
         Identifier::new(if successful {
             "reprocess:succeeded"
         } else {
             "reprocess:parked"
         })
-        .map_err(Error::Text)?,
+        .map_err(crate::StorageError::Text)?,
     ];
     if let Some(parked) = action.parked {
-        targets.push(Identifier::new(&format!("parked:{parked}")).map_err(Error::Text)?);
+        targets
+            .push(Identifier::new(&format!("parked:{parked}")).map_err(crate::StorageError::Text)?);
     }
     Ok(crate::document(&Audit {
         actor: action.audit.actor.clone(),

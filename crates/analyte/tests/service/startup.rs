@@ -10,6 +10,12 @@ async fn startup_failure_reaches_caller_before_any_peer_or_cache_wait() -> Resul
         .await
         .err()
         .ok_or("failed service startup was reported as ready")?;
-    assert!(error.downcast_ref::<std::io::Error>().is_some(), "{error}");
+    assert!(
+        matches!(
+            error.downcast_ref::<analyte::runtime::Error>(),
+            Some(analyte::runtime::Error::Io(_))
+        ),
+        "{error}"
+    );
     Ok(())
 }

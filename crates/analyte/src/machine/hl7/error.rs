@@ -6,7 +6,7 @@ pub(crate) enum Error {
     DisplayServicesAbsent,
     /// HL7 host phase timed out; receipt requires reconciliation.
     #[error("HL7 host phase timed out; receipt requires reconciliation")]
-    HostPhaseTimedOutReceiptRequiresReconciliation,
+    HostPhaseTimeout,
     /// HL7 message refused.
     #[error("HL7 message refused")]
     MessageRefused,
@@ -58,10 +58,10 @@ pub(crate) enum Error {
     /// The HL7 transport envelope failed MLLP framing.
     #[error(transparent)]
     Mllp(#[from] analyte_framing::hl7::Error),
-    /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
+    /// Retains link, store and evidence causes from [`crate::machine::receive::error::Error`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
     Refusal(#[from] crate::machine::receive::custody::Refusal<Self>),
 }
 
-crate::runtime::service::conversions::causes!(Error; protocol);
+crate::machine::receive::custody::refusal_conversions!(Error);

@@ -1,4 +1,5 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
+pub(crate) mod policy;
 use super::connection_input::Input;
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
@@ -301,7 +302,7 @@ async fn store_message(
         Body::Hello { .. } => {
             // Mark the complete, parsed Hello as connection context. Transport
             // journal fragments are also receipts, but are not interpreted Hellos.
-            intake::remember_hello(store, machine.machine(), id).await?;
+            intake::remember_context(store, machine.machine(), id).await?;
         }
         Body::Status { .. }
         | Body::EndTopic(_)

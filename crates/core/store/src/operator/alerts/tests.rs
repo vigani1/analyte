@@ -309,7 +309,10 @@ mod existing {
                 .map(|_| ())
                 .expect_err("input must be refused");
             assert!(
-                matches!(&refusal, OperatorError::ConstraintViolation(_)),
+                matches!(
+                    &refusal,
+                    OperatorError::Storage(StorageError::ConstraintViolation(_))
+                ),
                 "unexpected refusal: {refusal:?}"
             );
         }

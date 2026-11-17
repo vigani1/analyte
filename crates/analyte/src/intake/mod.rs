@@ -1,23 +1,25 @@
 //! Stores receipts, maps results, commits interpretations, revisions and deliveries, and parks failures.
 use crate::{deadline, installation::config::Machine};
-mod bytes;
+
 mod error;
-use crate::machine::law::custody as law;
+use crate::machine::interpretation::{
+    policy::{BatchConflict, Policy, WorkMismatch},
+    retained,
+};
+pub(crate) use crate::machine::receive::bytes::ByteReason;
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
-pub(crate) use bytes::ByteReason;
 pub use error::IntakeError as Error;
 use std::fmt::Write;
 mod parking;
 mod reading;
-pub(crate) mod retained;
+
+pub(crate) use crate::machine::interpretation::map_reading;
 pub(crate) use parking::{Mapping, ParkReason};
-use reading::{map_reading, mapping_outcome};
+use reading::mapping_outcome;
 mod persistence;
 pub use persistence::CommitError;
-use persistence::{LawBatchConflict, PreparedMapping};
-#[cfg(test)]
-mod tests;
+use persistence::PreparedMapping;
 
 /// Binds all evidence from one host connection to its immutable configuration.
 pub(crate) struct ConnectionEvidence<'a> {
@@ -88,7 +90,7 @@ pub(crate) enum InterpretationOutcome {
     Accepted,
     Failed,
     Conflict,
-    WorkConflict(crate::orders::law::validation::Mismatch),
+    WorkConflict(WorkMismatch),
 }
 
 pub(crate) async fn interpret(
@@ -122,10 +124,6 @@ pub(crate) async fn interpret_with_location(
     Ok((outcome, location))
 }
 
-fn poct_edits(machine: &Machine) -> bool {
-    machine.snapshot.effective().stack().independent_readings()
-}
-
 fn reading_evidence(
     machine: &Machine,
     outcome: Reading,
@@ -140,7 +138,7 @@ fn reading_evidence(
     })
 }
 
-async fn persist_prepared(
+pub(crate) async fn persist_prepared(
     store: &Handle,
     machine: &Machine,
     context: &retained::Context<'_>,
@@ -154,13 +152,11 @@ async fn persist_prepared(
         context.wire.as_ref(),
         mapping,
     )?;
-    let poct_edit_guard = poct_edits(machine);
-    let atomic = atomic_batch(machine);
-    let lifecycle = atomic.then_some(law_lifecycle());
-    let work_conflict = law::work_conflict(store, machine, context.results).await?;
-    let mut custody = law::plan(store, machine, context.results, work_conflict).await?;
-    let mapping = if work_conflict.is_some() {
-        Mapping::Parked(ParkReason::WorkConflict)
+    let mut policy = context.policy(store, machine).await?;
+    let atomic = policy.atomic();
+    let work_conflict = policy.work_conflict();
+    let mapping = if let Some(reason) = policy.conflict_reason()? {
+        Mapping::Parked(reason)
     } else {
         mapping
     };
@@ -169,9 +165,9 @@ async fn persist_prepared(
         reading,
         corrections,
         findings,
-    } = prepare_reading(map_reading(mapping)?, atomic)?;
-    if !accepted && work_conflict.is_none() {
-        custody = None;
+    } = prepare_reading(map_reading(mapping)?, &policy)?;
+    if !accepted && !work_conflict {
+        policy.discard_custody();
     }
     let interpretation = reading_evidence(machine, reading, departures)?;
     let destination = machine.snapshot.effective().site().destination.name.clone();
@@ -181,7 +177,7 @@ async fn persist_prepared(
             driver: interpretation.driver.clone(),
             config_version: interpretation.config_version.clone(),
             config: interpretation.config.clone(),
-            outcome: Reading::Failed(analyte_model::Reason::new(&LawBatchConflict.to_string())?),
+            outcome: Reading::Failed(analyte_model::Reason::new(&BatchConflict.to_string())?),
         })
     } else {
         None
@@ -193,47 +189,32 @@ async fn persist_prepared(
         interpretation,
         destination,
         conflict,
-        custody,
+        policy,
         action,
-        lifecycle,
-        atomic,
         accepted,
-        poct_edit_guard,
     };
     let result = store
         .request(deadline()?, move |store| prepared.commit(store))
         .await?;
     let (result, successful) = result;
-    let successful = match result.law {
-        Some(analyte_store::law::Disposition::Accepted) => InterpretationOutcome::Accepted,
-        Some(analyte_store::law::Disposition::Rejected(rejection)) => {
-            InterpretationOutcome::WorkConflict(work_conflict.unwrap_or(
-                crate::orders::law::validation::Mismatch {
-                    segment: b"OBR",
-                    occurrence: rejection.occurrence,
-                    field: 2,
-                },
-            ))
-        }
-        None => work_conflict.map_or(successful, InterpretationOutcome::WorkConflict),
-    };
     mapping_outcome(result, successful)
 }
 
-fn prepare_reading(mapped: MappedReading, atomic: bool) -> Result<MappedReading, Error> {
+fn prepare_reading(mapped: MappedReading, policy: &Policy) -> Result<MappedReading, Error> {
     let MappedReading {
         accepted,
         reading,
         corrections,
         findings,
     } = mapped;
-    // A rejected LAW batch must not register otherwise-new history without an
+    // A rejected atomic batch must not register otherwise-new history without an
     // outbox delivery: a later accepted retry would be mistaken for a retransmission.
-    let (reading, corrections) = if atomic && !accepted && matches!(reading, Reading::Results(_)) {
+    let (reading, corrections) = if let Some(reason) = policy.mapping_refusal()
+        && !accepted
+        && matches!(reading, Reading::Results(_))
+    {
         (
-            Reading::Failed(analyte_model::Reason::new(
-                "LAW mapping requires operator review; inspect protected findings and original receipt",
-            )?),
+            Reading::Failed(analyte_model::Reason::new(reason)?),
             Vec::new(),
         )
     } else {
@@ -245,10 +226,6 @@ fn prepare_reading(mapped: MappedReading, atomic: bool) -> Result<MappedReading,
         corrections,
         findings,
     })
-}
-
-fn atomic_batch(machine: &Machine) -> bool {
-    machine.snapshot.effective().stack().atomic_batches()
 }
 
 fn park_findings(
@@ -316,8 +293,8 @@ async fn persist_mapping(
     Ok(())
 }
 
-/// Retains a parsed POCT Hello as connection context, never as a result transfer.
-pub(crate) async fn remember_hello(
+/// Retains a parsed greeting as connection context, never as a result transfer.
+pub(crate) async fn remember_context(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
@@ -350,20 +327,9 @@ pub(crate) async fn failed_reading(
     Ok(())
 }
 
-fn law_lifecycle() -> analyte_store::StatusLifecycle<'static> {
-    analyte_store::StatusLifecycle {
-        transitions: analyte_hl7::law::STATUS_TRANSITIONS,
-        withheld: analyte_hl7::law::WITHHELD_STATUSES,
-        single_run: analyte_hl7::law::SINGLE_RUN_STATUSES,
-        run: |identity| {
-            analyte_hl7::law::observation_run(identity.sub_id.as_str()).map(str::to_owned)
-        },
-    }
-}
-
-struct MappedReading {
-    accepted: bool,
-    reading: Reading,
-    corrections: Vec<bool>,
-    findings: Vec<String>,
+pub(crate) struct MappedReading {
+    pub(crate) accepted: bool,
+    pub(crate) reading: Reading,
+    pub(crate) corrections: Vec<bool>,
+    pub(crate) findings: Vec<String>,
 }

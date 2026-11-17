@@ -177,7 +177,7 @@ impl Store {
                         "LAW {} at OBR occurrence {}",
                         reason.reason, reason.occurrence
                     ))
-                    .map_err(Error::Text)?,
+                    .map_err(crate::StorageError::Text)?,
                 );
             } else if admission.replay {
                 evidence.outcome = Reading::Results(Vec::new());
@@ -199,9 +199,9 @@ impl Store {
         }
         let encoded = crate::document(&evidence)?;
         if encoded.len() > limit {
-            return Err(Error::LimitExceeded {
+            return Err(Error::Storage(crate::StorageError::LimitExceeded {
                 what: "record_bytes",
-            });
+            }));
         }
         let successful = admission
             .as_ref()
@@ -224,7 +224,7 @@ impl Store {
                     .transpose()?
                     .unwrap_or(0),
             )
-            .ok_or(Error::Capacity)?;
+            .ok_or(Error::Storage(crate::StorageError::Capacity))?;
         Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
         write_history(
             &tx,

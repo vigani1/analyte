@@ -27,7 +27,7 @@ impl Store {
         self.start_order(
             candidate,
             OrderState::Sending,
-            SourceText::new(&code).map_err(Error::Text)?,
+            SourceText::new(&code).map_err(crate::StorageError::Text)?,
             options,
             None::<fn(&MachineOrder) -> Result<OrderEventDelivery, Error>>,
         )
