@@ -81,7 +81,7 @@ impl LawOrderLink {
                         records: vec![record],
                         protocol: analyte_dialog::law::WorkExchange::new(
                             sent.clone(),
-                            until.duration_since(self.clock),
+                            until.duration_since(self.start),
                         ),
                         query: None,
                     });
@@ -134,7 +134,7 @@ impl LawOrderLink {
                 records: prepared.into_iter().map(|(_, record)| record).collect(),
                 protocol: analyte_dialog::law::WorkExchange::new(
                     sent.clone(),
-                    until.duration_since(self.clock),
+                    until.duration_since(self.start),
                 ),
                 query: None,
             });

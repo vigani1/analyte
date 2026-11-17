@@ -26,7 +26,7 @@ pub(crate) struct LawOrderLink {
     reserving: Vec<MachineOrderKey>,
     exchange: Option<Exchange>,
     cursor: String,
-    clock: Instant,
+    start: Instant,
 }
 
 struct Exchange {
@@ -42,19 +42,19 @@ impl LawOrderLink {
             reserving: Vec::new(),
             exchange: None,
             cursor: String::new(),
-            clock: Instant::now(),
+            start: Instant::now(),
         })
     }
     pub(crate) fn due(&self) -> Option<Instant> {
         self.exchange
             .as_ref()
-            .and_then(|exchange| self.clock.checked_add(exchange.protocol.deadline()))
+            .and_then(|exchange| self.start.checked_add(exchange.protocol.deadline()))
     }
     pub(crate) async fn tick(&mut self, store: &Handle) -> Result<(), Error> {
         if self
             .exchange
             .as_ref()
-            .is_some_and(|exchange| exchange.protocol.expired(self.clock.elapsed()))
+            .is_some_and(|exchange| exchange.protocol.expired(self.start.elapsed()))
         {
             self.close(store, Code::LawOrlTimeout.as_str()).await?;
         }
@@ -62,7 +62,7 @@ impl LawOrderLink {
     }
     pub(crate) fn issued(&mut self, wait: Duration) -> Result<(), Error> {
         if let Some(exchange) = &mut self.exchange {
-            exchange.protocol.issued(self.clock.elapsed(), wait)?;
+            exchange.protocol.issued(self.start.elapsed(), wait)?;
         }
         Ok(())
     }
@@ -268,7 +268,7 @@ impl LawOrderLink {
             records: prepared.into_iter().map(|(_, record)| record).collect(),
             protocol: analyte_dialog::law::WorkExchange::new(
                 followup,
-                until.duration_since(self.clock),
+                until.duration_since(self.start),
             ),
             query: prepared_query,
         });
@@ -287,7 +287,7 @@ impl LawOrderLink {
                 .await?;
             return Ok(());
         };
-        if exchange.protocol.expired(self.clock.elapsed()) {
+        if exchange.protocol.expired(self.start.elapsed()) {
             self.close(store, Code::LawOrlLate.as_str()).await?;
             intake::failed_reading(
                 store,
