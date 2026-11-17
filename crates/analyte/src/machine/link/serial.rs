@@ -73,11 +73,7 @@ pub(in crate::machine) async fn run(
         flow,
         Duration::from_millis(100),
     )?;
-    let (mut conn, side) = analyte_transport::connection(limits);
-    let side = match capture {
-        Some(capture) => capture.attach(side),
-        None => side,
-    };
+    let (mut conn, side) = crate::machine::recorded_connection(limits, capture);
     let cancellation = conn.cancellation();
     let retry = crate::machine::retry()?;
     let (finished, completion) = tokio::sync::oneshot::channel();
