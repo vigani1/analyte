@@ -247,9 +247,57 @@ pub struct OutboundItem<'a> {
 /// Mapping errors for initiating HL7/LAW work, retaining protocol-specific diagnostics.
 #[derive(Debug, thiserror::Error)]
 pub enum WireMappingError {
-    /// A specific input or capability refusal.
-    #[error("{0}")]
-    Context(&'static str),
+    /// Requested priority has no supported wire representation.
+    #[error("HL7-unsupported-priority")]
+    Hl7PriorityUnsupported,
+    /// Test components cannot be represented by the configured grammar.
+    #[error("HL7-test-components")]
+    Hl7TestComponents,
+    /// HL7-patient-name-required-but-not-carried-by-contract.
+    #[error("HL7-patient-name-required-but-not-carried-by-contract")]
+    Hl7PatientNameRequired,
+    /// HL7 send config absent.
+    #[error("HL7 send config absent")]
+    Hl7SendSettingsAbsent,
+    /// HL7-app-order-id-too-long-for-ORC-4.
+    #[error("HL7-app-order-id-too-long-for-ORC-4")]
+    Hl7GroupIdTooLong,
+    /// HL7-item-has-no-placer-namespace.
+    #[error("HL7-item-has-no-placer-namespace")]
+    Hl7PlacerNamespaceMissing,
+    /// HL7-send-item-must-cover-one-test.
+    #[error("HL7-send-item-must-cover-one-test")]
+    Hl7ItemTestCount,
+    /// HL7-patient-namespace-mismatch.
+    #[error("HL7-patient-namespace-mismatch")]
+    Hl7PatientNamespaceMismatch,
+    /// HL7-order-edition-rules-not-implemented.
+    #[error("HL7-order-edition-rules-not-implemented")]
+    Hl7EditionUnsupported,
+    /// HL7-missing-specimen-type.
+    #[error("HL7-missing-specimen-type")]
+    Hl7SpecimenTypeMissing,
+    /// LAW order mappings absent.
+    #[error("LAW order mappings absent")]
+    LawMappingsAbsent,
+    /// LAW outbound value cannot be represented without changing its identity.
+    #[error("LAW outbound value cannot be represented without changing its identity")]
+    LawUnrepresentableIdentity,
+    /// LAW work empty.
+    #[error("LAW work empty")]
+    LawEmptyWork,
+    /// LAW specimen type missing.
+    #[error("LAW specimen type missing")]
+    LawSpecimenTypeMissing,
+    /// LAW query AWOS limit exceeded.
+    #[error("LAW query AWOS limit exceeded")]
+    LawQueryLimitExceeded,
+    /// LAW item must cover one AWOS test.
+    #[error("LAW item must cover one AWOS test")]
+    LawItemTestCount,
+    /// LAW test components.
+    #[error("LAW test components")]
+    LawTestComponents,
     /// A specific unmapped-code refusal with the shared lookup cause.
     #[error("{context}")]
     Lookup {

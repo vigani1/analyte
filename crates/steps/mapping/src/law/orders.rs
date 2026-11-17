@@ -23,7 +23,7 @@ impl Command {
             settings: Arc::new(
                 law.orders()
                     .as_ref()
-                    .ok_or(Error::Context("LAW order mappings absent"))?
+                    .ok_or(Error::LawMappingsAbsent)?
                     .clone(),
             ),
             priority: peer.instructions.priority,
@@ -53,9 +53,7 @@ fn validate_field(value: &str) -> Result<&str, Error> {
         usize::MAX,
         analyte_hl7::FieldSyntax::Plain,
     ) {
-        return Err(Error::Context(
-            "LAW outbound value cannot be represented without changing its identity",
-        ));
+        return Err(Error::LawUnrepresentableIdentity);
     }
     Ok(value)
 }
@@ -69,7 +67,7 @@ pub fn map_order(
     options: Options,
     response: analyte_hl7::Response<'_>,
 ) -> Result<Message, Error> {
-    let (first, _) = commands.first().ok_or(Error::Context("LAW work empty"))?;
+    let (first, _) = commands.first().ok_or(Error::LawEmptyWork)?;
     let mut wire = Vec::new();
     for (command, items) in commands {
         let sample = validate_field(command.app.sample.as_str())?;
@@ -77,7 +75,7 @@ pub fn map_order(
             .app
             .specimen_type
             .as_ref()
-            .ok_or(Error::Context("LAW specimen type missing"))?;
+            .ok_or(Error::LawSpecimenTypeMissing)?;
         let mapped =
             crate::orders::codes::map_specimen(Some(command.settings.specimen_types()), specimen)
                 .map_err(|source| Error::lookup("LAW specimen type unmapped", source))?;
@@ -96,10 +94,10 @@ pub fn map_order(
         };
         for item in *items {
             if wire.len() >= options.limits.segments {
-                return Err(Error::Context("LAW query AWOS limit exceeded"));
+                return Err(Error::LawQueryLimitExceeded);
             }
             let [requested] = item.tests else {
-                return Err(Error::Context("LAW item must cover one AWOS test"));
+                return Err(Error::LawItemTestCount);
             };
             let mapped_test = crate::orders::codes::map_test(command.settings.tests(), requested)
                 .map_err(|source| Error::lookup("LAW test unmapped", source))?;
@@ -110,7 +108,7 @@ pub fn map_order(
                 container: sample.to_owned(),
                 fields: {
                     let [code, text, system] = mapped_test.machine_components.as_slice() else {
-                        return Err(Error::Context("LAW test components"));
+                        return Err(Error::LawTestComponents);
                     };
                     law::WorkFields::new(
                         sample,

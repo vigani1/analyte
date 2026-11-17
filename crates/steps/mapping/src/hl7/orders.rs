@@ -30,24 +30,20 @@ impl Command {
             .as_ref()
             .is_some_and(|send| send.settings().require_patient_identification)
         {
-            return Err(Error::Context(
-                "HL7-patient-name-required-but-not-carried-by-contract",
-            ));
+            return Err(Error::Hl7PatientNameRequired);
         }
         let version: Version = edition.into();
         if version.orm_patient_name_required()
             && app.fields().patient.is_some()
             && app.fields().state == analyte_contract::document::OrderState::Requested
         {
-            return Err(Error::Context(
-                "HL7-patient-name-required-but-not-carried-by-contract",
-            ));
+            return Err(Error::Hl7PatientNameRequired);
         }
         let group = app.fields().id.as_str().to_owned();
         let namespace = settings
             .send()
             .as_ref()
-            .ok_or(Error::Context("HL7 send config absent"))?
+            .ok_or(Error::Hl7SendSettingsAbsent)?
             .placer_namespace()
             .as_str();
         if group
@@ -56,7 +52,7 @@ impl Command {
             .and_then(|n| n.checked_add(1))
             .is_none_or(|n| n > order::EI_MAX_BYTES)
         {
-            return Err(Error::Context("HL7-app-order-id-too-long-for-ORC-4"));
+            return Err(Error::Hl7GroupIdTooLong);
         }
         Ok(Self {
             settings,
@@ -84,7 +80,7 @@ impl Command {
             .settings
             .send()
             .as_ref()
-            .ok_or(Error::Context("HL7 send config absent"))?;
+            .ok_or(Error::Hl7SendSettingsAbsent)?;
         let cfg = &cfg.settings();
         let header = self.map_header(cfg, response)?;
         if cancel {
@@ -95,9 +91,7 @@ impl Command {
         let priority = self.map_priority()?;
         let mut orders = Vec::new();
         for item in items {
-            let namespace = item
-                .namespace
-                .ok_or(Error::Context("HL7-item-has-no-placer-namespace"))?;
+            let namespace = item.namespace.ok_or(Error::Hl7PlacerNamespaceMissing)?;
             let placer =
                 order::OrderId::new(item.placer.as_bytes(), namespace.as_str().as_bytes())?;
             if cancel {
@@ -108,7 +102,7 @@ impl Command {
                 continue;
             }
             let [requested] = item.tests else {
-                return Err(Error::Context("HL7-send-item-must-cover-one-test"));
+                return Err(Error::Hl7ItemTestCount);
             };
             let mapped = crate::orders::codes::map_test(self.settings.tables().tests(), requested)
                 .map_err(|source| Error::lookup("HL7-unmapped-test", source))?;
@@ -143,7 +137,7 @@ impl Command {
                         namespace: patient.namespace.as_str().as_bytes(),
                     }
                 }
-                (Some(_), Some(_)) => return Err(Error::Context("HL7-patient-namespace-mismatch")),
+                (Some(_), Some(_)) => return Err(Error::Hl7PatientNamespaceMismatch),
                 _ => order::Subject::Unspecified,
             }
         };
@@ -202,9 +196,7 @@ impl Command {
     ) -> Result<OrderMessage, Error> {
         let mut orders = Vec::new();
         for item in items {
-            let namespace = item
-                .namespace
-                .ok_or(Error::Context("HL7-item-has-no-placer-namespace"))?;
+            let namespace = item.namespace.ok_or(Error::Hl7PlacerNamespaceMissing)?;
             orders.push(order::Order::Cancel {
                 placer: order::OrderId::new(item.placer.as_bytes(), namespace.as_str().as_bytes())?,
                 filler: None,
@@ -230,7 +222,7 @@ impl Command {
         } else if self.version.oml_writer() {
             Ok(order::oml(orders, subject, header, self.options)?)
         } else {
-            Err(Error::Context("HL7-order-edition-rules-not-implemented"))
+            Err(Error::Hl7EditionUnsupported)
         }
     }
 
@@ -260,7 +252,7 @@ impl Command {
                     },
                 )
             }
-            (Some(_), None) => return Err(Error::Context("HL7-missing-specimen-type")),
+            (Some(_), None) => return Err(Error::Hl7SpecimenTypeMissing),
             (None, _) => None,
         })
     }
@@ -294,7 +286,7 @@ impl Command {
                 order::Priority::AsNeeded
             }
             analyte_config::MachinePriority::Custom(_) => {
-                return Err(Error::Context("HL7-unsupported-priority"));
+                return Err(Error::Hl7PriorityUnsupported);
             }
         };
         Ok(priority)
@@ -303,7 +295,7 @@ impl Command {
 
 fn test_code(components: &[String]) -> Result<order::Code<'_>, Error> {
     let [code, text, system, rest @ ..] = components else {
-        return Err(Error::Context("HL7-test-components"));
+        return Err(Error::Hl7TestComponents);
     };
     let code = order::Code::new(code.as_bytes(), text.as_bytes(), system.as_bytes())?;
     match rest {
@@ -313,6 +305,6 @@ fn test_code(components: &[String]) -> Result<order::Code<'_>, Error> {
         {
             Ok(code.with_version(revision.as_bytes())?)
         }
-        _ => Err(Error::Context("HL7-test-components")),
+        _ => Err(Error::Hl7TestComponents),
     }
 }
