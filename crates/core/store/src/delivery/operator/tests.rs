@@ -31,18 +31,23 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
         contract_version: 1,
     };
     store
-        .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
-            Ok(vec![Delivery {
-                id: delivery.id,
-                destination: delivery.destination.clone(),
-                ordering_key: OrderingKey {
-                    machine: delivery.ordering_key.machine.clone(),
-                    observation: delivery.ordering_key.observation.clone(),
-                },
-                payload: delivery.payload.clone(),
-                contract_version: delivery.contract_version,
-            }])
-        })
+        .reconcile(
+            ReconcileAction::Interpret(metadata.id),
+            evidence.clone(),
+            ReconcileInput::standard(&[false], &[]),
+            |_, _| {
+                Ok(vec![Delivery {
+                    id: delivery.id,
+                    destination: delivery.destination.clone(),
+                    ordering_key: OrderingKey {
+                        machine: delivery.ordering_key.machine.clone(),
+                        observation: delivery.ordering_key.observation.clone(),
+                    },
+                    payload: delivery.payload.clone(),
+                    contract_version: delivery.contract_version,
+                }])
+            },
+        )
         .map(|commit| commit.version)?;
     let audit = Audit {
         actor: Identifier::new("operator")?,
@@ -155,18 +160,23 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
         contract_version: 1,
     };
     store
-        .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
-            Ok(vec![Delivery {
-                id: delivery.id,
-                destination: delivery.destination.clone(),
-                ordering_key: OrderingKey {
-                    machine: delivery.ordering_key.machine.clone(),
-                    observation: delivery.ordering_key.observation.clone(),
-                },
-                payload: delivery.payload.clone(),
-                contract_version: delivery.contract_version,
-            }])
-        })
+        .reconcile(
+            ReconcileAction::Interpret(metadata.id),
+            evidence.clone(),
+            ReconcileInput::standard(&[false], &[]),
+            |_, _| {
+                Ok(vec![Delivery {
+                    id: delivery.id,
+                    destination: delivery.destination.clone(),
+                    ordering_key: OrderingKey {
+                        machine: delivery.ordering_key.machine.clone(),
+                        observation: delivery.ordering_key.observation.clone(),
+                    },
+                    payload: delivery.payload.clone(),
+                    contract_version: delivery.contract_version,
+                }])
+            },
+        )
         .map(|commit| commit.version)?;
     store.claim(0)?.ok_or("missing claim")?;
     store.attempted(delivery.id, &Attempt::Done, 0)?;

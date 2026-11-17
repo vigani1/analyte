@@ -60,9 +60,12 @@ fn plan11_v1_migration_preserves_rows_triggers_and_retry_history() -> TestResult
     };
     let metadata = receipt(b"raw")?;
     v1.receive(&metadata, b"raw", b"config")?;
-    v1.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
-        Ok(Vec::new())
-    })?;
+    v1.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        interpretation()?,
+        ReconcileInput::standard(&[], &[]),
+        |_, _| Ok(Vec::new()),
+    )?;
     let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     seed_delivery(&v1, metadata.id, id, "key")?;
     v1.db.execute("UPDATE outbox SET state='in_flight'", [])?;

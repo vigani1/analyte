@@ -43,206 +43,96 @@ pub struct InterpretationCommit {
     pub outcomes: Vec<RevisionOutcome>,
 }
 
+/// Reconciliation policy selected by the host.
+pub enum ReconcileMode<'a> {
+    /// Ordinary revision reconciliation.
+    Standard,
+    /// Apply the protocol's explicit status progression.
+    Lifecycle(StatusLifecycle<'a>),
+    /// Park otherwise indistinguishable edits with this protected reason.
+    EditGuard(&'a str),
+    /// Reconcile LAW custody and status progression in the same transaction.
+    Law {
+        /// Explicit LAW progression policy.
+        lifecycle: StatusLifecycle<'a>,
+        /// Retained work and message identity evidence.
+        custody: &'a law::LawCustody,
+    },
+}
+
+/// Mapping evidence retained together with revision assignment.
+pub struct ReconcileInput<'a> {
+    /// Config-declared correction evidence in result order.
+    pub corrections: &'a [bool],
+    /// Protected mapping findings.
+    pub findings: &'a [crate::Parked],
+    /// Protocol reconciliation policy.
+    pub mode: ReconcileMode<'a>,
+}
+
+impl<'a> ReconcileInput<'a> {
+    /// Selects ordinary reconciliation for the supplied mapping evidence.
+    #[must_use]
+    pub fn standard(corrections: &'a [bool], findings: &'a [crate::Parked]) -> Self {
+        Self {
+            corrections,
+            findings,
+            mode: ReconcileMode::Standard,
+        }
+    }
+}
+
+/// Identifies initial interpretation or an audited operator reprocessing.
+#[derive(Clone, Copy)]
+pub enum ReconcileAction<'a> {
+    /// Interpret the immutable receipt.
+    Interpret(ReceiptId),
+    /// Append a version with the supplied audit evidence.
+    Reprocess(&'a crate::Reprocess),
+}
+
 impl Store {
-    /// Assigns revisions and stores interpretation, conflicts and eligible deliveries atomically.
-    /// Mapping `findings` are parked in this same transaction, including on retransmission.
-    /// `corrections` supplies the config-declared correction evidence per result.
-    /// The bounded builder sees assigned revisions; it must produce deliveries only for new
-    /// or corrected results. Retransmissions and conflicts cannot be enqueued.
-    /// Cancellation after submission can leave a committed transaction; reconcile the receipt.
-    /// # Errors
-    /// Rejects bounds, provenance mismatches, invalid delivery selection and database failures.
-    pub fn interpret_reconciled<F>(
-        &mut self,
-        receipt: ReceiptId,
-        evidence: Interpretation,
-        corrections: &[bool],
-        findings: &[crate::Parked],
-        build: F,
-    ) -> Result<InterpretationCommit, Error>
-    where
-        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
-    {
-        self.reconcile(
-            receipt,
-            evidence,
-            (corrections, findings, None, None),
-            None,
-            None,
-            build,
-        )
-    }
-
-    /// Reinterprets retained bytes under current provenance, appending a version.
-    /// Reconciliation, parking, resolution and exactly one audit commit together.
-    /// No machine I/O or order lifecycle operation is performed.
-    /// # Errors
-    /// Rejects missing receipts, unrelated/resolved parked items, invalid audit evidence,
-    /// bounds, delivery construction and storage failures without partial effects.
-    pub fn reprocess_reconciled<F>(
-        &mut self,
-        action: &crate::Reprocess,
-        evidence: Interpretation,
-        corrections: &[bool],
-        findings: &[crate::Parked],
-        build: F,
-    ) -> Result<InterpretationCommit, Error>
-    where
-        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
-    {
-        if action.audit.action.as_str() != "receipt-reprocess" {
-            return Err(Error::AuditMismatch);
-        }
-        self.reconcile(
-            action.receipt,
-            evidence,
-            (corrections, findings, None, None),
-            Some(action),
-            None,
-            build,
-        )
-    }
-
-    /// Reconciles using a caller-owned status transition/reporting table (ADR 0011).
-    /// Identical retained content is still a retransmission; a table cannot authorize delivery of it.
-    /// # Errors
-    /// Reports the same atomic validation, capacity and storage failures as `interpret_reconciled`.
-    pub fn interpret_with_lifecycle<F>(
-        &mut self,
-        receipt: ReceiptId,
-        evidence: Interpretation,
-        mapping: (&[bool], &[crate::Parked]),
-        lifecycle: StatusLifecycle<'_>,
-        build: F,
-    ) -> Result<InterpretationCommit, Error>
-    where
-        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
-    {
-        self.reconcile(
-            receipt,
-            evidence,
-            (mapping.0, mapping.1, Some(lifecycle), None),
-            None,
-            None,
-            build,
-        )
-    }
-    /// Reprocesses with caller-owned lifecycle rules, keeping the same atomic audit boundary.
-    /// # Errors
-    /// Reports invalid actions and the same atomic failures as `reprocess_reconciled`.
-    pub fn reprocess_with_lifecycle<F>(
-        &mut self,
-        action: &crate::Reprocess,
-        evidence: Interpretation,
-        mapping: (&[bool], &[crate::Parked]),
-        lifecycle: StatusLifecycle<'_>,
-        build: F,
-    ) -> Result<InterpretationCommit, Error>
-    where
-        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
-    {
-        if action.audit.action.as_str() != "receipt-reprocess" {
-            return Err(Error::AuditMismatch);
-        }
-        self.reconcile(
-            action.receipt,
-            evidence,
-            (mapping.0, mapping.1, Some(lifecycle), None),
-            Some(action),
-            None,
-            build,
-        )
-    }
-
-    /// Parks corrections matching the latest common content under a caller-owned reason.
-    /// The guard runs inside revision reconciliation; it changes no stored format.
-    /// Reprocessing keeps the usual audit and custody boundary.
-    /// # Errors
-    /// Rejects invalid reprocess actions, bounds and transactional storage failures.
-    pub fn interpret_with_edit_guard<F>(
-        &mut self,
-        receipt: ReceiptId,
-        evidence: Interpretation,
-        mapping: (&[bool], &[crate::Parked], &str),
-        action: Option<&crate::Reprocess>,
-        build: F,
-    ) -> Result<InterpretationCommit, Error>
-    where
-        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
-    {
-        if action
-            .is_some_and(|a| a.receipt != receipt || a.audit.action.as_str() != "receipt-reprocess")
-        {
-            return Err(Error::AuditMismatch);
-        }
-        self.reconcile(
-            receipt,
-            evidence,
-            (mapping.0, mapping.1, None, Some(mapping.2)),
-            action,
-            None,
-            build,
-        )
-    }
-
-    /// Commits LAW receipt disposition, item execution, revisions and deliveries atomically.
-    /// No positive disposition exists until commit; cancellation can leave a committed
-    /// transaction, so retries use the same trusted message identity.
-    /// # Errors
-    /// Refuses invalid provenance, bounds, audit and storage failures without partial writes.
-    pub fn interpret_law<F>(
-        &mut self,
-        receipt: ReceiptId,
-        evidence: Interpretation,
-        mapping: (&[bool], &[crate::Parked]),
-        lifecycle: StatusLifecycle<'_>,
-        context: (&law::LawCustody, Option<&crate::Reprocess>),
-        build: F,
-    ) -> Result<InterpretationCommit, Error>
-    where
-        F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
-    {
-        let (custody, action) = context;
-        if action
-            .is_some_and(|a| a.receipt != receipt || a.audit.action.as_str() != "receipt-reprocess")
-        {
-            return Err(Error::AuditMismatch);
-        }
-        self.reconcile(
-            receipt,
-            evidence,
-            (mapping.0, mapping.1, Some(lifecycle), None),
-            action,
-            Some(custody),
-            build,
-        )
-    }
-
     #[expect(
         clippy::too_many_lines,
         reason = "Keep the single interpretation commit and rollback ordering visible together"
     )]
-    fn reconcile<F>(
+    /// Assigns revisions, findings, deliveries, optional LAW custody and reprocess audit atomically.
+    /// Cancellation after submission can leave a committed transaction; reconcile the receipt.
+    /// # Errors
+    /// Rejects invalid audit, provenance, bounds, delivery selection and storage failures.
+    pub fn reconcile<F>(
         &mut self,
-        receipt: ReceiptId,
+        action: ReconcileAction<'_>,
         mut evidence: Interpretation,
-        mapping: (
-            &[bool],
-            &[crate::Parked],
-            Option<StatusLifecycle<'_>>,
-            Option<&str>,
-        ),
-        action: Option<&crate::Reprocess>,
-        law: Option<&law::LawCustody>,
+        input: ReconcileInput<'_>,
         build: F,
     ) -> Result<InterpretationCommit, Error>
     where
         F: FnOnce(&Interpretation, &[RevisionOutcome]) -> Result<Vec<Delivery>, Error>,
     {
+        let (receipt, action) = match action {
+            ReconcileAction::Interpret(receipt) => (receipt, None),
+            ReconcileAction::Reprocess(action) => {
+                if action.audit.action.as_str() != "receipt-reprocess" {
+                    return Err(Error::AuditMismatch);
+                }
+                (action.receipt, Some(action))
+            }
+        };
+        let ReconcileInput {
+            corrections,
+            findings,
+            mode,
+        } = input;
+        let (lifecycle, edit_guard, law) = match mode {
+            ReconcileMode::Standard => (None, None, None),
+            ReconcileMode::Lifecycle(policy) => (Some(policy), None, None),
+            ReconcileMode::EditGuard(reason) => (None, Some(reason), None),
+            ReconcileMode::Law { lifecycle, custody } => (Some(lifecycle), None, Some(custody)),
+        };
         if let Some(custody) = law {
             self.encode(custody)?;
         }
-        let (corrections, findings, lifecycle, edit_guard) = mapping;
         let stored = self.receipt(receipt)?.ok_or(Error::UnknownReceipt)?;
         let (count, findings) = self.validate_reconciliation(
             &stored,

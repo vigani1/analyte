@@ -12,9 +12,12 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
     let mut original = interpretation()?;
     original.outcome = Reading::Failed(Reason::new("test mapping missing")?);
     store
-        .interpret_reconciled(metadata.id, original.clone(), &[], &[], |_, _| {
-            Ok(Vec::new())
-        })
+        .reconcile(
+            ReconcileAction::Interpret(metadata.id),
+            original.clone(),
+            ReconcileInput::standard(&[], &[]),
+            |_, _| Ok(Vec::new()),
+        )
         .map(|commit| commit.version)?;
     let before: String = store
         .db
@@ -39,7 +42,12 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
     store.db.execute_batch("CREATE TRIGGER fail_reprocess_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
     {
         let refusal = store
-            .reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![]))
+            .reconcile(
+                ReconcileAction::Reprocess(&action),
+                current.clone(),
+                ReconcileInput::standard(&[false], &[]),
+                |_, _| Ok(vec![]),
+            )
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
@@ -84,8 +92,12 @@ fn verify_reprocessed_provenance_and_resolution(
     action: Reprocess,
     before: &str,
 ) -> TestResult {
-    let commit =
-        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![]))?;
+    let commit = store.reconcile(
+        ReconcileAction::Reprocess(&action),
+        current.clone(),
+        ReconcileInput::standard(&[false], &[]),
+        |_, _| Ok(vec![]),
+    )?;
     assert_eq!(commit.version, 2);
     assert!(matches!(
         commit.outcomes.as_slice(),
@@ -135,7 +147,12 @@ fn verify_reprocessed_provenance_and_resolution(
             .any(|t| t.as_str().ends_with(":2"))
     );
     assert!(matches!(
-        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![])),
+        store.reconcile(
+            ReconcileAction::Reprocess(&action),
+            current.clone(),
+            ReconcileInput::standard(&[false], &[]),
+            |_, _| Ok(vec![])
+        ),
         Err(Error::ReprocessParked)
     ));
     let other = store.park(&Parked {
@@ -146,12 +163,22 @@ fn verify_reprocessed_provenance_and_resolution(
     let mut action = action;
     action.parked = Some(other);
     assert!(matches!(
-        store.reprocess_reconciled(&action, current.clone(), &[false], &[], |_, _| Ok(vec![])),
+        store.reconcile(
+            ReconcileAction::Reprocess(&action),
+            current.clone(),
+            ReconcileInput::standard(&[false], &[]),
+            |_, _| Ok(vec![])
+        ),
         Err(Error::ReprocessParked)
     ));
     action.parked = None;
     current.outcome = Reading::Results(vec![]);
-    store.reprocess_reconciled(&action, current, &[], &[], |_, _| Ok(vec![]))?;
+    store.reconcile(
+        ReconcileAction::Reprocess(&action),
+        current,
+        ReconcileInput::standard(&[], &[]),
+        |_, _| Ok(vec![]),
+    )?;
     assert!(
         store
             .parked(0)?
@@ -171,7 +198,12 @@ fn mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_orig
     store.receive(&metadata, b"raw", b"config")?;
     let mut failed = interpretation()?;
     failed.outcome = Reading::Failed(Reason::new("unknown test")?);
-    store.interpret_reconciled(metadata.id, failed, &[], &[], |_, _| Ok(vec![]))?;
+    store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        failed,
+        ReconcileInput::standard(&[], &[]),
+        |_, _| Ok(vec![]),
+    )?;
     let parked = store.parked(0)?.first().ok_or("missing parked")?.id;
     let mut action = Reprocess {
         receipt: metadata.id,
@@ -196,11 +228,14 @@ fn mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_orig
     evidence.config = b"new config".to_vec();
     evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
     assert!(matches!(
-        store.reprocess_with_lifecycle(
-            &action,
+        store.reconcile(
+            ReconcileAction::Reprocess(&action),
             evidence.clone(),
-            (&[false], &[]),
-            policy,
+            ReconcileInput {
+                corrections: &[false],
+                findings: &[],
+                mode: ReconcileMode::Lifecycle(policy)
+            },
             |_, _| Ok(vec![])
         ),
         Err(Error::AuditMismatch)
@@ -208,10 +243,16 @@ fn mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_orig
     assert!(store.interpretation(metadata.id, 2)?.is_none());
     assert!(store.audits(0)?.is_empty());
     action.audit.action = Identifier::new("receipt-reprocess")?;
-    let commit =
-        store.reprocess_with_lifecycle(&action, evidence, (&[false], &[]), policy, |_, _| {
-            Ok(vec![])
-        })?;
+    let commit = store.reconcile(
+        ReconcileAction::Reprocess(&action),
+        evidence,
+        ReconcileInput {
+            corrections: &[false],
+            findings: &[],
+            mode: ReconcileMode::Lifecycle(policy),
+        },
+        |_, _| Ok(vec![]),
+    )?;
     assert_eq!(commit.version, 2);
     assert_eq!(
         commit.outcomes,
@@ -248,7 +289,12 @@ fn mutation_adr0003_reprocessing_never_resolves_failure_empty_unresolved_or_flag
         store.receive(&metadata, b"raw", b"config")?;
         let mut failed = interpretation()?;
         failed.outcome = Reading::Failed(Reason::new("unknown test")?);
-        store.interpret_reconciled(metadata.id, failed.clone(), &[], &[], |_, _| Ok(vec![]))?;
+        store.reconcile(
+            ReconcileAction::Interpret(metadata.id),
+            failed.clone(),
+            ReconcileInput::standard(&[], &[]),
+            |_, _| Ok(vec![]),
+        )?;
         let parked = store.parked(0)?.first().ok_or("missing parked")?.id;
         let action = Reprocess {
             receipt: metadata.id,
@@ -291,9 +337,12 @@ fn mutation_adr0003_reprocessing_never_resolves_failure_empty_unresolved_or_flag
             }
             _ => unreachable!("fixed cases"),
         }
-        store.reprocess_reconciled(&action, evidence, &corrections, &findings, |_, _| {
-            Ok(vec![])
-        })?;
+        store.reconcile(
+            ReconcileAction::Reprocess(&action),
+            evidence,
+            ReconcileInput::standard(&corrections, &findings),
+            |_, _| Ok(vec![]),
+        )?;
         assert!(
             store
                 .parked_item(parked)?

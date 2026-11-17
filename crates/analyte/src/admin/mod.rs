@@ -14,23 +14,7 @@ pub(crate) use server::{Server, prepare};
 
 pub use token::{Token, TokenError, rotate_token};
 
-/// Escapes text and attribute values through one HTML boundary.
-fn escape(value: &str) -> String {
-    value.chars().fold(String::new(), |mut out, character| {
-        out.push_str(match character {
-            '&' => "&amp;",
-            '<' => "&lt;",
-            '>' => "&gt;",
-            '"' => "&quot;",
-            '\'' => "&#39;",
-            _ => {
-                out.push(character);
-                return out;
-            }
-        });
-        out
-    })
-}
+mod markup;
 
 /// A temporary data directory with the owner-only mode the host requires on Unix
 /// (the default temporary directory may allow group or other access).

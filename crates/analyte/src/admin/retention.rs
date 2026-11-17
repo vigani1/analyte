@@ -1,6 +1,7 @@
 //! Shows retention policy and committed purge evidence and applies audited operator holds.
-use super::{escape, pages::NAV, server::Context, sessions::Session};
+use super::{pages::NAV, server::Context, sessions::Session};
 use crate::admin::Error;
+use crate::admin::markup::Markup;
 use crate::deadline;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, HoldTarget};
@@ -13,16 +14,30 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-fn page(body: &str) -> Response {
-    Html(format!("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Retention and holds</title>{NAV}<h1>Retention and holds</h1>{body}</html>")).into_response()
+fn page(body: &Markup) -> Response {
+    Html(
+        Markup::new()
+            .markup(concat!(
+                "<!doctype html><html lang=\"en\"><meta ",
+                "charset=\"utf-8\"><title>Retention and holds</title>",
+            ))
+            .markup(NAV)
+            .markup("<h1>Retention and holds</h1>")
+            .fragment(body)
+            .markup("</html>"),
+    )
+    .into_response()
 }
 fn failure(error: &dyn std::error::Error) -> Response {
     (
         StatusCode::CONFLICT,
-        Html(format!(
-            "{NAV}<h1>Retention action refused</h1><p>{}</p>",
-            escape(&error.to_string())
-        )),
+        Html(
+            Markup::new()
+                .markup(NAV)
+                .markup("<h1>Retention action refused</h1><p>")
+                .text(error.to_string())
+                .markup("</p>"),
+        ),
     )
         .into_response()
 }
@@ -42,7 +57,7 @@ pub(super) async fn show(
         Err(error) => failure(&error),
     }
 }
-async fn render(state: &Context, session: Option<&Session>, after: u64) -> Result<String, Error> {
+async fn render(state: &Context, session: Option<&Session>, after: u64) -> Result<Markup, Error> {
     let after = i64::try_from(after)?;
     let (last, oldest, holds) = state
         .store
@@ -54,51 +69,75 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
             ))
         })
         .await?;
-    let mut html = "<h2>Policy</h2><ul>".to_owned();
+    let mut html = Markup::new().markup("<h2>Policy</h2><ul>");
     for (machine, days) in &state.retention {
         let policy = days.map_or_else(
             || "keep (never purge)".into(),
             |days| format!("{days} days after the last acknowledgment"),
         );
-        html.push_str(&format!(
-            "<li>{}: {}</li>",
-            escape(machine.as_str()),
-            escape(&policy)
-        ));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<li>")
+                .text(machine.as_str())
+                .markup(": ")
+                .text(&policy)
+                .markup("</li>"),
+        );
     }
-    html.push_str("</ul><h2>Last run</h2>");
+    html.push_markup("</ul><h2>Last run</h2>");
     if let Some(run) = last {
-        html.push_str(&format!(
-            "<p>Unix time {}. Examined: {}. Purged receipts: {}. Purged orders: {}. Paused: {}. Failed: {}.</p>",
-            run.time, run.examined, run.purged, run.orders, run.paused, run.failed
-        ));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<p>Unix time ")
+                .text(run.time)
+                .markup(". Examined: ")
+                .text(run.examined)
+                .markup(". Purged receipts: ")
+                .text(run.purged)
+                .markup(". Purged orders: ")
+                .text(run.orders)
+                .markup(". Paused: ")
+                .text(run.paused)
+                .markup(". Failed: ")
+                .text(run.failed)
+                .markup(".</p>"),
+        );
     } else {
-        html.push_str("<p>No retention run recorded.</p>");
+        html.push_markup("<p>No retention run recorded.</p>");
     }
-    html.push_str(&format!(
-        "<h2>Oldest retained item</h2><p>{}</p>",
-        oldest.map_or_else(
-            || "No retained receipts.".into(),
-            |time| format!("Received at Unix time {time}.")
-        )
+    html.push_fragment(
+        &Markup::new()
+            .markup("<h2>Oldest retained item</h2><p>")
+            .text(oldest.map_or_else(
+                || "No retained receipts.".into(),
+                |time| format!("Received at Unix time {time}."),
+            ))
+            .markup("</p>"),
+    );
+    html.push_markup(concat!(
+        "<h2>Active holds</h2><p>Holds have no expiry. An ",
+        "order hold covers linked receipts. Uncertain ",
+        "links retain additional data.</p><ul>",
     ));
-    html.push_str("<h2>Active holds</h2><p>Holds have no expiry. An order hold covers linked receipts. Uncertain links retain additional data.</p><ul>");
     let next = holds.last().map(|hold| hold.sequence);
     for hold in holds {
-        html.push_str(&format!(
-            "<li>{}</li>",
-            escape(&serde_json::to_string(&hold.target)?)
-        ));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<li>")
+                .text(&serde_json::to_string(&hold.target)?)
+                .markup("</li>"),
+        );
     }
-    html.push_str("</ul>");
+    html.push_markup("</ul>");
     if let Some(after) = next {
-        html.push_str(&format!(
-            "<a rel=\"next\" href=\"/retention?after={after}\">Next holds page</a>"
-        ));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<a rel=\"next\" href=\"/retention?after=")
+                .text(after)
+                .markup("\">Next holds page</a>"),
+        );
     }
-    if let Some(session) = session.filter(|s| s.authenticated) {
-        html.push_str(&format!(r#"<h2>Place or release a hold</h2><form action="/retention" method="post"><input type="hidden" name="csrf" value="{}"><label>Scope <select name="scope"><option value="receipt">Receipt</option><option value="order">Order</option></select></label><label>Receipt UUID or app order ID <input name="id" required maxlength="256"></label><label>Destination (orders only) <input name="destination" maxlength="256"></label><label>Action <select name="operation"><option value="place">Place hold</option><option value="release">Release hold</option></select></label><label>Reason <input name="reason" required maxlength="256"></label><label><input type="checkbox" name="confirm" value="yes" required>I confirm this hold change.</label><button>Record hold change</button></form>"#,escape(session.csrf.form_value())));
-    }
+    render_form(&mut html, session);
     Ok(html)
 }
 #[derive(Deserialize)]
@@ -122,7 +161,10 @@ pub(super) async fn hold(
     }
     let result = apply(&state, &session, form).await;
     match result {
-        Ok(()) => page("<p>Hold change recorded with your actor identity and reason.</p>"),
+        Ok(()) => page(&Markup::new().markup(concat!(
+            "<p>Hold change recorded with your actor identity ",
+            "and reason.</p>",
+        ))),
         Err(error) => failure(&error),
     }
 }
@@ -160,4 +202,53 @@ async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(),
         })
         .await?;
     Ok(())
+}
+
+fn render_form(html: &mut Markup, session: Option<&Session>) {
+    if let Some(session) = session.filter(|s| s.authenticated) {
+        html.push_fragment(
+            &Markup::new()
+                .markup(concat!(
+                    "<h2>Place or release a hold</h2><form ",
+                    "action=\"/retention\" method=\"post\"><input ",
+                ))
+                .markup("type=\"hidden\" name=\"csrf\" value=\"")
+                .text(session.csrf.form_value())
+                .markup(concat!(
+                    "\"><label>Scope <select name=\"scope\"><option ",
+                    "value=\"receipt\">Receipt</option><option ",
+                ))
+                .markup(concat!(
+                    "value=\"order\">Order</option></select></label><labe",
+                    "l>Receipt UUID or app order ID <input ",
+                ))
+                .markup(concat!(
+                    "name=\"id\" required ",
+                    "maxlength=\"256\"></label><label>Destination ",
+                    "(orders only) <input ",
+                ))
+                .markup(concat!(
+                    "name=\"destination\" ",
+                    "maxlength=\"256\"></label><label>Action <select ",
+                    "name=\"operation\"><option ",
+                ))
+                .markup(concat!(
+                    "value=\"place\">Place hold</option><option ",
+                    "value=\"release\">Release ",
+                ))
+                .markup(concat!(
+                    "hold</option></select></label><label>Reason ",
+                    "<input name=\"reason\" required ",
+                ))
+                .markup(concat!(
+                    "maxlength=\"256\"></label><label><input ",
+                    "type=\"checkbox\" name=\"confirm\" value=\"yes\" ",
+                ))
+                .markup(concat!(
+                    "required>I confirm this hold ",
+                    "change.</label><button>Record hold ",
+                    "change</button></form>",
+                )),
+        );
+    }
 }

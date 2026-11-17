@@ -1,10 +1,11 @@
 //! Routes authenticated local HTTP requests with session and request limits.
 use super::{
-    Token, escape,
+    Token,
     listener::Listener,
     sessions::{Session, Sessions},
 };
 use crate::admin::Error;
+use crate::admin::markup::Markup;
 use crate::installation::config::Program;
 use analyte_model::Identifier;
 use axum::{
@@ -26,7 +27,7 @@ use tokio::sync::{Semaphore, watch};
 pub(super) struct Machine {
     pub(super) id: Identifier,
     pub(super) running: Arc<AtomicBool>,
-    pub(super) departure_html: String,
+    pub(super) departure_html: Markup,
 }
 
 pub(super) struct Context {
@@ -177,10 +178,25 @@ fn unauthorized(state: &Context, existing: Option<&Arc<Session>>) -> Response {
         .unwrap_or_else(|| state.sessions.issue(false, None));
     let mut response = match session {
         Ok(session) => {
-            let html = format!(
-                "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Analyte login</title><h1>Analyte admin</h1><form action=\"/login\" method=\"post\"><input name=\"csrf\" type=\"hidden\" value=\"{}\"><label>Token <input name=\"token\" type=\"password\" required autocomplete=\"off\" maxlength=\"44\"></label><button>Log in</button></form></html>",
-                escape(session.csrf.form_value())
-            );
+            let html = Markup::new()
+                .markup(concat!(
+                    "<!doctype html><html lang=\"en\"><meta ",
+                    "charset=\"utf-8\"><title>Analyte ",
+                ))
+                .markup(concat!(
+                    "login</title><h1>Analyte admin</h1><form ",
+                    "action=\"/login\" method=\"post\"><input name=\"csrf\" ",
+                ))
+                .markup("type=\"hidden\" value=\"")
+                .text(session.csrf.form_value())
+                .markup(concat!(
+                    "\"><label>Token <input name=\"token\" ",
+                    "type=\"password\" required autocomplete=\"off\" ",
+                ))
+                .markup(concat!(
+                    "maxlength=\"44\"></label><button>Log ",
+                    "in</button></form></html>",
+                ));
             let mut response = (StatusCode::UNAUTHORIZED, Html(html)).into_response();
             if let Ok(value) = header::HeaderValue::from_str(&session.id.cookie(false)) {
                 response.headers_mut().insert(header::SET_COOKIE, value);
@@ -255,7 +271,10 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
     for (name, value) in [
         (
             "content-security-policy",
-            "default-src 'self'; frame-ancestors 'none'; form-action 'self'",
+            concat!(
+                "default-src 'self'; frame-ancestors 'none'; ",
+                "form-action 'self'",
+            ),
         ),
         ("x-frame-options", "DENY"),
         ("referrer-policy", "no-referrer"),
@@ -327,10 +346,11 @@ async fn login(
         Err(error) => {
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Html(format!(
-                    "admin session creation failed: {}",
-                    escape(&error.to_string())
-                )),
+                Html(
+                    Markup::new()
+                        .markup("admin session creation failed: ")
+                        .text(error),
+                ),
             )
                 .into_response();
         }
