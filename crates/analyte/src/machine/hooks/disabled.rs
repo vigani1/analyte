@@ -24,7 +24,7 @@ impl MachineHooks {
 }
 pub(crate) struct Pages;
 impl Pages {
-    pub(crate) fn pause(&self) -> Result<(), crate::runtime::test_hooks::Error> {
+    pub(crate) fn pause(&self) -> Result<(), Error> {
         Ok(())
     }
 }
