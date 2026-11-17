@@ -1,6 +1,6 @@
 //! Drives LAW work exchanges with cached orders, reservations and item outcomes (TF-2b 3.27/3.28).
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::Code;
+use crate::orders::outcome::LawEnd;
 use crate::runtime::hooks::Operation;
 use std::error::Error as _;
 mod sending;
@@ -56,7 +56,7 @@ impl LawOrderLink {
             .as_ref()
             .is_some_and(|exchange| exchange.protocol.expired(self.start.elapsed()))
         {
-            self.close(store, Code::LawOrlTimeout.as_str()).await?;
+            self.close(store, LawEnd::OrlTimeout.as_str()).await?;
         }
         Ok(())
     }
@@ -168,7 +168,7 @@ impl LawOrderLink {
         {
             Ok(messages) => Ok(messages),
             Err(error) => {
-                self.close(store, Code::LawQueryPreparationFailed.as_str())
+                self.close(store, LawEnd::QueryPreparationFailed.as_str())
                     .await?;
                 let reason = error
                     .source()
@@ -288,7 +288,7 @@ impl LawOrderLink {
             return Ok(());
         };
         if exchange.protocol.expired(self.start.elapsed()) {
-            self.close(store, Code::LawOrlLate.as_str()).await?;
+            self.close(store, LawEnd::OrlLate.as_str()).await?;
             intake::failed_reading(
                 store,
                 machine,
@@ -314,7 +314,7 @@ impl LawOrderLink {
                     Ok::<_, analyte_store::OrderError>(
                         store.audit(&analyte_store::Audit {
                             actor,
-                            action: Identifier::new(Code::LawNegativeQueryOrl.as_str()).map_err(
+                            action: Identifier::new(LawEnd::NegativeQueryOrl.as_str()).map_err(
                                 |cause| {
                                     analyte_store::OrderError::Storage(
                                         analyte_store::StorageError::Text(cause),
@@ -525,31 +525,31 @@ fn item_outcomes(
                     .map(|decision| decision.outcome)
                 {
                     Some(law::AwosOutcome::Accepted) => {
-                        (ItemDecision::Accepted, Code::LawOk.as_str().to_owned())
+                        (ItemDecision::Accepted, LawEnd::Ok.as_str().to_owned())
                     }
                     Some(law::AwosOutcome::UnableToAccept) => {
-                        (ItemDecision::Rejected, Code::LawUa.as_str().to_owned())
+                        (ItemDecision::Rejected, LawEnd::Ua.as_str().to_owned())
                     }
                     Some(law::AwosOutcome::CancelAccepted) => (
                         ItemDecision::CancelConfirmed,
-                        Code::LawCr.as_str().to_owned(),
+                        LawEnd::Cr.as_str().to_owned(),
                     ),
                     Some(law::AwosOutcome::UnableToCancel) => {
-                        (ItemDecision::CancelRefused, Code::LawUc.as_str().to_owned())
+                        (ItemDecision::CancelRefused, LawEnd::Uc.as_str().to_owned())
                     }
                     None => (
                         ItemDecision::Uncertain,
-                        Code::LawOrlItemMissing.as_str().to_owned(),
+                        LawEnd::OrlItemMissing.as_str().to_owned(),
                     ),
                 }
             }
             Ok(response) => (
                 ItemDecision::Uncertain,
-                crate::orders::outcome::Detail::LawApplication(response.acceptance()).to_string(),
+                crate::orders::outcome::LawDetail::Application(response.acceptance()).to_string(),
             ),
             Err(error) => (
                 ItemDecision::Uncertain,
-                crate::orders::outcome::Detail::LawInvalidOrl(error.to_string()).to_string(),
+                crate::orders::outcome::LawDetail::InvalidOrl(error.to_string()).to_string(),
             ),
         };
         let code = if let Ok(response) = response {

@@ -2,7 +2,7 @@
 use super::Error;
 use crate::machine::driver::Trigger;
 use crate::machine::receive::{custody::Refusal, error::Step};
-use crate::orders::outcome::{AutolyserEnd, Transfer};
+use crate::orders::outcome::{AutolyserEnd, Interruption, Transfer};
 
 /// The cause that ended the session names the outcome; a session without a
 /// named cause takes it from the input it was handling.
@@ -11,26 +11,29 @@ pub(super) fn end_code(trigger: Trigger, result: &Result<(), Error>) -> Autolyse
         .as_ref()
         .err()
         .and_then(failure_code)
-        .unwrap_or_else(|| interrupted(trigger))
+        .unwrap_or_else(|| {
+            interruption(trigger).map_or(AutolyserEnd::TransferError, Interruption::end)
+        })
 }
 
 /// A parked reply cut short by a deadline or a closed connection keeps that
 /// interruption in its code; any other park keeps the dialog's reason.
 pub(super) fn parked(trigger: Trigger, error: &analyte_dialog::autolyser::Error) -> Transfer {
-    if matches!(error, analyte_dialog::autolyser::Error::Incomplete) && trigger != Trigger::Exchange
-    {
-        Transfer::AutolyserIncomplete(interrupted(trigger))
-    } else {
-        Transfer::AutolyserParked(error.clone())
+    match interruption(trigger) {
+        Some(interruption) if matches!(error, analyte_dialog::autolyser::Error::Incomplete) => {
+            Transfer::AutolyserIncomplete(interruption)
+        }
+        Some(_) | None => Transfer::AutolyserParked(error.clone()),
     }
 }
 
-const fn interrupted(trigger: Trigger) -> AutolyserEnd {
+/// An exchange is no interruption; every other input cut the transfer short.
+const fn interruption(trigger: Trigger) -> Option<Interruption> {
     match trigger {
-        Trigger::Exchange => AutolyserEnd::TransferError,
-        Trigger::Deadline => AutolyserEnd::TransferTimeout,
-        Trigger::Disconnected => AutolyserEnd::TransferDisconnected,
-        Trigger::Cancelled => AutolyserEnd::TransferCancelled,
+        Trigger::Exchange => None,
+        Trigger::Deadline => Some(Interruption::Timeout),
+        Trigger::Disconnected => Some(Interruption::Disconnected),
+        Trigger::Cancelled => Some(Interruption::Cancelled),
     }
 }
 

@@ -7,7 +7,7 @@ use super::driver::{Context, Effects, Failures, Flow};
 use crate::intake;
 mod error;
 pub(crate) mod settings;
-use crate::orders::outcome::Code;
+use crate::orders::outcome::Hl7End;
 use analyte_dialog::hl7::{Action, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -558,9 +558,9 @@ impl Effects for Host<'_, '_> {
                     store,
                     machine,
                     if result.is_err() {
-                        Code::Hl7DsrSessionError.as_str()
+                        Hl7End::DsrSessionError.as_str()
                     } else {
-                        Code::Hl7DsrDisconnect.as_str()
+                        Hl7End::DsrDisconnect.as_str()
                     },
                 )
                 .await;

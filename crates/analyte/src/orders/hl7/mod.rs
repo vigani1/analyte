@@ -5,7 +5,7 @@ use analyte_fixtures::ConfigEdit as _;
 pub(crate) mod response;
 mod send;
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::Code;
+use crate::orders::outcome::Hl7End;
 use crate::{deadline, installation::config::Machine, intake};
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::{
@@ -98,7 +98,7 @@ impl Hl7OrderLink {
                 store,
                 exchange,
                 message,
-                Code::Hl7OrderResponseTimeout.as_str(),
+                Hl7End::OrderResponseTimeout.as_str(),
             )
             .await?;
         }
@@ -126,10 +126,10 @@ impl Hl7OrderLink {
                 store,
                 exchange,
                 None,
-                if code == Code::Hl7DsrDisconnect.as_str() {
-                    Code::Hl7OrderDisconnect.as_str()
+                if code == Hl7End::DsrDisconnect.as_str() {
+                    Hl7End::OrderDisconnect.as_str()
                 } else {
-                    Code::Hl7OrderSessionError.as_str()
+                    Hl7End::OrderSessionError.as_str()
                 },
             )
             .await;
@@ -325,7 +325,7 @@ impl Hl7OrderLink {
                             cached,
                             until,
                             |error| {
-                                crate::orders::outcome::Detail::Hl7DisplayMapping(error.to_string())
+                                crate::orders::outcome::Hl7Detail::DisplayMapping(error.to_string())
                                     .to_string()
                             },
                             |order| {
@@ -539,7 +539,7 @@ mod tests {
                 .close(
                     &store,
                     &intake::ConnectionEvidence::new(&machine)?,
-                    Code::Hl7DsrSessionError.as_str(),
+                    Hl7End::DsrSessionError.as_str(),
                 )
                 .await
                 .map_err(Into::into),
@@ -597,7 +597,7 @@ mod tests {
             .close(
                 &store,
                 &intake::ConnectionEvidence::new(&machine)?,
-                Code::Hl7DsrDisconnect.as_str(),
+                Hl7End::DsrDisconnect.as_str(),
             )
             .await?;
         let identity = key.clone();
@@ -614,7 +614,7 @@ mod tests {
             .close(
                 &store,
                 &intake::ConnectionEvidence::new(&machine)?,
-                Code::Hl7DsrDisconnect.as_str(),
+                Hl7End::DsrDisconnect.as_str(),
             )
             .await?;
         let current = store

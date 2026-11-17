@@ -10,7 +10,7 @@ mod effect;
 mod error;
 use effect::Effect;
 pub(crate) mod settings;
-use crate::orders::outcome::Code;
+use crate::orders::outcome::LawEnd;
 pub(crate) use error::Error;
 pub(super) mod independent;
 use crate::intake;
@@ -579,9 +579,9 @@ impl Effects for Host<'_, '_> {
                 .close(
                     self.store,
                     if result.is_err() {
-                        Code::LawSessionError.as_str()
+                        LawEnd::SessionError.as_str()
                     } else {
-                        Code::LawDisconnect.as_str()
+                        LawEnd::Disconnect.as_str()
                     },
                 )
                 .await
@@ -626,7 +626,7 @@ impl Host<'_, '_> {
                                 settings::options(self.settings)) => match result {
                                 Ok(message) => message,
                                 Err(error) => {
-                                    self.orders.close(self.store, Code::LawIdleAdmissionFailed.as_str()).await?;
+                                    self.orders.close(self.store, LawEnd::IdleAdmissionFailed.as_str()).await?;
                                     tracing::error!(machine=self.machine.machine().id.as_str(),
                                         error_kind=%error,
                                         "LAW idle admission stopped; no command retried");

@@ -1,6 +1,6 @@
 //! Admits send-ahead orders before reserving and writing machine commands.
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::Code;
+use crate::orders::outcome::HostEnd;
 use crate::{deadline, installation::config::Machine};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey};
@@ -46,7 +46,7 @@ pub(crate) async fn reserve_candidates(
             Err(refusal) => {
                 tracing::info!(reason=%refusal,"query order reservation refused");
                 for order in active.drain(..) {
-                    uncertain(store, &order, Code::QueryReservationRefused.into()).await?;
+                    uncertain(store, &order, HostEnd::QueryReservationRefused.into()).await?;
                 }
                 return Ok(false);
             }
@@ -54,7 +54,7 @@ pub(crate) async fn reserve_candidates(
     }
     if std::time::Instant::now() >= until && !active.is_empty() {
         for order in active.drain(..) {
-            uncertain(store, &order, Code::QueryDeadlineBeforeSend.into()).await?;
+            uncertain(store, &order, HostEnd::QueryDeadlineBeforeSend.into()).await?;
         }
         return Ok(false);
     }
@@ -217,7 +217,7 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                         store.transition_order(
                             id,
                             OrderState::Uncertain,
-                            SourceText::new(Code::HostRestart.as_str()).map_err(|cause| {
+                            SourceText::new(HostEnd::HostRestart.as_str()).map_err(|cause| {
                                 analyte_store::OrderError::Storage(
                                     analyte_store::StorageError::Text(cause),
                                 )
