@@ -269,10 +269,7 @@ impl Dialog {
     pub fn step(&mut self, now: Duration, event: DialogEvent) -> Result<Vec<DialogAction>, Error> {
         self.clock
             .advance(now, self.config.response_timeout.max(self.ack_timeout))
-            .map_err(|error| match error {
-                crate::ClockError::Reversed => Error::TimeReversed,
-                crate::ClockError::Exhausted => Error::Exhausted,
-            })?;
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         let response_deadline = now
             .checked_add(self.config.response_timeout)
             .ok_or(Error::Exhausted)?;

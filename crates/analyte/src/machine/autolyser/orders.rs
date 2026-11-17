@@ -45,7 +45,7 @@ impl ConnectionState {
             let actions = self.dialog.step(
                 self.start.elapsed(),
                 analyte_dialog::autolyser::Event::Download(&worklist),
-            );
+            )?;
             Ok(Some(actions))
         } else {
             Ok(None)

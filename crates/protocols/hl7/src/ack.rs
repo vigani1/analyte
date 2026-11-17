@@ -329,3 +329,60 @@ fn encode_message_type(msh: Msh<'_>, component: u8) -> Vec<u8> {
     }
     message_type
 }
+
+/// Owns acknowledgment error details across asynchronous host completions.
+#[derive(Debug)]
+pub struct OwnedAckError {
+    segment: Vec<u8>,
+    occurrence: u16,
+    field: u16,
+    code: Vec<u8>,
+    application: Vec<u8>,
+}
+impl From<AckError<'_>> for OwnedAckError {
+    fn from(e: AckError<'_>) -> Self {
+        Self {
+            segment: e.segment.to_vec(),
+            occurrence: e.occurrence,
+            field: e.field,
+            code: e.code.to_vec(),
+            application: e.application_code.to_vec(),
+        }
+    }
+}
+impl OwnedAckError {
+    /// Borrows the original error fields without changing their values.
+    #[must_use]
+    pub fn view(&self) -> AckError<'_> {
+        AckError {
+            segment: &self.segment,
+            occurrence: self.occurrence,
+            field: self.field,
+            code: &self.code,
+            application_code: &self.application,
+        }
+    }
+}
+
+#[cfg(test)]
+mod owned_tests {
+    use super::*;
+
+    #[test]
+    fn hl7_251_section_2_15_5_owned_error_preserves_every_field() {
+        let original = AckError {
+            segment: b"OBX",
+            occurrence: 2,
+            field: 5,
+            code: b"102",
+            application_code: b"synthetic",
+        };
+        let owned = OwnedAckError::from(original);
+        let view = owned.view();
+        assert_eq!(view.segment, original.segment);
+        assert_eq!(view.occurrence, original.occurrence);
+        assert_eq!(view.field, original.field);
+        assert_eq!(view.code, original.code);
+        assert_eq!(view.application_code, original.application_code);
+    }
+}

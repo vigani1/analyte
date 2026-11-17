@@ -233,3 +233,6 @@ impl Message {
             .map(|f| f.value.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests;

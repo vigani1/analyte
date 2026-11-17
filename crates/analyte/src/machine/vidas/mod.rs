@@ -192,7 +192,7 @@ impl ConnectionState {
                     self.suffix = Some((control, index.saturating_add(1)));
                     None
                 }
-            } else if byte == 2 {
+            } else if byte == analyte_framing::vidas::STX {
                 let mut next = Decoder::new(self.config.clone());
                 next.push(byte)?;
                 self.decoder = Some(next);

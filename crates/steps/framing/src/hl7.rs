@@ -227,3 +227,14 @@ pub fn decode(raw: &[u8], limit: Limit) -> Result<&[u8], ReceiptError> {
     }
     payload(raw).ok_or(ReceiptError::Incomplete)
 }
+
+impl crate::Decode for Decoder {
+    type Event = Event;
+    type Error = std::convert::Infallible;
+    fn push_byte(&mut self, byte: u8) -> Result<Option<Event>, Self::Error> {
+        Ok(self.push(byte))
+    }
+    fn finish_stream(&mut self) -> Result<Option<Event>, Self::Error> {
+        Ok(self.finish())
+    }
+}
