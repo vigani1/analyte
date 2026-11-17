@@ -128,7 +128,7 @@ pub fn encode_text(raw: &[u8], message: &Message, maximum: usize) -> Result<Vec<
         } else {
             std::slice::from_ref(byte)
         };
-        crate::wire::append(&mut output, bytes, maximum).map_err(|_| Error::Limit {
+        crate::encode::wire::append(&mut output, bytes, maximum).map_err(|_| Error::Limit {
             kind: "text bytes",
             segment: 0,
             field: 0,

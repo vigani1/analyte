@@ -6,12 +6,12 @@
 use crate::{Field, Segment};
 use thiserror::Error;
 
-mod encode;
-mod laboratory;
+pub(crate) mod laboratory;
 mod response;
 mod types;
+pub(crate) use types::scalar;
 
-pub use encode::{context, oml, orm};
+pub use crate::encode::order::{context, oml, orm};
 pub use laboratory::SpecimenResponse;
 pub use response::{Decision, OrderResponse, Outcome};
 pub use types::{
@@ -62,14 +62,14 @@ pub enum Error {
     Limit,
 }
 
-fn invalid(segment: &str, field: usize) -> Error {
+pub(crate) fn invalid(segment: &str, field: usize) -> Error {
     Error::Content {
         segment: segment.to_owned(),
         field,
     }
 }
 
-fn raw(segment: Segment<'_>, field: usize) -> &[u8] {
+pub(crate) fn raw(segment: Segment<'_>, field: usize) -> &[u8] {
     segment.field(field).map_or(b"", Field::raw)
 }
 
@@ -121,20 +121,20 @@ impl Control {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Family {
+pub(crate) enum Family {
     Orm,
     Oml,
 }
 
 impl Family {
-    fn request(self) -> &'static [u8] {
+    pub(crate) fn request(self) -> &'static [u8] {
         match self {
             Self::Orm => b"ORM^O01^ORM_O01",
             Self::Oml => b"OML^O21^OML_O21",
         }
     }
 
-    fn response(self) -> [&'static [u8]; 3] {
+    pub(crate) fn response(self) -> [&'static [u8]; 3] {
         match self {
             Self::Orm => [b"ORR", b"O02", b"ORR_O02"],
             Self::Oml => [b"ORL", b"O22", b"ORL_O22"],
@@ -142,8 +142,8 @@ impl Family {
     }
 }
 
-impl From<crate::wire::Limit> for Error {
-    fn from(_: crate::wire::Limit) -> Self {
+impl From<crate::encode::wire::Limit> for Error {
+    fn from(_: crate::encode::wire::Limit) -> Self {
         Self::Limit
     }
 }

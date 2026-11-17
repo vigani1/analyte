@@ -1,9 +1,7 @@
 //! Parses LAW work messages without order lifecycle decisions.
-use super::content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, WorkNotes};
+use super::content::{ContainerDetails, OrderDetails, SpecimenDetails, WorkNotes};
 use super::{Error, Identity, content};
-mod encode;
 mod response;
-pub use encode::{Address, negative_work, work_order, work_order_with_profile};
 pub use response::{AwosDecision, AwosOutcome, WorkResponse};
 
 /// Independent peer content and instruction options; absence never authorizes clinical decisions.
@@ -167,19 +165,19 @@ impl WorkFields {
 /// One app-authorized battery/test under one unique AWOS ID.
 #[derive(Debug, Clone, Copy)]
 pub struct Awos<'a> {
-    notes: Option<&'a WorkNotes<'a>>,
-    specimen_details: Option<&'a SpecimenDetails<'a>>,
-    container_details: Option<&'a ContainerDetails<'a>>,
-    order_details: Option<&'a OrderDetails<'a>>,
-    id: &'a [u8],
-    specimen: &'a [u8],
-    specimen_type: &'a [u8],
-    role: &'a [u8],
-    container: &'a [u8],
-    test: &'a [u8],
-    action: WorkAction,
-    instructions: Instructions<'a>,
-    transaction_time: Option<&'a [u8]>,
+    pub(super) notes: Option<&'a WorkNotes<'a>>,
+    pub(super) specimen_details: Option<&'a SpecimenDetails<'a>>,
+    pub(super) container_details: Option<&'a ContainerDetails<'a>>,
+    pub(super) order_details: Option<&'a OrderDetails<'a>>,
+    pub(super) id: &'a [u8],
+    pub(super) specimen: &'a [u8],
+    pub(super) specimen_type: &'a [u8],
+    pub(super) role: &'a [u8],
+    pub(super) container: &'a [u8],
+    pub(super) test: &'a [u8],
+    pub(super) action: WorkAction,
+    pub(super) instructions: Instructions<'a>,
+    pub(super) transaction_time: Option<&'a [u8]>,
 }
 
 impl<'a> Awos<'a> {
@@ -284,7 +282,12 @@ impl<'a> Awos<'a> {
     }
 }
 
-fn safe(value: &[u8], segment: &'static str, field: usize, maximum: usize) -> Result<(), Error> {
+pub(super) fn safe(
+    value: &[u8],
+    segment: &'static str,
+    field: usize,
+    maximum: usize,
+) -> Result<(), Error> {
     if !crate::is_safe_field(value, maximum, crate::FieldSyntax::Composite) {
         return Err(content(segment, field));
     }

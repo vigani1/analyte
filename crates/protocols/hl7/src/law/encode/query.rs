@@ -1,5 +1,7 @@
-//! Builds and interprets LAW responses.
-use super::{Error, Query, content, raw};
+//! Builds LAW RSP^K11 query responses and names the host's next exchange.
+use super::append_ack_segments;
+use crate::encode::wire::Wire;
+use crate::law::{Error, Query, content, raw};
 use crate::{AckCode, AckError, Message, Options, Response, Responsibility};
 
 /// Host's authoritative cache outcome; unavailable is never an empty answer.
@@ -51,7 +53,7 @@ impl QueryResponse {
     }
 }
 
-/// Builds RSP with MSA/QAK correlation and an exact QPD echo (TF-2b Ãƒâ€šÃ‚Â§3.27.4).
+/// Builds RSP with MSA/QAK correlation and an exact QPD echo (TF-2b §3.27.4).
 ///
 /// The caller must establish durable responsibility before positive acceptance.
 /// An unavailable lookup uses QAK AE and has no negative-work followup.
@@ -65,7 +67,7 @@ pub fn query_response(
     responsibility: Responsibility,
     options: Options,
 ) -> Result<QueryResponse, Error> {
-    if !super::profile::timestamp(response.timestamp, true) {
+    if !crate::law::profile::timestamp(response.timestamp, true) {
         return Err(content("MSH", 7));
     }
     let (code, status, error, followup) = match answer {
@@ -86,14 +88,14 @@ pub fn query_response(
     };
     // Reuse the core's responsibility, metadata, and ERR validation rather than
     // acquiring a second interpretation of when a positive acknowledgment is safe.
-    let ack = crate::ack::acknowledgment_with_msh(
-        super::msh(query.message())?,
+    let ack = crate::encode::ack::acknowledgment_with_msh(
+        crate::law::msh(query.message())?,
         response,
         code,
         responsibility,
         error,
         options,
-        crate::ack::AckProfile::Law,
+        crate::encode::ack::AckProfile::Law,
     )?
     .ok_or(content("MSH", 16))?;
     let source = ack.segments().next().ok_or(content("MSH", 0))?;
@@ -113,7 +115,7 @@ pub fn query_response(
         let value = match field {
             9 => message_type.as_slice(),
             21 => profile.as_slice(),
-            _ => super::envelope::reply_field(source, field),
+            _ => crate::law::envelope::reply_field(source, field),
         };
         wire.field(value)?;
     }
@@ -126,45 +128,13 @@ pub fn query_response(
     wire.append(b"\r")?;
     wire.append(query.qpd.raw())?;
     wire.append(b"\r")?;
-    let message = super::parse_message(
+    let message = crate::law::parse_message(
         &wire.bytes,
         Options {
             terminator: crate::Terminator::Cr,
             ..options
         },
     )?;
-    super::validate_control(&message, super::ControlDirection::Send)?;
+    crate::law::validate_control(&message, crate::law::ControlDirection::Send)?;
     Ok(QueryResponse { message, followup })
 }
-
-// The generic ACK API accepts a scalar HL7 code and an unnamespaced local
-// diagnostic. Keep the latter as text rather than inventing its coding system.
-pub(super) fn append_ack_segments(wire: &mut Wire, ack: &Message) -> Result<(), Error> {
-    for segment in ack.segments().skip(1) {
-        if segment.id() == b"ERR" {
-            let mut code = raw(segment, 3).to_vec();
-            code.push(ack.delimiters().component);
-            code.push(ack.delimiters().component);
-            code.extend_from_slice(b"HL70357");
-            wire.append(b"ERR")?;
-            for value in [
-                b"".as_slice(),
-                raw(segment, 2),
-                &code,
-                raw(segment, 4),
-                b"",
-                b"",
-                b"",
-                raw(segment, 5),
-            ] {
-                wire.field(value)?;
-            }
-        } else {
-            wire.append(segment.raw())?;
-        }
-        wire.append(b"\r")?;
-    }
-    Ok(())
-}
-
-pub(super) use crate::wire::Wire;

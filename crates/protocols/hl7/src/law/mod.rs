@@ -8,18 +8,20 @@ pub const AWOS_ID_MAX_BYTES: usize = 50;
 
 use crate::{Field, Message, Msh, Segment};
 use thiserror::Error;
-mod responses;
-pub use responses::{CacheAnswer, QueryFollowup, QueryResponse, query_response};
+mod encode;
+pub use encode::{
+    Address, CacheAnswer, QueryFollowup, QueryResponse, negative_work, query_response,
+    reject_trigger, result_acknowledgment, work_order, work_order_with_profile,
+};
 mod work;
 pub use work::{
-    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, PeerContent,
-    PeerInstructions, PeerRepeat, WorkAction, WorkCode, WorkFields, WorkResponse, negative_work,
-    work_order, work_order_with_profile,
+    Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, PeerContent, PeerInstructions,
+    PeerRepeat, WorkAction, WorkCode, WorkFields, WorkResponse,
 };
 mod results;
 pub use results::{
     Attached, ExecutionStatus, Observation, Parent, ResultStatus, Results, SpecimenObservation,
-    StatusNotice, Value, result_acknowledgment,
+    StatusNotice, Value,
 };
 mod envelope;
 mod fields;
@@ -41,8 +43,6 @@ pub use failure::{
 mod content;
 pub use content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkNotes};
 mod observation;
-mod rejection;
-pub use rejection::reject_trigger;
 mod status;
 pub use status::{SINGLE_RUN_STATUSES, STATUS_TRANSITIONS, WITHHELD_STATUSES, observation_run};
 mod retained;
@@ -426,8 +426,8 @@ pub fn control_id(raw: &[u8]) -> Result<crate::ControlId<'_>, crate::Error> {
     Ok(crate::ControlId::from_profile(raw))
 }
 
-impl From<crate::wire::Limit> for Error {
-    fn from(_: crate::wire::Limit) -> Self {
+impl From<crate::encode::wire::Limit> for Error {
+    fn from(_: crate::encode::wire::Limit) -> Self {
         crate::Error::Limit {
             kind: "LAW output",
             segment: 0,

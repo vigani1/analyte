@@ -1,9 +1,9 @@
 //! Encodes LAW work orders and specimen groups without lifecycle decisions.
-use super::{Awos, Capabilities, Error, Instructions, PatientInfo, WorkAction, content, safe};
+use crate::encode::wire::Wire;
 use crate::law;
 use crate::{Message, Options, Response};
-use law::responses::Wire;
-use law::{Query, Scope};
+use law::work::{Awos, Capabilities, Instructions, WorkAction, safe};
+use law::{Error, PatientInfo, Query, Scope, content};
 use std::collections::{BTreeMap, BTreeSet};
 fn segment(wire: &mut Wire, id: &[u8], fields: &[&[u8]]) -> Result<(), Error> {
     wire.segment(id, fields).map_err(Into::into)

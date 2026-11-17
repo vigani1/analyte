@@ -1,13 +1,12 @@
 //! Parses bounded HL7 messages and LAW grammar without I/O or model mapping.
 #![forbid(unsafe_code)]
 
-mod ack;
 mod datatypes;
+mod encode;
 mod syntax;
 mod version;
 mod views;
-mod wire;
-pub use ack::{AckError, OwnedAckError, Response, Responsibility, acknowledgment};
+pub use encode::ack::{AckError, OwnedAckError, Response, Responsibility, acknowledgment};
 pub use syntax::{
     Charset, Component, Delimiters, Error, EscapePolicy, Field, Limits, Message, Options,
     Repetition, Segment, Terminator, TextEscape, decode_characters, decode_text, encode_text,

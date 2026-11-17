@@ -19,8 +19,9 @@ matches deliberately expose integration work; there is no plugin subsystem.
 ## New files
 
 - Create `crates/protocols/<key>/Cargo.toml`, `README.md` and `src/lib.rs`;
-  implement bounded grammar in `src/syntax.rs` or `src/syntax/mod.rs`.
-  Follow ADR 0012 for views, versions and outbound encoding when needed.
+  implement bounded grammar in `src/syntax.rs` or `src/syntax/mod.rs`, and
+  outgoing messages in `src/encode.rs` or `src/encode/mod.rs`.
+  Follow ADR 0012 for views and versions when needed.
   Keep I/O, storage, credentials and deadlines outside the protocol crate.
 - Add `crates/steps/framing/src/<key>.rs` for distinct framing,
   `crates/steps/dialog/src/<key>.rs` for the conversation state machine and

@@ -1,5 +1,7 @@
 //! Builds negative LAW replies when transaction validation fails.
-use super::{Error, content, responses::Wire};
+use super::append_ack_segments;
+use crate::encode::wire::Wire;
+use crate::law::{Error, content};
 use crate::{AckCode, AckError, Message, Options, Response};
 
 /// Builds a correlated negative application ACK from a recoverable LAW header.
@@ -43,7 +45,7 @@ pub fn reject_trigger(
     {
         return Ok(None);
     }
-    if super::control_id(get(10)).is_err() {
+    if crate::law::control_id(get(10)).is_err() {
         return Ok(None);
     }
     for field in [3, 4, 5, 6] {
@@ -55,8 +57,9 @@ pub fn reject_trigger(
             return Ok(None);
         }
     }
-    super::control_id(response.control_id.raw())?;
-    if response.control_id.raw() == get(10) || !super::profile::timestamp(response.timestamp, true)
+    crate::law::control_id(response.control_id.raw())?;
+    if response.control_id.raw() == get(10)
+        || !crate::law::profile::timestamp(response.timestamp, true)
     {
         return Err(content("MSH", 10));
     }
@@ -90,16 +93,16 @@ pub fn reject_trigger(
         wire.field(field)?;
     }
     wire.append(b"\r")?;
-    let header = super::parse_message(&wire.bytes, options)?;
+    let header = crate::law::parse_message(&wire.bytes, options)?;
     let msh = crate::Msh::from_law(header.segments().next().ok_or(content("MSH", 0))?, true);
-    let Some(ack) = crate::ack::acknowledgment_with_msh(
+    let Some(ack) = crate::encode::ack::acknowledgment_with_msh(
         msh,
         response,
         code,
         crate::Responsibility::Stored,
         Some(error),
         options,
-        crate::ack::AckProfile::Law,
+        crate::encode::ack::AckProfile::Law,
     )?
     else {
         return Ok(None);
@@ -107,6 +110,6 @@ pub fn reject_trigger(
     let mut wire = Wire::new(options.limits.message_bytes, b'|');
     wire.append(ack.segments().next().ok_or(content("MSH", 0))?.raw())?;
     wire.append(b"\r")?;
-    super::responses::append_ack_segments(&mut wire, &ack)?;
-    Ok(Some(super::parse_message(&wire.bytes, options)?))
+    append_ack_segments(&mut wire, &ack)?;
+    Ok(Some(crate::law::parse_message(&wire.bytes, options)?))
 }

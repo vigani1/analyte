@@ -1,7 +1,6 @@
 //! Groups LAW result segments into typed result views.
-use super::responses::Wire;
 use super::{Error, Identity, content, raw};
-use crate::{AckCode, AckError, Field, Message, Options, Response, Responsibility, Segment};
+use crate::{Field, Message, Segment};
 mod groups;
 mod notice;
 use groups::ResultGroups;
@@ -427,62 +426,4 @@ fn check_complete(order_status: Option<super::OrderStatus>, count: usize) -> Res
         return Err(content("OBX", 0));
     }
     Ok(())
-}
-
-/// Renders LAW ACK/R22 through the core acknowledgment function and adds its profile.
-/// # Errors
-/// Rejects unsafe positive responsibility, metadata, missing error details or output limits.
-pub fn result_acknowledgment(
-    message: &Message,
-    response: Response<'_>,
-    code: AckCode,
-    responsibility: Responsibility,
-    error: Option<AckError<'_>>,
-    options: Options,
-) -> Result<Option<Message>, Error> {
-    if !super::profile::timestamp(response.timestamp, true) {
-        return Err(content("MSH", 7));
-    }
-    if code == AckCode::Aa {
-        Results::new(message)?;
-    }
-    if (code == AckCode::Aa) == error.is_some() {
-        return Err(content("ERR", 0));
-    }
-    let Some(ack) = crate::ack::acknowledgment_with_msh(
-        super::msh(message)?,
-        response,
-        code,
-        responsibility,
-        error,
-        options,
-        crate::ack::AckProfile::Law,
-    )?
-    else {
-        return Ok(None);
-    };
-    let mut wire = Wire::new(options.limits.message_bytes, message.delimiters().field);
-    let msh = ack.segments().next().ok_or(content("MSH", 0))?;
-    wire.append(b"MSH")?;
-    let mut profile = b"LAB-29".to_vec();
-    profile.push(message.delimiters().component);
-    profile.extend_from_slice(b"IHE");
-    for field in 2..=21 {
-        wire.field(if field == 21 {
-            &profile
-        } else {
-            super::envelope::reply_field(msh, field)
-        })?;
-    }
-    wire.append(b"\r")?;
-    super::responses::append_ack_segments(&mut wire, &ack)?;
-    let output = super::parse_message(
-        &wire.bytes,
-        Options {
-            terminator: crate::Terminator::Cr,
-            ..options
-        },
-    )?;
-    super::validate_control(&output, super::ControlDirection::Send)?;
-    Ok(Some(output))
 }

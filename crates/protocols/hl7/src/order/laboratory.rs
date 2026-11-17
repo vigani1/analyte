@@ -3,7 +3,7 @@ use super::{Error, invalid};
 use crate::law::{FieldRule, Usage};
 
 // Base SPM-2 is 80 bytes; its rule is independent of LAW's profile predicates.
-pub(super) const SPECIMEN_ID_BYTES: usize = 80;
+pub(crate) const SPECIMEN_ID_BYTES: usize = 80;
 use crate::{Component, Field, Message, Segment, Version};
 
 /// One peer-reported specimen and its own container group, never flattened.

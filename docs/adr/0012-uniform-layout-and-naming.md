@@ -35,7 +35,8 @@ Every protocol, standard or vendor, uses the same places:
 | --- | --- |
 | Message boundaries and checksums | `crates/steps/framing/src/<key>.rs`, when the protocol has its own framing |
 | Conversation state, deadlines, acknowledgment choice | `crates/steps/dialog/src/<key>.rs` |
-| Grammar: bytes to structure and back | `crates/protocols/<key>/src/syntax.rs` (a profile: `crates/protocols/hl7/src/<key>/`) |
+| Grammar: bytes to structure | `crates/protocols/<key>/src/syntax.rs` (a profile: `crates/protocols/hl7/src/<key>/`) |
+| Writing: typed values to outgoing bytes or messages | `crates/protocols/<key>/src/encode.rs`, or `encode/` when it has parts (a profile: `crates/protocols/hl7/src/<key>/encode/`) |
 | Typed named-field access | `crates/protocols/<key>/src/views.rs` |
 | Version rules | `crates/protocols/<key>/src/version.rs` |
 | Machine terms to the common model and back | `crates/steps/mapping/src/<key>.rs` |
@@ -45,11 +46,18 @@ Every protocol, standard or vendor, uses the same places:
 A file grows into a folder of the same name (`law/mod.rs` plus its pieces)
 when it has separate responsibilities. A concern that a protocol lacks has no file.
 
-HL7 also has `ack.rs` for acknowledgment grammar, `datatypes.rs` for shared
-field types, `order/` for order grammar and `query/` for query grammar.
+Every builder of an outgoing message lives in `encode`: orders, work lists,
+envelopes, acknowledgments and query replies. Reading an incoming message,
+including a query from the machine, stays with `syntax` and `views`; ASTM
+`query.rs` reads incoming queries, so it is not encoding. HL7 `encode/wire.rs`
+writes size-capped segments without escaping for every HL7 and LAW writer.
+(Changed on 2026-11-17 after the eighth review, finding Y3: writers had four
+shapes across five crates, including ASTM `encode.rs` and `order.rs`, HL7
+`order/encode/`, `wire.rs` and LAW `work/encode.rs`, and POCT `messages.rs`.)
 
-HL7 `wire.rs` writes size-capped segments without escaping; POCT `messages.rs`
-builds reviewer messages and escapes XML. These distinct jobs keep distinct names.
+ASTM also has `codes.rs` for standard code tables and `query.rs` for incoming
+query records. HL7 also has `datatypes.rs` for shared field types, `order/` for
+order grammar and `query/` for query grammar.
 
 ### 3. Versions
 
@@ -154,7 +162,7 @@ the same way, and its `README.md` states the kind first.
 | --- | --- | --- | --- |
 | Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`, `intake`, `reading`), one file per protocol inside |
 | Steps | `crates/steps/` | transport, framing, dialog, mapping, sink | One file or folder per protocol key, plus shared pieces named for what they hold |
-| Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file per job: `syntax`, `views`, `version`, `wire` (HL7 segment writer), `messages` (POCT message builders); a profile (LAW) is a folder |
+| Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file or folder per job: `syntax` (reading), `encode` (writing), `views`, `version`, plus the extras named in section 2; a profile (LAW) is a folder with the same jobs |
 | Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |
 | Testing | `crates/testing/` | receiver, sim, fixtures | Stand-ins and shared synthetic fixtures used only by tests |
 
