@@ -18,7 +18,6 @@ pub struct Control {
     hook: Arc<Committed>,
     decision: watch::Sender<Option<bool>>,
 }
-/// Compatibility name for the ASTM durable-frame boundary.
 
 impl Committed {
     /// Creates an armed hook and its control without starting a task.
@@ -39,7 +38,7 @@ impl Committed {
         self.reached.notify_one();
         let mut decision = self.decision.clone();
         tokio::select! {
-            () = crate::machine::stopping(stop) => Err(Error::Stopped),
+            () = analyte_sink::stopped(stop) => Err(Error::Stopped),
             result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match *decision.borrow_and_update() {

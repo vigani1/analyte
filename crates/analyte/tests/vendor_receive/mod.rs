@@ -4,7 +4,6 @@ use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_fixtures as guard;
 use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::poct as poct_peer;
-use analyte_store::FreeSpace;
 use guard::HANG_GUARD;
 use std::{
     path::Path,
@@ -38,12 +37,7 @@ async fn count_results(
     next.run(request).await
 }
 
-struct Space(Arc<AtomicU64>);
-impl FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(self.0.load(Ordering::Acquire))
-    }
-}
+use analyte_fixtures::AdjustableSpace;
 
 struct Running {
     directory: tempfile::TempDir,
@@ -104,7 +98,7 @@ impl Running {
             )
         })?;
         let space = Arc::new(AtomicU64::new(u64::MAX));
-        let probe = Space(space.clone());
+        let probe = AdjustableSpace(space.clone());
         let (stop, stopped) = oneshot::channel();
         let (ready, started) = oneshot::channel();
         let task = tokio::spawn(service::serve_loopback_test(
@@ -154,7 +148,7 @@ impl Running {
             )
         })?;
         let (stop, stopped) = oneshot::channel();
-        let probe = Space(self.space.clone());
+        let probe = AdjustableSpace(self.space.clone());
         let task = tokio::spawn(service::serve_loopback_test(
             program,
             Box::new(probe),

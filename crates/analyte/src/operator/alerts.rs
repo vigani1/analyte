@@ -147,20 +147,12 @@ pub(crate) async fn run(
 mod tests {
     use super::*;
     use crate::Error;
-    use std::{
-        path::Path,
-        sync::{
-            Mutex,
-            atomic::{AtomicU64, Ordering},
-        },
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
     };
 
-    struct Space(Arc<AtomicU64>);
-    impl analyte_store::FreeSpace for Space {
-        fn available(&self, _: &Path) -> std::io::Result<u64> {
-            Ok(self.0.load(Ordering::SeqCst))
-        }
-    }
+    use analyte_fixtures::AdjustableSpace;
     fn limits() -> analyte_store::Limits {
         {
             let mut limits = analyte_fixtures::store_limits();
@@ -194,7 +186,7 @@ mod tests {
         let mut store = Handle::start(
             path.clone(),
             limits(),
-            Box::new(Space(space.clone())),
+            Box::new(AdjustableSpace(space.clone())),
             8,
             crate::test_startup_deadline()?,
         )
@@ -237,7 +229,7 @@ mod tests {
         let mut store = Handle::start(
             path.clone(),
             limits(),
-            Box::new(Space(space.clone())),
+            Box::new(AdjustableSpace(space.clone())),
             8,
             crate::test_startup_deadline()?,
         )
@@ -321,7 +313,7 @@ mod tests {
             Handle::start(
                 path,
                 limits(),
-                Box::new(Space(Arc::new(AtomicU64::new(u64::MAX)))),
+                Box::new(AdjustableSpace(Arc::new(AtomicU64::new(u64::MAX)))),
                 8,
                 crate::test_startup_deadline()?,
             )

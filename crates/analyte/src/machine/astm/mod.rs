@@ -494,7 +494,7 @@ impl Effects for Host<'_, '_> {
                 }
             }
             Err(error) => {
-                crate::machine::receive::custody::retain_cleanup(result, Err(error.into()))
+                crate::machine::receive::custody::retain_cleanup(result, Err(error.into()));
             }
         }
         let cleanup = self.input_evidence.retain(self.store, self.machine).await;

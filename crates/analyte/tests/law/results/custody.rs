@@ -352,12 +352,6 @@ async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), 
 
 #[tokio::test]
 async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<(), Error> {
-    struct NoSpace;
-    impl analyte_store::FreeSpace for NoSpace {
-        fn available(&self, _: &Path) -> std::io::Result<u64> {
-            Ok(0)
-        }
-    }
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let receiver_path = temp.path().join("reference.db");
@@ -372,7 +366,7 @@ async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<
     let (stop, stopped) = oneshot::channel();
     let task = tokio::spawn(service::serve_loopback_test(
         loaded,
-        Box::new(NoSpace),
+        Box::new(analyte_fixtures::Space(0)),
         async {
             stopped.await?;
             Ok(())

@@ -24,6 +24,27 @@ impl analyte_store::FreeSpace for UnlimitedSpace {
     }
 }
 
+/// Reports a budget that tests can change while a store is running.
+pub struct AdjustableSpace(pub std::sync::Arc<std::sync::atomic::AtomicU64>);
+impl analyte_store::FreeSpace for AdjustableSpace {
+    fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
+        Ok(self.0.load(std::sync::atomic::Ordering::SeqCst))
+    }
+}
+
+/// Holds a drop observer beside a free-space probe for store ownership tests.
+pub struct ObservedSpace<T> {
+    /// Probe used for admission decisions.
+    pub space: UnlimitedSpace,
+    /// Owned lifecycle observer, dropped with the probe.
+    pub observer: T,
+}
+impl<T: Send + 'static> analyte_store::FreeSpace for ObservedSpace<T> {
+    fn available(&self, path: &std::path::Path) -> std::io::Result<u64> {
+        analyte_store::FreeSpace::available(&self.space, path)
+    }
+}
+
 /// Builds a synthetic program with explicit machine entries and fixed test storage budgets.
 #[must_use]
 pub fn program(machines: &str) -> String {
