@@ -43,6 +43,34 @@ struct EffectFailure {
     effect: crate::Error,
 }
 
+/// Keeps a triggering failure and a later independent cleanup failure in order.
+#[derive(Debug, thiserror::Error)]
+#[error("{original}; dialog effect failed: {effect}")]
+pub(crate) struct Cleanup<E> {
+    /// Failure that caused the session to refuse further positive effects.
+    #[source]
+    pub(crate) original: E,
+    /// Secondary failure while retaining evidence or settling owned work.
+    pub(crate) effect: E,
+}
+
+/// Shared causes that require a protocol owner to refuse positive effects.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Refusal<E: std::error::Error + 'static> {
+    /// A transport operation or input journal could not complete.
+    #[error(transparent)]
+    Link(Box<crate::machine::link::error::Error>),
+    /// A durable-store or interpretation operation failed.
+    #[error(transparent)]
+    Evidence(Box<crate::machine::receive::error::Error>),
+    /// Both the original failure and the attempted cleanup failed.
+    #[error(transparent)]
+    Cleanup(Box<Cleanup<E>>),
+    /// A custody operation failed or its completion remains uncertain.
+    #[error(transparent)]
+    Custody(Box<StoreWaitError<E>>),
+}
+
 /// A boundary keeps its own error type when retaining independent cleanup failures.
 pub(crate) trait CleanupFailure: Sized {
     fn with_effect(original: Self, effect: Self) -> Self;
@@ -85,6 +113,20 @@ pub(crate) async fn store_within<T, E>(
         .map_err(StoreWaitError::Operation)
 }
 
+/// Commits custody before a driver may emit a positive acknowledgment.
+/// Failure retains its cause and is visible without logging machine payloads.
+/// Cancellation leaves custody uncertain; callers must refuse positive effects.
+pub(crate) async fn store_before_ack<T, E: std::fmt::Display>(
+    machine: &crate::installation::config::Machine,
+    operation: impl Future<Output = Result<T, E>>,
+) -> Result<T, StoreWaitError<E>> {
+    let result = store_within(budget(machine), operation).await;
+    if let Err(error) = &result {
+        tracing::error!(machine = machine.id.as_str(), error_kind = %error, "durable custody refused");
+    }
+    result
+}
+
 /// A lost completion is distinct from an operation's typed failure.
 /// Timeout never proves rollback; the queued store request may still finish.
 #[derive(Debug, thiserror::Error)]
@@ -114,6 +156,48 @@ mod tests {
     #[derive(Debug, thiserror::Error)]
     #[error("disk full")]
     struct DiskFull;
+
+    #[tokio::test]
+    async fn adr0010_all_protocols_refuse_failed_custody_with_original_cause()
+    -> Result<(), crate::Error> {
+        let temp = tempfile::tempdir()?;
+        std::fs::write(
+            temp.path().join("machine.toml"),
+            include_str!("../../../../core/config/examples/hl7.toml"),
+        )?;
+        std::fs::write(
+            temp.path().join("site.toml"),
+            include_str!("../../../../core/config/examples/site.toml"),
+        )?;
+        let path = temp.path().join("program.toml");
+        std::fs::write(
+            &path,
+            analyte_fixtures::program(
+                "[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n",
+            ),
+        )?;
+        let program = crate::installation::config::Program::load(&path)?;
+        let machine = program.machines.first().ok_or("machine missing")?;
+        let error = store_before_ack(machine, async { Err::<(), _>(DiskFull) })
+            .await
+            .unwrap_err();
+        assert!(matches!(error, StoreWaitError::Operation(DiskFull)));
+        assert_eq!(error.to_string(), "disk full");
+        let custody = crate::machine::poct::Error::from(StoreWaitError::Operation(
+            crate::IntakeError::from(analyte_store::Error::UnknownReceipt),
+        ));
+        let mut result = Err(custody);
+        retain_cleanup(
+            &mut result,
+            Err(crate::machine::poct::Error::PoctBackpressureViolated),
+        );
+        let error = result.unwrap_err();
+        assert!(
+            matches!(&error, crate::machine::poct::Error::Refusal(Refusal::Cleanup(failure)) if matches!(&failure.original, crate::machine::poct::Error::Refusal(Refusal::Evidence(error)) if matches!(error.as_ref(), crate::machine::receive::error::Error::IntakeWait(StoreWaitError::Operation(_)))))
+        );
+        assert!(error.source().is_some());
+        Ok(())
+    }
 
     #[test]
     fn vendor_write_errors_keep_recovery_kind_and_original_cause() {

@@ -317,5 +317,3 @@ fn detailed_outcome_spellings_are_compatible() {
         assert_eq!(Detail::LawApplication(code).to_string(), expected);
     }
 }
-
-pub(crate) mod vendor;

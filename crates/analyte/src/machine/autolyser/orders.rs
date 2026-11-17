@@ -1,6 +1,6 @@
 //! Sends AUTOLYSER work through the owning machine dialog.
-use crate::machine::autolyser::ConnectionState;
-use crate::machine::error::SessionError as Error;
+use super::ConnectionState;
+use super::Error;
 use analyte_store::Handle;
 impl ConnectionState {
     pub(crate) async fn complete_insertion(
@@ -13,7 +13,7 @@ impl ConnectionState {
             .active
             .as_ref()
             .ok_or_else(|| Error::UnexpectedAutolyserInsertionOutcome)?;
-        let code = crate::machine::transfer_end::insertion(reception);
+        let code = super::transfer_end::insertion(reception);
         let outcome = match reception {
             analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,
             analyte_dialog::autolyser::Reception::Rejected(_)

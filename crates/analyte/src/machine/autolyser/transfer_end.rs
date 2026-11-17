@@ -1,85 +1,4 @@
-//! Defines stable vendor transfer evidence codes independently of Rust variant names.
-
-/// Stable stored codes; spellings are compatibility data, never derived from Debug.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum VidasEnd {
-    AcknowledgmentTimeout,
-    CommitTimeout,
-    ControlSuffixMismatch,
-    FramingError,
-    InputFailed,
-    InterbyteTimeout,
-    SessionTimeout,
-    TransferCancelled,
-    TransferConfirmed,
-    TransferDisconnected,
-    TransferError,
-    TransferRefusedOrUnexpected,
-    WriteFailed,
-}
-impl VidasEnd {
-    /// Returns the exact historical spelling retained in the protected store.
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::AcknowledgmentTimeout => super::Code::VidasAcknowledgmentTimeout.as_str(),
-            Self::CommitTimeout => super::Code::VidasCommitTimeout.as_str(),
-            Self::ControlSuffixMismatch => super::Code::VidasControlSuffixMismatch.as_str(),
-            Self::FramingError => super::Code::VidasFramingError.as_str(),
-            Self::InputFailed => super::Code::VidasInputFailed.as_str(),
-            Self::InterbyteTimeout => super::Code::VidasInterbyteTimeout.as_str(),
-            Self::SessionTimeout => super::Code::VidasSessionTimeout.as_str(),
-            Self::TransferCancelled => super::Code::VidasTransferCancelled.as_str(),
-            Self::TransferConfirmed => super::Code::VidasTransferConfirmed.as_str(),
-            Self::TransferDisconnected => super::Code::VidasTransferDisconnected.as_str(),
-            Self::TransferError => super::Code::VidasTransferError.as_str(),
-            Self::TransferRefusedOrUnexpected => {
-                super::Code::VidasTransferRefusedOrUnexpected.as_str()
-            }
-            Self::WriteFailed => super::Code::VidasWriteFailed.as_str(),
-        }
-    }
-}
-impl std::fmt::Display for VidasEnd {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[cfg(test)]
-#[test]
-fn vidas_stored_spellings_are_compatible() {
-    for (code, expected) in [
-        (
-            VidasEnd::AcknowledgmentTimeout,
-            "VIDAS-acknowledgment-timeout",
-        ),
-        (VidasEnd::CommitTimeout, "VIDAS-commit-timeout"),
-        (
-            VidasEnd::ControlSuffixMismatch,
-            "VIDAS-control-suffix-mismatch",
-        ),
-        (VidasEnd::FramingError, "VIDAS-framing-error"),
-        (VidasEnd::InputFailed, "VIDAS-input-failed"),
-        (VidasEnd::InterbyteTimeout, "VIDAS-interbyte-timeout"),
-        (VidasEnd::SessionTimeout, "VIDAS-session-timeout"),
-        (VidasEnd::TransferCancelled, "VIDAS-transfer-cancelled"),
-        (VidasEnd::TransferConfirmed, "VIDAS-transfer-confirmed"),
-        (
-            VidasEnd::TransferDisconnected,
-            "VIDAS-transfer-disconnected",
-        ),
-        (VidasEnd::TransferError, "VIDAS-transfer-error"),
-        (
-            VidasEnd::TransferRefusedOrUnexpected,
-            "VIDAS-transfer-refused-or-unexpected",
-        ),
-        (VidasEnd::WriteFailed, "VIDAS-write-failed"),
-    ] {
-        assert_eq!(code.as_str(), expected);
-        assert_eq!(code.to_string(), expected);
-    }
-}
-
+//! Defines stable Autolyser transfer and insertion evidence codes.
 /// Stable stored codes; spellings are compatibility data, never derived from Debug.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AutolyserEnd {
@@ -96,14 +15,20 @@ impl AutolyserEnd {
     /// Returns the exact historical spelling retained in the protected store.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
-            Self::InputFailed => super::Code::AutolyserInputFailed.as_str(),
-            Self::StorageFailed => super::Code::AutolyserStorageFailed.as_str(),
-            Self::StorageTimeout => super::Code::AutolyserStorageTimeout.as_str(),
-            Self::TransferCancelled => super::Code::AutolyserTransferCancelled.as_str(),
-            Self::TransferDisconnected => super::Code::AutolyserTransferDisconnected.as_str(),
-            Self::TransferError => super::Code::AutolyserTransferError.as_str(),
-            Self::TransferTimeout => super::Code::AutolyserTransferTimeout.as_str(),
-            Self::WriteFailed => super::Code::AutolyserWriteFailed.as_str(),
+            Self::InputFailed => crate::orders::outcome::Code::AutolyserInputFailed.as_str(),
+            Self::StorageFailed => crate::orders::outcome::Code::AutolyserStorageFailed.as_str(),
+            Self::StorageTimeout => crate::orders::outcome::Code::AutolyserStorageTimeout.as_str(),
+            Self::TransferCancelled => {
+                crate::orders::outcome::Code::AutolyserTransferCancelled.as_str()
+            }
+            Self::TransferDisconnected => {
+                crate::orders::outcome::Code::AutolyserTransferDisconnected.as_str()
+            }
+            Self::TransferError => crate::orders::outcome::Code::AutolyserTransferError.as_str(),
+            Self::TransferTimeout => {
+                crate::orders::outcome::Code::AutolyserTransferTimeout.as_str()
+            }
+            Self::WriteFailed => crate::orders::outcome::Code::AutolyserWriteFailed.as_str(),
         }
     }
 }

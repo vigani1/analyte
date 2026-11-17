@@ -1,4 +1,5 @@
 //! Owns blocking serial I/O on a dedicated thread and joins it on cancellation.
+use super::error::Error as LinkError;
 use crate::machine::{Error, Handle, Limits, Machine};
 use analyte_transport::{Cancellation, serial::Settings};
 use std::{thread, time::Duration};
@@ -20,16 +21,18 @@ impl Drop for Owner {
 }
 
 impl Owner {
-    async fn close(mut self) -> Result<(), Error> {
+    async fn close(mut self) -> Result<(), LinkError> {
         self.cancellation.cancel();
         // Completion also wakes on panic; the retained join below reports its cause.
         // On timeout or cancellation Drop still owns and joins the worker.
         let _ = tokio::time::timeout_at(crate::deadline()?.into(), &mut self.finished)
             .await
-            .map_err(Error::SerialOwnerShutdownTimedOut)?;
+            .map_err(LinkError::SerialOwnerShutdownTimedOut)?;
         if let Some(thread) = self.thread.take() {
             // Panic payloads may contain protected bytes; retain only the typed panic classification.
-            thread.join().map_err(|_| Error::SerialOwnerPanicked)??;
+            thread
+                .join()
+                .map_err(|_| LinkError::SerialOwnerPanicked)??;
         }
         Ok(())
     }
@@ -61,12 +64,12 @@ pub(in crate::machine) async fn run(
         serial
             .data_bits
             .try_into()
-            .map_err(|()| Error::InvalidSerialDataBits)?,
+            .map_err(|()| LinkError::InvalidSerialDataBits)?,
         parity,
         serial
             .stop_bits
             .try_into()
-            .map_err(|()| Error::InvalidSerialStopBits)?,
+            .map_err(|()| LinkError::InvalidSerialStopBits)?,
         flow,
         Duration::from_millis(100),
     )?;

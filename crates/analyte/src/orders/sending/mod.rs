@@ -7,30 +7,6 @@ use analyte_store::{Handle, MachineOrder, MachineOrderKey};
 #[cfg(test)]
 mod tests;
 
-/// Reserves query orders immediately before link transmission, with no app event.
-/// The connection owns every reservation even if this future fails or is cancelled.
-pub(crate) async fn reserve_query(
-    store: &Handle,
-    machine: &Machine,
-    reply: super::astm::Reply,
-    until: std::time::Instant,
-    active: &mut Vec<MachineOrder>,
-) -> Result<Option<Vec<Vec<u8>>>, Error> {
-    if !reserve_candidates(
-        store,
-        reply.candidates,
-        until,
-        active,
-        None,
-        machine.destination_limits.freshness.as_secs(),
-    )
-    .await?
-    {
-        return Ok(super::astm::failure(machine).map(|reply| reply.records));
-    }
-    Ok(Some(reply.records))
-}
-
 /// Shared query admission. Each reservation is owned by the connection before I/O.
 pub(crate) async fn reserve_candidates(
     store: &Handle,

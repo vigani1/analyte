@@ -1,11 +1,13 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
-use crate::machine::error::SessionError as Error;
+use crate::intake::ByteReason;
+mod error;
 use crate::orders::astm::{Pending, Request};
 use crate::{deadline, intake};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
+pub(crate) use error::Error;
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
@@ -202,7 +204,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 self.response = crate::orders::astm::failure(machine);
             }
             match self.response.take() {
-                Some(reply) => match crate::orders::sending::reserve_query(
+                Some(reply) => match crate::orders::astm::reserve_query(
                     store,
                     machine,
                     reply,
@@ -301,19 +303,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Action::Deadline(_) => {}
             Action::Refused(error) => return Err(error.into()),
             Action::Conflict(bytes) => {
-                intake::park_bytes(
-                    store,
-                    machine,
-                    bytes,
-                    "same ASTM frame number carried conflicting bytes",
-                )
-                .await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::AstmConflict).await?;
             }
             Action::UnexpectedFrame(bytes) => {
-                intake::park_bytes(store, machine, bytes, "unsolicited ASTM frame").await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::AstmUnsolicited).await?;
             }
             Action::Rejected(error, bytes) => {
-                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::AstmFrame(&error)).await?;
             }
             Action::CommitFailed(_) => {
                 return Err(self
@@ -364,16 +360,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             number.value(),
             analyte_framing::astm::FrameNumber::MAX.value(),
         )?;
-        let committed = super::custody::store_within(
-            super::custody::budget(machine),
+        let committed = super::custody::store_before_ack(
+            machine,
             store.request(deadline()?, move |s| {
                 s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
             }),
         )
         .await;
-        if let Err(error) = &committed {
-            tracing::error!(machine = machine.id.as_str(), error_kind = %error, "ASTM frame commit refused");
-        }
         #[cfg(feature = "test-hooks")]
         if committed.is_ok()
             && let Some(hook) = &machine.hooks.astm_committed
@@ -459,9 +452,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Ok(actions) => {
                 for action in actions {
                     if let Action::Rejected(error, bytes) = action {
-                        let cleanup =
-                            intake::park_bytes(self.store, self.machine, bytes, &error.to_string())
-                                .await;
+                        let cleanup = intake::park_bytes(
+                            self.store,
+                            self.machine,
+                            bytes,
+                            ByteReason::AstmFrame(&error),
+                        )
+                        .await;
                         super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
                     }
                 }
@@ -469,7 +466,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Err(error) => super::custody::retain_cleanup(&mut result, Err(error.into())),
         }
         let cleanup = self.input_evidence.retain(self.store, self.machine).await;
-        super::custody::retain_cleanup(&mut result, cleanup);
+        super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         for order in self.active_orders.drain(..) {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,

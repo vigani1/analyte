@@ -214,3 +214,27 @@ pub(crate) fn envelope(
         .to_string();
     analyte_astm::encode_order_envelope(receiver, &timestamp, orders, termination)
 }
+
+/// Reserves query orders immediately before link transmission, with no app event.
+/// The connection owns every reservation even if this future fails or is cancelled.
+pub(crate) async fn reserve_query(
+    store: &Handle,
+    machine: &Machine,
+    reply: Reply,
+    until: Instant,
+    active: &mut Vec<analyte_store::MachineOrder>,
+) -> Result<Option<Vec<Vec<u8>>>, Error> {
+    if !super::sending::reserve_candidates(
+        store,
+        reply.candidates,
+        until,
+        active,
+        None,
+        machine.destination_limits.freshness.as_secs(),
+    )
+    .await?
+    {
+        return Ok(failure(machine).map(|reply| reply.records));
+    }
+    Ok(Some(reply.records))
+}

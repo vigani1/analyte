@@ -1,28 +1,32 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
+use crate::intake::ByteReason;
 mod custody;
+mod orders;
+mod transfer_end;
+use self::transfer_end::AutolyserEnd;
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::custody::{self as receive_custody, ms};
-use crate::machine::error::SessionError as Error;
-use crate::machine::transfer_end::AutolyserEnd;
+mod error;
 use crate::orders::outcome::Code;
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
+pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 /// Mutable conversation state has one owner for the entire connection.
-pub(crate) struct ConnectionState {
-    pub(crate) dialog: Dialog,
-    pub(crate) start: Instant,
-    pub(crate) receipt: Option<(ReceiptId, jiff::Timestamp)>,
-    pub(crate) ready: bool,
-    pub(crate) recovering: bool,
-    pub(crate) guard: Option<analyte_store::PollIntentId>,
-    pub(crate) active: Option<analyte_store::MachineOrder>,
-    pub(crate) cursor: String,
-    pub(crate) end_code: AutolyserEnd,
+struct ConnectionState {
+    dialog: Dialog,
+    start: Instant,
+    receipt: Option<(ReceiptId, jiff::Timestamp)>,
+    ready: bool,
+    recovering: bool,
+    guard: Option<analyte_store::PollIntentId>,
+    active: Option<analyte_store::MachineOrder>,
+    cursor: String,
+    end_code: AutolyserEnd,
 }
 
 pub(super) async fn session(
@@ -211,11 +215,9 @@ impl ConnectionState {
         let prior_code = self.end_code;
         self.end_code = AutolyserEnd::StorageFailed;
         let id = ReceiptId::new();
-        let stored = receive_custody::store_within(
-            receive_custody::budget(machine),
-            intake::receive(store, machine, id, raw),
-        )
-        .await;
+        let stored =
+            receive_custody::store_before_ack(machine, intake::receive(store, machine, id, raw))
+                .await;
         match stored {
             Ok(time) => {
                 self.end_code = prior_code;
@@ -245,23 +247,7 @@ impl ConnectionState {
             .receipt
             .take()
             .ok_or_else(|| Error::AutolyserReportReceiptMissing)?;
-        let receipt = store
-            .request(crate::deadline()?, move |s| {
-                s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-            })
-            .await?;
-        match crate::machine::interpretation::map_retained(store, machine, &receipt).await {
-            Ok(reading) => intake::vendor_reading(store, machine, id, reading).await?,
-            Err(error) => {
-                intake::failed_reading(
-                    store,
-                    machine,
-                    id,
-                    &format!("Autolyser interpretation: {error}"),
-                )
-                .await?;
-            }
-        }
+        intake::interpret(store, machine, id).await?;
         self.ready = true;
         self.recovering = false;
         custody::complete(store, &mut self.guard, machine).await?;
@@ -321,7 +307,15 @@ async fn process(
                 let reason = format!("Autolyser: {error}");
                 let parked = match state.receipt.take() {
                     Some((id, _)) => intake::failed_reading(store, machine, id, &reason).await,
-                    None => intake::park_bytes(store, machine, Vec::new(), &reason).await,
+                    None => {
+                        intake::park_bytes(
+                            store,
+                            machine,
+                            Vec::new(),
+                            ByteReason::Autolyser(&error),
+                        )
+                        .await
+                    }
                 };
                 if let Err(error) = parked {
                     return Err(receive_custody::effect_failure(failure, error.into()));

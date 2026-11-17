@@ -1,7 +1,9 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 use super::connection_input::{self, Input};
-use crate::machine::error::SessionError as Error;
+use crate::intake::ByteReason;
+mod error;
 use crate::orders::outcome::Code;
+pub(crate) use error::Error;
 pub(super) mod independent;
 use crate::intake;
 use crate::orders::law::{Connection, Reply};
@@ -145,9 +147,9 @@ impl<'a, 'm> Host<'a, 'm> {
                 Action::Commit(..) | Action::Rejected(..) | Action::Uncommitted(..)
             );
             let timeout_reason = if matches!(&action, Action::Write(..)) {
-                super::error::DeadlineReason::Write
+                error::DeadlineReason::Write
             } else {
-                super::error::DeadlineReason::Effect
+                error::DeadlineReason::Effect
             };
             let operation = async {
                 match end {
@@ -185,8 +187,8 @@ impl<'a, 'm> Host<'a, 'm> {
                 if let Some(hook) = &self.machine.hooks.law_precommit {
                     hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
                 }
-                super::custody::store_within(
-                    super::custody::budget(self.machine),
+                super::custody::store_before_ack(
+                    self.machine,
                     intake::receive(self.store, self.machine, id, raw),
                 )
                 .await?;
@@ -254,18 +256,13 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Action::Uncommitted(_, raw) => {
                 if !self.stored {
-                    intake::park_bytes(
-                        self.store,
-                        self.machine,
-                        raw,
-                        "LAW receipt processing interrupted before commit confirmation",
-                    )
-                    .await?;
+                    intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
+                        .await?;
                 }
                 return Ok(Vec::new());
             }
             Action::Rejected(error, raw) => {
-                intake::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
+                intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error)).await?;
                 return Ok(Vec::new());
             }
             Action::Refused(error) => return Err(error.into()),
@@ -337,7 +334,7 @@ impl<'a, 'm> Host<'a, 'm> {
     ) -> Result<Vec<Action>, Error> {
         let (outcome, location) =
             intake::interpret_with_location(self.store, self.machine, self.receipt(token)?).await?;
-        let detail = super::error_location::build(location.as_ref(), b"", b"");
+        let detail = crate::machine::hl7::error_location::build(location.as_ref(), b"", b"");
         let location = location.as_ref().map(|_| protocol::Location {
             segment: detail.segment,
             occurrence: detail.occurrence,
@@ -398,16 +395,12 @@ impl<'a, 'm> Host<'a, 'm> {
         for action in self.dialog.step(self.clock.elapsed(), Event::Disconnect)? {
             match action {
                 Action::Rejected(error, raw) => {
-                    intake::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
+                    intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error))
+                        .await?;
                 }
                 Action::Uncommitted(_, raw) if !self.stored => {
-                    intake::park_bytes(
-                        self.store,
-                        self.machine,
-                        raw,
-                        "LAW receipt processing interrupted before commit confirmation",
-                    )
-                    .await?;
+                    intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
+                        .await?;
                 }
                 Action::Commit(..)
                 | Action::Query(..)
@@ -429,7 +422,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 self.store,
                 self.machine,
                 self.pending_input.drain(..).collect(),
-                "LAW unprocessed input when session ended",
+                ByteReason::LawTail,
             )
             .await?;
         }

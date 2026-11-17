@@ -62,7 +62,7 @@ pub enum Error {
     Evidence(#[from] crate::ResultMappingError),
     /// Required receipt or configuration context is unavailable.
     #[error("{0}")]
-    Context(&'static str),
+    Context(Context),
 }
 
 /// Reads retained original bytes without I/O, orders, acknowledgments or storage mutations.
@@ -89,4 +89,33 @@ pub fn read(
         Stack::Vidas(s) => vidas::read(config, input, raw, s),
         Stack::Autolyser(s) => autolyser::read(config, input, raw, s),
     }
+}
+
+/// Specific missing or ambiguous retained-receipt context.
+#[derive(Clone, Copy, Debug, thiserror::Error)]
+pub enum Context {
+    /// ASTM transfer does not contain exactly one message; operator review required.
+    #[error("ASTM transfer does not contain exactly one message; operator review required")]
+    AstmMessageCount,
+    /// ASTM message missing.
+    #[error("ASTM message missing")]
+    AstmMessageMissing,
+    /// VIDAS settings missing.
+    #[error("VIDAS settings missing")]
+    VidasSettingsMissing,
+}
+#[test]
+fn context_spellings_are_pinned() {
+    assert_eq!(
+        Error::Context(Context::AstmMessageCount).to_string(),
+        "ASTM transfer does not contain exactly one message; operator review required"
+    );
+    assert_eq!(
+        Error::Context(Context::AstmMessageMissing).to_string(),
+        "ASTM message missing"
+    );
+    assert_eq!(
+        Error::Context(Context::VidasSettingsMissing).to_string(),
+        "VIDAS settings missing"
+    );
 }

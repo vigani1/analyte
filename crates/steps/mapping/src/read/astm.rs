@@ -17,14 +17,12 @@ pub(super) fn read(
     })?;
     // A transfer may contain multiple messages; the host must retain every one.
     if messages.len() != 1 {
-        return Err(Error::Context(
-            "ASTM transfer does not contain exactly one message; operator review required",
-        ));
+        return Err(Error::Context(super::Context::AstmMessageCount));
     }
     Ok(crate::map_astm(
         messages
             .first()
-            .ok_or_else(|| Error::Context("ASTM message missing"))?,
+            .ok_or_else(|| Error::Context(super::Context::AstmMessageMissing))?,
         config,
         input,
     )?)
