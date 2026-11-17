@@ -58,19 +58,6 @@ impl<T> Work<T> {
         }
         Ok(self.requests.pop_front())
     }
-    /// LIS01 confirms transport only; application acceptance remains separate.
-    pub(crate) async fn astm_finished(
-        &mut self,
-        store: &Handle,
-        end: analyte_dialog::astm::End,
-    ) -> Result<(), OrderError> {
-        if let Some(order) = &self.active {
-            super::finished(store, order, end).await?;
-        }
-        self.active = None;
-        Ok(())
-    }
-
     pub(crate) fn is_active(&self) -> bool {
         self.active.is_some()
     }

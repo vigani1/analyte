@@ -115,17 +115,21 @@ async fn next_work(
     let candidates = crate::orders::sending::candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
-        let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
-        if !crate::orders::eligible(&app, machine) {
-            continue;
-        }
-        let key = crate::orders::reservation::key(machine, cached.id);
-        let version = app.fields().version;
-        let Some(command) =
-            prepare_command(store, machine, stack, &app, options, key.clone()).await?
+        let crate::orders::admission::Prepared::Mapped(candidate, command) =
+            crate::orders::admission::prepare(
+                store,
+                machine,
+                cached,
+                deadline()?,
+                |error| format!("rejected: {error}"),
+                |app| command(stack, app, options),
+            )
+            .await?
         else {
             continue;
         };
+        let key = candidate.identity;
+        let version = candidate.version;
         let namespace = send.placer_namespace().clone();
         let groups = command
             .tests()
@@ -167,10 +171,12 @@ async fn next_work(
                 reserving.clear();
                 reject(
                     store,
-                    key,
-                    version,
+                    machine,
+                    crate::orders::Candidate {
+                        identity: key,
+                        version,
+                    },
                     Code::Hl7PlacerIdentityTooLong.as_str(),
-                    freshness,
                 )
                 .await?;
             }
@@ -178,11 +184,13 @@ async fn next_work(
                 reserving.clear();
                 reject(
                     store,
-                    key,
-                    version,
+                    machine,
+                    crate::orders::Candidate {
+                        identity: key,
+                        version,
+                    },
                     &crate::orders::outcome::Detail::Hl7OrderPreflight(error.to_string())
                         .to_string(),
-                    freshness,
                 )
                 .await?;
             }
@@ -193,19 +201,11 @@ async fn next_work(
 }
 async fn reject(
     store: &Handle,
-    key: MachineOrderKey,
-    version: std::num::NonZeroU64,
+    machine: &Machine,
+    candidate: crate::orders::Candidate,
     reason: &str,
-    freshness: u64,
 ) -> Result<(), Error> {
-    let reason = SourceText::new(reason)?;
-    let result =
-        crate::orders::reservation::reject(store, deadline()?, key, version, freshness, reason)
-            .await?;
-    if let Err(refusal) = result {
-        tracing::info!(reason=%refusal,"HL7 rejection superseded");
-    }
-    Ok(())
+    crate::orders::admission::reject(store, machine, deadline()?, candidate, reason).await
 }
 pub(super) async fn finish(
     store: &Handle,
@@ -310,28 +310,4 @@ pub(super) async fn finish(
         })
         .await?;
     Ok(())
-}
-
-async fn prepare_command(
-    store: &Handle,
-    machine: &Machine,
-    stack: &analyte_config::Hl7Stack,
-    app: &analyte_contract::Order,
-    options: Options,
-    key: MachineOrderKey,
-) -> Result<Option<Command>, Error> {
-    match command(stack, app, options) {
-        Ok(command) => Ok(Some(command)),
-        Err(error) => {
-            reject(
-                store,
-                key,
-                app.fields().version,
-                &error.to_string(),
-                machine.destination_limits.freshness.as_secs(),
-            )
-            .await?;
-            Ok(None)
-        }
-    }
 }

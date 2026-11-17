@@ -7,6 +7,7 @@ pub(crate) mod law;
 mod operator;
 /// Store failures of the audited order operator command.
 pub use operator::CommandError;
+mod admission;
 mod reservation;
 pub(crate) mod sending;
 mod settings;

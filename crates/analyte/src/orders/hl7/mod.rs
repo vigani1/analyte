@@ -292,7 +292,6 @@ impl Hl7OrderLink {
         until: Instant,
         busy: bool,
     ) -> Result<(CacheAnswer, Vec<Vec<u8>>, Vec<crate::orders::Candidate>), Error> {
-        let freshness = machine.destination_limits.freshness.as_secs();
         let settings =
             crate::orders::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
         let query = settings
@@ -320,24 +319,29 @@ impl Hl7OrderLink {
                 Lookup::Orders(orders) => {
                     answer = CacheAnswer::Empty;
                     for cached in orders {
-                        let order: analyte_contract::Order =
-                            analyte_contract::decode(cached.document.as_bytes())?;
-                        let fields = order.fields();
-                        if !crate::orders::eligible(&order, machine) {
-                            continue;
-                        }
-                        let mapped = crate::orders::app_order(&order)
-                            .map_err(Error::from)
-                            .and_then(|app| {
+                        match crate::orders::admission::prepare(
+                            store,
+                            machine,
+                            cached,
+                            until,
+                            |error| {
+                                crate::orders::outcome::Detail::Hl7DisplayMapping(error.to_string())
+                                    .to_string()
+                            },
+                            |order| {
+                                let app = crate::orders::app_order(order)?;
                                 Ok(analyte_mapping::map_display(
                                     &app,
-                                    fields.id.as_str(),
+                                    order.fields().id.as_str(),
                                     settings,
                                     machine.snapshot.effective().stack().limits(),
                                 )?)
-                            });
-                        match mapped {
-                            Ok(mapped) => {
+                            },
+                        )
+                        .await?
+                        {
+                            crate::orders::admission::Prepared::Skipped => continue,
+                            crate::orders::admission::Prepared::Mapped(candidate, mapped) => {
                                 if lines
                                     .len()
                                     .checked_add(mapped.len())
@@ -347,29 +351,10 @@ impl Hl7OrderLink {
                                     break;
                                 }
                                 lines.extend(mapped);
-                                candidates.push(crate::orders::reservation::pending(
-                                    machine,
-                                    cached.id,
-                                    fields.version,
-                                ));
+                                candidates.push(candidate);
                                 answer = CacheAnswer::Found;
                             }
-                            Err(error) => {
-                                let identity = crate::orders::reservation::key(machine, cached.id);
-                                let version = fields.version;
-                                let reason = analyte_model::SourceText::new(
-                                    &crate::orders::outcome::Detail::Hl7DisplayMapping(
-                                        error.to_string(),
-                                    )
-                                    .to_string(),
-                                )?;
-                                let rejected = crate::orders::reservation::reject(
-                                    store, until, identity, version, freshness, reason,
-                                )
-                                .await?;
-                                if let Err(refusal) = rejected {
-                                    tracing::info!(reason=%refusal,"HL7 mapping rejection superseded");
-                                }
+                            crate::orders::admission::Prepared::Rejected(_) => {
                                 answer = CacheAnswer::Unavailable;
                                 break;
                             }

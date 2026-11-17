@@ -12,6 +12,8 @@ pub(crate) const ORDER_POLL_INTERVAL: std::time::Duration = std::time::Duration:
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+use super::astm::finished;
 
 /// Shared query admission. Each reservation is owned by the connection before I/O.
 pub(crate) async fn reserve_candidates(
@@ -84,35 +86,23 @@ where
     let candidates = candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
-        let order: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
-        let fields = order.fields();
-        if !super::eligible(&order, machine) {
+        let super::admission::Prepared::Mapped(candidate, mapped) = super::admission::prepare(
+            store,
+            machine,
+            cached,
+            deadline()?,
+            |error| format!("rejected: {error}"),
+            |order| {
+                let order = super::app_order(order)?;
+                map(&order).map_err(Error::from)
+            },
+        )
+        .await?
+        else {
             continue;
-        }
-        let identity = crate::orders::reservation::key(machine, cached.id);
-        let version = fields.version;
-        let mapped = super::app_order(&order)
-            .map_err(Error::Text)
-            .and_then(|order| map(&order).map_err(Error::from));
-        let mapped = match mapped {
-            Ok(mapped) => mapped,
-            Err(error) => {
-                let reason = SourceText::new(&format!("rejected: {error}"))?;
-                let rejected = super::reservation::reject(
-                    store,
-                    deadline()?,
-                    identity,
-                    version,
-                    freshness,
-                    reason,
-                )
-                .await?;
-                if let Err(refusal) = rejected {
-                    tracing::info!(reason = %refusal, "mapping rejection was superseded before recording");
-                }
-                continue;
-            }
         };
+        let identity = candidate.identity;
+        let version = candidate.version;
         let reserved = store
             .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
                 store.reserve_send(
@@ -121,11 +111,14 @@ where
                 )
             })
             .await?;
-        if let Ok(order) = reserved {
-            return Ok(Some(Reserved {
-                order,
-                payload: mapped,
-            }));
+        match reserved {
+            Ok(order) => {
+                return Ok(Some(Reserved {
+                    order,
+                    payload: mapped,
+                }));
+            }
+            Err(refusal) => tracing::info!(reason=%refusal, "order reservation refused"),
         }
     }
     Ok(None)
@@ -172,29 +165,6 @@ pub(crate) async fn uncertain(
     code: super::outcome::Transfer,
 ) -> Result<(), Error> {
     complete(store, order, OrderState::Uncertain, code).await
-}
-
-/// Records a specific failed transfer as uncertain; normal transfer becomes Sent.
-pub(crate) async fn finished(
-    store: &Handle,
-    order: &MachineOrder,
-    end: analyte_dialog::astm::End,
-) -> Result<(), Error> {
-    // LIS01 confirms transfer, not the analyzer application's acceptance.
-    // Only explicit application evidence may advance Sent to Accepted.
-    let code = match end {
-        analyte_dialog::astm::End::Normal => Code::AstmTransferConfirmed,
-        analyte_dialog::astm::End::Abort => Code::AstmTransferAborted,
-        analyte_dialog::astm::End::Timeout => Code::AstmTransferTimeout,
-        analyte_dialog::astm::End::Interrupt => Code::AstmTransferInterrupted,
-        analyte_dialog::astm::End::Incomplete => Code::AstmTransferIncomplete,
-    };
-    let state = if end == analyte_dialog::astm::End::Normal {
-        OrderState::Sent
-    } else {
-        OrderState::Uncertain
-    };
-    complete(store, order, state, code.into()).await
 }
 
 /// Commits a protocol's definitive transport outcome with exactly one app event.

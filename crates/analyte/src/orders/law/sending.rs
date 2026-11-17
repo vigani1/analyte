@@ -8,7 +8,6 @@ use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
 use crate::runtime::hooks::Operation;
 use analyte_hl7::{Message, Options, law};
-use analyte_model::SourceText;
 use analyte_store::{Handle, MachineOrder};
 use std::time::{Duration, Instant};
 impl LawOrderLink {
@@ -82,7 +81,7 @@ impl LawOrderLink {
                         records: vec![record],
                         protocol: analyte_dialog::law::WorkExchange::new(
                             sent.clone(),
-                            until.duration_since(self.clock),
+                            until.duration_since(self.start),
                         ),
                         query: None,
                     });
@@ -104,20 +103,12 @@ impl LawOrderLink {
         options: Options,
         until: Instant,
     ) -> Result<Option<Message>, Error> {
-        let freshness = machine.destination_limits.freshness.as_secs();
         let candidates =
             super::super::sending::candidate_page(store, machine, &mut self.cursor).await?;
         for cached in candidates {
             self.cursor = cached.id.as_str().to_owned();
-            let app: analyte_contract::Order =
-                analyte_contract::decode(cached.document.as_bytes())?;
-            if !super::super::eligible(&app, machine) {
-                continue;
-            }
-            let key = super::super::reservation::key(machine, cached.id.clone());
-            let version = app.fields().version;
             let prepared = match self
-                .reserve(store, machine, vec![cached], until, options)
+                .reserve(store, machine, vec![cached], until, options, true)
                 .await
             {
                 Ok(prepared) => prepared,
@@ -127,23 +118,6 @@ impl LawOrderLink {
                         .await
                     {
                         return Err(crate::cleanup::effect_failure(Some(error), cleanup));
-                    }
-                    if matches!(
-                        &error,
-                        Error::Store(
-                            analyte_store::OrderError::DeliveryBuild(_)
-                                | analyte_store::OrderError::ItemIdentityTooLong
-                        )
-                    ) {
-                        let reason = SourceText::new(
-                            &crate::orders::outcome::Detail::LawOrderPreflight(error.to_string())
-                                .to_string(),
-                        )?;
-                        super::super::reservation::reject(
-                            store, until, key, version, freshness, reason,
-                        )
-                        .await??;
-                        continue;
                     }
                     return Err(error);
                 }
@@ -160,7 +134,7 @@ impl LawOrderLink {
                 records: prepared.into_iter().map(|(_, record)| record).collect(),
                 protocol: analyte_dialog::law::WorkExchange::new(
                     sent.clone(),
-                    until.duration_since(self.clock),
+                    until.duration_since(self.start),
                 ),
                 query: None,
             });
@@ -177,36 +151,47 @@ impl LawOrderLink {
         cached: Vec<analyte_store::CachedOrder>,
         until: Instant,
         options: Options,
+        unsolicited: bool,
     ) -> Result<Vec<(Command, MachineOrder)>, Error> {
         let freshness = machine.destination_limits.freshness.as_secs();
         let mut prepared = Vec::new();
         for cached in cached {
-            let app: analyte_contract::Order =
-                analyte_contract::decode(cached.document.as_bytes())?;
-            if !super::super::eligible(&app, machine) {
-                continue;
-            }
             if Instant::now() >= until {
                 return Err(Error::LawQueryDeadlineBeforeReservation);
             }
-            let command = super::work::command(machine, &app)?;
-            let key = super::super::reservation::key(machine, cached.id);
-            let version = app.fields().version;
+            let (candidate, command) = match super::super::admission::prepare(
+                store,
+                machine,
+                cached,
+                until,
+                |error| format!("rejected: {error}"),
+                |app| super::work::command(machine, app),
+            )
+            .await?
+            {
+                super::super::admission::Prepared::Mapped(candidate, command) => {
+                    (candidate, command)
+                }
+                super::super::admission::Prepared::Skipped => continue,
+                super::super::admission::Prepared::Rejected(error) => {
+                    if unsolicited {
+                        continue;
+                    }
+                    return Err(error);
+                }
+            };
+            let key = candidate.identity;
+            let version = candidate.version;
             let identity = key.clone();
             let owner = self.owner.clone();
             let namespace = command.placer_namespace().clone();
-            let groups = command
-                .tests()
-                .iter()
-                .cloned()
-                .map(|test| vec![test])
-                .collect::<Vec<_>>();
+            let groups = groups(&command);
             // Keep the existing logical identity budget; rendering independently owns
             // LAW's EI.1-only wire form and validates it against the profile.
             let max_identity_bytes = law::AWOS_ID_MAX_BYTES
                 .saturating_sub(namespace.as_str().len())
                 .saturating_sub(1);
-            self.reserving.push(key);
+            self.reserving.push(key.clone());
             let reserved = super::super::reservation::admit(
                 store,
                 until,
@@ -225,21 +210,74 @@ impl LawOrderLink {
                     Ok(command)
                 },
             )
-            .await?
-            .map_err(Error::Refused)?;
+            .await;
+            let reserved = match reserved {
+                Ok(Ok(reserved)) => reserved,
+                Ok(Err(refusal)) => {
+                    if !unsolicited {
+                        return Err(Error::Refused(refusal));
+                    }
+                    tracing::info!(reason=%refusal, "LAW order reservation refused");
+                    self.reserving.clear();
+                    continue;
+                }
+                Err(
+                    error @ (analyte_store::OrderError::DeliveryBuild(_)
+                    | analyte_store::OrderError::ItemIdentityTooLong),
+                ) => {
+                    self.reserving.clear();
+                    if !unsolicited {
+                        return Err(error.into());
+                    }
+                    super::super::admission::reject(
+                        store,
+                        machine,
+                        until,
+                        crate::orders::Candidate {
+                            identity: key,
+                            version,
+                        },
+                        &crate::orders::outcome::Detail::LawOrderPreflight(error.to_string())
+                            .to_string(),
+                    )
+                    .await?;
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            };
 
-            let bytes = render(&[(&reserved.1, &reserved.0)], law::WorkAction::New, options)?
-                .raw()
-                .to_vec();
-            let identity = reserved.0.key.clone();
-            let owner = self.owner.clone();
-            store
-                .request(until, move |store| {
-                    store.retain_order_command(&identity, &owner, bytes)
-                })
+            self.retain_command(store, until, options, &reserved)
                 .await?;
             prepared.push((reserved.1, reserved.0));
         }
         Ok(prepared)
     }
+    async fn retain_command(
+        &self,
+        store: &Handle,
+        until: Instant,
+        options: Options,
+        reserved: &(MachineOrder, Command),
+    ) -> Result<(), Error> {
+        let bytes = render(&[(&reserved.1, &reserved.0)], law::WorkAction::New, options)?
+            .raw()
+            .to_vec();
+        let identity = reserved.0.key.clone();
+        let owner = self.owner.clone();
+        store
+            .request(until, move |store| {
+                store.retain_order_command(&identity, &owner, bytes)
+            })
+            .await?;
+        Ok(())
+    }
+}
+
+fn groups(command: &Command) -> Vec<Vec<analyte_model::NamespacedId>> {
+    command
+        .tests()
+        .iter()
+        .cloned()
+        .map(|test| vec![test])
+        .collect()
 }

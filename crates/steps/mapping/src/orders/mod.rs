@@ -49,28 +49,6 @@ pub struct AppOrder {
     pub specimen_type: Option<NamespacedId>,
 }
 
-/// Complete mapped commands; mapping has no transmission or reservation side effects.
-pub enum MachineOrder {
-    /// A validated standard O record; the protocol grammar owns encoding.
-    Astm(analyte_astm::OrderRecord),
-    /// One validated request per assay, in the app's order.
-    Vidas(Vec<analyte_vidas::syntax::Message>),
-    /// A complete validated host-initiated insertion.
-    Autolyser(analyte_autolyser::syntax::Worklist),
-}
-
-impl MachineOrder {
-    /// Encodes an ASTM record, refusing another protocol's payload.
-    /// # Errors
-    /// Returns Disabled when this is not an ASTM command.
-    pub fn record(&self) -> Result<Vec<u8>, OrderMappingError> {
-        match self {
-            Self::Astm(record) => Ok(record.encode()),
-            Self::Vidas(_) | Self::Autolyser(_) => Err(OrderMappingError::Disabled),
-        }
-    }
-}
-
 /// Specific mapping refusal; diagnostic details belong in protected order events.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderMappingError {
@@ -101,67 +79,6 @@ pub enum OrderMappingError {
     /// Priority has no explicit translation.
     #[error("unmapped order priority")]
     UnmappedPriority,
-}
-
-/// Protocol-specific refusal from dispatching an outgoing order.
-#[derive(Debug, thiserror::Error)]
-pub enum DispatchError {
-    /// ASTM mapping refused the order.
-    #[error(transparent)]
-    Astm(#[from] crate::astm::OrderError),
-    /// VIDAS mapping refused the order.
-    #[error(transparent)]
-    Vidas(#[from] crate::vidas::OrderError),
-    /// AUTOLYSER mapping refused the order.
-    #[error(transparent)]
-    Autolyser(#[from] crate::autolyser::OrderError),
-    /// HL7 mapping refused the order.
-    #[error(transparent)]
-    Hl7(#[from] crate::hl7::OrderError),
-    /// Shared order evidence is unavailable.
-    #[error(transparent)]
-    Shared(#[from] OrderMappingError),
-}
-
-/// Maps every requested test before constructing complete protocol commands.
-/// No wire output is returned for partial or ambiguous mappings.
-/// # Errors
-/// Refuses disabled capability, unmapped values, missing required context and wire bounds.
-pub fn map_order(
-    order: &AppOrder,
-    stack: &analyte_config::Stack,
-) -> Result<MachineOrder, DispatchError> {
-    use analyte_config::Stack;
-    match stack {
-        Stack::Astm(analyte_config::RecordTransport::Stream(s)) => crate::astm::map_order(
-            order,
-            s.settings().syntax().limits(),
-            s.orders().ok_or(OrderMappingError::Disabled)?,
-        )
-        .map(MachineOrder::Astm)
-        .map_err(Into::into),
-        Stack::Astm(analyte_config::RecordTransport::Folder(s)) => crate::astm::map_order(
-            order,
-            s.settings().syntax().limits(),
-            s.orders().ok_or(OrderMappingError::Disabled)?,
-        )
-        .map(MachineOrder::Astm)
-        .map_err(Into::into),
-        Stack::Vidas(s) => {
-            crate::vidas::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
-                .map(MachineOrder::Vidas)
-                .map_err(Into::into)
-        }
-        Stack::Autolyser(s) => {
-            crate::autolyser::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
-                .map(MachineOrder::Autolyser)
-                .map_err(Into::into)
-        }
-        Stack::Hl7(analyte_config::RecordTransport::Stream(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
-        | Stack::Law(_)
-        | Stack::Poct(_) => Err(OrderMappingError::Disabled.into()),
-    }
 }
 
 // One shared patient boundary for all outbound stacks with an unqualified field.
