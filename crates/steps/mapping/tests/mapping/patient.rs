@@ -26,7 +26,7 @@ fn hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel()
         );
         let app = analyte_contract::decode(document.as_bytes())?;
         assert_eq!(
-            analyte_mapping::Hl7Command::new(
+            analyte_mapping::map_hl7_order(
                 crate::settings::hl7(&config).0,
                 crate::settings::orders(&config),
                 &app,

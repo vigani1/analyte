@@ -1,8 +1,7 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
 use crate::intake::ByteReason;
 mod custody;
-mod orders;
-mod transfer_end;
+pub(crate) mod transfer_end;
 use self::transfer_end::AutolyserEnd;
 use crate::intake;
 use crate::machine::connection_input::Input;
@@ -18,14 +17,13 @@ use tokio::sync::watch;
 
 /// Mutable conversation state has one owner for the entire connection.
 struct ConnectionState {
+    work: crate::orders::autolyser::Work,
     dialog: Dialog,
     start: Instant,
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
     ready: bool,
     recovering: bool,
     guard: Option<analyte_store::PollIntentId>,
-    active: Option<analyte_store::MachineOrder>,
-    cursor: String,
     end_code: AutolyserEnd,
 }
 
@@ -64,14 +62,13 @@ impl ConnectionState {
             },
         })?;
         Ok(Self {
+            work: crate::orders::autolyser::Work::default(),
             dialog,
             start: Instant::now(),
             receipt: None,
             ready: false,
             recovering: false,
             guard: None,
-            active: None,
-            cursor: String::new(),
             end_code: AutolyserEnd::TransferError,
         })
     }
@@ -126,7 +123,7 @@ impl ConnectionState {
                     #[cfg(feature = "test-hooks")]
                     if self.ready
                         && self.guard.is_none()
-                        && self.active.is_none()
+                        && !self.work.is_active()
                         && let Some(hook) = &machine.hooks.autolyser_quiescent
                     {
                         hook.pause(stop).await.map_err(Error::TestHook)?;
@@ -138,7 +135,10 @@ impl ConnectionState {
                     // Tick alone can initiate L recovery. Never interleave R with it.
                     if actions.is_empty() && self.ready && !self.recovering {
                         self.ready = false;
-                        if let Some(actions) = self.next_download(store, machine).await? {
+                        if let Some(worklist) = self.work.poll(store, machine).await? {
+                            let actions = self
+                                .dialog
+                                .step(self.start.elapsed(), Event::Download(&worklist))?;
                             if process(actions, self, machine, store, conn, policy).await? {
                                 return Ok(());
                             }
@@ -201,11 +201,8 @@ impl ConnectionState {
         {
             result = Err(receive_custody::effect_failure(result.err(), effect));
         }
-        if let Some(order) = self.active.as_ref()
-            && let Err(effect) =
-                crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await
-        {
-            result = Err(receive_custody::effect_failure(result.err(), effect.into()));
+        if let Err(effect) = self.work.close(store, self.end_code.as_str()).await {
+            result = Err(receive_custody::effect_failure(result.err(), effect));
         }
         result
     }
@@ -305,7 +302,7 @@ async fn process(
                 state.interpret_report(machine, store).await?;
             }
             Action::Park(error) => {
-                if let Some(order) = state.active.as_ref() {
+                if state.work.is_active() {
                     let code = if matches!(error, analyte_dialog::autolyser::Error::Incomplete)
                         && matches!(
                             state.end_code,
@@ -317,8 +314,7 @@ async fn process(
                     } else {
                         park_code(&error)
                     };
-                    crate::orders::sending::uncertain(store, order, &code).await?;
-                    state.active = None;
+                    state.work.refuse(store, &code).await?;
                     close = true;
                 }
                 state.ready = false;
@@ -351,7 +347,9 @@ async fn process(
                 }
             }
             Action::Insertion(reception) => {
-                close |= state.complete_insertion(reception, store).await?;
+                state.receipt.take();
+                state.ready = state.work.insertion(reception, store).await?;
+                close |= !state.ready;
             }
             Action::Uncertain => {
                 state.ready = false;

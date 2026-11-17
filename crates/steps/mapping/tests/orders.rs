@@ -495,7 +495,7 @@ specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
 
 #[test]
 fn hl7_ch4_patient_requirement_and_orc_group_bound_return_typed_refusals() -> TestResult {
-    use analyte_mapping::{Hl7Command, WireMappingError};
+    use analyte_mapping::WireMappingError;
     for (require_patient, id, expected) in [
         (
             true,
@@ -529,7 +529,7 @@ fn hl7_ch4_patient_requirement_and_orc_group_bound_return_typed_refusals() -> Te
         let raw =
             include_str!("../../../../docs/contract/vectors/order.json").replace("order-1", &id);
         let app = analyte_contract::decode(raw.as_bytes())?;
-        let result = Hl7Command::new(
+        let result = analyte_mapping::map_hl7_order(
             stack.syntax(),
             stack.orders().as_ref().ok_or("orders")?,
             &app,

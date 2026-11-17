@@ -7,7 +7,7 @@ mod display;
 mod orders;
 mod report;
 pub use display::map as map_display;
-pub use orders::Command;
+pub use orders::{Command, map_order};
 /// Maps ORU R01 or OUL R22 (2.5.1 only), with group-relative selectors.
 /// # Errors
 /// Rejects unsupported/misplaced segments rather than guessing group ownership.

@@ -1,7 +1,6 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use crate::intake::ByteReason;
-mod orders;
-mod transfer_end;
+pub(crate) mod transfer_end;
 use self::transfer_end::VidasEnd;
 use super::connection_input::Input;
 use super::custody::{self, ms};
@@ -11,23 +10,19 @@ use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer
 use analyte_framing::vidas::Config;
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
-use analyte_vidas::syntax::Message;
 pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
 struct ConnectionState {
+    work: crate::orders::vidas::Work,
     dialog: Dialog,
     start: Instant,
     actions: VecDeque<Action>,
-    active: Option<analyte_store::MachineOrder>,
-    requests: VecDeque<Message>,
     idle: bool,
     opened: bool,
     end_code: VidasEnd,
-    cursor: String,
-    next_poll: Instant,
     config: Config,
     policy: DialogConfig,
 }
@@ -66,19 +61,24 @@ impl ConnectionState {
         let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
         let actions = dialog.start().into();
         Ok(Self {
+            work: crate::orders::vidas::Work::new(),
             dialog,
             start: Instant::now(),
             actions,
-            active: None,
-            requests: VecDeque::new(),
             idle: true,
             opened: false,
             end_code: VidasEnd::TransferError,
-            cursor: String::new(),
-            next_poll: Instant::now(),
             config,
             policy,
         })
+    }
+    fn start_download(&mut self, request: &analyte_vidas::syntax::Message) -> Result<(), Error> {
+        self.dialog = Dialog::download(self.config.clone(), self.policy.clone(), request)?;
+        self.start = Instant::now();
+        self.idle = false;
+        self.end_code = VidasEnd::TransferError;
+        self.actions.extend(self.dialog.start());
+        Ok(())
     }
     async fn receive_loop(
         &mut self,
@@ -89,7 +89,12 @@ impl ConnectionState {
         installed: &analyte_config::Vidas,
     ) -> Result<(), Error> {
         loop {
-            self.poll_orders(machine, store).await?;
+            if self.idle
+                && self.opened
+                && let Some(request) = self.work.poll(machine, store).await?
+            {
+                self.start_download(&request)?;
+            }
             if process(self, machine, store, conn, installed).await? {
                 return Ok(());
             }
@@ -99,9 +104,11 @@ impl ConnectionState {
                 .ok_or_else(|| Error::ActiveDialogHasNoDeadline)?;
             if self.idle && self.opened {
                 next = next.min(
-                    self.start
-                        .elapsed()
-                        .saturating_add(self.next_poll.saturating_duration_since(Instant::now())),
+                    self.start.elapsed().saturating_add(
+                        self.work
+                            .next_poll()
+                            .saturating_duration_since(Instant::now()),
+                    ),
                 );
             }
             self.end_code = VidasEnd::InputFailed;
@@ -182,11 +189,8 @@ impl ConnectionState {
     }
 
     async fn close(&self, store: &Handle, mut result: Result<(), Error>) -> Result<(), Error> {
-        if let Some(order) = self.active.as_ref() {
-            let cleanup =
-                crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await;
-            custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
-        }
+        let cleanup = self.work.close(store, self.end_code.as_str()).await;
+        custody::retain_cleanup(&mut result, cleanup);
         result
     }
 }
@@ -248,28 +252,18 @@ async fn process(
                     failure = Some(Error::TransferParkedReconcileBeforeReconnect);
                 }
             }
-            Action::Complete => {
-                if let Some(order) = state.active.as_ref() {
-                    if !state.requests.is_empty() {
-                        orders::start_download(state)?;
-                    } else {
-                        crate::orders::sending::complete(
-                            store,
-                            order,
-                            analyte_model::OrderState::Sent,
-                            VidasEnd::TransferConfirmed.as_str(),
-                        )
-                        .await?;
-                        state.active = None;
-                        state.dialog = Dialog::upload(state.config.clone(), state.policy.clone())?;
-                        state.start = Instant::now();
-                        state.actions.extend(state.dialog.start());
-                        state.idle = true;
-                    }
-                } else {
-                    complete = true;
+            Action::Complete => match state.work.confirmed(store).await? {
+                crate::orders::vidas::Progress::DownloadNext(request) => {
+                    state.start_download(&request)?;
                 }
-            }
+                crate::orders::vidas::Progress::DownloadFinished => {
+                    state.dialog = Dialog::upload(state.config.clone(), state.policy.clone())?;
+                    state.start = Instant::now();
+                    state.actions.extend(state.dialog.start());
+                    state.idle = true;
+                }
+                crate::orders::vidas::Progress::UploadFinished => complete = true,
+            },
         }
     }
     match failure {
