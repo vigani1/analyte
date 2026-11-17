@@ -302,9 +302,17 @@ impl<'a> Worker<'a> {
     /// Stops visibly on errors requiring host intervention.
     pub async fn run(&self, mut stop: watch::Receiver<bool>) -> Result<(), DeliveryError> {
         loop {
-            let outcome = tokio::select! {biased; _=async { let _ = stop.wait_for(|&stopped| stopped).await; }=>return Ok(()), result=self.deliver_once()=>result?};
+            let outcome = tokio::select! {
+                biased;
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
+                result = self.deliver_once() => result?,
+            };
             if outcome == DeliveryOutcome::Idle {
-                tokio::select! {biased; _=async { let _ = stop.wait_for(|&stopped| stopped).await; }=>return Ok(()), ()=tokio::time::sleep(IDLE_CLAIM_INTERVAL)=>{}}
+                tokio::select! {
+                    biased;
+                    _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
+                    () = tokio::time::sleep(IDLE_CLAIM_INTERVAL) => {}
+                }
             }
         }
     }
