@@ -380,33 +380,16 @@ async fn store_message(
     intake::receive(store, machine, id, message.document().raw().to_vec()).await?;
     match message.body() {
         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
-            let receipt = store
-                .request(crate::deadline()?, move |s| {
-                    s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-                })
-                .await?;
-            match super::interpretation::map_retained(store, machine, &receipt).await {
-                Ok(reading) => {
-                    intake::vendor_reading(store, machine, id, reading).await?;
-                }
-                Err(error) => {
-                    intake::failed_reading(
-                        store,
-                        machine,
-                        id,
-                        &format!("POCT interpretation: {error}"),
-                    )
-                    .await?;
-                    return Ok(CommitOutcome::ApplicationError(
-                        analyte_poct::ApplicationError::UnsupportedValue,
-                    ));
-                }
+            if !intake::interpret(store, machine, id).await? {
+                return Ok(CommitOutcome::ApplicationError(
+                    analyte_poct::ApplicationError::UnsupportedValue,
+                ));
             }
         }
         Body::Hello { .. } => {
             // Mark the complete, parsed Hello as connection context. Transport
             // journal fragments are also receipts, but are not interpreted Hellos.
-            intake::vendor_reading(store, machine, id, analyte_mapping::Output::default()).await?;
+            intake::interpret(store, machine, id).await?;
         }
         Body::Status { .. }
         | Body::EndTopic(_)

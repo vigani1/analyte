@@ -3,7 +3,9 @@
 use crate::Error;
 use crate::{deadline, installation::config::Machine, intake};
 use analyte_config::Stack;
-use analyte_model::{ReceiptId, Revision};
+#[cfg(test)]
+use analyte_model::ReceiptId;
+use analyte_model::Revision;
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
 
 /// Reinterprets only the retained original bytes using the supplied current machine.
@@ -61,24 +63,6 @@ pub(crate) async fn map_retained(
         },
         &receipt.raw,
         hello.as_ref().map(|receipt| receipt.raw.as_slice()),
-    )?)
-}
-
-pub(crate) fn map(
-    machine: &Machine,
-    id: ReceiptId,
-    time: jiff::Timestamp,
-    raw: &[u8],
-) -> Result<analyte_mapping::Output, ReadError> {
-    Ok(analyte_mapping::read::read(
-        &machine.snapshot,
-        analyte_mapping::Input {
-            receipt: id,
-            received_at: time,
-            revision: Revision(0),
-        },
-        raw,
-        None,
     )?)
 }
 

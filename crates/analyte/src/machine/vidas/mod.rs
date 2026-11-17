@@ -318,21 +318,7 @@ async fn store_upload(
     id: ReceiptId,
     raw: &[u8],
 ) -> Result<(), intake::Error> {
-    let time = intake::receive(store, machine, id, raw.to_vec()).await?;
-    let reading = super::interpretation::map(machine, id, time, raw);
-    match reading {
-        Ok(reading) => {
-            intake::vendor_reading(store, machine, id, reading).await?;
-        }
-        Err(error) => {
-            intake::failed_reading(
-                store,
-                machine,
-                id,
-                &format!("VIDAS interpretation: {error}"),
-            )
-            .await?;
-        }
-    }
-    Ok::<_, intake::Error>(())
+    intake::receive(store, machine, id, raw.to_vec()).await?;
+    intake::interpret(store, machine, id).await?;
+    Ok(())
 }

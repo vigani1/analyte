@@ -245,23 +245,7 @@ impl ConnectionState {
             .receipt
             .take()
             .ok_or_else(|| Error::AutolyserReportReceiptMissing)?;
-        let receipt = store
-            .request(crate::deadline()?, move |s| {
-                s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-            })
-            .await?;
-        match crate::machine::interpretation::map_retained(store, machine, &receipt).await {
-            Ok(reading) => intake::vendor_reading(store, machine, id, reading).await?,
-            Err(error) => {
-                intake::failed_reading(
-                    store,
-                    machine,
-                    id,
-                    &format!("Autolyser interpretation: {error}"),
-                )
-                .await?;
-            }
-        }
+        intake::interpret(store, machine, id).await?;
         self.ready = true;
         self.recovering = false;
         custody::complete(store, &mut self.guard, machine).await?;

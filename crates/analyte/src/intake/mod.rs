@@ -89,10 +89,19 @@ pub(crate) async fn interpret(
     machine: &Machine,
     id: ReceiptId,
 ) -> Result<bool, Error> {
-    Ok(matches!(
-        interpret_with_location(store, machine, id).await?.0,
-        InterpretationOutcome::Accepted
-    ))
+    let (outcome, _, readable) = interpret_receipt(store, machine, id).await?;
+    // POCT acknowledges durable readable observations even when findings require
+    // operator review. HL7/LAW acceptance makes a stronger semantic promise.
+    Ok(
+        if matches!(
+            machine.snapshot.effective().stack(),
+            analyte_config::Stack::Poct(_)
+        ) {
+            readable
+        } else {
+            matches!(outcome, InterpretationOutcome::Accepted)
+        },
+    )
 }
 
 pub(crate) async fn interpret_with_location(
@@ -103,6 +112,22 @@ pub(crate) async fn interpret_with_location(
     (
         InterpretationOutcome,
         Option<crate::machine::hl7::error_location::Location>,
+    ),
+    Error,
+> {
+    let (outcome, location, _) = interpret_receipt(store, machine, id).await?;
+    Ok((outcome, location))
+}
+
+async fn interpret_receipt(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+) -> Result<
+    (
+        InterpretationOutcome,
+        Option<crate::machine::hl7::error_location::Location>,
+        bool,
     ),
     Error,
 > {
@@ -124,10 +149,24 @@ pub(crate) async fn interpret_with_location(
                 options.terminator,
             )
         });
-    let accepted = persist_mapping(store, machine, id, mapping.into(), None)
-        .await?
-        .0;
-    Ok((accepted, location))
+    let readable = mapping.is_ok();
+    // Preserve the vendor diagnostics historically retained for unreadable input.
+    let mapping = match mapping {
+        Ok(output) => Mapping::Mapped(output),
+        Err(error) => {
+            let reason = match machine.snapshot.effective().stack() {
+                analyte_config::Stack::Vidas(_) => format!("VIDAS interpretation: {error}"),
+                analyte_config::Stack::Autolyser(_) => format!("Autolyser interpretation: {error}"),
+                analyte_config::Stack::Poct(_) => format!("POCT interpretation: {error}"),
+                analyte_config::Stack::Astm(_)
+                | analyte_config::Stack::Hl7(_)
+                | analyte_config::Stack::Law(_) => error.to_string(),
+            };
+            Mapping::Parked(ParkReason::Diagnostic(reason))
+        }
+    };
+    let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
+    Ok((accepted, location, readable))
 }
 
 fn poct_edits(machine: &Machine) -> bool {
@@ -464,18 +503,6 @@ pub(crate) async fn park_bytes(
             s.interpret_reconciled(id, evidence, &[], &[], |_, _| Ok(Vec::new()))
         })
         .await?;
-    Ok(())
-}
-
-/// Saves vendor model evidence through the same revision and delivery transaction.
-/// Cancellation may leave a committed interpretation; never infer failure from timeout.
-pub(crate) async fn vendor_reading(
-    store: &Handle,
-    machine: &Machine,
-    id: ReceiptId,
-    output: analyte_mapping::Output,
-) -> Result<(), Error> {
-    persist_mapping(store, machine, id, Mapping::Mapped(output), None).await?;
     Ok(())
 }
 
