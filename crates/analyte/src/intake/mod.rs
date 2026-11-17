@@ -1,8 +1,10 @@
 //! Stores receipts, maps results, commits interpretations, revisions and deliveries, and parks failures.
 use crate::{deadline, installation::config::Machine};
+mod bytes;
 mod error;
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
+pub(crate) use bytes::ByteReason;
 pub use error::IntakeError as Error;
 use std::fmt::Write;
 mod law;
@@ -459,7 +461,7 @@ pub(crate) async fn park_bytes(
     store: &Handle,
     machine: &Connection<'_>,
     bytes: Vec<u8>,
-    reason: &str,
+    reason: ByteReason<'_>,
 ) -> Result<(), Error> {
     let id = ReceiptId::new();
     let departures =
@@ -470,7 +472,7 @@ pub(crate) async fn park_bytes(
         driver: driver(machine)?,
         config_version: config_version(machine)?,
         config: machine.snapshot.canonical().as_bytes().to_vec(),
-        outcome: Reading::Failed(analyte_model::Reason::new(reason)?),
+        outcome: Reading::Failed(analyte_model::Reason::new(&reason.to_string())?),
     };
     store
         .request(deadline()?, move |s| {

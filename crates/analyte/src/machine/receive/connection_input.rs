@@ -4,6 +4,7 @@
 //! Autolyser additionally journal chunks before dialog input via `journaled`.
 //! Their positive steps remain guarded by their own complete receipt/transfer/poll
 //! commits (ADR 0010). Cancelling a receive does not cancel queued store work.
+use crate::intake::ByteReason;
 use crate::machine::error::SessionError as Error;
 use analyte_transport::{Connection, Event, Reason, recording};
 
@@ -91,18 +92,15 @@ impl Custody {
                 store,
                 machine,
                 self.bytes.clone(),
-                "Interrupted input: ownership uncertain; possible duplicates",
+                ByteReason::InputUncertain,
             )
             .await?;
             self.complete();
             return Ok(());
         };
         for (bytes, reason) in [
-            (
-                prefix,
-                "Interrupted input: fed prefix; possible duplicate of dialog receipts",
-            ),
-            (tail, "Interrupted input: untouched transport tail"),
+            (prefix, ByteReason::InputPrefix),
+            (tail, ByteReason::InputTail),
         ] {
             if !bytes.is_empty() {
                 intake::park_bytes(store, machine, bytes.to_vec(), reason).await?;

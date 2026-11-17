@@ -1,4 +1,5 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
+use crate::intake::ByteReason;
 pub(crate) mod error_location;
 use super::connection_input::{self, Input};
 use crate::intake;
@@ -288,11 +289,11 @@ impl ConnectionState {
             }
             Action::Deadline(next) => self.wake = next,
             Action::Rejected(error, bytes) => {
-                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await?;
             }
             Action::Parked(bytes, error) => {
                 self.pending.clear();
-                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::Hl7Dialog(&error)).await?;
             }
             Action::QueueFull(bytes) | Action::Unmatched(bytes) => {
                 return self.refuse_message(machine, store, bytes).await;
@@ -508,13 +509,7 @@ impl ConnectionState {
         store: &Handle,
         bytes: Vec<u8>,
     ) -> Result<bool, Error> {
-        intake::park_bytes(
-            store,
-            machine,
-            bytes,
-            "HL7 unsolicited message or queue overflow",
-        )
-        .await?;
+        intake::park_bytes(store, machine, bytes, ByteReason::Hl7Unsolicited).await?;
         Err(Error::Hl7MessageRefused)
     }
     async fn close(
@@ -535,7 +530,8 @@ impl ConnectionState {
         };
         for action in actions {
             if let Action::Rejected(error, bytes) = action {
-                let cleanup = intake::park_bytes(store, machine, bytes, &error.to_string()).await;
+                let cleanup =
+                    intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await;
                 super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
             }
         }

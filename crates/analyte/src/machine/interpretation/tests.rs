@@ -1,6 +1,7 @@
 //! Tests interpretation behavior with synthetic fixtures.
 use super::*;
 use crate::installation::config::Program;
+use crate::intake::ByteReason;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Attempt, Audit, RevisionOutcome};
 use std::path::Path;
@@ -286,7 +287,7 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
         &store,
         &intake::Connection::new(current)?,
         b"unparseable changed".to_vec(),
-        "synthetic parking",
+        ByteReason::Synthetic,
     )
     .await?;
     reprocess(&store, current, action(id, None)?).await?;

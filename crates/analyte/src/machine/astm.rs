@@ -1,5 +1,6 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
+use crate::intake::ByteReason;
 use crate::machine::error::SessionError as Error;
 use crate::orders::astm::{Pending, Request};
 use crate::{deadline, intake};
@@ -301,19 +302,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Action::Deadline(_) => {}
             Action::Refused(error) => return Err(error.into()),
             Action::Conflict(bytes) => {
-                intake::park_bytes(
-                    store,
-                    machine,
-                    bytes,
-                    "same ASTM frame number carried conflicting bytes",
-                )
-                .await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::AstmConflict).await?;
             }
             Action::UnexpectedFrame(bytes) => {
-                intake::park_bytes(store, machine, bytes, "unsolicited ASTM frame").await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::AstmUnsolicited).await?;
             }
             Action::Rejected(error, bytes) => {
-                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::AstmFrame(&error)).await?;
             }
             Action::CommitFailed(_) => {
                 return Err(self
@@ -456,9 +451,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Ok(actions) => {
                 for action in actions {
                     if let Action::Rejected(error, bytes) = action {
-                        let cleanup =
-                            intake::park_bytes(self.store, self.machine, bytes, &error.to_string())
-                                .await;
+                        let cleanup = intake::park_bytes(
+                            self.store,
+                            self.machine,
+                            bytes,
+                            ByteReason::AstmFrame(&error),
+                        )
+                        .await;
                         super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
                     }
                 }

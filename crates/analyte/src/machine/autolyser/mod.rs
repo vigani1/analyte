@@ -1,4 +1,5 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
+use crate::intake::ByteReason;
 mod custody;
 mod orders;
 mod transfer_end;
@@ -305,7 +306,15 @@ async fn process(
                 let reason = format!("Autolyser: {error}");
                 let parked = match state.receipt.take() {
                     Some((id, _)) => intake::failed_reading(store, machine, id, &reason).await,
-                    None => intake::park_bytes(store, machine, Vec::new(), &reason).await,
+                    None => {
+                        intake::park_bytes(
+                            store,
+                            machine,
+                            Vec::new(),
+                            ByteReason::Autolyser(&error),
+                        )
+                        .await
+                    }
                 };
                 if let Err(error) = parked {
                     return Err(receive_custody::effect_failure(failure, error.into()));

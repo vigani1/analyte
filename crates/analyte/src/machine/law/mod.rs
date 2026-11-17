@@ -1,5 +1,6 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 use super::connection_input::{self, Input};
+use crate::intake::ByteReason;
 use crate::machine::error::SessionError as Error;
 use crate::orders::outcome::Code;
 pub(super) mod independent;
@@ -254,18 +255,13 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Action::Uncommitted(_, raw) => {
                 if !self.stored {
-                    intake::park_bytes(
-                        self.store,
-                        self.machine,
-                        raw,
-                        "LAW receipt processing interrupted before commit confirmation",
-                    )
-                    .await?;
+                    intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
+                        .await?;
                 }
                 return Ok(Vec::new());
             }
             Action::Rejected(error, raw) => {
-                intake::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
+                intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error)).await?;
                 return Ok(Vec::new());
             }
             Action::Refused(error) => return Err(error.into()),
@@ -398,16 +394,12 @@ impl<'a, 'm> Host<'a, 'm> {
         for action in self.dialog.step(self.clock.elapsed(), Event::Disconnect)? {
             match action {
                 Action::Rejected(error, raw) => {
-                    intake::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
+                    intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error))
+                        .await?;
                 }
                 Action::Uncommitted(_, raw) if !self.stored => {
-                    intake::park_bytes(
-                        self.store,
-                        self.machine,
-                        raw,
-                        "LAW receipt processing interrupted before commit confirmation",
-                    )
-                    .await?;
+                    intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
+                        .await?;
                 }
                 Action::Commit(..)
                 | Action::Query(..)
@@ -429,7 +421,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 self.store,
                 self.machine,
                 self.pending_input.drain(..).collect(),
-                "LAW unprocessed input when session ended",
+                ByteReason::LawTail,
             )
             .await?;
         }

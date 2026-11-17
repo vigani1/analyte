@@ -1,4 +1,5 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
+use crate::intake::ByteReason;
 mod orders;
 mod transfer_end;
 use self::transfer_end::VidasEnd;
@@ -171,7 +172,7 @@ impl ConnectionState {
                             store,
                             machine,
                             vec![byte],
-                            &format!("VIDAS framing: {error}"),
+                            ByteReason::VidasFrame(&error),
                         )
                         .await?;
                         return Err(error.into());
@@ -180,8 +181,7 @@ impl ConnectionState {
             } else if let Some((control, index)) = self.suffix {
                 if installed.suffix.get(index) != Some(&byte) {
                     self.end_code = VidasEnd::ControlSuffixMismatch;
-                    intake::park_bytes(store, machine, vec![byte], "VIDAS control suffix mismatch")
-                        .await?;
+                    intake::park_bytes(store, machine, vec![byte], ByteReason::VidasSuffix).await?;
                     return Err(Error::VidasControlSuffixMismatch);
                 }
                 if index.saturating_add(1) == installed.suffix.len() {
@@ -274,7 +274,9 @@ async fn process(
                         None => VidasEnd::TransferRefusedOrUnexpected,
                     };
                 }
-                let parked = intake::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
+                let parked =
+                    intake::park_bytes(store, machine, Vec::new(), ByteReason::VidasIncomplete)
+                        .await;
                 if let Err(error) = parked {
                     return Err(custody::effect_failure(failure, error.into()));
                 }
