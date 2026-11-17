@@ -61,6 +61,9 @@ pub(crate) fn io_kind(kind: io::ErrorKind) -> Cow<'static, str> {
 impl fmt::Display for Reason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidLimits | Self::OversizedWrite | Self::Offline => f.write_str(
+                "Io { endpoint: \"transport\", operation: \"validation\", kind: InvalidInput }",
+            ),
             Self::Disconnect => f.write_str("Disconnect"),
             Self::Cancelled => f.write_str("Cancelled"),
             Self::LimitReached => f.write_str("LimitReached"),
@@ -227,4 +230,19 @@ fn tcp_open_spellings_are_compatible() -> Result<(), Box<dyn std::error::Error>>
         assert_eq!(IoEvidence(&error).to_string(), format!("{error:?}"));
     }
     Ok(())
+}
+
+#[test]
+fn validation_and_connection_reasons_remain_distinct() {
+    for (error, reason) in [
+        (crate::Error::InvalidLimits, Reason::InvalidLimits),
+        (crate::Error::OversizedWrite, Reason::OversizedWrite),
+        (crate::Error::Offline, Reason::Offline),
+    ] {
+        assert_eq!(error.reason(), reason);
+        assert_eq!(
+            reason.to_string(),
+            "Io { endpoint: \"transport\", operation: \"validation\", kind: InvalidInput }"
+        );
+    }
 }

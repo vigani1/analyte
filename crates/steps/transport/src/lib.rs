@@ -128,6 +128,12 @@ pub enum Error {
 /// Nonclinical reasons carried on the ordered event stream.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reason {
+    /// Queue or operation bounds were invalid.
+    InvalidLimits,
+    /// A write exceeded the transport byte limit.
+    OversizedWrite,
+    /// The connection was not open.
+    Offline,
     /// Peer ended the stream.
     Disconnect,
     /// Host requested shutdown.
@@ -163,11 +169,9 @@ impl Error {
             },
             Self::Deadline(operation) => Reason::Deadline(*operation),
             Self::ConsumerClosed => Reason::Cancelled,
-            Self::InvalidLimits | Self::OversizedWrite | Self::Offline => Reason::Io {
-                endpoint: "transport".into(),
-                operation: "validation",
-                kind: io::ErrorKind::InvalidInput,
-            },
+            Self::InvalidLimits => Reason::InvalidLimits,
+            Self::OversizedWrite => Reason::OversizedWrite,
+            Self::Offline => Reason::Offline,
         }
     }
 }
