@@ -32,7 +32,7 @@ async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions
         let work = packet(&mut peer).await?;
         assert_eq!(field(&work, b"MSH", 9)?, b"OML^O33^OML_O33");
         orl(&mut peer, &work, &["OK", "OK"], false).await?;
-        vendor_support::state(&path, "Accepted").await?;
+        vendor::state(&path, "Accepted").await?;
         wait_state(&path, "done", 1).await?;
         let awos = std::str::from_utf8(field(&work, b"OBR", 2)?)?;
         let result = law_results::result("role-result", &format!("{awos}^LAB"), "", "12.30", "F")
@@ -86,12 +86,12 @@ async fn law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_
         .rewrite("receive_timeout_ms = 30000", "receive_timeout_ms = 100");
     let (_temp, path, reference, running, mut peer, listener) = client(&settings).await?;
     packet(&mut peer).await?;
-    vendor_support::state(&path, "Sending").await?;
+    vendor::state(&path, "Sending").await?;
     drop(peer);
     let (mut peer, _) = tokio::time::timeout(HANG_GUARD, listener.accept())
         .await
         .map_err(|e| format!("reconnect after disconnect: {e}"))??;
-    vendor_support::state(&path, "Uncertain").await?;
+    vendor::state(&path, "Uncertain").await?;
     quiet(&mut peer).await?;
     // PaLM TF-2b B.6 / ADR 0003: retain unrelated framing evidence first.
     // A complete query would require storage and a response inside this test's
@@ -181,11 +181,7 @@ async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadline
     packet(&mut peer).await?;
     // A missing ORL uses response_ms, not the much longer transport timeout.
     // Deliberate upper bound on configured ORL response expiry.
-    tokio::time::timeout(
-        Duration::from_secs(2),
-        vendor_support::state(&path, "Uncertain"),
-    )
-    .await??;
+    tokio::time::timeout(Duration::from_secs(2), vendor::state(&path, "Uncertain")).await??;
     let request = analyte_framing::hl7::encode(
         query(ALL, "late-client").as_bytes(),
         analyte_framing::hl7::Limit::new(1048576)?,
@@ -258,7 +254,7 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
         std::io::ErrorKind::UnexpectedEof
     );
     drop(outbound);
-    vendor_support::state(&path, "Accepted").await?;
+    vendor::state(&path, "Accepted").await?;
     wait_state(&path, "done", 1).await?;
     let awos = std::str::from_utf8(field(&work, b"OBR", 2)?)?;
     let mut result_peer = connect(&path, "law").await?;
@@ -351,7 +347,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
                 drop(outbound);
             }
         }
-        vendor_support::state(&path, "Uncertain").await?;
+        vendor::state(&path, "Uncertain").await?;
         if let Some(mut waiting_peer) = waiting_peer {
             assert!(
                 tokio::time::timeout(HANG_GUARD, waiting_peer.read_u8())
@@ -382,7 +378,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
                 .is_err(),
             "a reserved command must never be retried"
         );
-        vendor_support::state(&path, "Uncertain").await?;
+        vendor::state(&path, "Uncertain").await?;
         assert_eq!(count(&path, "machine_orders")?, 1);
         running.stop().await?;
         reference.close().await?;
@@ -456,7 +452,7 @@ async fn law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos() -> R
         std::io::ErrorKind::UnexpectedEof
     );
     drop(outbound);
-    vendor_support::state(&path, "Accepted").await?;
+    vendor::state(&path, "Accepted").await?;
     work::cancel_cache(&path, &reference).await?;
     let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
     let cancel = packet(&mut outbound).await?;
@@ -464,7 +460,7 @@ async fn law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos() -> R
     assert_eq!(field(&cancel, b"OBR", 2)?, placer);
     orl(&mut outbound, &cancel, &["CR"], false).await?;
     drop(outbound);
-    vendor_support::state(&path, "CancelConfirmed").await?;
+    vendor::state(&path, "CancelConfirmed").await?;
     assert_eq!(count(&path, "machine_order_items")?, 1);
     running.stop().await?;
     reference.close().await?;
@@ -490,7 +486,7 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
     let (mut outbound, _) = tokio::time::timeout(HANG_GUARD, listener.accept()).await??;
     let sent = packet(&mut outbound).await?;
     assert_eq!(field(&sent, b"MSH", 9)?, b"OML^O33^OML_O33");
-    vendor_support::state(&path, "Sending").await?;
+    vendor::state(&path, "Sending").await?;
     running.crash().await?;
     tokio::time::timeout(HANG_GUARD, async {
         let mut byte = [0];
@@ -502,11 +498,11 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
         }
     })
     .await?;
-    vendor_support::state(&path, "Sending").await?;
+    vendor::state(&path, "Sending").await?;
     drop(outbound);
     let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let peer = connect(&path, "law").await?;
-    vendor_support::state(&path, "Uncertain").await?;
+    vendor::state(&path, "Uncertain").await?;
     assert!(
         // Deliberate quiet window: no outbound connection may be opened.
         tokio::time::timeout(Duration::from_millis(500), listener.accept())
@@ -534,10 +530,10 @@ async fn ihe_palm_tf2b_b6_rule8_reconnect_waits_for_previous_dialog_owner() -> R
         })
         .await?;
     packet(&mut peer).await?;
-    vendor_support::state(&path, "Sending").await?;
+    vendor::state(&path, "Sending").await?;
     drop(peer);
     control.reached().await?;
-    vendor_support::state(&path, "Uncertain").await?;
+    vendor::state(&path, "Uncertain").await?;
     // The reconnect backoff is 100 ms. Hold the real closing owner across that
     // boundary and observe the listener, rather than sleeping before accepting.
     assert!(
@@ -551,7 +547,7 @@ async fn ihe_palm_tf2b_b6_rule8_reconnect_waits_for_previous_dialog_owner() -> R
     quiet(&mut peer).await?;
     assert_eq!(count(&path, "machine_orders")?, 1);
     assert_eq!(count(&path, "machine_order_items")?, 2);
-    vendor_support::state(&path, "Uncertain").await?;
+    vendor::state(&path, "Uncertain").await?;
     running.stop().await?;
     reference.close().await?;
     Ok(())

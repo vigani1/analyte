@@ -13,7 +13,7 @@ async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> 
     packet(&mut peer).await?;
     let work = packet(&mut peer).await?;
     orl(&mut peer, &work, &["OK"], false).await?;
-    vendor_support::state(&path, "Accepted").await?;
+    vendor::state(&path, "Accepted").await?;
     wait_state(&path, "done", 1).await?;
     let awos = std::str::from_utf8(field(&work, b"OBR", 2)?)?;
     let valid = law_results::result("valid", &format!("{awos}^LAB"), "", "12.30", "F")
@@ -175,7 +175,7 @@ async fn law_tf2b_3_28_4_adr0003_failed_orl_write_never_finishes_items() -> Resu
         tokio::time::timeout(HANG_GUARD, peer.read(&mut [0])).await??,
         0
     );
-    vendor_support::state(&path, "Uncertain").await?;
+    vendor::state(&path, "Uncertain").await?;
     let states = database(&path)?
         .prepare("SELECT state FROM machine_order_items ORDER BY item_index")?
         .query_map([], |r| r.get::<_, String>(0))?
@@ -229,7 +229,7 @@ async fn law_tf2b_3_28_4_adr0003_orl_commit_precedes_each_item_outcome() -> Resu
     assert_eq!(states, ["Sending", "Sending"]);
     assert_eq!(count(&path, "outbox")?, 0);
     control.resume();
-    vendor_support::state(&path, "Uncertain").await?;
+    vendor::state(&path, "Uncertain").await?;
     let stored: Vec<u8> =
         database(&path)?.query_row("SELECT raw FROM receipts WHERE raw=?1", [&raw], |r| {
             r.get(0)

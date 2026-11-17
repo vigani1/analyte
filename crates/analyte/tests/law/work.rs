@@ -3,7 +3,7 @@ use super::*;
 use crate::support::HANG_GUARD;
 
 async fn state(path: &Path, expected: &str) -> Result<(), Error> {
-    if let Err(error) = vendor_support::state(path, expected).await {
+    if let Err(error) = vendor::state(path, expected).await {
         let current: String = database(path)?.query_row(
             "SELECT state || ':' || source_code FROM machine_orders LIMIT 1",
             [],

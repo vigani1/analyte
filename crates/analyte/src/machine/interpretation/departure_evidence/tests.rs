@@ -1,10 +1,10 @@
 //! Tests ADR 0015 durable provenance, contract-v1 parking and strict source retention.
-use super::tests::{FixtureError, Space, program};
-use super::*;
+use super::super::tests::{FixtureError, Space, program};
+use super::super::*;
 use analyte_fixtures::ConfigEdit as _;
 
 fn declaration(rule: &str, guarantee: &str, hl7: bool) -> String {
-    let mut text = include_str!("../../../../core/config/tests/fixtures/departure.toml")
+    let mut text = include_str!("../../../../../core/config/tests/fixtures/departure.toml")
         .rewrite("astm_frame_limit", rule)
         .rewrite("compatibility", guarantee);
     if hl7 {
@@ -18,7 +18,7 @@ fn declaration(rule: &str, guarantee: &str, hl7: bool) -> String {
 async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let declaration = declaration("hl7_absent_obr25_means_final", "absent_obr25_final", true);
-    let definition=include_str!("../../../../core/config/examples/hl7.toml").rewrite("tcp_server","tcp_client")
+    let definition=include_str!("../../../../../core/config/examples/hl7.toml").rewrite("tcp_server","tcp_client")
         .rewrite("deviations = []",&declaration)
         .rewrite("qc = []","qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='00012',classification='patient'}]");
     let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
@@ -53,7 +53,7 @@ async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Res
 #[tokio::test]
 async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
-    let definition=include_str!("../../../../core/config/examples/astm.toml")
+    let definition=include_str!("../../../../../core/config/examples/astm.toml")
         .rewrite("kind = \"serial\"","kind = \"tcp_client\"")
         .rewrite("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n","")
         .rewrite("deviations = []",&declaration("astm_packed_records_in_frame","packed_records",false));
@@ -106,7 +106,7 @@ async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Resu
 async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meaning()
 -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
-    let definition=include_str!("../../../../core/config/examples/astm.toml")
+    let definition=include_str!("../../../../../core/config/examples/astm.toml")
         .rewrite("kind = \"serial\"","kind = \"tcp_client\"")
         .rewrite("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n","")
         .rewrite("deviations = []",&declaration("astm_packed_records_in_frame","packed_records",false));

@@ -35,7 +35,7 @@ async fn law_tf2b_b6_rsp_issuance_precedes_outbound_dial() -> Result<(), Error> 
         tokio::time::timeout(HANG_GUARD, outbound.read(&mut [0])).await??,
         0
     );
-    vendor_support::state(&path, "Accepted").await?;
+    vendor::state(&path, "Accepted").await?;
     running.stop().await?;
     reference.close().await?;
     Ok(())
