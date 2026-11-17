@@ -1,4 +1,5 @@
 //! Runs ASTM stop-and-wait connections over serial or TCP (LIS01-A2 6/8).
+use analyte_framing::Decode as _;
 use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, NAK};
 use std::{collections::VecDeque, time::Duration};
 
@@ -92,10 +93,7 @@ impl Dialog {
         .unwrap_or(Duration::ZERO);
         self.clock
             .advance(now, headroom)
-            .map_err(|error| match error {
-                crate::ClockError::Reversed => Error::TimeReversed,
-                crate::ClockError::Exhausted => Error::Exhausted,
-            })?;
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         let mut out = Vec::new();
         if matches!(event, Event::Disconnect) {
             self.disconnect(&mut out);
@@ -114,7 +112,11 @@ impl Dialog {
                 Event::Capacity(value) => self.capacity = value,
                 Event::Interrupt(value) => self.interrupt = value,
                 Event::Byte(byte) => {
-                    if let Some(event) = self.decoder.push(byte) {
+                    if let Some(event) = self
+                        .decoder
+                        .push_byte(byte)
+                        .unwrap_or_else(|never| match never {})
+                    {
                         self.wire(event, &mut out)?;
                     }
                     // Unsolicited partial frames still belong to the dialog and
@@ -160,7 +162,11 @@ impl Dialog {
         }
         self.closed = true;
         self.deadline = None;
-        if let Some(astm::Event::Rejected { error, raw }) = self.decoder.finish() {
+        if let Some(astm::Event::Rejected { error, raw }) = self
+            .decoder
+            .finish_stream()
+            .unwrap_or_else(|never| match never {})
+        {
             out.push(Action::Rejected(error, raw));
         }
         let state = std::mem::replace(&mut self.state, State::Neutral);
@@ -251,7 +257,11 @@ impl Dialog {
             State::Receiving(_) | State::Contention => out.push(Action::Ended(End::Timeout)),
             State::Neutral | State::Holdoff => {}
         }
-        if let Some(astm::Event::Rejected { error, raw }) = self.decoder.finish() {
+        if let Some(astm::Event::Rejected { error, raw }) = self
+            .decoder
+            .finish_stream()
+            .unwrap_or_else(|never| match never {})
+        {
             out.push(Action::Rejected(error, raw));
         }
     }

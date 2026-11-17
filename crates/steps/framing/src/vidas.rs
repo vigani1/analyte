@@ -55,7 +55,7 @@ impl Config {
             || chunk > 80
             || maximum == 0
             || maximum > 1920
-            || !matches!(suffix, [] | [13] | [10] | [13, 10])
+            || !matches!(suffix, [] | [CR] | [LF] | [CR, LF])
         {
             return Err(Error::Config);
         }
@@ -92,16 +92,16 @@ impl Config {
         {
             return Err(Error::Payload);
         }
-        let mut raw = self.control(2);
+        let mut raw = self.control(STX);
         for chunk in body.chunks(self.chunk) {
-            raw.extend(self.control(30));
+            raw.extend(self.control(RS));
             raw.extend_from_slice(chunk);
         }
-        raw.extend(self.control(29));
+        raw.extend(self.control(GS));
         let sum = checksum(&raw, self);
         raw.extend(hex(sum, self.checksum.hex.uppercase).bytes());
         if self.mode == Mode::Alternate {
-            raw.extend(self.control(3));
+            raw.extend(self.control(ETX));
         }
         Ok(raw)
     }
@@ -116,8 +116,8 @@ fn checksum(raw: &[u8], config: &Config) -> u8 {
         })
         .copied()
         .filter(|b| {
-            (*b != 2 || config.checksum.include_stx)
-                && (config.checksum.include_suffix || !matches!(b, 10 | 13))
+            (*b != STX || config.checksum.include_stx)
+                && (config.checksum.include_suffix || !matches!(*b, LF | CR))
         })
         .fold(0u8, u8::wrapping_add)
 }
@@ -242,23 +242,23 @@ impl Decoder {
             }
             return self.complete();
         }
-        let control = matches!(byte, 2 | 30 | 29 | 3);
+        let control = matches!(byte, STX | RS | GS | ETX);
         match self.state {
-            State::Start if byte == 2 => {
+            State::Start if byte == STX => {
                 self.state = State::Record;
                 if self.config.checksum.include_stx {
                     self.sum = byte;
                 }
             }
-            State::Record if byte == 30 => {
+            State::Record if byte == RS => {
                 self.state = State::Text;
                 self.sum = self.sum.wrapping_add(byte);
             }
-            State::Text if byte == 30 && self.chunk > 0 => {
+            State::Text if byte == RS && self.chunk > 0 => {
                 self.chunk = 0;
                 self.sum = self.sum.wrapping_add(byte);
             }
-            State::Text if byte == 29 && self.chunk > 0 => {
+            State::Text if byte == GS && self.chunk > 0 => {
                 self.state = State::HexFirst;
                 self.sum = self.sum.wrapping_add(byte);
             }
@@ -288,7 +288,7 @@ impl Decoder {
                     State::End
                 };
             }
-            State::End if byte == 3 => self.state = State::Done,
+            State::End if byte == ETX => self.state = State::Done,
             State::Start | State::Record | State::Text | State::End => return Err(Error::Sequence),
             State::Done | State::Failed => return Err(Error::Stopped),
         }
@@ -325,4 +325,163 @@ pub fn decode(raw: &[u8], config: Config) -> Result<Packet, Error> {
         packet = decoder.push(*byte)?;
     }
     packet.ok_or(Error::Incomplete)
+}
+
+/// STX control byte (BCI Appendix A chapter 3).
+pub const STX: u8 = 0x02;
+/// ETX control byte (BCI Appendix A chapter 3).
+pub const ETX: u8 = 0x03;
+/// EOT control byte (BCI Appendix A chapter 3).
+pub const EOT: u8 = 0x04;
+/// ENQ control byte (BCI Appendix A chapter 3).
+pub const ENQ: u8 = 0x05;
+/// ACK control byte (BCI Appendix A chapter 3).
+pub const ACK: u8 = 0x06;
+/// LF control byte (BCI Appendix A chapter 3).
+pub const LF: u8 = 0x0a;
+/// CR control byte (BCI Appendix A chapter 3).
+pub const CR: u8 = 0x0d;
+/// NAK control byte (BCI Appendix A chapter 3).
+pub const NAK: u8 = 0x15;
+/// GS control byte (BCI Appendix A chapter 3).
+pub const GS: u8 = 0x1d;
+/// RS control byte (BCI Appendix A chapter 3).
+pub const RS: u8 = 0x1e;
+
+impl crate::Decode for Decoder {
+    type Event = Packet;
+    type Error = Error;
+    fn push_byte(&mut self, byte: u8) -> Result<Option<Packet>, Error> {
+        self.push(byte)
+    }
+    fn finish_stream(&mut self) -> Result<Option<Packet>, Error> {
+        if self.raw.is_empty() || matches!(self.state, State::Done) && self.suffix == usize::MAX {
+            return Ok(None);
+        }
+        self.state = State::Failed;
+        Err(Error::Incomplete)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Decode;
+    use proptest::prelude::*;
+
+    fn config(
+        mode: Mode,
+        suffix: &[u8],
+        include_stx: bool,
+        include_suffix: bool,
+        uppercase: bool,
+        chunk: usize,
+    ) -> Config {
+        Config::new(
+            mode,
+            chunk,
+            1920,
+            suffix,
+            Checksum {
+                include_stx,
+                include_suffix,
+                hex: HexOptions {
+                    uppercase,
+                    accept_either_case: false,
+                },
+            },
+        )
+        .unwrap_or_else(|error| panic!("synthetic configuration: {error}"))
+    }
+
+    #[test]
+    fn vidas_bci_appendix_a_ch3_checksum_span_case_suffix_and_packet_boundaries() {
+        for mode in [Mode::Literal, Mode::Alternate] {
+            let c = config(mode, &[], false, false, false, 80);
+            let mut expected = vec![STX, RS, b'A', GS, b'7', b'c'];
+            if mode == Mode::Alternate {
+                expected.push(ETX);
+            }
+            assert_eq!(c.encode(b"A").unwrap(), expected);
+            assert_eq!(decode(&expected, c).unwrap().body, b"A");
+        }
+        for (stx, suffix, expected) in [
+            (false, false, "7c"),
+            (true, false, "7e"),
+            (false, true, "96"),
+            (true, true, "a5"),
+        ] {
+            let c = config(Mode::Literal, &[CR], stx, suffix, false, 80);
+            let raw = c.encode(b"A").unwrap();
+            assert!(raw.ends_with(expected.as_bytes()));
+            assert_eq!(decode(&raw, c).unwrap().raw, raw);
+        }
+        let mut c = config(Mode::Literal, &[], false, false, true, 80);
+        let lower = config(Mode::Literal, &[], false, false, false, 80)
+            .encode(b"A")
+            .unwrap();
+        assert_eq!(decode(&lower, c.clone()).unwrap_err(), Error::Checksum);
+        c.checksum.hex.accept_either_case = true;
+        assert_eq!(decode(&lower, c).unwrap().body, b"A");
+    }
+
+    #[test]
+    fn vidas_bci_appendix_a_ch3_malformed_packets_truncation_and_limits() {
+        let c = config(Mode::Alternate, &[CR, LF], false, false, false, 1);
+        let raw = c.encode(&vec![b'A'; 1920]).unwrap();
+        assert_eq!(decode(&raw, c.clone()).unwrap().body.len(), 1920);
+        assert_eq!(c.encode(&vec![b'A'; 1921]), Err(Error::Payload));
+        assert_eq!(c.encode(b""), Err(Error::Payload));
+        assert_eq!(c.encode(&[NAK]), Err(Error::Payload));
+        let c = config(Mode::Alternate, &[], false, false, false, 80);
+        let raw = c.encode(b"A").unwrap();
+        for length in 0..raw.len() {
+            assert!(decode(&raw[..length], c.clone()).is_err());
+        }
+        for (offset, byte) in [(0, EOT), (2, NAK), (5, b'0')] {
+            let mut damaged = raw.clone();
+            damaged[offset] = byte;
+            let mut decoder = Decoder::new(c.clone());
+            let mut failed = false;
+            for byte in damaged {
+                if decoder.push_byte(byte).is_err() {
+                    failed = true;
+                    break;
+                }
+            }
+            assert!(failed);
+            assert_eq!(decoder.push_byte(b'A').unwrap_err(), Error::Stopped);
+        }
+        let mut trailing = raw;
+        trailing.push(EOT);
+        assert_eq!(decode(&trailing, c.clone()).unwrap_err(), Error::Trailing);
+        for (chunk, maximum, suffix) in [
+            (0, 1920, &[][..]),
+            (81, 1920, &[][..]),
+            (80, 0, &[][..]),
+            (80, 1921, &[][..]),
+            (80, 1920, &[EOT][..]),
+        ] {
+            assert!(Config::new(Mode::Literal, chunk, maximum, suffix, c.checksum).is_err());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn vidas_bci_appendix_a_ch3_property_roundtrip_both_modes_and_all_checksum_options(body in "[ -~]{1,1920}", alternate in any::<bool>(), suffix in 0usize..4, stx in any::<bool>(), include_suffix in any::<bool>(), uppercase in any::<bool>(), chunk in 1usize..81, split in 0usize..9000) {
+            let suffixes = [&[][..], &[CR][..], &[LF][..], &[CR,LF][..]];
+            let c = config(if alternate {Mode::Alternate} else {Mode::Literal}, suffixes[suffix], stx, include_suffix, uppercase, chunk);
+            let raw = c.encode(body.as_bytes()).unwrap();
+            let mut decoder = Decoder::new(c);
+            let split = split.min(raw.len());
+            let mut output = Vec::new();
+            for fragment in [&raw[..split], &raw[split..]] {
+                for byte in fragment { if let Some(packet) = decoder.push_byte(*byte).unwrap() { output.push(packet); } }
+            }
+            prop_assert_eq!(output.len(), 1);
+            prop_assert_eq!(&output[0].body, body.as_bytes());
+            prop_assert_eq!(&output[0].raw, &raw);
+            prop_assert!(decoder.finish_stream().unwrap().is_none());
+        }
+    }
 }

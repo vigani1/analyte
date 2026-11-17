@@ -99,14 +99,27 @@ fn vidas_bci_a_3_adr0003_store_gate_and_incomplete_transfer()
         let mut dialog = Dialog::upload(c, policy())?;
         assert!(
             dialog
-                .on(Event::Control(5))
+                .step(Duration::ZERO, Event::Control(5))
+                .unwrap()
                 .contains(&Action::Send(vec![6]))
         );
-        let actions = dialog.on(Event::Packet(packet.ok_or("packet")?));
+        let actions = dialog
+            .step(Duration::ZERO, Event::Packet(packet.ok_or("packet")?))
+            .unwrap();
         assert!(actions.iter().any(|a| matches!(a, Action::Store(_))));
         assert!(!actions.iter().any(|a| matches!(a, Action::Send(_))));
-        assert!(dialog.on(Event::Stored).contains(&Action::Send(vec![6])));
-        assert!(dialog.on(Event::Disconnected).contains(&Action::Park));
+        assert!(
+            dialog
+                .step(Duration::ZERO, Event::Stored)
+                .unwrap()
+                .contains(&Action::Send(vec![6]))
+        );
+        assert!(
+            dialog
+                .step(Duration::ZERO, Event::Disconnected)
+                .unwrap()
+                .contains(&Action::Park)
+        );
     }
     Ok(())
 }
@@ -119,11 +132,23 @@ fn vidas_bci_a_5_download_never_resends_after_lost_ack() -> Result<(), Box<dyn s
         let bytes = c.encode(request.text().as_bytes())?;
         let mut dialog = Dialog::download(c, policy(), &request)?;
         assert!(dialog.start().contains(&Action::Send(vec![5])));
-        assert!(dialog.on(Event::Control(6)).contains(&Action::Send(bytes)));
-        let timeout = dialog.on(Event::Expired(Timer::Acknowledgment));
+        assert!(
+            dialog
+                .step(Duration::ZERO, Event::Control(6))
+                .unwrap()
+                .contains(&Action::Send(bytes))
+        );
+        let timeout = dialog
+            .step(Duration::ZERO, Event::Expired(Timer::Acknowledgment))
+            .unwrap();
         assert!(timeout.contains(&Action::Park));
         assert!(!timeout.iter().any(|a| matches!(a, Action::Send(_))));
-        assert!(dialog.on(Event::Control(6)).is_empty());
+        assert!(
+            dialog
+                .step(Duration::ZERO, Event::Control(6))
+                .unwrap()
+                .is_empty()
+        );
     }
     Ok(())
 }
@@ -159,24 +184,41 @@ fn vidas_bci_a_3_storage_failure_and_successful_sessions() -> Result<(), Box<dyn
         }
         let packet = packet.ok_or("packet")?;
         let mut failed = Dialog::upload(c.clone(), policy())?;
-        let _ = failed.on(Event::Control(5));
-        let _ = failed.on(Event::Packet(packet.clone()));
-        let actions = failed.on(Event::StorageFailed);
+        let _ = failed.step(Duration::ZERO, Event::Control(5)).unwrap();
+        let _ = failed
+            .step(Duration::ZERO, Event::Packet(packet.clone()))
+            .unwrap();
+        let actions = failed.step(Duration::ZERO, Event::StorageFailed).unwrap();
         assert!(actions.contains(&Action::Park));
         assert!(!actions.iter().any(|a| matches!(a, Action::Send(_))));
-        assert!(failed.on(Event::Stored).is_empty());
+        assert!(
+            failed
+                .step(Duration::ZERO, Event::Stored)
+                .unwrap()
+                .is_empty()
+        );
         let mut upload = Dialog::upload(c.clone(), policy())?;
-        let _ = upload.on(Event::Control(5));
-        let _ = upload.on(Event::Packet(packet));
-        let _ = upload.on(Event::Stored);
+        let _ = upload.step(Duration::ZERO, Event::Control(5)).unwrap();
+        let _ = upload.step(Duration::ZERO, Event::Packet(packet)).unwrap();
+        let _ = upload.step(Duration::ZERO, Event::Stored).unwrap();
         if mode == Mode::Literal {
-            assert!(!upload.on(Event::Control(3)).contains(&Action::Complete));
+            assert!(
+                !upload
+                    .step(Duration::ZERO, Event::Control(3))
+                    .unwrap()
+                    .contains(&Action::Complete)
+            );
         }
-        assert!(upload.on(Event::Control(4)).contains(&Action::Complete));
+        assert!(
+            upload
+                .step(Duration::ZERO, Event::Control(4))
+                .unwrap()
+                .contains(&Action::Complete)
+        );
         let request = Message::parse("mtmpr|piX|si|ci0001|rtHCG|", SampleLimit::Twelve)?;
         let mut download = Dialog::download(c, policy(), &request)?;
-        let _ = download.on(Event::Control(6));
-        let actions = download.on(Event::Control(6));
+        let _ = download.step(Duration::ZERO, Event::Control(6)).unwrap();
+        let actions = download.step(Duration::ZERO, Event::Control(6)).unwrap();
         assert_eq!(
             actions.contains(&Action::Send(vec![3])),
             mode == Mode::Literal
