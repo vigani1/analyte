@@ -18,7 +18,7 @@ impl Request {
     }
 }
 
-// This guard is declared after Handle so cancellation precedes its joining Drop.
+// This guard is declared after Handle so cancellation precedes closing its queue.
 struct CancelStartup(crate::startup::Startup);
 
 impl Drop for CancelStartup {
@@ -51,8 +51,9 @@ impl Handle {
     /// Starts a worker; opening and migration happen on that thread.
     /// # Errors
     /// Refuses invalid queue capacity, thread creation and opening failures. A startup
-    /// timeout names its active step; cancellation interrupts SQLite and joins the owner
-    /// after rollback. Earlier committed migration versions are preserved.
+    /// timeout names its active step; cancellation interrupts SQLite so the owner
+    /// can roll back. Earlier committed migration versions are preserved. The
+    /// caller must not abandon startup: dropping its future cannot await cleanup.
     pub async fn start(
         path: PathBuf,
         limits: Limits,

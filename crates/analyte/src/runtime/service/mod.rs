@@ -302,9 +302,9 @@ async fn prepare_service(
     loopback: bool,
 ) -> Result<(Arc<Handle>, Option<crate::admin::Server>), Error> {
     let store = open_service_store(program, space).await?;
-    #[cfg(feature = "test-hooks")]
-    super::test_hooks::publish_store_probes(program, &store)?;
     let startup = async {
+        #[cfg(feature = "test-hooks")]
+        super::test_hooks::publish_store_probes(program, &store)?;
         let paused = store
             .request(deadline(), |store| store.restore_unreconciled())
             .await?;
