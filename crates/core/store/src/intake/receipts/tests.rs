@@ -11,7 +11,7 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
     store.receive(&metadata, b"raw\0exact", b"config")?;
     assert!(matches!(
         store.receive(&metadata, b"raw\0exact", b"config"),
-        Err(IntakeError::ConstraintViolation(_))
+        Err(IntakeError::Storage(StorageError::ConstraintViolation(_)))
     ));
     let reading = interpretation()?;
     assert_eq!(
@@ -50,7 +50,7 @@ proptest! {
         let mut saved=Vec::new();
         for raw in operations {
             let metadata=receipt(&raw).map_err(|e| TestCaseError::fail(e.to_string()))?; store.receive(&metadata,&raw,b"config")?;
-            prop_assert!(matches!(store.receive(&metadata,&raw,b"config"), Err(IntakeError::ConstraintViolation(_))));
+            prop_assert!(matches!(store.receive(&metadata,&raw,b"config"), Err(IntakeError::Storage(StorageError::ConstraintViolation(_)))));
             saved.push((metadata.id,raw));
             drop(store); store=open(&path)?;
             for (id,raw) in &saved { let stored=store.raw(*id)?; prop_assert_eq!(stored.as_ref(),Some(raw)); }

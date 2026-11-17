@@ -47,9 +47,6 @@ pub(crate) struct Cleanup<E> {
 /// Shared causes that require a protocol owner to refuse positive effects.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Refusal<E: std::error::Error + 'static> {
-    /// A transport operation or input journal could not complete.
-    #[error(transparent)]
-    Link(Box<crate::machine::link::error::Error>),
     /// A durable-store or interpretation operation failed.
     #[error(transparent)]
     Evidence(Box<crate::machine::receive::error::Error>),

@@ -50,7 +50,7 @@ pub(crate) async fn lookup(
     {
         Ok(answer) => Ok(answer),
         Err(
-            analyte_store::OrderError::Busy(_)
+            analyte_store::OrderError::Storage(analyte_store::StorageError::Busy(_))
             | analyte_store::OrderError::Worker(
                 analyte_store::WorkerError::AdmissionTimeout { .. }
                 | analyte_store::WorkerError::ResponseTimeout(_),

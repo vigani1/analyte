@@ -37,10 +37,33 @@ pub(crate) enum Error {
     /// ASTM record syntax could not be decoded.
     #[error(transparent)]
     Syntax(#[from] analyte_astm::Error),
-    /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
+    /// Retains link, store and evidence causes from [`crate::machine::receive::error::Error`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
     Refusal(#[from] crate::machine::custody::Refusal<Self>),
+}
+
+impl<C> From<C> for Error
+where
+    crate::machine::receive::error::Error: From<C>,
+{
+    fn from(cause: C) -> Self {
+        Self::Refusal(crate::machine::custody::Refusal::Evidence(Box::new(
+            crate::machine::receive::error::Error::from(cause),
+        )))
+    }
+}
+impl From<crate::machine::custody::StoreWaitError<Self>> for Error {
+    fn from(cause: crate::machine::custody::StoreWaitError<Self>) -> Self {
+        Self::Refusal(crate::machine::custody::Refusal::Custody(Box::new(cause)))
+    }
+}
+impl crate::machine::custody::CleanupFailure for Error {
+    fn with_effect(original: Self, effect: Self) -> Self {
+        Self::Refusal(crate::machine::custody::Refusal::Cleanup(Box::new(
+            crate::machine::custody::Cleanup { original, effect },
+        )))
+    }
 }
 
 #[cfg(test)]
@@ -52,7 +75,7 @@ mod tests {
     async fn adr0003_astm_refusal_preserves_custody_cause_and_operator_text() {
         use crate::machine::custody::{StoreWaitError, store_within};
         let storage = Error::CommitRefused(StoreWaitError::Operation(
-            analyte_store::IntakeError::Capacity,
+            analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity),
         ));
         let expired = store_within(
             std::time::Duration::from_millis(1),
@@ -64,7 +87,7 @@ mod tests {
         assert!(matches!(
             &storage,
             Error::CommitRefused(StoreWaitError::Operation(
-                analyte_store::IntakeError::Capacity
+                analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity)
             ))
         ));
         assert!(matches!(
@@ -86,5 +109,3 @@ mod tests {
         }
     }
 }
-
-crate::runtime::service::conversions::causes!(Error; protocol);

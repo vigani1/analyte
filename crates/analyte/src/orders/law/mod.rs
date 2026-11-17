@@ -301,19 +301,38 @@ impl LawOrderLink {
                     Ok::<_, analyte_store::OrderError>(
                         store.audit(&analyte_store::Audit {
                             actor,
-                            action: Identifier::new(Code::LawNegativeQueryOrl.as_str())
-                                .map_err(analyte_store::OrderError::Text)?,
+                            action: Identifier::new(Code::LawNegativeQueryOrl.as_str()).map_err(
+                                |cause| {
+                                    analyte_store::OrderError::Storage(
+                                        analyte_store::StorageError::Text(cause),
+                                    )
+                                },
+                            )?,
                             targets: vec![
-                                Identifier::new(&uuid::Uuid::from(receipt).to_string())
-                                    .map_err(analyte_store::OrderError::Text)?,
-                                Identifier::new(&uuid::Uuid::from(query).to_string())
-                                    .map_err(analyte_store::OrderError::Text)?,
+                                Identifier::new(&uuid::Uuid::from(receipt).to_string()).map_err(
+                                    |cause| {
+                                        analyte_store::OrderError::Storage(
+                                            analyte_store::StorageError::Text(cause),
+                                        )
+                                    },
+                                )?,
+                                Identifier::new(&uuid::Uuid::from(query).to_string()).map_err(
+                                    |cause| {
+                                        analyte_store::OrderError::Storage(
+                                            analyte_store::StorageError::Text(cause),
+                                        )
+                                    },
+                                )?,
                             ],
                             time: jiff::Timestamp::now().as_second(),
                             reason: analyte_model::Reason::new(&format!(
                                 "negative followup ORL correlated={correlated} acceptance={code}"
                             ))
-                            .map_err(analyte_store::OrderError::Text)?,
+                            .map_err(|cause| {
+                                analyte_store::OrderError::Storage(
+                                    analyte_store::StorageError::Text(cause),
+                                )
+                            })?,
                         })?,
                     )
                 })
@@ -446,9 +465,11 @@ async fn query_orders(
                                 .checked_add(orders.len())
                                 .is_none_or(|count| count > bound)
                             {
-                                return Err(analyte_store::OrderError::LimitExceeded {
-                                    what: "pending_order_rows",
-                                }
+                                return Err(analyte_store::OrderError::Storage(
+                                    analyte_store::StorageError::LimitExceeded {
+                                        what: "pending_order_rows",
+                                    },
+                                )
                                 .into());
                             }
                             found.extend(orders);
@@ -460,9 +481,11 @@ async fn query_orders(
                         }
                     }
                     if page.checked_add(1) == Some(bound) {
-                        return Err(analyte_store::OrderError::LimitExceeded {
-                            what: "pending_order_pages",
-                        }
+                        return Err(analyte_store::OrderError::Storage(
+                            analyte_store::StorageError::LimitExceeded {
+                                what: "pending_order_pages",
+                            },
+                        )
                         .into());
                     }
                 }

@@ -34,7 +34,9 @@ pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Resu
                     let reason = Reason::new(
                         "Autolyser previous session left a poll without confirmed cursor custody",
                     )
-                    .map_err(analyte_store::OrderError::Text)?;
+                    .map_err(|cause| {
+                        analyte_store::OrderError::Storage(analyte_store::StorageError::Text(cause))
+                    })?;
                     let audit = audit(intent.id, &machine_id, PollOutcome::Uncertain, reason)
                         .map_err(|error| {
                             analyte_store::OrderError::DeliveryBuild(Box::new(error))

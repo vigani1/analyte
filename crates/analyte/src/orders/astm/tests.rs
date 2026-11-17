@@ -132,7 +132,11 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
                 if case != "unknown" {
                     s.order_page(&analyte_store::OrderPage {
                         destination,
-                        cursor: Identifier::new("c").map_err(analyte_store::OrderError::Text)?,
+                        cursor: Identifier::new("c").map_err(|cause| {
+                            analyte_store::OrderError::Storage(analyte_store::StorageError::Text(
+                                cause,
+                            ))
+                        })?,
                         complete: case != "incomplete",
                         polled: jiff::Timestamp::now().as_second()
                             - if case == "paused" { 0 } else { 50 },
@@ -141,14 +145,25 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
                 }
                 if case == "paused" {
                     s.audit(&analyte_store::Audit {
-                        actor: Identifier::new("operator")
-                            .map_err(analyte_store::OrderError::Text)?,
-                        action: Identifier::new("store-restore")
-                            .map_err(analyte_store::OrderError::Text)?,
+                        actor: Identifier::new("operator").map_err(|cause| {
+                            analyte_store::OrderError::Storage(analyte_store::StorageError::Text(
+                                cause,
+                            ))
+                        })?,
+                        action: Identifier::new("store-restore").map_err(|cause| {
+                            analyte_store::OrderError::Storage(analyte_store::StorageError::Text(
+                                cause,
+                            ))
+                        })?,
                         targets: Vec::new(),
                         time: 0,
-                        reason: analyte_model::Reason::new("synthetic restore")
-                            .map_err(analyte_store::OrderError::Text)?,
+                        reason: analyte_model::Reason::new("synthetic restore").map_err(
+                            |cause| {
+                                analyte_store::OrderError::Storage(
+                                    analyte_store::StorageError::Text(cause),
+                                )
+                            },
+                        )?,
                     })?;
                 }
                 Ok::<_, analyte_store::OrderError>(())

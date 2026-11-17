@@ -309,8 +309,9 @@ mod webhook_tests {
         .await?;
         store
             .request::<_, analyte_store::OperatorError>(deadline()?, |s| {
-                let endpoint = analyte_model::Identifier::new("relay")
-                    .map_err(analyte_store::OperatorError::Text)?;
+                let endpoint = analyte_model::Identifier::new("relay").map_err(|cause| {
+                    analyte_store::OperatorError::Storage(analyte_store::StorageError::Text(cause))
+                })?;
                 s.register_alert_endpoint(&endpoint)?;
                 s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,

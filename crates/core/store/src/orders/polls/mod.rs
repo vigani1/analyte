@@ -83,7 +83,7 @@ impl Store {
         reason: &Reason,
     ) -> Result<PollIntentId, Error> {
         let details = Parked {
-            kind: Identifier::new("poll_intent").map_err(Error::Text)?,
+            kind: Identifier::new("poll_intent").map_err(crate::StorageError::Text)?,
             reason: reason.clone(),
             targets: vec![machine.clone()],
         };
@@ -99,10 +99,10 @@ impl Store {
                         .as_str()
                         .len()
                         .checked_mul(2)
-                        .ok_or(Error::Capacity)?,
+                        .ok_or(Error::Storage(crate::StorageError::Capacity))?,
                 )
                 .and_then(|n| n.checked_add(256))
-                .ok_or(Error::Capacity)?,
+                .ok_or(Error::Storage(crate::StorageError::Capacity))?,
         )?;
         let tx = self
             .db
@@ -238,7 +238,7 @@ pub(crate) fn resolution_bytes(
                 .and_then(|r| n.checked_add(r))
         })
         .and_then(|n| rows.checked_mul(128).and_then(|r| n.checked_add(r)))
-        .ok_or(Error::Capacity)
+        .ok_or(Error::Storage(crate::StorageError::Capacity))
 }
 
 // The existing operator parked-resolution command reconciles every machine linked

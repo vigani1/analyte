@@ -38,9 +38,9 @@ impl Store {
                 .ok()
                 .and_then(|bytes| bytes.checked_mul(2))
                 .and_then(|bytes| bytes.checked_add(store.limits.reserve_bytes))
-                .ok_or(Error::Capacity)?;
+                .ok_or(Error::Storage(crate::StorageError::Capacity))?;
             if store.space.available(path)? <= needed {
-                return Err(Error::Capacity);
+                return Err(Error::Storage(crate::StorageError::Capacity));
             }
             store
                 .db

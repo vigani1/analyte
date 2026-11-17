@@ -77,7 +77,10 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, DeliveryError::ConstraintViolation(_)),
+            matches!(
+                &refusal,
+                DeliveryError::Storage(StorageError::ConstraintViolation(_))
+            ),
             "unexpected refusal: {refusal:?}"
         );
     }

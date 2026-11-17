@@ -74,7 +74,7 @@ fn mutation_adr0003_park_resolve_and_audit_keep_exact_evidence_once_after_restar
     store.db.execute_batch("CREATE TRIGGER fail_resolution_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
     assert!(matches!(
         store.resolve(id, &entry),
-        Err(OperatorError::ConstraintViolation(_))
+        Err(OperatorError::Storage(StorageError::ConstraintViolation(_)))
     ));
     assert!(
         store

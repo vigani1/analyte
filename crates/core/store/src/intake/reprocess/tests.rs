@@ -51,7 +51,10 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, ReconciliationError::ConstraintViolation(_)),
+            matches!(
+                &refusal,
+                ReconciliationError::Storage(StorageError::ConstraintViolation(_))
+            ),
             "unexpected refusal: {refusal:?}"
         );
     }

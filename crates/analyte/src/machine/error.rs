@@ -19,9 +19,6 @@ pub(crate) enum Error {
     /// The AUTOLYSER session refused further processing.
     #[error(transparent)]
     Autolyser(Box<super::autolyser::Error>),
-    /// A transport owner or shutdown operation failed.
-    #[error(transparent)]
-    Link(super::link::error::Error),
     /// Connection custody or retained evidence failed.
     #[error(transparent)]
     Evidence(super::receive::error::Error),
@@ -79,13 +76,10 @@ impl From<super::autolyser::Error> for Error {
 
 impl<C> From<C> for Error
 where
-    super::receive::shared::Shared: From<C>,
+    super::receive::error::Error: From<C>,
 {
     fn from(cause: C) -> Self {
-        match super::receive::shared::Shared::from(cause) {
-            super::receive::shared::Shared::Link(cause) => Self::Link(cause),
-            super::receive::shared::Shared::Evidence(cause) => Self::Evidence(cause),
-        }
+        Self::Evidence(super::receive::error::Error::from(cause))
     }
 }
 
@@ -129,11 +123,14 @@ mod tests {
                 "write all"
             ))
         ));
-        let custody =
-            super::super::receive::error::Error::from(analyte_store::IntakeError::Capacity);
+        let custody = super::super::receive::error::Error::from(
+            analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity),
+        );
         assert!(matches!(
             custody,
-            super::super::receive::error::Error::Store(analyte_store::IntakeError::Capacity)
+            super::super::receive::error::Error::Store(analyte_store::IntakeError::Storage(
+                analyte_store::StorageError::Capacity
+            ))
         ));
         let source = Error::from(std::io::Error::other("synthetic owner failure"));
         assert_eq!(source.to_string(), "synthetic owner failure");

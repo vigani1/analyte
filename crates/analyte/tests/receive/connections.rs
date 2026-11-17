@@ -291,10 +291,18 @@ async fn plan11_operator_list_show_resolve_are_audited_and_backup_is_readable() 
                 .ok_or("deadline overflow")?,
             |store| {
                 store.park(&analyte_store::Parked {
-                    kind: analyte_model::Identifier::new("synthetic")
-                        .map_err(analyte_store::OperatorError::Text)?,
-                    reason: analyte_model::Reason::new("synthetic operator test")
-                        .map_err(analyte_store::OperatorError::Text)?,
+                    kind: analyte_model::Identifier::new("synthetic").map_err(|cause| {
+                        analyte_store::OperatorError::Storage(analyte_store::StorageError::Text(
+                            cause,
+                        ))
+                    })?,
+                    reason: analyte_model::Reason::new("synthetic operator test").map_err(
+                        |cause| {
+                            analyte_store::OperatorError::Storage(
+                                analyte_store::StorageError::Text(cause),
+                            )
+                        },
+                    )?,
                     targets: Vec::new(),
                 })
             },

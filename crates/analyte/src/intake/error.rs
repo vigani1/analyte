@@ -43,4 +43,8 @@ pub enum IntakeError {
     WrongMachine,
 }
 
-crate::runtime::service::conversions::causes!(IntakeError; worker analyte_store::IntakeError);
+impl From<analyte_store::WorkerError> for IntakeError {
+    fn from(cause: analyte_store::WorkerError) -> Self {
+        Self::Store(analyte_store::IntakeError::from(cause))
+    }
+}

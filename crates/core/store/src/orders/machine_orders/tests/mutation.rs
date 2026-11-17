@@ -237,9 +237,9 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
             } else {
                 assert!(matches!(
                     result,
-                    Err(OrderError::LimitExceeded {
+                    Err(OrderError::Storage(StorageError::LimitExceeded {
                         what: "record_bytes"
-                    })
+                    }))
                 ));
                 assert_eq!(
                     store.machine_order(&key)?.ok_or("missing order")?.state,
@@ -272,9 +272,9 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
             } else {
                 assert!(matches!(
                     result,
-                    Err(OrderError::LimitExceeded {
+                    Err(OrderError::Storage(StorageError::LimitExceeded {
                         what: "record_bytes"
-                    })
+                    }))
                 ));
                 assert_eq!(
                     store.machine_order(&key)?.ok_or("missing order")?.state,
@@ -332,10 +332,12 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
                 ];
                 match case {
                     "destination" => {
-                        value.destination = Identifier::new("wrong").map_err(OrderError::Text)?;
+                        value.destination = Identifier::new("wrong")
+                            .map_err(|cause| OrderError::Storage(StorageError::Text(cause)))?;
                     }
                     "order" => {
-                        value.order_id = Identifier::new("wrong").map_err(OrderError::Text)?;
+                        value.order_id = Identifier::new("wrong")
+                            .map_err(|cause| OrderError::Storage(StorageError::Text(cause)))?;
                     }
                     "version" => value.contract_version = 2,
                     "valid" | "large-one" | "large-two" => {}

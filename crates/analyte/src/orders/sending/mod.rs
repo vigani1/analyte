@@ -241,8 +241,11 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                         store.transition_order(
                             id,
                             OrderState::Uncertain,
-                            SourceText::new(Code::HostRestart.as_str())
-                                .map_err(analyte_store::OrderError::Text)?,
+                            SourceText::new(Code::HostRestart.as_str()).map_err(|cause| {
+                                analyte_store::OrderError::Storage(
+                                    analyte_store::StorageError::Text(cause),
+                                )
+                            })?,
                             jiff::Timestamp::now().as_second(),
                             super::event,
                         )

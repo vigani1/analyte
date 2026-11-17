@@ -75,7 +75,7 @@ fn order_seed(store: &mut Store, state: &str) -> Result<i64, Box<dyn std::error:
 }
 fn order_run(store: &mut Store, now: i64) -> Result<PurgeRun, Error> {
     store.purge_order_batch(
-        &Identifier::new("synthetic-machine").map_err(Error::Text)?,
+        &Identifier::new("synthetic-machine").map_err(crate::StorageError::Text)?,
         Some(1),
         None,
         now,
@@ -205,7 +205,10 @@ fn adr0013_item2_unfinished_items_events_and_linked_receipts_block_order_purge()
             {
                 let refusal = result.map(|_| ()).expect_err("input must be refused");
                 assert!(
-                    matches!(&refusal, Error::ConstraintViolation(_)),
+                    matches!(
+                        &refusal,
+                        Error::Storage(crate::StorageError::ConstraintViolation(_))
+                    ),
                     "unexpected refusal: {refusal:?}"
                 );
             }

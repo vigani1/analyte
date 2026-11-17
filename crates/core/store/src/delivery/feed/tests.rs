@@ -120,7 +120,10 @@ fn adr0004_failed_page_never_advances_its_cursor() -> TestResult {
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, OrderError::ConstraintViolation(_)),
+            matches!(
+                &refusal,
+                OrderError::Storage(StorageError::ConstraintViolation(_))
+            ),
             "unexpected refusal: {refusal:?}"
         );
     }

@@ -40,11 +40,11 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
         let count = store.request::<_, analyte_store::DeliveryError>(until, |store| {
             let now = jiff::Timestamp::now().as_second();
             let audit = Audit {
-                actor: Identifier::new("analyte-startup").map_err(analyte_store::DeliveryError::Text)?,
-                action: Identifier::new("recover-interrupted-delivery").map_err(analyte_store::DeliveryError::Text)?,
+                actor: Identifier::new("analyte-startup").map_err(analyte_store::StorageError::Text)?,
+                action: Identifier::new("recover-interrupted-delivery").map_err(analyte_store::StorageError::Text)?,
                 targets: Vec::new(),
                 time: now,
-                reason: Reason::new("uncertain (interrupted); ADR 0008 idempotent receiver permits retry with the same delivery ID and bytes").map_err(analyte_store::DeliveryError::Text)?,
+                reason: Reason::new("uncertain (interrupted); ADR 0008 idempotent receiver permits retry with the same delivery ID and bytes").map_err(analyte_store::StorageError::Text)?,
             };
             store.recover_in_flight(now, &audit)
         }).await?;

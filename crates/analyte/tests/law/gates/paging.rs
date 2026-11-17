@@ -25,16 +25,16 @@ async fn law_tf2b_3_27_4_competing_feed_during_pages_refuses_instead_of_mixing()
     quiet(&mut peer).await?;
     {
         let update = store.request::<_, analyte_store::OrderError>(std::time::Instant::now() + HANG_GUARD, |s| {
-        let destination = analyte_model::Identifier::new("demo").map_err(analyte_store::OrderError::Text)?;
+        let destination = analyte_model::Identifier::new("demo").map_err(analyte_store::StorageError::Text)?;
         let now = jiff::Timestamp::now().as_second();
         s.reset_orders(&destination)?;
         for chunk in (0..101).collect::<Vec<_>>().chunks(100) {
             let mut orders = Vec::new();
             for i in chunk {
                 let document = serde_json::json!({"id":format!("order-{i:03}"),"version":2,"state":"requested","sample_id":format!("new-{i:03}"),"tests":[{"namespace":"synthetic","value":"TEST"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string();
-                orders.push(analyte_store::CachedOrder { id: analyte_model::Identifier::new(&format!("order-{i:03}")).map_err(analyte_store::OrderError::Text)?, sample: analyte_model::SampleId::new(&format!("new-{i:03}")).map_err(analyte_store::OrderError::Text)?, document, tombstone:false, expiry:now+3600 });
+                orders.push(analyte_store::CachedOrder { id: analyte_model::Identifier::new(&format!("order-{i:03}")).map_err(analyte_store::StorageError::Text)?, sample: analyte_model::SampleId::new(&format!("new-{i:03}")).map_err(analyte_store::StorageError::Text)?, document, tombstone:false, expiry:now+3600 });
             }
-            s.order_page(&analyte_store::OrderPage {destination:destination.clone(), cursor:analyte_model::Identifier::new("updated").map_err(analyte_store::OrderError::Text)?, complete:true, polled:now, orders})?;
+            s.order_page(&analyte_store::OrderPage {destination:destination.clone(), cursor:analyte_model::Identifier::new("updated").map_err(analyte_store::StorageError::Text)?, complete:true, polled:now, orders})?;
         }
         Ok(())
     });

@@ -369,7 +369,7 @@ async fn adr0003_rule1_response_timeout_keeps_typed_cause_and_may_commit() -> Te
         })
         .await;
     assert!(
-        matches!(busy, Err(DeliveryError::Busy(rusqlite::Error::SqliteFailure(code, Some(message)))) if code.extended_code == 5 && message == "synthetic lock")
+        matches!(busy, Err(DeliveryError::Storage(StorageError::Busy(rusqlite::Error::SqliteFailure(code, Some(message))))) if code.extended_code == 5 && message == "synthetic lock")
     );
     let mut owner = Arc::try_unwrap(handle).map_err(|_| "request retained its store owner")?;
     owner.shutdown(until).await?;

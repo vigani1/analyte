@@ -1,7 +1,5 @@
 //! Groups failures by the store operation that can return them.
 
-#[macro_use]
-mod boundary;
 mod intake;
 mod storage;
 pub use intake::IntakeError;

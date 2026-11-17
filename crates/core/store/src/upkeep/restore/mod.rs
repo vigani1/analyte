@@ -24,7 +24,7 @@ impl Store {
         };
         result.map_err(|error| match error {
             std::fs::TryLockError::WouldBlock => Error::InUse,
-            std::fs::TryLockError::Error(error) => Error::Io(error),
+            std::fs::TryLockError::Error(error) => Error::Storage(crate::StorageError::Io(error)),
         })?;
         Ok(file)
     }

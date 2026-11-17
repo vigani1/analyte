@@ -56,8 +56,8 @@ impl Store {
                 item.source_code = outcome.code.clone();
             } else {
                 item.state = item_decision(item, ItemDecision::Uncertain)?;
-                item.source_code =
-                    SourceText::new("exchange-answer-missing").map_err(Error::Text)?;
+                item.source_code = SourceText::new("exchange-answer-missing")
+                    .map_err(crate::StorageError::Text)?;
             }
             item.updated_at = now;
             write_item(&tx, item, limit)?;
@@ -134,5 +134,6 @@ fn outcome_summary(items: &[MachineOrderItem], refused: bool) -> Result<SourceTe
         })
         .collect::<Vec<_>>()
         .join("; ");
-    SourceText::new(&format!("{prefix}: {summary}")).map_err(Error::Text)
+    SourceText::new(&format!("{prefix}: {summary}"))
+        .map_err(|cause| Error::Storage(crate::StorageError::Text(cause)))
 }

@@ -1,6 +1,10 @@
 //! Classifies shared durable-store, interpretation and evidence failures.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// Transport ownership, shutdown or file-link custody failed.
+    #[error(transparent)]
+    Link(#[from] crate::machine::link::error::Error),
+
     /// A bounded synthetic gate stopped or could not resume the connection.
     #[error(transparent)]
     TestHook(#[from] crate::runtime::test_hooks::Error),
@@ -75,4 +79,53 @@ impl From<crate::machine::interpretation::ReadError> for Error {
     }
 }
 
-crate::runtime::service::conversions::causes!(Error; worker analyte_store::IntakeError);
+impl From<analyte_store::WorkerError> for Error {
+    fn from(cause: analyte_store::WorkerError) -> Self {
+        Self::Store(analyte_store::IntakeError::from(cause))
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(cause: std::io::Error) -> Self {
+        Self::Link(cause.into())
+    }
+}
+impl From<analyte_transport::Error> for Error {
+    fn from(cause: analyte_transport::Error) -> Self {
+        Self::Link(cause.into())
+    }
+}
+impl From<std::net::AddrParseError> for Error {
+    fn from(cause: std::net::AddrParseError) -> Self {
+        Self::Link(cause.into())
+    }
+}
+impl From<analyte_transport::folder::WatchError> for Error {
+    fn from(cause: analyte_transport::folder::WatchError) -> Self {
+        Self::Link(cause.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn adr0003_shared_conversions_retain_typed_link_and_store_causes() {
+        let link = Error::from(analyte_transport::Error::Deadline("write all"));
+        assert!(matches!(
+            link,
+            Error::Link(crate::machine::link::error::Error::Transport(
+                analyte_transport::Error::Deadline("write all")
+            ))
+        ));
+        let store = Error::from(analyte_store::IntakeError::from(
+            analyte_store::StorageError::Capacity,
+        ));
+        assert!(matches!(
+            store,
+            Error::Store(analyte_store::IntakeError::Storage(
+                analyte_store::StorageError::Capacity
+            ))
+        ));
+    }
+}

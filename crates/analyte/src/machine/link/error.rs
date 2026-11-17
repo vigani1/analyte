@@ -73,11 +73,29 @@ impl Error {
     }
 }
 
-impl<C> From<C> for Error
-where
-    crate::machine::receive::error::Error: From<C>,
-{
-    fn from(cause: C) -> Self {
-        Self::Custody(Box::new(crate::machine::receive::error::Error::from(cause)))
+impl From<crate::IntakeError> for Error {
+    fn from(cause: crate::IntakeError) -> Self {
+        Self::Custody(Box::new(cause.into()))
+    }
+}
+impl From<analyte_store::IntakeError> for Error {
+    fn from(cause: analyte_store::IntakeError) -> Self {
+        Self::Custody(Box::new(cause.into()))
+    }
+}
+impl From<crate::DeadlineError> for Error {
+    fn from(cause: crate::DeadlineError) -> Self {
+        Self::Custody(Box::new(cause.into()))
+    }
+}
+impl From<analyte_model::TextError> for Error {
+    fn from(cause: analyte_model::TextError) -> Self {
+        Self::Custody(Box::new(cause.into()))
+    }
+}
+
+impl From<std::num::TryFromIntError> for Error {
+    fn from(cause: std::num::TryFromIntError) -> Self {
+        Self::Custody(Box::new(cause.into()))
     }
 }

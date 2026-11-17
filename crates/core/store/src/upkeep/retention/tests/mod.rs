@@ -556,7 +556,10 @@ fn adr0013_item4_audit_failure_rolls_back_purge_and_restores_guards() -> TestRes
     {
         let refusal = result.map(|_| ()).expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
+            matches!(
+                &refusal,
+                Error::Storage(crate::StorageError::ConstraintViolation(_))
+            ),
             "unexpected refusal: {refusal:?}"
         );
     }

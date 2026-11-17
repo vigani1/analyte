@@ -23,7 +23,10 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, ReconciliationError::ConstraintViolation(_)),
+            matches!(
+                &refusal,
+                ReconciliationError::Storage(StorageError::ConstraintViolation(_))
+            ),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -178,7 +181,10 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, OperatorError::ConstraintViolation(_)),
+            matches!(
+                &refusal,
+                OperatorError::Storage(StorageError::ConstraintViolation(_))
+            ),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -277,23 +283,24 @@ fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing(
             ReconcileInput::standard(&[false], &[]),
             |evidence, outcomes| {
                 let Reading::Results(results) = &evidence.outcome else {
-                    return Err(ReconciliationError::LimitExceeded {
+                    return Err(ReconciliationError::Storage(StorageError::LimitExceeded {
                         what: "record_bytes",
-                    });
+                    }));
                 };
                 if matches!(outcomes.first(), Some(RevisionOutcome::Retransmission(_))) {
                     return Ok(Vec::new());
                 }
                 let Some(IdentityStatus::Resolved(identity)) = results.first().map(|r| &r.identity)
                 else {
-                    return Err(ReconciliationError::LimitExceeded {
+                    return Err(ReconciliationError::Storage(StorageError::LimitExceeded {
                         what: "record_bytes",
-                    });
+                    }));
                 };
                 Ok(vec![Delivery {
                     id: DeliveryId::try_from(uuid::Uuid::now_v7())
                         .map_err(ReconciliationError::Identity)?,
-                    destination: Identifier::new("app").map_err(ReconciliationError::Text)?,
+                    destination: Identifier::new("app")
+                        .map_err(|cause| ReconciliationError::Storage(StorageError::Text(cause)))?,
                     ordering_key: OrderingKey {
                         machine: metadata.machine.clone(),
                         observation: identity.observation.clone(),
@@ -430,9 +437,9 @@ fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_clai
         } else {
             assert!(matches!(
                 result,
-                Err(DeliveryError::LimitExceeded {
+                Err(DeliveryError::Storage(StorageError::LimitExceeded {
                     what: "record_bytes"
-                })
+                }))
             ));
             assert_eq!(state, DeliveryState::InFlight);
             assert!(store.audits(0)?.is_empty());

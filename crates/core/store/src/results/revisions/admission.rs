@@ -55,25 +55,27 @@ pub(super) fn required_capacity(
             audit
                 .map_or(0, str::len)
                 .checked_mul(2)
-                .ok_or(Error::Capacity)?,
+                .ok_or(Error::Storage(crate::StorageError::Capacity))?,
         )
-        .ok_or(Error::Capacity)?;
+        .ok_or(Error::Storage(crate::StorageError::Capacity))?;
     if audit.is_some_and(|value| value.len() > limit) {
         return Err(Error::InvalidInterpretationInput);
     }
     for finding in findings {
-        required = required.checked_add(finding.len()).ok_or(Error::Capacity)?;
+        required = required
+            .checked_add(finding.len())
+            .ok_or(Error::Storage(crate::StorageError::Capacity))?;
     }
     for delivery in deliveries {
         required = required
             .checked_add(delivery.payload.len())
-            .ok_or(Error::Capacity)?;
+            .ok_or(Error::Storage(crate::StorageError::Capacity))?;
     }
     for (identity, _, _) in revisions {
         required = required
             .checked_add(identity.len())
             .and_then(|n| n.checked_add(128))
-            .ok_or(Error::Capacity)?;
+            .ok_or(Error::Storage(crate::StorageError::Capacity))?;
     }
 
     Ok(required)
