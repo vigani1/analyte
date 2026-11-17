@@ -66,6 +66,10 @@ impl Custody {
         Some(byte)
     }
     /// LAW returns the just-fed byte when it first closes the preceding envelope.
+    #[expect(
+        clippy::expect_used,
+        reason = "LAW Unconsumed returns the byte just fed through next"
+    )]
     pub(crate) fn replay_last(&mut self) {
         self.fed = self
             .fed
