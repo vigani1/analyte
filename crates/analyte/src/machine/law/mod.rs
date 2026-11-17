@@ -6,7 +6,9 @@ use super::driver::{self, Context, Effects, Flow};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod custody;
+mod effect;
 mod error;
+use effect::Effect;
 pub(crate) mod settings;
 use crate::orders::outcome::Code;
 pub(crate) use error::Error;
@@ -56,6 +58,23 @@ async fn session_with_outbound(
     .await
 }
 
+#[derive(Clone, Copy)]
+enum Custody {
+    Idle,
+    Storing(protocol::ExchangeId, ReceiptId),
+    Stored(protocol::ExchangeId, ReceiptId),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Run {
+    Active,
+    Stopped,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Completion {
+    Pending,
+    Complete,
+}
+
 /// Owns side effects and reservation cleanup. A cancelled store request may still commit;
 /// the dialog cannot accept it or issue an ACK until its completion is driven explicitly.
 struct Host<'a, 'm> {
@@ -66,13 +85,12 @@ struct Host<'a, 'm> {
     orders: &'a mut LawOrderLink,
     dialog: Dialog,
     mode: Mode<'a>,
-    clock: Instant,
-    receipt: Option<(protocol::ExchangeId, ReceiptId)>,
+    start: Instant,
+    custody: Custody,
     ready: Option<oneshot::Sender<()>>,
-    stored: bool,
     outbound: Option<&'a tokio::sync::mpsc::Sender<independent::Work>>,
-    stopped: bool,
-    completed: bool,
+    run: Run,
+    completion: Completion,
     pending_input: VecDeque<u8>,
 }
 impl<'a, 'm> Host<'a, 'm> {
@@ -95,33 +113,36 @@ impl<'a, 'm> Host<'a, 'm> {
             orders,
             mode,
             dialog: settings::dialog(settings, link)?,
-            clock: Instant::now(),
-            receipt: None,
+            start: Instant::now(),
+            custody: Custody::Idle,
             ready: None,
-            stored: false,
             outbound: None,
-            stopped: false,
-            completed: false,
+            run: Run::Active,
+            completion: Completion::Pending,
             pending_input: VecDeque::new(),
         })
     }
     fn absolute(&self, until: Duration) -> Result<Instant, Error> {
-        self.clock
+        self.start
             .checked_add(until)
             .ok_or_else(|| Error::ConnectionDeadlineOverflow)
     }
     fn receipt(&self, token: protocol::ExchangeId) -> Result<ReceiptId, Error> {
-        self.receipt
-            .filter(|(expected, _)| *expected == token)
-            .map(|(_, id)| id)
-            .ok_or_else(|| Error::ReceiptCorrelationMissing)
+        match self.custody {
+            Custody::Storing(expected, id) | Custody::Stored(expected, id) if expected == token => {
+                Ok(id)
+            }
+            Custody::Idle | Custody::Storing(..) | Custody::Stored(..) => {
+                Err(Error::ReceiptCorrelationMissing)
+            }
+        }
     }
     async fn transition(
         &mut self,
         event: Event<'_>,
         host: &mut Context<'_, '_>,
     ) -> Result<(), Error> {
-        let actions = self.dialog.step(self.clock.elapsed(), event)?;
+        let actions = self.dialog.step(self.start.elapsed(), event)?;
         self.apply(actions, host).await
     }
     async fn apply(
@@ -137,15 +158,18 @@ impl<'a, 'm> Host<'a, 'm> {
                 .map(|until| self.absolute(until))
                 .transpose()?;
             let mut stop = host.stop.clone();
-            if let Action::Unconsumed(byte) = action {
-                self.pending_input.push_front(byte);
-                continue;
-            }
+            let action = match Effect::try_from(action) {
+                Ok(effect) => effect,
+                Err(byte) => {
+                    self.pending_input.push_front(byte);
+                    continue;
+                }
+            };
             let protects_raw = matches!(
                 &action,
-                Action::Store(..) | Action::Rejected(..) | Action::Uncommitted(..)
+                Effect::Store(..) | Effect::Rejected(..) | Effect::Uncommitted(..)
             );
-            let timeout_reason = if matches!(&action, Action::Write(..)) {
+            let timeout_reason = if matches!(&action, Effect::Write(..)) {
                 error::DeadlineReason::Write
             } else {
                 error::DeadlineReason::Effect
@@ -170,7 +194,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 tokio::select! {
                 biased;
                     () = analyte_sink::stopped(&mut stop) => {
-                        self.stopped = true;
+                        self.run = Run::Stopped;
                         return Ok(());
                     },
                     result = operation => result?,
@@ -182,15 +206,14 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn effect(
         &mut self,
-        action: Action,
+        action: Effect,
         host: &mut Context<'_, '_>,
     ) -> Result<Vec<Action>, Error> {
         let machine = self.machine.machine();
         let event = match action {
-            Action::Store(token, raw) => {
+            Effect::Store(token, raw) => {
                 let id = ReceiptId::new();
-                self.receipt = Some((token, id));
-                self.stored = false;
+                self.custody = Custody::Storing(token, id);
 
                 machine
                     .hooks
@@ -203,14 +226,14 @@ impl<'a, 'm> Host<'a, 'm> {
                     intake::receive(self.store, self.machine, id, raw),
                 )
                 .await?;
-                self.stored = true;
+                self.custody = Custody::Stored(token, id);
 
                 if machine.hooks.enabled(Pause::LawCommitted) {
                     let mut stop = host.stop.clone();
                     tokio::select! {
                     biased;
                             () = analyte_sink::stopped(&mut stop) => {
-                                self.stopped = true;
+                                self.run = Run::Stopped;
                                 return Ok(Vec::new());
                             },
                             result = machine.hooks.pause(Pause::LawCommitted, &mut host.stop) => result.map_err(Error::from)?,
@@ -218,30 +241,30 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
                 Event::Stored(token)
             }
-            Action::Query(token, message, started) => {
+            Effect::Query(token, message, started) => {
                 return self.answer_query(token, message, started, host).await;
             }
-            Action::WorkResponse(token, message) => {
+            Effect::WorkResponse(token, message) => {
                 self.orders
                     .orl(self.store, machine, &message, self.receipt(token)?)
                     .await?;
                 Event::Complete(token)
             }
-            Action::Interpret(token) => {
+            Effect::Interpret(token) => {
                 return self.interpret_receipt(token).await;
             }
-            Action::Parked(token, reason) => return self.park_failure(token, reason).await,
-            Action::ResponseNeeded(token) => {
+            Effect::Parked(token, reason) => return self.park_failure(token, reason).await,
+            Effect::ResponseNeeded(token) => {
                 let metadata = crate::orders::hl7::response::response_metadata(
                     crate::orders::hl7::response::Profile::Law,
                 );
                 return Ok(self.dialog.step(
-                    self.clock.elapsed(),
+                    self.start.elapsed(),
                     Event::Respond(token, metadata.response()?),
                 )?);
             }
-            Action::Write(write) => self.write_response(write, host).await?,
-            Action::WorkIssued => {
+            Effect::Write(write) => self.write_response(write, host).await?,
+            Effect::WorkIssued => {
                 self.orders.issued(Duration::from_millis(u64::from(
                     self.settings.policy().response_ms(),
                 )))?;
@@ -250,41 +273,36 @@ impl<'a, 'm> Host<'a, 'm> {
                         .orders
                         .due()
                         .ok_or(Error::MissingResponseDeadline)?
-                        .saturating_duration_since(self.clock);
+                        .saturating_duration_since(self.start);
                     return Ok(self
                         .dialog
-                        .step(self.clock.elapsed(), Event::WorkDeadline(until))?);
+                        .step(self.start.elapsed(), Event::WorkDeadline(until))?);
                 }
                 return Ok(Vec::new());
             }
-            Action::Done => {
+            Effect::Done => {
                 self.complete_response(host).await?;
                 return Ok(Vec::new());
             }
-            Action::Unconsumed(byte) => {
-                self.pending_input.push_front(byte);
-                return Ok(Vec::new());
-            }
-            Action::Uncommitted(_, raw) => {
-                if !self.stored {
+            Effect::Uncommitted(raw) => {
+                if !matches!(self.custody, Custody::Stored(..)) {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
                         .await?;
                 }
                 return Ok(Vec::new());
             }
-            Action::Rejected(error, raw) => {
+            Effect::Rejected(error, raw) => {
                 intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error)).await?;
                 return Ok(Vec::new());
             }
-            Action::Refused(error) => return Err(error.into()),
-            Action::Deadline(_) => return Ok(Vec::new()),
+            Effect::Refused(error) => return Err(error.into()),
+            Effect::Deadline => return Ok(Vec::new()),
         };
-        Ok(self.dialog.step(self.clock.elapsed(), event)?)
+        Ok(self.dialog.step(self.start.elapsed(), event)?)
     }
     async fn complete_response(&mut self, host: &mut Context<'_, '_>) -> Result<(), Error> {
-        self.completed = true;
-        self.receipt = None;
-        self.stored = false;
+        self.completion = Completion::Complete;
+        self.custody = Custody::Idle;
         if self.ready.is_some() {
             self.machine
                 .machine()
@@ -319,7 +337,7 @@ impl<'a, 'm> Host<'a, 'm> {
         let due = self
             .orders
             .due()
-            .map(|until| until.saturating_duration_since(self.clock));
+            .map(|until| until.saturating_duration_since(self.start));
         if let (Reply::Followup { response, work }, Some(sender)) = (&reply, self.outbound) {
             let (notify, wait) = oneshot::channel();
             let pending = independent::Work {
@@ -344,7 +362,7 @@ impl<'a, 'm> Host<'a, 'm> {
         }
         Ok(self
             .dialog
-            .step(self.clock.elapsed(), Event::Reply(token, &reply, due))?)
+            .step(self.start.elapsed(), Event::Reply(token, &reply, due))?)
     }
     async fn interpret_receipt(
         &mut self,
@@ -356,7 +374,7 @@ impl<'a, 'm> Host<'a, 'm> {
             self.receipt(token)?,
         )
         .await?;
-        let detail = crate::machine::hl7::error_location::build(location.as_ref(), b"", b"");
+        let detail = analyte_hl7::location_error(location.as_ref(), b"", b"");
         let location = location.as_ref().map(|_| protocol::Location {
             segment: detail.segment,
             occurrence: detail.occurrence,
@@ -376,7 +394,7 @@ impl<'a, 'm> Host<'a, 'm> {
         };
         Ok(self
             .dialog
-            .step(self.clock.elapsed(), Event::Interpreted(token, interpreted))?)
+            .step(self.start.elapsed(), Event::Interpreted(token, interpreted))?)
     }
     async fn park_failure(
         &self,
@@ -421,7 +439,7 @@ impl<'a, 'm> Host<'a, 'm> {
         while let Some(byte) = self.pending_input.front().copied() {
             self.pending_input.pop_front();
             self.transition(Event::Byte(byte), host).await?;
-            if self.stopped {
+            if self.run == Run::Stopped {
                 return Ok(());
             }
         }
@@ -438,14 +456,14 @@ impl<'a, 'm> Host<'a, 'm> {
     async fn finish(&mut self) -> Result<(), Error> {
         for action in self
             .dialog
-            .step(self.clock.elapsed(), Event::Disconnected)?
+            .step(self.start.elapsed(), Event::Disconnected)?
         {
             match action {
                 Action::Rejected(error, raw) => {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error))
                         .await?;
                 }
-                Action::Uncommitted(_, raw) if !self.stored => {
+                Action::Uncommitted(_, raw) if !matches!(self.custody, Custody::Stored(..)) => {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
                         .await?;
                 }
@@ -527,7 +545,7 @@ impl Effects for Host<'_, '_> {
                         .orders
                         .due()
                         .ok_or(Error::OutboundDeadlineAbsent)?
-                        .saturating_duration_since(self.clock);
+                        .saturating_duration_since(self.start);
                     self.transition(Event::Send(message, until), host).await?;
                 }
             },
@@ -545,7 +563,9 @@ impl Effects for Host<'_, '_> {
             },
         }
         Ok(
-            if self.stopped || matches!(self.mode, Mode::Outbound(_)) && self.completed {
+            if self.run == Run::Stopped
+                || matches!(self.mode, Mode::Outbound(_)) && self.completion == Completion::Complete
+            {
                 Flow::Stop
             } else {
                 Flow::Continue
@@ -593,7 +613,7 @@ impl Host<'_, '_> {
                 } else if self
                     .dialog
                     .next_deadline()
-                    .is_some_and(|due| self.clock.elapsed() >= due)
+                    .is_some_and(|due| self.start.elapsed() >= due)
                 {
                     self.transition(Event::Tick, host).await?;
                 } else if now >= next_idle {
@@ -605,7 +625,7 @@ impl Host<'_, '_> {
                         let mut stop = host.stop.clone();
                         let outgoing = tokio::select! {
                             biased;
-                            () = analyte_sink::stopped(&mut stop) => { self.stopped = true; return Ok(()); },
+                            () = analyte_sink::stopped(&mut stop) => { self.run = Run::Stopped; return Ok(()); },
                             result = self.orders.idle(self.store,
                                 self.machine.machine(),
                                 settings::options(self.settings)) => match result {
@@ -624,7 +644,7 @@ impl Host<'_, '_> {
                                 .orders
                                 .due()
                                 .ok_or(Error::OutgoingDeadlineAbsent)?
-                                .saturating_duration_since(self.clock);
+                                .saturating_duration_since(self.start);
                             self.transition(Event::Send(&message, until), host).await?;
                         }
                     }

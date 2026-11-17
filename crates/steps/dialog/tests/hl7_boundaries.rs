@@ -13,7 +13,7 @@ const MESSAGE: &[u8] = b"MSH|^~\\&|A|B|C|D|20261115||ORU^R01^ORU_R01|001|P|2.5.1
 fn dialog(epoch: u64) -> Result<Dialog, Error> {
     Ok(Dialog::new(
         Config::new(Options::default(), Duration::from_secs(5), 1)?,
-        epoch,
+        analyte_dialog::Epoch(u128::from(epoch)),
     ))
 }
 fn feed(d: &mut Dialog, bytes: &[u8]) -> Result<Vec<Action>, Error> {
@@ -56,7 +56,7 @@ fn adr0003_hl7_receipt_namespace_and_ordinal_survive_valid_and_malformed_input()
         let mut d = dialog(epoch)?;
         for (ordinal, payload) in [MESSAGE, b"malformed", MESSAGE].iter().enumerate() {
             let id = receive(&mut d, payload)?;
-            assert_eq!(id.epoch(), epoch);
+            assert_eq!(id.epoch(), u128::from(epoch));
             assert_eq!(id.ordinal(), u64::try_from(ordinal)?);
             let out = d.step(Duration::ZERO, Event::StoreFailed(id))?;
             if *payload == MESSAGE {

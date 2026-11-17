@@ -73,3 +73,29 @@ incarnation separately. Hosts echo the whole token unchanged. `Write::until`
 is an absolute connection-clock issuance deadline when supplied; otherwise the
 host's transport budget applies. LAW reports typed `Parked` failures, and HL7
 uses `AckChoice` to distinguish rejection from a content error.
+
+## Construction and completion correlation
+
+A dialog that accepts a host incarnation uses `new(config, Epoch)`; ASTM and
+HL7 share the same 128-bit `Epoch`, allowing a fresh UUID without truncation.
+Constructors without a host incarnation take only the protocol inputs they
+need: LAW link and timer budgets, POCT's wire session control ID, VIDAS framing
+and policy, and Autolyser configuration. A wire session ID is not a host epoch.
+Hosts call their per-connection monotonic time base `start`.
+
+The completion pattern is always: retain the outstanding request identity,
+commit the exact evidence, then echo that identity unchanged through `Stored`
+or `StoreFailed`. Never derive a clinical result identity from these tokens.
+The identity shapes deliberately follow the protocol's custody boundary:
+
+| Dialog | Correlation | Why it differs |
+| --- | --- | --- |
+| ASTM | `CommitId` with `Epoch`, transfer ordinal and frame ordinal | Each frame needs its own durable ACK gate; transfer and frame counters cannot be collapsed to the wire's wrapping frame number. |
+| HL7 / LAW | `ExchangeId` | One complete MLLP message is the custody unit. HL7 supplies a fresh host epoch; LAW owns one outstanding exchange and keeps its connection incarnation in the host. |
+| Autolyser | `StoreId` | A connection-local packet ordinal is sufficient; the host owns the connection incarnation and never routes completions across hosts. |
+| POCT | `CommitId` | Correlation includes protocol session identity, sequence and interpretation custody, rather than an MLLP exchange. |
+| VIDAS | One implicit outstanding packet | The host serially awaits storage before driving the next dialog event; a separate token would add no correlation check. |
+
+A universal token would either discard ASTM/POCT distinctions or require unused
+fields in the other protocols. Keep these protocol-owned tokens and the same
+echo-and-match completion pattern. Host maps use the whole typed token.

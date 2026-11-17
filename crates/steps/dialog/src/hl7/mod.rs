@@ -11,8 +11,10 @@ mod orders;
 use orders::Orders;
 pub use orders::{DisplayReply, ReplyPart};
 mod evidence;
+mod state;
+use state::State;
 
-pub use crate::ExchangeId;
+pub use crate::{Epoch, ExchangeId};
 
 /// Validated resource and deadline configuration.
 #[derive(Debug, Clone, Copy)]
@@ -285,6 +287,7 @@ struct Pending {
     phase: Phase,
     responsibility: Responsibility,
     codes: VecDeque<AckCode>,
+    error: Option<OwnedError>,
 }
 
 /// One deterministic connection. Cancellation may leave a committed receipt or sent order;
@@ -292,37 +295,29 @@ struct Pending {
 #[derive(Debug)]
 pub struct Dialog {
     config: Config,
-    epoch: u64,
+    epoch: Epoch,
     next: u64,
     decoder: mllp::Decoder,
-    pending: Option<Pending>,
-    malformed: Option<(ExchangeId, Vec<u8>, Error)>,
+    state: State,
     queue: VecDeque<(Vec<u8>, Duration)>,
-    sending: Option<Sending>,
-    error: Option<OwnedError>,
     clock: crate::Clock,
     deadline: Option<Duration>,
-    closed: bool,
     orders: Option<Orders>,
     frame_started: Option<Duration>,
 }
 impl Dialog {
     /// Starts an idle connection with a host-selected unique incarnation.
     #[must_use]
-    pub fn new(config: Config, epoch: u64) -> Self {
+    pub fn new(config: Config, epoch: Epoch) -> Self {
         Self {
             config,
             epoch,
             next: 0,
+            state: State::Idle,
             decoder: mllp::Decoder::new(config.limit),
-            pending: None,
-            malformed: None,
             queue: VecDeque::new(),
-            sending: None,
-            error: None,
             clock: crate::Clock::default(),
             deadline: None,
-            closed: false,
             orders: None,
             frame_started: None,
         }
@@ -346,11 +341,11 @@ impl Dialog {
         if let Err(error) = self.input(event, &mut out) {
             out.push(Action::Refused(error));
         }
-        if self.pending.is_none()
-            && self.malformed.is_none()
-            && self.sending.is_none()
+        if self.state.pending().is_none()
+            && self.state.malformed_id().is_none()
+            && !matches!(self.state, State::Sending(_))
             && !self.orders.as_ref().is_some_and(Orders::committing)
-            && !self.closed
+            && !matches!(self.state, State::Closed { .. })
             && let Some((raw, started)) = self.queue.pop_front()
         {
             self.frame_started = Some(started);
@@ -358,8 +353,8 @@ impl Dialog {
             self.frame_started = None;
         }
         if self.deadline.is_none()
-            && ((self.pending.is_some() || self.malformed.is_some())
-                || self.sending.is_some()
+            && ((self.state.pending().is_some() || self.state.malformed_id().is_some())
+                || matches!(self.state, State::Sending(_))
                 || !self.decoder.pending().is_empty())
         {
             self.deadline = Some(end);
@@ -369,8 +364,8 @@ impl Dialog {
     }
 
     fn send(&mut self, raw: &[u8], out: &mut Vec<Action>) -> Result<(), Error> {
-        if (self.pending.is_some() || self.malformed.is_some())
-            || self.sending.is_some()
+        if (self.state.pending().is_some() || self.state.malformed_id().is_some())
+            || matches!(self.state, State::Sending(_))
             || !self.decoder.pending().is_empty()
         {
             return Err(Error::Busy);
@@ -398,7 +393,7 @@ impl Dialog {
         let wire = crate::Write::encode(raw, self.config.limit, None)?;
         out.push(Action::Write(wire));
         if let Some(waiting) = waiting {
-            self.sending = Some(Sending { id, waiting });
+            self.state = State::Sending(Sending { id, waiting });
         } else {
             out.push(Action::Sent(id, Outcome::NotRequested));
         }
@@ -412,7 +407,7 @@ impl Dialog {
         if self.complete_malformed(id, out)? {
             return Ok(());
         }
-        let pending = self.pending.as_mut().ok_or(Error::Stale)?;
+        let pending = self.state.pending_mut().ok_or(Error::Stale)?;
         if pending.id != id || !matches!(pending.phase, Phase::Commit) {
             return Err(Error::Stale);
         }
@@ -442,8 +437,8 @@ impl Dialog {
         }
         if !self.complete_malformed(id, out)? {
             if !self
-                .pending
-                .as_ref()
+                .state
+                .pending()
                 .is_some_and(|p| p.id == id && matches!(p.phase, Phase::Commit))
             {
                 return Err(Error::Stale);
@@ -459,12 +454,12 @@ impl Dialog {
         response: Response<'_>,
         out: &mut Vec<Action>,
     ) -> Result<(), Error> {
-        let pending = self.pending.as_mut().ok_or(Error::Stale)?;
+        let pending = self.state.pending_mut().ok_or(Error::Stale)?;
         if pending.id != id || !matches!(pending.phase, Phase::Respond) {
             return Err(Error::Stale);
         }
         let code = pending.codes.front().copied().ok_or(Error::Stale)?;
-        let error = self.error.as_ref().map(OwnedError::view);
+        let error = pending.error.as_ref().map(OwnedError::view);
         if let Some(message) = analyte_hl7::acknowledgment(
             &pending.message,
             response,
@@ -484,15 +479,14 @@ impl Dialog {
             pending.phase = Phase::Interpret;
             out.push(Action::Interpret(id, pending.message.raw().to_vec()));
         } else {
-            self.pending = None;
-            self.error = None;
+            self.state = State::Idle;
         }
         self.deadline = None;
         Ok(())
     }
 
     fn input(&mut self, event: Event<'_>, out: &mut Vec<Action>) -> Result<(), Error> {
-        if self.closed {
+        if matches!(self.state, State::Closed { .. }) {
             return Err(Error::Busy);
         }
         match event {
@@ -519,8 +513,8 @@ impl Dialog {
             Event::Interpreted(id) => self.finish_host(id, true, false, None, out)?,
             Event::NotInterpretable(id, error, reject) => {
                 if !self
-                    .pending
-                    .as_ref()
+                    .state
+                    .pending()
                     .is_some_and(|p| p.id == id && matches!(p.phase, Phase::Interpret))
                 {
                     return Err(Error::Stale);
@@ -537,13 +531,13 @@ impl Dialog {
                 self.respond(id, response, out)?;
             }
             Event::Disconnected => {
-                if let Some(sending) = self.sending.take() {
+                if let Some(sending) = self.state.take_sending() {
                     out.push(Action::Sent(sending.id, Outcome::Uncertain));
                 }
                 if let Some(event) = self.decoder.finish() {
                     self.wire(event, out);
                 }
-                self.closed = true;
+                self.state.close();
                 self.deadline = None;
             }
         }
@@ -558,7 +552,7 @@ impl Dialog {
         error: Option<AckError<'_>>,
         out: &mut Vec<Action>,
     ) -> Result<(), Error> {
-        let pending = self.pending.as_mut().ok_or(Error::Stale)?;
+        let pending = self.state.pending_mut().ok_or(Error::Stale)?;
         if pending.id != id
             || !matches!(pending.phase, Phase::Commit | Phase::Interpret)
             || (success && !matches!(pending.phase, Phase::Interpret))
@@ -587,7 +581,7 @@ impl Dialog {
         }) {
             return Err(Error::Configuration);
         }
-        self.error = error.map(OwnedError::from);
+        pending.error = error.map(OwnedError::from);
         pending.codes.push_back(code);
         pending.phase = Phase::Respond;
         self.deadline = None;
@@ -599,10 +593,10 @@ impl Dialog {
         match event {
             mllp::Event::Rejected { error, raw } => out.push(Action::Rejected(error, raw)),
             mllp::Event::Block(raw) => {
-                if self.sending.is_some() {
+                if matches!(self.state, State::Sending(_)) {
                     self.ack(&raw, out);
-                } else if self.pending.is_some()
-                    || self.malformed.is_some()
+                } else if self.state.pending().is_some()
+                    || self.state.malformed_id().is_some()
                     || self.orders.as_ref().is_some_and(Orders::committing)
                 {
                     if self.queue.len() < self.config.queued {
@@ -640,14 +634,15 @@ impl Dialog {
                     return;
                 }
                 if let Some(next) = self.next.checked_add(1) {
-                    let id = ExchangeId(self.epoch, self.next);
+                    let id = ExchangeId(self.epoch.0, self.next);
                     self.next = next;
-                    self.pending = Some(Pending {
+                    self.state = State::Awaiting(Pending {
                         id,
                         message,
                         phase: Phase::Commit,
                         responsibility: Responsibility::NotStored,
                         codes: VecDeque::new(),
+                        error: None,
                     });
                     self.deadline = None;
                     out.push(Action::Store(id, raw));
@@ -657,10 +652,10 @@ impl Dialog {
             }
             Err(error) => {
                 if let Some(next) = self.next.checked_add(1) {
-                    let id = ExchangeId(self.epoch, self.next);
+                    let id = ExchangeId(self.epoch.0, self.next);
                     self.next = next;
                     out.push(Action::Store(id, raw.clone()));
-                    self.malformed = Some((id, raw, error));
+                    self.state = State::Malformed(id, raw, error);
                     self.deadline = None;
                 } else {
                     out.push(Action::Parked(raw, Error::Exhausted));
@@ -683,12 +678,12 @@ impl Dialog {
             Ok((msa.control_id().to_vec(), msa.code()))
         });
         if let Ok((id, code)) = result
-            && let Some(sending) = self.sending.as_mut()
+            && let State::Sending(sending) = &mut self.state
             && sending.id == id
         {
             match sending.acknowledge(code) {
                 Ok(Some(outcome)) => {
-                    self.sending = None;
+                    self.state = State::Idle;
                     self.deadline = None;
                     out.push(Action::Sent(id, outcome));
                 }
@@ -706,13 +701,13 @@ impl Dialog {
 
     fn complete_malformed(&mut self, id: ExchangeId, out: &mut Vec<Action>) -> Result<bool, Error> {
         if self
-            .malformed
-            .as_ref()
-            .is_some_and(|(expected, _, _)| *expected != id)
+            .state
+            .malformed_id()
+            .is_some_and(|expected| expected != id)
         {
             return Err(Error::Stale);
         }
-        if let Some((_, raw, error)) = self.malformed.take() {
+        if let Some((_, raw, error)) = self.state.take_malformed() {
             out.push(Action::Parked(raw, error));
             self.deadline = None;
             return Ok(true);
@@ -720,15 +715,15 @@ impl Dialog {
         Ok(false)
     }
     fn expire(&mut self, out: &mut Vec<Action>) {
-        if let Some((id, raw, error)) = self.malformed.take() {
+        if let Some((id, raw, error)) = self.state.take_malformed() {
             out.push(Action::TimedOut(id));
             out.push(Action::Parked(raw, error));
         }
         self.deadline = None;
-        if let Some(sending) = self.sending.take() {
+        if let Some(sending) = self.state.take_sending() {
             out.push(Action::Sent(sending.id, Outcome::Uncertain));
         }
-        if let Some(pending) = self.pending.as_ref() {
+        if let Some(pending) = self.state.pending() {
             let id = pending.id;
             out.push(Action::TimedOut(id));
             match pending.phase {
@@ -738,7 +733,7 @@ impl Dialog {
                     }
                 }
                 Phase::Respond => {
-                    self.closed = true;
+                    self.state.close();
                 }
             }
         }

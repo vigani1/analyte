@@ -119,7 +119,10 @@ impl LawOrderLink {
             .await?;
             return reply(
                 query,
-                law::CacheAnswer::Rejected(AckError::unlocated(b"207", b"LAW-unsupported-query")),
+                law::CacheAnswer::Rejected(AckError::unlocated(
+                    analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                    b"LAW-unsupported-query",
+                )),
                 options,
             );
         }
@@ -128,7 +131,10 @@ impl LawOrderLink {
                 .await?;
             return reply(
                 query,
-                law::CacheAnswer::Unavailable(AckError::unlocated(b"207", b"LAW-LAB27-disabled")),
+                law::CacheAnswer::Unavailable(AckError::unlocated(
+                    analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                    b"LAW-LAB27-disabled",
+                )),
                 options,
             );
         }
@@ -142,7 +148,10 @@ impl LawOrderLink {
             .await?;
             return reply(
                 query,
-                law::CacheAnswer::Unavailable(AckError::unlocated(b"207", b"LAW-query-busy")),
+                law::CacheAnswer::Unavailable(AckError::unlocated(
+                    analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                    b"LAW-query-busy",
+                )),
                 options,
             );
         }
@@ -166,7 +175,7 @@ impl LawOrderLink {
                 reply(
                     query,
                     law::CacheAnswer::Unavailable(AckError::unlocated(
-                        b"207",
+                        analyte_hl7::APPLICATION_INTERNAL_ERROR,
                         b"LAW-query-unavailable",
                     )),
                     options,

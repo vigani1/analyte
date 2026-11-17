@@ -9,7 +9,7 @@ fn hl7_2_5_1_s2_8_and_2_6_2_8_2_2_9_1_s2_9_2_original_ack_requires_store_and_int
     for version in ["2.3", "2.4", "2.5", "2.6", "2.8.2", "2.9.1"] {
         let mut dialog = Dialog::new(
             Config::new(Options::default(), Duration::from_secs(5), 1)?,
-            42,
+            analyte_dialog::Epoch(42),
         );
         let raw = format!("MSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|000AbC|P|{version}\r");
         let frame = format!("\x0b{raw}\x1c\r");
