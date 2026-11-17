@@ -15,6 +15,31 @@ const SECTIONS: [&str; 8] = [
 ];
 
 fn definitions(root: &Path) -> Result<Vec<PathBuf>, Error> {
+    for vendor in std::fs::read_dir(root)? {
+        let vendor = vendor?;
+        if !vendor.file_type()?.is_dir() {
+            continue;
+        }
+        for model in std::fs::read_dir(vendor.path())? {
+            let model = model?;
+            if !model.file_type()?.is_dir() {
+                continue;
+            }
+            let folder = model.path();
+            let readme = folder.join("README.md");
+            if readme.is_file() && !folder.join("machine.toml").is_file() {
+                let text = std::fs::read_to_string(&readme)?;
+                assert!(
+                    text.split_whitespace()
+                        .collect::<Vec<_>>()
+                        .windows(4)
+                        .any(|words| words == ["a", "blocked", "machine", "definition,"]),
+                    "{}: missing machine.toml without a blocked machine definition declaration",
+                    folder.display()
+                );
+            }
+        }
+    }
     let mut pending = vec![root.to_owned()];
     let mut found = Vec::new();
     while let Some(directory) = pending.pop() {
@@ -258,4 +283,29 @@ async fn replay_file(
     })
     .await??;
     Ok(())
+}
+
+#[test]
+fn adr0012_5_missing_definition_requires_blocked_declaration() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let model = temp.path().join("vendor/model");
+    std::fs::create_dir_all(&model)?;
+    std::fs::write(
+        model.join("README.md"),
+        "This is a blocked\nmachine definition, pending evidence.",
+    )?;
+    assert!(definitions(temp.path())?.is_empty());
+    std::fs::write(model.join("machine.toml"), "synthetic")?;
+    assert_eq!(definitions(temp.path())?, [model.join("machine.toml")]);
+    Ok(())
+}
+
+#[test]
+#[should_panic(expected = "missing machine.toml")]
+fn adr0012_5_deleted_definition_is_rejected() {
+    let temp = tempfile::tempdir().expect("temporary inventory");
+    let model = temp.path().join("vendor/model");
+    std::fs::create_dir_all(&model).expect("machine folder");
+    std::fs::write(model.join("README.md"), "Level: documented").expect("machine README");
+    definitions(temp.path()).expect("read inventory");
 }
