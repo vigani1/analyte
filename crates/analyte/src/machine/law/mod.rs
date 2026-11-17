@@ -6,7 +6,9 @@ use super::driver::{self, Context, Effects, Flow};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod custody;
+mod effect;
 mod error;
+use effect::Effect;
 pub(crate) mod settings;
 use crate::orders::outcome::Code;
 pub(crate) use error::Error;
@@ -156,15 +158,18 @@ impl<'a, 'm> Host<'a, 'm> {
                 .map(|until| self.absolute(until))
                 .transpose()?;
             let mut stop = host.stop.clone();
-            if let Action::Unconsumed(byte) = action {
-                self.pending_input.push_front(byte);
-                continue;
-            }
+            let action = match Effect::try_from(action) {
+                Ok(effect) => effect,
+                Err(byte) => {
+                    self.pending_input.push_front(byte);
+                    continue;
+                }
+            };
             let protects_raw = matches!(
                 &action,
-                Action::Store(..) | Action::Rejected(..) | Action::Uncommitted(..)
+                Effect::Store(..) | Effect::Rejected(..) | Effect::Uncommitted(..)
             );
-            let timeout_reason = if matches!(&action, Action::Write(..)) {
+            let timeout_reason = if matches!(&action, Effect::Write(..)) {
                 error::DeadlineReason::Write
             } else {
                 error::DeadlineReason::Effect
@@ -201,12 +206,12 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn effect(
         &mut self,
-        action: Action,
+        action: Effect,
         host: &mut Context<'_, '_>,
     ) -> Result<Vec<Action>, Error> {
         let machine = self.machine.machine();
         let event = match action {
-            Action::Store(token, raw) => {
+            Effect::Store(token, raw) => {
                 let id = ReceiptId::new();
                 self.custody = Custody::Storing(token, id);
 
@@ -236,20 +241,20 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
                 Event::Stored(token)
             }
-            Action::Query(token, message, started) => {
+            Effect::Query(token, message, started) => {
                 return self.answer_query(token, message, started, host).await;
             }
-            Action::WorkResponse(token, message) => {
+            Effect::WorkResponse(token, message) => {
                 self.orders
                     .orl(self.store, machine, &message, self.receipt(token)?)
                     .await?;
                 Event::Complete(token)
             }
-            Action::Interpret(token) => {
+            Effect::Interpret(token) => {
                 return self.interpret_receipt(token).await;
             }
-            Action::Parked(token, reason) => return self.park_failure(token, reason).await,
-            Action::ResponseNeeded(token) => {
+            Effect::Parked(token, reason) => return self.park_failure(token, reason).await,
+            Effect::ResponseNeeded(token) => {
                 let metadata = crate::orders::hl7::response::response_metadata(
                     crate::orders::hl7::response::Profile::Law,
                 );
@@ -258,8 +263,8 @@ impl<'a, 'm> Host<'a, 'm> {
                     Event::Respond(token, metadata.response()?),
                 )?);
             }
-            Action::Write(write) => self.write_response(write, host).await?,
-            Action::WorkIssued => {
+            Effect::Write(write) => self.write_response(write, host).await?,
+            Effect::WorkIssued => {
                 self.orders.issued(Duration::from_millis(u64::from(
                     self.settings.policy().response_ms(),
                 )))?;
@@ -275,27 +280,23 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
                 return Ok(Vec::new());
             }
-            Action::Done => {
+            Effect::Done => {
                 self.complete_response(host).await?;
                 return Ok(Vec::new());
             }
-            Action::Unconsumed(byte) => {
-                self.pending_input.push_front(byte);
-                return Ok(Vec::new());
-            }
-            Action::Uncommitted(_, raw) => {
+            Effect::Uncommitted(raw) => {
                 if !matches!(self.custody, Custody::Stored(..)) {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
                         .await?;
                 }
                 return Ok(Vec::new());
             }
-            Action::Rejected(error, raw) => {
+            Effect::Rejected(error, raw) => {
                 intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error)).await?;
                 return Ok(Vec::new());
             }
-            Action::Refused(error) => return Err(error.into()),
-            Action::Deadline(_) => return Ok(Vec::new()),
+            Effect::Refused(error) => return Err(error.into()),
+            Effect::Deadline => return Ok(Vec::new()),
         };
         Ok(self.dialog.step(self.clock.elapsed(), event)?)
     }
