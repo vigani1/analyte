@@ -82,7 +82,7 @@ impl fmt::Display for Reason {
             }
             Self::Deadline(operation) => {
                 f.write_str("Deadline(")?;
-                quoted(f, operation)?;
+                quoted(f, operation.as_str())?;
                 f.write_char(')')
             }
         }
@@ -151,7 +151,10 @@ mod tests {
                 Reason::PortVanished("COM1".into()),
                 "PortVanished(\"COM1\")",
             ),
-            (Reason::Deadline("write all"), "Deadline(\"write all\")"),
+            (
+                Reason::Deadline(crate::DeadlineKind::WriteAll),
+                "Deadline(\"write all\")",
+            ),
             (
                 Reason::Io {
                     endpoint: "COM1".into(),

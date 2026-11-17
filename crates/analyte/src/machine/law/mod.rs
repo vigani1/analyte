@@ -402,7 +402,10 @@ impl<'a, 'm> Host<'a, 'm> {
             .write_all(&write.bytes, Some(self.absolute(until)?.into()))
             .await
             .map_err(|error| {
-                if matches!(error, analyte_transport::Error::Deadline("write all")) {
+                if matches!(
+                    error,
+                    analyte_transport::Error::Deadline(analyte_transport::DeadlineKind::WriteAll)
+                ) {
                     Error::ResponseSendDeadlineExpired(error)
                 } else {
                     error.into()

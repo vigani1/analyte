@@ -20,13 +20,18 @@ pub(crate) async fn write(
     let until = tokio::time::Instant::now()
         .checked_add(budget)
         .ok_or(WriteError::DeadlineOverflow)?;
-    conn.write_all(bytes, Some(until)).await.map_err(|error| {
-        if matches!(error, analyte_transport::Error::Deadline("write all")) {
+    conn.write_all(bytes, Some(until))
+        .await
+        .map_err(classify_write)
+}
+
+fn classify_write(error: analyte_transport::Error) -> WriteError {
+    match error {
+        analyte_transport::Error::Deadline(analyte_transport::DeadlineKind::WriteAll) => {
             WriteError::Deadline(error)
-        } else {
-            WriteError::Transport(error)
         }
-    })
+        error => WriteError::Transport(error),
+    }
 }
 
 pub(crate) fn ms(value: u32) -> Duration {
@@ -192,8 +197,37 @@ mod tests {
     }
 
     #[test]
+    fn only_write_all_deadlines_have_uncertain_vendor_write_outcomes() {
+        use analyte_transport::{DeadlineKind, Error};
+        for kind in [
+            DeadlineKind::Connect,
+            DeadlineKind::Bind,
+            DeadlineKind::TcpRead,
+            DeadlineKind::TcpWrite,
+            DeadlineKind::ServerNotification,
+            DeadlineKind::ServerShutdown,
+            DeadlineKind::SerialBackpressure,
+            DeadlineKind::SerialWrite,
+            DeadlineKind::WriteAll,
+            DeadlineKind::Receive,
+            DeadlineKind::QueueWrite,
+            DeadlineKind::EventBackpressure,
+        ] {
+            assert_eq!(
+                matches!(
+                    classify_write(Error::Deadline(kind)),
+                    WriteError::Deadline(_)
+                ),
+                kind == DeadlineKind::WriteAll
+            );
+        }
+    }
+
+    #[test]
     fn vendor_write_errors_keep_recovery_kind_and_original_cause() {
-        let deadline = WriteError::Deadline(analyte_transport::Error::Deadline("write all"));
+        let deadline = WriteError::Deadline(analyte_transport::Error::Deadline(
+            analyte_transport::DeadlineKind::WriteAll,
+        ));
         assert_eq!(
             deadline.to_string(),
             "vendor write deadline exceeded; outcome uncertain"

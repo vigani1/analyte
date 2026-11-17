@@ -42,6 +42,59 @@ impl Limits {
     }
 }
 
+/// Operation whose deadline elapsed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadlineKind {
+    /// Deadline for connect.
+    Connect,
+    /// Deadline for bind.
+    Bind,
+    /// Deadline for TCP read.
+    TcpRead,
+    /// Deadline for TCP write (outcome uncertain).
+    TcpWrite,
+    /// Deadline for server notification.
+    ServerNotification,
+    /// Deadline for server shutdown.
+    ServerShutdown,
+    /// Deadline for serial event backpressure.
+    SerialBackpressure,
+    /// Deadline for serial write (outcome uncertain).
+    SerialWrite,
+    /// Deadline for write all.
+    WriteAll,
+    /// Deadline for receive.
+    Receive,
+    /// Deadline for queue write.
+    QueueWrite,
+    /// Deadline for event backpressure.
+    EventBackpressure,
+}
+impl DeadlineKind {
+    /// Stable operation text for display and retained evidence.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Connect => "connect",
+            Self::Bind => "bind",
+            Self::TcpRead => "TCP read",
+            Self::TcpWrite => "TCP write (outcome uncertain)",
+            Self::ServerNotification => "server notification",
+            Self::ServerShutdown => "server shutdown",
+            Self::SerialBackpressure => "serial event backpressure",
+            Self::SerialWrite => "serial write (outcome uncertain)",
+            Self::WriteAll => "write all",
+            Self::Receive => "receive",
+            Self::QueueWrite => "queue write",
+            Self::EventBackpressure => "event backpressure",
+        }
+    }
+}
+impl std::fmt::Display for DeadlineKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Specific failures; interrupted writes may already have sent a prefix.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -59,7 +112,7 @@ pub enum Error {
     Offline,
     /// An operation exceeded its deadline.
     #[error("deadline elapsed during {0}")]
-    Deadline(&'static str),
+    Deadline(DeadlineKind),
     /// An I/O failure retains the endpoint and original error.
     #[error("{operation} at {endpoint}: {source}")]
     Io {
@@ -93,7 +146,7 @@ pub enum Reason {
     /// Server refused an excess connection.
     LimitReached,
     /// An operation deadline elapsed.
-    Deadline(&'static str),
+    Deadline(DeadlineKind),
 }
 
 impl Error {
@@ -108,7 +161,7 @@ impl Error {
                 operation,
                 kind: source.kind(),
             },
-            Self::Deadline(operation) => Reason::Deadline(operation),
+            Self::Deadline(operation) => Reason::Deadline(*operation),
             Self::ConsumerClosed => Reason::Cancelled,
             Self::InvalidLimits | Self::OversizedWrite | Self::Offline => Reason::Io {
                 endpoint: "transport".into(),
@@ -215,7 +268,7 @@ impl Connection {
         match until {
             Some(until) => tokio::time::timeout_at(until, write)
                 .await
-                .map_err(|_| Error::Deadline("write all"))?,
+                .map_err(|_| Error::Deadline(DeadlineKind::WriteAll))?,
             None => write.await,
         }
     }
@@ -232,7 +285,7 @@ impl Connection {
     pub async fn receive(&mut self) -> Result<Option<Event>, Error> {
         let event = tokio::time::timeout(self.limits.deadline, self.events.recv())
             .await
-            .map_err(|_| Error::Deadline("receive"))?;
+            .map_err(|_| Error::Deadline(DeadlineKind::Receive))?;
         match &event {
             Some(Event::Opened { session }) => self.observed_session = *session,
             Some(Event::Closed(_)) | None => self.observed_session = 0,
@@ -258,7 +311,7 @@ impl Connection {
             self.writes.send(Write { session, bytes }),
         )
         .await
-        .map_err(|_| Error::Deadline("queue write"))?
+        .map_err(|_| Error::Deadline(DeadlineKind::QueueWrite))?
         .map_err(|_| Error::ConsumerClosed)
     }
 }
@@ -370,7 +423,7 @@ impl IoSide {
     async fn send(&self, event: Event) -> Result<(), Error> {
         tokio::time::timeout(self.limits.deadline, self.events.send(event))
             .await
-            .map_err(|_| Error::Deadline("event backpressure"))?
+            .map_err(|_| Error::Deadline(DeadlineKind::EventBackpressure))?
             .map_err(|_| Error::ConsumerClosed)
     }
 
@@ -548,7 +601,7 @@ mod tests {
         let until = tokio::time::Instant::now() + Duration::from_millis(20);
         assert!(matches!(
             dialog.write_all(&bytes, Some(until)).await,
-            Err(Error::Deadline("write all"))
+            Err(Error::Deadline(DeadlineKind::WriteAll))
         ));
         let prefix = side.writes.try_recv().map_err(|_| Error::ConsumerClosed)?;
         assert_eq!(Some(prefix.bytes.as_slice()), bytes.get(..CHUNK_LIMIT));

@@ -111,11 +111,13 @@ mod tests {
     use super::*;
     #[test]
     fn adr0003_shared_conversions_retain_typed_link_and_store_causes() {
-        let link = Error::from(analyte_transport::Error::Deadline("write all"));
+        let link = Error::from(analyte_transport::Error::Deadline(
+            analyte_transport::DeadlineKind::WriteAll,
+        ));
         assert!(matches!(
             link,
             Error::Link(crate::machine::link::error::Error::Transport(
-                analyte_transport::Error::Deadline("write all")
+                analyte_transport::Error::Deadline(analyte_transport::DeadlineKind::WriteAll)
             ))
         ));
         let store = Error::from(analyte_store::IntakeError::from(
