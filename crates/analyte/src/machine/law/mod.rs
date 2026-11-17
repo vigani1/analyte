@@ -607,12 +607,16 @@ impl Host<'_, '_> {
                         let outgoing = tokio::select! {
                             biased;
                             () = analyte_sink::stopped(&mut stop) => { self.stopped = true; return Ok(()); },
-                            result = self.orders.idle(self.store, self.machine.machine(), settings::options(self.settings)) => match result {
+                            result = self.orders.idle(self.store,
+                                self.machine.machine(),
+                                settings::options(self.settings)) => match result {
                                 Ok(message) => message,
                                 Err(error) => {
                                     self.orders.close(self.store, Code::LawIdleAdmissionFailed.as_str()).await?;
-                                    tracing::error!(machine=self.machine.machine().id.as_str(),error_kind=%error,"LAW idle admission stopped; no command retried");
-                                    None
+                                    tracing::error!(machine=self.machine.machine().id.as_str(),
+                                        error_kind=%error,
+                                        "LAW idle admission stopped; no command retried");
+                                                                            None
                                 }
                             },
                         };

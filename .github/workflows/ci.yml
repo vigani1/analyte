@@ -27,6 +27,8 @@ jobs:
           persist-credentials: false
       - run: bash scripts/check-layout.sh
       - run: python3 scripts/check-hook-layout.py
+      - run: python3 scripts/test-line-length.py
+      - run: python3 scripts/check-line-length.py
 
   fmt:
     name: Format

@@ -68,7 +68,10 @@ pub(crate) async fn plan(
                         .get(&segment.raw().as_ptr().addr())
                         .map(execution_status);
                     item.complete = complete;
-                    item.source = analyte_model::SourceText::new(&serde_json::json!({"header_time":std::str::from_utf8(header.timestamp())?,"estimate_zone_source":"MSH-7","notes":controls.get(&segment.raw().as_ptr().addr()).and_then(|parent| notes.get(parent)),"control":std::str::from_utf8(segment.raw())?}).to_string())?;
+                    item.source = analyte_model::SourceText::new(&serde_json::json!({"header_time":std::str::from_utf8(header.timestamp())?,
+                        "estimate_zone_source":"MSH-7",
+                        "notes":controls.get(&segment.raw().as_ptr().addr()).and_then(|parent| notes.get(parent)),
+                        "control":std::str::from_utf8(segment.raw())?}).to_string())?;
                     custody.work.push(item);
                 } else if results
                     .status_notices()

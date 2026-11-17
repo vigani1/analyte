@@ -174,8 +174,14 @@ async fn transfer(
                 let mut remaining = write.bytes.as_slice();
                 let deadline = tokio::time::Instant::now().checked_add(side.limits.deadline).ok_or(Error::InvalidLimits)?;
                 while !remaining.is_empty() {
-                    let count = tokio::time::timeout_at(deadline, stream.write(remaining)).await.map_err(|_| Error::Deadline(crate::DeadlineKind::TcpWrite))?.map_err(|source| Error::Io { operation: "write", endpoint: endpoint.into(), source })?;
-                    if count == 0 { return Err(Error::Io { operation: "write", endpoint: endpoint.into(), source: std::io::ErrorKind::WriteZero.into() }); }
+                    let count = tokio::time::timeout_at(deadline,
+                        stream.write(remaining)).await.map_err(|_| Error::Deadline(crate::DeadlineKind::TcpWrite))?.map_err(|source| Error::Io { operation: "write",
+                        endpoint: endpoint.into(),
+                        source })?;
+                                            if count == 0 { return Err(Error::Io { operation: "write",
+                        endpoint: endpoint.into(),
+                        source: std::io::ErrorKind::WriteZero.into() });
+                        }
                     let sent = remaining.get(..count).ok_or(Error::OversizedWrite)?;
                     side.outgoing(sent).await?;
                     remaining = remaining.get(count..).ok_or(Error::OversizedWrite)?;
@@ -256,8 +262,10 @@ where
                 biased;
                 () = cancel.cancelled() => return Ok(()),
                 done = tasks.join_next(), if !tasks.is_empty() => {
-                    done.ok_or(Error::ConsumerClosed)?.map_err(|source| Error::Io { operation: "join TCP owner", endpoint: "server".into(), source: std::io::Error::other(source) })??;
-                }
+                    done.ok_or(Error::ConsumerClosed)?.map_err(|source| Error::Io { operation: "join TCP owner",
+                        endpoint: "server".into(),
+                        source: std::io::Error::other(source) })??;
+                                        }
                 accepted = listener.accept() => {
                     let (stream, peer) = accepted.map_err(|source| Error::Io { operation: "accept", endpoint: "server".into(), source })?;
                     let notification = if tasks.len() >= maximum {
@@ -272,13 +280,19 @@ where
                             // Propagate server shutdown through the same session cancellation path.
                             tokio::select! {
                                 result = session(stream, &mut side) => result,
-                                () = shutdown.cancelled() => { own.cancel(); side.stop(); side.emit(Event::Closed(Reason::Cancelled)).await }
+                                () = shutdown.cancelled() => { own.cancel();
+                                    side.stop();
+                                    side.emit(Event::Closed(Reason::Cancelled)).await }
                             }
                         });
                         ServerEvent::Accepted { peer, connection }
                     };
-                    tokio::time::timeout(limits.deadline, events.send(notification)).await.map_err(|_| Error::Deadline(crate::DeadlineKind::ServerNotification))?.map_err(|_| Error::ConsumerClosed)?;
-                }
+                    tokio::time::timeout(limits.deadline,
+                        events.send(notification))
+                        .await
+                        .map_err(|_| Error::Deadline(crate::DeadlineKind::ServerNotification))?
+                        .map_err(|_| Error::ConsumerClosed)?;
+                                        }
             }
         }
     }.await;

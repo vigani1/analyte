@@ -35,7 +35,14 @@ pub(super) fn same_retained_content(
         let Reading::Results(results) = evidence.outcome else {
             return Err(Error::Corruption);
         };
-        let retained = results.iter().find(|result| matches!(&result.identity, IdentityStatus::Resolved(identity) if &identity.observation == observation && i64::try_from(identity.revision.0).ok() == Some(revision))).ok_or(Error::Corruption)?;
+        let retained = results
+            .iter()
+            .find(|result| {
+                matches!(&result.identity,
+            IdentityStatus::Resolved(identity) if &identity.observation == observation
+                && i64::try_from(identity.revision.0).ok() == Some(revision))
+            })
+            .ok_or(Error::Corruption)?;
         if clinical_digest(retained)? == *content {
             return Ok(Some(revision));
         }
@@ -54,13 +61,19 @@ impl Reconciliation<'_, '_> {
         if let Some(key) = self.retention_key {
             let identity = key.digest("identity", identity_key.as_bytes())?;
             let content = key.digest("content", &content.0)?;
-            let purged: Option<i64> = self.tx.query_row("SELECT revision FROM retention_results WHERE identity_digest=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1", params![identity.as_slice(), content.as_slice()], |r| r.get(0)).optional()?;
+            let purged: Option<i64> = self.tx.query_row("SELECT revision FROM retention_results WHERE identity_digest=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1",
+                params![identity.as_slice(),
+                content.as_slice()],
+                |r| r.get(0)).optional()?;
             if purged.is_some() {
                 return Ok(purged);
             }
         }
         // A delayed retransmission may refer to any retained revision, not just the latest.
-        let same: Option<i64> = self.tx.query_row("SELECT revision FROM observation_revisions WHERE identity_key=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1", params![identity_key, content.0.as_slice()], |r| r.get(0)).optional()?;
+        let same: Option<i64> = self.tx.query_row("SELECT revision FROM observation_revisions WHERE identity_key=?1 AND content_digest=?2 ORDER BY revision DESC LIMIT 1",
+            params![identity_key,
+            content.0.as_slice()],
+            |r| r.get(0)).optional()?;
         // Older digests included source offsets. Compare retained typed evidence
         // on a miss; do not rewrite history or silently treat old results as new.
         let same = match same {

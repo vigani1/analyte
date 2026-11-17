@@ -13,16 +13,19 @@ pub(crate) fn map_reading(mapping: Mapping) -> Result<MappedReading, Error> {
                 .map(|f| match f.problem {
                     analyte_mapping::Problem::DepartureDerivedStatusRequiresContract =>
                         "departure-derived status requires a contract version that carries departure evidence".to_owned(),
-                    analyte_mapping::Problem::DepartureConflict => format!("departure-conflict at {}: present non-final status contradicts documented final-only scope", f.position),
-                    analyte_mapping::Problem::UnqualifiedHl7Report
+                    analyte_mapping::Problem::DepartureConflict => format!("departure-conflict at {}: present non-final status contradicts documented final-only scope",
+                        f.position),
+                                            analyte_mapping::Problem::UnqualifiedHl7Report
                     | analyte_mapping::Problem::ValueKindMismatch { .. }
                     | analyte_mapping::Problem::ComponentParts | analyte_mapping::Problem::MissingSample
                     | analyte_mapping::Problem::UnknownTest | analyte_mapping::Problem::MissingIdentity { .. }
                     | analyte_mapping::Problem::UnsupportedValue | analyte_mapping::Problem::UnsupportedFormatting
                     | analyte_mapping::Problem::UnsupportedEscape | analyte_mapping::Problem::UnknownProcessing
                     | analyte_mapping::Problem::ConflictingClassification | analyte_mapping::Problem::NoObservations
-                    | analyte_mapping::Problem::UnsupportedLawStatusOnly | analyte_mapping::Problem::InvalidTime => format!("{}: {}", f.position, f.problem),
-                })
+                    | analyte_mapping::Problem::UnsupportedLawStatusOnly | analyte_mapping::Problem::InvalidTime => format!("{}: {}",
+                        f.position,
+                        f.problem),
+                                        })
                 .collect::<Vec<_>>();
             for result in &output.results {
                 if let analyte_model::IdentityStatus::Unresolved(reason) = &result.content.identity
