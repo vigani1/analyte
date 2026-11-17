@@ -46,7 +46,13 @@ pub enum Error {
     Runtime(#[from] crate::runtime::Error),
     /// Preserves the original admin dependency failure.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] CommandError),
+    /// Retained analyzer execution evidence could not be queried.
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
+    /// Audited raw-view input or evidence failed.
+    #[error(transparent)]
+    Raw(#[from] super::pages::RawError),
     /// Preserves the original admin dependency failure.
     #[error(transparent)]
     Intake(#[from] crate::IntakeError),
@@ -97,4 +103,35 @@ impl From<crate::operator::Error> for Error {
     }
 }
 
-analyte_store::forward_command_errors!(Error);
+mod command;
+pub use command::CommandError;
+impl From<analyte_store::OperatorError> for Error {
+    fn from(error: analyte_store::OperatorError) -> Self {
+        Self::Store(error.into())
+    }
+}
+impl From<analyte_store::OrderError> for Error {
+    fn from(error: analyte_store::OrderError) -> Self {
+        Self::Store(error.into())
+    }
+}
+impl From<analyte_store::MaintenanceError> for Error {
+    fn from(error: analyte_store::MaintenanceError) -> Self {
+        Self::Store(error.into())
+    }
+}
+impl From<analyte_store::StorageError> for Error {
+    fn from(error: analyte_store::StorageError) -> Self {
+        Self::Store(error.into())
+    }
+}
+impl From<analyte_store::DeliveryError> for Error {
+    fn from(error: analyte_store::DeliveryError) -> Self {
+        Self::Store(error.into())
+    }
+}
+impl From<analyte_store::WorkerError> for Error {
+    fn from(error: analyte_store::WorkerError) -> Self {
+        Self::Store(error.into())
+    }
+}

@@ -713,6 +713,8 @@ async fn open_service_store(
 // The service's existing startup API exposes original dependency causes to recovery callers.
 fn admin_startup_error(error: crate::admin::Error) -> Error {
     match error {
+        crate::admin::Error::Raw(source) => Error::from(source),
+        crate::admin::Error::Reconciliation(source) => Error::from(source),
         crate::admin::Error::Deadline(source) => Error::from(source),
         crate::admin::Error::Join(source) => Error::from(source),
         crate::admin::Error::MachineConfig(source) => Error::from(source),

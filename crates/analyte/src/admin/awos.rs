@@ -180,8 +180,8 @@ async fn detail_page(
     let after = i64::try_from(cursor.after)?;
     let (retained, rows) = state
         .store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
-            Ok::<_, analyte_store::Error>((
+        .request::<_, analyte_store::ReconciliationError>(deadline()?, move |s| {
+            Ok::<_, analyte_store::ReconciliationError>((
                 s.machine_order_by_id(order)?,
                 s.law_work_evidence(order, item, after)?,
             ))
