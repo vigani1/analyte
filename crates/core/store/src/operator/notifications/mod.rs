@@ -93,7 +93,7 @@ pub struct AlertEndpointStatus {
     pub queue_full: bool,
     /// Events with a recorded failure or interrupted attempt.
     pub failed: u64,
-    /// Fixed category of the most recently reserved failed attempt.
+    /// Fixed failure category of the newest observed event with a recorded failure.
     pub last_failure: Option<String>,
 }
 impl Store {
