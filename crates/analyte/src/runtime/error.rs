@@ -2,21 +2,6 @@
 /// Failures owned by runtime workers and protected-store startup.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Retains the integer parsing failure.
-    #[error(transparent)]
-    ParseInteger(#[from] std::num::ParseIntError),
-    /// Retains the concrete integer failure.
-    #[error(transparent)]
-    Integer(#[from] std::num::TryFromIntError),
-    /// Retains the concrete identity failure.
-    #[error(transparent)]
-    Identity(#[from] analyte_model::InvalidUuid),
-    /// Retains the machine configuration failure.
-    #[error(transparent)]
-    MachineConfig(#[from] analyte_config::Error),
-    /// Retains the concrete token failure.
-    #[error(transparent)]
-    Token(#[from] crate::admin::TokenError),
     /// Retains the concrete hooks failure.
     #[error(transparent)]
     Hooks(#[from] super::test_hooks::Error),

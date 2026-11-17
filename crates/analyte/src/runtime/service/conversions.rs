@@ -1,8 +1,7 @@
 //! Connects protocol errors to shared causes and worker failures to their owning boundary.
-/// The shared protocol component owns all accepted leaf causes. These bridges
-/// preserve the concrete cause and the two independent cleanup failures.
-/// Worker adapters name the storage boundary explicitly; no compatibility error
-/// or nested conversion macro is involved.
+/// Every protocol retains the same typed custody, link and evidence causes,
+/// including both failures when cleanup also fails. Keeping these three adapters
+/// together prevents the six hosts from drifting in cause retention.
 macro_rules! causes {
     ($target:ty; protocol) => {
         impl<C> From<C> for $target

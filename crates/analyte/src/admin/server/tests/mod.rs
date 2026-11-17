@@ -89,7 +89,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     assert!(
         matches!(
             &failure,
-            crate::runtime::Error::Token(super::super::TokenError::Missing)
+            crate::runtime::Error::Admin(cause) if matches!(cause.as_ref(), crate::admin::Error::Token(super::super::TokenError::Missing))
         ),
         "expected missing token after fixture migration, received: {failure}"
     );

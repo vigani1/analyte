@@ -273,7 +273,7 @@ async fn prepare_service(
         super::law_recovery::run(program, &store).await?;
         crate::admin::prepare(program, store.clone(), mode)
             .await
-            .map_err(admin_startup_error)
+            .map_err(Error::from)
     }
     .await;
     let admin = match startup {
@@ -702,6 +702,3 @@ async fn open_service_store(
 }
 
 // The service's existing startup API exposes original dependency causes to recovery callers.
-fn admin_startup_error(error: crate::admin::Error) -> Error {
-    Error::Admin(Box::new(error))
-}
