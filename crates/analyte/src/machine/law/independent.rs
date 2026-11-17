@@ -1,5 +1,6 @@
 //! Drives independent LAW connections with host-owned I/O (TF-2b B.6).
 use super::{Connection, Error, intake};
+use crate::machine::hooks::Pause;
 use crate::orders::outcome::Code;
 use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
@@ -148,7 +149,9 @@ async fn accepted_connection(
 ) -> Result<(), Error> {
     let limits = analyte_transport::Limits::new(
         CHANNEL_LIMIT,
-        Duration::from_millis(u64::from(settings.transport().operation_timeout_ms())),
+        Duration::from_millis(u64::from(
+            settings.settings().transport().operation_timeout_ms(),
+        )),
     )?;
     let (mut conn, side) = analyte_transport::connection(limits);
     let side = match &capture {
@@ -207,15 +210,14 @@ async fn worker(
                 ()=crate::machine::stopping(&mut stop)=>break,
                 job=queue.recv()=>{
                     let Some(mut job)=job else {break;};
-                    #[cfg(feature = "test-hooks")]
-                    if let Some(gate) = &machine.hooks.law_gates.queued
-                        && let Err(error) = gate.pause(&mut stop).await {
+
+                    if machine.hooks.enabled(Pause::LawQueued)
+                        && let Err(error) = machine.hooks.pause(Pause::LawQueued, &mut stop).await {
                             job.orders.close(&store, "LAW-test-queue-gate-stopped").await?;
                             return Err(Error::TestHook(error));
                     }
                     let until=job.orders.due().ok_or(Error::QueuedWorkHasNoDeadline)?;
-                    #[cfg(feature = "test-hooks")]
-                    let until = if machine.hooks.law_gates.expire_queued { std::time::Instant::now() } else { until };
+                    let until = machine.hooks.queued_deadline(until);
                     let ready=tokio::select! {
                         biased;
                         ()=crate::machine::stopping(&mut stop)=>Err(Code::LawIndependentShutdownBeforeResponse.as_str()),
@@ -304,7 +306,9 @@ async fn exchange(
     };
     let limits = analyte_transport::Limits::new(
         CHANNEL_LIMIT,
-        Duration::from_millis(u64::from(settings.transport().operation_timeout_ms())),
+        Duration::from_millis(u64::from(
+            settings.settings().transport().operation_timeout_ms(),
+        )),
     )?;
     let (mut conn, side) = analyte_transport::connection(limits);
     let side = match capture {

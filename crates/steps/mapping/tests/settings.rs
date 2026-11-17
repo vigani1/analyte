@@ -8,8 +8,8 @@ use analyte_config::{
 )]
 pub(crate) fn astm(config: &Validated) -> (&AstmSyntax, &Mappings) {
     match config.effective().stack() {
-        Stack::Astm(RecordTransport::Stream(s)) => (s.syntax(), s.mappings()),
-        Stack::Astm(RecordTransport::Folder(s)) => (s.syntax(), s.mappings()),
+        Stack::Astm(RecordTransport::Stream(s)) => (s.settings().syntax(), s.settings().codes()),
+        Stack::Astm(RecordTransport::Folder(s)) => (s.settings().syntax(), s.settings().codes()),
         stack @ (Stack::Hl7(_)
         | Stack::Law(_)
         | Stack::Poct(_)
@@ -23,8 +23,8 @@ pub(crate) fn astm(config: &Validated) -> (&AstmSyntax, &Mappings) {
 )]
 pub(crate) fn hl7(config: &Validated) -> (&Hl7Syntax, &Mappings) {
     match config.effective().stack() {
-        Stack::Hl7(RecordTransport::Stream(s)) => (s.syntax(), s.mappings()),
-        Stack::Hl7(RecordTransport::Folder(s)) => (s.syntax(), s.mappings()),
+        Stack::Hl7(RecordTransport::Stream(s)) => (s.settings().syntax(), s.settings().codes()),
+        Stack::Hl7(RecordTransport::Folder(s)) => (s.settings().syntax(), s.settings().codes()),
         stack @ (Stack::Astm(_)
         | Stack::Law(_)
         | Stack::Poct(_)

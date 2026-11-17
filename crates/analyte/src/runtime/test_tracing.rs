@@ -2,9 +2,9 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone)]
-struct Writer(Arc<Mutex<Vec<u8>>>);
+pub(crate) struct Log(pub(crate) Arc<Mutex<Vec<u8>>>);
 
-impl std::io::Write for Writer {
+impl std::io::Write for Log {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         let mut output = self
             .0
@@ -34,11 +34,18 @@ pub(crate) fn init() -> Arc<Mutex<Vec<u8>>> {
                 .with_max_level(tracing::Level::TRACE)
                 .without_time()
                 .with_ansi(false)
-                .with_writer(move || Writer(output.clone()))
+                .with_writer(move || Log(output.clone()))
                 .finish();
             tracing::subscriber::set_global_default(subscriber)
                 .expect("the shared test tracing fixture owns the process-wide subscriber");
             bytes
         })
         .clone()
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Log {
+    type Writer = Self;
+    fn make_writer(&'a self) -> Self {
+        self.clone()
+    }
 }

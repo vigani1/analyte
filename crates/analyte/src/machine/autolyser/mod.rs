@@ -1,5 +1,6 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
 use crate::intake::ByteReason;
+use crate::machine::hooks::Pause;
 mod custody;
 pub(crate) mod transfer_end;
 use self::transfer_end::AutolyserEnd;
@@ -58,7 +59,7 @@ impl ConnectionState {
             response: ms(policy.response_ms),
             inter_byte: ms(policy.interbyte_ms),
             storage: ms(policy.storage_ms),
-            max_bytes: settings.frame_limit(),
+            max_bytes: settings.settings().frame_limit(),
             controls: policy.controls,
             recovery: if policy.recover_last_on_poll {
                 Recovery::LastOnPoll
@@ -155,13 +156,18 @@ impl Effects for ConnectionState {
                 {
                     return Ok(Flow::Stop);
                 }
-                #[cfg(feature = "test-hooks")]
+
                 if self.ready
                     && self.guard.is_none()
                     && !self.work.is_active()
-                    && let Some(hook) = &machine.machine().hooks.autolyser_quiescent
+                    && machine.machine().hooks.enabled(Pause::AutolyserQuiescent)
                 {
-                    hook.pause(stop).await.map_err(Error::TestHook)?;
+                    machine
+                        .machine()
+                        .hooks
+                        .pause(Pause::AutolyserQuiescent, stop)
+                        .await
+                        .map_err(Error::TestHook)?;
                 }
                 Vec::new()
             }

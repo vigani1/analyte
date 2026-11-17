@@ -1,4 +1,5 @@
-//! Controls test-only service startup and crash points.
+//! Controls bounded synthetic pause gates and store probes.
+use super::Error;
 
 use std::sync::{
     Arc,
@@ -185,42 +186,4 @@ impl StoreControl {
     pub fn resume(&self) {
         let _ = self.release.try_send(());
     }
-}
-
-pub(crate) fn publish_store_probes(
-    program: &crate::installation::config::Program,
-    store: &Arc<analyte_store::Handle>,
-) -> Result<(), Error> {
-    for machine in program.machines() {
-        if let Some(probe) = &machine.hooks.law_gates.store {
-            probe.publish(store)?;
-        }
-    }
-    Ok(())
-}
-
-/// Specific failures of bounded synthetic test gates.
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// test commit hook stopped connection.
-    #[error("test commit hook stopped connection")]
-    Stopped,
-    /// test commit hook control dropped.
-    #[error("test commit hook control dropped")]
-    ControlDropped,
-    /// test commit hook deadline.
-    #[error("test commit hook deadline")]
-    Deadline,
-    /// test commit hook not reached.
-    #[error("test commit hook not reached")]
-    NotReached,
-    /// test probe poisoned.
-    #[error("test probe poisoned")]
-    ProbePoisoned,
-    /// test store closed.
-    #[error("test store closed")]
-    StoreClosed,
-    /// A gate wait exceeded its bounded timeout.
-    #[error(transparent)]
-    Wait(#[from] tokio::time::error::Elapsed),
 }

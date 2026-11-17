@@ -443,7 +443,7 @@ fn astm_frame_limit(config: &analyte_config::Validated) -> Result<usize, Error> 
             protocol: "astm",
         });
     };
-    Ok(stack.frame_limit())
+    Ok(stack.settings().frame_limit())
 }
 
 #[test]
@@ -480,7 +480,7 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
             protocol: "hl7",
         });
     };
-    assert!(stack.syntax().options().allow_utf8_in_v231);
+    assert!(stack.settings().syntax().options().allow_utf8_in_v231);
     for invalid in [
         declared.rewrite("edition = \"v231\"", "edition = \"v251\""),
         declared.rewrite("encoding = \"utf8\"", "encoding = \"ascii\""),
@@ -504,6 +504,6 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
             protocol: "hl7",
         });
     };
-    assert!(!stack.syntax().options().allow_utf8_in_v231);
+    assert!(!stack.settings().syntax().options().allow_utf8_in_v231);
     Ok(())
 }

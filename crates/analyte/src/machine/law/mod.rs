@@ -1,5 +1,6 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 use super::driver::{self, Context};
+use crate::machine::hooks::Pause;
 mod connection;
 use crate::intake::ByteReason;
 use connection::Mode;
@@ -86,7 +87,10 @@ impl<'a, 'm> Host<'a, 'm> {
             Mode::Outbound(_) => Link::WorkResponse,
         };
         let mut options = settings.options();
-        options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit());
+        options.limits.message_bytes = options
+            .limits
+            .message_bytes
+            .min(settings.settings().frame_limit());
         Ok(Self {
             machine,
             settings,
@@ -96,8 +100,10 @@ impl<'a, 'm> Host<'a, 'm> {
             mode,
             dialog: Dialog::new(
                 options,
-                Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
-                Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
+                Duration::from_millis(u64::from(
+                    settings.settings().timeouts().receive_timeout_ms(),
+                )),
+                Duration::from_millis(u64::from(settings.settings().timeouts().send_timeout_ms())),
                 link,
             )?,
             clock: Instant::now(),
@@ -188,18 +194,21 @@ impl<'a, 'm> Host<'a, 'm> {
                 let id = ReceiptId::new();
                 self.receipt = Some((token, id));
                 self.stored = false;
-                #[cfg(feature = "test-hooks")]
-                if let Some(hook) = &machine.hooks.law_precommit {
-                    hook.pause(&mut host.stop).await.map_err(Error::TestHook)?;
-                }
+
+                machine
+                    .hooks
+                    .pause(Pause::LawPrecommit, &mut host.stop)
+                    .await
+                    .map_err(Error::TestHook)?;
+
                 super::custody::store_before_ack(
                     machine,
                     intake::receive(self.store, self.machine, id, raw),
                 )
                 .await?;
                 self.stored = true;
-                #[cfg(feature = "test-hooks")]
-                if let Some(hook) = &machine.hooks.law_committed {
+
+                if machine.hooks.enabled(Pause::LawCommitted) {
                     let mut stop = host.stop.clone();
                     tokio::select! {
                     biased;
@@ -207,7 +216,7 @@ impl<'a, 'm> Host<'a, 'm> {
                                 self.stopped = true;
                                 return Ok(Vec::new());
                             },
-                            result = hook.pause(&mut host.stop) => result.map_err(Error::TestHook)?,
+                            result = machine.hooks.pause(Pause::LawCommitted, &mut host.stop) => result.map_err(Error::TestHook)?,
                         }
                 }
                 Event::Committed(token)
@@ -282,16 +291,16 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         host: &mut Context<'_, '_, analyte_config::LawStack>,
     ) -> Result<(), Error> {
-        #[cfg(not(feature = "test-hooks"))]
-        let _ = host;
         self.completed = true;
         self.receipt = None;
         self.stored = false;
         if self.ready.is_some() {
-            #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &self.machine.machine().hooks.law_gates.rsp {
-                gate.pause(&mut host.stop).await.map_err(Error::TestHook)?;
-            }
+            self.machine
+                .machine()
+                .hooks
+                .pause(Pause::LawRsp, &mut host.stop)
+                .await
+                .map_err(Error::TestHook)?;
         }
         if let Some(ready) = self.ready.take() {
             let _ = ready.send(());
@@ -305,8 +314,6 @@ impl<'a, 'm> Host<'a, 'm> {
         started: Duration,
         host: &mut Context<'_, '_, analyte_config::LawStack>,
     ) -> Result<Vec<Action>, Error> {
-        #[cfg(not(feature = "test-hooks"))]
-        let _ = host;
         let mut reply = self
             .orders
             .answer(
@@ -334,10 +341,14 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Err(Error::OutboundQueueUnavailableReservedWorkNotIssued);
             }
             self.ready = Some(notify);
-            #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &self.machine.machine().hooks.law_gates.handover {
-                gate.pause(&mut host.stop).await.map_err(Error::TestHook)?;
-            }
+
+            self.machine
+                .machine()
+                .hooks
+                .pause(Pause::LawHandover, &mut host.stop)
+                .await
+                .map_err(Error::TestHook)?;
+
             reply = Reply::Response(response.clone());
         }
         Ok(self
@@ -410,10 +421,14 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Ok(());
             }
         }
-        #[cfg(feature = "test-hooks")]
-        if let Some(hook) = &self.machine.machine().hooks.input_processed {
-            hook.pause(&mut host.stop).await.map_err(Error::TestHook)?;
-        }
+
+        self.machine
+            .machine()
+            .hooks
+            .pause(Pause::InputProcessed, &mut host.stop)
+            .await
+            .map_err(Error::TestHook)?;
+
         Ok(())
     }
     async fn finish(&mut self) -> Result<(), Error> {

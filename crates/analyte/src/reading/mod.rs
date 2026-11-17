@@ -76,20 +76,29 @@ pub(crate) fn read(
     hello: Option<&[u8]>,
 ) -> Result<Output, Error> {
     match config.effective().stack() {
-        Stack::Astm(RecordTransport::Stream(s)) => {
-            astm::read(input, &payload(config, raw)?, s.syntax(), s.mappings())
+        Stack::Astm(RecordTransport::Stream(s)) => astm::read(
+            input,
+            &payload(config, raw)?,
+            s.settings().syntax(),
+            s.settings().codes(),
+        ),
+        Stack::Astm(RecordTransport::Folder(s)) => {
+            astm::read(input, raw, s.settings().syntax(), s.settings().codes())
         }
-        Stack::Astm(RecordTransport::Folder(s)) => astm::read(input, raw, s.syntax(), s.mappings()),
         Stack::Hl7(RecordTransport::Stream(s)) => hl7::read(
             config,
             input,
             &payload(config, raw)?,
-            s.syntax(),
-            s.mappings(),
+            s.settings().syntax(),
+            s.settings().codes(),
         ),
-        Stack::Hl7(RecordTransport::Folder(s)) => {
-            hl7::read(config, input, raw, s.syntax(), s.mappings())
-        }
+        Stack::Hl7(RecordTransport::Folder(s)) => hl7::read(
+            config,
+            input,
+            raw,
+            s.settings().syntax(),
+            s.settings().codes(),
+        ),
         Stack::Law(s) => law::read(input, &payload(config, raw)?, s),
         Stack::Poct(s) => poct::read(input, raw, s, hello),
         Stack::Vidas(s) => vidas::read(config, input, raw, s),

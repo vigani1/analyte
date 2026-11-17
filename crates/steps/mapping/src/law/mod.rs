@@ -21,14 +21,18 @@ pub fn map(
     settings: &analyte_config::LawStack,
     input: Input,
 ) -> Result<Output, Error> {
-    crate::hl7::validate_message(results.message(), settings.options(), settings.limits())?;
+    crate::hl7::validate_message(
+        results.message(),
+        settings.options(),
+        settings.settings().limits(),
+    )?;
     let mut source = source::law(results)?;
     source.attach_comments()?;
     let mut output = grouping::message(
         &source,
         &crate::RecordSettings {
-            mappings: settings.mappings(),
-            limits: settings.limits(),
+            mappings: settings.settings().codes(),
+            limits: settings.settings().limits(),
         },
         input,
         Some(results),

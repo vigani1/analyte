@@ -3,6 +3,8 @@
 
 mod delivery;
 mod destination;
+#[cfg(any(test, feature = "test-hooks"))]
+mod hooks;
 mod polling;
 mod webhook;
 pub use webhook::{WebhookSender, WebhookSetupError, WebhookUrl};

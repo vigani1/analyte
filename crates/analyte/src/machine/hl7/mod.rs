@@ -1,5 +1,6 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
 use crate::intake::ByteReason;
+use crate::machine::hooks::Pause;
 pub(crate) mod error_location;
 use super::connection_input::{self, Input};
 use super::driver::{self, Context, Effects, Flow};
@@ -63,11 +64,16 @@ struct ConnectionState {
 
 impl ConnectionState {
     fn open(settings: &analyte_config::Hl7Stack) -> Result<Self, Error> {
-        let mut options = settings.syntax().options();
-        options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit());
+        let mut options = settings.settings().syntax().options();
+        options.limits.message_bytes = options
+            .limits
+            .message_bytes
+            .min(settings.settings().frame_limit());
         let config = Config::new(
             options,
-            Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
+            Duration::from_millis(u64::from(
+                settings.settings().timeouts().receive_timeout_ms(),
+            )),
             1,
         )?;
         let mut dialog = Dialog::new(config, 0);
@@ -84,7 +90,7 @@ impl ConnectionState {
             None
         };
         if enabled {
-            dialog.enable_orders(settings.syntax().edition().into())?;
+            dialog.enable_orders(settings.settings().syntax().edition().into())?;
         }
         let input_evidence = connection_input::Custody::default();
         let write_error = None;
@@ -516,7 +522,6 @@ impl Effects for ConnectionState {
             Input::Closed(_) => return Ok(Flow::Stop),
             Input::Failed(_) | Input::RecordingFailed(_) | Input::Tick => Vec::new(),
         };
-        #[cfg(feature = "test-hooks")]
         let has_bytes = !bytes.is_empty();
         if self
             .receive_bytes(bytes, machine, store, conn, stop)
@@ -525,9 +530,14 @@ impl Effects for ConnectionState {
             return Ok(Flow::Stop);
         }
         self.input_evidence.complete();
-        #[cfg(feature = "test-hooks")]
-        if has_bytes && let Some(hook) = &machine.machine().hooks.input_processed {
-            hook.pause(stop).await.map_err(Error::TestHook)?;
+
+        if has_bytes && machine.machine().hooks.enabled(Pause::InputProcessed) {
+            machine
+                .machine()
+                .hooks
+                .pause(Pause::InputProcessed, stop)
+                .await
+                .map_err(Error::TestHook)?;
         }
         if let Some(query) = &mut self.queries {
             tokio::select! {

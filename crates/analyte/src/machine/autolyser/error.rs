@@ -29,7 +29,6 @@ pub(crate) enum Error {
     #[error(transparent)]
     Syntax(#[from] analyte_autolyser::syntax::Error),
     /// A bounded synthetic gate stopped or could not resume the connection.
-    #[cfg(feature = "test-hooks")]
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
     /// The Autolyser response envelope failed validation.

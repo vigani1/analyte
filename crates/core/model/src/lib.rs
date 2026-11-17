@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod evidence;
+pub use evidence::quoted;
 mod execution;
 mod identity;
 mod lifecycle;

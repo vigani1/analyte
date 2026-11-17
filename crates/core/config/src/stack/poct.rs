@@ -8,46 +8,13 @@ use crate::ParsedMachine;
 /// Poct stack with its required installed policy.
 #[derive(Debug, Clone)]
 pub struct PoctStack {
-    /// Supported connection settings.
-    pub(super) transport: TcpTransport,
-    /// Maximum framed payload bytes.
-    pub(super) frame_limit: usize,
-    /// Host receive and send deadlines.
-    pub(super) timeouts: DialogTimeouts,
-    /// Syntax resource ceilings.
-    pub(super) limits: SyntaxLimits,
-    /// Required exact test and unit translations.
-    pub(super) codes: CodeTables,
+    /// Shared link, resource and interpretation settings.
+    pub(super) settings: super::StackSettings<TcpTransport, SyntaxLimits, CodeTables>,
     /// Required installed protocol policy.
     pub(super) policy: Poct,
 }
 
 impl PoctStack {
-    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
-    #[must_use]
-    pub fn transport(&self) -> &TcpTransport {
-        &self.transport
-    }
-    /// Maximum retained frame size before framing refuses more bytes.
-    #[must_use]
-    pub fn frame_limit(&self) -> usize {
-        self.frame_limit
-    }
-    /// Bounded protocol waits used by the connection state machine.
-    #[must_use]
-    pub fn timeouts(&self) -> &DialogTimeouts {
-        &self.timeouts
-    }
-    /// Size and count ceilings applied before parsing untrusted records.
-    #[must_use]
-    pub fn limits(&self) -> &SyntaxLimits {
-        &self.limits
-    }
-    /// Explicit instrument code mappings used during interpretation.
-    #[must_use]
-    pub fn codes(&self) -> &CodeTables {
-        &self.codes
-    }
     /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
     pub fn policy(&self) -> &Poct {
@@ -61,11 +28,13 @@ pub(super) fn build(
     path: &str,
 ) -> Result<PoctStack, Error> {
     Ok(PoctStack {
-        transport: tcp(&machine.transport, path)?,
-        frame_limit: machine.framing.limit,
-        timeouts,
-        limits: limits(&machine.syntax),
-        codes: code_tables(machine, path)?,
+        settings: super::StackSettings {
+            transport: tcp(&machine.transport, path)?,
+            frame_limit: machine.framing.limit,
+            timeouts,
+            syntax: limits(&machine.syntax),
+            codes: code_tables(machine, path)?,
+        },
         policy: machine
             .poct
             .clone()
@@ -78,5 +47,13 @@ impl PoctStack {
     #[must_use]
     pub fn send_ahead(&self) -> bool {
         false
+    }
+}
+
+impl PoctStack {
+    /// Borrows the shared validated settings without changing protocol-specific types.
+    #[must_use]
+    pub fn settings(&self) -> &super::StackSettings<TcpTransport, SyntaxLimits, CodeTables> {
+        &self.settings
     }
 }

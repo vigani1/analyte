@@ -1,6 +1,7 @@
 //! Writes stable mapping evidence spellings, preserving the historical protected-store format.
 use crate::{Position, Problem};
-use std::fmt::{self, Write};
+use analyte_model::quoted;
+use std::fmt;
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -46,22 +47,6 @@ impl fmt::Display for Problem {
             }
         }
     }
-}
-
-// The historical Rust string representation is now an explicit compatibility format.
-fn quoted(f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
-    f.write_char('"')?;
-    for character in value.chars() {
-        match character {
-            '\'' => f.write_char(character)?,
-            other => {
-                for escaped in other.escape_debug() {
-                    f.write_char(escaped)?;
-                }
-            }
-        }
-    }
-    f.write_char('"')
 }
 
 #[cfg(test)]

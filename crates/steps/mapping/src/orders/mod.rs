@@ -184,24 +184,20 @@ pub fn map_order(
     match stack {
         Stack::Astm(analyte_config::RecordTransport::Stream(s)) => crate::astm::map_order(
             order,
-            s.syntax().limits(),
-            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
+            s.settings().syntax().limits(),
+            s.orders().ok_or(OrderMappingError::Disabled)?,
         ),
         Stack::Astm(analyte_config::RecordTransport::Folder(s)) => crate::astm::map_order(
             order,
-            s.syntax().limits(),
-            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
+            s.settings().syntax().limits(),
+            s.orders().ok_or(OrderMappingError::Disabled)?,
         ),
-        Stack::Vidas(s) => crate::vidas::map_order(
-            order,
-            s,
-            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
-        ),
-        Stack::Autolyser(s) => crate::autolyser::map_order(
-            order,
-            s,
-            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
-        ),
+        Stack::Vidas(s) => {
+            crate::vidas::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
+        }
+        Stack::Autolyser(s) => {
+            crate::autolyser::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
+        }
         Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
         | Stack::Law(_)
@@ -232,11 +228,9 @@ pub(super) fn map_specimen<'a>(
         .specimen_type
         .as_ref()
         .ok_or(OrderMappingError::MissingSpecimenType)?;
-    Ok(
-        outbound_specimen(settings.specimen_types().as_deref(), requested)?
-            .machine
-            .as_str(),
-    )
+    Ok(outbound_specimen(settings.specimen_types(), requested)?
+        .machine
+        .as_str())
 }
 /// Borrowed reservation identities and requested app codes; storage remains host-owned.
 pub struct OutboundItem<'a> {

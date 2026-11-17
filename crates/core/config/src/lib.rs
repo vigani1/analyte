@@ -34,8 +34,9 @@ use sha2::{Digest, Sha256};
 pub use stack::{
     AstmOrders, AstmStack, AstmSyntax, AutolyserOrders, AutolyserStack, DialogTimeouts,
     FileAstmStack, FileHl7Stack, Hl7Orders, Hl7Query, Hl7SendOrders, Hl7Stack, Hl7Syntax, LawLinks,
-    LawOrders, LawPolicy, LawStack, OrderTables, PoctStack, RecordTransport, Stack, StreamKind,
-    StreamTransport, SyntaxLimits, TcpRole, TcpTransport, VidasOrders, VidasStack,
+    LawOrders, LawPolicy, LawStack, OrderTables, PoctStack, RecordTransport, Stack, StackSettings,
+    StreamKind, StreamTransport, SyntaxBounds, SyntaxLimits, TcpRole, TcpTransport, VidasOrders,
+    VidasStack,
 };
 use validation::{validate_machine, validate_site};
 
@@ -446,8 +447,8 @@ impl Effective {
     #[must_use]
     pub fn astm_limits(&self) -> Option<analyte_astm::Limits> {
         match &self.machine.stack {
-            Stack::Astm(RecordTransport::Stream(s)) => Some(s.syntax().parser_limits()),
-            Stack::Astm(RecordTransport::Folder(s)) => Some(s.syntax().parser_limits()),
+            Stack::Astm(RecordTransport::Stream(s)) => Some(s.settings().syntax().parser_limits()),
+            Stack::Astm(RecordTransport::Folder(s)) => Some(s.settings().syntax().parser_limits()),
             Stack::Hl7(RecordTransport::Stream(_))
             | Stack::Law(_)
             | Stack::Poct(_)
@@ -461,8 +462,8 @@ impl Effective {
     #[must_use]
     pub fn hl7_options(&self) -> Option<analyte_hl7::Options> {
         match &self.machine.stack {
-            Stack::Hl7(RecordTransport::Stream(s)) => Some(s.syntax().options()),
-            Stack::Hl7(RecordTransport::Folder(s)) => Some(s.syntax().options()),
+            Stack::Hl7(RecordTransport::Stream(s)) => Some(s.settings().syntax().options()),
+            Stack::Hl7(RecordTransport::Folder(s)) => Some(s.settings().syntax().options()),
             Stack::Law(s) => Some(s.options()),
             Stack::Astm(RecordTransport::Stream(_))
             | Stack::Astm(RecordTransport::Folder(_))

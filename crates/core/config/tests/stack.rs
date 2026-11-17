@@ -87,7 +87,7 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
                 assert_hl7_example(stack, raw, name);
             }
             Stack::Law(stack) => {
-                assert_eq!(stack.transport().role(), TcpRole::Server);
+                assert_eq!(stack.settings().transport().role(), TcpRole::Server);
                 assert_eq!(stack.policy().query_deadline_ms(), 1500);
                 assert_eq!(stack.orders().is_some(), name == "law_orders.toml");
                 if let Some(orders) = &stack.orders() {
@@ -97,16 +97,16 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
             }
             Stack::Poct(stack) => {
                 assert_eq!(stack.policy().depth, 32);
-                assert!(!stack.codes().tests.is_empty());
+                assert!(!stack.settings().codes().tests.is_empty());
             }
             Stack::Vidas(stack) => {
                 assert_eq!(u8::from(stack.policy().sample_limit), 12);
-                assert!(!stack.codes().tests.is_empty());
+                assert!(!stack.settings().codes().tests.is_empty());
                 assert!(stack.orders().is_none());
             }
             Stack::Autolyser(stack) => {
                 assert_eq!(stack.policy().poll_ms, 1000);
-                assert!(!stack.codes().tests.is_empty());
+                assert!(!stack.settings().codes().tests.is_empty());
                 assert!(stack.orders().is_none());
             }
             Stack::Astm(analyte_config::RecordTransport::Folder(_))
@@ -125,10 +125,10 @@ fn adr0002_stack_is_built_after_overrides_and_keeps_serial_settings() -> TestRes
     else {
         panic!("ASTM stack")
     };
-    let StreamKind::Serial(settings) = stack.transport().kind() else {
+    let StreamKind::Serial(settings) = stack.settings().transport().kind() else {
         panic!("serial transport")
     };
-    let operation_timeout_ms = stack.transport().operation_timeout_ms();
+    let operation_timeout_ms = stack.settings().transport().operation_timeout_ms();
     assert_eq!(settings.baud, 9600);
     assert_eq!(operation_timeout_ms, 10000);
     let overridden = load(
@@ -146,8 +146,10 @@ operation_timeout_ms=1234
         panic!("ASTM stack")
     };
     assert!(
-        matches!(stack.transport().kind(), StreamKind::Tcp(TcpRole::Client))
-            && stack.transport().operation_timeout_ms() == 1234
+        matches!(
+            stack.settings().transport().kind(),
+            StreamKind::Tcp(TcpRole::Client)
+        ) && stack.settings().transport().operation_timeout_ms() == 1234
     );
     Ok(())
 }
@@ -242,15 +244,18 @@ fn assert_astm_example(
     original: &toml::Value,
 ) {
     assert_eq!(
-        Some(stack.frame_limit()),
+        Some(stack.settings().frame_limit()),
         original
             .get("framing")
             .and_then(|f| f.get("limit"))
             .and_then(toml::Value::as_integer)
             .and_then(|n| usize::try_from(n).ok())
     );
-    assert_eq!(stack.mappings().tests.len(), raw.tests().len());
-    assert!(matches!(stack.transport().kind(), StreamKind::Serial(_)));
+    assert_eq!(stack.settings().codes().tests.len(), raw.tests().len());
+    assert!(matches!(
+        stack.settings().transport().kind(),
+        StreamKind::Serial(_)
+    ));
     assert_eq!(stack.orders().is_some(), name == "orders.toml");
     if let Some(orders) = &stack.orders() {
         assert!(orders.query().is_some());
@@ -259,8 +264,8 @@ fn assert_astm_example(
 }
 
 fn assert_hl7_example(stack: &analyte_config::Hl7Stack, raw: &analyte_config::Machine, name: &str) {
-    assert_eq!(stack.transport().role(), TcpRole::Server);
-    assert_eq!(stack.mappings().tests.len(), raw.tests().len());
+    assert_eq!(stack.settings().transport().role(), TcpRole::Server);
+    assert_eq!(stack.settings().codes().tests.len(), raw.tests().len());
     assert_eq!(
         stack.orders().is_some(),
         matches!(name, "hl7_orders.toml" | "hl7_send.toml")

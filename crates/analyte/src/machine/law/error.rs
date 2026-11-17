@@ -84,7 +84,6 @@ pub(crate) enum Error {
     #[error(transparent)]
     Mllp(#[from] analyte_framing::hl7::Error),
     /// A bounded synthetic gate stopped or could not resume the connection.
-    #[cfg(feature = "test-hooks")]
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
     /// Retains uncertain custody or independent cleanup failures in their original order.

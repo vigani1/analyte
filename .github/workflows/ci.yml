@@ -26,6 +26,7 @@ jobs:
         with:
           persist-credentials: false
       - run: bash scripts/check-layout.sh
+      - run: python3 scripts/check-hook-layout.py
 
   fmt:
     name: Format
@@ -124,13 +125,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Production code only; tests may repeat scenarios on purpose. Lower the
-      # threshold as duplication is removed, never raise it to pass.
-      - name: Production code duplication stays below 1.5%
-        run: >-
-          npx --yes jscpd@5.4.2 --format rust --min-lines 8 --min-tokens 70
-          --ignore "**/target/**,**/fuzz/corpus/**,**/tests/**,**/tests.rs,**/*_tests.rs"
-          --threshold 1.5 --reporters console crates
+      - name: Production and test duplication stay within separate budgets
+        run: |
+          python3 scripts/test-duplication.py
+          python3 scripts/check-duplication.py
 
   deny:
     name: Licenses, sources and advisories

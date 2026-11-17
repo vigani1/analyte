@@ -49,7 +49,7 @@ pub(crate) fn framing(
             Mode::Literal
         },
         installed.chunk,
-        settings.frame_limit(),
+        settings.settings().frame_limit(),
         &installed.suffix,
         Checksum {
             include_stx: installed.include_stx.into(),

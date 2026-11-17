@@ -85,14 +85,14 @@ impl Stack {
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {
         match self {
-            Self::Astm(RecordTransport::Stream(s)) => &s.syntax.limits,
-            Self::Hl7(RecordTransport::Stream(s)) => &s.syntax.limits,
-            Self::Astm(RecordTransport::Folder(s)) => &s.syntax.limits,
-            Self::Hl7(RecordTransport::Folder(s)) => &s.syntax.limits,
-            Self::Law(s) => &s.limits,
-            Self::Poct(s) => &s.limits,
-            Self::Vidas(s) => &s.limits,
-            Self::Autolyser(s) => &s.limits,
+            Self::Astm(RecordTransport::Stream(s)) => &s.settings.syntax.limits,
+            Self::Hl7(RecordTransport::Stream(s)) => &s.settings.syntax.limits,
+            Self::Astm(RecordTransport::Folder(s)) => &s.settings.syntax.limits,
+            Self::Hl7(RecordTransport::Folder(s)) => &s.settings.syntax.limits,
+            Self::Law(s) => &s.settings.syntax,
+            Self::Poct(s) => &s.settings.syntax,
+            Self::Vidas(s) => &s.settings.syntax,
+            Self::Autolyser(s) => &s.settings.syntax,
         }
     }
 
@@ -100,14 +100,14 @@ impl Stack {
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         match self {
-            Self::Astm(RecordTransport::Stream(s)) => &s.timeouts,
-            Self::Hl7(RecordTransport::Stream(s)) => &s.timeouts,
-            Self::Astm(RecordTransport::Folder(s)) => &s.timeouts,
-            Self::Hl7(RecordTransport::Folder(s)) => &s.timeouts,
-            Self::Law(s) => &s.timeouts,
-            Self::Poct(s) => &s.timeouts,
-            Self::Vidas(s) => &s.timeouts,
-            Self::Autolyser(s) => &s.timeouts,
+            Self::Astm(RecordTransport::Stream(s)) => &s.settings.timeouts,
+            Self::Hl7(RecordTransport::Stream(s)) => &s.settings.timeouts,
+            Self::Astm(RecordTransport::Folder(s)) => &s.settings.timeouts,
+            Self::Hl7(RecordTransport::Folder(s)) => &s.settings.timeouts,
+            Self::Law(s) => &s.settings.timeouts,
+            Self::Poct(s) => &s.settings.timeouts,
+            Self::Vidas(s) => &s.settings.timeouts,
+            Self::Autolyser(s) => &s.settings.timeouts,
         }
     }
 
@@ -115,14 +115,22 @@ impl Stack {
     #[must_use]
     pub fn code_tables(&self) -> (&[TestMapping], &[UnitMapping]) {
         match self {
-            Self::Astm(RecordTransport::Stream(s)) => (&s.mappings.tests, &s.mappings.units),
-            Self::Hl7(RecordTransport::Stream(s)) => (&s.mappings.tests, &s.mappings.units),
-            Self::Astm(RecordTransport::Folder(s)) => (&s.mappings.tests, &s.mappings.units),
-            Self::Hl7(RecordTransport::Folder(s)) => (&s.mappings.tests, &s.mappings.units),
-            Self::Law(s) => (&s.mappings.tests, &s.mappings.units),
-            Self::Poct(s) => (&s.codes.tests, &s.codes.units),
-            Self::Vidas(s) => (&s.codes.tests, &s.codes.units),
-            Self::Autolyser(s) => (&s.codes.tests, &s.codes.units),
+            Self::Astm(RecordTransport::Stream(s)) => {
+                (&s.settings.codes.tests, &s.settings.codes.units)
+            }
+            Self::Hl7(RecordTransport::Stream(s)) => {
+                (&s.settings.codes.tests, &s.settings.codes.units)
+            }
+            Self::Astm(RecordTransport::Folder(s)) => {
+                (&s.settings.codes.tests, &s.settings.codes.units)
+            }
+            Self::Hl7(RecordTransport::Folder(s)) => {
+                (&s.settings.codes.tests, &s.settings.codes.units)
+            }
+            Self::Law(s) => (&s.settings.codes.tests, &s.settings.codes.units),
+            Self::Poct(s) => (&s.settings.codes.tests, &s.settings.codes.units),
+            Self::Vidas(s) => (&s.settings.codes.tests, &s.settings.codes.units),
+            Self::Autolyser(s) => (&s.settings.codes.tests, &s.settings.codes.units),
         }
     }
 }
@@ -132,12 +140,12 @@ impl Stack {
     #[must_use]
     pub fn transport_kind(&self) -> TransportKind {
         match self {
-            Self::Astm(RecordTransport::Stream(s)) => stream_kind(&s.transport),
-            Self::Vidas(s) => stream_kind(&s.transport),
-            Self::Autolyser(s) => stream_kind(&s.transport),
-            Self::Hl7(RecordTransport::Stream(s)) => tcp_kind(s.transport.role),
-            Self::Law(s) => tcp_kind(s.transport.role),
-            Self::Poct(s) => tcp_kind(s.transport.role),
+            Self::Astm(RecordTransport::Stream(s)) => stream_kind(&s.settings.transport),
+            Self::Vidas(s) => stream_kind(&s.settings.transport),
+            Self::Autolyser(s) => stream_kind(&s.settings.transport),
+            Self::Hl7(RecordTransport::Stream(s)) => tcp_kind(s.settings.transport.role),
+            Self::Law(s) => tcp_kind(s.settings.transport.role),
+            Self::Poct(s) => tcp_kind(s.settings.transport.role),
             Self::Astm(RecordTransport::Folder(_)) | Self::Hl7(RecordTransport::Folder(_)) => {
                 TransportKind::WatchedFolder
             }
@@ -148,14 +156,14 @@ impl Stack {
     #[must_use]
     pub fn operation_timeout_ms(&self) -> u32 {
         match self {
-            Self::Astm(RecordTransport::Stream(s)) => stream_timeout(&s.transport),
-            Self::Vidas(s) => stream_timeout(&s.transport),
-            Self::Autolyser(s) => stream_timeout(&s.transport),
-            Self::Hl7(RecordTransport::Stream(s)) => s.transport.operation_timeout_ms,
-            Self::Law(s) => s.transport.operation_timeout_ms,
-            Self::Poct(s) => s.transport.operation_timeout_ms,
-            Self::Astm(RecordTransport::Folder(s)) => s.operation_timeout_ms,
-            Self::Hl7(RecordTransport::Folder(s)) => s.operation_timeout_ms,
+            Self::Astm(RecordTransport::Stream(s)) => stream_timeout(&s.settings.transport),
+            Self::Vidas(s) => stream_timeout(&s.settings.transport),
+            Self::Autolyser(s) => stream_timeout(&s.settings.transport),
+            Self::Hl7(RecordTransport::Stream(s)) => s.settings.transport.operation_timeout_ms,
+            Self::Law(s) => s.settings.transport.operation_timeout_ms,
+            Self::Poct(s) => s.settings.transport.operation_timeout_ms,
+            Self::Astm(RecordTransport::Folder(s)) => s.settings.transport,
+            Self::Hl7(RecordTransport::Folder(s)) => s.settings.transport,
         }
     }
 
@@ -188,11 +196,11 @@ impl Stack {
     #[must_use]
     pub fn field_mappings(&self) -> Option<&Mappings> {
         match self {
-            Self::Astm(RecordTransport::Stream(s)) => Some(&s.mappings),
-            Self::Astm(RecordTransport::Folder(s)) => Some(&s.mappings),
-            Self::Hl7(RecordTransport::Stream(s)) => Some(&s.mappings),
-            Self::Hl7(RecordTransport::Folder(s)) => Some(&s.mappings),
-            Self::Law(s) => Some(&s.mappings),
+            Self::Astm(RecordTransport::Stream(s)) => Some(&s.settings.codes),
+            Self::Astm(RecordTransport::Folder(s)) => Some(&s.settings.codes),
+            Self::Hl7(RecordTransport::Stream(s)) => Some(&s.settings.codes),
+            Self::Hl7(RecordTransport::Folder(s)) => Some(&s.settings.codes),
+            Self::Law(s) => Some(&s.settings.codes),
             Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => None,
         }
     }
@@ -218,3 +226,6 @@ pub use order_tables::OrderTables;
 use order_tables::order_tables;
 
 mod capabilities;
+
+mod settings;
+pub use settings::{StackSettings, SyntaxBounds};

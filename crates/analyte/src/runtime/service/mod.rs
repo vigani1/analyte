@@ -13,7 +13,7 @@ use tokio::{sync::watch, task::JoinSet};
 const STORE_QUEUE_CAPACITY: usize = 32;
 
 /// Default minimum process budget covers all ordered shutdown stages.
-const SHUTDOWN_MIN: Duration = Duration::from_secs(30);
+pub(super) const SHUTDOWN_MIN: Duration = Duration::from_secs(30);
 
 /// Upper bound prevents an installation from waiting indefinitely on exit.
 const SHUTDOWN_MAX: Duration = Duration::from_secs(300);
@@ -26,10 +26,6 @@ const RECEIVE_COMMIT_BUDGET: Duration = Duration::from_secs(15);
 
 /// Bounds offline restore and verification on the blocking owner.
 const RESTORE_BUDGET: Duration = Duration::from_secs(30);
-
-/// Shortens only the explicit child-process stuck-store test.
-#[cfg(feature = "test-hooks")]
-const STALLED_STORE_TEST_BUDGET: Duration = Duration::from_millis(500);
 
 // Dropping the task also marks it stopped on panic or cancellation.
 struct AdminOwner(Option<Arc<std::sync::atomic::AtomicBool>>);
@@ -169,42 +165,17 @@ pub async fn serve(
     .await
 }
 
-/// Runs synthetic localhost tests with injected host credentials and explicit URL overrides.
-/// No production configuration can enable HTTP. All spawned tasks are joined.
-/// An optional readiness signal fires after startup and owner creation succeed.
-/// # Errors
-/// Reports startup, supervision and bounded shutdown failures.
 #[cfg(feature = "test-hooks")]
-pub async fn serve_loopback_test(
-    program: Program,
-    space: Box<dyn FreeSpace>,
-    stop: impl Future<Output = Result<(), Error>>,
-    secrets: crate::installation::secrets::Environment,
-    ready: Option<tokio::sync::oneshot::Sender<()>>,
-) -> Result<(), Error> {
-    serve_with(
-        program,
-        space,
-        stop,
-        secrets,
-        Supervision {
-            loopback: true,
-            shutdown_bound: SHUTDOWN_MIN,
-            watchdog: None,
-            ready,
-        },
-    )
-    .await
+pub use super::hooks::serve_loopback_test;
+
+pub(super) struct Supervision {
+    pub(super) loopback: bool,
+    pub(super) shutdown_bound: Duration,
+    pub(super) watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
+    pub(super) ready: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
-struct Supervision {
-    loopback: bool,
-    shutdown_bound: Duration,
-    watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
-    ready: Option<tokio::sync::oneshot::Sender<()>>,
-}
-
-async fn serve_with(
+pub(super) async fn serve_with(
     mut program: Program,
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), Error>>,
@@ -217,15 +188,8 @@ async fn serve_with(
         watchdog,
         ready,
     } = supervision;
-    #[cfg(feature = "test-hooks")]
-    let shutdown_bound = if program.hooks.stall_store_on_shutdown {
-        if !loopback || watchdog.is_some() {
-            return Err(Failure::StuckShutdownHookRequiresTheLoopbackTestService.into());
-        }
-        STALLED_STORE_TEST_BUDGET
-    } else {
-        shutdown_bound
-    };
+    let shutdown_bound =
+        super::hooks::shutdown_bound(&program, loopback, watchdog.is_some(), shutdown_bound)?;
     let watchdog = match watchdog {
         Some(watchdog) => watchdog,
         None => Arc::new(crate::runtime::shutdown::Watchdog::new(
@@ -268,18 +232,7 @@ async fn serve_with(
     .await;
     watchdog.arm();
     admin_stop.send_replace(true);
-    #[cfg(feature = "test-hooks")]
-    if program.hooks.stall_store_on_shutdown {
-        // Deliberately emulate a stuck OS flush without changing the store worker.
-        // Only child-process tests enable this; no protocol or storage bytes change.
-        store
-            .request::<(), analyte_store::Error>(deadline()?, |_| {
-                loop {
-                    std::thread::park();
-                }
-            })
-            .await?;
-    }
+    super::hooks::stall(&program, &store).await?;
     shutdown.send_replace(true);
     Draining {
         alert_owners,
@@ -304,8 +257,7 @@ async fn prepare_service(
 ) -> Result<(Arc<Handle>, Option<crate::admin::Server>), Error> {
     let store = open_service_store(program, space).await?;
     let startup = async {
-        #[cfg(feature = "test-hooks")]
-        super::test_hooks::publish_store_probes(program, &store)?;
+        super::hooks::publish_store_probes(program, &store)?;
         let paused = store
             .request(deadline()?, |store| store.restore_unreconciled())
             .await?;

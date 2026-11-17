@@ -40,7 +40,11 @@ pub fn map(
             .system
             .as_deref()
             .or(observation.source_code.system_name.as_deref());
-        let Some(test) = map_test(machine.codes(), &observation.source_code.value, system) else {
+        let Some(test) = map_test(
+            machine.settings().codes(),
+            &observation.source_code.value,
+            system,
+        ) else {
             output.unmapped_test(
                 Position {
                     record: observation.source_index.saturating_add(1),
@@ -51,7 +55,7 @@ pub fn map(
             continue;
         };
         part.test = test;
-        map_units(machine.codes(), &mut part)?;
+        map_units(machine.settings().codes(), &mut part)?;
         let mut content = map_result(receipt, observation.sample, part, identity)?;
         content.processing = processing;
         output.results.push(MappedResult {

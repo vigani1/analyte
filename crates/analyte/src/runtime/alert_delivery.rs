@@ -20,13 +20,8 @@ pub(crate) async fn run(
     let mut ticks = tokio::time::interval(Duration::from_secs(1));
     ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        if *stop.borrow() {
+        if !crate::runtime::ticks::until_stop(&mut ticks, &mut stop).await {
             return Ok(());
-        }
-        tokio::select! {
-            biased;
-            _ = stop.changed() => return Ok(()),
-            _ = ticks.tick() => {}
         }
         let token = std::env::var(crate::installation::secrets::variable(
             endpoint.secret().as_str(),
@@ -115,28 +110,9 @@ async fn cycle(
 mod tests {
     use super::*;
     use crate::Error;
+    use crate::runtime::test_tracing::Log;
     use std::sync::Mutex;
     use tracing::instrument::WithSubscriber as _;
-    #[derive(Clone)]
-    struct Log(Arc<Mutex<Vec<u8>>>);
-    impl std::io::Write for Log {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0
-                .lock()
-                .map_err(|_| std::io::Error::other("test log poisoned"))?
-                .extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Log {
-        type Writer = Self;
-        fn make_writer(&'a self) -> Self {
-            self.clone()
-        }
-    }
     async fn open(path: std::path::PathBuf) -> Result<Handle, Error> {
         Ok(Handle::start(
             path,

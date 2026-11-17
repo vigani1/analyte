@@ -3,7 +3,6 @@
 #[derive(Debug, thiserror::Error)]
 pub enum OrderError {
     /// Failure injected only by the optional test harness.
-    #[cfg(feature = "test-hooks")]
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
     /// The store refused admission of this order version or lifecycle state.

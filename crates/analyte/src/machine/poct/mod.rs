@@ -266,7 +266,7 @@ async fn process(
     settings: &analyte_config::PoctStack,
 ) -> Result<bool, Error> {
     let limits = super::interpretation::poct_limits(settings);
-    let send_timeout_ms = settings.timeouts().send_timeout_ms();
+    let send_timeout_ms = settings.settings().timeouts().send_timeout_ms();
     let mut actions: VecDeque<_> = actions.into();
     let mut failure = None;
     let result = async {

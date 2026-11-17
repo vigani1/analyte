@@ -100,7 +100,7 @@ fn packed(
 ) -> Result<(), Error> {
     use analyte_framing::astm::{Decoder, Event, Limit};
     let mut decoder = Decoder::new(
-        Limit::new(settings.frame_limit())?,
+        Limit::new(settings.settings().frame_limit())?,
         settings.checksum_policy(),
     );
     let mut record = 1usize;
@@ -210,7 +210,7 @@ fn lowercase_checksum(machine: &Machine, raw: &[u8]) -> Result<bool, Error> {
         return Ok(false);
     };
     let mut decoder = Decoder::new(
-        Limit::new(settings.frame_limit())?,
+        Limit::new(settings.settings().frame_limit())?,
         settings.checksum_policy(),
     );
     for byte in raw {

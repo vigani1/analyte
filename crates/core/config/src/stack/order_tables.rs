@@ -28,8 +28,8 @@ impl OrderTables {
     }
     /// Explicit specimen-code mappings; unknown specimens remain unresolved.
     #[must_use]
-    pub fn specimen_types(&self) -> &Option<Vec<OutboundSpecimen>> {
-        &self.specimen_types
+    pub fn specimen_types(&self) -> Option<&[OutboundSpecimen]> {
+        self.specimen_types.as_deref()
     }
     /// Explicit order-priority mapping.
     #[must_use]

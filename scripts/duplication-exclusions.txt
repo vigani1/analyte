@@ -1,0 +1,7 @@
+# Frozen contract v1 acceptance rules: ADR 0008, Frozen wire types.
+crates/core/contract/src/document/value.rs
+crates/core/contract/src/document/text.rs
+crates/core/contract/src/document/identity.rs
+crates/core/contract/src/document/list.rs
+crates/core/contract/src/document/time.rs
+crates/core/contract/src/document/sample.rs

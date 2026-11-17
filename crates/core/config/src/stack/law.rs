@@ -54,18 +54,10 @@ pub struct LawOrders {
 /// LAW over MLLP/TCP with explicit connection ownership.
 #[derive(Debug, Clone)]
 pub struct LawStack {
-    /// TCP link.
-    pub(super) transport: TcpTransport,
-    /// Maximum MLLP payload bytes.
-    pub(super) frame_limit: usize,
-    /// Host receive and send deadlines.
-    pub(super) timeouts: DialogTimeouts,
+    /// Shared link, resource and interpretation settings.
+    pub(super) settings: super::StackSettings<TcpTransport, SyntaxLimits, Mappings>,
     /// Required acknowledgment promise.
     pub(super) acknowledgment: Responsibility,
-    /// LAW fixes HL7 2.5.1, UTF-8, CR endings and strict escapes.
-    pub(super) limits: SyntaxLimits,
-    /// Required field selectors and code tables.
-    pub(super) mappings: Mappings,
     /// Required Analyzer Manager policy.
     pub(super) policy: LawPolicy,
     /// Explicit outbound capability; omission disables it.
@@ -82,9 +74,16 @@ pub(super) fn law_stack(
         .as_ref()
         .ok_or_else(|| invalid(path, "law", "LAW stack requires policy"))?;
     Ok(LawStack {
-        transport: tcp(&machine.transport, path)?,
-        frame_limit: machine.framing.limit,
-        timeouts,
+        settings: super::StackSettings {
+            transport: tcp(&machine.transport, path)?,
+            frame_limit: machine.framing.limit,
+            timeouts,
+            syntax: limits(&machine.syntax),
+            codes: machine
+                .mappings
+                .clone()
+                .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
+        },
         acknowledgment: machine.dialog.acknowledgment.ok_or_else(|| {
             invalid(
                 path,
@@ -92,11 +91,6 @@ pub(super) fn law_stack(
                 "MLLP dialog requires acknowledgment policy",
             )
         })?,
-        limits: limits(&machine.syntax),
-        mappings: machine
-            .mappings
-            .clone()
-            .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
         policy: LawPolicy {
             links: match law.connection_mode {
                 LawConnectionMode::Persistent => LawLinks::Persistent,
@@ -154,7 +148,7 @@ impl LawStack {
             Encoding::Utf8,
             Terminator::Cr,
             Escapes::Reject,
-            &self.limits,
+            self.settings.limits(),
         )
     }
 }
@@ -221,35 +215,10 @@ impl LawOrders {
 }
 
 impl LawStack {
-    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
-    #[must_use]
-    pub fn transport(&self) -> &TcpTransport {
-        &self.transport
-    }
-    /// Maximum retained frame size before framing refuses more bytes.
-    #[must_use]
-    pub fn frame_limit(&self) -> usize {
-        self.frame_limit
-    }
-    /// Bounded protocol waits used by the connection state machine.
-    #[must_use]
-    pub fn timeouts(&self) -> &DialogTimeouts {
-        &self.timeouts
-    }
     /// Acknowledgment responsibility promised only after durable custody.
     #[must_use]
     pub fn acknowledgment(&self) -> Responsibility {
         self.acknowledgment
-    }
-    /// Size and count ceilings applied before parsing untrusted records.
-    #[must_use]
-    pub fn limits(&self) -> &SyntaxLimits {
-        &self.limits
-    }
-    /// Explicit source-to-common-model mappings; unknown codes are not guessed.
-    #[must_use]
-    pub fn mappings(&self) -> &Mappings {
-        &self.mappings
     }
     /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
@@ -258,8 +227,8 @@ impl LawStack {
     }
     /// Validated order policy used before encoding commands.
     #[must_use]
-    pub fn orders(&self) -> &Option<LawOrders> {
-        &self.orders
+    pub fn orders(&self) -> Option<&LawOrders> {
+        self.orders.as_ref()
     }
 }
 
@@ -267,6 +236,14 @@ impl LawStack {
     /// Returns whether this selected protocol permits unsolicited work.
     #[must_use]
     pub fn send_ahead(&self) -> bool {
-        self.orders().as_ref().is_some_and(LawOrders::send_ahead)
+        self.orders().is_some_and(LawOrders::send_ahead)
+    }
+}
+
+impl LawStack {
+    /// Borrows the shared validated settings without changing protocol-specific types.
+    #[must_use]
+    pub fn settings(&self) -> &super::StackSettings<TcpTransport, SyntaxLimits, Mappings> {
+        &self.settings
     }
 }

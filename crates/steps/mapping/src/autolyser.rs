@@ -24,7 +24,7 @@ pub fn map(
             SourceText::new(std::str::from_utf8(value.text.bytes())?)?,
             ValueInterpretation::Text,
         );
-        let Some(test) = map_test(machine.codes(), code, None) else {
+        let Some(test) = map_test(machine.settings().codes(), code, None) else {
             output.unmapped_test(
                 Position {
                     record: index.saturating_add(1),
@@ -38,7 +38,7 @@ pub fn map(
         if report.control.as_ref().is_some_and(|c| c.is_control) {
             source.qc_class = QcClass::Control;
         }
-        map_units(machine.codes(), &mut source)?;
+        map_units(machine.settings().codes(), &mut source)?;
         push_result(
             &mut output,
             map_result(
@@ -117,7 +117,7 @@ pub fn map_order(
     }
     if order.tests.is_empty()
         || order.tests.len() > 99
-        || order.tests.len() > machine.limits().repetitions()
+        || order.tests.len() > machine.settings().limits().repetitions()
     {
         return Err(OrderMappingError::AutolyserTestCount);
     }
@@ -130,7 +130,7 @@ pub fn map_order(
         tests.push(Field::<4>::new(code.as_bytes())?);
     }
     let worklist = Worklist::new(patient, list, sample, clone, position, tests)?;
-    if worklist.encode().len() > machine.limits().bytes() {
+    if worklist.encode().len() > machine.settings().limits().bytes() {
         return Err(OrderMappingError::AutolyserMessageLimit);
     }
     Ok(MachineOrder::Autolyser(worklist))

@@ -31,31 +31,33 @@ impl Link<'_> {
 
 pub(super) fn transport(stack: &Stack) -> Link<'_> {
     match stack {
-        Stack::Astm(analyte_config::RecordTransport::Stream(s)) => stream(s.transport(), stack),
-        Stack::Vidas(s) => stream(s.transport(), stack),
-        Stack::Autolyser(s) => stream(s.transport(), stack),
+        Stack::Astm(analyte_config::RecordTransport::Stream(s)) => {
+            stream(s.settings().transport(), stack)
+        }
+        Stack::Vidas(s) => stream(s.settings().transport(), stack),
+        Stack::Autolyser(s) => stream(s.settings().transport(), stack),
         Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => Link::Tcp {
             session: stack,
-            role: s.transport().role(),
-            timeout_ms: s.transport().operation_timeout_ms(),
+            role: s.settings().transport().role(),
+            timeout_ms: s.settings().transport().operation_timeout_ms(),
         },
         Stack::Law(s) => Link::Tcp {
             session: stack,
-            role: s.transport().role(),
-            timeout_ms: s.transport().operation_timeout_ms(),
+            role: s.settings().transport().role(),
+            timeout_ms: s.settings().transport().operation_timeout_ms(),
         },
         Stack::Poct(s) => Link::Tcp {
             session: stack,
-            role: s.transport().role(),
-            timeout_ms: s.transport().operation_timeout_ms(),
+            role: s.settings().transport().role(),
+            timeout_ms: s.settings().transport().operation_timeout_ms(),
         },
         Stack::Astm(analyte_config::RecordTransport::Folder(s)) => Link::Folder {
-            timeout_ms: s.operation_timeout_ms(),
-            bytes: s.syntax().limits().bytes(),
+            timeout_ms: *s.settings().transport(),
+            bytes: s.settings().syntax().limits().bytes(),
         },
         Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => Link::Folder {
-            timeout_ms: s.operation_timeout_ms(),
-            bytes: s.syntax().limits().bytes(),
+            timeout_ms: *s.settings().transport(),
+            bytes: s.settings().syntax().limits().bytes(),
         },
     }
 }

@@ -10,6 +10,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+analyte-model.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 base64 = { workspace = true }

@@ -103,11 +103,7 @@ fn autolyser_rev18_ch23_clone_requires_explicit_true_or_false() -> TestResult {
         let section = format!("{}clone = {value}\n", autolyser_orders());
         let valid = vendor_config(&definition, &section)?;
         assert_eq!(
-            autolyser(&valid)?
-                .orders()
-                .as_ref()
-                .ok_or("orders")?
-                .clone_enabled(),
+            autolyser(&valid)?.orders().ok_or("orders")?.clone_enabled(),
             value
         );
         assert!(valid.canonical().contains(&format!("clone = {value}")));
@@ -286,13 +282,7 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     let definition = include_str!("../examples/hl7.toml");
     let section = include_str!("../examples/hl7_orders.toml");
     let valid = vendor_config(definition, section)?;
-    assert!(
-        hl7(&valid)?
-            .orders()
-            .as_ref()
-            .and_then(|o| o.query().as_ref())
-            .is_some()
-    );
+    assert!(hl7(&valid)?.orders().and_then(|o| o.query()).is_some());
     for (invalid, key) in [
         (
             section.rewrite("acknowledgment_ms = 500", "acknowledgment_ms = 0"),
@@ -462,10 +452,8 @@ fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -
         assert_eq!(
             hl7(&valid)?
                 .orders()
-                .as_ref()
                 .expect("orders")
                 .send()
-                .as_ref()
                 .expect("HL7 send")
                 .settings()
                 .processing,
@@ -489,7 +477,7 @@ fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -
         let section = section.rewrite(r#"machine="R""#, &format!("machine=\"{wire}\""));
         let valid = vendor_config(definition, &section)?;
         assert!(
-            matches!(hl7(&valid)?.orders().as_ref().expect("orders").tables().priorities().first().expect("priority").machine, MachinePriority::Code(code) if code == expected)
+            matches!(hl7(&valid)?.orders().expect("orders").tables().priorities().first().expect("priority").machine, MachinePriority::Code(code) if code == expected)
         );
     }
     invalid_key(
@@ -504,7 +492,7 @@ fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -
         include_str!("../examples/orders.toml").rewrite(r#"machine="R""#, r#"machine="custom""#);
     let valid = config(&astm_text)?;
     assert!(
-        matches!(&astm(&valid)?.orders().as_ref().expect("orders").tables().priorities().first().expect("priority").machine, MachinePriority::Custom(value) if value.as_str() == "custom")
+        matches!(&astm(&valid)?.orders().expect("orders").tables().priorities().first().expect("priority").machine, MachinePriority::Custom(value) if value.as_str() == "custom")
     );
     Ok(())
 }
@@ -537,12 +525,8 @@ fn vendor_namespace(
     config: &Validated,
 ) -> Result<&analyte_model::Identifier, Box<dyn std::error::Error>> {
     match config.effective().stack() {
-        analyte_config::Stack::Vidas(s) => {
-            Ok(s.orders().as_ref().ok_or("orders")?.patient_namespace())
-        }
-        analyte_config::Stack::Autolyser(s) => {
-            Ok(s.orders().as_ref().ok_or("orders")?.patient_namespace())
-        }
+        analyte_config::Stack::Vidas(s) => Ok(s.orders().ok_or("orders")?.patient_namespace()),
+        analyte_config::Stack::Autolyser(s) => Ok(s.orders().ok_or("orders")?.patient_namespace()),
         analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
         | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | analyte_config::Stack::Law(_)

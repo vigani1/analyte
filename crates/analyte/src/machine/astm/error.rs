@@ -38,7 +38,6 @@ pub(crate) enum Error {
     #[error(transparent)]
     Syntax(#[from] analyte_astm::Error),
     /// A bounded synthetic gate stopped or could not resume the connection.
-    #[cfg(feature = "test-hooks")]
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
     /// Retains uncertain custody or independent cleanup failures in their original order.

@@ -4,6 +4,7 @@ use super::{
     work::{Command, render},
 };
 use crate::installation::config::Machine;
+use crate::machine::hooks::Operation;
 use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
 use analyte_hl7::{Message, Options, law};
@@ -28,7 +29,7 @@ impl Connection {
         };
         let until = Instant::now()
             .checked_add(Duration::from_millis(u64::from(
-                cfg.timeouts().send_timeout_ms(),
+                cfg.settings().timeouts().send_timeout_ms(),
             )))
             .ok_or(Error::LawPreparationDeadlineOverflow)?;
         let cancels = super::super::reservation::cancellations(store, machine, until).await?;
@@ -62,17 +63,19 @@ impl Connection {
             let version = app.fields().version;
             let owner = self.owner.clone();
             self.reserving.push(record.key.clone());
-            #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &machine.hooks.law_gates.cancel {
-                gate.operation().await.map_err(Error::TestHook)?;
-            }
+            machine
+                .hooks
+                .operation(Operation::Cancel)
+                .await
+                .map_err(Error::TestHook)?;
             let admission =
                 super::super::reservation::cancel(store, until, id, version, owner, freshness)
                     .await;
-            #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &machine.hooks.law_gates.cancel_result {
-                gate.operation().await.map_err(Error::TestHook)?;
-            }
+            machine
+                .hooks
+                .operation(Operation::CancelResult)
+                .await
+                .map_err(Error::TestHook)?;
             match admission {
                 Ok(record) => {
                     self.exchange = Some(Exchange {
