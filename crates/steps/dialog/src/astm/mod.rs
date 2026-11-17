@@ -5,6 +5,9 @@ use std::{collections::VecDeque, time::Duration};
 mod control;
 pub use control::{Action, CommitId, Config, End, Epoch, Error, Event, Interrupt, Role, Timers};
 
+/// LIS01-A2 ?6.3.5 / ?8.3.5: yield after honoring receiver interruption.
+const INTERRUPT_HOLDOFF: Duration = Duration::from_secs(15);
+
 #[derive(Debug)]
 struct Receive {
     expected: FrameNumber,
@@ -85,7 +88,7 @@ impl Dialog {
             self.config.timers.frame,
             self.config.timers.receive,
             self.config.timers.commit,
-            Duration::from_secs(15),
+            INTERRUPT_HOLDOFF,
         ]
         .into_iter()
         .max()
@@ -103,7 +106,7 @@ impl Dialog {
             return Ok(vec![Action::Refused(Error::Busy), Action::Deadline(None)]);
         }
         if self.deadline.is_some_and(|d| now >= d) {
-            self.expire(&mut out);
+            self.expire(&mut out)?;
         }
         let result = (|| {
             match event {
@@ -120,7 +123,7 @@ impl Dialog {
                         if self.decoder.pending().is_empty() {
                             self.deadline = None;
                         } else if self.deadline.is_none() {
-                            self.set_timer(self.config.timers.receive);
+                            self.set_timer(self.config.timers.receive)?;
                         }
                     }
                 }
@@ -133,7 +136,7 @@ impl Dialog {
                     let frames = self.encode(&records)?;
                     self.state = State::Establish(frames);
                     out.push(Action::Write(vec![ENQ]));
-                    self.set_timer(self.config.timers.establish);
+                    self.set_timer(self.config.timers.establish)?;
                 }
             }
             Ok::<(), Error>(())
@@ -173,8 +176,14 @@ impl Dialog {
         }
     }
 
-    fn set_timer(&mut self, budget: Duration) {
-        self.deadline = self.clock.now().checked_add(budget);
+    fn set_timer(&mut self, budget: Duration) -> Result<(), Error> {
+        self.deadline = Some(
+            self.clock
+                .now()
+                .checked_add(budget)
+                .ok_or(Error::Exhausted)?,
+        );
+        Ok(())
     }
 
     fn encode(&self, records: &[Vec<u8>]) -> Result<VecDeque<Vec<u8>>, Error> {
@@ -203,7 +212,11 @@ impl Dialog {
         Ok(frames)
     }
 
-    fn start_frame(&mut self, mut frames: VecDeque<Vec<u8>>, out: &mut Vec<Action>) {
+    fn start_frame(
+        &mut self,
+        mut frames: VecDeque<Vec<u8>>,
+        out: &mut Vec<Action>,
+    ) -> Result<(), Error> {
         if let Some(current) = frames.pop_front() {
             out.push(Action::Write(current.clone()));
             self.state = State::Sending {
@@ -211,10 +224,11 @@ impl Dialog {
                 rest: frames,
                 failures: 0,
             };
-            self.set_timer(self.config.timers.frame);
+            self.set_timer(self.config.timers.frame)?;
         } else {
             self.end_send(End::Normal, out);
         }
+        Ok(())
     }
 
     fn end_send(&mut self, reason: End, out: &mut Vec<Action>) {
@@ -227,14 +241,14 @@ impl Dialog {
         ]);
     }
 
-    fn expire(&mut self, out: &mut Vec<Action>) {
+    fn expire(&mut self, out: &mut Vec<Action>) -> Result<(), Error> {
         let state = std::mem::replace(&mut self.state, State::Neutral);
         self.deadline = None;
         match state {
             State::Busy(frames) | State::Priority(frames) => {
                 self.state = State::Establish(frames);
                 out.push(Action::Write(vec![ENQ]));
-                self.set_timer(self.config.timers.establish);
+                self.set_timer(self.config.timers.establish)?;
             }
             State::Establish(_) | State::Sending { .. } => self.end_send(End::Timeout, out),
             State::Commit { receive, id, .. } => {
@@ -243,7 +257,7 @@ impl Dialog {
                 // (LIS01-A2 §6.5.1.2 bounds the retries on the sender's side).
                 out.extend([Action::Write(vec![NAK]), Action::StoreFailed(id)]);
                 self.state = State::Receiving(receive);
-                self.set_timer(self.config.timers.receive);
+                self.set_timer(self.config.timers.receive)?;
             }
             State::Receiving(_) | State::Contention => out.push(Action::Ended(End::Timeout)),
             State::Neutral | State::Holdoff => {}
@@ -251,6 +265,7 @@ impl Dialog {
         if let Some(astm::Event::Rejected { error, raw }) = self.decoder.finish() {
             out.push(Action::Rejected(error, raw));
         }
+        Ok(())
     }
 
     fn ready(&mut self, out: &mut Vec<Action>) -> Result<(), Error> {
@@ -264,7 +279,7 @@ impl Dialog {
                 count: 0,
             });
             out.push(Action::Write(vec![ACK]));
-            self.set_timer(self.config.timers.receive);
+            self.set_timer(self.config.timers.receive)?;
         } else {
             out.push(Action::Write(vec![NAK]));
         }
@@ -293,7 +308,7 @@ impl Dialog {
                 out.push(Action::Rejected(error, raw));
                 if matches!(self.state, State::Receiving(_)) {
                     out.push(Action::Write(vec![NAK]));
-                    self.set_timer(self.config.timers.receive);
+                    self.set_timer(self.config.timers.receive)?;
                 }
                 if let Some(byte) = control {
                     self.control(byte, out)?;
@@ -314,19 +329,19 @@ impl Dialog {
                 {
                     if receive.previous.as_ref() == Some(&frame) {
                         out.push(Action::Write(vec![if self.interrupt { EOT } else { ACK }]));
-                        self.set_timer(self.config.timers.receive);
+                        self.set_timer(self.config.timers.receive)?;
                     } else {
                         out.extend([
                             Action::Conflict(frame.raw().to_vec()),
                             Action::Write(vec![NAK]),
                         ]);
-                        self.set_timer(self.config.timers.receive);
+                        self.set_timer(self.config.timers.receive)?;
                     }
                     self.state = State::Receiving(receive);
                 } else if frame.number() != receive.expected {
                     out.push(Action::UnexpectedFrame(frame.raw().to_vec()));
                     out.push(Action::Write(vec![NAK]));
-                    self.set_timer(self.config.timers.receive);
+                    self.set_timer(self.config.timers.receive)?;
                     self.state = State::Receiving(receive);
                 } else if !self
                     .config
@@ -338,7 +353,7 @@ impl Dialog {
                         Action::Write(vec![NAK]),
                     ]);
                     self.state = State::Receiving(receive);
-                    self.set_timer(self.config.timers.receive);
+                    self.set_timer(self.config.timers.receive)?;
                 } else if (self.config.record_boundaries == astm::RecordBoundaries::Packed
                     && receive
                         .records
@@ -368,7 +383,7 @@ impl Dialog {
                     self.request = self.request.checked_add(1).ok_or(Error::Exhausted)?;
                     out.push(Action::Store(id, frame.number(), frame.raw().to_vec()));
                     self.state = State::Commit { receive, frame, id };
-                    self.set_timer(self.config.timers.commit);
+                    self.set_timer(self.config.timers.commit)?;
                 }
             }
             other @ (State::Neutral
@@ -438,7 +453,7 @@ impl Dialog {
                 out.extend([Action::Write(vec![NAK]), Action::StoreFailed(id)]);
             }
             self.state = State::Receiving(receive);
-            self.set_timer(self.config.timers.receive);
+            self.set_timer(self.config.timers.receive)?;
         }
         Ok(())
     }
@@ -450,14 +465,14 @@ impl Dialog {
         rest: VecDeque<Vec<u8>>,
         failures: u8,
         out: &mut Vec<Action>,
-    ) {
+    ) -> Result<(), Error> {
         if byte == ACK || byte == EOT {
             if byte == EOT && self.config.honor_interrupt == Interrupt::Honor {
                 self.end_send(End::Interrupt, out);
                 self.state = State::Holdoff;
-                self.set_timer(Duration::from_secs(15));
+                self.set_timer(INTERRUPT_HOLDOFF)?;
             } else {
-                self.start_frame(rest, out);
+                self.start_frame(rest, out)?;
             }
         } else {
             let failures = failures.saturating_add(1);
@@ -470,9 +485,10 @@ impl Dialog {
                     rest,
                     failures,
                 };
-                self.set_timer(self.config.timers.frame);
+                self.set_timer(self.config.timers.frame)?;
             }
         }
+        Ok(())
     }
 
     fn control(&mut self, byte: u8, out: &mut Vec<Action>) -> Result<(), Error> {
@@ -492,20 +508,20 @@ impl Dialog {
                 }
             }
             State::Establish(frames) => match byte {
-                ACK => self.start_frame(frames, out),
+                ACK => self.start_frame(frames, out)?,
                 NAK => {
                     self.state = State::Busy(frames);
-                    self.set_timer(Duration::from_secs(10));
+                    self.set_timer(Duration::from_secs(10))?;
                 }
                 ENQ => match self.config.role {
                     Role::Computer => {
                         out.push(Action::Sent(End::Interrupt));
                         self.state = State::Contention;
-                        self.set_timer(self.config.timers.contention);
+                        self.set_timer(self.config.timers.contention)?;
                     }
                     Role::Instrument => {
                         self.state = State::Priority(frames);
-                        self.set_timer(Duration::from_secs(1));
+                        self.set_timer(Duration::from_secs(1))?;
                     }
                 },
                 _ => self.state = State::Establish(frames),
@@ -515,7 +531,7 @@ impl Dialog {
                 rest,
                 failures,
             } => {
-                self.sending_control(byte, current, rest, failures, out);
+                self.sending_control(byte, current, rest, failures, out)?;
             }
             State::Receiving(receive) => {
                 if byte == EOT {
@@ -555,6 +571,22 @@ impl Dialog {
             }
             State::Priority(frames) => self.state = State::Priority(frames),
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rule7_timer_overflow_returns_exhausted() -> Result<(), Error> {
+        let mut dialog = Dialog::new(Config::default(), Epoch(1));
+        dialog
+            .clock
+            .advance(Duration::from_secs(1), Duration::ZERO)
+            .map_err(|_| Error::Exhausted)?;
+        assert_eq!(dialog.set_timer(Duration::MAX), Err(Error::Exhausted));
         Ok(())
     }
 }
