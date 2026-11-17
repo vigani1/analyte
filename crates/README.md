@@ -26,6 +26,7 @@ Crates of the same kind share a layout:
 | --- | --- |
 | **step** | One file per protocol, such as `astm.rs` or `hl7.rs`; transport uses connection kinds instead. |
 | **protocol** | One file per job, such as `syntax.rs`, `views.rs` or `version.rs`, where needed. |
+| **testing** | Test stand-ins keep their library entry in `lib.rs` and an optional executable in `main.rs`. |
 | **core** | Folders group parts by role; small roles can stay in a single file. |
 | **program** | Role folders, with per-protocol files inside where needed. |
 
@@ -61,6 +62,6 @@ simply passing each message along once. Outgoing orders use these parts too.
 Protocol keys stay the same across layers: per-protocol files are `astm.rs`,
 `hl7.rs`, `poct.rs`, `vidas.rs` and `autolyser.rs` wherever that concern exists.
 `law.rs` holds the LAW profile; its grammar lives inside `hl7`. HL7 byte
-boundaries use the `mllp` module in framing, named for that envelope. Inside each
+boundaries use the `hl7` module in framing, which handles the MLLP envelope. Inside each
 grammar crate, the `syntax` module holds the grammar. A module with children
 uses a folder with a `mod.rs` front file. See [the layout decision](../docs/adr/0012-uniform-layout-and-naming.md).

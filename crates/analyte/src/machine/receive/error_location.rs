@@ -7,7 +7,7 @@ pub(crate) use analyte_hl7::Location;
 use analyte_hl7::syntax_location;
 
 pub(crate) fn mapping_location(
-    mapping: &Result<Output, super::interpretation::ReadError>,
+    mapping: &Result<Output, crate::machine::interpretation::ReadError>,
     raw: &[u8],
     ending: Terminator,
 ) -> Option<Location> {

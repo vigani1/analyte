@@ -12,7 +12,7 @@ fn adr0008_build_refuses_nonproduction_and_parked_evidence() -> TestResult {
     ] {
         result.processing = mode;
         assert!(matches!(
-            build_delivery(
+            encode_delivery(
                 &result,
                 &receipt,
                 Identifier::new("app")?,
@@ -24,7 +24,7 @@ fn adr0008_build_refuses_nonproduction_and_parked_evidence() -> TestResult {
     result.processing = ProcessingMode::Production;
     result.sample = None;
     assert!(matches!(
-        build_delivery(
+        encode_delivery(
             &result,
             &receipt,
             Identifier::new("app")?,

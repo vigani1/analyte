@@ -303,7 +303,7 @@ fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() 
                 "kind = \"{}\"",
                 match config.effective().stack() {
                     analyte_config::Stack::Poct(_) => "poct",
-                    analyte_config::Stack::VidasLiteral(_) => "vidas_literal",
+                    analyte_config::Stack::Vidas(_) => "vidas_literal",
                     analyte_config::Stack::Autolyser(_) => "autolyser",
                     analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
                     | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_)) =>
@@ -425,7 +425,7 @@ fn adr_0002_vidas_installed_sample_limit_preserves_numeric_toml() -> Result<(), 
 }
 
 fn vidas(config: &analyte_config::Validated) -> Result<&analyte_config::Vidas, Error> {
-    let analyte_config::Stack::VidasLiteral(stack) = config.effective().stack() else {
+    let analyte_config::Stack::Vidas(stack) = config.effective().stack() else {
         return Err(Error::ProtocolSettings {
             path: "fixture".into(),
             protocol: "vidas",

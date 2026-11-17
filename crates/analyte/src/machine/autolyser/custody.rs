@@ -1,4 +1,4 @@
-//! Records poll custody and blocks R while its outcome is uncertain.
+//! Records Autolyser poll custody and blocks R while its outcome is uncertain.
 use crate::machine::error::SessionError as Error;
 use crate::{deadline, installation::config::Machine};
 use analyte_model::{Identifier, Reason};

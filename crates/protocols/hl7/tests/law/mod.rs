@@ -87,8 +87,8 @@ fn validate_profile_body(body: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-mod scenarios_1;
+mod containers;
 
-mod scenarios_2;
+mod unsolicited;
 
-mod scenarios_3;
+mod locations;

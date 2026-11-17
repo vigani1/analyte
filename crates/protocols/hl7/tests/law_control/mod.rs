@@ -106,6 +106,6 @@ fn query_with(changes: &[(usize, &str)]) -> Result<Message, Box<dyn std::error::
     Ok(law::parse_message(bytes.as_bytes(), options())?)
 }
 
-mod scenarios_1;
+mod headers;
 
-mod scenarios_2;
+mod errors;

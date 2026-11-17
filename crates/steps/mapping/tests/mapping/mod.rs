@@ -74,9 +74,9 @@ fn parts_config() -> String {
 mod compatibility;
 mod law_text;
 mod modern;
-mod scenarios_1;
+mod values;
 
-mod scenarios_2;
+mod limits;
 
 const ASTM_CONFIG: &str = include_str!("../../../../core/config/examples/astm.toml");
 const HL7_CONFIG: &str = include_str!("../../../../core/config/examples/hl7.toml");

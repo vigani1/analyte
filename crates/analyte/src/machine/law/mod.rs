@@ -219,8 +219,8 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Ok(Vec::new());
             }
             Action::ResponseNeeded(token) => {
-                let metadata = crate::machine::hl7_response::response_metadata(
-                    crate::machine::hl7_response::Profile::Law,
+                let metadata = crate::orders::hl7::response::response_metadata(
+                    crate::orders::hl7::response::Profile::Law,
                 );
                 return Ok(self.dialog.step(
                     self.clock.elapsed(),

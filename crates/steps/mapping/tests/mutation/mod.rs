@@ -13,6 +13,6 @@ fn segment(name: &str, count: usize, values: &[(usize, &str)]) -> Result<String,
     Ok(format!("{name}|{}\r", fields.join("|")))
 }
 
-mod scenarios_1;
+mod comparators;
 
-mod scenarios_2;
+mod timestamps;

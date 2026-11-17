@@ -11,7 +11,7 @@ impl Stack {
             Stack::Hl7(RecordTransport::Stream(_))
             | Stack::Law(_)
             | Stack::Poct(_)
-            | Stack::VidasLiteral(_)
+            | Stack::Vidas(_)
             | Stack::Autolyser(_)
             | Stack::Hl7(RecordTransport::Folder(_)) => None,
         }
@@ -25,7 +25,7 @@ impl Stack {
             Stack::Astm(RecordTransport::Stream(_))
             | Stack::Law(_)
             | Stack::Poct(_)
-            | Stack::VidasLiteral(_)
+            | Stack::Vidas(_)
             | Stack::Autolyser(_)
             | Stack::Astm(RecordTransport::Folder(_)) => None,
         }
@@ -38,7 +38,7 @@ impl Stack {
             Stack::Astm(RecordTransport::Stream(_))
             | Stack::Hl7(RecordTransport::Stream(_))
             | Stack::Poct(_)
-            | Stack::VidasLiteral(_)
+            | Stack::Vidas(_)
             | Stack::Autolyser(_)
             | Stack::Astm(RecordTransport::Folder(_))
             | Stack::Hl7(RecordTransport::Folder(_)) => None,
@@ -61,7 +61,7 @@ impl Stack {
                 s.orders().as_ref().is_some_and(|o| o.send().is_some())
             }
             Stack::Law(s) => s.orders().as_ref().is_some_and(LawOrders::send_ahead),
-            Stack::VidasLiteral(s) => s.orders().as_ref().is_some_and(VidasOrders::send_ahead),
+            Stack::Vidas(s) => s.orders().as_ref().is_some_and(VidasOrders::send_ahead),
             Stack::Autolyser(s) => s.orders().as_ref().is_some_and(AutolyserOrders::send_ahead),
             Stack::Poct(_) => false,
         }
@@ -76,7 +76,7 @@ impl Stack {
             | Stack::Hl7(RecordTransport::Stream(_))
             | Stack::Hl7(RecordTransport::Folder(_))
             | Stack::Poct(_)
-            | Stack::VidasLiteral(_)
+            | Stack::Vidas(_)
             | Stack::Autolyser(_) => false,
         }
     }
@@ -90,7 +90,7 @@ impl Stack {
             | Stack::Hl7(RecordTransport::Folder(_))
             | Stack::Law(_)
             | Stack::Poct(_)
-            | Stack::VidasLiteral(_)
+            | Stack::Vidas(_)
             | Stack::Autolyser(_) => None,
         }
     }
@@ -104,7 +104,7 @@ impl Stack {
             Stack::Astm(RecordTransport::Stream(_))
             | Stack::Astm(RecordTransport::Folder(_))
             | Stack::Poct(_)
-            | Stack::VidasLiteral(_)
+            | Stack::Vidas(_)
             | Stack::Autolyser(_) => None,
         }
     }
@@ -122,7 +122,7 @@ impl Stack {
             | Stack::Hl7(RecordTransport::Folder(_))
             | Stack::Law(_) => "analyte-hl7",
             Stack::Poct(_) => "analyte-poct",
-            Stack::VidasLiteral(_) => "analyte-vidas",
+            Stack::Vidas(_) => "analyte-vidas",
             Stack::Autolyser(_) => "analyte-autolyser",
         }
     }
@@ -132,11 +132,9 @@ impl Stack {
     pub fn independent_readings(&self) -> bool {
         match self {
             Self::Poct(_) => true,
-            Self::Astm(_)
-            | Self::Hl7(_)
-            | Self::Law(_)
-            | Self::VidasLiteral(_)
-            | Self::Autolyser(_) => false,
+            Self::Astm(_) | Self::Hl7(_) | Self::Law(_) | Self::Vidas(_) | Self::Autolyser(_) => {
+                false
+            }
         }
     }
 }

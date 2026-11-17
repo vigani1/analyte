@@ -1,5 +1,5 @@
 //! Owns blocking serial I/O on a dedicated thread and joins it on cancellation.
-use super::{Error, Handle, Limits, Machine};
+use crate::machine::{Error, Handle, Limits, Machine};
 use analyte_transport::{Cancellation, serial::Settings};
 use std::{thread, time::Duration};
 use tokio::sync::watch;
@@ -14,7 +14,7 @@ impl Drop for Owner {
     fn drop(&mut self) {
         self.cancellation.cancel();
         if let Some(thread) = self.thread.take() {
-            super::worker::report_join("serial", &thread.join());
+            crate::machine::worker::report_join("serial", &thread.join());
         }
     }
 }
@@ -35,13 +35,13 @@ impl Owner {
     }
 }
 
-pub(super) async fn run(
+pub(in crate::machine) async fn run(
     machine: &Machine,
     store: &Handle,
-    link: super::settings::SerialLink<'_>,
+    link: crate::machine::settings::SerialLink<'_>,
     limits: Limits,
     stop: watch::Receiver<bool>,
-    mut closing: super::Closing,
+    mut closing: crate::machine::Closing,
     capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
     let serial = link.settings;
@@ -76,7 +76,7 @@ pub(super) async fn run(
         None => side,
     };
     let cancellation = conn.cancellation();
-    let retry = super::retry()?;
+    let retry = crate::machine::retry()?;
     let (finished, completion) = tokio::sync::oneshot::channel();
     let thread = thread::Builder::new()
         .name("analyte-serial".into())
@@ -91,7 +91,8 @@ pub(super) async fn run(
         thread: Some(thread),
     };
     let result = loop {
-        let result = super::session(machine, link.session, store, &mut conn, stop.clone()).await;
+        let result =
+            crate::machine::session(machine, link.session, store, &mut conn, stop.clone()).await;
         if result.is_err() || *stop.borrow() {
             break result;
         }
@@ -119,7 +120,7 @@ mod tests {
                 }
                 Err(analyte_transport::Error::Deadline("protected-error-token"))
             });
-            let output = super::super::worker::tests::capture(|| {
+            let output = crate::machine::worker::tests::capture(|| {
                 drop(Owner {
                     cancellation: Cancellation::default(),
                     finished: tokio::sync::oneshot::channel().1,
@@ -188,11 +189,11 @@ mod tests {
     ) -> Result<crate::installation::config::Program, Error> {
         std::fs::write(
             root.join("machine.toml"),
-            include_str!("../../../core/config/examples/astm.toml"),
+            include_str!("../../../../core/config/examples/astm.toml"),
         )?;
         std::fs::write(
             root.join("site.toml"),
-            include_str!("../../../core/config/examples/site.toml"),
+            include_str!("../../../../core/config/examples/site.toml"),
         )?;
         let path = root.join("program.toml");
         std::fs::write(
@@ -214,8 +215,8 @@ mod tests {
             crate::runtime::service::open_store_with_deadline(&program, Box::new(Space), until())
                 .await?;
         let machine = program.machines().first().ok_or("missing machine")?;
-        let super::super::settings::Link::Serial(link) =
-            super::super::settings::transport(machine.snapshot.effective().stack())
+        let crate::machine::settings::Link::Serial(link) =
+            crate::machine::settings::transport(machine.snapshot.effective().stack())
         else {
             return Err("expected serial".into());
         };
@@ -234,7 +235,7 @@ mod tests {
             analyte_transport::serial::run(
                 &settings,
                 side,
-                super::super::retry().expect("valid retry"),
+                crate::machine::retry().expect("valid retry"),
                 move |_| {
                     opened.blocking_send(()).map_err(std::io::Error::other)?;
                     port.take()
@@ -245,7 +246,7 @@ mod tests {
         });
         let (stop, stopping) = watch::channel(false);
         let processing =
-            super::super::session(machine, link.session, &store, &mut connection, stopping);
+            crate::machine::session(machine, link.session, &store, &mut connection, stopping);
         let conversation = async {
             attempts.recv().await.ok_or("open absent")?;
             input.send(Err(std::io::ErrorKind::TimedOut.into()))?;
@@ -316,7 +317,7 @@ mod tests {
             analyte_transport::serial::run(
                 &settings,
                 side,
-                super::super::retry().expect("valid retry"),
+                crate::machine::retry().expect("valid retry"),
                 |settings| {
                     assert_eq!(settings.name(), "synthetic-refused-port");
                     Err(std::io::ErrorKind::PermissionDenied.into())

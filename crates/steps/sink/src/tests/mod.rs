@@ -317,7 +317,7 @@ async fn post(
 async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Peer) -> TestResult {
     let metadata = receipt()?;
     let original = make_result(metadata.id, "accepted-run")?;
-    let delivery = build_delivery(
+    let delivery = encode_delivery(
         &original,
         &metadata,
         Identifier::new("app")?,
@@ -338,7 +338,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     // Commit an original to the app before enqueueing different bytes with its ID.
     let metadata = receipt()?;
     let original = make_result(metadata.id, "conflict-run")?;
-    let mut conflicting = build_delivery(
+    let mut conflicting = encode_delivery(
         &original,
         &metadata,
         Identifier::new("app")?,
@@ -362,7 +362,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
         identity.revision = Revision(1);
     }
     corrected_content(&mut correction)?;
-    let delivery = build_delivery(
+    let delivery = encode_delivery(
         &correction,
         &metadata,
         Identifier::new("app")?,
@@ -373,7 +373,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     let mut metadata = receipt()?;
     metadata.machine = Identifier::new("other-machine")?;
     let other = make_result(metadata.id, "conflict-run")?;
-    let delivery = build_delivery(
+    let delivery = encode_delivery(
         &other,
         &metadata,
         Identifier::new("app")?,
@@ -404,7 +404,7 @@ async fn check_order_events(store: &Handle, destinations: &[Destination]) -> Tes
     ] {
         event.delivery_id = analyte_contract::Text::try_from(uuid::Uuid::now_v7().to_string())?;
         event.state = state;
-        let delivery = build_order_event(
+        let delivery = encode_order_event(
             &analyte_contract::OrderEvent::try_from(event.clone())?,
             Identifier::new("app")?,
         )?;
@@ -519,7 +519,7 @@ async fn check_pause_and_resume(
     let metadata = receipt()?;
     let original = make_result(metadata.id, "conflict-run")?;
     // A new observation bypasses the intentionally parked observation above.
-    let mut delivery = build_delivery(
+    let mut delivery = encode_delivery(
         &original,
         &metadata,
         Identifier::new("app")?,
@@ -737,7 +737,7 @@ async fn enqueue_retry_correction(store: &Handle) -> TestResult {
         identity.revision = Revision(1);
     }
     corrected_content(&mut correction)?;
-    let delivery = build_delivery(
+    let delivery = encode_delivery(
         &correction,
         &metadata,
         Identifier::new("app")?,

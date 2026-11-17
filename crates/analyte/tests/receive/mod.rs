@@ -112,8 +112,8 @@ async fn serve(
     service::serve_loopback_test(program, space, stop, secrets, None).await
 }
 
-mod scenarios_1;
+mod connections;
 
-mod scenarios_2;
+mod custody;
 
 mod hl7_safety;

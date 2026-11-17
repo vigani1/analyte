@@ -22,6 +22,6 @@ fn vidas_bci_a_4_exact_identity_unknown_tags_and_values() -> Result<(), Box<dyn 
         .is_ok()
     );
     assert!(Message::parse("mtmpr|piX|si|ci001|", SampleLimit::Twelve).is_err());
-    assert!(Message::build(&[("mt", "mpr"), ("pi", "X|ciY")], SampleLimit::Twelve).is_err());
+    assert!(Message::new(&[("mt", "mpr"), ("pi", "X|ciY")], SampleLimit::Twelve).is_err());
     Ok(())
 }

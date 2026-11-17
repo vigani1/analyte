@@ -7,7 +7,7 @@
 use crate::machine::error::SessionError as Error;
 use analyte_transport::{Connection, Event, Reason, recording};
 
-pub(super) enum Input {
+pub(crate) enum Input {
     Opened { session: u64 },
     Bytes { bytes: Vec<u8> },
     Tick,
@@ -16,7 +16,7 @@ pub(super) enum Input {
     RecordingFailed(recording::Failure),
 }
 
-pub(super) async fn receive(conn: &mut Connection) -> Result<Input, analyte_transport::Error> {
+pub(crate) async fn receive(conn: &mut Connection) -> Result<Input, analyte_transport::Error> {
     Ok(match conn.receive().await? {
         Some(Event::Opened { session }) => Input::Opened { session },
         Some(Event::Received { bytes, .. }) => Input::Bytes { bytes },
@@ -35,7 +35,7 @@ use tokio::sync::watch;
 
 /// Every transport chunk is durably journaled before a dialog sees any byte.
 /// Dropping this wait cannot cancel an already queued store request.
-pub(super) async fn journaled(
+pub(crate) async fn journaled(
     machine: &intake::Connection<'_>,
     store: &Handle,
     conn: &mut Connection,
@@ -44,7 +44,7 @@ pub(super) async fn journaled(
 ) -> Result<Input, Error> {
     let event = tokio::select! {
         biased;
-        () = super::stopping(stop) => return Ok(Input::Closed(None)),
+        () = crate::machine::stopping(stop) => return Ok(Input::Closed(None)),
         () = async { match wait {
             Some(wait) => tokio::time::sleep(wait).await,
             None => std::future::pending().await,
@@ -65,23 +65,23 @@ pub(super) async fn journaled(
 /// Bounded by one transport read. Fed bytes can overlap dialog receipts after
 /// interruption; the untouched tail has never entered the dialog.
 #[derive(Default)]
-pub(super) struct Custody {
+pub(crate) struct Custody {
     bytes: Vec<u8>,
-    pub(super) fed: usize,
+    pub(crate) fed: usize,
 }
 impl Custody {
-    pub(super) fn begin(&mut self, bytes: &[u8]) {
+    pub(crate) fn begin(&mut self, bytes: &[u8]) {
         self.bytes = bytes.to_vec();
         self.fed = 0;
     }
-    pub(super) fn fed(&mut self) {
+    pub(crate) fn fed(&mut self) {
         self.fed = self.fed.saturating_add(1);
     }
-    pub(super) fn complete(&mut self) {
+    pub(crate) fn complete(&mut self) {
         self.bytes.clear();
         self.fed = 0;
     }
-    pub(super) async fn retain(
+    pub(crate) async fn retain(
         &mut self,
         store: &Handle,
         machine: &intake::Connection<'_>,

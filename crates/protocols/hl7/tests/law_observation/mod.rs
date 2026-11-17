@@ -101,8 +101,8 @@ fn result_message(
     message(&format!("SPM|1|sample&Local||SER^^HL70487|||||||P^^HL70369\rSAC|||tube\rOBR||awos-1||{TEST}\rORC|SC||||CM\r{}{suffix}",fields("OBX",ControlDirection::Receive,changes)?)).map_err(Into::into)
 }
 
-mod scenarios_1;
+mod fields;
 
-mod scenarios_2;
+mod statuses;
 
-mod scenarios_3;
+mod composites;

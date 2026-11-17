@@ -239,7 +239,7 @@ mod poct_peer;
 async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_parked_without_machine_io()
 -> Result<(), Error> {
     use analyte_autolyser::syntax::{Field, List, PatientCode, Report, Sample, Value};
-    let report = Report::build(
+    let report = Report::new(
         &PatientCode::from_eight(b"00012aBC")?,
         List::Routine,
         Sample::Serum,

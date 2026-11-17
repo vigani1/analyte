@@ -2,7 +2,7 @@
 
 /// Stable stored codes; spellings are compatibility data, never derived from Debug.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum VidasEnd {
+pub(crate) enum VidasEnd {
     AcknowledgmentTimeout,
     CommitTimeout,
     ControlSuffixMismatch,
@@ -19,7 +19,7 @@ pub(super) enum VidasEnd {
 }
 impl VidasEnd {
     /// Returns the exact historical spelling retained in the protected store.
-    pub(super) const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::AcknowledgmentTimeout => "VIDAS-acknowledgment-timeout",
             Self::CommitTimeout => "VIDAS-commit-timeout",
@@ -80,7 +80,7 @@ fn vidas_stored_spellings_are_compatible() {
 
 /// Stable stored codes; spellings are compatibility data, never derived from Debug.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum AutolyserEnd {
+pub(crate) enum AutolyserEnd {
     InputFailed,
     StorageFailed,
     StorageTimeout,
@@ -92,7 +92,7 @@ pub(super) enum AutolyserEnd {
 }
 impl AutolyserEnd {
     /// Returns the exact historical spelling retained in the protected store.
-    pub(super) const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::InputFailed => "Autolyser-input-failed",
             Self::StorageFailed => "Autolyser-storage-failed",
@@ -136,7 +136,7 @@ fn autolyser_stored_spellings_are_compatible() {
 }
 
 /// Writes historical insertion rejection evidence; unknown byte values remain decimal.
-pub(super) fn insertion_rejection(error: analyte_dialog::autolyser::InsertionError) -> String {
+pub(crate) fn insertion_rejection(error: analyte_dialog::autolyser::InsertionError) -> String {
     use analyte_dialog::autolyser::InsertionError;
     match error {
         InsertionError::Checksum => "Checksum".to_owned(),
@@ -202,7 +202,7 @@ fn insertion_rejection_spellings_are_compatible() {
 }
 
 /// Encodes each closed insertion response family with its historical stable prefix.
-pub(super) fn insertion(reception: analyte_dialog::autolyser::Reception) -> String {
+pub(crate) fn insertion(reception: analyte_dialog::autolyser::Reception) -> String {
     use analyte_dialog::autolyser::Reception;
     match reception {
         Reception::Accepted(position) => {
@@ -218,7 +218,7 @@ pub(super) fn insertion(reception: analyte_dialog::autolyser::Reception) -> Stri
     }
 }
 impl AutolyserEnd {
-    pub(super) fn incomplete(self) -> String {
+    pub(crate) fn incomplete(self) -> String {
         format!("{}-incomplete", self.as_str())
     }
 }

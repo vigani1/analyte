@@ -219,8 +219,8 @@ impl Connection {
             return Err(Error::LawQueryDeadlineAfterReservation);
         }
         let followup = if prepared.is_empty() {
-            crate::machine::hl7_response::response_metadata(
-                crate::machine::hl7_response::Profile::Law,
+            crate::orders::hl7::response::response_metadata(
+                crate::orders::hl7::response::Profile::Law,
             )
             .build(|response| {
                 Ok::<_, Error>(law::negative_work(
@@ -353,7 +353,7 @@ fn reply(
     answer: law::CacheAnswer<'_>,
     options: Options,
 ) -> Result<Reply, Error> {
-    crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Law)
+    crate::orders::hl7::response::response_metadata(crate::orders::hl7::response::Profile::Law)
         .build(|response| {
             Ok(Reply::Response(
                 law::query_response(
@@ -370,7 +370,7 @@ fn reply(
 }
 
 fn reject_query(message: &Message, error: &law::Failure, options: Options) -> Result<Reply, Error> {
-    crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Law)
+    crate::orders::hl7::response::response_metadata(crate::orders::hl7::response::Profile::Law)
         .build(|response| {
             let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
             law::reject_trigger(

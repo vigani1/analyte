@@ -473,9 +473,9 @@ fn assert_completed_recording_retained(
     Ok(())
 }
 
-mod scenarios_1;
+mod credentials;
 
-mod scenarios_2;
+mod retries;
 
 fn assert_failure_recording_retained(
     path: &Path,

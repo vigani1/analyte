@@ -49,7 +49,7 @@ fn autolyser_rev18_p179_checksum_is_decimal_sum() -> TestResult {
         RESULT
     );
     assert_eq!(report.patient.bytes(), b"TEST0042       ");
-    let rebuilt = Report::build(
+    let rebuilt = Report::new(
         &report.patient,
         report.list,
         report.sample,
@@ -85,7 +85,7 @@ fn autolyser_rev18_p178_controls_are_explicit_and_values_stay_written() -> TestR
         code: Field::new(b"TEST")?,
         text: Field::new(b"<NC>   ")?,
     }];
-    let report = Report::build(
+    let report = Report::new(
         &PatientCode::from_eight(b"TEST0042")?,
         List::Stat,
         Sample::Urine,
