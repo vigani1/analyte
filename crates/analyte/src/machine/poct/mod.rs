@@ -174,7 +174,7 @@ impl ConnectionState {
             if raw.len() >= limits.message_bytes {
                 intake::park_bytes(store, machine, std::mem::take(raw), ByteReason::PoctLimit)
                     .await?;
-                return Err(Error::PoctMessageLimitExceeded);
+                return Err(Error::MessageLimitExceeded);
             }
             raw.push(byte);
             if *stop.borrow() {
@@ -210,7 +210,7 @@ impl ConnectionState {
             };
             let wire = raw
                 .get(..length)
-                .ok_or_else(|| Error::PoctFramingLength)?
+                .ok_or_else(|| Error::FramingLength)?
                 .to_vec();
             raw.drain(..length);
             framer.reset();
@@ -342,7 +342,7 @@ async fn process(
                         ByteReason::PoctDeferred,
                     )
                     .await?;
-                    return Err(Error::PoctBackpressureViolated);
+                    return Err(Error::BackpressureViolated);
                 }
                 Action::TopicComplete => {
                     actions.extend(dialog.step(start.elapsed(), Event::Finish)?);

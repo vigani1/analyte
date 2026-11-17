@@ -237,7 +237,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             let expected = settings
                 .frame_limit()
                 .checked_add(self.machine.snapshot.canonical().len())
-                .ok_or_else(|| Error::AstmAdmissionSizeOverflow)?;
+                .ok_or_else(|| Error::AdmissionSizeOverflow)?;
             let capacity = self
                 .store
                 .request(deadline()?, move |s| s.admission(expected))
@@ -281,7 +281,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     .checked_add(record.len())
                     .is_none_or(|n| n > settings.syntax().limits().bytes())
                 {
-                    return Err(Error::AstmMessageBoundExceeded);
+                    return Err(Error::MessageBoundExceeded);
                 }
                 self.payload.extend_from_slice(&record);
             }
@@ -311,9 +311,9 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 return Err(self
                     .commit_failure
                     .take()
-                    .map_or(Error::AstmCommitDeadline, Error::AstmCommitRefused));
+                    .map_or(Error::CommitDeadline, Error::CommitRefused));
             }
-            Action::LimitReached => return Err(Error::AstmResourceLimitRefusedTransfer),
+            Action::LimitReached => return Err(Error::ResourceLimitRefusedTransfer),
             Action::Sent(end) => {
                 for order in self.active_orders.drain(..) {
                     crate::orders::sending::finished(self.store, &order, end).await?;
@@ -342,7 +342,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             .checked_add(bytes.len())
             .is_none_or(|n| n > settings.syntax().limits().bytes())
         {
-            return Err(Error::AstmTransferWireByteBoundExceeded);
+            return Err(Error::TransferWireByteBoundExceeded);
         }
         self.raw.extend_from_slice(&bytes);
         let provenance = analyte_store::FrameProvenance {
@@ -435,7 +435,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         // A failed NAK write can interrupt the action queue before CommitFailed.
         // Keep that transport failure and the original custody cause together.
         if let Some(error) = self.commit_failure.take() {
-            super::custody::retain_cleanup(&mut result, Err(Error::AstmCommitRefused(error)));
+            super::custody::retain_cleanup(&mut result, Err(Error::CommitRefused(error)));
         }
         // Disconnect drains the dialog-owned decoder on every exit, including failed
         // host effects. Transfer and order identities are reconciled below even if

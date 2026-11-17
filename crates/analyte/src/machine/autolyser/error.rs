@@ -3,16 +3,16 @@
 pub(crate) enum Error {
     /// Autolyser poll confirmation did not reconcile custody.
     #[error("Autolyser poll confirmation did not reconcile custody")]
-    AutolyserPollConfirmationDidNotReconcileCustody,
+    PollConfirmationDidNotReconcileCustody,
     /// Autolyser previous poll requires operator reconciliation before R can advance.
     #[error("Autolyser previous poll requires operator reconciliation before R can advance")]
-    AutolyserPreviousPollRequiresOperatorReconciliationBeforeRCanAdvance,
+    PreviousPollRequiresOperatorReconciliationBeforeRCanAdvance,
     /// Autolyser received another stack's order.
     #[error("Autolyser received another stack's order")]
-    AutolyserReceivedAnotherStackSOrder,
+    ForeignStackOrder,
     /// Autolyser report receipt missing.
     #[error("Autolyser report receipt missing")]
-    AutolyserReportReceiptMissing,
+    ReportReceiptMissing,
     /// Unexpected Autolyser insertion outcome.
     #[error("unexpected Autolyser insertion outcome")]
     UnexpectedAutolyserInsertionOutcome,
@@ -24,17 +24,17 @@ pub(crate) enum Error {
     Orders(#[from] crate::orders::OrderError),
     /// The Autolyser poll or insertion dialog refused an event.
     #[error(transparent)]
-    AutolyserDialog(#[from] analyte_dialog::autolyser::Error),
+    Dialog(#[from] analyte_dialog::autolyser::Error),
     /// Autolyser report records failed grammar validation.
     #[error(transparent)]
-    Autolyser(#[from] analyte_autolyser::syntax::Error),
+    Syntax(#[from] analyte_autolyser::syntax::Error),
     /// A bounded synthetic gate stopped or could not resume the connection.
     #[cfg(feature = "test-hooks")]
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
     /// The Autolyser response envelope failed validation.
     #[error(transparent)]
-    AutolyserFrame(#[from] analyte_framing::autolyser::Error),
+    Frame(#[from] analyte_framing::autolyser::Error),
     /// Retains uncertain custody or independent cleanup failures in their original order.
     #[error(transparent)]
     Refusal(#[from] crate::machine::custody::Refusal<Self>),

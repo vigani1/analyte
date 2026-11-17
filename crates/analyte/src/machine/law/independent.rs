@@ -178,9 +178,9 @@ async fn accepted_connection(
 // Join diagnostics must not expose a panic payload from a source transaction.
 fn task_failure(error: tokio::task::JoinError) -> Error {
     if error.is_panic() {
-        Error::LawInboundTaskPanickedMachineOwnerStopped(error)
+        Error::InboundTaskPanickedMachineOwnerStopped(error)
     } else {
-        Error::LawInboundTaskWasCancelledBeforeReturningItsOutcome(error)
+        Error::InboundTaskWasCancelledBeforeReturningItsOutcome(error)
     }
 }
 fn report(machine: &Machine, result: Result<(), Error>) {
@@ -213,7 +213,7 @@ async fn worker(
                             job.orders.close(&store, "LAW-test-queue-gate-stopped").await?;
                             return Err(Error::TestHook(error));
                     }
-                    let until=job.orders.due().ok_or(Error::LawQueuedWorkHasNoDeadline)?;
+                    let until=job.orders.due().ok_or(Error::QueuedWorkHasNoDeadline)?;
                     #[cfg(feature = "test-hooks")]
                     let until = if machine.hooks.law_gates.expire_queued { std::time::Instant::now() } else { until };
                     let ready=tokio::select! {
@@ -287,16 +287,16 @@ async fn exchange(
     capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
     let LawLinks::Independent { outbound } = settings.policy().links() else {
-        return Err(Error::LawIndependentDestinationAbsent);
+        return Err(Error::IndependentDestinationAbsent);
     };
-    let until = orders.due().ok_or(Error::LawOutboundDeadlineAbsent)?;
+    let until = orders.due().ok_or(Error::OutboundDeadlineAbsent)?;
     if std::time::Instant::now() >= until {
-        return Err(Error::LawOutboundWorkExpiredBeforeConnection);
+        return Err(Error::OutboundWorkExpiredBeforeConnection);
     }
     let stream = tokio::select! {
         biased;
         ()=crate::machine::stopping(&mut stop)=>return Ok(()),
-        result=tokio::time::timeout_at(until.into(),TcpStream::connect(outbound))=>result.map_err(Error::LawOutboundConnectDeadline)??,
+        result=tokio::time::timeout_at(until.into(),TcpStream::connect(outbound))=>result.map_err(Error::OutboundConnectDeadline)??,
     };
     let limits = analyte_transport::Limits::new(
         CHANNEL_LIMIT,

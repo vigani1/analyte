@@ -13,10 +13,10 @@ pub enum Error {
     LawGatesRequireInjectedLoopbackListener,
     /// A required installation setting or relationship is refused.
     #[error("admin address must be 127.0.0.1")]
-    AdminAddressMustBe127001,
+    AdminAddressNotLoopback,
     /// A required installation setting or relationship is refused.
     #[error("admin port must be between 1 and 65535")]
-    AdminPortMustBeBetween1And65535,
+    AdminPortOutOfRange,
     /// A required installation setting or relationship is refused.
     #[error("capture machine ID must be one directory component")]
     CaptureMachineIdMustBeOneDirectoryComponent,
@@ -31,7 +31,7 @@ pub enum Error {
     CommitHookRequiresInjectedLawLoopbackListener,
     /// A required installation setting or relationship is refused.
     #[error("configuration exceeds 1 MiB")]
-    ConfigurationExceeds1Mib,
+    ConfigurationTooLarge,
     /// A required installation setting or relationship is refused.
     #[error("configuration has no parent directory")]
     ConfigurationHasNoParentDirectory,
@@ -114,13 +114,13 @@ impl Error {
             Self::Integer(cause) => cause,
             Self::AstmReceiveDialogCurrentlySupportsStrictChecksumHexOnly
             | Self::LawGatesRequireInjectedLoopbackListener
-            | Self::AdminAddressMustBe127001
-            | Self::AdminPortMustBeBetween1And65535
+            | Self::AdminAddressNotLoopback
+            | Self::AdminPortOutOfRange
             | Self::CaptureMachineIdMustBeOneDirectoryComponent
             | Self::ClosingHookRequiresALoopbackTcpClient
             | Self::CommitHookRequiresInjectedAstmLoopbackListener
             | Self::CommitHookRequiresInjectedLawLoopbackListener
-            | Self::ConfigurationExceeds1Mib
+            | Self::ConfigurationTooLarge
             | Self::ConfigurationHasNoParentDirectory
             | Self::DuplicateMachineIdentity
             | Self::InconsistentSharedDestination

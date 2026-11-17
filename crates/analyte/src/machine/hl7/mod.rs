@@ -256,7 +256,7 @@ impl ConnectionState {
             Action::OrderResponseTimeout => {
                 self.queries
                     .as_mut()
-                    .ok_or(Error::Hl7OrderServicesAbsent)?
+                    .ok_or(Error::OrderServicesAbsent)?
                     .order_response(store, None)
                     .await?;
             }
@@ -306,7 +306,7 @@ impl ConnectionState {
             }
             Action::Refused(error) => return Err(error.into()),
             Action::TimedOut(_) => {
-                return Err(Error::Hl7HostPhaseTimedOutReceiptRequiresReconciliation);
+                return Err(Error::HostPhaseTimedOutReceiptRequiresReconciliation);
             }
             Action::Sent(_, _) | Action::CommitAccepted(_) => {
                 return Err(Error::UnexpectedOutgoingHl7Outcome);
@@ -342,7 +342,7 @@ impl ConnectionState {
             )
             .await?;
         } else {
-            let query = self.queries.as_mut().ok_or(Error::Hl7QueryServicesAbsent)?;
+            let query = self.queries.as_mut().ok_or(Error::QueryServicesAbsent)?;
             let request = crate::orders::hl7::Request {
                 message: &message,
                 started: self
@@ -381,7 +381,7 @@ impl ConnectionState {
         {
             Ok(_) => {
                 if self.pending.len() >= 2 {
-                    return Err(Error::Hl7PendingReceiptLimitExceeded);
+                    return Err(Error::PendingReceiptLimitExceeded);
                 }
                 self.pending.insert((token.epoch(), token.ordinal()), id);
                 actions.extend(
@@ -410,7 +410,7 @@ impl ConnectionState {
         let id = self
             .pending
             .remove(&(token.epoch(), token.ordinal()))
-            .ok_or_else(|| Error::Hl7ReceiptCorrelationMissing)?;
+            .ok_or_else(|| Error::ReceiptCorrelationMissing)?;
         let (outcome, location) = intake::interpret_with_location(store, machine, id).await?;
         let event = if matches!(outcome, intake::InterpretationOutcome::Accepted) {
             Event::Interpreted(token)
@@ -449,7 +449,7 @@ impl ConnectionState {
         }
         self.queries
             .as_mut()
-            .ok_or(Error::Hl7DisplayServicesAbsent)?
+            .ok_or(Error::DisplayServicesAbsent)?
             .outcome(store, code, accepted)
             .await?;
 
@@ -500,7 +500,7 @@ impl ConnectionState {
             .ok_or(Error::OrderResponseReceiptAbsent)?;
         self.queries
             .as_mut()
-            .ok_or(Error::Hl7OrderServicesAbsent)?
+            .ok_or(Error::OrderServicesAbsent)?
             .order_response(store, Some(message))
             .await?;
 
@@ -528,7 +528,7 @@ impl ConnectionState {
         bytes: Vec<u8>,
     ) -> Result<bool, Error> {
         intake::park_bytes(store, machine, bytes, ByteReason::Hl7Unsolicited).await?;
-        Err(Error::Hl7MessageRefused)
+        Err(Error::MessageRefused)
     }
     async fn close(
         &mut self,

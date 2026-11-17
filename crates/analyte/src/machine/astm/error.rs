@@ -3,22 +3,22 @@
 pub(crate) enum Error {
     /// ASTM admission size overflow.
     #[error("ASTM admission size overflow")]
-    AstmAdmissionSizeOverflow,
+    AdmissionSizeOverflow,
     /// ASTM message bound exceeded.
     #[error("ASTM message bound exceeded")]
-    AstmMessageBoundExceeded,
+    MessageBoundExceeded,
     /// ASTM storage or resource limit refused transfer.
     #[error("ASTM storage or resource limit refused transfer")]
-    AstmResourceLimitRefusedTransfer,
+    ResourceLimitRefusedTransfer,
     /// A frame commit failed; retains the storage failure or elapsed custody budget.
     #[error("ASTM storage or resource limit refused transfer")]
-    AstmCommitRefused(#[source] crate::machine::custody::StoreWaitError<analyte_store::Error>),
+    CommitRefused(#[source] crate::machine::custody::StoreWaitError<analyte_store::Error>),
     /// The dialog expired before receiving a durable frame-commit completion.
     #[error("ASTM storage or resource limit refused transfer")]
-    AstmCommitDeadline,
+    CommitDeadline,
     /// ASTM transfer wire-byte bound exceeded.
     #[error("ASTM transfer wire-byte bound exceeded")]
-    AstmTransferWireByteBoundExceeded,
+    TransferWireByteBoundExceeded,
     /// Order poll deadline overflow.
     #[error("order poll deadline overflow")]
     OrderPollDeadlineOverflow,
@@ -27,16 +27,16 @@ pub(crate) enum Error {
     OrderMapping(#[from] analyte_mapping::OrderMappingError),
     /// A received ASTM frame failed envelope validation.
     #[error(transparent)]
-    AstmFrame(#[from] analyte_framing::astm::Error),
+    Frame(#[from] analyte_framing::astm::Error),
     /// Order reservation or completion could not be persisted.
     #[error(transparent)]
     Orders(#[from] crate::orders::OrderError),
     /// The ASTM conversation rejected the current event.
     #[error(transparent)]
-    AstmDialog(#[from] analyte_dialog::astm::Error),
+    Dialog(#[from] analyte_dialog::astm::Error),
     /// ASTM record syntax could not be decoded.
     #[error(transparent)]
-    Astm(#[from] analyte_astm::Error),
+    Syntax(#[from] analyte_astm::Error),
     /// A bounded synthetic gate stopped or could not resume the connection.
     #[cfg(feature = "test-hooks")]
     #[error(transparent)]
@@ -55,29 +55,29 @@ mod tests {
     async fn adr0003_astm_refusal_preserves_custody_cause_and_operator_text() {
         use crate::machine::custody::{StoreWaitError, store_within};
         let storage =
-            Error::AstmCommitRefused(StoreWaitError::Operation(analyte_store::Error::Capacity));
+            Error::CommitRefused(StoreWaitError::Operation(analyte_store::Error::Capacity));
         let expired = store_within(
             std::time::Duration::from_millis(1),
             std::future::pending::<Result<(), analyte_store::Error>>(),
         )
         .await
         .unwrap_err();
-        let timeout = Error::AstmCommitRefused(expired);
+        let timeout = Error::CommitRefused(expired);
         assert!(matches!(
             &storage,
-            Error::AstmCommitRefused(StoreWaitError::Operation(analyte_store::Error::Capacity))
+            Error::CommitRefused(StoreWaitError::Operation(analyte_store::Error::Capacity))
         ));
         assert!(matches!(
             &timeout,
-            Error::AstmCommitRefused(StoreWaitError::Timeout(_))
+            Error::CommitRefused(StoreWaitError::Timeout(_))
         ));
         assert!(storage.source().is_some());
         assert!(timeout.source().is_some());
         for error in [
             storage,
             timeout,
-            Error::AstmCommitDeadline,
-            Error::AstmResourceLimitRefusedTransfer,
+            Error::CommitDeadline,
+            Error::ResourceLimitRefusedTransfer,
         ] {
             assert_eq!(
                 error.to_string(),
