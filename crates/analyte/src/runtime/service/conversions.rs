@@ -1,4 +1,4 @@
-//! Connects protocol errors to shared causes and worker failures to their owning boundary.
+//! Connects protocol refusals to typed custody causes and retains independent cleanup failures.
 /// Every protocol retains the same typed custody, link and evidence causes,
 /// including both failures when cleanup also fails. Keeping these three adapters
 /// together prevents the six hosts from drifting in cause retention.
