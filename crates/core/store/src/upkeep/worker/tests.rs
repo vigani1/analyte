@@ -203,9 +203,11 @@ fn adr0003_rule7_worker_startup_guard_cancels_before_owner_join() -> TestResult 
         assert!(observed.is_ok());
         assert!(opening.expired());
     });
+    let (_finished, completion) = tokio::sync::oneshot::channel();
     let handle = Handle {
         sender: None,
         thread: Some(thread),
+        finished: completion,
     };
     assert!(!startup.expired());
     {
@@ -217,5 +219,37 @@ fn adr0003_rule7_worker_startup_guard_cancels_before_owner_join() -> TestResult 
     released.send(())?;
     assert!(cancelled_before_release);
     drop(handle);
+    Ok(())
+}
+
+#[test]
+fn rule7_shutdown_timeout_retains_owner_and_can_resume_after_notification() -> TestResult {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()?;
+    let (release, released) = std::sync::mpsc::channel();
+    let (finished, completion) = tokio::sync::oneshot::channel();
+    let thread = std::thread::spawn(move || {
+        let _finished = super::Finished(Some(finished));
+        released
+            .recv_timeout(HANG_GUARD)
+            .expect("test releases worker");
+    });
+    let mut handle = Handle {
+        sender: None,
+        thread: Some(thread),
+        finished: completion,
+    };
+    runtime.block_on(async {
+        assert!(matches!(
+            handle.shutdown(Instant::now()).await,
+            Err(Error::Timeout)
+        ));
+        assert!(handle.thread.is_some());
+        release.send(()).map_err(|_| Error::Closed)?;
+        handle.shutdown(Instant::now() + HANG_GUARD).await?;
+        assert!(handle.thread.is_none());
+        Ok::<_, Error>(())
+    })?;
     Ok(())
 }

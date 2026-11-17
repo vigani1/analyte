@@ -1,10 +1,6 @@
 //! Runs blocking storage requests on an owned worker thread.
 use crate::{Error, FreeSpace, Limits, Store};
-use std::{
-    path::PathBuf,
-    thread,
-    time::{Duration, Instant},
-};
+use std::{path::PathBuf, thread, time::Instant};
 use tokio::sync::{mpsc, oneshot};
 
 type Operation = Box<dyn FnOnce(&mut Store) + Send>;
@@ -31,11 +27,23 @@ impl Drop for CancelStartup {
     }
 }
 
+// Completion is a notification, not a periodic probe of the thread state.
+struct Finished(Option<oneshot::Sender<()>>);
+
+impl Drop for Finished {
+    fn drop(&mut self) {
+        if let Some(sender) = self.0.take() {
+            let _ = sender.send(());
+        }
+    }
+}
+
 /// Owns the dedicated storage thread and a bounded request queue.
 /// Dropping closes the queue and joins the worker; explicitly shut down before runtime exit.
 pub struct Handle {
     sender: Option<mpsc::Sender<Request>>,
     thread: Option<thread::JoinHandle<()>>,
+    finished: oneshot::Receiver<()>,
 }
 
 impl Handle {
@@ -56,11 +64,15 @@ impl Handle {
         }
         let (sender, mut receiver) = mpsc::channel::<Request>(capacity);
         let (ready, opened) = oneshot::channel();
+        let (finished, completion) = oneshot::channel();
         let startup = crate::startup::Startup::new(deadline);
         let opening = startup.clone();
         let thread = thread::Builder::new()
             .name("analyte-store".into())
             .spawn(move || {
+                // Declared before the store so completion follows store destruction,
+                // including early returns and unwinding.
+                let _finished = Finished(Some(finished));
                 let mut store = match Store::open_with_startup(&path, limits, space, &opening) {
                     Ok(store) => {
                         if ready.send(Ok(())).is_err() {
@@ -80,6 +92,7 @@ impl Handle {
         let handle = Self {
             sender: Some(sender),
             thread: Some(thread),
+            finished: completion,
         };
         let _cancel = CancelStartup(startup.clone());
         tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), opened)
@@ -131,15 +144,15 @@ impl Handle {
     /// Reports expiration; the handle still owns the worker and can be shut down again.
     pub async fn shutdown(&mut self, deadline: Instant) -> Result<(), Error> {
         self.sender.take();
-        while self
+        if self
             .thread
             .as_ref()
             .is_some_and(|thread| !thread.is_finished())
         {
-            if Instant::now() >= deadline {
-                return Err(Error::Timeout);
-            }
-            tokio::time::sleep(Duration::from_millis(1)).await;
+            tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), &mut self.finished)
+                .await
+                .map_err(|_| Error::Timeout)?
+                .map_err(|_| Error::Closed)?;
         }
         if let Some(thread) = self.thread.take() {
             thread.join().map_err(|_| Error::Closed)?;
