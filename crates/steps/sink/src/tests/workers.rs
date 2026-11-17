@@ -218,7 +218,7 @@ async fn adr0008_slow_destination_does_not_delay_another_owned_worker() -> TestR
     for destination in [&slow, &fast] {
         let metadata = receipt()?;
         let result = make_result(metadata.id, destination.id.as_str())?;
-        let delivery = build_delivery(
+        let delivery = encode_delivery(
             &result,
             &metadata,
             destination.id.clone(),
