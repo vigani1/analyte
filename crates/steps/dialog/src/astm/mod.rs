@@ -5,7 +5,7 @@ use std::{collections::VecDeque, time::Duration};
 mod control;
 pub use control::{Action, CommitId, Config, End, Epoch, Error, Event, Interrupt, Role, Timers};
 
-/// LIS01-A2 ?6.3.5 / ?8.3.5: yield after honoring receiver interruption.
+/// LIS01-A2 §6.3.5 / §8.3.5: yield after honoring receiver interruption.
 const INTERRUPT_HOLDOFF: Duration = Duration::from_secs(15);
 
 #[derive(Debug)]

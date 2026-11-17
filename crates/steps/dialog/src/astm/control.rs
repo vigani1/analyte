@@ -11,7 +11,7 @@ pub enum Role {
     Instrument,
 }
 
-/// Whether to honor receiver interruption requests (LIS01-A2 ?6.3.5).
+/// Whether to honor receiver interruption requests (LIS01-A2 §6.3.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Interrupt {
     /// End transmission and yield the link.
