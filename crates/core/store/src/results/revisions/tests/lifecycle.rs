@@ -35,11 +35,14 @@ fn adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it() -> T
         assert_eq!(policy.may_deliver(&result), status != "draft");
         let mut evidence = interpretation()?;
         evidence.outcome = Reading::Results(vec![result]);
-        let commit = store.interpret_with_lifecycle(
-            metadata.id,
+        let commit = store.reconcile(
+            ReconcileAction::Interpret(metadata.id),
             evidence,
-            (&[true], &[]),
-            policy,
+            ReconcileInput {
+                corrections: &[true],
+                findings: &[],
+                mode: ReconcileMode::Lifecycle(policy),
+            },
             |_, _| Ok(vec![]),
         )?;
         assert_eq!(commit.outcomes, [expected]);
@@ -72,11 +75,14 @@ fn adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice() -> 
     store.receive(&first, b"synthetic", b"config")?;
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![make(first.id, "draft")?, make(first.id, "ready")?]);
-    let commit = store.interpret_with_lifecycle(
-        first.id,
+    let commit = store.reconcile(
+        ReconcileAction::Interpret(first.id),
         evidence,
-        (&[false, false], &[]),
-        policy,
+        ReconcileInput {
+            corrections: &[false, false],
+            findings: &[],
+            mode: ReconcileMode::Lifecycle(policy),
+        },
         |_, _| Ok(vec![]),
     )?;
     assert_eq!(
@@ -92,10 +98,16 @@ fn adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice() -> 
     result.sample.as_mut().ok_or(Error::Corruption)?.id = SampleId::new("changed")?;
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![result]);
-    let commit =
-        store.interpret_with_lifecycle(second.id, evidence, (&[false], &[]), policy, |_, _| {
-            Ok(vec![])
-        })?;
+    let commit = store.reconcile(
+        ReconcileAction::Interpret(second.id),
+        evidence,
+        ReconcileInput {
+            corrections: &[false],
+            findings: &[],
+            mode: ReconcileMode::Lifecycle(policy),
+        },
+        |_, _| Ok(vec![]),
+    )?;
     assert_eq!(commit.outcomes, [RevisionOutcome::Conflict]);
     Ok(())
 }
@@ -114,11 +126,14 @@ fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
         single_run: &[],
         run: |_| None,
     };
-    let result = store.interpret_with_lifecycle(
-        metadata.id,
+    let result = store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
         evidence,
-        (&[false], &[]),
-        policy,
+        ReconcileInput {
+            corrections: &[false],
+            findings: &[],
+            mode: ReconcileMode::Lifecycle(policy),
+        },
         |evidence, _| {
             let Reading::Results(results) = &evidence.outcome else {
                 return Err(Error::InvalidInterpretationInput);
@@ -210,11 +225,14 @@ fn mutation_adr0011_single_final_run_is_scoped_by_machine_order_and_test() -> Te
             }
             let mut evidence = interpretation()?;
             evidence.outcome = Reading::Results(vec![result]);
-            let commit = store.interpret_with_lifecycle(
-                metadata.id,
+            let commit = store.reconcile(
+                ReconcileAction::Interpret(metadata.id),
                 evidence,
-                (&[false], &[]),
-                policy,
+                ReconcileInput {
+                    corrections: &[false],
+                    findings: &[],
+                    mode: ReconcileMode::Lifecycle(policy),
+                },
                 |_, _| Ok(vec![]),
             )?;
             let expected = if index == 0 {
@@ -255,7 +273,12 @@ fn mutation_adr0003_adr0011_retained_interpretation_byte_bound_is_inclusive() ->
         id.observation.run = SourceText::new("run-a")?;
         let mut evidence = interpretation()?;
         evidence.outcome = Reading::Results(vec![original]);
-        store.interpret_reconciled(first.id, evidence, &[false], &[], |_, _| Ok(vec![]))?;
+        store.reconcile(
+            ReconcileAction::Interpret(first.id),
+            evidence,
+            ReconcileInput::standard(&[false], &[]),
+            |_, _| Ok(vec![]),
+        )?;
         let encoded: String =
             store
                 .db
@@ -272,20 +295,28 @@ fn mutation_adr0003_adr0011_retained_interpretation_byte_bound_is_inclusive() ->
         evidence.outcome = Reading::Results(vec![result]);
         store.limits.record_bytes = encoded.len().checked_sub(delta).ok_or("limit")?;
         let result = if exclusive {
-            store.interpret_with_lifecycle(
-                second.id,
+            store.reconcile(
+                ReconcileAction::Interpret(second.id),
                 evidence,
-                (&[false], &[]),
-                StatusLifecycle {
-                    transitions: &[],
-                    withheld: &[],
-                    single_run: &["F"],
-                    run: |id| Some(id.run.as_str().to_owned()),
+                ReconcileInput {
+                    corrections: &[false],
+                    findings: &[],
+                    mode: ReconcileMode::Lifecycle(StatusLifecycle {
+                        transitions: &[],
+                        withheld: &[],
+                        single_run: &["F"],
+                        run: |id| Some(id.run.as_str().to_owned()),
+                    }),
                 },
                 |_, _| Ok(vec![]),
             )
         } else {
-            store.interpret_reconciled(second.id, evidence, &[true], &[], |_, _| Ok(vec![]))
+            store.reconcile(
+                ReconcileAction::Interpret(second.id),
+                evidence,
+                ReconcileInput::standard(&[true], &[]),
+                |_, _| Ok(vec![]),
+            )
         };
         if delta == 0 {
             let expected = if exclusive {
@@ -353,11 +384,14 @@ fn mutation_adr0011_progression_uses_the_requested_observation_and_unanimous_sou
         let wanted = make(first.id, &["draft", "draft"])?;
         let mut evidence = interpretation()?;
         evidence.outcome = Reading::Results(vec![other, wanted]);
-        store.interpret_with_lifecycle(
-            first.id,
+        store.reconcile(
+            ReconcileAction::Interpret(first.id),
             evidence,
-            (&[false, false], &[]),
-            policy,
+            ReconcileInput {
+                corrections: &[false, false],
+                findings: &[],
+                mode: ReconcileMode::Lifecycle(policy),
+            },
             |_, _| Ok(vec![]),
         )?;
         let second = receipt(b"raw")?;
@@ -371,11 +405,14 @@ fn mutation_adr0011_progression_uses_the_requested_observation_and_unanimous_sou
                 &["ready", "ready"]
             },
         )?]);
-        let commit = store.interpret_with_lifecycle(
-            second.id,
+        let commit = store.reconcile(
+            ReconcileAction::Interpret(second.id),
             evidence,
-            (&[false], &[]),
-            policy,
+            ReconcileInput {
+                corrections: &[false],
+                findings: &[],
+                mode: ReconcileMode::Lifecycle(policy),
+            },
             |_, _| Ok(vec![]),
         )?;
         assert_eq!(

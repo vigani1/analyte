@@ -97,7 +97,7 @@ migration retains existing rows/triggers and indexes resolved interpretation
 history; contradictory legacy content at the same revision refuses migration
 rather than picking a winner. No old interpretation is rewritten.
 
-`interpret_reconciled` accepts mapped results, explicit correction evidence and
+`reconcile` accepts mapped results, explicit correction evidence and
 positioned operator findings. One transaction assigns revisions, stores the
 interpretation, parks every finding/conflict and enqueues only eligible builder
 output. The builder sees assigned revisions before constructing delivery bytes.
@@ -111,7 +111,7 @@ with each part's host receive time removed. Receipt IDs and assigned revisions
 are not part of the digest. Source times and source status remain clinical
 evidence. The SHA-256 input is independent of receipt/retry receive time.
 
-`interpret_reconciled` is the sole interpretation entry point for ordinary
+`reconcile` is the sole interpretation entry point for ordinary
 reception; builders receive assigned revisions before constructing delivery bytes.
 Mapping findings are stored in the same transaction.
 

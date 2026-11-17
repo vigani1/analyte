@@ -16,11 +16,10 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
     let reading = interpretation()?;
     assert_eq!(
         store
-            .interpret_reconciled(
-                metadata.id,
+            .reconcile(
+                ReconcileAction::Interpret(metadata.id),
                 reading.clone(),
-                &[],
-                &[],
+                ReconcileInput::standard(&[], &[]),
                 |_, _| Ok(Vec::new())
             )
             .map(|commit| commit.version)?,
@@ -28,11 +27,10 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
     );
     assert_eq!(
         store
-            .interpret_reconciled(
-                metadata.id,
+            .reconcile(
+                ReconcileAction::Interpret(metadata.id),
                 reading.clone(),
-                &[],
-                &[],
+                ReconcileInput::standard(&[], &[]),
                 |_, _| Ok(Vec::new())
             )
             .map(|commit| commit.version)?,

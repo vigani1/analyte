@@ -166,8 +166,8 @@ async fn enqueue(
                 .as_slice()
                 .iter()
                 .any(|part| part.source_status.as_str() == "C");
-            s.interpret_reconciled(
-                metadata.id,
+            s.reconcile(
+                analyte_store::ReconcileAction::Interpret(metadata.id),
                 analyte_store::Interpretation {
                     departures: None,
                     driver: metadata.driver,
@@ -175,8 +175,7 @@ async fn enqueue(
                     config: b"config".to_vec(),
                     outcome: analyte_store::Reading::Results(vec![result]),
                 },
-                &[is_correction],
-                &[],
+                analyte_store::ReconcileInput::standard(&[is_correction], &[]),
                 |_, _| Ok(vec![delivery]),
             )?;
             Ok(())

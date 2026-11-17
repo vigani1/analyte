@@ -211,15 +211,20 @@ fn adr0013_item3_item6_purged_duplicate_is_still_retransmission() -> TestResult 
     store.receive(&new, b"late resend", b"config")?;
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![production_result(new.id)?]);
-    let commit = store.interpret_reconciled(new.id, evidence, &[false], &[], |_, outcomes| {
-        assert_eq!(
-            outcomes,
-            &[crate::RevisionOutcome::Retransmission(
-                analyte_model::Revision(0)
-            )]
-        );
-        Ok(vec![])
-    })?;
+    let commit = store.reconcile(
+        crate::ReconcileAction::Interpret(new.id),
+        evidence,
+        crate::ReconcileInput::standard(&[false], &[]),
+        |_, outcomes| {
+            assert_eq!(
+                outcomes,
+                &[crate::RevisionOutcome::Retransmission(
+                    analyte_model::Revision(0)
+                )]
+            );
+            Ok(vec![])
+        },
+    )?;
     assert_eq!(commit.outcomes.len(), 1);
     assert_eq!(
         store
@@ -312,7 +317,12 @@ fn adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate() -> TestRe
     store.receive(&new, b"late repeat", b"config")?;
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![production_result(new.id)?]);
-    let commit = store.interpret_reconciled(new.id, evidence, &[false], &[], |_, _| Ok(vec![]))?;
+    let commit = store.reconcile(
+        crate::ReconcileAction::Interpret(new.id),
+        evidence,
+        crate::ReconcileInput::standard(&[false], &[]),
+        |_, _| Ok(vec![]),
+    )?;
     assert_eq!(
         commit.outcomes,
         vec![crate::RevisionOutcome::Retransmission(

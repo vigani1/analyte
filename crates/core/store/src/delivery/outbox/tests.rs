@@ -14,9 +14,12 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
     store.db.execute_batch("CREATE TRIGGER reject_interpretation AFTER INSERT ON interpretations BEGIN INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('x',NEW.receipt,NEW.version,'d','k',x'00',x'00',1,'invalid',0); END;")?;
     {
         let refusal = store
-            .interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
-                Ok(Vec::new())
-            })
+            .reconcile(
+                ReconcileAction::Interpret(metadata.id),
+                interpretation()?,
+                ReconcileInput::standard(&[], &[]),
+                |_, _| Ok(Vec::new()),
+            )
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
@@ -46,9 +49,12 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"raw")?;
     store.receive(&metadata, b"raw", b"config")?;
-    store.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
-        Ok(Vec::new())
-    })?;
+    store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        interpretation()?,
+        ReconcileInput::standard(&[], &[]),
+        |_, _| Ok(Vec::new()),
+    )?;
     let first = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     let correction = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     let other = DeliveryId::try_from(uuid::Uuid::now_v7())?;
@@ -94,8 +100,11 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
     let id = delivery.id;
     assert_eq!(
         store
-            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| Ok(
-                vec![Delivery {
+            .reconcile(
+                ReconcileAction::Interpret(metadata.id),
+                evidence.clone(),
+                ReconcileInput::standard(&[false], &[]),
+                |_, _| Ok(vec![Delivery {
                     id: delivery.id,
                     destination: delivery.destination.clone(),
                     ordering_key: OrderingKey {
@@ -104,25 +113,30 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
                     },
                     payload: delivery.payload.clone(),
                     contract_version: delivery.contract_version,
-                }]
-            ))
+                }])
+            )
             .map(|commit| commit.version)?,
         1
     );
     {
         let refusal = store
-            .interpret_reconciled(metadata.id, evidence.clone(), &[false], &[], |_, _| {
-                Ok(vec![Delivery {
-                    id: delivery.id,
-                    destination: delivery.destination.clone(),
-                    ordering_key: OrderingKey {
-                        machine: delivery.ordering_key.machine.clone(),
-                        observation: delivery.ordering_key.observation.clone(),
-                    },
-                    payload: delivery.payload.clone(),
-                    contract_version: delivery.contract_version,
-                }])
-            })
+            .reconcile(
+                ReconcileAction::Interpret(metadata.id),
+                evidence.clone(),
+                ReconcileInput::standard(&[false], &[]),
+                |_, _| {
+                    Ok(vec![Delivery {
+                        id: delivery.id,
+                        destination: delivery.destination.clone(),
+                        ordering_key: OrderingKey {
+                            machine: delivery.ordering_key.machine.clone(),
+                            observation: delivery.ordering_key.observation.clone(),
+                        },
+                        payload: delivery.payload.clone(),
+                        contract_version: delivery.contract_version,
+                    }])
+                },
+            )
             .map(|commit| commit.version)
             .map(|_| ())
             .expect_err("input must be refused");
@@ -254,11 +268,10 @@ fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing(
         }
         let mut evidence = interpretation()?;
         evidence.outcome = Reading::Results(vec![result]);
-        let commit = store.interpret_reconciled(
-            metadata.id,
+        let commit = store.reconcile(
+            ReconcileAction::Interpret(metadata.id),
             evidence,
-            &[false],
-            &[],
+            ReconcileInput::standard(&[false], &[]),
             |evidence, outcomes| {
                 let Reading::Results(results) = &evidence.outcome else {
                     return Err(Error::LimitExceeded {
@@ -312,9 +325,12 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
     let mut store = open(&path)?;
     let metadata = receipt(b"raw")?;
     store.receive(&metadata, b"raw", b"config")?;
-    store.interpret_reconciled(metadata.id, interpretation()?, &[], &[], |_, _| {
-        Ok(Vec::new())
-    })?;
+    store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        interpretation()?,
+        ReconcileInput::standard(&[], &[]),
+        |_, _| Ok(Vec::new()),
+    )?;
     let mut interrupted = None;
     for state in ["in_flight", "parked", "conflict", "paused", "done"] {
         let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
