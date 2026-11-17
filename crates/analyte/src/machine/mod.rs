@@ -1,11 +1,11 @@
-//! Owns machine workers and transport sessions without replaying queued writes.
+//! Owns machine workers and protocol sessions; links own transport session loops.
 use crate::machine::error::Error;
 pub(crate) mod astm;
 pub(crate) mod autolyser;
 mod driver;
 pub(crate) mod link;
 pub(crate) use link::capture;
-use link::{folder, serial};
+use link::{folder, serial, tcp};
 pub(crate) mod hl7;
 pub(crate) mod interpretation;
 pub use interpretation::reprocess;
@@ -14,13 +14,12 @@ pub(crate) mod poct;
 pub(crate) mod receive;
 mod settings;
 pub(crate) use receive::connection_input;
-mod tcp;
 pub(crate) mod vidas;
 mod worker;
 use crate::installation::config::Machine;
 use analyte_config::TcpRole;
 use analyte_store::Handle;
-use analyte_transport::{Backoff, Limits, connection};
+use analyte_transport::Limits;
 use settings::Link;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
@@ -32,12 +31,6 @@ const TRANSPORT_QUEUE_CAPACITY: usize = 16;
 
 /// Bounds the transport close stage after receive commits finish.
 const TRANSPORT_CLOSE_BUDGET: Duration = Duration::from_secs(25);
-
-/// Caps reconnection churn while keeping cancellation responsive.
-const RECONNECT_MIN: Duration = Duration::from_millis(100);
-
-/// Caps exponential transport reconnection backoff.
-const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
 /// Separates completed receive commits from transport closure during shutdown.
 pub(crate) struct Closing {
@@ -58,16 +51,12 @@ impl Closing {
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "keeps exhaustive transport ownership and shutdown paths together"
-)]
 pub(crate) async fn run(
     mut machine: Machine,
     store: Arc<Handle>,
-    mut stop: watch::Receiver<bool>,
+    stop: watch::Receiver<bool>,
     file_root: std::path::PathBuf,
-    mut closing: Closing,
+    closing: Closing,
     capture: Option<Arc<capture::Capture>>,
 ) -> Result<(), Error> {
     if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack()
@@ -78,128 +67,39 @@ pub(crate) async fn run(
     {
         return Ok(law::independent::run(machine, store, stop, closing, capture).await?);
     }
+    let listener = machine.listener.take();
     let link = settings::transport(machine.snapshot.effective().stack());
     let timeout = Duration::from_millis(u64::from(link.timeout_ms()));
     let limits = Limits::new(TRANSPORT_QUEUE_CAPACITY, timeout)?;
-    let endpoint = &machine.snapshot.effective().site().endpoint;
+    let capture = capture.as_deref();
     match link {
         Link::Tcp {
             role: TcpRole::Server,
             session,
             ..
         } => {
-            let listener = match machine.listener.take() {
-                Some(listener) => tokio::net::TcpListener::from_std(listener)?,
-                None => analyte_transport::tcp::bind(endpoint.parse()?).await?,
-            };
-            loop {
-                let Some(accepted) =
-                    tcp::accept(|| listener.accept(), machine.id.as_str(), &mut stop).await?
-                else {
-                    closing.after_commits().await?;
-                    return Ok(());
-                };
-                let (conn, side) = recorded_connection(limits, capture.as_deref());
-                let cancel = conn.cancellation();
-                let processing = drive(&machine, session, &store, conn, stop.clone(), &mut closing);
-                let transport = analyte_transport::tcp::pump(accepted.0, side);
-                // Drain ordered received/closed events even if the I/O owner finishes first.
-                let (result, transport) = tokio::join!(processing, transport);
-                cancel.cancel();
-                let transport_failed = transport.is_err();
-                if let Err(error) = transport {
-                    tracing::error!(machine = machine.id.as_str(), error_kind = %error,
-                        "TCP session transport stopped");
-                }
-                if let Err(error) = result {
-                    tracing::error!(machine = machine.id.as_str(), error_kind = %error, "machine session stopped");
-                }
-                if *stop.borrow() {
-                    return Ok(());
-                }
-                if transport_failed && !tcp::backoff(&mut stop).await {
-                    closing.after_commits().await?;
-                    return Ok(());
-                }
-            }
+            tcp::server(
+                listener, &machine, &store, session, limits, stop, closing, capture,
+            )
+            .await
         }
         Link::Tcp {
             role: TcpRole::Client,
             session,
             ..
-        } => loop {
-            let (conn, side) = recorded_connection(limits, capture.as_deref());
-            let cancel = conn.cancellation();
-            let transport =
-                analyte_transport::tcp::client_session(endpoint.parse()?, side, retry()?);
-            let (result, transport) = tokio::join!(
-                drive(&machine, session, &store, conn, stop.clone(), &mut closing),
-                transport
-            );
-            // drive cancels the I/O owner and drops its consumer after session cleanup.
-            // The client's final Closed event can therefore meet a closed queue; that
-            // expected owner shutdown must not terminate persistent reconnection.
-            if let Err(error) = transport
-                && !(matches!(error, analyte_transport::Error::ConsumerClosed)
-                    && cancel.is_cancelled())
-            {
-                return Err(error.into());
-            }
-            if let Err(error) = result {
-                tracing::error!(machine=machine.id.as_str(),error_kind=%error,"machine session stopped");
-            }
-            if *stop.borrow() {
-                return Ok(());
-            }
-            // Reconnect backoff is cancellable; this is not polling for completion.
-            tokio::select! {
-                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
-                () = tokio::time::sleep(RECONNECT_MIN) => {}
-            }
-        },
+        } => tcp::client(&machine, &store, session, limits, stop, closing, capture).await,
         Link::Serial(link) => {
-            serial::run(
-                &machine,
-                &store,
-                link,
-                limits,
-                stop,
-                closing,
-                capture.as_deref(),
-            )
-            .await
+            serial::run(&machine, &store, link, limits, stop, closing, capture).await
         }
-        Link::Folder { bytes, .. } => folder::session(
-            &machine,
-            &store,
-            bytes,
-            file_root,
-            stop,
-            closing,
-            capture.as_deref(),
-        )
-        .await
-        .map_err(Into::into),
+        Link::Folder { bytes, .. } => {
+            folder::session(&machine, &store, bytes, file_root, stop, closing, capture)
+                .await
+                .map_err(Into::into)
+        }
     }
 }
 
-fn recorded_connection(
-    limits: Limits,
-    capture: Option<&capture::Capture>,
-) -> (analyte_transport::Connection, analyte_transport::IoSide) {
-    let (conn, side) = connection(limits);
-    let side = match capture {
-        Some(capture) => capture.attach(side),
-        None => side,
-    };
-    (conn, side)
-}
-
-fn retry() -> Result<Backoff, Error> {
-    Ok(Backoff::new(RECONNECT_MIN, RECONNECT_MAX, 1)?)
-}
-
-async fn session(
+pub(in crate::machine) async fn session(
     machine: &Machine,
     selected: settings::StreamSession<'_>,
     store: &Handle,
@@ -248,7 +148,7 @@ async fn session(
     }
 }
 
-async fn drive(
+pub(in crate::machine) async fn drive(
     machine: &Machine,
     selected: settings::StreamSession<'_>,
     store: &Handle,

@@ -1,6 +1,7 @@
 //! Drives independent LAW connections with host-owned I/O (TF-2b B.6).
 use super::{Error, LawOrderLink, intake};
 use crate::machine::hooks::Pause;
+use crate::machine::link::{self, Kind, Next, session_ended};
 use crate::orders::outcome::Code;
 use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
@@ -96,6 +97,7 @@ async fn server(
 ) -> Result<(), Error> {
     let mut sessions = JoinSet::new();
     let (sessions_stop, sessions_rx) = watch::channel(false);
+    let mut accepting = stop.clone();
     let mut result = async {
         loop {
             tokio::select! {
@@ -103,11 +105,24 @@ async fn server(
                 _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => break,
                 completed = sessions.join_next(), if !sessions.is_empty() => {
                     if let Some(completed) = completed {
-                        report(&machine, completed.map_err(task_failure)?);
+                        // A panicked or cancelled task left its dialog in an unknown state;
+                        // that is an owner fault, never a served session.
+                        let (result, transport) = completed.map_err(task_failure)?;
+                        let id = machine.id.as_str();
+                        match session_ended(id, Kind::LawInbound, result, transport, &mut stop).await {
+                            Next::Serve => {}
+                            Next::Stop | Next::StopIdle => break,
+                        }
                     }
                 },
-                accepted = listener.accept(), if sessions.len() < SESSION_LIMIT => {
-                    let (stream, _) = accepted?;
+                accepted = link::tcp::accept(|| listener.accept(), machine.id.as_str(), &mut accepting),
+                    if sessions.len() < SESSION_LIMIT => {
+                    let stream = match accepted {
+                        Ok(Some((stream, _))) => stream,
+                        Ok(None) => break,
+                        // accept retries every recoverable fault; only an unusable listener returns.
+                        Err(error) => return Err(error.into()),
+                    };
                     sessions.spawn(accepted_connection(
                         stream,
                         machine.clone(),
@@ -126,7 +141,9 @@ async fn server(
     sessions_stop.send_replace(true);
     while let Some(completed) = sessions.join_next().await {
         match completed {
-            Ok(completed) => report(&machine, completed),
+            Ok((result, transport)) => {
+                link::report(machine.id.as_str(), Kind::LawInbound, result, transport);
+            }
             Err(error) => {
                 tracing::error!(
                     machine = machine.id.as_str(),
@@ -154,19 +171,21 @@ async fn accepted_connection(
     outbound: mpsc::Sender<Work>,
     stop: watch::Receiver<bool>,
     capture: Option<Arc<crate::machine::capture::Capture>>,
-) -> Result<(), Error> {
-    let limits = analyte_transport::Limits::new(
+) -> (Result<(), Error>, Result<(), analyte_transport::Error>) {
+    let limits = match analyte_transport::Limits::new(
         CHANNEL_LIMIT,
         Duration::from_millis(u64::from(
             settings.settings().transport().operation_timeout_ms(),
         )),
-    )?;
-    let (mut conn, side) = analyte_transport::connection(limits);
-    let side = match &capture {
-        Some(capture) => capture.attach(side),
-        None => side,
+    ) {
+        Ok(limits) => limits,
+        Err(error) => return (Err(error.into()), Ok(())),
     };
-    let context = intake::ConnectionEvidence::new(&machine)?;
+    let (mut conn, side) = link::recorded_connection(limits, capture.as_deref());
+    let context = match intake::ConnectionEvidence::new(&machine) {
+        Ok(context) => context,
+        Err(error) => return (Err(error.into()), Ok(())),
+    };
     let dialog = async move {
         let result = super::session_with_outbound(
             &context,
@@ -181,9 +200,7 @@ async fn accepted_connection(
         drop(conn);
         result
     };
-    let (result, transport) = tokio::join!(dialog, analyte_transport::tcp::pump(stream, side));
-    transport?;
-    result
+    tokio::join!(dialog, analyte_transport::tcp::pump(stream, side))
 }
 
 // Join diagnostics must not expose a panic payload from a source transaction.
@@ -346,11 +363,7 @@ async fn exchange(
             settings.settings().transport().operation_timeout_ms(),
         )),
     )?;
-    let (mut conn, side) = analyte_transport::connection(limits);
-    let side = match capture {
-        Some(capture) => capture.attach(side),
-        None => side,
-    };
+    let (mut conn, side) = link::recorded_connection(limits, capture);
     let context = intake::ConnectionEvidence::new(machine)?;
     let dialog = async move {
         let result = transaction(
@@ -361,9 +374,9 @@ async fn exchange(
         drop(conn);
         result
     };
-    let (result, transport) = tokio::join!(dialog, analyte_transport::tcp::pump(stream, side));
-    transport?;
-    result
+    let (result, pumped) = tokio::join!(dialog, analyte_transport::tcp::pump(stream, side));
+    // One exchange, never retried: the transport failure takes precedence, as before.
+    pumped.map_err(Error::from).and(result)
 }
 
 async fn transaction(
