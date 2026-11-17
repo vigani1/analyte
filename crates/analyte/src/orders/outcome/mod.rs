@@ -2,6 +2,28 @@
 /// Compatibility spellings retained in stored evidence and operator records.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Code {
+    VidasAcknowledgmentTimeout,
+    VidasCommitTimeout,
+    VidasControlSuffixMismatch,
+    VidasFramingError,
+    VidasInputFailed,
+    VidasInterbyteTimeout,
+    VidasSessionTimeout,
+    VidasTransferCancelled,
+    VidasTransferConfirmed,
+    VidasTransferDisconnected,
+    VidasTransferError,
+    VidasTransferRefusedOrUnexpected,
+    VidasWriteFailed,
+    AutolyserInputFailed,
+    AutolyserStorageFailed,
+    AutolyserStorageTimeout,
+    AutolyserTransferCancelled,
+    AutolyserTransferDisconnected,
+    AutolyserTransferError,
+    AutolyserTransferTimeout,
+    AutolyserWriteFailed,
+
     QueryReservationRefused,
     QueryDeadlineBeforeSend,
     HostRestart,
@@ -52,6 +74,28 @@ impl Code {
     /// Returns the explicit historical spelling; never derive evidence from Debug.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
+            Self::VidasAcknowledgmentTimeout => "VIDAS-acknowledgment-timeout",
+            Self::VidasCommitTimeout => "VIDAS-commit-timeout",
+            Self::VidasControlSuffixMismatch => "VIDAS-control-suffix-mismatch",
+            Self::VidasFramingError => "VIDAS-framing-error",
+            Self::VidasInputFailed => "VIDAS-input-failed",
+            Self::VidasInterbyteTimeout => "VIDAS-interbyte-timeout",
+            Self::VidasSessionTimeout => "VIDAS-session-timeout",
+            Self::VidasTransferCancelled => "VIDAS-transfer-cancelled",
+            Self::VidasTransferConfirmed => "VIDAS-transfer-confirmed",
+            Self::VidasTransferDisconnected => "VIDAS-transfer-disconnected",
+            Self::VidasTransferError => "VIDAS-transfer-error",
+            Self::VidasTransferRefusedOrUnexpected => "VIDAS-transfer-refused-or-unexpected",
+            Self::VidasWriteFailed => "VIDAS-write-failed",
+            Self::AutolyserInputFailed => "Autolyser-input-failed",
+            Self::AutolyserStorageFailed => "Autolyser-storage-failed",
+            Self::AutolyserStorageTimeout => "Autolyser-storage-timeout",
+            Self::AutolyserTransferCancelled => "Autolyser-transfer-cancelled",
+            Self::AutolyserTransferDisconnected => "Autolyser-transfer-disconnected",
+            Self::AutolyserTransferError => "Autolyser-transfer-error",
+            Self::AutolyserTransferTimeout => "Autolyser-transfer-timeout",
+            Self::AutolyserWriteFailed => "Autolyser-write-failed",
+
             Self::QueryReservationRefused => "query-reservation-refused",
             Self::QueryDeadlineBeforeSend => "query-deadline-before-send",
             Self::HostRestart => "host-restart",
@@ -273,3 +317,5 @@ fn detailed_outcome_spellings_are_compatible() {
         assert_eq!(Detail::LawApplication(code).to_string(), expected);
     }
 }
+
+pub(crate) mod vendor;
