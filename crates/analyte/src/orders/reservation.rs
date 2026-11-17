@@ -158,3 +158,15 @@ pub(super) fn key_parts(
         machine,
     }
 }
+
+/// Couples a cached version to its configured machine identity before admission.
+pub(super) fn pending(
+    machine: &crate::installation::config::Machine,
+    order: analyte_model::Identifier,
+    version: NonZeroU64,
+) -> super::Candidate {
+    super::Candidate {
+        identity: key(machine, order),
+        version,
+    }
+}

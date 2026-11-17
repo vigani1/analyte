@@ -150,10 +150,11 @@ async fn answer(
                             return Ok(failure(machine));
                         }
                     };
-                    candidates.push(Candidate {
-                        identity: crate::orders::reservation::key(machine, cached.id),
-                        version: fields.version,
-                    });
+                    candidates.push(super::reservation::pending(
+                        machine,
+                        cached.id,
+                        fields.version,
+                    ));
                     records.push(mapped.record()?.to_vec());
                     if records
                         .len()

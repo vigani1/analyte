@@ -343,10 +343,11 @@ impl Connection {
                                     break;
                                 }
                                 lines.extend(mapped);
-                                candidates.push(crate::orders::Candidate {
-                                    identity: crate::orders::reservation::key(machine, cached.id),
-                                    version: fields.version,
-                                });
+                                candidates.push(crate::orders::reservation::pending(
+                                    machine,
+                                    cached.id,
+                                    fields.version,
+                                ));
                                 answer = CacheAnswer::Found;
                             }
                             Err(error) => {
