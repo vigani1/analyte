@@ -99,7 +99,7 @@
   TS, sequencing, XCN-17 and OBR-32–35 items (unpaginated).
 - **test**: protocol `tests/compatibility.rs`, mapping
   `tests/mapping/compatibility.rs`, the errata sequencing datatype test,
-  `config/tests/hl7_editions.rs` and dialog `tests/hl7_compatibility.rs`.
+  `config/tests/hl7_editions.rs` and dialog `tests/hl7/compatibility.rs`.
 
 ## Edition recognition precedes typed qualification
 

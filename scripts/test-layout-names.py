@@ -22,6 +22,36 @@ class LayoutTests(unittest.TestCase):
         self.assertFalse(layout.violations(files, exceptions))
         self.assertTrue(layout.violations(files[:10], exceptions))
 
+    def test_test_folders_follow_source_name_rules(self):
+        # Review 8 Y4: test trees use the same name rules as source folders.
+        for name in ("hl7.rs", "hl7_send.rs"):
+            self.assertTrue(layout.violations([f"crates/analyte/tests/hl7/{name}"], {}))
+        files = [f"crates/steps/dialog/tests/case{i}.rs" for i in range(11)]
+        self.assertTrue(layout.violations(files, {}))
+
+    def test_test_topic_prefix_cannot_stand_in_for_a_folder(self):
+        beside_file = ["crates/steps/dialog/tests/hl7.rs", "crates/steps/dialog/tests/hl7_boundaries.rs"]
+        beside_folder = ["crates/analyte/tests/orders/hl7/query.rs", "crates/analyte/tests/orders/hl7_send.rs"]
+        siblings = ["crates/protocols/hl7/tests/law_order.rs", "crates/protocols/hl7/tests/law_patient.rs"]
+        folders = ["crates/protocols/hl7/tests/law/mod.rs", "crates/protocols/hl7/tests/law_order/mod.rs"]
+        for files in (beside_file, beside_folder, siblings, folders):
+            errors = layout.violations(files, {})
+            self.assertTrue(errors, files)
+            self.assertTrue(all("stands in for a folder" in error for error in errors), errors)
+        grouped = [
+            "crates/steps/dialog/tests/hl7/mod.rs",
+            "crates/steps/dialog/tests/hl7/boundaries.rs",
+            "crates/steps/dialog/tests/boundaries.rs",
+            "crates/core/config/tests/hl7_editions.rs",
+        ]
+        self.assertFalse(layout.violations(grouped, {}))
+
+    def test_source_folders_keep_their_own_prefix_rule(self):
+        # The topic-prefix rule covers test trees; source stems that only share
+        # a word with a sibling are judged by the folder-name rule alone.
+        files = ["crates/analyte/src/runtime/test_hooks.rs", "crates/analyte/src/runtime/test_tracing.rs"]
+        self.assertFalse(layout.violations(files, {}))
+
 
 if __name__ == "__main__":
     unittest.main()

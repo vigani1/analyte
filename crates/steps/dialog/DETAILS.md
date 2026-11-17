@@ -109,7 +109,7 @@ the six codes and MSA-2 correlation; timeout/disconnect means uncertain, never
 an automatic retry. An enhanced CA means durable acceptance only, not completion
 of a later application exchange. Use a new dialog after disconnect.
 
-Checklist evidence in `tests/hl7.rs`: E original/enhanced selection, independent
+Checklist evidence in `tests/hl7/`: E original/enhanced selection, independent
 AL/NE/ER/SU conditions and suppression, AA/AE/AR and CA/CR responsibility gates,
 response IDs and MSA-2 correlation, all six MSA outcomes, structured 2.5.1 ERR,
 late replies/store failures; K split and merged framing, bounded queue overflow,
@@ -117,7 +117,7 @@ partial EOF/deadline, invalid trailer, no byte handshake, sender uncertainty.
 The shared framing/syntax crates own repertoire, encoding, full error rendering
 and parser limits. Restart reconciliation and real durability latency tests
 are covered by host tests in [receive.rs](../../analyte/tests/receive.rs) and
-[HL7 orders](../../analyte/tests/orders/hl7_send.rs); no simulator or real machine
+[HL7 orders](../../analyte/tests/orders/hl7/send.rs); no simulator or real machine
 claim is made. The random-event property guards uncommitted positive responses.
 
 ## LAW connections

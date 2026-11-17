@@ -75,8 +75,8 @@ required-features = ["test-hooks"]
 path = "tests/receive/mod.rs"
 
 [[test]]
-name = "service_unit"
-path = "tests/service_unit.rs"
+name = "packaging"
+path = "tests/packaging.rs"
 
 [[test]]
 name = "chunk_receive"
