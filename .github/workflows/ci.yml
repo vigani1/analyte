@@ -127,10 +127,11 @@ jobs:
       # Production code only; tests may repeat scenarios on purpose. Lower the
       # threshold as duplication is removed, never raise it to pass.
       - name: Production code duplication stays below 1.5%
-        run: >-
-          npx --yes jscpd@5.4.2 --format rust --min-lines 8 --min-tokens 70
-          --ignore "**/target/**,**/fuzz/corpus/**,**/tests/**,**/tests.rs,**/*_tests.rs"
-          --threshold 1.5 --reporters console crates
+        run: |
+          exclusions=$(sed '/^#/d; /^$/d' scripts/duplication-exclusions.txt | paste -sd, -)
+          npx --yes jscpd@5.4.2 --format rust --min-lines 8 --min-tokens 70 \
+            --ignore "**/target/**,**/fuzz/corpus/**,**/tests/**,**/tests.rs,**/*_tests.rs,$exclusions" \
+            --threshold 1.5 --reporters console crates
 
   deny:
     name: Licenses, sources and advisories

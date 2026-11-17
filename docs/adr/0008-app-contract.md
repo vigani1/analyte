@@ -104,3 +104,21 @@ accepted version 1 documents. The property tests in
 text, decimal notation, UUID identities, UTC offsets, bounded and nonempty
 evidence lists, unit mapping sources and decoded text interpretation. A divergence
 requires an explicit contract decision rather than sharing these implementations.
+
+
+The independence includes acceptance rules, not only JSON shapes. No validator
+in these six modules is a shared policy: each defines what version 1 accepts.
+Sharing a model constructor would change that policy when the model evolves.
+
+| Contract module | Reason to retain its own implementation |
+| --- | --- |
+| `value.rs` | Decimal grammar and length, decoded-text compatibility and exact unit-source matching are version-1 acceptance rules. Value variants and their field shapes are frozen. |
+| `text.rs` | Requiredness, UTF-8 byte bounds and control-character rules define accepted version-1 identifiers and evidence. |
+| `identity.rs` | RFC UUIDv7 acceptance, observation keys and revisions define version-1 identity, independently of future internal identity changes. |
+| `list.rs` | The 256-entry bound, bounded deserialization and nonempty replacement evidence define version-1 input limits. |
+| `time.rs` | Precision variants, optional offset evidence and accepted civil offset range belong to version 1; Jiff already owns the underlying offset validation. |
+| `sample.rs` | Provenance and carrier variants and optional position fields are wire shapes; their leaf validation is owned by version-1 text types. |
+
+These exact contract paths are excluded from the production duplication gate;
+see `scripts/duplication-exclusions.txt`. Model paths remain measured. The
+agreement tests remain required even though these intentional copies are excluded.
