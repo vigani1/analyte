@@ -84,35 +84,23 @@ where
     let candidates = candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
-        let order: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
-        let fields = order.fields();
-        if !super::eligible(&order, machine) {
+        let super::admission::Prepared::Mapped(candidate, mapped) = super::admission::prepare(
+            store,
+            machine,
+            cached,
+            deadline()?,
+            |error| format!("rejected: {error}"),
+            |order| {
+                let order = super::app_order(order)?;
+                map(&order).map_err(Error::from)
+            },
+        )
+        .await?
+        else {
             continue;
-        }
-        let identity = crate::orders::reservation::key(machine, cached.id);
-        let version = fields.version;
-        let mapped = super::app_order(&order)
-            .map_err(Error::Text)
-            .and_then(|order| map(&order).map_err(Error::from));
-        let mapped = match mapped {
-            Ok(mapped) => mapped,
-            Err(error) => {
-                let reason = SourceText::new(&format!("rejected: {error}"))?;
-                let rejected = super::reservation::reject(
-                    store,
-                    deadline()?,
-                    identity,
-                    version,
-                    freshness,
-                    reason,
-                )
-                .await?;
-                if let Err(refusal) = rejected {
-                    tracing::info!(reason = %refusal, "mapping rejection was superseded before recording");
-                }
-                continue;
-            }
         };
+        let identity = candidate.identity;
+        let version = candidate.version;
         let reserved = store
             .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
                 store.reserve_send(
@@ -121,11 +109,14 @@ where
                 )
             })
             .await?;
-        if let Ok(order) = reserved {
-            return Ok(Some(Reserved {
-                order,
-                payload: mapped,
-            }));
+        match reserved {
+            Ok(order) => {
+                return Ok(Some(Reserved {
+                    order,
+                    payload: mapped,
+                }));
+            }
+            Err(refusal) => tracing::info!(reason=%refusal, "order reservation refused"),
         }
     }
     Ok(None)

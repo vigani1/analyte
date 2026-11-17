@@ -4,6 +4,8 @@ use crate::orders::outcome::Code;
 use crate::runtime::hooks::Operation;
 use std::error::Error as _;
 mod sending;
+#[cfg(test)]
+mod tests;
 pub(crate) mod validation;
 mod work;
 use crate::{deadline, installation::config::Machine, intake};
@@ -216,7 +218,9 @@ impl LawOrderLink {
             }
         };
         let cached = query_orders(store, machine, sample, until, options).await?;
-        let prepared = self.reserve(store, machine, cached, until, options).await?;
+        let prepared = self
+            .reserve(store, machine, cached, until, options, false)
+            .await?;
         machine
             .hooks
             .operation(Operation::Reserved)

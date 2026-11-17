@@ -106,7 +106,6 @@ async fn answer(
     samples: Vec<SampleId>,
     until: Instant,
 ) -> Result<Option<Reply>, Error> {
-    let freshness = machine.destination_limits.freshness.as_secs();
     let mut records = Vec::new();
     let mut candidates = Vec::new();
     let mut bytes = 0usize;
@@ -122,42 +121,29 @@ async fn answer(
                         .checked_add(cached.document.len())
                         .filter(|n| *n <= limits.bytes())
                         .ok_or_else(|| Error::AstmQueryResponseTooLarge)?;
-                    let order: analyte_contract::Order =
-                        analyte_contract::decode(cached.document.as_bytes())?;
-                    let fields = order.fields();
-                    if !super::eligible(&order, machine) {
-                        continue;
-                    }
-                    let mapped = match super::app_order(&order).map_err(Error::from).and_then(
+                    match super::admission::prepare(
+                        store,
+                        machine,
+                        cached,
+                        until,
+                        |error| format!("rejected: {error}"),
                         |order| {
+                            let order = super::app_order(order)?;
                             Ok(analyte_mapping::map_order(
                                 &order,
                                 machine.snapshot.effective().stack(),
                             )?)
                         },
-                    ) {
-                        Ok(mapped) => mapped,
-                        Err(error) => {
-                            let reason =
-                                analyte_model::SourceText::new(&format!("rejected: {error}"))?;
-                            let identity = crate::orders::reservation::key(machine, cached.id);
-                            let version = fields.version;
-                            let rejected = super::reservation::reject(
-                                store, until, identity, version, freshness, reason,
-                            )
-                            .await?;
-                            if let Err(refusal) = rejected {
-                                tracing::info!(reason=%refusal,"query mapping rejection was superseded before recording");
-                            }
-                            return Ok(failure(machine));
+                    )
+                    .await?
+                    {
+                        super::admission::Prepared::Skipped => continue,
+                        super::admission::Prepared::Rejected(_) => return Ok(failure(machine)),
+                        super::admission::Prepared::Mapped(candidate, mapped) => {
+                            candidates.push(candidate);
+                            records.push(mapped.record()?.to_vec());
                         }
-                    };
-                    candidates.push(super::reservation::pending(
-                        machine,
-                        cached.id,
-                        fields.version,
-                    ));
-                    records.push(mapped.record()?.to_vec());
+                    }
                     if records
                         .len()
                         .checked_mul(2)
