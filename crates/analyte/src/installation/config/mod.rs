@@ -18,6 +18,7 @@ pub use webhooks::{AlertDelivery, AlertEndpoint, WebhookConfigError};
 #[cfg(feature = "test-hooks")]
 #[derive(Default)]
 pub(crate) struct MachineHooks {
+    pub(crate) autolyser_quiescent: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     pub(crate) input_processed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     pub(crate) law_gates: crate::runtime::test_hooks::LawGates,
     pub(crate) law_precommit: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
@@ -146,6 +147,23 @@ fn read(path: &Path) -> Result<String, Error> {
 }
 
 impl Program {
+    /// Pauses after an Autolyser exchange commits, before another poll.
+    /// # Errors
+    /// Rejects unknown machines and non-injected listeners.
+    #[cfg(feature = "test-hooks")]
+    pub fn pause_autolyser_quiescent_for_test(
+        &mut self,
+        id: &str,
+        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
+    ) -> Result<(), Error> {
+        let machine = self.test_machine_mut(id)?;
+        if machine.listener.is_none() {
+            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
+        }
+        machine.hooks.autolyser_quiescent = Some(hook);
+        Ok(())
+    }
+
     #[cfg(feature = "test-hooks")]
     fn test_machine_mut(&mut self, id: &str) -> Result<&mut Machine, Error> {
         self.machines
