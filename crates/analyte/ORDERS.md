@@ -325,7 +325,7 @@ acknowledgment_ms timer starts at DSR issuance. Neither query replay nor restart
 can reserve the same order again. In-flight reservation keys survive a cancelled
 host wait so connection cleanup can find any reservation that committed.
 
-Program tests in `tests/orders/hl7.rs` use the temporary store and reference
+Program tests in `tests/orders/hl7/query.rs` use the temporary store and reference
 receiver for both editions, exact DSP text, store-before-reply, no event while
 Sending, trusted empty/untrusted/stale answers, unknown filters, missed query
 deadlines, AA/AE/AR/lost/wrong ACKs, disconnect and ordinary result delivery with

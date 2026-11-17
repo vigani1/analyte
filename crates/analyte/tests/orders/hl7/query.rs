@@ -45,7 +45,7 @@ async fn setup_observed(
         format!(
             "{definition}
 {}",
-            include_str!("../../../core/config/examples/hl7_orders.toml")
+            include_str!("../../../../core/config/examples/hl7_orders.toml")
                 .rewrite(
                     "acknowledgment_ms = 500",
                     &format!("acknowledgment_ms = {ack_ms}")
@@ -62,7 +62,7 @@ async fn setup_observed(
     reference
         .receiver
         .seed(vec![analyte_contract::decode(include_bytes!(
-            "../../../../docs/contract/vectors/order.json"
+            "../../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
     let mut loaded = program(&path, &reference.url)?;

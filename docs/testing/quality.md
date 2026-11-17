@@ -144,7 +144,7 @@ and no timeouts. Matching the before/after outcome records confirms that all
 minutes. No equivalent-mutation exclusions or production changes were needed.
 
 Eleven tests were added in `crates/steps/dialog/tests/boundaries.rs` and
-`crates/steps/dialog/tests/hl7_boundaries.rs`. The additional split-frame test checks
+`crates/steps/dialog/tests/hl7/boundaries.rs`. The additional split-frame test checks
 that the configured frame ceiling applies after encoding, not just to the count
 of supplied records. Tests use synthetic bytes and controlled time. No existing
 test was weakened and no production bug or production change was needed.

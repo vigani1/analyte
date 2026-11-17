@@ -6,6 +6,9 @@ use analyte_hl7::{AckCode, AckError, ControlId, Options, Response};
 use proptest::prelude::*;
 use std::time::Duration;
 
+mod boundaries;
+mod compatibility;
+
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 fn dialog() -> Result<Dialog, Error> {
     Ok(Dialog::new(

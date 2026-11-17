@@ -98,7 +98,7 @@ transport-journal fragments, for both live receive and operator reprocessing.
 
 Program/reference-receiver regression:
 `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction` in
-`crates/analyte/tests/vendor_receive.rs` proves a real delivery, lost-ACK resend,
+`crates/analyte/tests/chunk_receive/` proves a real delivery, lost-ACK resend,
 reconnect, restart, edited revision, changed-original conflict, and missing
 time/declared sequence/device evidence. These program tests cover the behavior (Appendix B section 3.2, pp.71–72; ADR 0003).
 
@@ -155,7 +155,7 @@ enable it; this does not enable continuous/unsolicited operation.
 
 Physical Access Point (Appendix A), the Device actor and HL7 Observation Reporting
 Interface (Appendix C) are outside this crate's claim. Host TCP/store integration
-is tested in `crates/analyte/tests/vendor_receive.rs`; Linux and fuzz execution
+is tested in `crates/analyte/tests/chunk_receive/`; Linux and fuzz execution
 are tracked by CI;
 the crate tests themselves perform no analyzer or lab-app I/O.
 
@@ -192,7 +192,7 @@ VIDAS and Autolyser work-list sending is implemented; see
 [program orders](../../analyte/ORDERS.md).
 POCT optional order/list extensions remain outside the supported profile.
 
-Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
+Synthetic TCP tests in `crates/analyte/tests/chunk_receive/` exercise custody,
 parking, operator visibility, storage failure, rejected Hello responses and
 control-ID reuse. The POCT program/reference-receiver identity test proves real
 delivery, retransmission suppression and an edited revision. These tests do not
