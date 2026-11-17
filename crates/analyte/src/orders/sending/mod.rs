@@ -12,6 +12,8 @@ pub(crate) const ORDER_POLL_INTERVAL: std::time::Duration = std::time::Duration:
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+use super::astm::finished;
 
 /// Shared query admission. Each reservation is owned by the connection before I/O.
 pub(crate) async fn reserve_candidates(
@@ -163,29 +165,6 @@ pub(crate) async fn uncertain(
     code: super::outcome::Transfer,
 ) -> Result<(), Error> {
     complete(store, order, OrderState::Uncertain, code).await
-}
-
-/// Records a specific failed transfer as uncertain; normal transfer becomes Sent.
-pub(crate) async fn finished(
-    store: &Handle,
-    order: &MachineOrder,
-    end: analyte_dialog::astm::End,
-) -> Result<(), Error> {
-    // LIS01 confirms transfer, not the analyzer application's acceptance.
-    // Only explicit application evidence may advance Sent to Accepted.
-    let code = match end {
-        analyte_dialog::astm::End::Normal => Code::AstmTransferConfirmed,
-        analyte_dialog::astm::End::Abort => Code::AstmTransferAborted,
-        analyte_dialog::astm::End::Timeout => Code::AstmTransferTimeout,
-        analyte_dialog::astm::End::Interrupt => Code::AstmTransferInterrupted,
-        analyte_dialog::astm::End::Incomplete => Code::AstmTransferIncomplete,
-    };
-    let state = if end == analyte_dialog::astm::End::Normal {
-        OrderState::Sent
-    } else {
-        OrderState::Uncertain
-    };
-    complete(store, order, state, code.into()).await
 }
 
 /// Commits a protocol's definitive transport outcome with exactly one app event.

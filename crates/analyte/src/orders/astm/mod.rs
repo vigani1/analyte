@@ -6,8 +6,10 @@ use analyte_config::WhenUntrusted;
 use analyte_model::SampleId;
 use analyte_store::{Handle, Lookup};
 use std::{future::Future, pin::Pin, time::Instant};
+mod completion;
 #[cfg(test)]
 mod tests;
+pub(crate) use completion::finished;
 
 type LookupFuture<'a> = Pin<Box<dyn Future<Output = Result<Option<Reply>, Error>> + Send + 'a>>;
 

@@ -280,7 +280,7 @@ impl<'a, 'm> Host<'a, 'm> {
             Action::Sent(end) => {
                 self.work.astm_finished(self.store, end).await?;
                 for order in self.query_orders.drain(..) {
-                    crate::orders::sending::finished(self.store, &order, end).await?;
+                    crate::orders::astm::finished(self.store, &order, end).await?;
                 }
             }
         }
