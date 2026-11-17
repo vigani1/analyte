@@ -226,3 +226,39 @@ fn config_keys_pin_all_hl7_editions_without_wire_fallback() {
     assert_eq!(Version::from_config_key("V251"), None);
     assert_eq!(Version::from_config_key("v27"), None);
 }
+
+// Exhaustive: a new edition does not compile here until it joins this chain,
+// and the test below then requires its single row in `EDITIONS`.
+fn successor(edition: Version) -> Option<Version> {
+    match edition {
+        Version::V23 => Some(Version::V231),
+        Version::V231 => Some(Version::V24),
+        Version::V24 => Some(Version::V25),
+        Version::V25 => Some(Version::V251),
+        Version::V251 => Some(Version::V26),
+        Version::V26 => Some(Version::V282),
+        Version::V282 => Some(Version::V291),
+        Version::V291 => None,
+    }
+}
+
+#[test]
+fn every_edition_has_exactly_one_row_in_the_edition_table() {
+    let editions = std::iter::successors(Some(Version::V23), |edition| successor(*edition))
+        .collect::<Vec<_>>();
+    assert_eq!(EDITIONS.len(), editions.len());
+    for edition in editions {
+        let rows = EDITIONS
+            .iter()
+            .filter(|row| row.edition == edition)
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 1, "{edition:?}");
+        assert!(rows.iter().all(|row| row.wire == edition.entry().wire));
+        assert_eq!(edition.entry().edition, edition);
+        assert_eq!(
+            Version::from_config_key(edition.config_key()),
+            Some(edition)
+        );
+        assert_eq!(Version::parse(edition.as_str().as_bytes()), Some(edition));
+    }
+}
