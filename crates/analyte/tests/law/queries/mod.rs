@@ -123,7 +123,7 @@ async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
     store
         .request::<_, analyte_store::StorageError>(
             std::time::Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(analyte_fixtures::STORE_BUDGET)
                 .ok_or("deadline")?,
             |store| {
                 store.audit(&analyte_store::Audit {
@@ -142,7 +142,7 @@ async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
     store
         .shutdown(
             std::time::Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(analyte_fixtures::STORE_BUDGET)
                 .ok_or("deadline")?,
         )
         .await?;

@@ -21,9 +21,12 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
         let target = backup.clone();
         store
             .request::<_, analyte_store::MaintenanceError>(
-                std::time::Instant::now() + Duration::from_secs(5),
+                std::time::Instant::now() + analyte_fixtures::STORE_BUDGET,
                 move |store| {
-                    store.backup(&target, std::time::Instant::now() + Duration::from_secs(5))
+                    store.backup(
+                        &target,
+                        std::time::Instant::now() + analyte_fixtures::STORE_BUDGET,
+                    )
                 },
             )
             .await?;
@@ -34,7 +37,7 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
             analyte_model::Identifier::new("demo")?,
             analyte_sink::Limits {
                 request_timeout: Duration::from_secs(30),
-                store_timeout: Duration::from_secs(2),
+                store_timeout: analyte_fixtures::STORE_BUDGET,
                 backoff_min: Duration::from_secs(1),
                 backoff_max: Duration::from_secs(3),
                 freshness: Duration::from_secs(30),
@@ -66,7 +69,7 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
         store
             .shutdown(
                 std::time::Instant::now()
-                    .checked_add(Duration::from_secs(5))
+                    .checked_add(analyte_fixtures::STORE_BUDGET)
                     .ok_or("deadline")?,
             )
             .await?;

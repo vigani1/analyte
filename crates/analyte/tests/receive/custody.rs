@@ -34,7 +34,7 @@ async fn plan11_status_reports_health_and_last_receipt_without_payloads_or_secre
     store
         .shutdown(
             std::time::Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(analyte_fixtures::STORE_BUDGET)
                 .ok_or("deadline")?,
         )
         .await?;
