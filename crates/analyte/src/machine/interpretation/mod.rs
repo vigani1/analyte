@@ -29,9 +29,8 @@ pub async fn reprocess(
     if receipt.metadata.machine != *machine.id() {
         return Err(intake::Error::WrongMachine);
     }
-    let mapping = map_retained(store, machine, &receipt).await;
     Ok(
-        intake::persist_mapping(store, machine, id, mapping.into(), Some(action))
+        intake::retained::process(store, machine, &receipt, None, Some(action))
             .await?
             .1,
     )

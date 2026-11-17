@@ -10,28 +10,14 @@ use analyte_store::{LawConflict, LawCustody, LawRejection, LawWork};
 pub(super) async fn plan(
     store: &Handle,
     machine: &Machine,
-    id: ReceiptId,
+    results: Option<&law::Results<'_>>,
     rejection: Option<crate::orders::law::validation::Mismatch>,
 ) -> Result<Option<LawCustody>, Error> {
-    let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() else {
+    let Some(results) = results else {
         return Ok(None);
     };
-    let receipt = store
-        .request(deadline()?, move |s| {
-            s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-        })
-        .await?;
-    let Ok(payload) = crate::reading::payload(&machine.snapshot, &receipt.raw) else {
-        // The ordinary mapping failure still needs a durable interpretation and parking.
-        return Ok(None);
-    };
-    let Ok(message) = law::parse_message(&payload, settings.options()) else {
-        return Ok(None);
-    };
-    let Ok(results) = law::receive_results(&message) else {
-        return Ok(None);
-    };
-    let header = law::CustodyHeader::new(&message).ok_or(Error::LawHeader)?;
+    let message = results.message();
+    let header = law::CustodyHeader::new(message).ok_or(Error::LawHeader)?;
     let scope = analyte_model::SourceText::new(&serde_json::to_string(&(
         machine.id.as_str(),
         header.application(),
@@ -79,7 +65,7 @@ pub(super) async fn plan(
     }
     let mut occurrence = 0_u16;
     let mut work = None;
-    for record in law::custody_records(&message) {
+    for record in law::custody_records(message) {
         match record {
             law::CustodyRecord::Work { placer } => {
                 occurrence = occurrence.checked_add(1).ok_or(Error::LawObrOccurrence)?;
@@ -177,33 +163,20 @@ pub(super) async fn plan(
 pub(super) async fn work_conflict(
     store: &Handle,
     machine: &Machine,
-    id: ReceiptId,
+    results: Option<&law::Results<'_>>,
 ) -> Result<Option<crate::orders::law::validation::Mismatch>, Error> {
+    let (Some(results), analyte_config::Stack::Law(settings)) =
+        (results, machine.snapshot.effective().stack())
+    else {
+        return Ok(None);
+    };
     Ok(
-        if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() {
-            let receipt = store
-                .request(deadline()?, move |s| {
-                    s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-                })
-                .await?;
-            let payload = crate::reading::payload(&machine.snapshot, &receipt.raw);
-            match payload
-                .ok()
-                .and_then(|bytes| law::parse_message(&bytes, settings.options()).ok())
-            {
-                Some(message) if law::receive_results(&message).is_ok() => {
-                    crate::orders::law::validation::check(
-                        store,
-                        machine,
-                        &message,
-                        settings.options(),
-                    )
-                    .await?
-                }
-                _ => None,
-            }
-        } else {
-            None
-        },
+        crate::orders::law::validation::check(
+            store,
+            machine,
+            results.message(),
+            settings.options(),
+        )
+        .await?,
     )
 }
