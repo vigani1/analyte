@@ -69,3 +69,11 @@ pub(super) fn build(
             .ok_or_else(|| invalid(path, "poct", "POCT stack requires policy"))?,
     })
 }
+
+impl PoctStack {
+    /// Returns whether this selected protocol permits unsolicited work.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        false
+    }
+}

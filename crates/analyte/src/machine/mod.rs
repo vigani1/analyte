@@ -19,7 +19,7 @@ use crate::installation::config::Machine;
 use analyte_config::TcpRole;
 use analyte_store::Handle;
 use analyte_transport::{Backoff, Limits, connection};
-use settings::{Link, Session};
+use settings::Link;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 
@@ -181,7 +181,7 @@ fn retry() -> Result<Backoff, Error> {
 
 async fn session(
     machine: &Machine,
-    selected: Session<'_>,
+    selected: &analyte_config::Stack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
@@ -189,24 +189,38 @@ async fn session(
     let context = crate::intake::Connection::new(machine)?;
     let machine = &context;
     match selected {
-        Session::Astm(settings) => astm::session(machine, settings, store, conn, stop)
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) => {
+            astm::session(machine, settings, store, conn, stop)
+                .await
+                .map_err(Into::into)
+        }
+        analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(settings)) => {
+            hl7::session(machine, settings, store, conn, stop)
+                .await
+                .map_err(Into::into)
+        }
+        analyte_config::Stack::Law(settings) => law::session(machine, settings, store, conn, stop)
             .await
             .map_err(Into::into),
-        Session::Hl7(settings) => hl7::session(machine, settings, store, conn, stop)
-            .await
-            .map_err(Into::into),
-        Session::Law(settings) => law::session(machine, settings, store, conn, stop)
-            .await
-            .map_err(Into::into),
-        Session::Poct(settings) => poct::session(machine, settings, store, conn, stop)
-            .await
-            .map_err(Into::into),
-        Session::Vidas(settings) => vidas::session(machine, settings, store, conn, stop)
-            .await
-            .map_err(Into::into),
-        Session::Autolyser(settings) => autolyser::session(machine, settings, store, conn, stop)
-            .await
-            .map_err(Into::into),
+        analyte_config::Stack::Poct(settings) => {
+            poct::session(machine, settings, store, conn, stop)
+                .await
+                .map_err(Into::into)
+        }
+        analyte_config::Stack::Vidas(settings) => {
+            vidas::session(machine, settings, store, conn, stop)
+                .await
+                .map_err(Into::into)
+        }
+        analyte_config::Stack::Autolyser(settings) => {
+            autolyser::session(machine, settings, store, conn, stop)
+                .await
+                .map_err(Into::into)
+        }
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
+        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
+            Err(Error::FolderStream)
+        }
     }
 }
 
@@ -219,7 +233,7 @@ pub(crate) async fn stopping(stop: &mut watch::Receiver<bool>) {
 
 async fn drive(
     machine: &Machine,
-    selected: Session<'_>,
+    selected: &analyte_config::Stack,
     store: &Handle,
     mut conn: analyte_transport::Connection,
     stop: watch::Receiver<bool>,
