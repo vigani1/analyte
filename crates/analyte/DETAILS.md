@@ -210,7 +210,7 @@ ADR 0003 recovery case with
 `cargo test -p analyte --all-features --test delivery plan11_adr0003_agents_forced_exit`.
 The test retains committed raw receipts, confirms identical result retry bytes
 and ID with one result at the receiver, and recovers Sending to Uncertain.
-`tests/service_unit.rs` checks the unit's structure, sandbox settings and stop
+`tests/packaging.rs` checks the unit's structure, sandbox settings and stop
 margin without requiring systemd or installing anything.
 
 
