@@ -182,7 +182,7 @@ fn retry() -> Result<Backoff, Error> {
 
 async fn session(
     machine: &Machine,
-    selected: &analyte_config::Stack,
+    selected: settings::StreamSession<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
@@ -190,37 +190,35 @@ async fn session(
     let context = crate::intake::ConnectionEvidence::new(machine)?;
     let machine = &context;
     match selected {
-        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) => {
+        settings::StreamSession::Astm(settings) => {
             astm::session(machine, settings, store, conn, stop)
                 .await
                 .map_err(Into::into)
         }
-        analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(settings)) => {
+        settings::StreamSession::Hl7(settings) => {
             hl7::session(machine, settings, store, conn, stop)
                 .await
                 .map_err(Into::into)
         }
-        analyte_config::Stack::Law(settings) => law::session(machine, settings, store, conn, stop)
-            .await
-            .map_err(Into::into),
-        analyte_config::Stack::Poct(settings) => {
+        settings::StreamSession::Law(settings) => {
+            law::session(machine, settings, store, conn, stop)
+                .await
+                .map_err(Into::into)
+        }
+        settings::StreamSession::Poct(settings) => {
             poct::session(machine, settings, store, conn, stop)
                 .await
                 .map_err(Into::into)
         }
-        analyte_config::Stack::Vidas(settings) => {
+        settings::StreamSession::Vidas(settings) => {
             vidas::session(machine, settings, store, conn, stop)
                 .await
                 .map_err(Into::into)
         }
-        analyte_config::Stack::Autolyser(settings) => {
+        settings::StreamSession::Autolyser(settings) => {
             autolyser::session(machine, settings, store, conn, stop)
                 .await
                 .map_err(Into::into)
-        }
-        analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
-        | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
-            Err(Error::FolderStream)
         }
     }
 }
@@ -234,7 +232,7 @@ pub(crate) async fn stopping(stop: &mut watch::Receiver<bool>) {
 
 async fn drive(
     machine: &Machine,
-    selected: &analyte_config::Stack,
+    selected: settings::StreamSession<'_>,
     store: &Handle,
     mut conn: analyte_transport::Connection,
     stop: watch::Receiver<bool>,

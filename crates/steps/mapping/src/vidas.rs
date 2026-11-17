@@ -1,7 +1,7 @@
 //! Maps VIDAS codes, original values and outgoing work.
 use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
-use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient};
+use crate::orders::{AppOrder, OrderMappingError, map_patient};
 use crate::{Output, Position};
 
 use analyte_model::{
@@ -121,7 +121,7 @@ pub fn map_order(
     order: &AppOrder,
     machine: &analyte_config::VidasStack,
     settings: &analyte_config::VidasOrders,
-) -> Result<MachineOrder, OrderMappingError> {
+) -> Result<Vec<analyte_vidas::syntax::Message>, OrderMappingError> {
     let installed = &machine.policy();
     if !installed.download {
         return Err(OrderMappingError::Disabled);
@@ -179,5 +179,5 @@ pub fn map_order(
         }
         requests.push(request);
     }
-    Ok(MachineOrder::Vidas(requests))
+    Ok(requests)
 }

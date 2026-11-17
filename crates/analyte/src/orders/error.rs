@@ -8,9 +8,6 @@ pub enum OrderError {
     /// VIDAS order poll deadline overflow.
     #[error("VIDAS order poll deadline overflow")]
     OrderPollDeadlineOverflow,
-    /// VIDAS received another stack's order.
-    #[error("VIDAS received another stack's order")]
-    ForeignStackOrder,
     /// Unexpected Autolyser insertion outcome.
     #[error("unexpected Autolyser insertion outcome")]
     UnexpectedAutolyserInsertionOutcome,

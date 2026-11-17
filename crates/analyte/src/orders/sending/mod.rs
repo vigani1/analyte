@@ -57,19 +57,20 @@ pub(crate) async fn reserve_candidates(
 }
 
 /// A durable reservation paired with its already mapped, bounded wire records.
-pub(crate) struct Reserved {
+pub(crate) struct Reserved<T> {
     /// Persisted identity used for every subsequent outcome.
     pub(crate) order: MachineOrder,
     /// Complete records ready for the connection sender.
-    pub(crate) payload: analyte_mapping::MachineOrder,
+    pub(crate) payload: T,
 }
 
 /// One bounded candidate page per idle interval; the cursor prevents starvation.
-pub(crate) async fn next(
+pub(crate) async fn next<T>(
     store: &Handle,
     machine: &Machine,
     after: &mut String,
-) -> Result<Option<Reserved>, Error> {
+    map: impl Fn(&analyte_mapping::AppOrder) -> Result<T, analyte_mapping::OrderMappingError>,
+) -> Result<Option<Reserved<T>>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
     if !super::settings::send_ahead(machine) {
         return Ok(None);
@@ -86,12 +87,7 @@ pub(crate) async fn next(
         let version = fields.version;
         let mapped = super::app_order(&order)
             .map_err(Error::from)
-            .and_then(|order| {
-                Ok(analyte_mapping::map_order(
-                    &order,
-                    machine.snapshot.effective().stack(),
-                )?)
-            });
+            .and_then(|order| map(&order).map_err(Error::from));
         let mapped = match mapped {
             Ok(mapped) => mapped,
             Err(error) => {

@@ -174,7 +174,7 @@ impl Effects for ConnectionState {
                 // Tick alone can initiate L recovery. Never interleave R with it.
                 if actions.is_empty() && self.ready && !self.recovering {
                     self.ready = false;
-                    if let Some(worklist) = self.work.poll(store, machine).await? {
+                    if let Some(worklist) = self.work.poll(store, machine, host.settings).await? {
                         let actions = self
                             .dialog
                             .step(self.start.elapsed(), Event::Download(&worklist))?;

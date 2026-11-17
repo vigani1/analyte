@@ -147,7 +147,10 @@ impl Effects for ConnectionState {
     async fn prepare(&mut self, host: &mut Context<'_, '_, Self::Settings>) -> Result<Flow, Error> {
         if self.idle
             && self.opened
-            && let Some(request) = self.work.poll(host.machine, host.store).await?
+            && let Some(request) = self
+                .work
+                .poll(host.machine, host.store, host.settings)
+                .await?
         {
             self.start_download(&request)?;
         }

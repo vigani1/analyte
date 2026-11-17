@@ -140,8 +140,21 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.next_order_poll = Instant::now()
                 .checked_add(Duration::from_secs(1))
                 .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
-            crate::orders::sending::next(self.store, self.machine.machine(), &mut self.order_cursor)
-                .await?
+            crate::orders::sending::next(
+                self.store,
+                self.machine.machine(),
+                &mut self.order_cursor,
+                |order| {
+                    analyte_mapping::astm::map_order(
+                        order,
+                        self.settings.settings().syntax().limits(),
+                        self.settings
+                            .orders()
+                            .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                    )
+                },
+            )
+            .await?
         } else {
             None
         };
@@ -149,7 +162,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.active_orders.push(reserved.order);
             vec![Event::Send(crate::orders::astm::envelope(
                 self.machine.machine(),
-                vec![reserved.payload.record()?.to_vec()],
+                vec![reserved.payload],
                 analyte_astm::OrderTermination::Normal,
             ))]
         } else if bytes.is_empty()

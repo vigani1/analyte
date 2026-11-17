@@ -9,13 +9,18 @@ impl Work<analyte_autolyser::syntax::Worklist> {
         &mut self,
         store: &Handle,
         machine: &intake::ConnectionEvidence<'_>,
+        settings: &analyte_config::AutolyserStack,
     ) -> Result<Option<analyte_autolyser::syntax::Worklist>, Error> {
         if !self
-            .reserve(store, machine.machine(), |payload| {
-                let analyte_mapping::MachineOrder::Autolyser(worklist) = payload else {
-                    return Err(Error::ForeignStackOrder);
-                };
-                Ok(std::collections::VecDeque::from([worklist]))
+            .reserve(store, machine.machine(), |order| {
+                let requests = analyte_mapping::autolyser::map_order(
+                    order,
+                    settings,
+                    settings
+                        .orders()
+                        .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                )?;
+                Ok(std::collections::VecDeque::from([requests]))
             })
             .await?
         {

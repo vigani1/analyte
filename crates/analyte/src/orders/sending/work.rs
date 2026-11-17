@@ -34,13 +34,15 @@ impl<T> Work<T> {
         &mut self,
         store: &Handle,
         machine: &Machine,
-        requests: impl FnOnce(analyte_mapping::MachineOrder) -> Result<VecDeque<T>, OrderError>,
+        map: impl Fn(
+            &analyte_mapping::AppOrder,
+        ) -> Result<VecDeque<T>, analyte_mapping::OrderMappingError>,
     ) -> Result<bool, OrderError> {
-        let Some(reserved) = super::next(store, machine, &mut self.cursor).await? else {
+        let Some(reserved) = super::next(store, machine, &mut self.cursor, map).await? else {
             return Ok(false);
         };
         self.active = Some(reserved.order);
-        self.requests = requests(reserved.payload)?;
+        self.requests = reserved.payload;
         Ok(true)
     }
     pub(crate) async fn close(&self, store: &Handle, reason: Transfer) -> Result<(), OrderError> {

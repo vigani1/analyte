@@ -20,6 +20,7 @@ impl Work<Message> {
         &mut self,
         machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
+        settings: &analyte_config::VidasStack,
     ) -> Result<Option<Message>, Error> {
         if Instant::now() < self.next_poll {
             return Ok(None);
@@ -28,10 +29,14 @@ impl Work<Message> {
             .checked_add(ORDER_POLL_INTERVAL)
             .ok_or(Error::OrderPollDeadlineOverflow)?;
         if !self
-            .reserve(store, machine.machine(), |payload| {
-                let analyte_mapping::MachineOrder::Vidas(requests) = payload else {
-                    return Err(Error::ForeignStackOrder);
-                };
+            .reserve(store, machine.machine(), |order| {
+                let requests = analyte_mapping::vidas::map_order(
+                    order,
+                    settings,
+                    settings
+                        .orders()
+                        .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                )?;
                 Ok(requests.into())
             })
             .await?
