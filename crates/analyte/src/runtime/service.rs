@@ -210,7 +210,7 @@ async fn serve_with(
     let store_component = watchdog.component("store".into());
     let destinations = crate::runtime::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
-    let store = Arc::new(open_store(&program, space).await?);
+    let store = open_service_store(&program, space).await?;
     #[cfg(feature = "test-hooks")]
     super::test_hooks::publish_store_probes(&program, &store)?;
     let paused = store
@@ -685,6 +685,21 @@ pub async fn prepare_retention(program: Program) -> Result<(), Error> {
         )
     })
     .await??)
+}
+
+// Shared ownership begins only in orchestration; preserve its original I/O failure identity.
+async fn open_service_store(
+    program: &Program,
+    space: Box<dyn FreeSpace>,
+) -> Result<Arc<Handle>, Error> {
+    let store = open_store(program, space).await.map_err(|error| {
+        if let Failure::Io(source) = error {
+            Error::from(source)
+        } else {
+            Error::from(error)
+        }
+    })?;
+    Ok(Arc::new(store))
 }
 
 // The service's existing startup API exposes original dependency causes to recovery callers.
