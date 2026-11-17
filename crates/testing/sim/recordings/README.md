@@ -8,11 +8,11 @@ machine evidence level above documented.
 Regenerate the twelve LAW, POCT, VIDAS and Autolyser fixtures from the repository root:
 
 ```text
-cargo test -p analyte --test vendor_receive generate_protocol_recordings -- --ignored --nocapture
+cargo test -p analyte --test chunk_receive generate_protocol_recordings -- --ignored --nocapture
 ```
 
 The explicitly ignored authoring test in
-`crates/analyte/tests/vendor_receive/recordings/` drives a local program with
+`crates/analyte/tests/chunk_receive/recordings/` drives a local program with
 synthetic peers, checks expected acknowledgments and durable outcomes, and uses
 `analyte_transport::recording::write_header` and `write_event`. It reads each
 file back through the bounded codec before writing it. No base64 or JSONL is
@@ -21,7 +21,7 @@ framing encoders, and a synthetic LAW OUL message assembled from named fields.
 Host bytes come directly from the local program. Event times are authored
 10 ms sequence markers, not measured performance or delays used by replay.
 
-The ordinary `vendor_receive` integration binary reads these files and calls
+The ordinary `chunk_receive` integration binary reads these files and calls
 the existing `analyte_sim::replay` engine against a fresh program per recording.
 It compares host bytes, verifies retained incomplete prefixes and operator
 parking, and checks one LAW delivery even after retransmission. Vendor result

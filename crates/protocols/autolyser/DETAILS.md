@@ -95,7 +95,7 @@ clone values and same-round Park. Evidence remains **documented**: these are
 synthetic conversations, not machine recordings or official simulator evidence.
 Raw bytes and patient/order context stay in protected storage, not ordinary logs.
 
-Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
+Synthetic TCP tests in `crates/analyte/tests/chunk_receive/custody.rs` exercise custody,
 parking, operator visibility, zero reference-receiver result deliveries and storage
 failure. They do not raise the documented evidence level. The Autolyser receive
 path does not supply a resolved result identity for a delivery test; POCT has a

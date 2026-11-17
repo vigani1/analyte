@@ -36,9 +36,9 @@ decide these boundaries; this table names the test that guards each one.
 | ASTM | Reserve capacity before ENQ ACK; commit each frame before data ACK | [astm.rs](../../crates/steps/dialog/tests/astm.rs): `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack` |
 | HL7/MLLP | Commit complete raw block; interpret before AA (enhanced CA gates raw custody) | [hl7.rs](../../crates/steps/dialog/tests/hl7.rs): `hl7_251_2_9_2_aa_only_after_store_and_interpret`; [dialog](../../crates/steps/dialog/tests/hl7.rs) |
 | LAW LAB-29 | Retain raw result and interpretation before AA | [results.rs](../../crates/analyte/tests/law/results.rs): `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack` |
-| POCT | Complete raw receipt and semantic outcome before ACK | [vendor_receive.rs](../../crates/analyte/tests/vendor_receive.rs): `poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
-| VIDAS Literal | Retain complete transfer before data ACK | [vendor_receive.rs](../../crates/analyte/tests/vendor_receive.rs): `vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
-| Autolyser | Retain and validate poll response before destructive R; preserve uncertain R for reconciliation | [vendor_receive.rs](../../crates/analyte/tests/vendor_receive.rs): `autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l` |
+| POCT | Complete raw receipt and semantic outcome before ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
+| VIDAS Literal | Retain complete transfer before data ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
+| Autolyser | Retain and validate poll response before destructive R; preserve uncertain R for reconciliation | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l` |
 
 
 ### Host custody deadline

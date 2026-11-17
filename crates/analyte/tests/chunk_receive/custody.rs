@@ -1,5 +1,5 @@
-//! Tests vendor receipt custody.
-//! Kept whole: vendor custody conversations share the same program fixture.
+//! Tests chunk-journaled receipt custody for POCT, VIDAS and Autolyser.
+//! Kept whole: chunk custody conversations share the same program fixture.
 use super::*;
 
 #[tokio::test]
@@ -84,7 +84,7 @@ async fn autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l(
 }
 
 #[tokio::test]
-async fn adr0003_vendor_storage_failure_never_acknowledges_data() -> Result<(), Error> {
+async fn adr0003_chunk_storage_failure_never_acknowledges_data() -> Result<(), Error> {
     for definition in [
         include_str!("../../../core/config/examples/vidas_literal.toml"),
         include_str!("../../../core/config/examples/poct.toml"),

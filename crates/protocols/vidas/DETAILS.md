@@ -106,7 +106,7 @@ required case to its test. These synthetic conversations leave evidence at
 **documented**. Raw transport and order evidence stay in protected storage;
 ordinary logs contain no patient data.
 
-Synthetic TCP tests in `crates/analyte/tests/vendor_receive.rs` exercise custody,
+Synthetic TCP tests in `crates/analyte/tests/chunk_receive/custody.rs` exercise custody,
 parking, operator visibility, zero reference-receiver result deliveries and storage
 failure. They do not raise the documented evidence level. The VIDAS receive
 path does not supply a resolved result identity for a delivery test; POCT has a
