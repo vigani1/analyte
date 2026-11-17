@@ -193,7 +193,7 @@ impl Destination {
         let freshness = self.limits.freshness.as_secs();
         let health = store
             .request(crate::deadline(self.limits.store_timeout)?, move |s| {
-                s.health(&id, now, freshness)
+                Ok(s.health(&id, now, freshness)?)
             })
             .await?;
         Ok(health)

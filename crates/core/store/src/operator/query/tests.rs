@@ -14,7 +14,7 @@ fn mutation_adr0003_query_parked_receipt_requires_one_retained_unresolved_target
     let target = |id: ReceiptId| Identifier::new(&uuid::Uuid::from(id).to_string());
     assert!(matches!(
         store.parked_receipt(999),
-        Err(Error::ReprocessParked)
+        Err(OperatorError::ReprocessParked)
     ));
     for (targets, expected) in [
         (vec![], None),
@@ -32,7 +32,7 @@ fn mutation_adr0003_query_parked_receipt_requires_one_retained_unresolved_target
             Some(expected) => assert_eq!(store.parked_receipt(id)?, expected),
             None => assert!(matches!(
                 store.parked_receipt(id),
-                Err(Error::ReprocessParked)
+                Err(OperatorError::ReprocessParked)
             )),
         }
     }
@@ -53,7 +53,7 @@ fn mutation_adr0003_query_parked_receipt_requires_one_retained_unresolved_target
     )?;
     assert!(matches!(
         store.parked_receipt(id),
-        Err(Error::ReprocessParked)
+        Err(OperatorError::ReprocessParked)
     ));
     assert_eq!(store.raw(first.id)?, Some(b"first".to_vec()));
     Ok(())
@@ -130,13 +130,13 @@ fn mutation_adr0003_query_receipt_checks_each_retained_identity_and_digest() -> 
             params![document(&corrupt)?, key(&metadata.id)?],
         )?;
         assert!(
-            matches!(store.receipt(metadata.id), Err(Error::Corruption)),
+            matches!(store.receipt(metadata.id), Err(OperatorError::Corruption)),
             "{field}"
         );
         if field == "id" {
             assert!(matches!(
                 store.receipt_metadata(metadata.id),
-                Err(Error::Corruption)
+                Err(OperatorError::Corruption)
             ));
         }
     }
@@ -182,7 +182,7 @@ fn mutation_rule8_query_cached_order_checks_identity_without_authorizing_resend(
     )?;
     assert!(matches!(
         store.cached_order(&app, &found.id),
-        Err(Error::Corruption)
+        Err(OperatorError::Corruption)
     ));
     Ok(())
 }

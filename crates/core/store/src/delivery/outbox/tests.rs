@@ -178,7 +178,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
+            matches!(&refusal, OperatorError::ConstraintViolation(_)),
             "unexpected refusal: {refusal:?}"
         );
     }

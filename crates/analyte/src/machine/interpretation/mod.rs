@@ -47,7 +47,7 @@ pub(crate) async fn map_retained(
         let connection = receipt.metadata.connection.clone();
         store
             .request(deadline()?, move |s| {
-                s.first_interpreted_connection_receipt(&machine_id, &connection)
+                Ok(s.first_interpreted_connection_receipt(&machine_id, &connection)?)
             })
             .await?
     } else {

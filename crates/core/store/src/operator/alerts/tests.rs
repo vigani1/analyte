@@ -29,7 +29,7 @@ fn mutation_plan11_alerts_validate_responders_and_destination_count_at_the_bound
     ] {
         assert!(matches!(
             store.evaluate_alert(&identity, &responder, false, Some(0), 20),
-            Err(Error::InvalidOperatorInput)
+            Err(OperatorError::InvalidOperatorInput)
         ));
         let after = store.alert_state(&identity)?.ok_or("alert lost")?;
         assert_eq!(after.responder, before.responder);
@@ -45,7 +45,7 @@ fn mutation_plan11_alerts_validate_responders_and_destination_count_at_the_bound
     let destinations = vec![(Identifier::new("app")?, 1); 129];
     assert!(matches!(
         store.alert_value(&identity, 1, &destinations),
-        Err(Error::InvalidOperatorInput)
+        Err(OperatorError::InvalidOperatorInput)
     ));
     Ok(())
 }
@@ -309,7 +309,7 @@ mod existing {
                 .map(|_| ())
                 .expect_err("input must be refused");
             assert!(
-                matches!(&refusal, Error::ConstraintViolation(_)),
+                matches!(&refusal, OperatorError::ConstraintViolation(_)),
                 "unexpected refusal: {refusal:?}"
             );
         }

@@ -1,7 +1,9 @@
 //! Stores durable evidence, revisions and deliveries without interpreting results or resending machine orders.
 #![forbid(unsafe_code)]
 mod errors;
-pub use errors::{DeliveryError, IntakeError, MaintenanceError, OrderError, StorageError};
+pub use errors::{
+    DeliveryError, IntakeError, MaintenanceError, OperatorError, OrderError, StorageError,
+};
 mod operator;
 use operator::{alerts, parked, query};
 mod upkeep;

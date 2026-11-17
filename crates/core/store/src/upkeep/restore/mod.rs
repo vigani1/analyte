@@ -142,8 +142,8 @@ impl Store {
     /// Reports whether the most recent restore still needs operator reconciliation.
     /// # Errors
     /// Reports database failures; unknown evidence never authorizes a command.
-    pub fn restore_unreconciled(&self) -> Result<bool, Error> {
-        Ok(Self::restore_paused(&self.db)?)
+    pub fn restore_unreconciled(&self) -> Result<bool, crate::StorageError> {
+        Self::restore_paused(&self.db)
     }
 
     pub(crate) fn restore_paused(db: &Connection) -> Result<bool, crate::StorageError> {

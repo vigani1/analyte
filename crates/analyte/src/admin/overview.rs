@@ -226,7 +226,7 @@ async fn render_machines(
     loop {
         let page = state
             .store
-            .request(until, move |store| store.receipts(&cursor))
+            .request(until, move |store| Ok(store.receipts(&cursor)?))
             .await?;
         let Some(last) = page.last() else {
             break;
@@ -322,7 +322,7 @@ mod webhook_tests {
                 let event = s
                     .claim_alert_attempt(&endpoint, 100, 1, 5, 10)?
                     .ok_or(analyte_store::Error::Corruption)?;
-                s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)
+                Ok(s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)?)
             })
             .await?;
         let mut html = Markup::new();

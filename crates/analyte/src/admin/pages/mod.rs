@@ -139,7 +139,7 @@ pub(super) async fn machines(
                 loop {
                     let rows = state
                         .store
-                        .request(until, move |s| s.receipts(&cursor))
+                        .request(until, move |s| Ok(s.receipts(&cursor)?))
                         .await?;
                     let Some(end) = rows.last() else {
                         break;

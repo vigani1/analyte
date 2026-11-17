@@ -323,7 +323,9 @@ async fn assert_raw_views_audited(
     .await?;
     assert!(tail.starts_with("HTTP/1.1 200"));
     assert!(tail.contains("TAIL"));
-    let first_audit = store.request(fixture_deadline()?, |s| s.audits(1)).await?;
+    let first_audit = store
+        .request(fixture_deadline()?, |s| Ok(s.audits(1)?))
+        .await?;
     let (sequence, audit) = first_audit.first().ok_or("raw audit absent")?;
     assert_eq!(audit.action.as_str(), "admin-raw-view");
     assert_eq!(audit.reason.as_str(), "review");
@@ -336,7 +338,7 @@ async fn assert_raw_views_audited(
     );
     let sequence = *sequence;
     let second = store
-        .request(fixture_deadline()?, move |s| s.audits(sequence))
+        .request(fixture_deadline()?, move |s| Ok(s.audits(sequence)?))
         .await?;
     assert_eq!(second.len(), 1);
     let sequence = second.first().ok_or("second audit missing")?.0;
@@ -424,11 +426,11 @@ async fn assert_frame_pagination(
                     config: b"synthetic config".to_vec(),
                 },
             )?;
-            s.park(&Parked {
+            Ok(s.park(&Parked {
                 kind: Identifier::new("transfer").map_err(analyte_store::Error::Text)?,
                 reason: Reason::new("incomplete transfer").map_err(analyte_store::Error::Text)?,
                 targets: vec![transfer],
-            })
+            })?)
         })
         .await?;
     let frame_form = format!(

@@ -69,7 +69,7 @@ pub(crate) async fn active(store: &Handle) -> Result<Vec<AlertState>, Error> {
     let mut alerts = Vec::new();
     loop {
         let page = store
-            .request(until, move |store| store.active_alerts(&cursor))
+            .request(until, move |store| Ok(store.active_alerts(&cursor)?))
             .await?;
         let Some(last) = page.last() else {
             return Ok(alerts);
@@ -105,14 +105,14 @@ async fn evaluate(
         let destinations = destinations.to_vec();
         let value = store
             .request(deadline()?, move |store| {
-                store.alert_value(&read_key, now, &destinations)
+                Ok(store.alert_value(&read_key, now, &destinations)?)
             })
             .await?;
         let active = raised(policy, value);
         let responder = policy.responder().to_owned();
         let transition = store
             .request(deadline()?, move |store| {
-                store.evaluate_alert(&key, &responder, active, value, now)
+                Ok(store.evaluate_alert(&key, &responder, active, value, now)?)
             })
             .await?;
         if let Some(transition) = transition {
@@ -230,7 +230,9 @@ mod tests {
         assert!(!raised(&policies[2], Some(1034)));
         space.store(1033, Ordering::SeqCst);
         evaluate(&store, &policies, &destinations, 100).await?;
-        let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
+        let history = store
+            .request(deadline()?, |s| Ok(s.alert_history(0)?))
+            .await?;
         assert_eq!(history.len(), 7);
         assert!(
             history
@@ -250,7 +252,7 @@ mod tests {
         evaluate(&store, &policies, &destinations, 101).await?;
         assert_eq!(
             store
-                .request(deadline()?, |s| s.alert_history(0))
+                .request(deadline()?, |s| Ok(s.alert_history(0)?))
                 .await?
                 .len(),
             7
@@ -267,7 +269,9 @@ mod tests {
         space.store(1034, Ordering::SeqCst);
         evaluate(&store, &policies, &destinations, 101).await?;
         evaluate(&store, &policies, &destinations, 102).await?;
-        let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
+        let history = store
+            .request(deadline()?, |s| Ok(s.alert_history(0)?))
+            .await?;
         assert_eq!(history.len(), 14);
         assert!(
             history
@@ -430,7 +434,7 @@ mod tests {
         ));
         assert!(
             store
-                .request(deadline()?, |s| s.alert_history(0))
+                .request(deadline()?, |s| Ok(s.alert_history(0)?))
                 .await?
                 .is_empty()
         );

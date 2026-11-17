@@ -36,7 +36,7 @@ impl<'a> Poller<'a> {
         let mut cursor = self
             .store
             .request(deadline(self.destination.limits.store_timeout)?, move |s| {
-                s.cursor(&id)
+                Ok(s.cursor(&id)?)
             })
             .await?;
         for _ in 0..self.destination.limits.max_pages {

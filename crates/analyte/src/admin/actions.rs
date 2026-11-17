@@ -172,7 +172,7 @@ pub(super) async fn confirm_reprocess(
                     Err(error) => return failure(&error),
                 }
             },
-            move |s| s.parked_receipt(parked),
+            move |s| Ok(s.parked_receipt(parked)?),
         )
         .await
     {

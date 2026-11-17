@@ -17,7 +17,7 @@ pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> 
             let target = machine.id.clone();
             let pending = store
                 .request(deadline()?, move |s| {
-                    s.pending_interpretations(&target, after)
+                    Ok(s.pending_interpretations(&target, after)?)
                 })
                 .await?;
             if pending.is_empty() {

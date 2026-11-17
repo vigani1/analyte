@@ -148,11 +148,11 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         }
         assert_eq!(
             store
-                .request(until()?, |s| s.health(
+                .request(until()?, |s| Ok(s.health(
                     &Identifier::new("app").map_err(analyte_store::Error::Text)?,
                     jiff::Timestamp::now().as_second(),
                     30
-                ))
+                )?))
                 .await?
                 .pending_count,
             0
@@ -387,7 +387,7 @@ async fn mutation_contract_v1_conflict_detail_requires_conflict_status_and_versi
         .await?;
         server?;
         assert_eq!(outcome?, DeliveryOutcome::Parked);
-        let parked = store.request(until()?, |s| s.parked(0)).await?;
+        let parked = store.request(until()?, |s| Ok(s.parked(0)?)).await?;
         assert!(
             parked.iter().any(|p| p.evidence.contains(expected)),
             "missing expected app reason"

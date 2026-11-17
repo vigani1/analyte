@@ -368,7 +368,7 @@ async fn operator(
                     }
                     Parked::List { after } => {
                         store.audit(&audit)?;
-                        store.parked(after)
+                        Ok(store.parked(after)?)
                     }
                     Parked::Show { id } => {
                         store.audit(&audit)?;

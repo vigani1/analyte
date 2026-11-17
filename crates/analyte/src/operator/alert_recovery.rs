@@ -30,7 +30,7 @@ pub async fn retry(
     let mut store = crate::open_system_store(program).await?;
     let result = store
         .request(deadline()?, move |s| {
-            s.retry_failed_alerts(&endpoint, &audit)
+            Ok(s.retry_failed_alerts(&endpoint, &audit)?)
         })
         .await;
     store.shutdown(deadline()?).await?;

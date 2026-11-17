@@ -313,7 +313,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     conflicting.payload.push(b' ');
     enqueue(store, metadata, original, conflicting).await?;
     assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Parked);
-    let parked = store.request(until()?, |s| s.parked(0)).await?;
+    let parked = store.request(until()?, |s| Ok(s.parked(0)?)).await?;
     assert!(parked.iter().any(|p| p.evidence.contains("conflict")));
     assert!(parked.iter().any(|p| p.evidence.contains("\"conflict\"")));
 
@@ -371,7 +371,7 @@ async fn check_order_events(store: &Handle, destinations: &[Destination]) -> Tes
         )?;
         store
             .request(until()?, move |s| {
-                s.enqueue_order_event(&delivery, jiff::Timestamp::now().as_second())
+                Ok(s.enqueue_order_event(&delivery, jiff::Timestamp::now().as_second())?)
             })
             .await?;
         assert_eq!(
@@ -391,7 +391,7 @@ async fn check_cache_changes(
 ) -> TestResult {
     let first = store
         .request(until()?, |s| {
-            s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)
+            Ok(s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)?)
         })
         .await?;
     let mut receiver = analyte_receiver::Receiver::open(
@@ -434,7 +434,7 @@ async fn check_cache_changes(
     );
     let next = store
         .request(until()?, |s| {
-            s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)
+            Ok(s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)?)
         })
         .await?;
     assert_ne!(first, next);

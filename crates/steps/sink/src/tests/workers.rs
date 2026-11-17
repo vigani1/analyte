@@ -62,11 +62,11 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
     // Cancellation after claim preserves uncertain evidence for audited reconciliation.
     let health = store
         .request(until()?, |s| {
-            s.health(
+            Ok(s.health(
                 &Identifier::new("app").map_err(analyte_store::Error::Text)?,
                 jiff::Timestamp::now().as_second(),
                 30,
-            )
+            )?)
         })
         .await?;
     assert_eq!(health.pending_count, 1);

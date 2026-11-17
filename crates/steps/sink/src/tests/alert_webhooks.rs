@@ -41,13 +41,13 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
     let mut store = super::store(&temp.path().join("store.db")).await?;
     let retry = store
         .request(until()?, |s| {
-            s.claim_alert_attempt(
+            Ok(s.claim_alert_attempt(
                 &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
                 105,
                 3,
                 5,
                 20,
-            )
+            )?)
         })
         .await?
         .ok_or("retry missing")?;
@@ -58,7 +58,9 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
         .await
         .map_err(|_| "duplicate rejected")?;
     store
-        .request(until()?, move |s| s.complete_alert_attempt(retry.id(), 105))
+        .request(until()?, move |s| {
+            Ok(s.complete_alert_attempt(retry.id(), 105)?)
+        })
         .await?;
     for (now, active, event_kind) in [(160, true, "reminder"), (161, false, "resolved")] {
         let event = store
@@ -83,7 +85,9 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
             .await
             .map_err(|_| "lifecycle rejected")?;
         store
-            .request(until()?, move |s| s.complete_alert_attempt(event.id(), now))
+            .request(until()?, move |s| {
+                Ok(s.complete_alert_attempt(event.id(), now)?)
+            })
             .await?;
     }
     stop.send_replace(true);
@@ -110,18 +114,18 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     let id = first.id().clone();
     store
         .request(until()?, move |s| {
-            s.fail_alert_attempt(&id, AlertFailure::Network)
+            Ok(s.fail_alert_attempt(&id, AlertFailure::Network)?)
         })
         .await?;
     assert!(
         store
-            .request(until()?, |s| s.claim_alert_attempt(
+            .request(until()?, |s| Ok(s.claim_alert_attempt(
                 &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
                 104,
                 3,
                 5,
                 20
-            ))
+            )?))
             .await?
             .is_none()
     );
@@ -141,13 +145,13 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     let server = tokio::spawn(receiver.serve_until(listener, stopped));
     let retry = store
         .request(until()?, |s| {
-            s.claim_alert_attempt(
+            Ok(s.claim_alert_attempt(
                 &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
                 105,
                 3,
                 5,
                 20,
-            )
+            )?)
         })
         .await?
         .ok_or("retry missing")?;
@@ -158,11 +162,13 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
         .await
         .map_err(|_| "recovery rejected")?;
     store
-        .request(until()?, move |s| s.complete_alert_attempt(retry.id(), 105))
+        .request(until()?, move |s| {
+            Ok(s.complete_alert_attempt(retry.id(), 105)?)
+        })
         .await?;
     assert_eq!(
         store
-            .request(until()?, |s| s.alert_endpoint_status())
+            .request(until()?, |s| Ok(s.alert_endpoint_status()?))
             .await?[0]
             .pending,
         0
@@ -221,11 +227,11 @@ async fn adr0014_slow_endpoint_never_holds_store_or_clinical_intake() -> TestRes
         enqueue(&store, metadata, content, delivery).await?;
         assert_eq!(
             store
-                .request(until()?, |s| s.health(
+                .request(until()?, |s| Ok(s.health(
                     &Identifier::new("app").map_err(analyte_store::Error::Text)?,
                     100,
                     30
-                ))
+                )?))
                 .await?
                 .pending_count,
             1

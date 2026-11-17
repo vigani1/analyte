@@ -354,7 +354,7 @@ mod tests {
             );
             assert!(
                 store
-                    .request(deadline()?, |s| s.receipts(""))
+                    .request(deadline()?, |s| Ok(s.receipts("")?))
                     .await?
                     .is_empty()
             );

@@ -144,7 +144,9 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
         let order = row.order.key.order.clone();
         let cached = state
             .store
-            .request(deadline()?, move |s| s.cached_order(&destination, &order))
+            .request(deadline()?, move |s| {
+                Ok(s.cached_order(&destination, &order)?)
+            })
             .await?;
         if let Some(cached) = cached {
             let document: serde_json::Value = serde_json::from_str(&cached.document)?;

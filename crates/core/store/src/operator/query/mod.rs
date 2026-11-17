@@ -1,5 +1,5 @@
 //! Reads protected receipts, records and operator evidence.
-use crate::{Error, Interpretation, Store, key};
+use crate::{Interpretation, OperatorError as Error, Store, key};
 use analyte_model::{Identifier, ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};
 

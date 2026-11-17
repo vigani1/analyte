@@ -48,7 +48,7 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
     let mut last = BTreeMap::new();
     loop {
         let page = store
-            .request(until, move |store| store.receipts(&after))
+            .request(until, move |store| Ok(store.receipts(&after)?))
             .await?;
         if page.is_empty() {
             break;
@@ -206,7 +206,7 @@ mod tests {
         assert!(!lines.iter().any(|line| line.contains("cleared officer")));
         let state = store
             .request(deadline()?, |store| {
-                store.alert_state(&analyte_store::AlertKey::RestorePaused)
+                Ok(store.alert_state(&analyte_store::AlertKey::RestorePaused)?)
             })
             .await?
             .ok_or("alert disappeared")?;
