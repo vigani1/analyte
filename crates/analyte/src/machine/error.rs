@@ -105,6 +105,12 @@ impl From<analyte_transport::folder::WatchError> for Error {
         Self::Link(super::link::error::Error::from(cause))
     }
 }
+impl From<super::link::error::Error> for Error {
+    fn from(cause: super::link::error::Error) -> Self {
+        Self::Link(cause)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,11 +159,5 @@ mod tests {
         ));
         let source = Error::from(std::io::Error::other("synthetic owner failure"));
         assert_eq!(source.to_string(), "synthetic owner failure");
-    }
-}
-
-impl From<super::link::error::Error> for Error {
-    fn from(cause: super::link::error::Error) -> Self {
-        Self::Link(cause)
     }
 }
