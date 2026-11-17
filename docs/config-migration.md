@@ -1,7 +1,7 @@
 # Machine configuration schema 2
 
 ADR 0002 requires a migration rule for the public configuration interface.
-Machine schema 2 implements ADR 0012 ?5: select the protocol key, its edition
+Machine schema 2 implements ADR 0012 §5: select the protocol key, its edition
 where applicable (`syntax.edition` for HL7), and `transport.kind`. The loader
 derives framing, dialog and syntax. Their sections still hold bounds and policy,
 but must not contain `kind`. Site and local override schemas remain version 1.
