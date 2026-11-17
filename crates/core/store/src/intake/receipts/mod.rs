@@ -2,6 +2,8 @@
 use crate::{IntakeError as Error, Store, digest, key};
 use analyte_model::{ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};
+#[cfg(test)]
+mod tests;
 
 impl Store {
     /// Commits exact bytes and effective config; supplied digests must match.
@@ -44,6 +46,3 @@ impl Store {
             .optional()?)
     }
 }
-
-#[cfg(test)]
-mod tests;

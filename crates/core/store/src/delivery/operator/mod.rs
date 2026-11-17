@@ -2,6 +2,8 @@
 use crate::{Audit, DeliveryError as Error, DeliveryKind, OrderingKey, Store, key};
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};
+#[cfg(test)]
+mod tests;
 
 /// Durable app delivery state, independent of machine order lifecycle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,9 +160,6 @@ impl Store {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;
 
 impl std::fmt::Display for DeliveryState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

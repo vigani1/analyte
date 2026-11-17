@@ -5,6 +5,7 @@ use crate::{Attempt, Audit, DeliveryId, Identifier, Reading, key};
 use analyte_model::{IdentityStatus, Reason};
 use rusqlite::params;
 use std::time::Instant;
+mod refinement;
 
 pub(super) fn finished(
     store: &mut Store,
@@ -571,5 +572,3 @@ fn adr0013_item4_audit_failure_rolls_back_purge_and_restores_guards() -> TestRes
     Store::integrity(&store.db)?;
     Ok(())
 }
-
-mod refinement;

@@ -2,6 +2,10 @@
 use super::responses::Wire;
 use super::{Error, Identity, content, raw};
 use crate::{AckCode, AckError, Field, Message, Options, Response, Responsibility, Segment};
+mod groups;
+mod notice;
+use groups::ResultGroups;
+pub use notice::{ExecutionStatus, StatusNotice};
 
 /// Source observation state; revisions remain a host responsibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -475,8 +479,3 @@ pub fn result_acknowledgment(
     super::validate_control(&output, super::ControlDirection::Send)?;
     Ok(Some(output))
 }
-
-mod groups;
-mod notice;
-use groups::ResultGroups;
-pub use notice::{ExecutionStatus, StatusNotice};

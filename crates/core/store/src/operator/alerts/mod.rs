@@ -3,6 +3,8 @@ use crate::{OperatorError as Error, Store, key};
 use analyte_model::Identifier;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+mod tests;
 
 /// Stable signal identity; thresholds and responders may change without losing history.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -258,6 +260,3 @@ impl Store {
             .map_err(|_| Error::Corruption)
     }
 }
-
-#[cfg(test)]
-mod tests;

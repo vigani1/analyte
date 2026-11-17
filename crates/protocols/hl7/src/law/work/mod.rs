@@ -1,6 +1,10 @@
 //! Parses LAW work messages without order lifecycle decisions.
 use super::content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, WorkNotes};
 use super::{Error, Identity, content};
+mod encode;
+mod response;
+pub use encode::{Address, negative_work, work_order, work_order_with_profile};
+pub use response::{AwosDecision, AwosOutcome, WorkResponse};
 
 /// Independent peer content and instruction options; absence never authorizes clinical decisions.
 #[derive(Debug, Clone, Copy, Default)]
@@ -286,8 +290,3 @@ fn safe(value: &[u8], segment: &'static str, field: usize, maximum: usize) -> Re
     }
     Ok(())
 }
-
-mod encode;
-mod response;
-pub use encode::{Address, negative_work, work_order, work_order_with_profile};
-pub use response::{AwosDecision, AwosOutcome, WorkResponse};

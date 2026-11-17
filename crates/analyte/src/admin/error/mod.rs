@@ -1,4 +1,6 @@
 //! Distinguishes admin refusals, authentication, storage and operator-action failures.
+mod command;
+pub use command::CommandError;
 /// Failures at the authenticated local administration boundary.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -103,8 +105,6 @@ impl From<crate::operator::Error> for Error {
     }
 }
 
-mod command;
-pub use command::CommandError;
 impl From<analyte_store::OperatorError> for Error {
     fn from(error: analyte_store::OperatorError) -> Self {
         Self::Store(error.into())

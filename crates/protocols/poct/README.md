@@ -1,6 +1,6 @@
 # poct
 
-**Kind: protocol.** Separates message parsing, typed field access and version rules into named files.
+**Kind: protocol.** Separates bounded XML grammar, named field access and reply builders.
 
 **What it does:** Reads and builds POCT Basic Profile messages while retaining the source values.
 

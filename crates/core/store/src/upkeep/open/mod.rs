@@ -5,6 +5,8 @@ use crate::{
 };
 use rusqlite::Connection;
 use std::path::Path;
+#[cfg(test)]
+mod tests;
 
 impl Store {
     /// Opens, checks integrity, and applies forward-only migrations before accepting writes.
@@ -122,9 +124,6 @@ fn default_startup() -> Result<Startup, Error> {
             .ok_or(Error::InvalidMaintenanceInput)?,
     ))
 }
-
-#[cfg(test)]
-mod tests;
 
 fn install_guards(db: &Connection, startup: &Startup) -> Result<(), Error> {
     startup.run(StartupStep::Finalizing, || {

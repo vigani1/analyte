@@ -2,6 +2,8 @@
 use crate::{Interpretation, OperatorError as Error, Store, key};
 use analyte_model::{Identifier, ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};
+#[cfg(test)]
+mod tests;
 
 /// Protected receipt evidence, including the exact effective configuration.
 pub struct Receipt {
@@ -375,6 +377,33 @@ impl Store {
     }
 }
 
+impl Store {
+    /// Lists a bounded page of raw receipts awaiting their first interpretation.
+    /// Recovery owns no transport and cannot resend work.
+    /// # Errors
+    /// Reports invalid stored metadata, bounds and database failures.
+    pub fn pending_interpretations(
+        &self,
+        machine: &Identifier,
+        after: i64,
+    ) -> Result<Vec<(i64, ReceiptMetadata)>, Error> {
+        let mut query=self.db.prepare("SELECT r.rowid,r.metadata FROM receipts r WHERE r.rowid>?1 AND json_extract(r.metadata,'$.machine')=?2 AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id) ORDER BY r.rowid LIMIT ?3")?;
+        let rows = query.query_map(
+            params![
+                after,
+                machine.as_str(),
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOperatorInput)?
+            ],
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+        )?;
+        rows.map(|r| {
+            let (sequence, metadata) = r?;
+            Ok((sequence, serde_json::from_str(&metadata)?))
+        })
+        .collect()
+    }
+}
+
 #[cfg(test)]
 mod operator_read_tests {
     use super::*;
@@ -450,34 +479,5 @@ mod operator_read_tests {
         );
         assert_eq!(store.raw(id)?.ok_or("raw absent")?, raw);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests;
-impl Store {
-    /// Lists a bounded page of raw receipts awaiting their first interpretation.
-    /// Recovery owns no transport and cannot resend work.
-    /// # Errors
-    /// Reports invalid stored metadata, bounds and database failures.
-    pub fn pending_interpretations(
-        &self,
-        machine: &Identifier,
-        after: i64,
-    ) -> Result<Vec<(i64, ReceiptMetadata)>, Error> {
-        let mut query=self.db.prepare("SELECT r.rowid,r.metadata FROM receipts r WHERE r.rowid>?1 AND json_extract(r.metadata,'$.machine')=?2 AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id) ORDER BY r.rowid LIMIT ?3")?;
-        let rows = query.query_map(
-            params![
-                after,
-                machine.as_str(),
-                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOperatorInput)?
-            ],
-            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
-        )?;
-        rows.map(|r| {
-            let (sequence, metadata) = r?;
-            Ok((sequence, serde_json::from_str(&metadata)?))
-        })
-        .collect()
     }
 }

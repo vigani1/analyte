@@ -152,7 +152,7 @@ the same way, and its `README.md` states the kind first.
 
 | Kind | Folder | Crates | Inside `src/` |
 | --- | --- | --- | --- |
-| Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`), one file per protocol inside |
+| Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`, `intake`, `reading`), one file per protocol inside |
 | Steps | `crates/steps/` | transport, framing, dialog, mapping, sink | One file or folder per protocol key, plus shared pieces named for what they hold |
 | Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file per job: `syntax`, `views`, `version`, `wire` (HL7 segment writer), `messages` (POCT message builders); a profile (LAW) is a folder |
 | Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |

@@ -23,15 +23,7 @@ fn hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result() -> T
                 config.effective().hl7_options().ok_or("options")?,
             )?;
             assert!(matches!(
-                map_hl7(
-                    &analyte_mapping::hl7::Settings {
-                        syntax: settings::hl7(&config).0,
-                        mappings: settings::hl7(&config).1,
-                        declarations: &config.effective().machine().deviations
-                    },
-                    &message,
-                    input()
-                ),
+                map_hl7(&settings::hl7_mapping(&config), &message, input()),
                 Err(analyte_mapping::Error::Structure {
                     reason: "HL7 continuation is unsupported; retain fragment for review",
                     ..

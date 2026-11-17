@@ -89,18 +89,7 @@ async fn lis02_section11_fresh_cache_orders_empty_and_untrusted_are_distinct_on_
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
-    let reference = Reference::start(
-        &temp.path().join("receiver.db"),
-        TcpListener::bind("127.0.0.1:0").await?,
-        false,
-    )
-    .await?;
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(include_bytes!(
-            "../../../../docs/contract/vectors/order.json"
-        ))?])
-        .await?;
+    let reference = seeded_reference(temp.path()).await?;
     let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
@@ -133,18 +122,7 @@ async fn rule8_query_response_reserves_without_event_then_disconnect_emits_one_u
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
-    let reference = Reference::start(
-        &temp.path().join("receiver.db"),
-        TcpListener::bind("127.0.0.1:0").await?,
-        false,
-    )
-    .await?;
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(include_bytes!(
-            "../../../../docs/contract/vectors/order.json"
-        ))?])
-        .await?;
+    let reference = seeded_reference(temp.path()).await?;
     let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
@@ -233,18 +211,7 @@ async fn lis01_transfer_ack_is_sent_not_application_acceptance_and_disconnect_is
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), true)?;
-    let reference = Reference::start(
-        &temp.path().join("receiver.db"),
-        TcpListener::bind("127.0.0.1:0").await?,
-        false,
-    )
-    .await?;
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(include_bytes!(
-            "../../../../docs/contract/vectors/order.json"
-        ))?])
-        .await?;
+    let reference = seeded_reference(temp.path()).await?;
     let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     let received = receive_orders(&mut peer).await?;
@@ -276,18 +243,7 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
         &definition,
         std::fs::read_to_string(&definition)?.rewrite("deadline_ms = 30000", "deadline_ms = 20"),
     )?;
-    let reference = Reference::start(
-        &temp.path().join("receiver.db"),
-        TcpListener::bind("127.0.0.1:0").await?,
-        false,
-    )
-    .await?;
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(include_bytes!(
-            "../../../../docs/contract/vectors/order.json"
-        ))?])
-        .await?;
+    let reference = seeded_reference(temp.path()).await?;
     let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
@@ -368,18 +324,7 @@ async fn adr0004_disconnect_before_astm_ack_preserves_uncertain_outcome_and_even
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), true)?;
-    let reference = Reference::start(
-        &temp.path().join("receiver.db"),
-        TcpListener::bind("127.0.0.1:0").await?,
-        false,
-    )
-    .await?;
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(include_bytes!(
-            "../../../../docs/contract/vectors/order.json"
-        ))?])
-        .await?;
+    let reference = seeded_reference(temp.path()).await?;
     let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 5);
@@ -624,18 +569,7 @@ async fn lis02_6_12_p12_nonproduction_queries_never_reserve_or_send() -> Result<
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
-    let reference = Reference::start(
-        &temp.path().join("receiver.db"),
-        TcpListener::bind("127.0.0.1:0").await?,
-        false,
-    )
-    .await?;
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(include_bytes!(
-            "../../../../docs/contract/vectors/order.json"
-        ))?])
-        .await?;
+    let reference = seeded_reference(temp.path()).await?;
     let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
     wait_cache(&path).await?;
@@ -710,4 +644,20 @@ fn context_order_value(specimen: Option<&str>) -> Result<serde_json::Value, Erro
             .remove("specimen_type");
     }
     Ok(value)
+}
+
+async fn seeded_reference(root: &Path) -> Result<Reference, Error> {
+    let reference = Reference::start(
+        &root.join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(include_bytes!(
+            "../../../../docs/contract/vectors/order.json"
+        ))?])
+        .await?;
+    Ok(reference)
 }

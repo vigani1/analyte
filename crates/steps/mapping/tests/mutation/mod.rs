@@ -1,5 +1,7 @@
 //! Tests rejection of malformed inputs without losing evidence.
 use super::*;
+mod comparators;
+mod timestamps;
 
 fn segment(name: &str, count: usize, values: &[(usize, &str)]) -> Result<String, &'static str> {
     let mut fields = vec![""; count];
@@ -12,7 +14,3 @@ fn segment(name: &str, count: usize, values: &[(usize, &str)]) -> Result<String,
     }
     Ok(format!("{name}|{}\r", fields.join("|")))
 }
-
-mod comparators;
-
-mod timestamps;

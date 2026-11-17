@@ -50,15 +50,7 @@ async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
-    let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(serve(
-        Program::load(&path)?,
-        Box::new(Space(u64::MAX)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let (shutdown, service) = start_service(&path)?;
     let mut peer = connect(&program).await?;
     let wire = analyte_framing::hl7::encode(ORU, analyte_framing::hl7::Limit::new(1048576)?)?;
     peer.write_all(&wire).await?;
@@ -127,15 +119,7 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;
-    let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(serve(
-        Program::load(&path)?,
-        Box::new(Space(u64::MAX)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let (shutdown, service) = start_service(&path)?;
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
     assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
@@ -280,15 +264,7 @@ async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<()
     );
     std::fs::write(&path, file)?;
     let program = Program::load(&path)?;
-    let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(serve(
-        Program::load(&path)?,
-        Box::new(Space(u64::MAX)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let (shutdown, service) = start_service(&path)?;
     let mut peer = connect(&program).await?;
     peer.write_all(&analyte_framing::hl7::encode(
         ORU,
@@ -434,15 +410,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
         temp.path().join("producer.tmp"),
         incoming.join("result.hl7"),
     )?;
-    let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(serve(
-        Program::load(&path)?,
-        Box::new(Space(u64::MAX)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let (shutdown, service) = start_service(&path)?;
     let until = tokio::time::Instant::now()
         .checked_add(HANG_GUARD)
         .ok_or("deadline overflow")?;
@@ -478,15 +446,7 @@ async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenan
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;
-    let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(serve(
-        Program::load(&path)?,
-        Box::new(Space(u64::MAX)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let (shutdown, service) = start_service(&path)?;
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
     assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);

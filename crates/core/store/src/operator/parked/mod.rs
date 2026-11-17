@@ -3,6 +3,8 @@ use crate::{Audit, OperatorError as Error, Parked, Store};
 use analyte_model::{Identifier, Reason};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) enum ParkingContext {
@@ -84,6 +86,3 @@ impl Store {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;

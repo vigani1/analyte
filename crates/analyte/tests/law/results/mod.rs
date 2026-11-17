@@ -2,6 +2,9 @@
 use super::*;
 use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+mod custody;
+mod delivery;
+mod text;
 
 #[derive(Debug, thiserror::Error)]
 enum FixtureError {
@@ -211,11 +214,6 @@ fn reprocess_deadline() -> Result<std::time::Instant, &'static str> {
         .checked_add(Duration::from_secs(5))
         .ok_or("deadline")
 }
-
-mod custody;
-
-mod delivery;
-mod text;
 
 // ADR 0003: the failed interpretation owns exactly this operator audit.
 fn assert_conflict_audit(

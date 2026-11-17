@@ -2,6 +2,8 @@
 use crate::{Lookup, OrderError as Error, OrderPage, OrderTrust, Store};
 use analyte_model::{Identifier, SampleId};
 use rusqlite::{Connection, OptionalExtension, params};
+#[cfg(test)]
+mod tests;
 
 impl Store {
     /// Stores a bounded page with its cursor in the same commit.
@@ -124,6 +126,3 @@ impl Store {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

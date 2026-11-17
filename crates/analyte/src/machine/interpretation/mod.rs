@@ -1,12 +1,18 @@
 //! Maps stored receipts without transport handles, orders or acknowledgments.
 #[cfg(test)]
 use crate::Error;
+pub(super) use crate::reading::poct_limits;
 use crate::{deadline, installation::config::Machine, intake};
 use analyte_config::Stack;
 #[cfg(test)]
 use analyte_model::ReceiptId;
 use analyte_model::Revision;
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
+pub(crate) mod departure_evidence;
+#[cfg(test)]
+mod departure_tests;
+#[cfg(test)]
+mod tests;
 
 /// Reinterprets only the retained original bytes using the supplied current machine.
 /// Stores an append-only version and exactly one audit, atomically with revision
@@ -66,8 +72,6 @@ pub(crate) async fn map_retained(
     )?)
 }
 
-pub(super) use crate::reading::poct_limits;
-
 #[cfg(test)]
 fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Error> {
     let Stack::Vidas(settings) = machine.snapshot.effective().stack() else {
@@ -75,11 +79,6 @@ fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Err
     };
     Ok(crate::reading::vidas_config(settings)?)
 }
-pub(crate) mod departure_evidence;
-#[cfg(test)]
-mod departure_tests;
-#[cfg(test)]
-mod tests;
 
 /// Failures reading retained receipt context, separate from a stored parked interpretation.
 #[derive(Debug, thiserror::Error)]

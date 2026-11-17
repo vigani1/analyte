@@ -8,8 +8,16 @@ use proptest::prelude::*;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+mod compatibility;
+mod continuation;
+mod departures;
+mod law_text;
+mod limits;
+mod modern;
 #[path = "../mutation/mod.rs"]
 mod mutation;
+mod patient;
+mod values;
 
 // HL7 2.5.1 sections 2.7.4, 2.15.9.18: decode characters once, then delimiter escapes.
 fn config(definition: &str) -> Result<Validated, analyte_config::Error> {
@@ -78,21 +86,12 @@ fn parts_config() -> String {
     )
 }
 
-mod compatibility;
-mod law_text;
-mod modern;
-mod values;
-
-mod limits;
-
 const ASTM_CONFIG: &str = include_str!("../../../../core/config/examples/astm.toml");
 const HL7_CONFIG: &str = include_str!("../../../../core/config/examples/hl7.toml");
 const SITE: &str = include_str!("../../../../core/config/examples/site.toml");
 
 // Synthetic LAB-29 result shared by profile and edition-boundary regressions.
 const LAW_RESULT: &[u8] = b"MSH|^~\\&|A|AF|M|MF|20261115120000+0000||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01&99LAB||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||000tube\rOBR||awos-1||SYN^Synthetic^99LAB\rORC|SC||||CM\rOBX|1|NM|SYN^Synthetic^99LAB|1^1^1|1|mg/L^mg/L^UCUM||N^Normal^HL70078|||F|||||operator||instrument^99LAB~module^99LAB|20261115120000||||||||||RSLT\r";
-
-mod continuation;
 
 // Supplies explicit synthetic report context for tests of unrelated value/QC rules.
 fn qualified_hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error>> {
@@ -111,7 +110,3 @@ fn qualified_hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::er
     }
     hl7(&qualified, definition)
 }
-
-mod patient;
-
-mod departures;

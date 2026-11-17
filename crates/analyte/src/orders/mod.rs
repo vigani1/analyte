@@ -13,9 +13,14 @@ mod settings;
 pub(crate) mod vidas;
 use crate::installation::config::Machine;
 use analyte_contract::{EventFields, OrderEvent, Source, Text};
+use analyte_mapping::app_order;
 use analyte_model::{Identifier, SampleId};
 use analyte_store::{MachineOrder, OrderEventDelivery};
 pub use operator::{Command, Outcome, run};
+mod acceptance;
+mod error;
+pub(crate) mod outcome;
+pub use error::OrderError;
 
 /// A mapped order version to recheck before issuing any query response bytes.
 pub(crate) struct Candidate {
@@ -71,8 +76,6 @@ pub(crate) fn eligible(order: &analyte_contract::Order, machine: &Machine) -> bo
         .is_ok()
 }
 
-use analyte_mapping::app_order;
-
 /// Builds an immutable contract event from a committed lifecycle snapshot.
 /// # Errors
 /// Refuses invalid timestamps or contract fields.
@@ -111,13 +114,6 @@ fn build_event(
 pub(crate) fn destination(machine: &Machine) -> Identifier {
     machine.snapshot.effective().site().destination.name.clone()
 }
-
-mod acceptance;
-
-pub(crate) mod outcome;
-
-mod error;
-pub use error::OrderError;
 
 /// Event construction is narrower than order orchestration; the store retains its leaf cause.
 #[derive(Debug, thiserror::Error)]

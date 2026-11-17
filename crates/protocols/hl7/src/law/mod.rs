@@ -8,6 +8,47 @@ pub const AWOS_ID_MAX_BYTES: usize = 50;
 
 use crate::{Field, Message, Msh, Segment};
 use thiserror::Error;
+mod responses;
+pub use responses::{CacheAnswer, QueryFollowup, QueryResponse, query_response};
+mod work;
+pub use work::{
+    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, PeerContent,
+    PeerInstructions, PeerRepeat, WorkAction, WorkCode, WorkFields, WorkResponse, negative_work,
+    work_order, work_order_with_profile,
+};
+mod results;
+pub use results::{
+    Attached, ExecutionStatus, Observation, Parent, ResultStatus, Results, SpecimenObservation,
+    StatusNotice, Value, result_acknowledgment,
+};
+mod envelope;
+mod fields;
+pub use envelope::{ControlDirection, message_type, parse_message, validate_control};
+mod order;
+mod patient;
+mod specimen;
+mod tcd;
+pub use order::{OrderControl, OrderStatus};
+pub use tcd::{Dilution, DilutionBinding, DilutionMeaning, ResultAdjustment, TestDetail};
+mod profile;
+pub use patient::AuthorityBinding;
+pub use profile::{FieldRule, Profile, Usage, validate_segment};
+mod failure;
+pub use failure::{
+    ErrorLocation, Failure, receive_acknowledgment, receive_query, receive_results,
+    receive_work_response,
+};
+mod content;
+pub use content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkNotes};
+mod observation;
+mod rejection;
+pub use rejection::reject_trigger;
+mod status;
+pub use status::{SINGLE_RUN_STATUSES, STATUS_TRANSITIONS, WITHHELD_STATUSES, observation_run};
+mod retained;
+pub use retained::{Mismatch, ReturnedWork, compare_retained, returned_work};
+mod custody;
+pub use custody::{CustodyHeader, CustodyRecord, RetainedControl, custody_records};
 
 /// A LAW validation failure, without payload in its diagnostic.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -361,48 +402,6 @@ impl<'a> Query<'a> {
     }
 }
 
-mod responses;
-
-pub use responses::{CacheAnswer, QueryFollowup, QueryResponse, query_response};
-
-mod work;
-
-pub use work::{
-    Address, Awos, AwosDecision, AwosOutcome, Capabilities, Instructions, PeerContent,
-    PeerInstructions, PeerRepeat, WorkAction, WorkCode, WorkFields, WorkResponse, negative_work,
-    work_order, work_order_with_profile,
-};
-
-mod results;
-
-pub use results::{
-    Attached, ExecutionStatus, Observation, Parent, ResultStatus, Results, SpecimenObservation,
-    StatusNotice, Value, result_acknowledgment,
-};
-
-mod envelope;
-mod fields;
-
-pub use envelope::{ControlDirection, message_type, parse_message, validate_control};
-
-mod patient;
-
-mod specimen;
-
-mod order;
-
-mod tcd;
-
-pub use order::{OrderControl, OrderStatus};
-
-pub use tcd::{Dilution, DilutionBinding, DilutionMeaning, ResultAdjustment, TestDetail};
-
-mod profile;
-
-pub use profile::{FieldRule, Profile, Usage, validate_segment};
-
-pub use patient::AuthorityBinding;
-
 fn msh(message: &Message) -> Result<Msh<'_>, Error> {
     let segment = message.segments().next().ok_or(content("MSH", 0))?;
     envelope::validate_segment(segment, ControlDirection::Receive)?;
@@ -426,25 +425,6 @@ pub fn control_id(raw: &[u8]) -> Result<crate::ControlId<'_>, crate::Error> {
     })?;
     Ok(crate::ControlId::from_profile(raw))
 }
-
-mod failure;
-
-pub use failure::{
-    ErrorLocation, Failure, receive_acknowledgment, receive_query, receive_results,
-    receive_work_response,
-};
-
-mod content;
-
-pub use content::{ContainerDetails, OrderDetails, PatientInfo, SpecimenDetails, Visit, WorkNotes};
-
-mod observation;
-
-mod rejection;
-pub use rejection::reject_trigger;
-
-mod status;
-pub use status::{SINGLE_RUN_STATUSES, STATUS_TRANSITIONS, WITHHELD_STATUSES, observation_run};
 
 impl From<crate::wire::Limit> for Error {
     fn from(_: crate::wire::Limit) -> Self {
@@ -547,9 +527,3 @@ fn validate_query_location(location: Option<&[u8]>, component: u8) -> Result<(),
     }
     Ok(())
 }
-
-mod retained;
-pub use retained::{Mismatch, ReturnedWork, compare_retained, returned_work};
-
-mod custody;
-pub use custody::{CustodyHeader, CustodyRecord, RetainedControl, custody_records};

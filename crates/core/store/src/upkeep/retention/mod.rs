@@ -13,6 +13,8 @@ use hmac::{Hmac, KeyInit, Mac};
 pub use holds::{HoldTarget, RetentionHold};
 use rusqlite::OptionalExtension;
 use sha2::Sha256;
+#[cfg(test)]
+mod tests;
 
 /// Host credential, intentionally neither serializable nor printable.
 #[derive(Clone)]
@@ -76,8 +78,6 @@ impl Store {
         Ok(())
     }
 }
-#[cfg(test)]
-mod tests;
 
 impl Store {
     pub(crate) fn receipt_was_purged(

@@ -5,6 +5,15 @@ use crate::{
     Encoding, Error, EvidenceLevel, Field, MachineDocument, Mappings, NoSubId, OrderNamespace,
     Site, SubId, TestMapping, Transport, TransportKind, UnitMapping, invalid,
 };
+mod departures;
+mod mappings;
+mod stack;
+use departures::validate_departures;
+use mappings::{validate_mapping_family, validate_mappings};
+use stack::{
+    validate_dialog_and_framing, validate_protocol, validate_stack, validate_syntax,
+    validate_transport,
+};
 
 pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> Result<(), Error> {
     if site.destination.freshness_seconds == 0 {
@@ -116,16 +125,3 @@ fn validate_evidence(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     }
     Ok(())
 }
-
-mod mappings;
-
-mod stack;
-
-mod departures;
-use departures::validate_departures;
-
-use mappings::{validate_mapping_family, validate_mappings};
-use stack::{
-    validate_dialog_and_framing, validate_protocol, validate_stack, validate_syntax,
-    validate_transport,
-};

@@ -3,6 +3,9 @@ use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection, Error, Profile, ResultStatus},
 };
+mod composites;
+mod fields;
+mod statuses;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const TEST: &str = "test^Synthetic^99LAB";
@@ -100,9 +103,3 @@ fn result_message(
 ) -> Result<Message, Box<dyn std::error::Error>> {
     message(&format!("SPM|1|sample&Local||SER^^HL70487|||||||P^^HL70369\rSAC|||tube\rOBR||awos-1||{TEST}\rORC|SC||||CM\r{}{suffix}",fields("OBX",ControlDirection::Receive,changes)?)).map_err(Into::into)
 }
-
-mod fields;
-
-mod statuses;
-
-mod composites;

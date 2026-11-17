@@ -22,6 +22,10 @@ use tokio::{
 };
 
 use analyte_fixtures::SECRET;
+mod custody;
+mod edits;
+mod identity;
+mod recordings;
 
 async fn count_results(
     axum::extract::State(count): axum::extract::State<Arc<AtomicU64>>,
@@ -597,10 +601,3 @@ async fn assert_missing_device_retained(run: &mut Running, hello: &str) -> Resul
 }
 
 // POCT01-A2 Appendix B 4.1.2 p.78, 3.4.1 p.73: error ACK precedes abnormal END.
-
-mod custody;
-
-mod edits;
-mod identity;
-
-mod recordings;

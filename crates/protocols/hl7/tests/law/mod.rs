@@ -4,6 +4,9 @@ use analyte_hl7::{
     law::{Error, Query, Scope},
 };
 use proptest::prelude::*;
+mod containers;
+mod locations;
+mod unsolicited;
 
 fn query(body: &str) -> Result<Message, analyte_hl7::Error> {
     Message::parse(format!("MSH|^~\\&|A|AF|M|MF|20260101120000+0000||QBP^Q11^QBP_Q11|q1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\r{body}\rRCP|I||R^Real Time^HL70394\r").as_bytes(), utf8_options())
@@ -86,9 +89,3 @@ fn validate_profile_body(body: &str) -> Result<(), Box<dyn std::error::Error>> {
     analyte_hl7::law::validate_segment(segment)?;
     Ok(())
 }
-
-mod containers;
-
-mod unsolicited;
-
-mod locations;

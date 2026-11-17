@@ -1,5 +1,7 @@
 //! Parses Autolyser fixed-width records without normalizing identities or numbers (Rev18 pp.175–179).
 use thiserror::Error;
+#[cfg(test)]
+mod tests;
 
 /// Specific record defect; display never contains patient data.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -376,6 +378,3 @@ impl Report {
         Self::parse(&out, control.is_some())
     }
 }
-
-#[cfg(test)]
-mod tests;

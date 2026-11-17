@@ -5,6 +5,8 @@ use super::{
 };
 use crate::{Charset, Message, Options, Terminator, Version};
 use std::collections::BTreeSet;
+mod request;
+use request::{NewRequest, encode_new_order};
 
 #[derive(Default)]
 struct IdentitySet<'a> {
@@ -450,9 +452,6 @@ fn encode_subject(
     }
     Ok(())
 }
-
-mod request;
-use request::{NewRequest, encode_new_order};
 
 fn validate_output_codes(message: &Message, version: Version) -> Result<(), Error> {
     if !version.uses_dtm() {

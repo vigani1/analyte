@@ -1,6 +1,6 @@
 # astm
 
-**Kind: protocol.** Separates message parsing, typed field access and version rules into named files.
+**Kind: protocol.** Separates record grammar, named field access and standard codes.
 
 **What it does:** Reads and writes structured ASTM records within size limits.
 

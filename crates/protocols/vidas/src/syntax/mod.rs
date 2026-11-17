@@ -1,6 +1,8 @@
 //! Parses VIDAS tagged fields (BCI Appendix A chapter 4).
 use analyte_model::SampleId;
 use thiserror::Error;
+#[cfg(test)]
+mod tests;
 
 /// Required installed sample ID limit; never truncate an identifier.
 #[derive(Debug, Clone, Copy)]
@@ -233,6 +235,3 @@ impl Message {
             .map(|f| f.value.as_str())
     }
 }
-
-#[cfg(test)]
-mod tests;

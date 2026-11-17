@@ -4,6 +4,8 @@ use crate::{
 };
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};
+#[cfg(test)]
+mod tests;
 
 impl Store {
     /// Claims an eligible head item; unresolved earlier items block only their own key.
@@ -172,6 +174,3 @@ impl Store {
         Ok(ids.len())
     }
 }
-
-#[cfg(test)]
-mod tests;

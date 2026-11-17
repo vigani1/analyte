@@ -1,7 +1,15 @@
 //! Tests schema migration and retained evidence.
+use crate::sql_types::SqlOrderState;
 use crate::test_support::*;
+use crate::test_support::{TestResult, open, receipt};
 use crate::*;
 use analyte_model::Reason;
+use analyte_model::{Identifier, OrderState};
+use rusqlite::{Connection, params, types::Value};
+use std::{collections::BTreeMap, num::NonZeroU64, path::Path};
+mod custody;
+mod legacy;
+mod ownership;
 
 fn verify_plan11_v1_evidence(
     migrated: &mut Store,
@@ -56,12 +64,6 @@ fn verify_plan11_v1_evidence(
     assert_constraint(migrated.db.execute("UPDATE outbox SET payload=x'00'", []));
     Ok(())
 }
-
-use crate::sql_types::SqlOrderState;
-use crate::test_support::{TestResult, open, receipt};
-use analyte_model::{Identifier, OrderState};
-use rusqlite::{Connection, params, types::Value};
-use std::{collections::BTreeMap, num::NonZeroU64, path::Path};
 
 fn legacy(path: &Path) -> Result<Connection, MaintenanceError> {
     let mut db = Connection::open(path)?;
@@ -501,12 +503,6 @@ fn seed_adr0003_v6_deliveries(
 }
 
 type LegacyDelivery = (DeliveryId, DeliveryState, DeliveryKind);
-
-mod custody;
-
-mod ownership;
-
-mod legacy;
 
 fn assert_empty_retention_tables(snapshot: &mut Snapshot) {
     let installation = snapshot

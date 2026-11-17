@@ -15,15 +15,7 @@ fn rule7_overlimit_repetitions_and_parts_fail_before_partial_success() -> TestRe
         config.effective().hl7_options().ok_or("options")?,
     )?;
     assert!(matches!(
-        map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations
-            },
-            &message,
-            input()
-        ),
+        map_hl7(&settings::hl7_mapping(&config), &message, input()),
         Err(analyte_mapping::Error::Limit {
             resource: "repeated values",
             ..
@@ -39,15 +31,7 @@ fn rule7_overlimit_repetitions_and_parts_fail_before_partial_success() -> TestRe
         config.effective().hl7_options().ok_or("options")?,
     )?;
     assert!(matches!(
-        map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations
-            },
-            &message,
-            input()
-        ),
+        map_hl7(&settings::hl7_mapping(&config), &message, input()),
         Err(analyte_mapping::Error::Limit {
             resource: "replacement parts",
             ..
@@ -142,15 +126,7 @@ fn rule7_expanded_parent_context_has_a_separate_budget() -> TestResult {
         config.effective().hl7_options().ok_or("options")?,
     )?;
     assert!(matches!(
-        map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations
-            },
-            &message,
-            input()
-        ),
+        map_hl7(&settings::hl7_mapping(&config), &message, input()),
         Err(analyte_mapping::Error::Limit {
             resource: "expanded evidence budget",
             ..

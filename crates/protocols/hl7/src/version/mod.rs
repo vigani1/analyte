@@ -1,6 +1,14 @@
 //! Selects explicit HL7 editions without treating recognition as semantic qualification.
 //! Kept whole: Edition capability rows and their exhaustive lookup form one reviewable rule table.
 use crate::Error;
+mod rules;
+pub(crate) use rules::{AckPair, CodingVersions, Rules, TimeFormat, ZeroOffset};
+use rules::{COMPATIBILITY_25, GRAMMAR_26, GRAMMAR_282, GRAMMAR_291, GRAMMARS};
+mod result;
+pub(crate) use result::{FieldKind, ResultField};
+mod order;
+#[cfg(test)]
+mod tests;
 
 /// Explicit HL7 edition, never inferred from familiar segment content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -629,15 +637,3 @@ impl Version {
         self.rules().ok_or(Error::EditionRules(self.as_str()))
     }
 }
-
-mod rules;
-pub(crate) use rules::{AckPair, CodingVersions, Rules, TimeFormat, ZeroOffset};
-use rules::{COMPATIBILITY_25, GRAMMAR_26, GRAMMAR_282, GRAMMAR_291, GRAMMARS};
-
-mod result;
-pub(crate) use result::{FieldKind, ResultField};
-
-#[cfg(test)]
-mod tests;
-
-mod order;

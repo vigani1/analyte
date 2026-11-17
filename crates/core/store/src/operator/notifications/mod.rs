@@ -4,6 +4,8 @@ mod event;
 use crate::{OperatorError as Error, Store};
 use analyte_model::Identifier;
 use rusqlite::{OptionalExtension, params};
+#[cfg(test)]
+mod tests;
 
 /// Persisted notification identity; only the store creates one.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -286,6 +288,3 @@ impl Store {
         Ok(result)
     }
 }
-
-#[cfg(test)]
-mod tests;

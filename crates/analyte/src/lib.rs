@@ -17,6 +17,8 @@ mod reading;
 /// Failures reading retained receipts through framing, syntax and mapping.
 pub use reading::{Context as ReceiptReadContext, Error as ReceiptReadError};
 pub mod runtime;
+#[cfg(test)]
+use analyte_fixtures as test_guard;
 /// Bounds ordinary orchestration storage requests independently of machine protocol timers.
 const STORE_OPERATION_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -55,9 +57,6 @@ pub async fn open_system_store(
 ) -> Result<analyte_store::Handle, runtime::Error> {
     runtime::service::open_store(program, Box::new(runtime::space::Volume)).await
 }
-
-#[cfg(test)]
-use analyte_fixtures as test_guard;
 
 /// Fixture migrations use the existing test wait bound, not a production operation budget.
 #[cfg(test)]

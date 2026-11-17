@@ -1,10 +1,10 @@
 //! Uses verified HTTPS and normal shutdown budgets without synthetic state.
-use super::{Arc, Destination, Duration, Error, Limits, Program};
+use super::{Arc, Destination, Duration, Error, Limits, Program, ServiceMode};
 pub(crate) fn destination(
     _: &crate::installation::config::ProgramHooks,
     settings: &analyte_config::Destination,
     limits: Limits,
-    _: bool,
+    _: ServiceMode,
 ) -> Result<Destination, Error> {
     Ok(Destination::from_url(
         settings.name.clone(),
@@ -15,8 +15,8 @@ pub(crate) fn destination(
 }
 pub(crate) fn shutdown_bound(
     _: &Program,
-    _: bool,
-    _: bool,
+    _: ServiceMode,
+    _: Option<&crate::runtime::shutdown::Watchdog>,
     bound: Duration,
 ) -> Result<Duration, crate::Error> {
     Ok(bound)

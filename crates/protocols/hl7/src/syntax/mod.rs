@@ -1,5 +1,9 @@
 //! Parses HL7 segments without transport or mapping.
 use thiserror::Error;
+mod text;
+mod truncation;
+pub(crate) use text::validate_escapes;
+pub use text::{TextEscape, decode_characters, decode_text, encode_text, inspect_text_escapes};
 
 /// Syntax failures carry positions, never message contents.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -569,11 +573,6 @@ impl<'a> Iterator for Parts<'a> {
         Some(raw)
     }
 }
-
-mod text;
-mod truncation;
-pub(crate) use text::validate_escapes;
-pub use text::{TextEscape, decode_characters, decode_text, encode_text, inspect_text_escapes};
 
 /// Recognizes the explicit HL7 null token (HL7 2.5.1 section 2.5.3).
 #[must_use]

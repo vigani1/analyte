@@ -37,7 +37,10 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
             super::display::optional(alert.value)
         ));
     }
-    for destination in crate::runtime::delivery::destinations(program, false)? {
+    for destination in crate::runtime::delivery::destinations(
+        program,
+        crate::runtime::hooks::ServiceMode::Production,
+    )? {
         let health = destination.health(store, now).await?;
         lines.push(format!("destination={} pending_count={} pending_bytes={} oldest_pending_age_seconds={} paused={} last_poll={} cache_trusted={}",
             destination.id().as_str(), health.pending_count, health.pending_bytes, super::display::optional(health.oldest_pending_age),

@@ -1,5 +1,8 @@
 //! Tests HL7 QRD and QRF field validation.
+#[macro_use]
+mod assertions;
 use analyte_hl7::{Error, Message, Options, query::Request};
+mod fields;
 
 fn fixture(
     version: &str,
@@ -61,29 +64,6 @@ fn fixture(
     }
     raw.push(b'\r');
     Message::parse(&raw, Options::default())
-}
-
-macro_rules! negative {
-    ($name:ident,$segment:literal,$field:literal,$value:expr) => {
-        #[test]
-        fn $name() -> Result<(), Error> {
-            for edition in ["2.3.1", "2.5.1"] {
-                let message = fixture(edition, $segment, $field, $value)?;
-                assert!(
-                    matches!(
-                        Request::new(&message),
-                        Err(Error::Control {
-                            segment: $segment,
-                            field: $field
-                        })
-                    ),
-                    "wrong outcome for {}",
-                    edition
-                );
-            }
-            Ok(())
-        }
-    };
 }
 
 negative!(hl7_231_2_24_4_1_251_5_10_5_3_2_required_time, "QRD", 1, b"");
@@ -448,5 +428,3 @@ fn component_value(number: usize, value: &[u8]) -> Vec<u8> {
     raw.extend_from_slice(value);
     raw
 }
-
-mod fields;

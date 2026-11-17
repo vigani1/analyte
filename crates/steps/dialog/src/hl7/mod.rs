@@ -11,6 +11,7 @@ use thiserror::Error;
 mod orders;
 use orders::Orders;
 pub use orders::{DisplayReply, ReplyPart};
+mod evidence;
 
 /// Connection-scoped host request identity. The host must supply a unique epoch after restart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -767,5 +768,3 @@ impl Dialog {
         self.frame_started = None;
     }
 }
-
-mod evidence;

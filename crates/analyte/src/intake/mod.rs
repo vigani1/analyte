@@ -16,6 +16,8 @@ use reading::{map_reading, mapping_outcome};
 mod persistence;
 pub use persistence::CommitError;
 use persistence::{LawBatchConflict, PreparedMapping};
+#[cfg(test)]
+mod tests;
 
 /// Binds all evidence from one host connection to its immutable configuration.
 pub(crate) struct ConnectionEvidence<'a> {
@@ -365,6 +367,3 @@ struct MappedReading {
     corrections: Vec<bool>,
     findings: Vec<String>,
 }
-
-#[cfg(test)]
-mod tests;

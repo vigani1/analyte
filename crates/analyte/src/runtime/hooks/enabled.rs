@@ -1,5 +1,5 @@
 //! Applies explicit loopback overrides and bounded synthetic shutdown failures.
-use super::{Arc, Destination, Duration, Error, Limits, Program};
+use super::{Arc, Destination, Duration, Error, Limits, Program, ServiceMode};
 use crate::{
     deadline,
     runtime::service::{SHUTDOWN_MIN, Supervision, serve_with},
@@ -11,8 +11,9 @@ pub(crate) fn destination(
     hooks: &crate::installation::config::ProgramHooks,
     settings: &analyte_config::Destination,
     limits: Limits,
-    loopback: bool,
+    mode: ServiceMode,
 ) -> Result<Destination, Error> {
+    let loopback = mode.is_loopback();
     if !loopback && !hooks.loopback_destinations.is_empty() {
         return Err(Error::LoopbackOverridesRequireTheTestServiceEntryPoint);
     }
@@ -38,12 +39,13 @@ pub(crate) fn destination(
 }
 pub(crate) fn shutdown_bound(
     program: &Program,
-    loopback: bool,
-    watchdog: bool,
+    mode: ServiceMode,
+    watchdog: Option<&crate::runtime::shutdown::Watchdog>,
     bound: Duration,
 ) -> Result<Duration, crate::Error> {
+    let loopback = mode.is_loopback();
     if program.hooks.stall_store_on_shutdown {
-        if !loopback || watchdog {
+        if !loopback || watchdog.is_some() {
             return Err(Error::StuckShutdownHookRequiresTheLoopbackTestService.into());
         }
         Ok(Duration::from_millis(500))
@@ -85,7 +87,7 @@ pub async fn serve_loopback_test(
         stop,
         secrets,
         Supervision {
-            loopback: true,
+            mode: ServiceMode::LoopbackTest,
             shutdown_bound: SHUTDOWN_MIN,
             watchdog: None,
             ready,

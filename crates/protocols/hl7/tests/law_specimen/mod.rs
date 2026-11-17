@@ -3,6 +3,9 @@ use analyte_hl7::{
     Charset, Message, Options,
     law::{self, Capabilities, ControlDirection, Profile},
 };
+mod containers;
+mod preservation;
+mod specimens;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 fn options() -> Options {
@@ -266,9 +269,3 @@ fn validate_container_detail_cases(
     );
     Ok(())
 }
-
-mod specimens;
-
-mod containers;
-
-mod preservation;

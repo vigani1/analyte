@@ -17,6 +17,9 @@ use history::write_history;
 use parking::{park_outcomes, reconciliation_succeeded, write_reprocess_audit};
 use rusqlite::params;
 pub use status_policy::StatusLifecycle;
+mod evidence;
+#[cfg(test)]
+mod tests;
 
 /// Store decision for one result, in input order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,8 +267,3 @@ impl Store {
         })
     }
 }
-
-#[cfg(test)]
-mod tests;
-
-mod evidence;

@@ -152,15 +152,7 @@ async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Erro
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
-    let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(serve(
-        Program::load(&path)?,
-        Box::new(Space(u64::MAX)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let (shutdown, service) = start_service(&path)?;
     let mut peer = connect(&program).await?;
     for control in ["message1", "message2"] {
         let raw = String::from_utf8(ORU.to_vec())?.rewrite("message1", control);

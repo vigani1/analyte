@@ -39,6 +39,8 @@ pub use stack::{
     VidasStack,
 };
 use validation::{validate_machine, validate_site};
+#[cfg(test)]
+mod tests;
 
 /// Maximum bytes accepted per TOML layer, before parsing or allocation.
 pub const MAX_FILE_BYTES: usize = 1_048_576;
@@ -473,6 +475,3 @@ impl Effective {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

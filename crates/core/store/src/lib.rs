@@ -71,6 +71,13 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+mod keys;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;
+use keys::key;
 
 /// Host-provided capacity probe; errors refuse new evidence rather than guessing.
 pub trait FreeSpace: Send + 'static {
@@ -187,12 +194,3 @@ impl OrderTrust {
         matches!(self, Self::Trusted { .. })
     }
 }
-
-#[cfg(test)]
-mod test_support;
-#[cfg(test)]
-#[path = "tests.rs"]
-mod tests;
-
-mod keys;
-use keys::key;

@@ -6,6 +6,8 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
+#[cfg(test)]
+mod tests;
 
 impl Store {
     pub(crate) fn lock(path: &Path, exclusive: bool) -> Result<File, Error> {
@@ -171,6 +173,3 @@ impl Store {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;
