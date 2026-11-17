@@ -21,10 +21,9 @@ pub(super) async fn session(
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     driver::run(
-        || ConnectionState::open(settings),
+        || Host::open(machine, settings, store),
         Context {
             machine,
-            settings,
             store,
             conn,
             stop,
@@ -33,13 +32,20 @@ pub(super) async fn session(
     .await
 }
 
-struct ConnectionState {
+struct Host<'a, 'm> {
+    machine: &'a intake::ConnectionEvidence<'m>,
+    settings: &'a analyte_config::PoctStack,
+    store: &'a Handle,
     dialog: Dialog,
     start: Instant,
 }
 
-impl ConnectionState {
-    fn open(settings: &analyte_config::PoctStack) -> Result<Self, Error> {
+impl<'a, 'm> Host<'a, 'm> {
+    fn open(
+        machine: &'a intake::ConnectionEvidence<'m>,
+        settings: &'a analyte_config::PoctStack,
+        store: &'a Handle,
+    ) -> Result<Self, Error> {
         let policy = &settings.policy();
         let limits = super::interpretation::poct_limits(settings);
         let dialog = Dialog::new(
@@ -53,18 +59,23 @@ impl ConnectionState {
             ControlId::new(&uuid::Uuid::now_v7().simple().to_string())?,
         )?;
         let start = Instant::now();
-        Ok(Self { dialog, start })
+        Ok(Self {
+            machine,
+            settings,
+            store,
+            dialog,
+            start,
+        })
     }
 
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &intake::ConnectionEvidence<'_>,
-        settings: &analyte_config::PoctStack,
-        store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &watch::Receiver<bool>,
     ) -> Result<bool, Error> {
+        let machine = self.machine;
+        let store = self.store;
         for byte in bytes {
             let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
             if *stop.borrow() {
@@ -80,17 +91,7 @@ impl ConnectionState {
                 intake::park_bytes(store, machine, raw, ByteReason::PoctCancelled).await?;
                 return Ok(true);
             }
-            if process(
-                actions,
-                &mut self.dialog,
-                self.start,
-                machine,
-                store,
-                conn,
-                settings,
-            )
-            .await?
-            {
+            if self.apply(actions, conn).await? {
                 return Ok(true);
             }
         }
@@ -98,8 +99,7 @@ impl ConnectionState {
     }
 }
 
-impl Effects for ConnectionState {
-    type Settings = analyte_config::PoctStack;
+impl Effects for Host<'_, '_> {
     type Error = Error;
     fn custody(&self) -> driver::Custody {
         driver::Custody::Chunks
@@ -110,58 +110,26 @@ impl Effects for ConnectionState {
             .next_deadline()
             .map(|deadline| deadline.saturating_sub(self.start.elapsed())))
     }
-    async fn prepare(
-        &mut self,
-        _host: &mut Context<'_, '_, Self::Settings>,
-    ) -> Result<Flow, Error> {
+    async fn prepare(&mut self, _host: &mut Context<'_, '_>) -> Result<Flow, Error> {
         Ok(if self.dialog.next_deadline().is_some() {
             Flow::Continue
         } else {
             Flow::Stop
         })
     }
-    async fn input(
-        &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
-        input: Input,
-    ) -> Result<Flow, Error> {
-        let Context {
-            machine,
-            store,
-            conn,
-            stop,
-            settings,
-        } = host;
+    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+        let conn = &mut *host.conn;
+        let stop = &mut host.stop;
         // Incoming fragments must not postpone the absolute dialog deadline.
         let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-        if process(
-            actions,
-            &mut self.dialog,
-            self.start,
-            machine,
-            store,
-            conn,
-            settings,
-        )
-        .await?
-        {
+        if self.apply(actions, conn).await? {
             return Ok(Flow::Stop);
         }
         match input {
             Input::Opened { .. } => {}
             Input::Tick => {
                 let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-                if process(
-                    actions,
-                    &mut self.dialog,
-                    self.start,
-                    machine,
-                    store,
-                    conn,
-                    settings,
-                )
-                .await?
-                {
+                if self.apply(actions, conn).await? {
                     return Ok(Flow::Stop);
                 }
             }
@@ -169,23 +137,11 @@ impl Effects for ConnectionState {
                 let actions = self
                     .dialog
                     .step(self.start.elapsed(), Event::Disconnected)?;
-                process(
-                    actions,
-                    &mut self.dialog,
-                    self.start,
-                    machine,
-                    store,
-                    conn,
-                    settings,
-                )
-                .await?;
+                self.apply(actions, conn).await?;
                 return Ok(Flow::Stop);
             }
             Input::Bytes { bytes } => {
-                if self
-                    .receive_bytes(bytes, machine, settings, store, conn, stop)
-                    .await?
-                {
+                if self.receive_bytes(bytes, conn, stop).await? {
                     return Ok(Flow::Stop);
                 }
             }
@@ -195,12 +151,12 @@ impl Effects for ConnectionState {
     }
     async fn close(
         &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
+        _host: &mut Context<'_, '_>,
         _result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         let raw = self.dialog.take_input();
         if !raw.is_empty() {
-            intake::park_bytes(host.store, host.machine, raw, ByteReason::PoctIncomplete).await?;
+            intake::park_bytes(self.store, self.machine, raw, ByteReason::PoctIncomplete).await?;
         }
         Ok(())
     }
@@ -256,108 +212,100 @@ fn outbound_message(
     )?)
 }
 
-async fn process(
-    actions: Vec<Action>,
-    dialog: &mut Dialog,
-    start: Instant,
-    machine: &intake::ConnectionEvidence<'_>,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    settings: &analyte_config::PoctStack,
-) -> Result<bool, Error> {
-    let limits = super::interpretation::poct_limits(settings);
-    let send_timeout_ms = settings.settings().timeouts().send_timeout_ms();
-    let mut actions: VecDeque<_> = actions.into();
-    let mut failure = None;
-    let result = async {
-        while let Some(action) = actions.pop_front() {
-            match action {
-                Action::Input(wire) => actions
-                    .extend(interpret_input(wire, dialog, start, machine, store, limits).await?),
-                Action::InputLimit(wire) => {
-                    intake::park_bytes(store, machine, wire, ByteReason::PoctLimit).await?;
-                    return Err(Error::MessageLimitExceeded);
-                }
-                Action::InputDeadline(wire) => {
-                    intake::park_bytes(store, machine, wire, ByteReason::PoctDeadline).await?;
-                }
-                Action::InspectHello {
-                    device_id: _,
-                    capabilities: _,
-                } => {
-                    actions.extend(dialog.step(start.elapsed(), Event::HelloDecision(true))?);
-                }
-                Action::Store { ticket, message } => {
-                    let operation = store_message(store, machine, &message);
-                    let outcome =
-                        match custody::store_before_ack(machine.machine(), operation).await {
-                            Ok(outcome) => outcome,
-                            Err(error) => {
-                                failure = Some(Error::from(error));
-                                CommitOutcome::Failed
-                            }
-                        };
-                    actions.extend(
-                        dialog.step(start.elapsed(), Event::Committed { ticket, outcome })?,
-                    );
-                }
-                Action::Park { message, reason } => {
-                    intake::park_bytes(
-                        store,
-                        machine,
-                        message.document().raw().to_vec(),
-                        ByteReason::PoctDialog(reason),
-                    )
-                    .await?;
-                }
-                Action::Send { control_id, body } => {
-                    let message = outbound_message(
-                        control_id,
-                        &body,
-                        limits,
-                        dialog.outbound_message_limit(),
-                    )?;
-                    custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
-                }
-                Action::ReadEnabled(_) => {}
-                Action::Deferred(message) => {
-                    intake::park_bytes(
-                        store,
-                        machine,
-                        message.document().raw().to_vec(),
-                        ByteReason::PoctDeferred,
-                    )
-                    .await?;
-                    return Err(Error::BackpressureViolated);
-                }
-                Action::TopicComplete => {
-                    actions.extend(dialog.step(start.elapsed(), Event::Finish)?);
-                }
-                Action::Close { normal, unresolved } => {
-                    if !normal || !unresolved.is_empty() {
-                        let unresolved = analyte_dialog::poct::ticket_evidence(&unresolved);
+impl Host<'_, '_> {
+    async fn apply(
+        &mut self,
+        actions: Vec<Action>,
+        conn: &mut analyte_transport::Connection,
+    ) -> Result<bool, Error> {
+        let machine = self.machine;
+        let store = self.store;
+        let start = self.start;
+        let settings = self.settings;
+        let dialog = &mut self.dialog;
+        let limits = super::interpretation::poct_limits(settings);
+        let send_timeout_ms = settings.settings().timeouts().send_timeout_ms();
+        let mut actions: VecDeque<_> = actions.into();
+        let mut failure = None;
+        let result = async {
+            while let Some(action) = actions.pop_front() {
+                match action {
+                    Action::Input(wire) => actions.extend(
+                        interpret_input(wire, dialog, start, machine, store, limits).await?,
+                    ),
+                    Action::InputLimit(wire) => {
+                        intake::park_bytes(store, machine, wire, ByteReason::PoctLimit).await?;
+                        return Err(Error::MessageLimitExceeded);
+                    }
+                    Action::InputDeadline(wire) => {
+                        intake::park_bytes(store, machine, wire, ByteReason::PoctDeadline).await?;
+                    }
+                    Action::InspectHello {
+                        device_id: _,
+                        capabilities: _,
+                    } => {
+                        actions.extend(dialog.step(start.elapsed(), Event::HelloDecision(true))?);
+                    }
+                    Action::Store { ticket, message } => {
+                        let operation = store_message(store, machine, &message);
+                        let outcome =
+                            match custody::store_before_ack(machine.machine(), operation).await {
+                                Ok(outcome) => outcome,
+                                Err(error) => {
+                                    failure = Some(Error::from(error));
+                                    CommitOutcome::Failed
+                                }
+                            };
+                        actions.extend(
+                            dialog.step(start.elapsed(), Event::Committed { ticket, outcome })?,
+                        );
+                    }
+                    Action::Park { message, reason } => {
                         intake::park_bytes(
                             store,
                             machine,
-                            Vec::new(),
-                            ByteReason::PoctClosure {
-                                normal,
-                                unresolved: &unresolved,
-                            },
+                            message.document().raw().to_vec(),
+                            ByteReason::PoctDialog(reason),
                         )
                         .await?;
                     }
-                    return Ok(true);
+                    Action::Send { control_id, body } => {
+                        let message = outbound_message(
+                            control_id,
+                            &body,
+                            limits,
+                            dialog.outbound_message_limit(),
+                        )?;
+                        custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
+                    }
+                    Action::ReadEnabled(_) => {}
+                    Action::Deferred(message) => {
+                        intake::park_bytes(
+                            store,
+                            machine,
+                            message.document().raw().to_vec(),
+                            ByteReason::PoctDeferred,
+                        )
+                        .await?;
+                        return Err(Error::BackpressureViolated);
+                    }
+                    Action::TopicComplete => {
+                        actions.extend(dialog.step(start.elapsed(), Event::Finish)?);
+                    }
+                    Action::Close { normal, unresolved } => {
+                        retain_closure(store, machine, normal, &unresolved).await?;
+                        return Ok(true);
+                    }
                 }
             }
+            Ok(false)
         }
-        Ok(false)
-    }
-    .await;
-    match (failure, result) {
-        (Some(error), Ok(_)) => Err(error),
-        (Some(error), Err(effect)) => Err(custody::effect_failure(Some(error), effect)),
-        (None, result) => result,
+        .await;
+        match (failure, result) {
+            (Some(error), Ok(_)) => Err(error),
+            (Some(error), Err(effect)) => Err(custody::effect_failure(Some(error), effect)),
+            (None, result) => result,
+        }
     }
 }
 
@@ -404,4 +352,27 @@ async fn store_message(
         | Body::Request(_) => {}
     }
     Ok::<_, Error>(CommitOutcome::Stored)
+}
+
+/// Retains unresolved commit identities even when the peer closes normally.
+async fn retain_closure(
+    store: &Handle,
+    machine: &intake::ConnectionEvidence<'_>,
+    normal: bool,
+    unresolved: &[analyte_dialog::poct::CommitId],
+) -> Result<(), Error> {
+    if !normal || !unresolved.is_empty() {
+        let unresolved = analyte_dialog::poct::ticket_evidence(unresolved);
+        intake::park_bytes(
+            store,
+            machine,
+            Vec::new(),
+            ByteReason::PoctClosure {
+                normal,
+                unresolved: &unresolved,
+            },
+        )
+        .await?;
+    }
+    Ok(())
 }

@@ -341,7 +341,7 @@ async fn transaction(
 ) -> Result<(), Error> {
     super::driver::run(
         || {
-            super::Host::new(
+            super::Host::open(
                 machine,
                 settings,
                 store,
@@ -351,7 +351,6 @@ async fn transaction(
         },
         super::Context {
             machine,
-            settings,
             store,
             conn,
             stop: stop.clone(),
