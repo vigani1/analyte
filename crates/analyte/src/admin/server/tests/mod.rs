@@ -1,6 +1,7 @@
 //! Tests server behavior with synthetic fixtures.
 use super::*;
 use crate::Error;
+use crate::admin::markup::Markup;
 use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
@@ -549,7 +550,7 @@ async fn start_overview_server(
         host: host.clone(),
         store: store.clone(),
         machines: vec![Machine {
-            departure_html: String::new(),
+            departure_html: Markup::new(),
             id: Identifier::new("<script>alert('hostile')&\"</script>")?,
             running: Arc::new(AtomicBool::new(false)),
         }],

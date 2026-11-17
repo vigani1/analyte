@@ -1,5 +1,6 @@
 //! Tests read-only operator pages and retained evidence.
 use super::*;
+use crate::admin::markup::Markup;
 use analyte_model::{Digest, NamespacedId, ReceiptId, ReceiptMetadata, SampleId};
 use analyte_store::{Audit, CachedOrder, OrderPage, Parked};
 
@@ -149,7 +150,7 @@ async fn start_pages_server(
     let mut machines = Vec::new();
     for index in 0..61 {
         machines.push(Machine {
-            departure_html: String::new(),
+            departure_html: Markup::new(),
             id: Identifier::new(&format!("machine-{index}"))?,
             running: Arc::new(AtomicBool::new(true)),
         });

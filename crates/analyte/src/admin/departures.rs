@@ -1,10 +1,10 @@
 //! Shows enabled configuration separately from actual protected receipt interpretation evidence.
 use super::{
-    escape,
     pages::{finish, start},
     server::Context,
 };
 use crate::admin::Error;
+use crate::admin::markup::Markup;
 use crate::deadline;
 use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId};
 use axum::{
@@ -15,24 +15,35 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-pub(super) fn enabled(config: &analyte_config::Validated) -> Result<String, Error> {
+pub(super) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Error> {
     let digest = config
         .digest()
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
-    let mut html = format!(
-        "<h3>Enabled machine departures</h3><p>Active configuration digest: <code>{digest}</code>.</p><ul>"
-    );
+    let mut html = Markup::new()
+        .markup(concat!(
+            "<h3>Enabled machine departures</h3><p>Active ",
+            "configuration digest: <code>",
+        ))
+        .text(digest)
+        .markup("</code>.</p><ul>");
     for rule in &config.effective().machine().deviations {
-        html.push_str(&format!(
-            "<li><b>{}</b><p>{}</p><pre>{}</pre></li>",
-            escape(rule.tag()),
-            escape(rule.meaning()),
-            escape(rule.evidence_snapshot()?.as_str())
-        ));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<li><b>")
+                .text(rule.tag())
+                .markup("</b><p>")
+                .text(rule.meaning())
+                .markup("</p><pre>")
+                .text(rule.evidence_snapshot()?.as_str())
+                .markup("</pre></li>"),
+        );
     }
-    html.push_str("</ul><p>Enabled is not evidence that a rule applied to a receipt.</p>");
+    html.push_markup(concat!(
+        "</ul><p>Enabled is not evidence that a rule ",
+        "applied to a receipt.</p>",
+    ));
     Ok(html)
 }
 
@@ -74,57 +85,94 @@ pub(super) async fn receipt(
     };
     let id = uuid::Uuid::from(id);
     let mut html = start("Receipt interpretation departures");
-    html.push_str(&format!(
-        "<p>Receipt {id}. Interpretation {}. Config version: {}. Driver: {}.</p>",
-        version.version,
-        escape(interpretation.config_version.as_str()),
-        escape(&interpretation.driver.to_string())
-    ));
+    html.push_fragment(
+        &Markup::new()
+            .markup("<p>Receipt ")
+            .text(id)
+            .markup(". Interpretation ")
+            .text(version.version)
+            .markup(". Config version: ")
+            .text(interpretation.config_version.as_str())
+            .markup(". Driver: ")
+            .text(interpretation.driver.to_string())
+            .markup(".</p>"),
+    );
     let digest = analyte_contract::content_digest(&interpretation.config)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
-    html.push_str(&format!("<p>Retained config digest: {digest}</p>"));
+    html.push_fragment(
+        &Markup::new()
+            .markup("<p>Retained config digest: ")
+            .text(digest)
+            .markup("</p>"),
+    );
     match &interpretation.departures {
-        Some(evidence)=>render(&mut html,evidence),
-        None=>html.push_str("<p>Legacy interpretation: enabled/applied departure ledger was not recorded; empty application is not asserted.</p>"),
+        Some(evidence) => render(&mut html, evidence),
+        None => html.push_markup(concat!(
+            concat!(
+                "<p>Legacy interpretation: enabled/applied ",
+                "departure ledger was not recorded; empty ",
+            ),
+            "application is not asserted.</p>",
+        )),
     }
     if let analyte_store::Reading::Results(results) = &interpretation.outcome {
-        html.push_str("<h2>Source and summary statuses</h2><ul>");
+        html.push_markup("<h2>Source and summary statuses</h2><ul>");
         for part in results.iter().flat_map(|r| r.parts.as_slice()) {
-            html.push_str(&format!("<li>Received observation status: <code>{}</code>. Summary: {}. Source absence stays empty.</li>",escape(part.source_status.as_str()),part.status));
+            html.push_fragment(
+                &Markup::new()
+                    .markup("<li>Received observation status: <code>")
+                    .text(part.source_status.as_str())
+                    .markup("</code>. Summary: ")
+                    .text(part.status)
+                    .markup(". Source absence stays empty.</li>"),
+            );
         }
-        html.push_str("</ul>");
+        html.push_markup("</ul>");
     } else if let analyte_store::Reading::Failed(reason) = &interpretation.outcome {
-        html.push_str(&format!(
-            "<p>Parked interpretation: {}</p>",
-            escape(reason.as_str())
-        ));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<p>Parked interpretation: ")
+                .text(reason.as_str())
+                .markup("</p>"),
+        );
     }
-    html.push_str(&format!(
-        "<p><a href=\"/receipts/{id}/departures?version={}\">Next interpretation version</a></p>",
-        version.version.saturating_add(1)
-    ));
+    html.push_fragment(
+        &Markup::new()
+            .markup("<p><a href=\"/receipts/")
+            .text(id)
+            .markup("/departures?version=")
+            .text(version.version.saturating_add(1))
+            .markup("\">Next interpretation version</a></p>"),
+    );
     finish(Ok(html))
 }
 
-fn render(html: &mut String, evidence: &DepartureEvidence) {
+fn render(html: &mut Markup, evidence: &DepartureEvidence) {
     if let Some(reason) = &evidence.incomplete {
-        html.push_str(&format!(
-            "<p><strong>Applied ledger incomplete; delivery stopped: {}</strong></p>",
-            escape(reason.as_str())
-        ));
+        html.push_fragment(
+            &Markup::new()
+                .markup(concat!(
+                    "<p><strong>Applied ledger incomplete; delivery ",
+                    "stopped: ",
+                ))
+                .text(reason.as_str())
+                .markup("</strong></p>"),
+        );
     }
-    html.push_str("<h2 id=\"enabled\">Enabled declaration snapshot</h2><ul>");
+    html.push_markup("<h2 id=\"enabled\">Enabled declaration snapshot</h2><ul>");
     for declaration in evidence.enabled.as_slice() {
-        html.push_str(&format!(
-            "<li><pre>{}</pre></li>",
-            escape(declaration.as_str())
-        ));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<li><pre>")
+                .text(declaration.as_str())
+                .markup("</pre></li>"),
+        );
     }
-    html.push_str("</ul><h2>Actually applied departures</h2>");
+    html.push_markup("</ul><h2>Actually applied departures</h2>");
     if evidence.applied.as_slice().is_empty() {
-        html.push_str("<p>Applied list: empty.</p>");
+        html.push_markup("<p>Applied list: empty.</p>");
     }
     for applied in evidence.applied.as_slice() {
         if matches!(
@@ -132,12 +180,51 @@ fn render(html: &mut String, evidence: &DepartureEvidence) {
             DepartureMeaning::FinalReportFromDocumentation
                 | DepartureMeaning::FinalObservationFromDocumentation
         ) {
-            html.push_str("<p><strong>Final from documentation — not a received final status. Delivery over contract v1 is parked.</strong></p>");
+            html.push_markup(concat!(
+                concat!(
+                    "<p><strong>Final from documentation — not a ",
+                    "received final status. Delivery over ",
+                ),
+                "contract v1 is parked.</strong></p>",
+            ));
         }
-        html.push_str(&format!("<section><h3>{}</h3><p><a href=\"#enabled\">Protected evidence references and scope</a></p><p>Source: {}. Derived meaning: {}. Standard: {}. Record {}, field {}. Coordinates: {}. Spans: {}.</p><pre>{}</pre></section>",
-            escape(applied.rule.as_str()),escape(applied.source.as_str()),applied.meaning,escape(applied.standard.as_str()),applied.record,applied.field,escape(applied.coordinates.as_str()),applied.spans,escape(applied.declaration.as_str())));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<section><h3>")
+                .text(applied.rule.as_str())
+                .markup(concat!(
+                    "</h3><p><a href=\"#enabled\">Protected evidence ",
+                    "references and scope</a></p><p>Source: ",
+                ))
+                .text(applied.source.as_str())
+                .markup(". Derived meaning: ")
+                .text(applied.meaning)
+                .markup(". Standard: ")
+                .text(applied.standard.as_str())
+                .markup(". Record ")
+                .text(applied.record)
+                .markup(", field ")
+                .text(applied.field)
+                .markup(". Coordinates: ")
+                .text(applied.coordinates.as_str())
+                .markup(". Spans: ")
+                .text(&applied.spans)
+                .markup(".</p><pre>")
+                .text(applied.declaration.as_str())
+                .markup("</pre></section>"),
+        );
     }
-    html.push_str("<p>Manual reference IDs and recording digests above identify protected evidence for authorized operators. Original source bytes remain in the protected store; raw disclosure requires the audited parked-item action.</p>");
+    html.push_markup(concat!(
+        concat!(
+            "<p>Manual reference IDs and recording digests ",
+            "above identify protected evidence for ",
+        ),
+        concat!(
+            "authorized operators. Original source bytes ",
+            "remain in the protected store; raw ",
+        ),
+        "disclosure requires the audited parked-item action.</p>",
+    ));
 }
 
 #[cfg(test)]
@@ -150,7 +237,7 @@ mod tests {
     #[test]
     fn adr0015_admin_distinguishes_empty_applied_and_documented_final_without_html_injection()
     -> Result<(), Error> {
-        let mut html = String::new();
+        let mut html = Markup::new();
         render(&mut html, &DepartureEvidence::default());
         assert!(html.contains("Applied list: empty"));
         assert!(!html.contains("Final from documentation"));
@@ -170,7 +257,7 @@ mod tests {
             incomplete: None,
             applied: EvidenceList::new(vec![application])?,
         };
-        let mut html = String::new();
+        let mut html = Markup::new();
         render(&mut html, &ledger);
         assert!(html.contains("Final from documentation"));
         assert!(html.contains("not a received final status"));

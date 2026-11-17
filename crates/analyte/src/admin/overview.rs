@@ -1,6 +1,7 @@
 //! Renders a read-only HTML overview of alerts, disk reserve, uncertain orders, destinations and machines.
-use super::{escape, server::Context};
+use super::server::Context;
 use crate::admin::Error;
+use crate::admin::markup::Markup;
 use crate::deadline;
 use analyte_model::OrderState;
 use analyte_store::MachineOrderFilter;
@@ -14,12 +15,15 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
-fn row(html: &mut String, name: &str, value: &str) {
-    html.push_str(&format!(
-        "<dt>{}</dt><dd>{}</dd>",
-        escape(name),
-        escape(value)
-    ));
+fn row(html: &mut Markup, name: &str, value: &str) {
+    html.push_fragment(
+        &Markup::new()
+            .markup("<dt>")
+            .text(name)
+            .markup("</dt><dd>")
+            .text(value)
+            .markup("</dd>"),
+    );
 }
 
 pub(super) async fn show(State(state): State<Arc<Context>>) -> Response {
@@ -28,16 +32,18 @@ pub(super) async fn show(State(state): State<Arc<Context>>) -> Response {
         // Evidence and errors stay on the authenticated page, never in logs.
         Err(error) => (
             StatusCode::SERVICE_UNAVAILABLE,
-            Html(format!(
-                "<h1>Overview unavailable</h1><p>{}</p>",
-                escape(&error.to_string())
-            )),
+            Html(
+                Markup::new()
+                    .markup("<h1>Overview unavailable</h1><p>")
+                    .text(error.to_string())
+                    .markup("</p>"),
+            ),
         )
             .into_response(),
     }
 }
 
-async fn render(state: &Context) -> Result<String, Error> {
+async fn render(state: &Context) -> Result<Markup, Error> {
     let until = deadline()?;
     let directory = state.directory.clone();
     let (paused, free) = state
@@ -49,10 +55,20 @@ async fn render(state: &Context) -> Result<String, Error> {
             ))
         })
         .await?;
-    let mut html = "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Analyte overview</title><h1>Analyte overview</h1><p>Operator actions require an authenticated session and a reason.</p><dl>".to_owned();
-    html.push_str("</dl>");
-    html.push_str(super::pages::NAV);
-    html.push_str("<dl>");
+    let mut html = Markup::new()
+        .markup(concat!(
+            "<!doctype html><html lang=\"en\"><meta ",
+            "charset=\"utf-8\"><title>Analyte ",
+        ))
+        .markup(concat!(
+            "overview</title><h1>Analyte ",
+            "overview</h1><p>Operator actions require an ",
+            "authenticated ",
+        ))
+        .markup("session and a reason.</p><dl>");
+    html.push_markup("</dl>");
+    html.push_markup(super::pages::NAV);
+    html.push_markup("<dl>");
     let now = jiff::Timestamp::now().as_second();
     render_alerts(state, &mut html, now).await?;
     render_alert_endpoints(&state.store, &state.alert_endpoints, &mut html, now).await?;
@@ -76,15 +92,27 @@ async fn render(state: &Context) -> Result<String, Error> {
         .store
         .request(until, |s| s.analyzer_cancelled_count())
         .await?;
-    html.push_str(&format!("<dt><strong>Analyzer-cancelled AWOSs</strong></dt><dd><strong>{cancelled}</strong> ? <a href=\"/analyzer-cancelled\">Review cancellation evidence and reconcile app intent</a></dd>"));
+    html.push_fragment(
+        &Markup::new()
+            .markup(concat!(
+                "<dt><strong>Analyzer-cancelled ",
+                "AWOSs</strong></dt><dd><strong>",
+            ))
+            .text(cancelled)
+            .markup(concat!(
+                "</strong> — <a href=\"/analyzer-cancelled\">Review ",
+                "cancellation evidence and reconcile app ",
+            ))
+            .markup("intent</a></dd>"),
+    );
     render_uncertain_orders(state, &mut html, until).await?;
     render_destinations(state, &mut html, now).await?;
     render_machines(state, &mut html, until).await?;
-    html.push_str("</dl></html>");
+    html.push_markup("</dl></html>");
     Ok(html)
 }
 
-async fn render_alerts(state: &Context, html: &mut String, now: i64) -> Result<(), Error> {
+async fn render_alerts(state: &Context, html: &mut Markup, now: i64) -> Result<(), Error> {
     let alerts = crate::operator::alerts::active(&state.store).await?;
     row(html, "Active alerts", &alerts.len().to_string());
     for alert in alerts {
@@ -112,7 +140,7 @@ async fn render_alerts(state: &Context, html: &mut String, now: i64) -> Result<(
 
 async fn render_uncertain_orders(
     state: &Context,
-    html: &mut String,
+    html: &mut Markup,
     until: std::time::Instant,
 ) -> Result<(), Error> {
     let mut after = 0;
@@ -140,7 +168,7 @@ async fn render_uncertain_orders(
     Ok(())
 }
 
-async fn render_destinations(state: &Context, html: &mut String, now: i64) -> Result<(), Error> {
+async fn render_destinations(state: &Context, html: &mut Markup, now: i64) -> Result<(), Error> {
     let mut oldest = None;
     let mut pending = false;
     let mut unknown_age = false;
@@ -190,7 +218,7 @@ async fn render_destinations(state: &Context, html: &mut String, now: i64) -> Re
 
 async fn render_machines(
     state: &Context,
-    html: &mut String,
+    html: &mut Markup,
     until: std::time::Instant,
 ) -> Result<(), Error> {
     let mut last_activity = BTreeMap::new();
@@ -245,7 +273,7 @@ async fn render_machines(
 async fn render_alert_endpoints(
     store: &analyte_store::Handle,
     configured: &[analyte_model::Identifier],
-    html: &mut String,
+    html: &mut Markup,
     now: i64,
 ) -> Result<(), Error> {
     let lines = crate::operator::notification_status::snapshot(store, configured, now).await?;
@@ -297,7 +325,7 @@ mod webhook_tests {
                 s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)
             })
             .await?;
-        let mut html = String::new();
+        let mut html = Markup::new();
         render_alert_endpoints(
             &store,
             &[analyte_model::Identifier::new("missing")?],
@@ -314,7 +342,10 @@ mod webhook_tests {
         ] {
             assert!(html.contains(field));
         }
-        assert!(html.contains("alert_endpoint=missing state=unavailable pending_count=unknown"));
+        assert!(html.contains(concat!(
+            "alert_endpoint=missing state=unavailable ",
+            "pending_count=unknown",
+        )));
         let program = crate::installation::config::Program::load(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml"),
         )?;

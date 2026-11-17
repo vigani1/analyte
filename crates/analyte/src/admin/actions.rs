@@ -1,6 +1,7 @@
 //! Runs audited operator actions with GET confirmations and CSRF-checked POST requests.
-use super::{escape, pages::NAV, server::Context, sessions::Session};
+use super::{pages::NAV, server::Context, sessions::Session};
 use crate::admin::Error;
+use crate::admin::markup::Markup;
 use crate::deadline;
 use analyte_model::{DeliveryId, Reason};
 use analyte_store::DeliveryState;
@@ -23,34 +24,72 @@ pub(super) struct Confirmation {
     acknowledge_superseded: bool,
 }
 
-fn page(title: &str, body: &str) -> Response {
-    Html(format!("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>{}</title>{NAV}<h1>{}</h1>{body}</html>", escape(title), escape(title))).into_response()
+fn page(title: &str, body: &Markup) -> Response {
+    Html(
+        Markup::new()
+            .markup(concat!(
+                "<!doctype html><html lang=\"en\"><meta ",
+                "charset=\"utf-8\"><title>",
+            ))
+            .text(title)
+            .markup("</title>")
+            .markup(NAV)
+            .markup("<h1>")
+            .text(title)
+            .markup("</h1>")
+            .fragment(body)
+            .markup("</html>"),
+    )
+    .into_response()
 }
 fn failure(error: &dyn std::error::Error) -> Response {
     (
         StatusCode::CONFLICT,
-        Html(format!(
-            "{NAV}<h1>Action refused</h1><p>{}</p>",
-            escape(&error.to_string())
-        )),
+        Html(
+            Markup::new()
+                .markup(NAV)
+                .markup("<h1>Action refused</h1><p>")
+                .text(error.to_string())
+                .markup("</p>"),
+        ),
     )
         .into_response()
 }
 fn id(text: &str) -> Result<DeliveryId, Error> {
     Ok(uuid::Uuid::parse_str(text)?.try_into()?)
 }
-fn form(session: &Session, route: &str, label: &str, superseded: bool) -> String {
+fn form(session: &Session, route: &str, label: &str, superseded: bool) -> Markup {
     let acknowledgement = if superseded {
-        "<label><input type=\"checkbox\" name=\"acknowledge_superseded\" value=\"true\">I explicitly request this delivery even if a newer revision exists.</label>"
+        concat!(
+            concat!(
+                "<label><input type=\"checkbox\" ",
+                "name=\"acknowledge_superseded\" value=\"true\">I ",
+            ),
+            concat!(
+                "explicitly request this delivery even if a newer ",
+                "revision exists.</label>",
+            ),
+        )
     } else {
         ""
     };
-    format!(
-        "<form action=\"{}\" method=\"post\"><input type=\"hidden\" name=\"csrf\" value=\"{}\"><input type=\"hidden\" name=\"confirm\" value=\"yes\"><label>Reason <input name=\"reason\" required maxlength=\"256\"></label>{acknowledgement}<button>{}</button></form>",
-        escape(route),
-        escape(session.csrf.form_value()),
-        escape(label)
-    )
+    Markup::new()
+        .markup("<form action=\"")
+        .text(route)
+        .markup(concat!(
+            "\" method=\"post\"><input type=\"hidden\" name=\"csrf\" ",
+            "value=\"",
+        ))
+        .text(session.csrf.form_value())
+        .markup(concat!(
+            "\"><input type=\"hidden\" name=\"confirm\" ",
+            "value=\"yes\"><label>Reason <input name=\"reason\" ",
+        ))
+        .markup("required maxlength=\"256\"></label>")
+        .markup(acknowledgement)
+        .markup("<button>")
+        .text(label)
+        .markup("</button></form>")
 }
 
 pub(super) async fn deliveries(
@@ -77,28 +116,38 @@ pub(super) async fn deliveries(
     match result {
         Ok(rows) => {
             let rows: Vec<_> = rows.into_iter().take(super::pages::PAGE).collect();
-            let mut html = String::new();
+            let mut html = Markup::new();
             for row in &rows {
                 let delivery = uuid::Uuid::from(row.id);
-                html.push_str(&format!(
-                    "<section><h2>{delivery}</h2><p>Destination: {}. State: {}.</p>",
-                    escape(row.destination.as_str()),
-                    row.state
-                ));
+                html.push_fragment(
+                    &Markup::new()
+                        .markup("<section><h2>")
+                        .text(delivery)
+                        .markup("</h2><p>Destination: ")
+                        .text(row.destination.as_str())
+                        .markup(". State: ")
+                        .text(row.state)
+                        .markup(".</p>"),
+                );
                 match row.state {
                     DeliveryState::Done | DeliveryState::Parked | DeliveryState::Paused => html
-                        .push_str(&format!(
-                            "<a href=\"/deliveries/{delivery}/resend\">Resend this delivery</a>"
-                        )),
+                        .push_fragment(
+                            &Markup::new()
+                                .markup("<a href=\"/deliveries/")
+                                .text(delivery)
+                                .markup("/resend\">Resend this delivery</a>"),
+                        ),
                     DeliveryState::Pending | DeliveryState::InFlight | DeliveryState::Conflict => {}
                 }
-                html.push_str("</section>");
+                html.push_markup("</section>");
             }
             if let Some(last) = rows.last() {
-                html.push_str(&format!(
-                    "<a rel=\"next\" href=\"/deliveries?after={}\">Next page</a>",
-                    last.sequence
-                ));
+                html.push_fragment(
+                    &Markup::new()
+                        .markup("<a rel=\"next\" href=\"/deliveries?after=")
+                        .text(last.sequence)
+                        .markup("\">Next page</a>"),
+                );
             }
             page("Deliveries", &html)
         }
@@ -129,16 +178,22 @@ pub(super) async fn confirm_reprocess(
     {
         Ok(receipt) => page(
             "Confirm reprocess",
-            &format!(
-                "<p>Reinterpret original receipt {} with the current configuration. A new version is retained; results use the normal revision rules. This never sends work to a machine.</p>{}",
-                uuid::Uuid::from(receipt),
-                form(
-                    &session,
-                    &format!("/parked/{parked}/reprocess"),
-                    "Confirm reprocess",
-                    false
-                )
-            ),
+            &Markup::new()
+                .markup("<p>Reinterpret original receipt ")
+                .text(uuid::Uuid::from(receipt))
+                .markup(concat!(
+                    " with the current configuration. A new version is ",
+                    "retained; results use the normal ",
+                ))
+                .markup("revision rules. This never sends work to a machine.</p>")
+                .fragment(
+                    &(form(
+                        &session,
+                        &format!("/parked/{parked}/reprocess"),
+                        "Confirm reprocess",
+                        false,
+                    )),
+                ),
         ),
         Err(error) => failure(&error),
     }
@@ -174,18 +229,26 @@ pub(super) async fn confirm_resend(
     {
         Ok(row) => page(
             "Confirm resend",
-            &format!(
-                "<p>Resend delivery {} to {} with its original ID and exact bytes. Recorded state: {}. The app treats a repeat as already done. The store checks eligibility again on confirmation.</p>{}",
-                uuid::Uuid::from(delivery),
-                escape(row.destination.as_str()),
-                row.state,
-                form(
-                    &session,
-                    &format!("/deliveries/{}/resend", uuid::Uuid::from(delivery)),
-                    "Confirm resend",
-                    true
-                )
-            ),
+            &Markup::new()
+                .markup("<p>Resend delivery ")
+                .text(uuid::Uuid::from(delivery))
+                .markup(" to ")
+                .text(row.destination.as_str())
+                .markup(" with its original ID and exact bytes. Recorded state: ")
+                .text(row.state)
+                .markup(concat!(
+                    ". The app treats a repeat as already done. The ",
+                    "store checks eligibility again on ",
+                ))
+                .markup("confirmation.</p>")
+                .fragment(
+                    &(form(
+                        &session,
+                        &format!("/deliveries/{}/resend", uuid::Uuid::from(delivery)),
+                        "Confirm resend",
+                        true,
+                    )),
+                ),
         ),
         Err(error) => failure(&error),
     }
@@ -227,11 +290,15 @@ pub(super) async fn reprocess(
     match result {
         Ok(commit) => page(
             "Reprocess recorded",
-            &format!(
-                "<p>Interpretation {} recorded. Decisions: {}. <a href=\"/parked\">Inspect remaining parked reasons</a>.</p>",
-                commit.version,
-                crate::operator::display::list(&commit.outcomes)
-            ),
+            &Markup::new()
+                .markup("<p>Interpretation ")
+                .text(commit.version)
+                .markup(" recorded. Decisions: ")
+                .text(crate::operator::display::list(&commit.outcomes))
+                .markup(concat!(
+                    ". <a href=\"/parked\">Inspect remaining parked ",
+                    "reasons</a>.</p>",
+                )),
         ),
         Err(error) => failure(&error),
     }
@@ -261,7 +328,10 @@ pub(super) async fn resend(
     match result {
         Ok(()) => page(
             "Resend queued",
-            "<p>The original delivery ID and bytes are queued for the app.</p>",
+            &Markup::new().markup(concat!(
+                "<p>The original delivery ID and bytes are queued ",
+                "for the app.</p>",
+            )),
         ),
         Err(error) => failure(&error),
     }
