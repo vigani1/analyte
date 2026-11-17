@@ -42,7 +42,7 @@ pub(crate) fn dialog(
         },
         settings.settings().syntax().limits().bytes(),
         settings.settings().syntax().limits().records(),
-        true,
+        analyte_dialog::astm::Interrupt::Honor,
     )?
     .with_record_boundaries(record_boundaries(settings))
     .with_checksum_hex(checksum_policy(settings));
@@ -58,6 +58,9 @@ pub(crate) fn record_boundaries(
         analyte_framing::astm::RecordBoundaries::Separate
     }
 }
+// ADR 0002: ChecksumHex owns stable serialized configuration spellings saved
+// with receipts; HexPolicy owns framing behavior without a serde dependency.
+// Translate once at host assembly, keeping configuration out of the framer.
 pub(crate) fn checksum_policy(
     settings: &analyte_config::AstmStack,
 ) -> analyte_framing::astm::HexPolicy {

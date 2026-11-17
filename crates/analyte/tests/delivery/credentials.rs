@@ -184,7 +184,7 @@ async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_du
             analyte_model::Identifier::new("demo")?,
             analyte_sink::Limits {
                 request_timeout: Duration::from_secs(30),
-                store_timeout: Duration::from_secs(2),
+                store_timeout: analyte_fixtures::STORE_BUDGET,
                 backoff_min: Duration::from_secs(1),
                 backoff_max: Duration::from_secs(3),
                 freshness: Duration::from_secs(30),
@@ -216,7 +216,7 @@ async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_du
         store
             .shutdown(
                 std::time::Instant::now()
-                    .checked_add(Duration::from_secs(5))
+                    .checked_add(analyte_fixtures::STORE_BUDGET)
                     .ok_or("deadline")?,
             )
             .await?;

@@ -59,6 +59,23 @@ impl Custody {
     pub(crate) fn fed(&mut self) {
         self.fed = self.fed.saturating_add(1);
     }
+    /// Feeds the next byte while retaining the original read for interruption evidence.
+    pub(crate) fn next(&mut self) -> Option<u8> {
+        let byte = self.bytes.get(self.fed).copied()?;
+        self.fed();
+        Some(byte)
+    }
+    /// LAW returns the just-fed byte when it first closes the preceding envelope.
+    #[expect(
+        clippy::expect_used,
+        reason = "LAW Unconsumed returns the byte just fed through next"
+    )]
+    pub(crate) fn replay_last(&mut self) {
+        self.fed = self
+            .fed
+            .checked_sub(1)
+            .expect("Unconsumed follows a fed byte");
+    }
     pub(crate) fn complete(&mut self) {
         self.bytes.clear();
         self.fed = 0;
@@ -96,6 +113,19 @@ impl Custody {
 mod tests {
     use super::*;
     use analyte_transport::recording::Failure;
+
+    #[test]
+    fn adr0003_law_unconsumed_byte_replays_before_untouched_tail() {
+        let mut input = Custody::default();
+        input.begin(b"abc");
+        assert_eq!(input.next(), Some(b'a'));
+        input.replay_last();
+        assert_eq!(input.next(), Some(b'a'));
+        assert_eq!(input.fed, 1);
+        assert_eq!(input.next(), Some(b'b'));
+        assert_eq!(input.next(), Some(b'c'));
+        assert_eq!(input.next(), None);
+    }
 
     #[test]
     fn adr0009_recorder_failure_never_reaches_a_protocol_host() {

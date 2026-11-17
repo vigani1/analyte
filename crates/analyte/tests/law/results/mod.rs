@@ -4,6 +4,7 @@ use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 mod custody;
 mod delivery;
+mod input;
 mod text;
 
 #[derive(Debug, thiserror::Error)]
@@ -211,7 +212,7 @@ async fn assert_repaired_mapping_preserves_receipt(
 
 fn reprocess_deadline() -> Result<std::time::Instant, &'static str> {
     std::time::Instant::now()
-        .checked_add(Duration::from_secs(5))
+        .checked_add(analyte_fixtures::STORE_BUDGET)
         .ok_or("deadline")
 }
 

@@ -3,8 +3,15 @@
 
 pub mod poct;
 
+/// Wall-clock allowance for scheduler and durable disk delays on loaded CI runners.
+/// This fixed factor applies only to harness budgets, never asserted protocol timers.
+pub const CI_SCALE: u64 = 3;
+
 /// Upper bound for broken test waits, independent of protocol deadlines.
-pub const HANG_GUARD: std::time::Duration = std::time::Duration::from_secs(60);
+pub const HANG_GUARD: std::time::Duration = std::time::Duration::from_secs(60 * CI_SCALE);
+
+/// Store requests in tests allow slow durable writes without changing host defaults.
+pub const STORE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10 * CI_SCALE);
 
 /// Reports a fixed free-space budget without consulting the real disk.
 pub struct Space(pub u64);

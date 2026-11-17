@@ -96,9 +96,9 @@ mod tests {
         assert!(
             matches!(hl7, Error::Hl7(error) if matches!(*error, super::super::hl7::Error::MessageRefused))
         );
-        let law = Error::from(super::super::law::Error::InputStillAwaitsCustody);
+        let law = Error::from(super::super::law::Error::ConnectionDeadlineOverflow);
         assert!(
-            matches!(law, Error::Law(error) if matches!(*error, super::super::law::Error::InputStillAwaitsCustody))
+            matches!(law, Error::Law(error) if matches!(*error, super::super::law::Error::ConnectionDeadlineOverflow))
         );
         let poct = Error::from(super::super::poct::Error::MessageLimitExceeded);
         assert!(
