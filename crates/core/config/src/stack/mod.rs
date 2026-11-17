@@ -38,6 +38,7 @@ mod order_tables;
 pub use order_tables::OrderTables;
 use order_tables::order_tables;
 mod capabilities;
+pub use capabilities::Hl7OptionsSource;
 pub(crate) use capabilities::RecordKind;
 mod settings;
 pub use settings::{StackSettings, SyntaxBounds};

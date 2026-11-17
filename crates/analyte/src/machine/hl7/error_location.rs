@@ -14,30 +14,10 @@ pub(crate) fn mapping_location(
     let position = match mapping {
         Ok(output) => output.findings.first()?.position,
         Err(crate::machine::interpretation::ReadError::Mapping(error)) => {
-            use crate::reading::Error as Read;
-            let error = match error {
-                Read::Hl7(error) => return syntax_location(error, raw, ending),
-                Read::Mapping(error) => error,
-                Read::LawMapping(error) => match error {
-                    analyte_mapping::law::Error::Mapping(error) => error,
-                    analyte_mapping::law::Error::MissingHeader
-                    | analyte_mapping::law::Error::NoticeOrder
-                    | analyte_mapping::law::Error::NoticePosition => return None,
-                },
-                Read::Astm(_)
-                | Read::Law(_)
-                | Read::Poct(_)
-                | Read::Vidas(_)
-                | Read::Autolyser(_)
-                | Read::AstmFrame(_)
-                | Read::AstmReceipt(_)
-                | Read::MllpFrame(_)
-                | Read::MllpReceipt(_)
-                | Read::VidasFrame(_)
-                | Read::AutolyserFrame(_)
-                | Read::Encoding(_)
-                | Read::Evidence(_)
-                | Read::Context(_) => return None,
+            let error = match error.hl7_mapping_error() {
+                Some(Ok(source)) => return syntax_location(source, raw, ending),
+                Some(Err(error)) => error,
+                None => return None,
             };
             match error {
                 analyte_mapping::Error::Limit { position, .. }

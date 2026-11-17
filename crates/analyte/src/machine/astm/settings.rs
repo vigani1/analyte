@@ -1,5 +1,4 @@
 //! Translates installed ASTM syntax and dialog settings.
-use analyte_config::{RecordTransport, Stack};
 use analyte_dialog::astm::{Config, Role, Timers};
 use std::time::Duration;
 /// Supplies the LIS02 parser with the configured resource ceilings.
@@ -16,16 +15,7 @@ pub(crate) fn parser_limits(syntax: &analyte_config::AstmSyntax) -> analyte_astm
 /// Returns LIS02 parser limits only for ASTM record stacks.
 #[must_use]
 pub(crate) fn limits(effective: &analyte_config::Effective) -> Option<analyte_astm::Limits> {
-    match effective.stack() {
-        Stack::Astm(RecordTransport::Stream(s)) => Some(parser_limits(s.settings().syntax())),
-        Stack::Astm(RecordTransport::Folder(s)) => Some(parser_limits(s.settings().syntax())),
-        Stack::Hl7(RecordTransport::Stream(_))
-        | Stack::Law(_)
-        | Stack::Poct(_)
-        | Stack::Vidas(_)
-        | Stack::Autolyser(_)
-        | Stack::Hl7(RecordTransport::Folder(_)) => None,
-    }
+    effective.stack().astm_syntax().map(parser_limits)
 }
 
 pub(crate) fn dialog(

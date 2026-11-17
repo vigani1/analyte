@@ -210,3 +210,73 @@ impl crate::StackChoice {
         }
     }
 }
+
+/// Validated source of HL7 parsing options, including the fixed LAW profile.
+pub enum Hl7OptionsSource<'a> {
+    /// Configurable HL7 grammar.
+    Syntax(&'a super::Hl7Syntax),
+    /// LAW fixes encoding, terminator and escapes and supplies resource limits.
+    Law(&'a LawStack),
+}
+impl Stack {
+    /// Borrows ASTM syntax for either stream or complete-file records.
+    #[must_use]
+    pub fn astm_syntax(&self) -> Option<&super::AstmSyntax> {
+        match self {
+            Self::Astm(RecordTransport::Stream(s)) => Some(s.settings().syntax()),
+            Self::Astm(RecordTransport::Folder(s)) => Some(s.settings().syntax()),
+            Self::Hl7(_) | Self::Law(_) | Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => {
+                None
+            }
+        }
+    }
+    /// Borrows the HL7 parser option source when this grammar is supported.
+    #[must_use]
+    pub fn hl7_options_source(&self) -> Option<Hl7OptionsSource<'_>> {
+        match self {
+            Self::Hl7(RecordTransport::Stream(s)) => {
+                Some(Hl7OptionsSource::Syntax(s.settings().syntax()))
+            }
+            Self::Hl7(RecordTransport::Folder(s)) => {
+                Some(Hl7OptionsSource::Syntax(s.settings().syntax()))
+            }
+            Self::Law(s) => Some(Hl7OptionsSource::Law(s)),
+            Self::Astm(_) | Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => None,
+        }
+    }
+    /// Borrows HL7 syntax and mappings for retained interpretation.
+    #[must_use]
+    pub fn hl7_record_settings(&self) -> Option<(&super::Hl7Syntax, &super::Mappings)> {
+        match self {
+            Self::Hl7(RecordTransport::Stream(s)) => {
+                Some((s.settings().syntax(), s.settings().codes()))
+            }
+            Self::Hl7(RecordTransport::Folder(s)) => {
+                Some((s.settings().syntax(), s.settings().codes()))
+            }
+            Self::Law(_) | Self::Astm(_) | Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => {
+                None
+            }
+        }
+    }
+    /// Bounds durable custody by both the transport and protocol commit deadlines.
+    #[must_use]
+    pub fn commit_budget_ms(&self) -> u32 {
+        let operation = self.operation_timeout_ms();
+        match self {
+            Self::Vidas(s) => operation.min(s.policy().commit_ms),
+            Self::Autolyser(s) => operation.min(s.policy().storage_ms),
+            Self::Astm(_) | Self::Hl7(_) | Self::Law(_) | Self::Poct(_) => operation,
+        }
+    }
+    /// Names vendor interpretation diagnostics; record protocols need no prefix.
+    #[must_use]
+    pub const fn interpretation_prefix(&self) -> &'static str {
+        match self {
+            Self::Vidas(_) => "VIDAS interpretation: ",
+            Self::Autolyser(_) => "Autolyser interpretation: ",
+            Self::Poct(_) => "POCT interpretation: ",
+            Self::Astm(_) | Self::Hl7(_) | Self::Law(_) => "",
+        }
+    }
+}
