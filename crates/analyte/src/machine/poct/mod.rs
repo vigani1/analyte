@@ -33,18 +33,9 @@ enum Close {
     Drain,
     Complete,
 }
-enum Parsed {
-    Message(Box<Message>),
-    Skip,
-    Close,
-}
-
 struct ConnectionState {
     dialog: Dialog,
     start: Instant,
-    raw: Vec<u8>,
-    framer: analyte_framing::poct::Decoder,
-    limits: analyte_poct::Limits,
 }
 
 impl ConnectionState {
@@ -53,6 +44,7 @@ impl ConnectionState {
         let limits = super::interpretation::poct_limits(settings);
         let dialog = Dialog::new(
             Config {
+                depth: policy.depth,
                 pending_messages: policy.pending_messages,
                 message_bytes: limits.message_bytes,
                 response_timeout: ms(policy.response_ms),
@@ -61,15 +53,7 @@ impl ConnectionState {
             ControlId::new(&uuid::Uuid::now_v7().simple().to_string())?,
         )?;
         let start = Instant::now();
-        let raw = Vec::new();
-        let framer = analyte_framing::poct::Decoder::new(limits.message_bytes, policy.depth);
-        Ok(Self {
-            dialog,
-            start,
-            raw,
-            framer,
-            limits,
-        })
+        Ok(Self { dialog, start })
     }
 
     async fn receive_loop(
@@ -162,74 +146,44 @@ impl ConnectionState {
         conn: &mut analyte_transport::Connection,
         stop: &watch::Receiver<bool>,
     ) -> Result<bool, Error> {
-        let start = self.start;
-        let limits = self.limits;
-        let Self {
-            dialog,
-            raw,
-            framer,
-            ..
-        } = self;
         for byte in bytes {
-            if raw.len() >= limits.message_bytes {
-                intake::park_bytes(store, machine, std::mem::take(raw), ByteReason::PoctLimit)
-                    .await?;
-                return Err(Error::MessageLimitExceeded);
-            }
-            raw.push(byte);
+            let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
             if *stop.borrow() {
-                intake::park_bytes(
-                    store,
-                    machine,
-                    std::mem::take(raw),
-                    ByteReason::PoctCancelled,
-                )
-                .await?;
+                let mut raw = self.dialog.take_input();
+                for action in actions {
+                    if let Action::Input(wire)
+                    | Action::InputLimit(wire)
+                    | Action::InputDeadline(wire) = action
+                    {
+                        raw.extend(wire);
+                    }
+                }
+                intake::park_bytes(store, machine, raw, ByteReason::PoctCancelled).await?;
                 return Ok(true);
             }
-            if byte != b'>' {
-                continue;
-            }
-            let actions = dialog.step(start.elapsed(), Event::Tick)?;
-            if process(actions, dialog, start, machine, store, conn, settings).await? {
-                intake::park_bytes(
-                    store,
-                    machine,
-                    std::mem::take(raw),
-                    ByteReason::PoctDeadline,
-                )
-                .await?;
-                return Ok(true);
-            }
-            let length = match framer.scan(raw) {
-                Ok(Some(length)) => length,
-                Ok(None) => continue,
-                // Parse the retained bytes through the syntax boundary to
-                // classify a framing failure and recover a Hello header.
-                Err(_) => raw.len(),
-            };
-            let wire = raw
-                .get(..length)
-                .ok_or_else(|| Error::FramingLength)?
-                .to_vec();
-            raw.drain(..length);
-            framer.reset();
-            let message =
-                match parse_message(wire, dialog, start, machine, settings, store, conn).await? {
-                    Parsed::Message(message) => message,
-                    Parsed::Skip => continue,
-                    Parsed::Close => return Ok(true),
-                };
-            let actions = dialog.step(start.elapsed(), Event::Received(message))?;
-            if process(actions, dialog, start, machine, store, conn, settings).await? {
+            if process(
+                actions,
+                &mut self.dialog,
+                self.start,
+                machine,
+                store,
+                conn,
+                settings,
+            )
+            .await?
+            {
                 return Ok(true);
             }
         }
         Ok(false)
     }
 
-    async fn close(self, machine: &intake::Connection<'_>, store: &Handle) -> Result<(), Error> {
-        let raw = self.raw;
+    async fn close(
+        mut self,
+        machine: &intake::Connection<'_>,
+        store: &Handle,
+    ) -> Result<(), Error> {
+        let raw = self.dialog.take_input();
         if !raw.is_empty() {
             intake::park_bytes(store, machine, raw, ByteReason::PoctIncomplete).await?;
         }
@@ -237,38 +191,54 @@ impl ConnectionState {
     }
 }
 
-async fn parse_message(
+async fn interpret_input(
     wire: Vec<u8>,
     dialog: &mut Dialog,
     start: Instant,
     machine: &intake::Connection<'_>,
-    settings: &analyte_config::PoctStack,
     store: &Handle,
-    conn: &mut analyte_transport::Connection,
-) -> Result<Parsed, Error> {
-    let limits = super::interpretation::poct_limits(settings);
+    limits: analyte_poct::Limits,
+) -> Result<Vec<Action>, Error> {
     match Message::parse(&wire, limits) {
-        Ok(message) => Ok(Parsed::Message(Box::new(message))),
+        Ok(message) => Ok(dialog.step(start.elapsed(), Event::Received(Box::new(message)))?),
         Err(error) => {
             let reference = analyte_poct::hello_error_reference(&wire, limits);
             let ack_error = error.acknowledgement_error();
             intake::park_bytes(store, machine, wire, ByteReason::PoctSyntax(&error)).await?;
             if let Some(reference) = reference {
-                let actions = dialog.step(
+                Ok(dialog.step(
                     start.elapsed(),
                     Event::InvalidHello {
                         reference,
                         error: ack_error,
                     },
-                )?;
-                if process(actions, dialog, start, machine, store, conn, settings).await? {
-                    return Ok(Parsed::Close);
-                }
-                return Ok(Parsed::Skip);
+                )?)
+            } else {
+                Err(error.into())
             }
-            Err(error.into())
         }
     }
+}
+
+fn outbound_message(
+    control_id: ControlId,
+    body: &analyte_poct::Outbound,
+    mut limits: analyte_poct::Limits,
+    maximum: usize,
+) -> Result<Message, Error> {
+    limits.message_bytes = limits.message_bytes.min(maximum);
+    Ok(analyte_poct::encode(
+        &Header {
+            control_id,
+            created: Timestamp::parse(
+                &jiff::Timestamp::now()
+                    .strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                    .to_string(),
+            )?,
+        },
+        body,
+        limits,
+    )?)
 }
 
 async fn process(
@@ -287,6 +257,15 @@ async fn process(
     let result = async {
         while let Some(action) = actions.pop_front() {
             match action {
+                Action::Input(wire) => actions
+                    .extend(interpret_input(wire, dialog, start, machine, store, limits).await?),
+                Action::InputLimit(wire) => {
+                    intake::park_bytes(store, machine, wire, ByteReason::PoctLimit).await?;
+                    return Err(Error::MessageLimitExceeded);
+                }
+                Action::InputDeadline(wire) => {
+                    intake::park_bytes(store, machine, wire, ByteReason::PoctDeadline).await?;
+                }
                 Action::InspectHello {
                     device_id: _,
                     capabilities: _,
@@ -316,20 +295,11 @@ async fn process(
                     .await?;
                 }
                 Action::Send { control_id, body } => {
-                    let mut limits = limits;
-                    limits.message_bytes =
-                        limits.message_bytes.min(dialog.outbound_message_limit());
-                    let message = analyte_poct::encode(
-                        &Header {
-                            control_id,
-                            created: Timestamp::parse(
-                                &jiff::Timestamp::now()
-                                    .strftime("%Y-%m-%dT%H:%M:%S+00:00")
-                                    .to_string(),
-                            )?,
-                        },
+                    let message = outbound_message(
+                        control_id,
                         &body,
                         limits,
+                        dialog.outbound_message_limit(),
                     )?;
                     custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
                 }

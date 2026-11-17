@@ -8,7 +8,7 @@ use super::custody::{self, ms};
 use crate::intake;
 mod error;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
-use analyte_framing::vidas::{Config, Decoder};
+use analyte_framing::vidas::Config;
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_vidas::syntax::Message;
@@ -19,8 +19,6 @@ use tokio::sync::watch;
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
 struct ConnectionState {
     dialog: Dialog,
-    decoder: Option<Decoder>,
-    suffix: Option<(u8, usize)>,
     start: Instant,
     actions: VecDeque<Action>,
     active: Option<analyte_store::MachineOrder>,
@@ -69,8 +67,6 @@ impl ConnectionState {
         let actions = dialog.start().into();
         Ok(Self {
             dialog,
-            decoder: None,
-            suffix: None,
             start: Instant::now(),
             actions,
             active: None,
@@ -158,61 +154,28 @@ impl ConnectionState {
     ) -> Result<bool, Error> {
         self.idle = false;
         for byte in bytes {
-            self.actions
-                .extend(self.dialog.step(self.start.elapsed(), Event::Activity)?);
+            match self.dialog.step(self.start.elapsed(), Event::Byte(byte)) {
+                Ok(actions) => self.actions.extend(actions),
+                Err(analyte_dialog::vidas::Error::Framing(error)) => {
+                    let reason = if error == analyte_framing::vidas::Error::ControlSuffix {
+                        self.end_code = VidasEnd::ControlSuffixMismatch;
+                        ByteReason::VidasSuffix
+                    } else {
+                        self.end_code = VidasEnd::FramingError;
+                        ByteReason::VidasFrame(&error)
+                    };
+                    intake::park_bytes(store, machine, vec![byte], reason).await?;
+                    return Err(if error == analyte_framing::vidas::Error::ControlSuffix {
+                        Error::ControlSuffixMismatch
+                    } else {
+                        error.into()
+                    });
+                }
+                Err(error) => return Err(error.into()),
+            }
+            // Process Store before consuming a merged ETX/EOT following it.
             if process(self, machine, store, conn, installed).await? {
                 return Ok(true);
-            }
-            let event = if let Some(decoder) = &mut self.decoder {
-                match Decoder::push(decoder, byte) {
-                    Ok(Some(packet)) => Some(Event::Packet(packet)),
-                    Ok(None) => None,
-                    Err(error) => {
-                        self.end_code = VidasEnd::FramingError;
-                        intake::park_bytes(
-                            store,
-                            machine,
-                            vec![byte],
-                            ByteReason::VidasFrame(&error),
-                        )
-                        .await?;
-                        return Err(error.into());
-                    }
-                }
-            } else if let Some((control, index)) = self.suffix {
-                if installed.suffix.get(index) != Some(&byte) {
-                    self.end_code = VidasEnd::ControlSuffixMismatch;
-                    intake::park_bytes(store, machine, vec![byte], ByteReason::VidasSuffix).await?;
-                    return Err(Error::ControlSuffixMismatch);
-                }
-                if index.saturating_add(1) == installed.suffix.len() {
-                    self.suffix = None;
-                    Some(Event::Control(control))
-                } else {
-                    self.suffix = Some((control, index.saturating_add(1)));
-                    None
-                }
-            } else if byte == analyte_framing::vidas::STX {
-                let mut next = Decoder::new(self.config.clone());
-                next.push(byte)?;
-                self.decoder = Some(next);
-                None
-            } else if installed.suffix.is_empty() {
-                Some(Event::Control(byte))
-            } else {
-                self.suffix = Some((byte, 0usize));
-                None
-            };
-            if let Some(event) = event {
-                if matches!(event, Event::Packet(_)) {
-                    self.decoder = None;
-                }
-                self.actions
-                    .extend(self.dialog.step(self.start.elapsed(), event)?);
-                // Process Store before consuming a merged ETX/EOT following it.
-                if process(self, machine, store, conn, installed).await? {
-                    return Ok(true);
-                }
             }
         }
         Ok(false)
