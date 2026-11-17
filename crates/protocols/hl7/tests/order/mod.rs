@@ -7,6 +7,8 @@ use analyte_hl7::order::{
 };
 use analyte_hl7::{AckCode, ControlId, Message, Options, Version, decode_text};
 mod commands;
+mod editions;
+mod laboratory;
 mod responses;
 
 fn header(version: Version) -> Result<Header<'static>, Error> {
@@ -94,7 +96,3 @@ fn orc(control: &[u8], placer: &[u8], filler: &[u8], status: &[u8], reason: &[u8
     bytes.push(b'\r');
     bytes
 }
-
-mod editions;
-
-mod laboratory;
