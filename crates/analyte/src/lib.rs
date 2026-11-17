@@ -25,10 +25,16 @@ pub(crate) fn invalid(message: &str) -> Error {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, message).into()
 }
 
-pub(crate) fn deadline() -> std::time::Instant {
-    std::time::Instant::now()
-        .checked_add(STORE_OPERATION_BUDGET)
-        .unwrap_or(std::time::Instant::now())
+pub(crate) fn deadline() -> Result<std::time::Instant, analyte_store::Error> {
+    storage_deadline(std::time::Instant::now(), STORE_OPERATION_BUDGET)
+}
+
+fn storage_deadline(
+    now: std::time::Instant,
+    budget: std::time::Duration,
+) -> Result<std::time::Instant, analyte_store::Error> {
+    now.checked_add(budget)
+        .ok_or(analyte_store::Error::DeadlineOverflow)
 }
 
 /// Opens the store using the operating system volume probe.
@@ -49,4 +55,15 @@ pub(crate) fn test_startup_deadline() -> Result<std::time::Instant, Error> {
     std::time::Instant::now()
         .checked_add(test_guard::HANG_GUARD)
         .ok_or_else(|| invalid("test startup deadline overflow"))
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    #[test]
+    fn overflowing_store_deadline_is_specific() {
+        assert!(matches!(
+            super::storage_deadline(std::time::Instant::now(), std::time::Duration::MAX),
+            Err(analyte_store::Error::DeadlineOverflow)
+        ));
+    }
 }

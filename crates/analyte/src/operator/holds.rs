@@ -74,11 +74,11 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
     };
     let mut store = crate::open_system_store(program).await?;
     let result = store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             store.set_retention_hold(&target, !release, &audit)
         })
         .await;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     result?;
     super::output::line("Retention hold updated.")?;
     Ok(())

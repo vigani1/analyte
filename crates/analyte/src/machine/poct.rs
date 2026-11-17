@@ -373,7 +373,7 @@ async fn store_message(
     match message.body() {
         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
             let receipt = store
-                .request(crate::deadline(), move |s| {
+                .request(crate::deadline()?, move |s| {
                     s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
                 })
                 .await?;

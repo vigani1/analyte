@@ -35,13 +35,13 @@ pub(super) async fn cancelled(
 ) -> Response {
     finish(async {
         let after=i64::try_from(cursor.after)?;
-        let rows=state.store.request(deadline(),move |s|s.analyzer_cancelled_items(after)).await?;
+        let rows=state.store.request(deadline()?,move |s|s.analyzer_cancelled_items(after)).await?;
         let mut html=start("Analyzer-cancelled AWOSs — reconciliation required");
         html.push_str("<p><strong>Review each affected AWOS with the lab and lab app.</strong> Analyzer CA does not confirm an app cancellation, cancel siblings or authorize another machine command. This condition is not sent to contract v1 apps.</p>");
         for row in &rows {
             html.push_str(&format!("<section><h2>Machine {} — order {} item {}</h2><p>App order: {}. Reserved version: {}.</p>{}",escape(row.order.key.machine.as_str()),row.order.id,row.item.index,escape(row.order.key.order.as_str()),row.order.version,projection(&row.item)));
             let destination=row.order.key.destination.clone();let order=row.order.key.order.clone();
-            let cached=state.store.request(deadline(),move |s|s.cached_order(&destination,&order)).await?;
+            let cached=state.store.request(deadline()?,move |s|s.cached_order(&destination,&order)).await?;
             if let Some(cached)=cached {
                 let document: serde_json::Value=serde_json::from_str(&cached.document)?;
                 html.push_str(&format!("<p>Current app intent: {}. Reconcile any pending cancel through its original LAB-28 response; no CR is inferred from CA.</p>",escape(&document.get("state").map_or_else(||"unknown".into(),ToString::to_string))));
@@ -60,7 +60,7 @@ pub(super) async fn detail(
 ) -> Response {
     finish(async {
         let after=i64::try_from(cursor.after)?;
-        let (retained,rows)=state.store.request(deadline(),move |s|Ok((s.machine_order_by_id(order)?,s.law_work_evidence(order,item,after)?))).await?;
+        let (retained,rows)=state.store.request(deadline()?,move |s|Ok((s.machine_order_by_id(order)?,s.law_work_evidence(order,item,after)?))).await?;
         let item=retained.items.iter().find(|i|i.index==item).ok_or(Error::AwosItemNotRetained)?;
         let mut html=start("AWOS execution history");
         html.push_str(&projection(item));

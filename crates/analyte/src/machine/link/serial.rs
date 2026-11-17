@@ -24,7 +24,7 @@ impl Owner {
         self.cancellation.cancel();
         // Completion also wakes on panic; the retained join below reports its cause.
         // On timeout or cancellation Drop still owns and joins the worker.
-        let _ = tokio::time::timeout_at(crate::deadline().into(), &mut self.finished)
+        let _ = tokio::time::timeout_at(crate::deadline()?.into(), &mut self.finished)
             .await
             .map_err(Error::SerialOwnerShutdownTimedOut)?;
         if let Some(thread) = self.thread.take() {

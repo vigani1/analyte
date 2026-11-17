@@ -59,11 +59,20 @@ pub(super) async fn deliveries(
 ) -> Response {
     let result = state
         .store
-        .request(deadline(), move |s| {
-            s.deliveries(
-                i64::try_from(cursor.after).map_err(|_| analyte_store::Error::InvalidHostInput)?,
-            )
-        })
+        .request(
+            {
+                match deadline() {
+                    Ok(until) => until,
+                    Err(error) => return failure(&error),
+                }
+            },
+            move |s| {
+                s.deliveries(
+                    i64::try_from(cursor.after)
+                        .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                )
+            },
+        )
         .await;
     match result {
         Ok(rows) => {
@@ -107,7 +116,15 @@ pub(super) async fn confirm_reprocess(
     };
     match state
         .store
-        .request(deadline(), move |s| s.parked_receipt(parked))
+        .request(
+            {
+                match deadline() {
+                    Ok(until) => until,
+                    Err(error) => return failure(&error),
+                }
+            },
+            move |s| s.parked_receipt(parked),
+        )
         .await
     {
         Ok(receipt) => page(
@@ -141,10 +158,18 @@ pub(super) async fn confirm_resend(
     };
     match state
         .store
-        .request(deadline(), move |s| {
-            s.delivery(delivery)?
-                .ok_or(analyte_store::Error::UnknownDelivery)
-        })
+        .request(
+            {
+                match deadline() {
+                    Ok(until) => until,
+                    Err(error) => return failure(&error),
+                }
+            },
+            move |s| {
+                s.delivery(delivery)?
+                    .ok_or(analyte_store::Error::UnknownDelivery)
+            },
+        )
         .await
     {
         Ok(row) => page(

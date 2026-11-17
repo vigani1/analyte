@@ -29,11 +29,11 @@ pub async fn retry(
     };
     let mut store = crate::open_system_store(program).await?;
     let result = store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.retry_failed_alerts(&endpoint, &audit)
         })
         .await;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     result?;
     super::output::line("Exhausted alert events queued with original identities.")?;
     Ok(())

@@ -17,7 +17,7 @@ pub(super) async fn plan(
         return Ok(None);
     };
     let receipt = store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
@@ -102,7 +102,7 @@ pub(super) async fn plan(
                 let target = machine.id.clone();
                 let lookup = placer.clone();
                 let record = store
-                    .request(deadline(), move |s| {
+                    .request(deadline()?, move |s| {
                         match s.machine_order_by_placer(&target, &lookup) {
                             Err(analyte_store::Error::Conflict) => Ok(None),
                             other => other,
@@ -193,7 +193,7 @@ pub(super) async fn work_conflict(
     Ok(
         if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() {
             let receipt = store
-                .request(deadline(), move |s| {
+                .request(deadline()?, move |s| {
                     s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
                 })
                 .await?;

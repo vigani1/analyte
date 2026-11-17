@@ -146,7 +146,7 @@ impl Connection {
             let identity = order.key.clone();
             let code = analyte_model::SourceText::new(code)?;
             let cleanup = store
-                .request(deadline(), move |store| {
+                .request(deadline()?, move |store| {
                     let current = store
                         .machine_order(&identity)?
                         .ok_or(analyte_store::Error::Corruption)?;
@@ -275,7 +275,7 @@ impl Connection {
             acknowledgment: qck,
             display: dsr,
             query_deadline: until.duration_since(clock),
-            failure_deadline: deadline().duration_since(clock),
+            failure_deadline: deadline()?.duration_since(clock),
             acknowledgment_wait: Duration::from_millis(u64::from(layout.acknowledgment_ms)),
         }))
     }
@@ -502,7 +502,7 @@ mod tests {
         .await;
         assert!(result.is_err());
         let (first, second) = store
-            .request(deadline(), move |store| {
+            .request(deadline()?, move |store| {
                 Ok((store.machine_order(&first)?, store.machine_order(&second)?))
             })
             .await?;
@@ -515,7 +515,7 @@ mod tests {
             analyte_model::OrderState::Uncertain
         );
         drop(database);
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
 
@@ -547,7 +547,7 @@ mod tests {
         reserve_original_connection(&store, &key, &owner).await?;
         let lookup = key.clone();
         let good = store
-            .request(deadline(), move |store| store.machine_order(&lookup))
+            .request(deadline()?, move |store| store.machine_order(&lookup))
             .await?
             .ok_or("order")?;
         let mut failed_key = key.clone();
@@ -555,7 +555,7 @@ mod tests {
         reserve_original_connection(&store, &failed_key, &owner).await?;
         let lookup = failed_key.clone();
         let failed = store
-            .request(deadline(), move |store| store.machine_order(&lookup))
+            .request(deadline()?, move |store| store.machine_order(&lookup))
             .await?
             .ok_or("second reservation")?;
         let database = rusqlite::Connection::open(temp.path().join("cleanup-failure.db"))?;
@@ -585,18 +585,18 @@ mod tests {
         assert!(error.to_string().contains("dialog effect failed"));
         assert!(error.source().is_some());
         let current = store
-            .request(deadline(), move |store| store.machine_order(&key))
+            .request(deadline()?, move |store| store.machine_order(&key))
             .await?
             .ok_or("reservation")?;
         assert_eq!(current.state, analyte_model::OrderState::Uncertain);
         let failed = store
-            .request(deadline(), move |store| store.machine_order(&failed_key))
+            .request(deadline()?, move |store| store.machine_order(&failed_key))
             .await?
             .ok_or("failed reservation retained")?;
         assert_eq!(failed.state, analyte_model::OrderState::Sending);
         assert!(connection.active.is_empty());
         drop(database);
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
 
@@ -642,7 +642,7 @@ mod tests {
             .await?;
         let identity = key.clone();
         let current = store
-            .request(deadline(), move |store| store.machine_order(&identity))
+            .request(deadline()?, move |store| store.machine_order(&identity))
             .await?
             .ok_or("reservation")?;
         assert_eq!(current.state, analyte_model::OrderState::Sending);
@@ -658,12 +658,12 @@ mod tests {
             )
             .await?;
         let current = store
-            .request(deadline(), move |store| store.machine_order(&key))
+            .request(deadline()?, move |store| store.machine_order(&key))
             .await?
             .ok_or("reservation")?;
         assert_eq!(current.state, analyte_model::OrderState::Uncertain);
         assert_eq!(current.source_code.as_str(), "HL7-DSR-disconnect");
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
     fn query_machine() -> Result<Machine, crate::Error> {
@@ -700,7 +700,7 @@ mod tests {
         let identity = key.clone();
         let original_owner = owner.clone();
         store
-            .request(deadline(), move |store| {
+            .request(deadline()?, move |store| {
                 let now = jiff::Timestamp::now().as_second();
                 store.order_page(&analyte_store::OrderPage {
                     destination: identity.destination.clone(),

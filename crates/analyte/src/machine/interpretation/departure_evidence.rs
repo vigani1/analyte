@@ -15,7 +15,7 @@ pub(crate) async fn for_receipt(
     mapping: Mapping,
 ) -> Result<(Mapping, DepartureEvidence), Error> {
     let receipt = store
-        .request(crate::deadline(), move |s| {
+        .request(crate::deadline()?, move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;

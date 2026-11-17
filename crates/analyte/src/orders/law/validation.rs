@@ -62,7 +62,7 @@ pub(crate) async fn check(
                         .to_owned();
                 let target = machine.id.clone();
                 let record = store
-                    .request(deadline(), move |s| {
+                    .request(deadline()?, move |s| {
                         match s.machine_order_by_placer(&target, &placer) {
                             Err(analyte_store::Error::Conflict) => Ok(None),
                             other => other,

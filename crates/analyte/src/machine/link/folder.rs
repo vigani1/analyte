@@ -69,7 +69,7 @@ impl Owner {
         self.stop.store(true, Ordering::Release);
         // Completion also wakes on panic; the retained join below reports its cause.
         // On timeout or cancellation Drop still owns and joins the worker.
-        let _ = tokio::time::timeout_at(deadline().into(), &mut self.finished)
+        let _ = tokio::time::timeout_at(deadline()?.into(), &mut self.finished)
             .await
             .map_err(Error::FileOwnerShutdownTimedOut)?;
         if let Some(thread) = self.thread.take() {
@@ -354,11 +354,11 @@ mod tests {
             );
             assert!(
                 store
-                    .request(deadline(), |s| s.receipts(""))
+                    .request(deadline()?, |s| s.receipts(""))
                     .await?
                     .is_empty()
             );
-            store.shutdown(deadline()).await?;
+            store.shutdown(deadline()?).await?;
         }
         Ok(())
     }

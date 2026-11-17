@@ -68,7 +68,7 @@ pub(crate) async fn receive(
         received_at,
     };
     store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             store.receive(&metadata, &raw, &config)
         })
         .await?;
@@ -107,7 +107,7 @@ pub(crate) async fn interpret_with_location(
     Error,
 > {
     let receipt = store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
@@ -192,7 +192,7 @@ pub(crate) async fn persist_mapping(
         None
     };
     let result = store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             let findings = park_findings(id, findings)?;
             let receipt = store
                 .receipt(id)?
@@ -456,7 +456,7 @@ pub(crate) async fn park_bytes(
         outcome: Reading::Failed(analyte_model::Reason::new(reason)?),
     };
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.interpret_reconciled(id, evidence, &[], &[], |_, _| Ok(Vec::new()))
         })
         .await?;

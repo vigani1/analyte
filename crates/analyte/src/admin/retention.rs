@@ -46,7 +46,7 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
     let after = i64::try_from(after)?;
     let (last, oldest, holds) = state
         .store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             Ok((
                 store.last_purge_run()?,
                 store.oldest_retained_receipt()?,
@@ -155,7 +155,7 @@ async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(),
     };
     state
         .store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             store.set_retention_hold(&target, active, &audit)
         })
         .await?;

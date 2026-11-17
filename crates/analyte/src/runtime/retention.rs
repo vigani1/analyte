@@ -45,7 +45,7 @@ pub(crate) async fn run(
                 .checked_add(Duration::from_millis(250))
                 .ok_or_else(|| Error::RetentionDeadlineOverflow)?;
             let outcome = store
-                .request(crate::deadline(), move |store| {
+                .request(crate::deadline()?, move |store| {
                     store.purge_batch(&machine, days, after, now, batch_deadline)
                 })
                 .await;
@@ -64,7 +64,7 @@ pub(crate) async fn run(
             if days.is_some() {
                 let order_after = cursor.1;
                 let run = store
-                    .request(crate::deadline(), move |store| {
+                    .request(crate::deadline()?, move |store| {
                         let until = Instant::now()
                             .checked_add(Duration::from_millis(250))
                             .ok_or(analyte_store::Error::InvalidHostInput)?;
@@ -77,7 +77,7 @@ pub(crate) async fn run(
                     Err(error) => return Err(error.into()),
                 }
                 store
-                    .request(crate::deadline(), |store| {
+                    .request(crate::deadline()?, |store| {
                         let until = Instant::now()
                             .checked_add(Duration::from_millis(250))
                             .ok_or(analyte_store::Error::InvalidHostInput)?;
@@ -131,7 +131,7 @@ mod tests {
             .await?,
         );
         store
-            .request(crate::deadline(), |store| {
+            .request(crate::deadline()?, |store| {
                 store.configure_retention_key(Some(analyte_store::DigestKey::new([1; 32])), true)
             })
             .await?;
@@ -144,7 +144,7 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 if store
-                    .request(crate::deadline(), |store| store.last_purge_run())
+                    .request(crate::deadline()?, |store| store.last_purge_run())
                     .await?
                     .is_some()
                 {
@@ -159,7 +159,7 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), owner).await???;
         let mut store = Arc::try_unwrap(store)
             .map_err(|_| crate::invalid("retention retained store ownership"))?;
-        store.shutdown(crate::deadline()).await?;
+        store.shutdown(crate::deadline()?).await?;
         Ok(())
     }
 }

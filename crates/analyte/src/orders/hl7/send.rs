@@ -62,7 +62,7 @@ async fn next_cancel(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let cancels = crate::orders::reservation::cancellations(store, machine, deadline()).await?;
+    let cancels = crate::orders::reservation::cancellations(store, machine, deadline()?).await?;
     for (record, cached) in cancels {
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
         let command = command(machine, &app, options)?;
@@ -72,7 +72,7 @@ async fn next_cancel(
         let version = app.fields().version;
         match crate::orders::reservation::cancel(
             store,
-            deadline(),
+            deadline()?,
             id,
             version,
             owner.clone(),
@@ -132,7 +132,7 @@ async fn next_work(
         reserving.push(key.clone());
         let reserved = crate::orders::reservation::admit(
             store,
-            deadline(),
+            deadline()?,
             crate::orders::reservation::Admission {
                 identity,
                 version,
@@ -191,7 +191,7 @@ async fn reject(
 ) -> Result<(), Error> {
     let reason = SourceText::new(reason)?;
     let result =
-        crate::orders::reservation::reject(store, deadline(), key, version, freshness, reason)
+        crate::orders::reservation::reject(store, deadline()?, key, version, freshness, reason)
             .await?;
     if let Err(refusal) = result {
         tracing::info!(reason=%refusal,"HL7 rejection superseded");
@@ -282,7 +282,7 @@ pub(super) async fn finish(
     }
     let identity = exchange.record.key.clone();
     store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             let current = store
                 .machine_order(&identity)?
                 .ok_or(analyte_store::Error::Corruption)?;

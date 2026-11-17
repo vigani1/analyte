@@ -25,7 +25,7 @@ fn audit(
 pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Result<(), Error> {
     let machine_id = machine.id.clone();
     let blocked = store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             let Some(intent) = store.unconfirmed_poll_intent(&machine_id)? else {
                 return Ok(false);
             };
@@ -57,7 +57,7 @@ pub(super) async fn reserve(store: &Handle, machine: &Machine) -> Result<PollInt
         "Autolyser R may advance its cursor; retain this guard until its response is durably in custody or an operator reconciles it",
     )?;
     Ok(store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             store.begin_poll_intent(&machine, &reason)
         })
         .await?)
@@ -77,7 +77,7 @@ pub(super) async fn uncertain(
             Reason::new(reason)?,
         )?;
         store
-            .request(deadline(), move |store| {
+            .request(deadline()?, move |store| {
                 store
                     .record_poll_outcome(id, PollOutcome::Uncertain, &audit)
                     .map(|_| ())
@@ -100,7 +100,7 @@ pub(super) async fn complete(
             Reason::new("Complete Autolyser response durably stored; R cursor custody reconciled")?,
         )?;
         let state = store
-            .request(deadline(), move |store| {
+            .request(deadline()?, move |store| {
                 store
                     .record_poll_outcome(id, PollOutcome::Confirmed, &audit)
                     .map(|intent| intent.state)

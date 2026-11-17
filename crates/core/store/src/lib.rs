@@ -171,6 +171,15 @@ pub enum Error {
     /// Restore, retention or startup input cannot authorize maintenance.
     #[error("invalid maintenance input")]
     InvalidMaintenanceInput,
+    /// The bounded worker queue capacity must be between 1 and 1024.
+    #[error("store worker queue capacity {capacity} is outside 1..=1024")]
+    QueueCapacity {
+        /// Rejected capacity.
+        capacity: usize,
+    },
+    /// The host cannot represent a storage operation deadline.
+    #[error("storage operation deadline overflow")]
+    DeadlineOverflow,
     /// The host could not construct its submitted store command.
     #[error("invalid host command input")]
     InvalidHostInput,

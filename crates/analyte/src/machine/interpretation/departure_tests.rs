@@ -28,7 +28,7 @@ async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Res
     let id = ReceiptId::new();
     intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
     assert!(!intake::interpret(&store, machine, id).await?);
-    store.request(deadline(),move |s| {
+    store.request(deadline()?,move |s| {
         assert_eq!(s.raw(id)?.as_deref(),Some(raw.as_slice()));
         assert!(s.deliveries(0)?.is_empty());
         let interpretation=s.interpretation(id,1)?.ok_or(analyte_store::Error::Corruption)?;
@@ -39,7 +39,7 @@ async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Res
         assert!(s.parked(0)?.iter().any(|row| row.details().is_ok_and(|e| e.reason.as_str().contains("departure-derived status requires a contract version that carries departure evidence"))));
         Ok(())
     }).await?;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     Ok(())
 }
 
@@ -64,7 +64,7 @@ async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Resu
     intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
     assert!(!intake::interpret(&store, machine, id).await?);
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             assert_eq!(s.raw(id)?.as_deref(), Some(raw.as_slice()));
             let interpretation = s
                 .interpretation(id, 1)?
@@ -89,7 +89,7 @@ async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Resu
             Ok(())
         })
         .await?;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     Ok(())
 }
 
@@ -116,7 +116,7 @@ async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meani
     intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
     assert!(intake::interpret(&store, machine, id).await?);
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             assert_eq!(s.raw(id)?.as_deref(), Some(raw.as_slice()));
             let interpretation = s
                 .interpretation(id, 1)?
@@ -139,6 +139,6 @@ async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meani
             Ok(())
         })
         .await?;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     Ok(())
 }

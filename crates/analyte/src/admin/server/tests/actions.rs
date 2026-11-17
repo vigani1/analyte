@@ -219,8 +219,24 @@ async fn assert_resend_audit_atomicity(
             );
             let audits = s.audits(0)?;
             assert_eq!(audits.len(), 2);
-            assert_eq!(audits[0].1.action.as_str(), "receipt-reprocess");
-            assert_eq!(audits[1].1.action.as_str(), "delivery-resend");
+            assert_eq!(
+                audits
+                    .first()
+                    .ok_or(analyte_store::Error::InvalidHostInput)?
+                    .1
+                    .action
+                    .as_str(),
+                "receipt-reprocess"
+            );
+            assert_eq!(
+                audits
+                    .get(1)
+                    .ok_or(analyte_store::Error::InvalidHostInput)?
+                    .1
+                    .action
+                    .as_str(),
+                "delivery-resend"
+            );
             assert!(
                 audits
                     .iter()
@@ -362,7 +378,15 @@ async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result
             assert!(!store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
             let audits = store.audits(0)?;
             assert_eq!(audits.len(), 2);
-            assert_eq!(audits[1].1.action.as_str(), "retention-hold-release");
+            assert_eq!(
+                audits
+                    .get(1)
+                    .ok_or(analyte_store::Error::InvalidHostInput)?
+                    .1
+                    .action
+                    .as_str(),
+                "retention-hold-release"
+            );
             assert_eq!(audits[1].1.reason.as_str(), "review required");
             assert_eq!(audits[0].1.actor, audits[1].1.actor);
             assert!(audits[0].1.actor.as_str().starts_with("admin-session-"));

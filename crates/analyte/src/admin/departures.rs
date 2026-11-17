@@ -57,9 +57,15 @@ pub(super) async fn receipt(
         )
             .into_response();
     }
+    let until = match deadline() {
+        Ok(until) => until,
+        Err(error) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
+        }
+    };
     let result = state
         .store
-        .request(deadline(), move |s| s.interpretation(id, version.version))
+        .request(until, move |s| s.interpretation(id, version.version))
         .await;
     let interpretation = match result {
         Ok(Some(value)) => value,

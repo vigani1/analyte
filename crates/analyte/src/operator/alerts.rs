@@ -64,7 +64,7 @@ fn log_transition(state: &AlertState) {
 /// Shares the same bounded read-only snapshot between CLI and admin.
 /// Retained active policies remain visible even after configuration removal.
 pub(crate) async fn active(store: &Handle) -> Result<Vec<AlertState>, Error> {
-    let until = deadline();
+    let until = deadline()?;
     let mut cursor = String::new();
     let mut alerts = Vec::new();
     loop {
@@ -104,14 +104,14 @@ async fn evaluate(
         let read_key = key.clone();
         let destinations = destinations.to_vec();
         let value = store
-            .request(deadline(), move |store| {
+            .request(deadline()?, move |store| {
                 store.alert_value(&read_key, now, &destinations)
             })
             .await?;
         let active = raised(policy, value);
         let responder = policy.responder().to_owned();
         let transition = store
-            .request(deadline(), move |store| {
+            .request(deadline()?, move |store| {
                 store.evaluate_alert(&key, &responder, active, value, now)
             })
             .await?;
@@ -231,7 +231,7 @@ mod tests {
         assert!(!raised(&policies[2], Some(1034)));
         space.store(1033, Ordering::SeqCst);
         evaluate(&store, &policies, &destinations, 100).await?;
-        let history = store.request(deadline(), |s| s.alert_history(0)).await?;
+        let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
         assert_eq!(history.len(), 7);
         assert!(
             history
@@ -239,7 +239,7 @@ mod tests {
                 .all(|h| h.state.active && h.state.raised_at == Some(100))
         );
         drop(db);
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         let mut store = Handle::start(
             path.clone(),
             limits(),
@@ -251,7 +251,7 @@ mod tests {
         evaluate(&store, &policies, &destinations, 101).await?;
         assert_eq!(
             store
-                .request(deadline(), |s| s.alert_history(0))
+                .request(deadline()?, |s| s.alert_history(0))
                 .await?
                 .len(),
             7
@@ -268,7 +268,7 @@ mod tests {
         space.store(1034, Ordering::SeqCst);
         evaluate(&store, &policies, &destinations, 101).await?;
         evaluate(&store, &policies, &destinations, 102).await?;
-        let history = store.request(deadline(), |s| s.alert_history(0)).await?;
+        let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
         assert_eq!(history.len(), 14);
         assert!(
             history
@@ -280,7 +280,7 @@ mod tests {
             assert!(!format!("{:?}", item.state.value).contains("SAMPLE-PRIVATE-00012"));
         }
         drop(db);
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
 
@@ -290,7 +290,7 @@ mod tests {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
             self.0
                 .lock()
-                .expect("test log lock")
+                .map_err(|_| std::io::Error::other("test log lock poisoned"))?
                 .extend_from_slice(bytes);
             Ok(bytes.len())
         }
@@ -328,7 +328,11 @@ mod tests {
                 });
             }
         });
-        let bytes = log.0.lock().expect("test log lock").clone();
+        let bytes = log
+            .0
+            .lock()
+            .map_err(|_| std::io::Error::other("test log lock poisoned"))?
+            .clone();
         let output = String::from_utf8(bytes)?;
         assert_eq!(output.lines().count(), 2);
         assert!(output.contains("machine_silent") && output.contains("busy"));
@@ -362,7 +366,7 @@ mod tests {
         let owner = store.clone();
         let blocking = tokio::spawn(async move {
             owner
-                .request(deadline(), move |_| {
+                .request(deadline()?, move |_| {
                     let _ = entered.send(());
                     released
                         .recv_timeout(Duration::from_secs(2))
@@ -386,7 +390,7 @@ mod tests {
         release.send(())?;
         blocking.await??;
         let mut store = Arc::try_unwrap(store).map_err(|_| "evaluator retained store")?;
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
 
@@ -427,12 +431,12 @@ mod tests {
         ));
         assert!(
             store
-                .request(deadline(), |s| s.alert_history(0))
+                .request(deadline()?, |s| s.alert_history(0))
                 .await?
                 .is_empty()
         );
         let mut store = Arc::try_unwrap(store).map_err(|_| "read retained store")?;
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
 
