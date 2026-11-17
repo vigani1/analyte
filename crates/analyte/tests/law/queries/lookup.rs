@@ -258,10 +258,13 @@ async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage()
 {
     for form in [CONTAINER, ALL] {
         let settings = definition().replace("query_deadline_ms = 30000", "query_deadline_ms = 50");
-        let (_temp, path, reference, running, mut peer) = setup(
+        let (hook, control) = analyte::runtime::test_hooks::Committed::new();
+        let (_temp, path, reference, running, mut peer) = setup_observed(
             vec![order("order-1", "000Ab12", None, 1)?],
             &settings,
             false,
+            30,
+            Some(hook),
         )
         .await?;
         let bytes = analyte_framing::hl7::encode(
@@ -269,8 +272,10 @@ async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage()
             analyte_framing::hl7::Limit::new(1048576)?,
         )?;
         peer.write_all(bytes.get(..12).ok_or("prefix")?).await?;
+        control.reached().await?;
         // Deliberately exceed the configured 50 ms first-byte query budget.
         tokio::time::sleep(Duration::from_millis(100)).await;
+        control.resume();
         peer.write_all(bytes.get(12..).ok_or("suffix")?).await?;
         let rsp = packet(&mut peer).await?;
         assert_eq!(field(&rsp, b"QAK", 2)?, b"AE");

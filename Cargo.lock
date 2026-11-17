@@ -223,6 +223,7 @@ dependencies = [
  "analyte-model",
  "analyte-receiver",
  "analyte-store",
+ "axum",
  "jiff",
  "proptest",
  "reqwest",

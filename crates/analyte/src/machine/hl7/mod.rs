@@ -122,6 +122,8 @@ impl ConnectionState {
                     transport_failure_as_empty_input()
                 }
             };
+            #[cfg(feature = "test-hooks")]
+            let has_bytes = !bytes.is_empty();
             if self
                 .receive_bytes(bytes, machine, store, conn, stop)
                 .await?
@@ -129,6 +131,10 @@ impl ConnectionState {
                 return Ok(());
             }
             self.input_evidence.complete();
+            #[cfg(feature = "test-hooks")]
+            if has_bytes && let Some(hook) = &machine.hooks.input_processed {
+                hook.pause(stop).await.map_err(Error::TestHook)?;
+            }
             if let Some(query) = &mut self.queries {
                 tokio::select! {biased; ()=super::stopping(stop)=>break,result=query.idle(store,machine,conn,&mut self.dialog,self.start)=>result?,}
             }

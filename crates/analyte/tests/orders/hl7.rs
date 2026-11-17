@@ -17,6 +17,15 @@ async fn setup_with_freshness(
     query_ms: u32,
     freshness: u64,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_observed(edition, ack_ms, query_ms, freshness, None).await
+}
+async fn setup_observed(
+    edition: &str,
+    ack_ms: u32,
+    query_ms: u32,
+    freshness: u64,
+    hook: Option<Arc<analyte::runtime::test_hooks::Committed>>,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let site = temp.path().join("hl7-site.toml");
@@ -55,7 +64,11 @@ async fn setup_with_freshness(
             "../../../../docs/contract/vectors/order.json"
         ))?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let mut loaded = program(&path, &reference.url)?;
+    if let Some(hook) = hook {
+        loaded.pause_input_processed_for_test("hl7", hook)?;
+    }
+    let service = Running::start_program(loaded, "synthetic-api").await?;
     let peer = connect(&path, "hl7").await?;
     tokio::time::timeout(HANG_GUARD, async {
         loop {
@@ -229,13 +242,18 @@ async fn hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain() -> R
 #[tokio::test]
 async fn hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time()
 -> Result<(), Error> {
-    let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 1000).await?;
+    let (hook, control) = analyte::runtime::test_hooks::Committed::new();
+    let (_temp, path, reference, service, mut peer) =
+        setup_observed("v251", 30000, 1000, 30, Some(hook)).await?;
     let wire = analyte_framing::hl7::encode(
         &query("000Ab12", "2.5.1"),
         analyte_framing::hl7::Limit::new(1048576)?,
     )?;
     peer.write_all(wire.get(..10).ok_or("prefix")?).await?;
+    control.reached().await?;
+    // The prefix is inside the dialog before the query budget starts expiring.
     tokio::time::sleep(Duration::from_millis(1100)).await;
+    control.resume();
     peer.write_all(wire.get(10..).ok_or("suffix")?).await?;
     assert!(
         text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?.contains("QAK||AE\r")
