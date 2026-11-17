@@ -1,7 +1,7 @@
 //! Runs deterministic LAW exchanges and deadlines (TF-2b 3.27-3.29, B.6/B.7).
 //! Kept whole: The LAW conversation state transitions and their deadline decisions are reviewed together.
 use analyte_framing::hl7 as mllp;
-use analyte_hl7::OwnedAckError as Detail;
+use analyte_hl7::{APPLICATION_INTERNAL_ERROR, OwnedAckError as Detail};
 use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};
 use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
@@ -637,23 +637,14 @@ impl Dialog {
                 Responsibility::Stored,
                 Some(
                     location
-                        .detail(
-                            analyte_hl7::APPLICATION_INTERNAL_ERROR,
-                            b"LAW-inconsistent-work",
-                        )
+                        .detail(APPLICATION_INTERNAL_ERROR, b"LAW-inconsistent-work")
                         .into(),
                 ),
             ),
             Interpretation::Conflict => (
                 AckCode::Ar,
                 Responsibility::Stored,
-                Some(
-                    AckError::unlocated(
-                        analyte_hl7::APPLICATION_INTERNAL_ERROR,
-                        b"operator-review",
-                    )
-                    .into(),
-                ),
+                Some(AckError::unlocated(APPLICATION_INTERNAL_ERROR, b"operator-review").into()),
             ),
             Interpretation::Failed(location) => (
                 AckCode::Ae,
@@ -662,15 +653,9 @@ impl Dialog {
                     location
                         .as_ref()
                         .map_or(
-                            AckError::unlocated(
-                                analyte_hl7::APPLICATION_INTERNAL_ERROR,
-                                b"operator-review",
-                            ),
+                            AckError::unlocated(APPLICATION_INTERNAL_ERROR, b"operator-review"),
                             |location| {
-                                location.detail(
-                                    analyte_hl7::APPLICATION_INTERNAL_ERROR,
-                                    b"operator-review",
-                                )
+                                location.detail(APPLICATION_INTERNAL_ERROR, b"operator-review")
                             },
                         )
                         .into(),
