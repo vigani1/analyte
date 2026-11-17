@@ -28,7 +28,7 @@ fn receive(d: &mut Dialog, payload: &[u8]) -> Result<ReceiptId, Box<dyn std::err
     feed(d, &raw)?
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, bytes) = a {
+            if let Action::Store(id, bytes) = a {
                 assert_eq!(bytes, &raw);
                 Some(*id)
             } else {
@@ -58,7 +58,7 @@ fn adr0003_hl7_receipt_namespace_and_ordinal_survive_valid_and_malformed_input()
             let id = receive(&mut d, payload)?;
             assert_eq!(id.epoch(), epoch);
             assert_eq!(id.ordinal(), u64::try_from(ordinal)?);
-            let out = d.step(Duration::ZERO, Event::CommitFailed(id))?;
+            let out = d.step(Duration::ZERO, Event::StoreFailed(id))?;
             if *payload == MESSAGE {
                 assert!(
                     out.iter()
@@ -121,7 +121,7 @@ fn adr0010_hl7_251_2_9_send_cannot_replace_active_custody_or_response() -> TestR
             "commit" | "interpret" | "respond" => {
                 let id = receive(&mut d, MESSAGE)?;
                 if phase != "commit" {
-                    d.step(Duration::ZERO, Event::Committed(id))?;
+                    d.step(Duration::ZERO, Event::Stored(id))?;
                 }
                 if phase == "respond" {
                     d.step(Duration::ZERO, Event::Interpreted(id))?;
@@ -160,15 +160,15 @@ fn adr0003_0010_hl7_251_2_9_callbacks_require_matching_receipt_and_phase() -> Te
                 let mut d = dialog(42)?;
                 let id = receive(&mut d, MESSAGE)?;
                 if phase != "commit" {
-                    d.step(Duration::ZERO, Event::Committed(id))?;
+                    d.step(Duration::ZERO, Event::Stored(id))?;
                 }
                 if phase == "respond" {
                     d.step(Duration::ZERO, Event::Interpreted(id))?;
                 }
                 let reply = if matching { id } else { wrong };
                 let event = match callback {
-                    "committed" => Event::Committed(reply),
-                    "failed" => Event::CommitFailed(reply),
+                    "committed" => Event::Stored(reply),
+                    "failed" => Event::StoreFailed(reply),
                     "interpreted" => Event::Interpreted(reply),
                     "invalid" => {
                         Event::NotInterpretable(reply, diagnostic(b"OBX", b"102", b""), false)
@@ -229,7 +229,7 @@ fn rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt() -> T
     ] {
         let mut d = dialog(42)?;
         let id = receive(&mut d, MESSAGE)?;
-        d.step(Duration::ZERO, Event::Committed(id))?;
+        d.step(Duration::ZERO, Event::Stored(id))?;
         let out = d.step(
             Duration::ZERO,
             Event::NotInterpretable(id, diagnostic(segment, code, app), false),

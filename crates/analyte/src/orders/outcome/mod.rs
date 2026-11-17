@@ -320,9 +320,9 @@ impl std::fmt::Display for Transfer {
             Self::AutolyserParked(error) => {
                 use analyte_dialog::autolyser::Error;
                 let code = match error {
-                    Error::Config => Code::AutolyserParkedConfig,
+                    Error::Configuration => Code::AutolyserParkedConfig,
                     Error::Busy => Code::AutolyserParkedBusy,
-                    Error::Time => Code::AutolyserParkedTime,
+                    Error::TimeReversed | Error::Exhausted => Code::AutolyserParkedTime,
                     Error::Incomplete => Code::AutolyserParkedIncomplete,
                     Error::Storage => Code::AutolyserParkedStorage,
                     Error::Stale => Code::AutolyserParkedStale,

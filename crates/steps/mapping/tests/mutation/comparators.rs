@@ -47,10 +47,12 @@ fn hl7_251_7_4_2_2_status_only_and_missing_populated_value_type_stay_distinct() 
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     assert!(matches!(
         map_hl7(
+            &analyte_mapping::hl7::Settings {
+                syntax: settings::hl7(&config(HL7_CONFIG)?).0,
+                mappings: settings::hl7(&config(HL7_CONFIG)?).1,
+                declarations: &config(HL7_CONFIG)?.effective().machine().deviations
+            },
             &message,
-            settings::hl7(&config(HL7_CONFIG)?).0,
-            settings::hl7(&config(HL7_CONFIG)?).1,
-            &config(HL7_CONFIG)?.effective().machine().deviations,
             input()
         ),
         Err(analyte_mapping::Error::Structure {
@@ -258,13 +260,7 @@ fn hl7_251_ch7_oul_test_detail_and_notes_belong_to_observation_group() -> TestRe
         "{header}OBX|1|NM|SYN^^synthetic||1||||||F\rTCD|SYN^^synthetic\rSID|lot\rNTE|1||observation note\r"
     );
     let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
-    let mapped = map_hl7(
-        &message,
-        settings::hl7(&cfg).0,
-        settings::hl7(&cfg).1,
-        &cfg.effective().machine().deviations,
-        input(),
-    )?;
+    let mapped = map_hl7(&settings::hl7_mapping(&cfg), &message, input())?;
     assert_eq!(
         first(&mapped)?
             .comments
@@ -292,10 +288,12 @@ fn hl7_251_ch7_oul_test_detail_and_notes_belong_to_observation_group() -> TestRe
         let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
         assert!(
             map_hl7(
+                &analyte_mapping::hl7::Settings {
+                    syntax: settings::hl7(&cfg).0,
+                    mappings: settings::hl7(&cfg).1,
+                    declarations: &cfg.effective().machine().deviations
+                },
                 &message,
-                settings::hl7(&cfg).0,
-                settings::hl7(&cfg).1,
-                &cfg.effective().machine().deviations,
                 input()
             )
             .is_err()
@@ -311,10 +309,12 @@ fn rule2_hl7_mapping_refuses_unqualified_structure_without_losing_original() -> 
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     assert!(
         map_hl7(
+            &analyte_mapping::hl7::Settings {
+                syntax: settings::hl7(&cfg).0,
+                mappings: settings::hl7(&cfg).1,
+                declarations: &cfg.effective().machine().deviations
+            },
             &message,
-            settings::hl7(&cfg).0,
-            settings::hl7(&cfg).1,
-            &cfg.effective().machine().deviations,
             input()
         )
         .is_err()
@@ -324,10 +324,12 @@ fn rule2_hl7_mapping_refuses_unqualified_structure_without_losing_original() -> 
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     assert!(
         map_hl7(
+            &analyte_mapping::hl7::Settings {
+                syntax: settings::hl7(&config(HL7_CONFIG)?).0,
+                mappings: settings::hl7(&config(HL7_CONFIG)?).1,
+                declarations: &config(HL7_CONFIG)?.effective().machine().deviations
+            },
             &message,
-            settings::hl7(&config(HL7_CONFIG)?).0,
-            settings::hl7(&config(HL7_CONFIG)?).1,
-            &config(HL7_CONFIG)?.effective().machine().deviations,
             input()
         )
         .is_err()
@@ -361,10 +363,12 @@ fn rule2_missing_group_relative_sample_reports_its_actual_owner_position() -> Te
     let raw=b"MSH|^~\\&|SYN||||202611151200||OUL^R22^OUL_R22|MSG|P|2.5.1\rSPM|1\rOBR|1\rORC|SC||||IP\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     let mapped = map_hl7(
+        &analyte_mapping::hl7::Settings {
+            syntax: settings::hl7(&config(HL7_CONFIG)?).0,
+            mappings: settings::hl7(&config(HL7_CONFIG)?).1,
+            declarations: &config(HL7_CONFIG)?.effective().machine().deviations,
+        },
         &message,
-        settings::hl7(&config(HL7_CONFIG)?).0,
-        settings::hl7(&config(HL7_CONFIG)?).1,
-        &config(HL7_CONFIG)?.effective().machine().deviations,
         input(),
     )?;
     let finding = mapped
@@ -445,13 +449,7 @@ fn rule3_hl7_source_path_keeps_statuses_sequences_and_specimen_times() -> TestRe
     )?);
     raw.push_str("ORC|SC||||CM\rOBX|1|NM|SYN^^synthetic||1||||||F\r");
     let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
-    let mapped = map_hl7(
-        &message,
-        settings::hl7(&cfg).0,
-        settings::hl7(&cfg).1,
-        &cfg.effective().machine().deviations,
-        input(),
-    )?;
+    let mapped = map_hl7(&settings::hl7_mapping(&cfg), &message, input())?;
     let part = first(&mapped)?;
     let path = part.source_path.as_slice();
     for (kind, status, sequence) in [
@@ -507,9 +505,11 @@ fn rule3_astm_source_path_keeps_header_order_result_status_and_record_sequences(
     );
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
     let mapped = map_astm(
+        &analyte_mapping::astm::Settings {
+            syntax: settings::astm(&config(ASTM_CONFIG)?).0,
+            mappings: settings::astm(&config(ASTM_CONFIG)?).1,
+        },
         messages.first().ok_or("message")?,
-        settings::astm(&config(ASTM_CONFIG)?).0,
-        settings::astm(&config(ASTM_CONFIG)?).1,
         input(),
     )?;
     let path = first(&mapped)?.source_path.as_slice();

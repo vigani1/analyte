@@ -236,7 +236,7 @@ async fn process(
     let mut complete = false;
     while let Some(action) = state.actions.pop_front() {
         match action {
-            Action::Send(bytes) => {
+            Action::Write(bytes) => {
                 state.end_code = VidasEnd::WriteFailed;
                 custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
                 state.end_code = VidasEnd::TransferError;
@@ -255,13 +255,13 @@ async fn process(
                         state.actions.extend(
                             state
                                 .dialog
-                                .step(state.start.elapsed(), Event::StorageFailed)?,
+                                .step(state.start.elapsed(), Event::StoreFailed)?,
                         );
                         failure = Some(error.into());
                     }
                 }
             }
-            Action::Arm(_, _) | Action::Cancel(_) => {}
+            Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
             Action::Park => {
                 if state.end_code == VidasEnd::TransferError {
                     state.end_code = match state.dialog.expired_timer() {
@@ -282,7 +282,7 @@ async fn process(
                     failure = Some(Error::TransferParkedReconcileBeforeReconnect);
                 }
             }
-            Action::Complete => match state.work.confirmed(store).await? {
+            Action::Close => match state.work.confirmed(store).await? {
                 crate::orders::vidas::Progress::DownloadNext(request) => {
                     state.start_download(&request)?;
                 }

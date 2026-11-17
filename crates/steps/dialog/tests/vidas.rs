@@ -101,18 +101,18 @@ fn vidas_bci_a_3_adr0003_store_gate_and_incomplete_transfer()
             dialog
                 .step(Duration::ZERO, Event::Control(5))
                 .unwrap()
-                .contains(&Action::Send(vec![6]))
+                .contains(&Action::Write(vec![6]))
         );
         let actions = dialog
             .step(Duration::ZERO, Event::Packet(packet.ok_or("packet")?))
             .unwrap();
         assert!(actions.iter().any(|a| matches!(a, Action::Store(_))));
-        assert!(!actions.iter().any(|a| matches!(a, Action::Send(_))));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
         assert!(
             dialog
                 .step(Duration::ZERO, Event::Stored)
                 .unwrap()
-                .contains(&Action::Send(vec![6]))
+                .contains(&Action::Write(vec![6]))
         );
         assert!(
             dialog
@@ -131,18 +131,18 @@ fn vidas_bci_a_5_download_never_resends_after_lost_ack() -> Result<(), Box<dyn s
         let c = config(mode, &[], false)?;
         let bytes = c.encode(request.text().as_bytes())?;
         let mut dialog = Dialog::download(c, policy(), &request)?;
-        assert!(dialog.start().contains(&Action::Send(vec![5])));
+        assert!(dialog.start().contains(&Action::Write(vec![5])));
         assert!(
             dialog
                 .step(Duration::ZERO, Event::Control(6))
                 .unwrap()
-                .contains(&Action::Send(bytes))
+                .contains(&Action::Write(bytes))
         );
         let timeout = dialog
             .step(Duration::ZERO, Event::Expired(Timer::Acknowledgment))
             .unwrap();
         assert!(timeout.contains(&Action::Park));
-        assert!(!timeout.iter().any(|a| matches!(a, Action::Send(_))));
+        assert!(!timeout.iter().any(|a| matches!(a, Action::Write(_))));
         assert!(
             dialog
                 .step(Duration::ZERO, Event::Control(6))
@@ -188,9 +188,9 @@ fn vidas_bci_a_3_storage_failure_and_successful_sessions() -> Result<(), Box<dyn
         let _ = failed
             .step(Duration::ZERO, Event::Packet(packet.clone()))
             .unwrap();
-        let actions = failed.step(Duration::ZERO, Event::StorageFailed).unwrap();
+        let actions = failed.step(Duration::ZERO, Event::StoreFailed).unwrap();
         assert!(actions.contains(&Action::Park));
-        assert!(!actions.iter().any(|a| matches!(a, Action::Send(_))));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
         assert!(
             failed
                 .step(Duration::ZERO, Event::Stored)
@@ -206,25 +206,25 @@ fn vidas_bci_a_3_storage_failure_and_successful_sessions() -> Result<(), Box<dyn
                 !upload
                     .step(Duration::ZERO, Event::Control(3))
                     .unwrap()
-                    .contains(&Action::Complete)
+                    .contains(&Action::Close)
             );
         }
         assert!(
             upload
                 .step(Duration::ZERO, Event::Control(4))
                 .unwrap()
-                .contains(&Action::Complete)
+                .contains(&Action::Close)
         );
         let request = Message::parse("mtmpr|piX|si|ci0001|rtHCG|", SampleLimit::Twelve)?;
         let mut download = Dialog::download(c, policy(), &request)?;
         let _ = download.step(Duration::ZERO, Event::Control(6)).unwrap();
         let actions = download.step(Duration::ZERO, Event::Control(6)).unwrap();
         assert_eq!(
-            actions.contains(&Action::Send(vec![3])),
+            actions.contains(&Action::Write(vec![3])),
             mode == Mode::Literal
         );
-        assert!(actions.contains(&Action::Send(vec![4])));
-        assert!(actions.contains(&Action::Complete));
+        assert!(actions.contains(&Action::Write(vec![4])));
+        assert!(actions.contains(&Action::Close));
     }
     Ok(())
 }
@@ -276,7 +276,7 @@ fn adr0001_0010_vidas_owns_commit_and_session_deadlines() -> Result<(), Box<dyn 
     assert!(
         !actions
             .iter()
-            .any(|action| matches!(action, Action::Send(_)))
+            .any(|action| matches!(action, Action::Write(_)))
     );
     assert_eq!(dialog.next_deadline(), None);
     Ok(())
@@ -319,7 +319,7 @@ fn vidas_bci_a_ch3_journaled_bytes_demultiplex_controls_without_ack_before_store
         assert!(
             actions
                 .iter()
-                .any(|a| matches!(a, Action::Send(bytes) if *bytes == config.control(ACK)))
+                .any(|a| matches!(a, Action::Write(bytes) if *bytes == config.control(ACK)))
         );
         actions.clear();
         let packet = config.encode(b"A")?;
@@ -331,18 +331,18 @@ fn vidas_bci_a_ch3_journaled_bytes_demultiplex_controls_without_ack_before_store
                 .iter()
                 .any(|a| matches!(a, Action::Store(p) if p.raw == packet))
         );
-        assert!(!actions.iter().any(|a| matches!(a, Action::Send(_))));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
         let committed = dialog.step(Duration::ZERO, Event::Stored)?;
         assert!(
             committed
                 .iter()
-                .any(|a| matches!(a, Action::Send(bytes) if *bytes == config.control(ACK)))
+                .any(|a| matches!(a, Action::Write(bytes) if *bytes == config.control(ACK)))
         );
         actions.clear();
         for byte in config.control(ETX).into_iter().chain(config.control(EOT)) {
             actions.extend(dialog.step(Duration::ZERO, Event::Byte(byte))?);
         }
-        assert!(actions.contains(&Action::Complete));
+        assert!(actions.contains(&Action::Close));
     }
     let mut dialog = Dialog::upload(config(Mode::Literal, b"\r\n", false)?, policy())?;
     let _ = dialog.start();

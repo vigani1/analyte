@@ -23,7 +23,7 @@ fn adr0003_0010_astm_commit_identity_tracks_transfer_and_failed_request_ordinals
             let id = out
                 .iter()
                 .find_map(|a| {
-                    if let Action::Commit(id, _, _) = a {
+                    if let Action::Store(id, _, _) = a {
                         Some(*id)
                     } else {
                         None
@@ -37,9 +37,9 @@ fn adr0003_0010_astm_commit_identity_tracks_transfer_and_failed_request_ordinals
             let done = dialog.step(
                 Duration::ZERO,
                 if success {
-                    Event::Committed(id)
+                    Event::Stored(id)
                 } else {
-                    Event::CommitFailed(id)
+                    Event::StoreFailed(id)
                 },
             )?;
             assert!(done.contains(&Action::Write(vec![if success { ACK } else { NAK }])));
@@ -80,7 +80,7 @@ fn lis01_6_2_6_6_2_7_6_3_5_peer_enq_can_take_over_waiting_sender() -> TestResult
             "{waiting}: {ready:?}"
         );
         assert!(ready.contains(&Action::Deadline(Some(Duration::from_secs(31)))));
-        assert!(!ready.iter().any(|a| matches!(a, Action::Commit(..))));
+        assert!(!ready.iter().any(|a| matches!(a, Action::Store(..))));
     }
     Ok(())
 }
@@ -97,7 +97,7 @@ fn adr0003_lis01_6_4_eot_during_commit_ends_incomplete_and_late_commit_never_ack
     let id = out
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _, _) = a {
+            if let Action::Store(id, _, _) = a {
                 Some(*id)
             } else {
                 None
@@ -107,13 +107,13 @@ fn adr0003_lis01_6_4_eot_during_commit_ends_incomplete_and_late_commit_never_ack
     let ignored = dialog.step(Duration::ZERO, Event::Byte(ACK))?;
     assert!(!ignored.iter().any(|a| matches!(
         a,
-        Action::CommitFailed(_) | Action::Ended(_) | Action::Write(_)
+        Action::StoreFailed(_) | Action::Ended(_) | Action::Write(_)
     )));
     let ended = dialog.step(Duration::ZERO, Event::Byte(EOT))?;
-    assert!(ended.contains(&Action::CommitFailed(id)));
+    assert!(ended.contains(&Action::StoreFailed(id)));
     assert!(ended.contains(&Action::Ended(End::Incomplete)));
     assert!(ended.contains(&Action::Deadline(None)));
-    let late = dialog.step(Duration::ZERO, Event::Committed(id))?;
+    let late = dialog.step(Duration::ZERO, Event::Stored(id))?;
     assert!(late.contains(&Action::Refused(Error::StaleCommit)));
     assert!(
         !late
@@ -211,12 +211,12 @@ fn adr0003_rule7_lis01_6_3_receiver_limits_refuse_without_commit_or_ack() -> Tes
                 assert!(out.contains(&Action::LimitReached));
                 assert!(out.contains(&Action::Write(vec![NAK])));
                 assert!(out.contains(&Action::UnexpectedFrame(wire)));
-                assert!(!out.iter().any(|a| matches!(a, Action::Commit(..))));
+                assert!(!out.iter().any(|a| matches!(a, Action::Store(..))));
             } else {
                 let id = out
                     .iter()
                     .find_map(|a| {
-                        if let Action::Commit(id, _, raw) = a {
+                        if let Action::Store(id, _, raw) = a {
                             assert_eq!(raw, &wire);
                             Some(*id)
                         } else {
@@ -224,7 +224,7 @@ fn adr0003_rule7_lis01_6_3_receiver_limits_refuse_without_commit_or_ack() -> Tes
                         }
                     })
                     .ok_or("expected commit before ACK")?;
-                let committed = dialog.step(Duration::ZERO, Event::Committed(id))?;
+                let committed = dialog.step(Duration::ZERO, Event::Stored(id))?;
                 assert!(committed.contains(&Action::Write(vec![ACK])));
                 assert!(committed.contains(&Action::Record(text.to_vec())));
             }

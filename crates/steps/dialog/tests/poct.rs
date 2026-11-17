@@ -1,7 +1,7 @@
 //! Tests POCT reviewer conversations and timeouts.
 //! Kept whole: reviewer state transitions share custody and startup helpers.
 use analyte_dialog::poct::{
-    Action, CommitId, CommitOutcome, Config, Dialog, Error as DialogError, Event,
+    Action, CommitId, Config, Dialog, Error as DialogError, Event, StoreOutcome,
 };
 use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::poct as peer_messages;
@@ -49,7 +49,7 @@ fn sends(actions: &[Action]) -> Vec<&Outbound> {
     actions
         .iter()
         .filter_map(|a| {
-            if let Action::Send { body, .. } = a {
+            if let Action::Write { body, .. } = a {
                 Some(body)
             } else {
                 None
@@ -61,9 +61,9 @@ fn sends(actions: &[Action]) -> Vec<&Outbound> {
 fn complete(
     dialog: &mut Dialog,
     ticket: CommitId,
-    outcome: CommitOutcome,
+    outcome: StoreOutcome,
 ) -> Result<Vec<Action>, DialogError> {
-    step(dialog, Event::Committed { ticket, outcome })
+    step(dialog, Event::Stored { ticket, outcome })
 }
 
 fn startup(dialog: &mut Dialog) -> Result<(), DialogError> {
@@ -72,11 +72,11 @@ fn startup(dialog: &mut Dialog) -> Result<(), DialogError> {
     assert!(sends(&inspect).is_empty());
     let store = step(dialog, Event::HelloDecision(true))?;
     assert!(sends(&store).is_empty());
-    let ack = complete(dialog, ticket(&store)?, CommitOutcome::Stored)?;
+    let ack = complete(dialog, ticket(&store)?, StoreOutcome::Stored)?;
     assert!(matches!(sends(&ack).as_slice(),[Outbound::Accept(id)] if id.as_str() == "hello"));
     let store = step(dialog, received(&peer_messages::status("status", "2"))?)?;
     assert!(sends(&store).is_empty());
-    let ack = complete(dialog, ticket(&store)?, CommitOutcome::Stored)?;
+    let ack = complete(dialog, ticket(&store)?, StoreOutcome::Stored)?;
     assert!(
         matches!(sends(&ack).as_slice(),[Outbound::Accept(id),Outbound::RequestObservations] if id.as_str() == "status")
     );
@@ -133,8 +133,8 @@ fn poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks() -> Result<(), Dia
     let second = ticket(&step(&mut dialog, received(&observation("o2"))?)?)?;
     let ended = step(&mut dialog, received(&eot())?)?;
     assert!(!ended.iter().any(|a| matches!(a, Action::TopicComplete)));
-    assert!(sends(&complete(&mut dialog, second, CommitOutcome::Stored)?).is_empty());
-    let actions = complete(&mut dialog, first, CommitOutcome::Stored)?;
+    assert!(sends(&complete(&mut dialog, second, StoreOutcome::Stored)?).is_empty());
+    let actions = complete(&mut dialog, first, StoreOutcome::Stored)?;
     assert!(
         matches!(sends(&actions).as_slice(),[Outbound::Accept(a),Outbound::Accept(b)] if a.as_str() == "o1" && b.as_str() == "o2")
     );
@@ -156,7 +156,7 @@ fn poct01_b_9_bounded_backpressure_returns_unconsumed_input() -> Result<(), Dial
     assert!(
         matches!(deferred.first(),Some(Action::Deferred(m)) if m.header().control_id.as_str() == "o2")
     );
-    let actions = complete(&mut dialog, ticket(&store)?, CommitOutcome::Stored)?;
+    let actions = complete(&mut dialog, ticket(&store)?, StoreOutcome::Stored)?;
     assert!(
         actions
             .iter()
@@ -173,14 +173,14 @@ fn poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes() -> Result<()
     let actions = complete(
         &mut dialog,
         t,
-        CommitOutcome::ApplicationError(ApplicationError::UnsupportedValue),
+        StoreOutcome::ApplicationError(ApplicationError::UnsupportedValue),
     )?;
     assert!(matches!(
         sends(&actions).as_slice(),
         [Outbound::ApplicationError { reference, error: ApplicationError::UnsupportedValue }] if reference.as_str() == "bad"
     ));
     let t = ticket(&step(&mut dialog, received(&observation("retry"))?)?)?;
-    let actions = complete(&mut dialog, t, CommitOutcome::Failed)?;
+    let actions = step(&mut dialog, Event::StoreFailed(t))?;
     assert!(matches!(
         sends(&actions).as_slice(),
         [
@@ -206,9 +206,9 @@ fn poct01_b_3_6_no_resend_on_application_timeout() -> Result<(), DialogError> {
     assert!(
         sends(&dialog.step(
             Duration::from_secs(13),
-            Event::Committed {
+            Event::Stored {
                 ticket: t,
-                outcome: CommitOutcome::Stored
+                outcome: StoreOutcome::Stored
             }
         )?)
         .is_empty()
@@ -241,7 +241,7 @@ fn poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination()
     let id = finish
         .iter()
         .find_map(|a| {
-            if let Action::Send {
+            if let Action::Write {
                 control_id,
                 body: Outbound::Terminate(analyte_poct::TerminationReason::Normal),
             } = a
@@ -283,8 +283,8 @@ fn poct01_b_4_1_11_remote_end_waits_for_prior_custody() -> Result<(), DialogErro
         ),
     );
     let end = ticket(&step(&mut dialog, received(&end)?)?)?;
-    assert!(sends(&complete(&mut dialog, end, CommitOutcome::Stored)?).is_empty());
-    let actions = complete(&mut dialog, t, CommitOutcome::Stored)?;
+    assert!(sends(&complete(&mut dialog, end, StoreOutcome::Stored)?).is_empty());
+    let actions = complete(&mut dialog, t, StoreOutcome::Stored)?;
     assert!(
         matches!(sends(&actions).as_slice(),[Outbound::Accept(a),Outbound::Accept(b)] if a.as_str() == "o" && b.as_str() == "end")
     );
@@ -309,16 +309,16 @@ fn poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline() -> Result<(), Dia
     );
     step(&mut minimal, received(&raw)?)?;
     let store = step(&mut minimal, Event::HelloDecision(true))?;
-    let actions = complete(&mut minimal, ticket(&store)?, CommitOutcome::Stored)?;
+    let actions = complete(&mut minimal, ticket(&store)?, StoreOutcome::Stored)?;
     assert!(matches!(sends(&actions).as_slice(), [Outbound::Accept(_)]));
     let mut slow = dialog(2)?;
     step(&mut slow, received(&peer_messages::hello("h"))?)?;
     let store = slow.step(Duration::from_secs(10), Event::HelloDecision(true))?;
     let actions = slow.step(
         Duration::from_millis(12500),
-        Event::Committed {
+        Event::Stored {
             ticket: ticket(&store)?,
-            outcome: CommitOutcome::Stored,
+            outcome: StoreOutcome::Stored,
         },
     )?;
     assert!(sends(&actions).is_empty());
@@ -335,13 +335,13 @@ fn poct01_b_4_1_12_escape_correlation_and_final_ack_correlation() -> Result<(), 
     let mut valid = dialog(2)?;
     step(&mut valid, received(&peer_messages::hello("h"))?)?;
     let store = step(&mut valid, Event::HelloDecision(true))?;
-    complete(&mut valid, ticket(&store)?, CommitOutcome::Stored)?;
+    complete(&mut valid, ticket(&store)?, StoreOutcome::Stored)?;
     let store = step(&mut valid, received(&peer_messages::status("s", "0"))?)?;
-    let actions = complete(&mut valid, ticket(&store)?, CommitOutcome::Stored)?;
+    let actions = complete(&mut valid, ticket(&store)?, StoreOutcome::Stored)?;
     let request = actions
         .iter()
         .find_map(|a| {
-            if let Action::Send {
+            if let Action::Write {
                 control_id,
                 body: Outbound::RequestObservations,
             } = a
@@ -402,7 +402,7 @@ fn poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack() -> Res
         ControlId::new("different-session")?,
     )?;
     assert!(matches!(
-        complete(&mut fresh, t.clone(), CommitOutcome::Stored),
+        complete(&mut fresh, t.clone(), StoreOutcome::Stored),
         Err(DialogError::Commit)
     ));
     let actions = step(&mut left, Event::Disconnected)?;
@@ -465,7 +465,7 @@ fn poct01_b5_13_reused_id_before_commit_is_retained_not_accepted() -> Result<(),
         sends(&complete(
             &mut dialog,
             ticket(&first)?,
-            CommitOutcome::Stored
+            StoreOutcome::Stored
         )?)
         .is_empty()
     );
@@ -495,7 +495,7 @@ fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
         for n in 0..4 {
             let id = format!("{n}{}", "x".repeat(245));
             let actions = step(&mut full, received(&observation(&id))?)?;
-            complete(&mut full, ticket(&actions)?, CommitOutcome::Stored)?;
+            complete(&mut full, ticket(&actions)?, StoreOutcome::Stored)?;
         }
         let actions = step(&mut full, received(&overflow)?)?;
         assert!(
@@ -515,7 +515,7 @@ fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
         let end_id = actions
             .iter()
             .find_map(|a| {
-                if let Action::Send {
+                if let Action::Write {
                     control_id,
                     body: Outbound::Terminate(analyte_poct::TerminationReason::Abnormal),
                 } = a
@@ -561,7 +561,7 @@ fn poct01_b5_13_rejected_hello_reference_cannot_be_reused_by_terminal_ack()
     let end_id = rejected
         .iter()
         .find_map(|a| {
-            if let Action::Send {
+            if let Action::Write {
                 control_id,
                 body: Outbound::Terminate(analyte_poct::TerminationReason::Abnormal),
             } = a
@@ -608,7 +608,7 @@ fn poct01_b_5_12_unexpected_ack_escape_references_incoming_header() -> Result<()
         matches!(sends(&actions).as_slice(), [Outbound::Escape { reference, reason: analyte_poct::EscapeReason::Other }, Outbound::Terminate(analyte_poct::TerminationReason::Abnormal)] if reference.as_str() == "unexpected-ack")
     );
     for action in &actions {
-        if let Action::Send { control_id, body } = action {
+        if let Action::Write { control_id, body } = action {
             let encoded = analyte_poct::encode(
                 &analyte_poct::Header {
                     control_id: control_id.clone(),
@@ -676,7 +676,7 @@ fn poct01_b3_2_journaled_bytes_keep_root_and_incomplete_evidence() -> Result<(),
     for byte in raw.bytes() {
         actions.extend(step(&mut dialog, Event::Byte(byte))?);
     }
-    assert!(matches!(actions.as_slice(), [Action::Input(wire)] if wire == raw.as_bytes()));
+    assert!(matches!(actions.as_slice(), [Action::Parse(wire)] if wire == raw.as_bytes()));
     assert!(sends(&actions).is_empty());
     let inspect = step(&mut dialog, received(&raw)?)?;
     assert!(matches!(inspect.first(), Some(Action::InspectHello { .. })));
@@ -699,7 +699,7 @@ fn poct01_b3_6_incomplete_tokens_do_not_postpone_deadline() -> Result<(), Dialog
         );
     }
     let actions = dialog.step(Duration::from_secs(180), Event::Byte(b'>'))?;
-    assert!(matches!(actions.first(), Some(Action::InputDeadline(raw)) if raw == b"<unfinished>"));
+    assert!(matches!(actions.first(), Some(Action::ParseDeadline(raw)) if raw == b"<unfinished>"));
     assert!(
         actions
             .iter()

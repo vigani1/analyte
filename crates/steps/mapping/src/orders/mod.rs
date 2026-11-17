@@ -51,8 +51,8 @@ pub struct AppOrder {
 
 /// Complete mapped commands; mapping has no transmission or reservation side effects.
 pub enum MachineOrder {
-    /// A standard O record, including CR.
-    Astm(Vec<u8>),
+    /// A validated standard O record; the protocol grammar owns encoding.
+    Astm(analyte_astm::OrderRecord),
     /// One validated request per assay, in the app's order.
     Vidas(Vec<analyte_vidas::syntax::Message>),
     /// A complete validated host-initiated insertion.
@@ -60,12 +60,12 @@ pub enum MachineOrder {
 }
 
 impl MachineOrder {
-    /// Borrows an ASTM record, refusing another protocol's payload.
+    /// Encodes an ASTM record, refusing another protocol's payload.
     /// # Errors
     /// Returns Disabled when this is not an ASTM command.
-    pub fn record(&self) -> Result<&[u8], OrderMappingError> {
+    pub fn record(&self) -> Result<Vec<u8>, OrderMappingError> {
         match self {
-            Self::Astm(record) => Ok(record),
+            Self::Astm(record) => Ok(record.encode()),
             Self::Vidas(_) | Self::Autolyser(_) => Err(OrderMappingError::Disabled),
         }
     }

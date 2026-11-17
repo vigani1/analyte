@@ -24,10 +24,12 @@ fn hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result() -> T
             )?;
             assert!(matches!(
                 map_hl7(
+                    &analyte_mapping::hl7::Settings {
+                        syntax: settings::hl7(&config).0,
+                        mappings: settings::hl7(&config).1,
+                        declarations: &config.effective().machine().deviations
+                    },
                     &message,
-                    settings::hl7(&config).0,
-                    settings::hl7(&config).1,
-                    &config.effective().machine().deviations,
                     input()
                 ),
                 Err(analyte_mapping::Error::Structure {
@@ -59,10 +61,12 @@ fn hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused() -> TestRe
         )?;
         assert!(
             map_hl7(
+                &analyte_mapping::hl7::Settings {
+                    syntax: settings::hl7(&cfg).0,
+                    mappings: settings::hl7(&cfg).1,
+                    declarations: &cfg.effective().machine().deviations
+                },
                 &message,
-                settings::hl7(&cfg).0,
-                settings::hl7(&cfg).1,
-                &cfg.effective().machine().deviations,
                 input()
             )
             .is_err()
@@ -90,10 +94,12 @@ fn hl7_251_s7_4_3_17_collection_range_is_not_ts_precision() -> TestResult {
         )?;
         assert!(matches!(
             map_hl7(
+                &analyte_mapping::hl7::Settings {
+                    syntax: settings::hl7(&cfg).0,
+                    mappings: settings::hl7(&cfg).1,
+                    declarations: &cfg.effective().machine().deviations
+                },
                 &message,
-                settings::hl7(&cfg).0,
-                settings::hl7(&cfg).1,
-                &cfg.effective().machine().deviations,
                 input()
             ),
             Err(analyte_mapping::Error::Structure {
@@ -156,13 +162,7 @@ fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResu
                 raw.as_bytes(),
                 cfg.effective().hl7_options().ok_or("options")?,
             )?;
-            let output = map_hl7(
-                &message,
-                settings::hl7(&cfg).0,
-                settings::hl7(&cfg).1,
-                &cfg.effective().machine().deviations,
-                input(),
-            )?;
+            let output = map_hl7(&settings::hl7_mapping(&cfg), &message, input())?;
             let must_park = value != "F" && (field != 22 || matches!(edition, "v282" | "v291"));
             assert_eq!(
                 output.requires_parking(),
@@ -184,10 +184,12 @@ fn hl7_251_s2_10_1_unnegotiated_sequence_number_is_refused() -> TestResult {
         analyte_hl7::Message::parse(raw, cfg.effective().hl7_options().ok_or("options")?)?;
     assert!(matches!(
         map_hl7(
+            &analyte_mapping::hl7::Settings {
+                syntax: settings::hl7(&cfg).0,
+                mappings: settings::hl7(&cfg).1,
+                declarations: &cfg.effective().machine().deviations
+            },
             &message,
-            settings::hl7(&cfg).0,
-            settings::hl7(&cfg).1,
-            &cfg.effective().machine().deviations,
             input()
         ),
         Err(analyte_mapping::Error::Structure {

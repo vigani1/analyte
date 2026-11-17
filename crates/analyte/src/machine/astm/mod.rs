@@ -162,7 +162,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.active_orders.push(reserved.order);
             vec![Event::Send(crate::orders::astm::envelope(
                 self.machine.machine(),
-                vec![reserved.payload],
+                vec![reserved.payload.encode()],
                 analyte_astm::OrderTermination::Normal,
             ))]
         } else if bytes.is_empty()
@@ -250,7 +250,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Action::Write(bytes) => {
                 conn.write(bytes).await?;
             }
-            Action::Commit(id, number, bytes) => {
+            Action::Store(id, number, bytes) => {
                 self.commit_frame(id, number, bytes, stop, actions).await?;
             }
             Action::Record(record) => {
@@ -289,7 +289,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 )
                 .await?;
             }
-            Action::CommitFailed(_) => {
+            Action::StoreFailed(_) => {
                 return Err(self
                     .commit_failure
                     .take()
@@ -357,10 +357,10 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 .map_err(Error::TestHook)?;
         }
         let event = match committed {
-            Ok(_) => Event::Committed(id),
+            Ok(_) => Event::Stored(id),
             Err(error) => {
                 self.commit_failure = Some(error);
-                Event::CommitFailed(id)
+                Event::StoreFailed(id)
             }
         };
         actions.extend(self.dialog.step(self.start.elapsed(), event)?);
@@ -487,7 +487,7 @@ impl Effects for ConnectionState<'_, '_> {
         // Disconnect drains the dialog-owned decoder on every exit, including failed
         // host effects. Transfer and order identities are reconciled below even if
         // parking one piece of framing evidence fails.
-        match self.dialog.step(self.start.elapsed(), Event::Disconnect) {
+        match self.dialog.step(self.start.elapsed(), Event::Disconnected) {
             Ok(actions) => {
                 for action in actions {
                     if let Action::Rejected(error, bytes) = action {

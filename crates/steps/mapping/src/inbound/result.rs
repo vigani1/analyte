@@ -14,7 +14,7 @@ pub(crate) fn part(
     source: &Source<'_>,
     index: usize,
     config: &RecordSettings<'_>,
-    input: Input,
+    input: Input<'_>,
     test: NamespacedId,
     values: EvidenceList<ResultValue>,
     output: &mut Output,

@@ -56,6 +56,7 @@ pub(crate) async fn map_retained(
     Ok(crate::reading::read(
         &machine.snapshot,
         analyte_mapping::Input {
+            device: None,
             receipt: receipt.metadata.id,
             received_at: receipt.metadata.received_at,
             revision: Revision(0),

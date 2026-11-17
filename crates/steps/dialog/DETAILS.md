@@ -12,7 +12,7 @@ budgets to leave room for actual transport latency; time here denotes issuance
 of a write, not proof that its last byte has reached the wire.
 
 Before ENQ can be accepted, the host must reserve storage and report capacity.
-A frame produces a `Commit` request. Only its matching successful host response
+A frame produces a `Store` request. Only its matching successful host response
 permits ACK (or the optional EOT interrupt). Protect raw action payloads like the
 raw store; never log them. Store driver/config versions alongside the raw frame.
 `Epoch` must be unique for each connection incarnation, including after restart;

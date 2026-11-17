@@ -4,15 +4,23 @@ use crate::orders::codes::{map_priority as outbound_priority, map_test as outbou
 use crate::orders::{AppOrder, OrderMappingError, map_specimen};
 use crate::{Error, Input, Output, Position};
 
+/// Selected ASTM syntax and incoming code mappings.
+pub struct Settings<'a> {
+    /// Validated syntax and bounds.
+    pub syntax: &'a analyte_config::AstmSyntax,
+    /// Explicit incoming translations.
+    pub mappings: &'a analyte_config::Mappings,
+}
+
 /// Maps one parsed LIS02 message, retaining hierarchy and original value text.
 /// # Errors
 /// Rejects a mismatched config, invalid ownership, encoding or model resource bounds.
 pub fn map(
+    settings: &Settings<'_>,
     message: &analyte_astm::Message,
-    syntax: &analyte_config::AstmSyntax,
-    mappings: &analyte_config::Mappings,
-    input: Input,
+    input: Input<'_>,
 ) -> Result<Output, Error> {
+    let Settings { syntax, mappings } = settings;
     let settings = syntax.limits();
     if message.records().len() > settings.records() {
         return Err(Error::Limit {
@@ -70,7 +78,7 @@ pub fn map_order(
     order: &AppOrder,
     limits: &analyte_config::SyntaxLimits,
     settings: &analyte_config::AstmOrders,
-) -> Result<Vec<u8>, OrderMappingError> {
+) -> Result<analyte_astm::OrderRecord, OrderMappingError> {
     let astm = &settings.layout();
     let settings = &settings.tables();
     if order.tests.is_empty() || order.tests.len() > limits.repetitions() {
@@ -79,15 +87,10 @@ pub fn map_order(
     let mut tests = Vec::new();
     for requested in &order.tests {
         let mapped = outbound_test(settings.tests(), requested)?;
-        for part in &mapped.machine_components {
-            validate_text(part)?;
-        }
-        tests.push(mapped.machine_components.join("^"));
+        tests.push(mapped.machine_components.clone());
     }
     let priority = outbound_priority(settings.priorities(), order.priority)?;
-    let mut fields: [String; 16] = std::array::from_fn(|_| String::new());
-    fields[0] = "O".into();
-    fields[1] = "1".into();
+    let mut fields: [Vec<Vec<String>>; 16] = std::array::from_fn(|_| Vec::new());
     set(
         &mut fields,
         &astm.specimen,
@@ -113,20 +116,23 @@ pub fn map_order(
         let code = map_specimen(order, settings)?;
         set(&mut fields, destination, code, limits.components())?;
     }
-    let prefix = "^".repeat(usize::from(astm.test.component).saturating_sub(1));
+    let prefix = usize::from(astm.test.component).saturating_sub(1);
     if settings.tests().iter().any(|t| {
         t.machine_components
             .len()
-            .checked_add(prefix.len())
+            .checked_add(prefix)
             .is_none_or(|n| n > limits.components())
     }) {
         return Err(OrderMappingError::AstmTestComponents);
     }
     fields[4] = tests
-        .iter()
-        .map(|t| format!("{prefix}{t}"))
-        .collect::<Vec<_>>()
-        .join("\\");
+        .into_iter()
+        .map(|test| {
+            let mut parts = vec![String::new(); prefix];
+            parts.extend(test);
+            parts
+        })
+        .collect();
     set(
         &mut fields,
         &astm.priority,
@@ -140,30 +146,20 @@ pub fn map_order(
         limits.components(),
     )?;
     let last_field = if astm.specimen_type.is_some() { 16 } else { 12 };
-    let mut record = fields
-        .get(..last_field)
+    let values = fields
+        .get(2..last_field)
         .ok_or(OrderMappingError::AstmRecordLayout)?
-        .join("|")
-        .into_bytes();
-    if record.len() > limits.record_bytes()
-        || record
-            .len()
-            .checked_add(1)
-            .is_none_or(|n| n > limits.bytes())
-    {
-        return Err(OrderMappingError::AstmRecordLimit);
-    }
-    record.push(b'\r');
-    Ok(record)
+        .to_vec();
+    analyte_astm::OrderRecord::new(values, limits.record_bytes(), limits.bytes())
+        .map_err(order_error)
 }
 
 fn set(
-    fields: &mut [String],
+    fields: &mut [Vec<Vec<String>>],
     selected: &analyte_config::Field,
     value: &str,
     limit: usize,
 ) -> Result<(), OrderMappingError> {
-    validate_text(value)?;
     let component = usize::from(selected.component);
     if component == 0 || component > limit {
         return Err(OrderMappingError::AstmSelectorComponent);
@@ -171,20 +167,19 @@ fn set(
     let field = fields
         .get_mut(usize::from(selected.field).saturating_sub(1))
         .ok_or(OrderMappingError::AstmSelectorField)?;
-    *field = format!("{}{value}", "^".repeat(component.saturating_sub(1)));
+    let mut parts = vec![String::new(); component];
+    let part = parts
+        .last_mut()
+        .ok_or(OrderMappingError::AstmSelectorComponent)?;
+    *part = value.into();
+    *field = vec![parts];
     Ok(())
 }
 
-fn validate_text(value: &str) -> Result<(), OrderMappingError> {
-    // This initial outbound repertoire refuses reserved characters rather than
-    // changing clinical identifiers or guessing a vendor escape convention.
-    if value.len() > 4096
-        || !value.is_ascii()
-        || value
-            .bytes()
-            .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b))
-    {
-        return Err(OrderMappingError::AstmTextRepertoire);
+fn order_error(error: analyte_astm::OrderError) -> OrderMappingError {
+    match error {
+        analyte_astm::OrderError::Text => OrderMappingError::AstmTextRepertoire,
+        analyte_astm::OrderError::Field => OrderMappingError::AstmSelectorField,
+        analyte_astm::OrderError::Limit => OrderMappingError::AstmRecordLimit,
     }
-    Ok(())
 }

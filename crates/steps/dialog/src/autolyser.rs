@@ -61,13 +61,16 @@ impl Request {
 pub enum Error {
     /// Required bound or deadline is invalid.
     #[error("invalid configuration")]
-    Config,
+    Configuration,
     /// Operation conflicts with the current phase.
     #[error("connection busy or recovery required")]
     Busy,
-    /// Clock regressed or deadline overflowed.
-    #[error("invalid monotonic time")]
-    Time,
+    /// Connection time moved backwards.
+    #[error("dialog time moved backwards")]
+    TimeReversed,
+    /// A deadline or storage token cannot be represented.
+    #[error("dialog deadline or token exhausted")]
+    Exhausted,
     /// Response did not complete within its bound.
     #[error("response incomplete or overlong")]
     Incomplete,
@@ -88,6 +91,18 @@ pub enum Error {
     Record(#[from] records::Error),
 }
 
+/// Connection-scoped storage request ordinal; never a clinical result identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreId(u64);
+
+impl StoreId {
+    /// Returns the ordinal for host evidence within this connection incarnation.
+    #[must_use]
+    pub const fn ordinal(self) -> u64 {
+        self.0
+    }
+}
+
 /// Host input, processed without consulting a clock or performing I/O.
 #[derive(Clone, Copy)]
 pub enum Event<'a> {
@@ -98,13 +113,13 @@ pub enum Event<'a> {
     /// Next received byte, independent of transport read boundaries.
     Byte(u8),
     /// Durable commit completion for the emitted token.
-    Stored(u64),
+    Stored(StoreId),
     /// Commit failed; preserve emitted evidence and close the connection.
-    StoreFailed(u64),
+    StoreFailed(StoreId),
     /// Evaluate deadlines; may initiate configured L recovery only.
     Tick,
     /// End the connection, retaining any partial response for storage.
-    Disconnect,
+    Disconnected,
 }
 
 /// Ordered effects; byte-bearing actions belong only in protected storage.
@@ -113,7 +128,7 @@ pub enum Action {
     /// Write exactly these bytes.
     Write(Vec<u8>),
     /// Durably store token and exact raw bytes with driver/config versions.
-    Store(u64, Vec<u8>),
+    Store(StoreId, Vec<u8>),
     /// Stored response is valid; identity remains unresolved until mapping qualifies it.
     Report(Report),
     /// Stored response is corrupt or incomplete and needs reconciliation.
@@ -246,7 +261,7 @@ enum State {
         total: Duration,
     },
     Store {
-        token: u64,
+        token: StoreId,
         frame: Frame,
         insertion: bool,
     },
@@ -283,7 +298,7 @@ impl Dialog {
         .any(Duration::is_zero)
             || !(2..=11038).contains(&config.max_bytes)
         {
-            return Err(Error::Config);
+            return Err(Error::Configuration);
         }
         Ok(Self {
             config,
@@ -312,7 +327,9 @@ impl Dialog {
     }
 
     fn after(&self, wait: Duration) -> Result<Duration, Error> {
-        self.clock.after(wait).map_err(|_| Error::Time)
+        self.clock
+            .after(wait)
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))
     }
 
     fn begin(&mut self, operation: Operation) -> Result<Vec<Action>, Error> {
@@ -334,8 +351,9 @@ impl Dialog {
     }
 
     fn store(&mut self, frame: Frame, insertion: bool) -> Result<Vec<Action>, Error> {
-        let token = self.next_token.checked_add(1).ok_or(Error::Time)?;
-        self.next_token = token;
+        let ordinal = self.next_token.checked_add(1).ok_or(Error::Exhausted)?;
+        self.next_token = ordinal;
+        let token = StoreId(ordinal);
         self.deadline = self.after(self.config.storage)?;
         let action = Action::Store(token, frame.raw().to_vec());
         self.state = State::Store {
@@ -354,9 +372,9 @@ impl Dialog {
     /// # Errors
     /// Rejects reversed time before mutating the conversation.
     pub fn step(&mut self, now: Duration, event: Event<'_>) -> Result<Vec<Action>, Error> {
-        if self.clock.advance(now, Duration::ZERO).is_err() {
-            return Err(Error::Time);
-        }
+        self.clock
+            .advance(now, Duration::ZERO)
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         Ok(match self.apply(event) {
             Ok(actions) => actions,
             Err(error) => vec![Action::Refused(error)],
@@ -385,7 +403,7 @@ impl Dialog {
                     Action::Close,
                 ])
             }
-            Event::Disconnect => self.interrupt(),
+            Event::Disconnected => self.interrupt(),
             Event::Tick => {
                 if self.recovery
                     && self.config.recovery == Recovery::LastOnPoll
@@ -486,7 +504,7 @@ impl Dialog {
                         self.clock
                             .now()
                             .checked_add(self.config.inter_byte)
-                            .ok_or(Error::Time)?,
+                            .ok_or(Error::Exhausted)?,
                     );
                     Ok(vec![Action::Deadline(self.deadline)])
                 }
@@ -495,7 +513,7 @@ impl Dialog {
         }
     }
 
-    fn stored(&mut self, token: u64) -> Result<Vec<Action>, Error> {
+    fn stored(&mut self, token: StoreId) -> Result<Vec<Action>, Error> {
         if !matches!(self.state, State::Store { token: pending, .. } if pending == token) {
             return Err(Error::Stale);
         }
@@ -545,5 +563,31 @@ impl Dialog {
                 }
             };
         Ok(vec![action, Action::Deadline(self.deadline)])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adr_0001_exhausted_token_is_distinct_from_reversed_time() {
+        let config = Config {
+            poll: Duration::from_secs(1),
+            ack: Duration::from_secs(1),
+            response: Duration::from_secs(1),
+            inter_byte: Duration::from_secs(1),
+            storage: Duration::from_secs(1),
+            max_bytes: 11038,
+            controls: false,
+            recovery: Recovery::ManualLast,
+        };
+        let mut dialog = Dialog::new(config).unwrap();
+        dialog.next_token = u64::MAX;
+        let mut decoder = Decoder::new(Mode::Report, 11038).unwrap();
+        assert!(matches!(
+            dialog.store(decoder.finish(), false),
+            Err(Error::Exhausted)
+        ));
     }
 }

@@ -28,7 +28,7 @@ fn receipt(actions: &[Action]) -> Result<ReceiptId, Box<dyn std::error::Error>> 
     actions
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _) = a {
+            if let Action::Store(id, _) = a {
                 Some(*id)
             } else {
                 None
@@ -68,7 +68,7 @@ fn hl7_251_2_9_2_aa_only_after_store_and_interpret() -> TestResult {
             .any(|a| matches!(a, Action::Refused(_)))
     );
     assert!(
-        d.step(Duration::ZERO, Event::Committed(id))?
+        d.step(Duration::ZERO, Event::Stored(id))?
             .iter()
             .any(|a| matches!(a, Action::Interpret(_, _)))
     );
@@ -85,7 +85,7 @@ fn hl7_251_2_9_2_failed_store_and_interpretation() -> TestResult {
         let mut d = dialog()?;
         let id = receipt(&feed(&mut d, &message(""))?)?;
         if stored {
-            d.step(Duration::ZERO, Event::Committed(id))?;
+            d.step(Duration::ZERO, Event::Stored(id))?;
             d.step(
                 Duration::ZERO,
                 Event::NotInterpretable(
@@ -101,7 +101,7 @@ fn hl7_251_2_9_2_failed_store_and_interpretation() -> TestResult {
                 ),
             )?;
         } else {
-            d.step(Duration::ZERO, Event::CommitFailed(id))?;
+            d.step(Duration::ZERO, Event::StoreFailed(id))?;
         }
         let actions = respond(&mut d, id, b"negative1")?;
         assert!(has_code(
@@ -121,7 +121,7 @@ fn hl7_251_2_9_3_independent_conditions() -> TestResult {
         for application in ["AL", "NE", "ER", "SU"] {
             let mut d = dialog()?;
             let id = receipt(&feed(&mut d, &message(&format!("{accept}|{application}")))?)?;
-            d.step(Duration::ZERO, Event::Committed(id))?;
+            d.step(Duration::ZERO, Event::Stored(id))?;
             let actions = respond(&mut d, id, b"commit1")?;
             assert_eq!(
                 has_code(&actions, b"MSA|CA|"),
@@ -145,14 +145,14 @@ fn mllp_r1_1_2_split_merged_queue_and_overflow() -> TestResult {
     assert!(
         !feed(&mut d, &raw)?
             .iter()
-            .any(|a| matches!(a, Action::Commit(_, _)))
+            .any(|a| matches!(a, Action::Store(_, _)))
     );
     assert!(
         feed(&mut d, &raw)?
             .iter()
             .any(|a| matches!(a, Action::QueueFull(r) if r == &raw))
     );
-    d.step(Duration::ZERO, Event::CommitFailed(id))?;
+    d.step(Duration::ZERO, Event::StoreFailed(id))?;
     let next = respond(&mut d, id, b"negative")?;
     assert_ne!(receipt(&next)?, id);
     Ok(())
@@ -162,7 +162,7 @@ fn mllp_r1_1_2_split_merged_queue_and_overflow() -> TestResult {
 fn hl7_251_2_9_deadline_precedes_late_commit() -> TestResult {
     let mut d = dialog()?;
     let id = receipt(&feed(&mut d, &message("AL|AL"))?)?;
-    let out = d.step(Duration::from_secs(5), Event::Committed(id))?;
+    let out = d.step(Duration::from_secs(5), Event::Stored(id))?;
     assert!(
         out.iter()
             .any(|a| matches!(a, Action::ResponseNeeded(_, AckCode::Ce)))
@@ -179,7 +179,7 @@ fn hl7_251_2_9_2_sender_correlation_and_uncertainty() -> TestResult {
         let payload = raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?;
         d.step(Duration::ZERO, Event::Send(payload))?;
         let out = if disconnect {
-            d.step(Duration::ZERO, Event::Disconnect)?
+            d.step(Duration::ZERO, Event::Disconnected)?
         } else {
             d.step(Duration::from_secs(5), Event::Tick)?
         };
@@ -201,7 +201,7 @@ proptest! {
         for event in events {
             let out = match event % 4 {
                 0 => d.step(Duration::ZERO, Event::Interpreted(id))?,
-                1 => d.step(Duration::ZERO, Event::CommitFailed(id))?,
+                1 => d.step(Duration::ZERO, Event::StoreFailed(id))?,
                 2 => d.step(Duration::ZERO, Event::Tick)?,
                 _ => respond(&mut d, id, b"fresh").map_err(|e| TestCaseError::fail(e.to_string()))?,
             };
@@ -288,7 +288,7 @@ fn mllp_r1_1_2_invalid_trailer_partial_eof_and_timeout() -> TestResult {
         let mut d = dialog()?;
         feed(&mut d, b"\x0bMSH|")?;
         let out = if eof {
-            d.step(Duration::ZERO, Event::Disconnect)?
+            d.step(Duration::ZERO, Event::Disconnected)?
         } else {
             d.step(Duration::from_secs(5), Event::Tick)?
         };
@@ -312,7 +312,7 @@ fn hl7_251_2_9_3_negative_suppression_and_interpret_timeout() -> TestResult {
     for mode in ["AL|AL", "NE|NE", "ER|ER", "SU|SU"] {
         let mut d = dialog()?;
         let id = receipt(&feed(&mut d, &message(mode))?)?;
-        d.step(Duration::ZERO, Event::CommitFailed(id))?;
+        d.step(Duration::ZERO, Event::StoreFailed(id))?;
         assert_eq!(
             has_code(&respond(&mut d, id, b"reject1")?, b"MSA|CE|"),
             matches!(mode, "AL|AL" | "ER|ER")
@@ -320,7 +320,7 @@ fn hl7_251_2_9_3_negative_suppression_and_interpret_timeout() -> TestResult {
     }
     let mut d = dialog()?;
     let id = receipt(&feed(&mut d, &message(""))?)?;
-    d.step(Duration::ZERO, Event::Committed(id))?;
+    d.step(Duration::ZERO, Event::Stored(id))?;
     let out = d.step(Duration::from_secs(5), Event::Interpreted(id))?;
     assert!(
         out.iter()
@@ -337,7 +337,7 @@ fn adr_0003_malformed_message_is_committed_before_parking() -> TestResult {
     let actions = feed(&mut d, raw)?;
     let id = receipt(&actions)?;
     assert!(!actions.iter().any(|a| matches!(a, Action::Parked(_, _))));
-    let actions = d.step(Duration::ZERO, Event::Committed(id))?;
+    let actions = d.step(Duration::ZERO, Event::Stored(id))?;
     assert!(
         actions
             .iter()
@@ -518,7 +518,7 @@ fn hl7_251_2_9_3_sender_application_wait_is_bounded_and_never_resends() -> TestR
         let out = d.step(
             Duration::from_secs(at),
             if disconnect {
-                Event::Disconnect
+                Event::Disconnected
             } else {
                 Event::Tick
             },
@@ -560,7 +560,7 @@ fn hl7_231_2_18_251_5_10_dsr_decisions_follow_durable_ack_commit() -> TestResult
                 .any(|a| matches!(a, Action::DisplayOutcome { .. } | Action::Write(_)))
         );
         let token = receipt(&actions)?;
-        let actions = d.step(Duration::from_secs(1), Event::Committed(token))?;
+        let actions = d.step(Duration::from_secs(1), Event::Stored(token))?;
         assert!(actions.iter().any(|a| matches!(a, Action::DisplayOutcome { receipt: Some(r), accepted: actual, code, .. } if *r == token && *actual == accepted && *code == expected)));
         assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
     }
@@ -577,7 +577,7 @@ fn hl7_231_2_18_adr0003_late_dsr_commit_retains_receipt_without_confirming_work(
         Duration::from_secs(2),
     )?;
     let token = receipt(&feed(&mut d, &display_ack("dsr1", "AA", "2.5.1"))?)?;
-    let actions = d.step(Duration::from_secs(2), Event::Committed(token))?;
+    let actions = d.step(Duration::from_secs(2), Event::Stored(token))?;
     assert_eq!(
         actions
             .iter()
@@ -623,16 +623,16 @@ fn mllp_r1_1_2_queries_share_decoder_and_keep_queued_first_byte_time() -> TestRe
         assert!(
             !actions
                 .iter()
-                .any(|a| matches!(a, Action::Commit(..) | Action::Query { .. }))
+                .any(|a| matches!(a, Action::Store(..) | Action::Query { .. }))
         );
     }
-    let actions = d.step(Duration::from_secs(2), Event::Committed(first))?;
+    let actions = d.step(Duration::from_secs(2), Event::Stored(first))?;
     assert!(actions.iter().any(
         |a| matches!(a, Action::Query { receipt, started: Duration::ZERO, .. } if *receipt == first)
     ));
     let second = receipt(&actions)?;
     assert_ne!(first, second);
-    let actions = d.step(Duration::from_secs(2), Event::Committed(second))?;
+    let actions = d.step(Duration::from_secs(2), Event::Stored(second))?;
     assert!(actions.iter().any(|a| matches!(a, Action::Query { receipt, started, .. } if *receipt == second && *started == Duration::from_secs(1))));
     Ok(())
 }
@@ -741,7 +741,7 @@ fn hl7_291_s2_8_3_2_enhanced_application_ack_requires_separate_channel() -> Test
                 .iter()
                 .any(|action| matches!(action, Action::Write(_)))
         );
-        let actions = dialog.step(Duration::ZERO, Event::Committed(id))?;
+        let actions = dialog.step(Duration::ZERO, Event::Stored(id))?;
         assert!(actions.iter().any(|action|matches!(action, Action::Parked(bytes, Error::SeparateApplicationChannel) if bytes==&raw)));
         assert!(
             !actions
