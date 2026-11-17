@@ -31,7 +31,7 @@ pub(super) fn render(
         .zip(&items)
         .map(|((command, _), items)| (*command, items.as_slice()))
         .collect::<Vec<_>>();
-    crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Law)
+    crate::orders::hl7::response::response_metadata(crate::orders::hl7::response::Profile::Law)
         .build(|response| {
             Ok(analyte_mapping::map_law_work(
                 &refs, action, options, response,

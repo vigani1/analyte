@@ -24,7 +24,7 @@ impl Drop for Owner {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         if let Some(thread) = self.thread.take() {
-            super::worker::report_join("folder", &thread.join());
+            crate::machine::worker::report_join("folder", &thread.join());
         }
     }
 }
@@ -80,13 +80,13 @@ impl Owner {
     }
 }
 
-pub(super) async fn session(
+pub(in crate::machine) async fn session(
     machine: &Machine,
     store: &Handle,
     bytes: usize,
     root: PathBuf,
     mut stop: watch::Receiver<bool>,
-    mut closing: super::Closing,
+    mut closing: crate::machine::Closing,
     capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
     let context = intake::Connection::new(machine)?;
@@ -104,7 +104,7 @@ pub(super) async fn session(
         loop {
             let mut item = tokio::select! {
                 biased;
-                () = super::stopping(&mut stop) => break,
+                () = crate::machine::stopping(&mut stop) => break,
                 item = files.recv() => item.ok_or_else(|| Error::FileOwnerStopped)?,
             };
             let Some(raw) = receive(&mut item.connection, bytes, &mut stop).await? else {
@@ -145,7 +145,7 @@ async fn receive(
     let mut raw = Vec::new();
     loop {
         let event = tokio::select! { biased;
-            () = super::stopping(stop) => return Ok(None),
+            () = crate::machine::stopping(stop) => return Ok(None),
             event = connection.receive() => event?,
         }
         .ok_or_else(|| Error::FileTransportEndedBeforeCompletionSourceRemainsClaimed)?;
@@ -194,7 +194,7 @@ mod tests {
                     "protected-error-token",
                 )))
             });
-            let output = super::super::worker::tests::capture(|| {
+            let output = crate::machine::worker::tests::capture(|| {
                 drop(Owner {
                     stop: Arc::new(AtomicBool::new(false)),
                     finished: tokio::sync::oneshot::channel().1,
@@ -273,8 +273,8 @@ mod tests {
     #[tokio::test]
     async fn adr0003_file_astm_and_hl7_storage_refusal_never_release_claim() -> Result<(), Error> {
         for definition in [
-            include_str!("../../../core/config/examples/astm.toml"),
-            include_str!("../../../core/config/examples/hl7.toml"),
+            include_str!("../../../../core/config/examples/astm.toml"),
+            include_str!("../../../../core/config/examples/hl7.toml"),
         ] {
             let temp = tempfile::tempdir()?;
             let incoming = temp.path().join("incoming");
@@ -289,7 +289,7 @@ mod tests {
                 &definition[..start],
                 &definition[end..]
             );
-            let site = include_str!("../../../core/config/examples/site.toml").replace(
+            let site = include_str!("../../../../core/config/examples/site.toml").replace(
                 "\"127.0.0.1:5600\"",
                 &toml::Value::String(incoming.to_string_lossy().into_owned()).to_string(),
             );
@@ -333,7 +333,7 @@ mod tests {
             let (_stop, stop) = watch::channel(false);
             let (ready, _ready) = watch::channel(false);
             let (_close, close) = watch::channel(false);
-            let closing = super::super::Closing { ready, close };
+            let closing = crate::machine::Closing { ready, close };
             let result = tokio::time::timeout(
                 Duration::from_secs(10),
                 session(&machine, &store, 65536, root.clone(), stop, closing, None),

@@ -13,21 +13,21 @@ use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
-struct ConnectionState {
-    dialog: Dialog,
-    decoder: Option<Decoder>,
-    suffix: Option<(u8, usize)>,
-    start: Instant,
-    actions: VecDeque<Action>,
-    active: Option<analyte_store::MachineOrder>,
-    requests: VecDeque<Message>,
-    idle: bool,
-    opened: bool,
-    end_code: VidasEnd,
-    cursor: String,
-    next_poll: Instant,
-    config: Config,
-    policy: Policy,
+pub(crate) struct ConnectionState {
+    pub(crate) dialog: Dialog,
+    pub(crate) decoder: Option<Decoder>,
+    pub(crate) suffix: Option<(u8, usize)>,
+    pub(crate) start: Instant,
+    pub(crate) actions: VecDeque<Action>,
+    pub(crate) active: Option<analyte_store::MachineOrder>,
+    pub(crate) requests: VecDeque<Message>,
+    pub(crate) idle: bool,
+    pub(crate) opened: bool,
+    pub(crate) end_code: VidasEnd,
+    pub(crate) cursor: String,
+    pub(crate) next_poll: Instant,
+    pub(crate) config: Config,
+    pub(crate) policy: Policy,
 }
 
 pub(super) async fn session(
@@ -214,28 +214,7 @@ impl ConnectionState {
         }
         Ok(false)
     }
-    async fn poll_orders(
-        &mut self,
-        machine: &intake::Connection<'_>,
-        store: &Handle,
-    ) -> Result<(), Error> {
-        if self.idle && self.opened && Instant::now() >= self.next_poll {
-            self.next_poll = Instant::now()
-                .checked_add(ms(1000))
-                .ok_or_else(|| Error::VidasOrderPollDeadlineOverflow)?;
-            if let Some(reserved) =
-                crate::orders::sending::next(store, machine, &mut self.cursor).await?
-            {
-                self.active = Some(reserved.order);
-                let analyte_mapping::MachineOrder::Vidas(requests) = reserved.payload else {
-                    return Err(Error::VidasReceivedAnotherStackSOrder);
-                };
-                self.requests = requests.into();
-                start_download(self)?;
-            }
-        }
-        Ok(())
-    }
+
     async fn close(&self, store: &Handle, mut result: Result<(), Error>) -> Result<(), Error> {
         if let Some(order) = self.active.as_ref() {
             let cleanup =
@@ -244,19 +223,6 @@ impl ConnectionState {
         }
         result
     }
-}
-
-fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
-    let request = state
-        .requests
-        .pop_front()
-        .ok_or_else(|| Error::VidasMappedRequestMissing)?;
-    state.dialog = Dialog::download(state.config.clone(), state.policy.clone(), &request)?;
-    state.start = Instant::now();
-    state.idle = false;
-    state.end_code = VidasEnd::TransferError;
-    state.actions.extend(state.dialog.start());
-    Ok(())
 }
 
 async fn process(
@@ -317,7 +283,7 @@ async fn process(
             Action::Complete => {
                 if let Some(order) = state.active.as_ref() {
                     if !state.requests.is_empty() {
-                        start_download(state)?;
+                        crate::orders::vidas::start_download(state)?;
                     } else {
                         crate::orders::sending::complete(
                             store,

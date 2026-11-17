@@ -12,7 +12,7 @@ pub(crate) enum WriteError {
     Transport(#[from] analyte_transport::Error),
 }
 
-pub(super) async fn write(
+pub(crate) async fn write(
     conn: &mut analyte_transport::Connection,
     bytes: &[u8],
     budget: Duration,
@@ -29,7 +29,7 @@ pub(super) async fn write(
     })
 }
 
-pub(super) fn ms(value: u32) -> Duration {
+pub(crate) fn ms(value: u32) -> Duration {
     Duration::from_millis(u64::from(value))
 }
 
