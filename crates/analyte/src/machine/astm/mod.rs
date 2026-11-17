@@ -113,7 +113,12 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     Err(analyte_transport::Error::Deadline(_)) => None,
                     Err(error) => return Err(error.into()),
                 },
-                answer = async { match self.pending.as_mut() { Some(query) => query.finish(self.machine).await, None => std::future::pending().await } }, if self.pending.is_some() => {
+                answer = async {
+                    match self.pending.as_mut() {
+                        Some(query) => query.finish(self.machine).await,
+                        None => std::future::pending().await,
+                    }
+                }, if self.pending.is_some() => {
                     self.response_deadline = self.pending.as_ref().map(Pending::deadline);
                     self.pending = None;
                     self.response = answer?;

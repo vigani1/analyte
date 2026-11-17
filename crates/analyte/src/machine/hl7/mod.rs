@@ -142,7 +142,11 @@ impl ConnectionState {
                 hook.pause(stop).await.map_err(Error::TestHook)?;
             }
             if let Some(query) = &mut self.queries {
-                tokio::select! {biased; ()=super::stopping(stop)=>break,result=query.idle(store,machine,conn,&mut self.dialog,self.start)=>result?,}
+                tokio::select! {
+                    biased;
+                    () = super::stopping(stop) => break,
+                    result = query.idle(store, machine, conn, &mut self.dialog, self.start) => result?,
+                }
             }
             self.wake = self.dialog.next_deadline();
         }
@@ -339,7 +343,19 @@ impl ConnectionState {
             .await?;
         } else {
             let query = self.queries.as_mut().ok_or(Error::Hl7QueryServicesAbsent)?;
-            let reply = tokio::select! { biased; () = super::stopping(stop) => return Ok(true), result = query.answer(store,machine,crate::orders::hl7::Request { message: &message, started: self.start.checked_add(started).ok_or(Error::QueryClockOverflow)?, receipt: id },&self.dialog,self.start) => result? };
+            let request = crate::orders::hl7::Request {
+                message: &message,
+                started: self
+                    .start
+                    .checked_add(started)
+                    .ok_or(Error::QueryClockOverflow)?,
+                receipt: id,
+            };
+            let reply = tokio::select! {
+                biased;
+                () = super::stopping(stop) => return Ok(true),
+                result = query.answer(store, machine, request, &self.dialog, self.start) => result?,
+            };
             if let Some(reply) = reply {
                 actions.extend(
                     self.dialog
