@@ -1,9 +1,9 @@
 //! Sends VIDAS work through the owning machine dialog.
+use super::ConnectionState;
+use super::transfer_end::VidasEnd;
 use crate::intake;
 use crate::machine::custody::ms;
 use crate::machine::error::SessionError as Error;
-use crate::machine::transfer_end::VidasEnd;
-use crate::machine::vidas::ConnectionState;
 use analyte_dialog::vidas::Dialog;
 use analyte_store::Handle;
 use std::time::Instant;

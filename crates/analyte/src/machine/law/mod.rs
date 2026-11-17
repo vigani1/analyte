@@ -337,7 +337,7 @@ impl<'a, 'm> Host<'a, 'm> {
     ) -> Result<Vec<Action>, Error> {
         let (outcome, location) =
             intake::interpret_with_location(self.store, self.machine, self.receipt(token)?).await?;
-        let detail = super::error_location::build(location.as_ref(), b"", b"");
+        let detail = crate::machine::hl7::error_location::build(location.as_ref(), b"", b"");
         let location = location.as_ref().map(|_| protocol::Location {
             segment: detail.segment,
             occurrence: detail.occurrence,

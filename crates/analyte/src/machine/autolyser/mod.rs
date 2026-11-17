@@ -1,10 +1,12 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
 mod custody;
+mod orders;
+mod transfer_end;
+use self::transfer_end::AutolyserEnd;
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::custody::{self as receive_custody, ms};
 use crate::machine::error::SessionError as Error;
-use crate::machine::transfer_end::AutolyserEnd;
 use crate::orders::outcome::Code;
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
@@ -13,16 +15,16 @@ use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 /// Mutable conversation state has one owner for the entire connection.
-pub(crate) struct ConnectionState {
-    pub(crate) dialog: Dialog,
-    pub(crate) start: Instant,
-    pub(crate) receipt: Option<(ReceiptId, jiff::Timestamp)>,
-    pub(crate) ready: bool,
-    pub(crate) recovering: bool,
-    pub(crate) guard: Option<analyte_store::PollIntentId>,
-    pub(crate) active: Option<analyte_store::MachineOrder>,
-    pub(crate) cursor: String,
-    pub(crate) end_code: AutolyserEnd,
+struct ConnectionState {
+    dialog: Dialog,
+    start: Instant,
+    receipt: Option<(ReceiptId, jiff::Timestamp)>,
+    ready: bool,
+    recovering: bool,
+    guard: Option<analyte_store::PollIntentId>,
+    active: Option<analyte_store::MachineOrder>,
+    cursor: String,
+    end_code: AutolyserEnd,
 }
 
 pub(super) async fn session(

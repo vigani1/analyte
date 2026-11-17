@@ -1,4 +1,5 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
+pub(crate) mod error_location;
 use super::connection_input::{self, Input};
 use crate::intake;
 use crate::machine::error::SessionError as Error;
@@ -389,7 +390,7 @@ impl ConnectionState {
         } else {
             Event::NotInterpretable(
                 token,
-                super::error_location::build(location.as_ref(), b"207", b"operator-review"),
+                error_location::build(location.as_ref(), b"207", b"operator-review"),
                 false,
             )
         };

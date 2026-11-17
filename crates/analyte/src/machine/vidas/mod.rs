@@ -1,7 +1,9 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
+mod orders;
+mod transfer_end;
+use self::transfer_end::VidasEnd;
 use super::connection_input::Input;
 use super::custody::{self, ms};
-use super::transfer_end::VidasEnd;
 use crate::intake;
 use crate::machine::error::SessionError as Error;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
@@ -13,21 +15,21 @@ use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
-pub(crate) struct ConnectionState {
-    pub(crate) dialog: Dialog,
-    pub(crate) decoder: Option<Decoder>,
-    pub(crate) suffix: Option<(u8, usize)>,
-    pub(crate) start: Instant,
-    pub(crate) actions: VecDeque<Action>,
-    pub(crate) active: Option<analyte_store::MachineOrder>,
-    pub(crate) requests: VecDeque<Message>,
-    pub(crate) idle: bool,
-    pub(crate) opened: bool,
-    pub(crate) end_code: VidasEnd,
-    pub(crate) cursor: String,
-    pub(crate) next_poll: Instant,
-    pub(crate) config: Config,
-    pub(crate) policy: DialogConfig,
+struct ConnectionState {
+    dialog: Dialog,
+    decoder: Option<Decoder>,
+    suffix: Option<(u8, usize)>,
+    start: Instant,
+    actions: VecDeque<Action>,
+    active: Option<analyte_store::MachineOrder>,
+    requests: VecDeque<Message>,
+    idle: bool,
+    opened: bool,
+    end_code: VidasEnd,
+    cursor: String,
+    next_poll: Instant,
+    config: Config,
+    policy: DialogConfig,
 }
 
 pub(super) async fn session(
@@ -283,7 +285,7 @@ async fn process(
             Action::Complete => {
                 if let Some(order) = state.active.as_ref() {
                     if !state.requests.is_empty() {
-                        crate::orders::vidas::start_download(state)?;
+                        orders::start_download(state)?;
                     } else {
                         crate::orders::sending::complete(
                             store,

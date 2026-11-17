@@ -202,7 +202,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 self.response = crate::orders::astm::failure(machine);
             }
             match self.response.take() {
-                Some(reply) => match crate::orders::sending::reserve_query(
+                Some(reply) => match crate::orders::astm::reserve_query(
                     store,
                     machine,
                     reply,

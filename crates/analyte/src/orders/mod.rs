@@ -1,14 +1,12 @@
 //! Looks up orders, reserves machine commands and reconciles operator decisions.
 use crate::orders::OrderError as Error;
 pub(crate) mod astm;
-pub(crate) mod autolyser;
 pub(crate) mod hl7;
 pub(crate) mod law;
 mod operator;
 mod reservation;
 pub(crate) mod sending;
 mod settings;
-pub(crate) mod vidas;
 use crate::installation::config::Machine;
 use analyte_contract::{EventFields, OrderEvent, Source, Text};
 use analyte_model::{Identifier, SampleId};
