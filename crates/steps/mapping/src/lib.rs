@@ -19,10 +19,8 @@ pub mod poct;
 /// VIDAS terms to common evidence and explicit outgoing orders.
 pub mod vidas;
 pub use inbound::evidence::ResultMappingError;
-pub use orders::codes::{
-    map_priority as outbound_priority, map_specimen as outbound_specimen, map_test as outbound_test,
-};
-pub use vidas::{ResultEvidence as VidasResultEvidence, map_evidence as vidas_evidence};
+pub use orders::codes::{map_priority, map_specimen, map_test};
+pub use vidas::{ResultEvidence, map_evidence};
 
 mod evidence_display;
 mod inbound;

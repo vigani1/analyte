@@ -135,7 +135,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='analyte-duplication-') as temp:
         output = pathlib.Path(temp)
         prepare(root, output)
-        for kind, threshold in [('production', 1.5), ('tests', args.test_threshold)]:
+        for kind, threshold in [('production', 0.3), ('tests', args.test_threshold)]:
             print(f'{kind}: duplication threshold {threshold}%', flush=True)
             subprocess.run([runner, '--yes', 'jscpd@5.4.2', '--format', 'rust', '--min-lines', '8', '--min-tokens', '70', '--threshold', str(threshold), '--reporters', 'console', str(output / kind)], check=True)
 

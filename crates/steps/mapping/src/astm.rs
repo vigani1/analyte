@@ -1,6 +1,6 @@
 //! Maps received ASTM messages to model results and app orders to ASTM fields without I/O (LIS02-A2).
 use crate::inbound::{grouping, source};
-use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
+use crate::orders::codes::{map_priority, map_test};
 use crate::orders::{AppOrder, map_specimen};
 use crate::{Error, Input, Output, Position};
 
@@ -86,10 +86,10 @@ pub fn map_order(
     }
     let mut tests = Vec::new();
     for requested in &order.tests {
-        let mapped = outbound_test(settings.tests(), requested)?;
+        let mapped = map_test(settings.tests(), requested)?;
         tests.push(mapped.machine_components.clone());
     }
-    let priority = outbound_priority(settings.priorities(), order.priority)?;
+    let priority = map_priority(settings.priorities(), order.priority)?;
     let mut fields: [Vec<Vec<String>>; 16] = std::array::from_fn(|_| Vec::new());
     set(
         &mut fields,

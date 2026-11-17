@@ -1,9 +1,9 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use super::connection_input::Input;
-use super::custody::{self, ms};
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::intake::ByteReason;
+use crate::machine::receive::custody::{self, ms};
 use crate::orders::outcome::VidasEnd;
 mod error;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};

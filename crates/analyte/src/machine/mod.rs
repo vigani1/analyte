@@ -13,7 +13,7 @@ pub(crate) mod law;
 mod poct;
 pub(crate) mod receive;
 mod settings;
-pub(crate) use receive::{connection_input, custody};
+pub(crate) use receive::connection_input;
 pub(crate) mod vidas;
 mod worker;
 use crate::installation::config::Machine;
@@ -47,9 +47,12 @@ pub(crate) struct Closing {
 impl Closing {
     pub(crate) async fn after_commits(&mut self) -> Result<(), link::error::Error> {
         self.ready.send_replace(true);
-        tokio::time::timeout(TRANSPORT_CLOSE_BUDGET, stopping(&mut self.close))
-            .await
-            .map_err(link::error::Error::TransportCloseStageExceeded)?;
+        tokio::time::timeout(
+            TRANSPORT_CLOSE_BUDGET,
+            analyte_sink::stopped(&mut self.close),
+        )
+        .await
+        .map_err(link::error::Error::TransportCloseStageExceeded)?;
         Ok(())
     }
 }
@@ -136,7 +139,7 @@ pub(crate) async fn run(
             }
             // Reconnect backoff is cancellable; this is not polling for completion.
             tokio::select! {
-                () = stopping(&mut stop) => return Ok(()),
+                () = analyte_sink::stopped(&mut stop) => return Ok(()),
                 () = tokio::time::sleep(RECONNECT_MIN) => {}
             }
         },
@@ -229,13 +232,6 @@ async fn session(
                 .map_err(Into::into)
         }
     }
-}
-
-pub(crate) async fn stopping(stop: &mut watch::Receiver<bool>) {
-    if *stop.borrow() {
-        return;
-    }
-    let _ = stop.changed().await;
 }
 
 async fn drive(

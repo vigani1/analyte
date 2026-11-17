@@ -13,16 +13,18 @@ macro_rules! causes {
                 Self::Refusal($crate::machine::receive::shared::Shared::from(cause).into())
             }
         }
-        impl From<$crate::machine::custody::StoreWaitError<Self>> for $target {
-            fn from(cause: $crate::machine::custody::StoreWaitError<Self>) -> Self {
-                Self::Refusal($crate::machine::custody::Refusal::Custody(Box::new(cause)))
+        impl From<$crate::machine::receive::custody::StoreWaitError<Self>> for $target {
+            fn from(cause: $crate::machine::receive::custody::StoreWaitError<Self>) -> Self {
+                Self::Refusal($crate::machine::receive::custody::Refusal::Custody(
+                    Box::new(cause),
+                ))
             }
         }
-        impl $crate::machine::custody::CleanupFailure for $target {
+        impl $crate::machine::receive::custody::CleanupFailure for $target {
             fn with_effect(original: Self, effect: Self) -> Self {
-                Self::Refusal($crate::machine::custody::Refusal::Cleanup(Box::new(
-                    $crate::machine::custody::Cleanup { original, effect },
-                )))
+                Self::Refusal($crate::machine::receive::custody::Refusal::Cleanup(
+                    Box::new($crate::machine::receive::custody::Cleanup { original, effect }),
+                ))
             }
         }
     };

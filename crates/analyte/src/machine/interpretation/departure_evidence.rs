@@ -130,7 +130,7 @@ fn packed(
                 );
                 if ends_record {
                     if nonstandard || continued_packing {
-                        if entries.len() == 256 {
+                        if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
                             return Err(Error::AppliedDepartureEvidenceLimit);
                         }
                         entries.push(AppliedDeparture {
@@ -193,7 +193,7 @@ fn compatibility(
             | MachineDeparture::AstmHostContentionPriority(_) => (false, ""),
         };
         if exercised {
-            if entries.len() == 256 {
+            if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
                 return Err(Error::AppliedDepartureEvidenceLimit);
             }
             entries.push(AppliedDeparture {

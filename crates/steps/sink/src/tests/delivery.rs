@@ -10,7 +10,7 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     let destinations = [destination(&peer.url)?];
     let destination = destinations.first().ok_or("destination missing")?;
     let secrets = Secrets("key");
-    let worker = Worker::new(&store, &destinations, &secrets);
+    let worker = Worker::for_destination(&store, &destinations[0], &secrets);
     check_delivery_conflicts(&store, &worker, &peer).await?;
 
     check_order_events(&store, &destinations).await?;
@@ -84,7 +84,7 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         destination.limits.backoff_max = Duration::from_secs(5);
         let destinations = [destination];
         let secrets = Secrets("key");
-        let worker = Worker::new(&store, &destinations, &secrets);
+        let worker = Worker::for_destination(&store, &destinations[0], &secrets);
         let metadata = receipt()?;
         let result = make_result(metadata.id, "retry-run")?;
         let delivery = encode_delivery(
@@ -184,7 +184,7 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
         let bytes = delivery.payload.clone();
         enqueue(&store, metadata, result, delivery).await?;
         let secrets = Secrets("key");
-        let worker = Worker::new(&store, &destinations, &secrets);
+        let worker = Worker::for_destination(&store, &destinations[0], &secrets);
         let (stop, stopped) = watch::channel(false);
         let (finished, finish) = tokio::sync::oneshot::channel();
         let peer = async {
@@ -374,7 +374,7 @@ async fn mutation_contract_v1_conflict_detail_requires_conflict_status_and_versi
             Ok::<_, std::io::Error>(())
         };
         let secrets = Secrets("key");
-        let worker = Worker::new(&store, &destinations, &secrets);
+        let worker = Worker::for_destination(&store, &destinations[0], &secrets);
         let (server, outcome) = tokio::time::timeout(HANG_GUARD, async {
             tokio::join!(server, async {
                 let outcome = worker.deliver_once().await;

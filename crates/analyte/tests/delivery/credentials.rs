@@ -196,7 +196,7 @@ async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_du
         // A prior refusal may have scheduled a future retry. Wait under a deadline
         // until the real worker claims it; cancel only after the receiver commits.
         let original = tokio::time::timeout(HANG_GUARD, async {
-        let worker = analyte_sink::Worker::new(&store, &destinations, &secrets);
+        let worker = analyte_sink::Worker::for_destination(&store, &destinations[0], &secrets);
         loop {
             let attempt = worker.deliver_once();
             tokio::pin!(attempt);
@@ -438,7 +438,7 @@ async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_reta
         false,
     )
     .await?;
-    let (hook, control) = analyte::runtime::test_hooks::AstmCommitted::new();
+    let (hook, control) = analyte::runtime::test_hooks::Committed::new();
     let mut loaded = program(&path, &reference.url)?;
     loaded.pause_astm_committed_for_test("astm", hook)?;
     let service = Running::start_program(loaded, "synthetic-api").await?;

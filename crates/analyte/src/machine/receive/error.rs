@@ -48,13 +48,13 @@ pub(crate) enum Error {
     MappingRead(Box<crate::reading::Error>),
     /// A bounded vendor write failed or has uncertain completion.
     #[error(transparent)]
-    Write(#[from] crate::machine::custody::WriteError),
+    Write(#[from] crate::machine::receive::custody::WriteError),
     /// The complete intake custody operation failed or exceeded its budget.
     #[error(transparent)]
-    IntakeWait(#[from] crate::machine::custody::StoreWaitError<crate::IntakeError>),
+    IntakeWait(#[from] crate::machine::receive::custody::StoreWaitError<crate::IntakeError>),
     /// A durable store request failed or exceeded its custody budget.
     #[error(transparent)]
-    StoreWait(#[from] crate::machine::custody::StoreWaitError<analyte_store::IntakeError>),
+    StoreWait(#[from] crate::machine::receive::custody::StoreWaitError<analyte_store::IntakeError>),
 }
 
 impl From<crate::IntakeError> for Error {

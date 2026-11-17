@@ -12,7 +12,9 @@ pub(crate) enum Error {
     ResourceLimitRefusedTransfer,
     /// A frame commit failed; retains the storage failure or elapsed custody budget.
     #[error("ASTM storage or resource limit refused transfer")]
-    CommitRefused(#[source] crate::machine::custody::StoreWaitError<analyte_store::IntakeError>),
+    CommitRefused(
+        #[source] crate::machine::receive::custody::StoreWaitError<analyte_store::IntakeError>,
+    ),
     /// The dialog expired before receiving a durable frame-commit completion.
     #[error("ASTM storage or resource limit refused transfer")]
     CommitDeadline,
@@ -40,7 +42,7 @@ pub(crate) enum Error {
     /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
-    Refusal(#[from] crate::machine::custody::Refusal<Self>),
+    Refusal(#[from] crate::machine::receive::custody::Refusal<Self>),
 }
 
 #[cfg(test)]
@@ -50,7 +52,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn adr0003_astm_refusal_preserves_custody_cause_and_operator_text() {
-        use crate::machine::custody::{StoreWaitError, store_within};
+        use crate::machine::receive::custody::{StoreWaitError, store_within};
         let storage = Error::CommitRefused(StoreWaitError::Operation(
             analyte_store::IntakeError::Capacity,
         ));

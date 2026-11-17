@@ -1,9 +1,9 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
 use super::connection_input::Input;
-use super::custody::{self, ms};
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::intake::ByteReason;
+use crate::machine::receive::custody::{self, ms};
 mod error;
 use analyte_dialog::poct::{Action, Config, Dialog, Event, StoreOutcome};
 use analyte_model::ReceiptId;

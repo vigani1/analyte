@@ -160,24 +160,9 @@ impl Decoder {
     }
 }
 
-impl crate::Decode for Decoder {
-    type Event = Frame;
-    type Error = Error;
-    fn push_byte(&mut self, byte: u8) -> Result<Option<Frame>, Error> {
-        self.push(byte)
-    }
-    fn finish_stream(&mut self) -> Result<Option<Frame>, Error> {
-        if self.raw.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(self.finish()))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Decode;
     use proptest::prelude::*;
     #[test]
     fn autolyser_rev18_p175_binary_insertion_reply_has_two_bytes() {
@@ -241,29 +226,29 @@ mod tests {
             let split = split.min(raw.len());
             let mut output = Vec::new();
             for fragment in [&raw[..split], &raw[split..]] {
-                for byte in fragment { if let Some(frame) = decoder.push_byte(*byte).unwrap() { output.push(frame); } }
+                for byte in fragment { if let Some(frame) = decoder.push(*byte).unwrap() { output.push(frame); } }
             }
             prop_assert_eq!(output.len(),1);
             prop_assert!(output[0].complete());
             prop_assert_eq!(output[0].raw(), raw.as_slice());
             prop_assert_eq!(output[0].body().unwrap(), body);
-            prop_assert!(decoder.finish_stream().unwrap().is_none());
+            prop_assert!(decoder.finish().raw().is_empty());
         }
         #[test]
         fn autolyser_rev18_p175_property_binary_insertion_and_stopped_decoder(prefix in any::<u8>(), detail in any::<u8>()) {
             let mut decoder = Decoder::new(Mode::Insertion,2).unwrap();
-            prop_assert!(decoder.push_byte(prefix).unwrap().is_none());
-            let frame = decoder.push_byte(detail).unwrap().unwrap();
+            prop_assert!(decoder.push(prefix).unwrap().is_none());
+            let frame = decoder.push(detail).unwrap().unwrap();
             prop_assert_eq!(frame.raw(), &[prefix,detail]);
             prop_assert!(frame.complete());
-            prop_assert_eq!(decoder.push_byte(prefix).unwrap_err(), Error::Stopped);
+            prop_assert_eq!(decoder.push(prefix).unwrap_err(), Error::Stopped);
         }
         #[test]
         fn autolyser_rev18_p177_property_partial_evidence_is_exact_and_bounded(body in prop::collection::vec(32u8..127,0..1024), maximum in 2usize..1024) {
             let mut decoder = Decoder::new(Mode::Report,maximum).unwrap();
             let kept = body.len().min(maximum);
             let mut output = None;
-            for byte in body.iter().take(kept) { output = decoder.push_byte(*byte).unwrap(); }
+            for byte in body.iter().take(kept) { output = decoder.push(*byte).unwrap(); }
             let frame = output.unwrap_or_else(|| decoder.finish());
             prop_assert!(!frame.complete());
             prop_assert_eq!(frame.raw(), &body[..kept]);

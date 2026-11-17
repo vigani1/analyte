@@ -106,7 +106,7 @@ pub(in crate::machine) async fn session(
         loop {
             let mut item = tokio::select! {
                 biased;
-                () = crate::machine::stopping(&mut stop) => break,
+                () = analyte_sink::stopped(&mut stop) => break,
                 item = files.recv() => item.ok_or_else(|| Error::FileOwnerStopped)?,
             };
             let Some(raw) = receive(&mut item.connection, bytes, &mut stop).await? else {
@@ -148,7 +148,7 @@ async fn receive(
     loop {
         let event = tokio::select! {
             biased;
-            () = crate::machine::stopping(stop) => return Ok(None),
+            () = analyte_sink::stopped(stop) => return Ok(None),
             event = connection.receive() => event?,
         }
         .ok_or_else(|| Error::FileTransportEndedBeforeCompletionSourceRemainsClaimed)?;
@@ -267,12 +267,6 @@ mod tests {
         Ok(())
     }
 
-    struct Full;
-    impl analyte_store::FreeSpace for Full {
-        fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
-            Ok(0)
-        }
-    }
     #[tokio::test]
     async fn adr0003_file_astm_and_hl7_storage_refusal_never_release_claim() -> Result<(), Error> {
         for definition in [
@@ -318,7 +312,7 @@ mod tests {
                     limits.busy_timeout = Duration::from_millis(20);
                     limits
                 },
-                Box::new(Full),
+                Box::new(analyte_fixtures::Space(0)),
                 4,
                 crate::test_startup_deadline()?,
             )

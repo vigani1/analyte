@@ -144,23 +144,31 @@ pub enum Event {
 
 /// Cloneable cancellation shared by an owner and its host.
 #[derive(Clone, Default)]
-pub struct Cancellation(Arc<AtomicBool>);
+pub struct Cancellation {
+    requested: Arc<AtomicBool>,
+    notification: Arc<tokio::sync::Notify>,
+}
 
 impl Cancellation {
     /// Requests cancellation without waiting or detaching work.
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
+        self.requested.store(true, Ordering::Release);
+        self.notification.notify_waiters();
     }
 
     /// Reports whether shutdown has been requested.
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
+        self.requested.load(Ordering::Acquire)
     }
 
     pub(crate) async fn cancelled(&self) {
-        while !self.is_cancelled() {
-            tokio::time::sleep(Duration::from_millis(2)).await;
+        // Register before checking the flag so cancellation cannot fall between them.
+        let notified = self.notification.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if !self.is_cancelled() {
+            notified.await;
         }
     }
 }
@@ -438,6 +446,47 @@ impl Backoff {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_cancellation_wait_is_event_driven_and_wakes_all_waiters() {
+        use std::sync::atomic::AtomicUsize;
+        use std::task::{Context, Poll, Wake, Waker};
+        struct Counter(AtomicUsize);
+        impl Wake for Counter {
+            fn wake(self: Arc<Self>) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+            fn wake_by_ref(self: &Arc<Self>) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let signal = Cancellation::default();
+        let counter = Arc::new(Counter(AtomicUsize::new(0)));
+        let waker = Waker::from(counter.clone());
+        let mut first = Box::pin(signal.cancelled());
+        let mut second = Box::pin(signal.cancelled());
+        assert_eq!(
+            first.as_mut().poll(&mut Context::from_waker(&waker)),
+            Poll::Pending
+        );
+        assert_eq!(
+            second.as_mut().poll(&mut Context::from_waker(&waker)),
+            Poll::Pending
+        );
+        tokio::time::advance(Duration::from_secs(60)).await;
+        assert_eq!(counter.0.load(Ordering::SeqCst), 0);
+        signal.clone().cancel();
+        assert_eq!(counter.0.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            first.as_mut().poll(&mut Context::from_waker(&waker)),
+            Poll::Ready(())
+        );
+        assert_eq!(
+            second.as_mut().poll(&mut Context::from_waker(&waker)),
+            Poll::Ready(())
+        );
+        signal.cancelled().await;
+    }
 
     #[tokio::test]
     async fn writes_require_observed_current_session() -> Result<(), Error> {

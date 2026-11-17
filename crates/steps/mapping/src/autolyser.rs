@@ -1,6 +1,6 @@
 //! Maps Autolyser results and outgoing work lists.
 use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
-use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
+use crate::orders::codes::{self, map_priority};
 use crate::orders::{AppOrder, map_patient, map_specimen};
 use crate::{Output, Position};
 
@@ -86,7 +86,7 @@ pub fn map_order(
         "U" => Sample::Urine,
         _ => return Err(crate::OrderMappingError::UnmappedSpecimenType.into()),
     };
-    let priority = outbound_priority(settings.priorities(), order.priority)?;
+    let priority = map_priority(settings.priorities(), order.priority)?;
     let list = match &priority.machine {
         analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => List::Routine,
         analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => List::Stat,
@@ -123,7 +123,7 @@ pub fn map_order(
     }
     let mut tests = Vec::new();
     for test in &order.tests {
-        let mapped = outbound_test(settings.tests(), test)?;
+        let mapped = codes::map_test(settings.tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
             return Err(OrderError::AssayComponents);
         };

@@ -73,9 +73,6 @@ pub enum DeliveryError {
     /// Peer exceeded the document byte limit.
     #[error("response exceeds document limit")]
     ResponseTooLarge,
-    /// Stored destination is not configured; claimed delivery remains uncertain.
-    #[error("claimed destination is not configured")]
-    UnknownDestination,
     /// Endpoint setup failed; retains the setup boundary cause.
     #[error(transparent)]
     Destination(#[from] DestinationError),

@@ -179,7 +179,7 @@ impl<'a, 'm> Host<'a, 'm> {
             } else {
                 tokio::select! {
                 biased;
-                    () = super::stopping(&mut stop) => {
+                    () = analyte_sink::stopped(&mut stop) => {
                         self.stopped = true;
                         return Ok(());
                     },
@@ -208,7 +208,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     .await
                     .map_err(Error::from)?;
 
-                super::custody::store_before_ack(
+                crate::machine::receive::custody::store_before_ack(
                     machine,
                     intake::receive(self.store, self.machine, id, raw),
                 )
@@ -219,7 +219,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let mut stop = host.stop.clone();
                     tokio::select! {
                     biased;
-                            () = super::stopping(&mut stop) => {
+                            () = analyte_sink::stopped(&mut stop) => {
                                 self.stopped = true;
                                 return Ok(Vec::new());
                             },
@@ -581,7 +581,7 @@ impl Effects for Host<'_, '_> {
                 .map_err(Into::into),
             Mode::Outbound(_) => Ok(()),
         };
-        crate::machine::custody::retain_cleanup(result, finished);
+        crate::machine::receive::custody::retain_cleanup(result, finished);
         cleanup
     }
 }
@@ -613,7 +613,7 @@ impl Host<'_, '_> {
                         let mut stop = host.stop.clone();
                         let outgoing = tokio::select! {
                             biased;
-                            () = crate::machine::stopping(&mut stop) => { self.stopped = true; return Ok(()); },
+                            () = analyte_sink::stopped(&mut stop) => { self.stopped = true; return Ok(()); },
                             result = self.orders.idle(self.store, self.machine.machine(), self.settings.options()) => match result {
                                 Ok(message) => message,
                                 Err(error) => {

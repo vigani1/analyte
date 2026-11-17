@@ -61,7 +61,7 @@ pub(crate) enum Error {
     /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
-    Refusal(#[from] crate::machine::custody::Refusal<Self>),
+    Refusal(#[from] crate::machine::receive::custody::Refusal<Self>),
 }
 
 crate::runtime::service::conversions::causes!(Error; protocol);
