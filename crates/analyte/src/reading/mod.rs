@@ -101,7 +101,7 @@ pub(crate) fn read(
         ),
         Stack::Law(s) => law::read(input, &payload(config, raw)?, s),
         Stack::Poct(s) => poct::read(input, raw, s, hello),
-        Stack::Vidas(s) => vidas::read(config, input, raw, s),
+        Stack::Vidas(s) => vidas::read(input, raw, s),
         Stack::Autolyser(s) => autolyser::read(input, raw, s),
     }
 }
@@ -115,9 +115,6 @@ pub enum Context {
     /// ASTM message missing.
     #[error("ASTM message missing")]
     AstmMessageMissing,
-    /// VIDAS settings missing.
-    #[error("VIDAS settings missing")]
-    VidasSettingsMissing,
 }
 #[test]
 fn context_spellings_are_pinned() {
@@ -128,9 +125,5 @@ fn context_spellings_are_pinned() {
     assert_eq!(
         Error::Context(Context::AstmMessageMissing).to_string(),
         "ASTM message missing"
-    );
-    assert_eq!(
-        Error::Context(Context::VidasSettingsMissing).to_string(),
-        "VIDAS settings missing"
     );
 }

@@ -21,10 +21,10 @@ pub(crate) enum Error {
     Autolyser(Box<super::autolyser::Error>),
     /// A transport owner or shutdown operation failed.
     #[error(transparent)]
-    Link(#[from] super::link::error::Error),
+    Link(super::link::error::Error),
     /// Connection custody or retained evidence failed.
     #[error(transparent)]
-    Evidence(#[from] super::receive::error::Error),
+    Evidence(super::receive::error::Error),
     /// A bounded synthetic gate stopped or could not resume the connection.
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
@@ -74,6 +74,18 @@ impl From<super::vidas::Error> for Error {
 impl From<super::autolyser::Error> for Error {
     fn from(error: super::autolyser::Error) -> Self {
         Self::Autolyser(Box::new(error))
+    }
+}
+
+impl<C> From<C> for Error
+where
+    super::receive::shared::Shared: From<C>,
+{
+    fn from(cause: C) -> Self {
+        match super::receive::shared::Shared::from(cause) {
+            super::receive::shared::Shared::Link(cause) => Self::Link(cause),
+            super::receive::shared::Shared::Evidence(cause) => Self::Evidence(cause),
+        }
     }
 }
 
@@ -127,7 +139,3 @@ mod tests {
         assert_eq!(source.to_string(), "synthetic owner failure");
     }
 }
-
-crate::machine::link::error::forward!(Error, Self::Link);
-
-crate::machine::receive::error::forward!(Error, Self::Evidence);

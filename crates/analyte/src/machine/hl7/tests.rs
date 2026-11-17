@@ -42,8 +42,8 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
             else {
                 return Err("HL7 settings".into());
             };
-            let mut state = ConnectionState::open(settings)?;
             let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;
+            let mut state = Host::open(&connection, settings, &store)?;
             let first =
                 b"\x0bMSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|one|P|2.5.1\rPID|1\r\x1c\r";
             let second =
@@ -56,13 +56,13 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
             )?);
             let (_stop, mut stop) = watch::channel(false);
             if cancel {
-                let receive = state.receive_bytes(bytes, &connection, &store, &mut conn, &mut stop);
+                let receive = state.receive_bytes(bytes, &mut conn, &mut stop);
                 tokio::pin!(receive);
                 tokio::select! { biased; result = &mut receive => { result?; return Err("expected pending first commit".into()); }, () = std::future::ready(()) => {} }
             } else {
                 assert!(
                     state
-                        .receive_bytes(bytes, &connection, &store, &mut conn, &mut stop)
+                        .receive_bytes(bytes, &mut conn, &mut stop)
                         .await
                         .is_err()
                 );
@@ -73,7 +73,6 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
                 .close(
                     &mut Context {
                         machine: &connection,
-                        settings,
                         store: &store,
                         conn: &mut conn,
                         stop: stop.clone(),

@@ -10,12 +10,16 @@ impl Program {
         id: &str,
         hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
     ) -> Result<(), Error> {
+        let machine = self.test_listener_machine_mut(id)?;
+        machine.hooks.autolyser_quiescent = Some(hook);
+        Ok(())
+    }
+    fn test_listener_machine_mut(&mut self, id: &str) -> Result<&mut Machine, Error> {
         let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none() {
             return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
         }
-        machine.hooks.autolyser_quiescent = Some(hook);
-        Ok(())
+        Ok(machine)
     }
     fn test_machine_mut(&mut self, id: &str) -> Result<&mut Machine, Error> {
         self.machines
@@ -216,10 +220,7 @@ impl Program {
         id: &str,
         hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
     ) -> Result<(), Error> {
-        let machine = self.test_machine_mut(id)?;
-        if machine.listener.is_none() {
-            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
-        }
+        let machine = self.test_listener_machine_mut(id)?;
         machine.hooks.input_processed = Some(hook);
         Ok(())
     }

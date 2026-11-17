@@ -37,10 +37,8 @@ pub(crate) enum Error {
     /// ASTM record syntax could not be decoded.
     #[error(transparent)]
     Syntax(#[from] analyte_astm::Error),
-    /// A bounded synthetic gate stopped or could not resume the connection.
-    #[error(transparent)]
-    TestHook(crate::runtime::test_hooks::Error),
-    /// Retains uncertain custody or independent cleanup failures in their original order.
+    /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
+    /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
     Refusal(#[from] crate::machine::custody::Refusal<Self>),
 }
@@ -89,4 +87,4 @@ mod tests {
     }
 }
 
-crate::machine::receive::error::session_boundary!(Error);
+crate::runtime::service::conversions::causes!(Error; protocol);

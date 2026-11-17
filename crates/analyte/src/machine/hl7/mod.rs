@@ -3,7 +3,7 @@ use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod error_location;
 use super::connection_input::{self, Input};
-use super::driver::{self, Context, Effects, Flow};
+use super::driver::{Context, Effects, Flow};
 use crate::intake;
 mod error;
 use crate::orders::outcome::Code;
@@ -16,26 +16,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
-
-pub(super) async fn session(
-    machine: &intake::ConnectionEvidence<'_>,
-    settings: &analyte_config::Hl7Stack,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
-) -> Result<(), Error> {
-    driver::run(
-        || ConnectionState::open(settings),
-        Context {
-            machine,
-            settings,
-            store,
-            conn,
-            stop,
-        },
-    )
-    .await
-}
 
 struct DisplayOutcome {
     receipt: Option<analyte_dialog::hl7::ReceiptId>,
@@ -51,7 +31,10 @@ struct QueryRequest {
     edition_matches: bool,
 }
 
-struct ConnectionState {
+pub(super) struct Host<'a, 'm> {
+    machine: &'a intake::ConnectionEvidence<'m>,
+    settings: &'a analyte_config::Hl7Stack,
+    store: &'a Handle,
     dialog: Dialog,
     start: Instant,
     wake: Option<Duration>,
@@ -62,8 +45,12 @@ struct ConnectionState {
     commit_error: Option<Error>,
 }
 
-impl ConnectionState {
-    fn open(settings: &analyte_config::Hl7Stack) -> Result<Self, Error> {
+impl<'a, 'm> Host<'a, 'm> {
+    pub(super) fn open(
+        machine: &'a intake::ConnectionEvidence<'m>,
+        settings: &'a analyte_config::Hl7Stack,
+        store: &'a Handle,
+    ) -> Result<Self, Error> {
         let mut options = settings.settings().syntax().options();
         options.limits.message_bytes = options
             .limits
@@ -95,6 +82,9 @@ impl ConnectionState {
         let input_evidence = connection_input::Custody::default();
         let write_error = None;
         Ok(Self {
+            machine,
+            settings,
+            store,
             dialog,
             start,
             wake,
@@ -108,8 +98,6 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &intake::ConnectionEvidence<'_>,
-        store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
     ) -> Result<bool, Error> {
@@ -123,21 +111,30 @@ impl ConnectionState {
             if matches!(event, Event::Byte(_)) {
                 self.input_evidence.fed();
             }
-            if self.process(event, machine, store, conn, stop).await? {
+            if self.transition(event, conn, stop).await? {
                 return Ok(true);
             }
         }
         Ok(false)
     }
-    async fn process(
+    async fn transition(
         &mut self,
         event: Event<'_>,
-        machine: &intake::ConnectionEvidence<'_>,
-        store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
     ) -> Result<bool, Error> {
-        let mut actions: VecDeque<_> = self.dialog.step(self.start.elapsed(), event)?.into();
+        let actions = self.dialog.step(self.start.elapsed(), event)?;
+        self.apply(actions, conn, stop).await
+    }
+    async fn apply(
+        &mut self,
+        actions: Vec<Action>,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+    ) -> Result<bool, Error> {
+        let machine = self.machine;
+        let store = self.store;
+        let mut actions: VecDeque<_> = actions.into();
         let result = async {
             while let Some(action) = actions.pop_front() {
                 if self
@@ -489,26 +486,18 @@ impl ConnectionState {
     }
 }
 
-impl Effects for ConnectionState {
-    type Settings = analyte_config::Hl7Stack;
+impl Effects for Host<'_, '_> {
     type Error = Error;
     fn wait(&self) -> Result<Option<Duration>, Error> {
         Ok(Some(self.wake.map_or(Duration::from_secs(1), |deadline| {
             deadline.saturating_sub(self.start.elapsed())
         })))
     }
-    async fn input(
-        &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
-        input: Input,
-    ) -> Result<Flow, Error> {
-        let Context {
-            machine,
-            store,
-            conn,
-            stop,
-            ..
-        } = host;
+    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+        let machine = self.machine;
+        let store = self.store;
+        let conn = &mut *host.conn;
+        let stop = &mut host.stop;
         let bytes = match input {
             Input::Opened { session } => {
                 tracing::info!(
@@ -523,10 +512,7 @@ impl Effects for ConnectionState {
             Input::Failed(_) | Input::RecordingFailed(_) | Input::Tick => Vec::new(),
         };
         let has_bytes = !bytes.is_empty();
-        if self
-            .receive_bytes(bytes, machine, store, conn, stop)
-            .await?
-        {
+        if self.receive_bytes(bytes, conn, stop).await? {
             return Ok(Flow::Stop);
         }
         self.input_evidence.complete();
@@ -537,13 +523,13 @@ impl Effects for ConnectionState {
                 .hooks
                 .pause(Pause::InputProcessed, stop)
                 .await
-                .map_err(Error::TestHook)?;
+                .map_err(Error::from)?;
         }
         if let Some(query) = &mut self.queries {
             tokio::select! {
                 biased;
                 () = super::stopping(stop) => return Ok(Flow::Stop),
-                result = query.idle(store, machine, conn, &mut self.dialog, self.start) => result?,
+                result = query.idle(store, machine, conn, &mut self.dialog, self.start, self.settings) => result?,
             }
         }
         self.wake = self.dialog.next_deadline();
@@ -551,10 +537,11 @@ impl Effects for ConnectionState {
     }
     async fn close(
         &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
+        _host: &mut Context<'_, '_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
-        let Context { machine, store, .. } = host;
+        let machine = self.machine;
+        let store = self.store;
         let cleanup = self.input_evidence.retain(store, machine).await;
         super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         // A cancelled or failed host operation must expose partial input as well.

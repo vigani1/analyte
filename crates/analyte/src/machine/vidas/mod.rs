@@ -12,10 +12,12 @@ use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
-use tokio::sync::watch;
 
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
-struct ConnectionState {
+pub(super) struct Host<'a, 'm> {
+    machine: &'a intake::ConnectionEvidence<'m>,
+    settings: &'a analyte_config::VidasStack,
+    store: &'a Handle,
     work: crate::orders::sending::Work<analyte_vidas::syntax::Message>,
     dialog: Dialog,
     start: Instant,
@@ -27,33 +29,14 @@ struct ConnectionState {
     policy: DialogConfig,
 }
 
-pub(super) async fn session(
-    machine: &intake::ConnectionEvidence<'_>,
-    settings: &analyte_config::VidasStack,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
-) -> Result<(), Error> {
-    driver::run(
-        || ConnectionState::open(machine, settings),
-        Context {
-            machine,
-            settings,
-            store,
-            conn,
-            stop,
-        },
-    )
-    .await
-}
-
-impl ConnectionState {
-    fn open(
-        machine: &intake::ConnectionEvidence<'_>,
-        settings: &analyte_config::VidasStack,
+impl<'a, 'm> Host<'a, 'm> {
+    pub(super) fn open(
+        machine: &'a intake::ConnectionEvidence<'m>,
+        settings: &'a analyte_config::VidasStack,
+        store: &'a Handle,
     ) -> Result<Self, Error> {
         let installed = &settings.policy();
-        let config = crate::reading::vidas_config(&machine.machine().snapshot)?;
+        let config = crate::reading::vidas_config(settings)?;
         let policy = DialogConfig {
             ack: ms(installed.acknowledgment_ms),
             inter_byte: ms(installed.interbyte_ms),
@@ -65,6 +48,9 @@ impl ConnectionState {
         let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
         let actions = dialog.start().into();
         Ok(Self {
+            machine,
+            settings,
+            store,
             work: crate::orders::sending::Work::default(),
             dialog,
             start: Instant::now(),
@@ -87,11 +73,10 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &intake::ConnectionEvidence<'_>,
-        store: &Handle,
         conn: &mut analyte_transport::Connection,
-        installed: &analyte_config::Vidas,
     ) -> Result<bool, Error> {
+        let machine = self.machine;
+        let store = self.store;
         self.idle = false;
         for byte in bytes {
             match self.dialog.step(self.start.elapsed(), Event::Byte(byte)) {
@@ -114,7 +99,7 @@ impl ConnectionState {
                 Err(error) => return Err(error.into()),
             }
             // Process Store before consuming a merged ETX/EOT following it.
-            if process(self, machine, store, conn, installed).await? {
+            if self.apply(Vec::new(), conn).await? {
                 return Ok(true);
             }
         }
@@ -122,12 +107,9 @@ impl ConnectionState {
     }
 }
 
-impl Effects for ConnectionState {
-    type Settings = analyte_config::VidasStack;
+impl Effects for Host<'_, '_> {
     type Error = Error;
-    fn custody(&self) -> driver::Custody {
-        driver::Custody::Chunks
-    }
+    const CUSTODY: driver::Custody = driver::Custody::Chunks;
     fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
         let mut next = self
             .dialog
@@ -144,43 +126,25 @@ impl Effects for ConnectionState {
         }
         Ok(Some(next.saturating_sub(self.start.elapsed())))
     }
-    async fn prepare(&mut self, host: &mut Context<'_, '_, Self::Settings>) -> Result<Flow, Error> {
+    async fn prepare(&mut self, host: &mut Context<'_, '_>) -> Result<Flow, Error> {
         if self.idle
             && self.opened
             && let Some(request) = self
                 .work
-                .poll(host.machine, host.store, host.settings)
+                .poll(self.machine, self.store, self.settings)
                 .await?
         {
             self.start_download(&request)?;
         }
-        if process(
-            self,
-            host.machine,
-            host.store,
-            host.conn,
-            host.settings.policy(),
-        )
-        .await?
-        {
+        if self.apply(Vec::new(), host.conn).await? {
             return Ok(Flow::Stop);
         }
         self.end_code = VidasEnd::InputFailed;
         Ok(Flow::Continue)
     }
-    async fn input(
-        &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
-        input: Input,
-    ) -> Result<Flow, Error> {
-        let Context {
-            machine,
-            store,
-            conn,
-            stop,
-            settings,
-        } = host;
-        let installed = settings.policy();
+    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+        let conn = &mut *host.conn;
+        let stop = &mut host.stop;
         self.end_code = VidasEnd::TransferError;
         match input {
             Input::Opened { .. } => self.opened = true,
@@ -198,14 +162,11 @@ impl Effects for ConnectionState {
                     self.dialog
                         .step(self.start.elapsed(), Event::Disconnected)?,
                 );
-                process(self, machine, store, conn, installed).await?;
+                self.apply(Vec::new(), conn).await?;
                 return Ok(Flow::Stop);
             }
             Input::Bytes { bytes } => {
-                if self
-                    .receive_bytes(bytes, machine, store, conn, installed)
-                    .await?
-                {
+                if self.receive_bytes(bytes, conn).await? {
                     return Ok(Flow::Stop);
                 }
             }
@@ -215,90 +176,91 @@ impl Effects for ConnectionState {
     }
     async fn close(
         &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
+        _host: &mut Context<'_, '_>,
         _result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         self.work
-            .close(host.store, self.end_code.into())
+            .close(self.store, self.end_code.into())
             .await
             .map_err(Into::into)
     }
 }
 
-async fn process(
-    state: &mut ConnectionState,
-    machine: &intake::ConnectionEvidence<'_>,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    installed: &analyte_config::Vidas,
-) -> Result<bool, Error> {
-    let mut failure = None;
-    let mut complete = false;
-    while let Some(action) = state.actions.pop_front() {
-        match action {
-            Action::Write(bytes) => {
-                state.end_code = VidasEnd::WriteFailed;
-                custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
-                state.end_code = VidasEnd::TransferError;
-            }
-            Action::Store(packet) => {
-                let id = ReceiptId::new();
-                let operation = store_upload(store, machine, id, &packet.raw);
-                match custody::store_before_ack(machine.machine(), operation).await {
-                    Ok(()) => {
-                        // The dialog expired its own commit deadline before accepting completion.
-                        state
-                            .actions
-                            .extend(state.dialog.step(state.start.elapsed(), Event::Stored)?);
+impl Host<'_, '_> {
+    async fn apply(
+        &mut self,
+        actions: Vec<Action>,
+        conn: &mut analyte_transport::Connection,
+    ) -> Result<bool, Error> {
+        let machine = self.machine;
+        let store = self.store;
+        let installed = self.settings.policy();
+        self.actions.extend(actions);
+        let mut failure = None;
+        let mut complete = false;
+        while let Some(action) = self.actions.pop_front() {
+            match action {
+                Action::Write(bytes) => {
+                    self.end_code = VidasEnd::WriteFailed;
+                    custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
+                    self.end_code = VidasEnd::TransferError;
+                }
+                Action::Store(packet) => {
+                    let id = ReceiptId::new();
+                    let operation = store_upload(store, machine, id, &packet.raw);
+                    match custody::store_before_ack(machine.machine(), operation).await {
+                        Ok(()) => {
+                            // The dialog expired its own commit deadline before accepting completion.
+                            self.actions
+                                .extend(self.dialog.step(self.start.elapsed(), Event::Stored)?);
+                        }
+                        Err(error) => {
+                            self.actions.extend(
+                                self.dialog.step(self.start.elapsed(), Event::StoreFailed)?,
+                            );
+                            failure = Some(error.into());
+                        }
                     }
-                    Err(error) => {
-                        state.actions.extend(
-                            state
-                                .dialog
-                                .step(state.start.elapsed(), Event::StoreFailed)?,
-                        );
-                        failure = Some(error.into());
+                }
+                Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
+                Action::Park => {
+                    if self.end_code == VidasEnd::TransferError {
+                        self.end_code = match self.dialog.expired_timer() {
+                            Some(Timer::Acknowledgment) => VidasEnd::AcknowledgmentTimeout,
+                            Some(Timer::Interbyte) => VidasEnd::InterbyteTimeout,
+                            Some(Timer::Session) => VidasEnd::SessionTimeout,
+                            Some(Timer::Commit) => VidasEnd::CommitTimeout,
+                            None => VidasEnd::TransferRefusedOrUnexpected,
+                        };
+                    }
+                    let parked =
+                        intake::park_bytes(store, machine, Vec::new(), ByteReason::VidasIncomplete)
+                            .await;
+                    if let Err(error) = parked {
+                        return Err(custody::effect_failure(failure, error.into()));
+                    }
+                    if failure.is_none() {
+                        failure = Some(Error::TransferParkedReconcileBeforeReconnect);
                     }
                 }
+                Action::Close => match self.work.confirmed(store).await? {
+                    crate::orders::vidas::Progress::DownloadNext(request) => {
+                        self.start_download(&request)?;
+                    }
+                    crate::orders::vidas::Progress::DownloadFinished => {
+                        self.dialog = Dialog::upload(self.config.clone(), self.policy.clone())?;
+                        self.start = Instant::now();
+                        self.actions.extend(self.dialog.start());
+                        self.idle = true;
+                    }
+                    crate::orders::vidas::Progress::UploadFinished => complete = true,
+                },
             }
-            Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
-            Action::Park => {
-                if state.end_code == VidasEnd::TransferError {
-                    state.end_code = match state.dialog.expired_timer() {
-                        Some(Timer::Acknowledgment) => VidasEnd::AcknowledgmentTimeout,
-                        Some(Timer::Interbyte) => VidasEnd::InterbyteTimeout,
-                        Some(Timer::Session) => VidasEnd::SessionTimeout,
-                        Some(Timer::Commit) => VidasEnd::CommitTimeout,
-                        None => VidasEnd::TransferRefusedOrUnexpected,
-                    };
-                }
-                let parked =
-                    intake::park_bytes(store, machine, Vec::new(), ByteReason::VidasIncomplete)
-                        .await;
-                if let Err(error) = parked {
-                    return Err(custody::effect_failure(failure, error.into()));
-                }
-                if failure.is_none() {
-                    failure = Some(Error::TransferParkedReconcileBeforeReconnect);
-                }
-            }
-            Action::Close => match state.work.confirmed(store).await? {
-                crate::orders::vidas::Progress::DownloadNext(request) => {
-                    state.start_download(&request)?;
-                }
-                crate::orders::vidas::Progress::DownloadFinished => {
-                    state.dialog = Dialog::upload(state.config.clone(), state.policy.clone())?;
-                    state.start = Instant::now();
-                    state.actions.extend(state.dialog.start());
-                    state.idle = true;
-                }
-                crate::orders::vidas::Progress::UploadFinished => complete = true,
-            },
         }
-    }
-    match failure {
-        Some(error) => Err(error),
-        None => Ok(complete),
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(complete),
+        }
     }
 }
 
