@@ -298,7 +298,7 @@ impl<'a, 'm> Host<'a, 'm> {
             };
             let reply = tokio::select! {
                 biased;
-                () = analyte_sink::stopped(stop) => return Ok(true),
+                () = crate::runtime::stopped(stop) => return Ok(true),
                 result = query.answer(store, machine.machine(), request, &self.dialog, self.start) => result?,
             };
             if let Some(reply) = reply {
@@ -528,7 +528,7 @@ impl Effects for Host<'_, '_> {
         if let Some(query) = &mut self.queries {
             tokio::select! {
                 biased;
-                () = analyte_sink::stopped(stop) => return Ok(Flow::Stop),
+                () = crate::runtime::stopped(stop) => return Ok(Flow::Stop),
                 result = query.idle(store, machine, conn, &mut self.dialog, self.start, self.settings) => result?,
             }
         }

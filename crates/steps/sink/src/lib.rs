@@ -27,7 +27,7 @@ fn deadline<E>(duration: Duration, expired: E) -> Result<Instant, E> {
 
 /// Waits until shutdown is requested or its owner disappears, ignoring false updates.
 /// Cancellation leaves the receiver owned by the caller.
-pub async fn stopped(stop: &mut watch::Receiver<bool>) {
+async fn stopped(stop: &mut watch::Receiver<bool>) {
     loop {
         if *stop.borrow() {
             return;

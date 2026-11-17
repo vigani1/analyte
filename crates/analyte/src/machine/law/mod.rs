@@ -193,7 +193,7 @@ impl<'a, 'm> Host<'a, 'm> {
             } else {
                 tokio::select! {
                 biased;
-                    () = analyte_sink::stopped(&mut stop) => {
+                    () = crate::runtime::stopped(&mut stop) => {
                         self.run = Run::Stopped;
                         return Ok(());
                     },
@@ -232,7 +232,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let mut stop = host.stop.clone();
                     tokio::select! {
                     biased;
-                            () = analyte_sink::stopped(&mut stop) => {
+                            () = crate::runtime::stopped(&mut stop) => {
                                 self.run = Run::Stopped;
                                 return Ok(Vec::new());
                             },
@@ -625,7 +625,7 @@ impl Host<'_, '_> {
                         let mut stop = host.stop.clone();
                         let outgoing = tokio::select! {
                             biased;
-                            () = analyte_sink::stopped(&mut stop) => { self.run = Run::Stopped; return Ok(()); },
+                            () = crate::runtime::stopped(&mut stop) => { self.run = Run::Stopped; return Ok(()); },
                             result = self.orders.idle(self.store,
                                 self.machine.machine(),
                                 settings::options(self.settings)) => match result {

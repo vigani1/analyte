@@ -97,7 +97,7 @@ pub(crate) async fn run(
             }
         }
         tokio::select! {
-            _ = analyte_sink::stopped(&mut stop) => return Ok(()),
+            _ = crate::runtime::stopped(&mut stop) => return Ok(()),
             () = tokio::time::sleep(Duration::from_secs(60)) => {}
         }
     }

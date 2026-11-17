@@ -6,7 +6,7 @@ use tokio::sync::watch;
 pub(super) async fn backoff(stop: &mut watch::Receiver<bool>) -> bool {
     tokio::select! {
         biased;
-        () = analyte_sink::stopped(stop) => false,
+        () = crate::runtime::stopped(stop) => false,
         () = tokio::time::sleep(RECONNECT_MIN) => true,
     }
 }
@@ -24,7 +24,7 @@ where
     loop {
         let accepted = tokio::select! {
             biased;
-            () = analyte_sink::stopped(stop) => return Ok(None),
+            () = crate::runtime::stopped(stop) => return Ok(None),
             accepted = next() => accepted,
         };
         match accepted {

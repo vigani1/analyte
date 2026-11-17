@@ -50,7 +50,7 @@ impl Closing {
         self.ready.send_replace(true);
         tokio::time::timeout(
             TRANSPORT_CLOSE_BUDGET,
-            analyte_sink::stopped(&mut self.close),
+            crate::runtime::stopped(&mut self.close),
         )
         .await
         .map_err(link::error::Error::TransportCloseStageExceeded)?;
@@ -153,7 +153,7 @@ pub(crate) async fn run(
             }
             // Reconnect backoff is cancellable; this is not polling for completion.
             tokio::select! {
-                () = analyte_sink::stopped(&mut stop) => return Ok(()),
+                () = crate::runtime::stopped(&mut stop) => return Ok(()),
                 () = tokio::time::sleep(RECONNECT_MIN) => {}
             }
         },

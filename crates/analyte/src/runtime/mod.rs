@@ -24,3 +24,6 @@ pub(crate) mod hooks;
 
 /// Audited command storage and input failures.
 pub mod command;
+
+mod shutdown;
+pub(crate) use shutdown::stopped;
