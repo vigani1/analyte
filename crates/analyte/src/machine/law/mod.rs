@@ -169,8 +169,12 @@ impl<'a, 'm> Host<'a, 'm> {
             let effects = if protects_raw {
                 operation.await?
             } else {
-                tokio::select! { biased;
-                    () = super::stopping(&mut stop) => { self.stopped = true; return Ok(()); },
+                tokio::select! {
+                biased;
+                    () = super::stopping(&mut stop) => {
+                        self.stopped = true;
+                        return Ok(());
+                    },
                     result = operation => result?,
                 }
             };
@@ -197,10 +201,14 @@ impl<'a, 'm> Host<'a, 'm> {
                 #[cfg(feature = "test-hooks")]
                 if let Some(hook) = &self.machine.hooks.law_committed {
                     let mut stop = self.stop.clone();
-                    tokio::select! { biased;
-                        () = super::stopping(&mut stop) => { self.stopped = true; return Ok(Vec::new()); },
-                        result = hook.pause(&mut self.stop) => result.map_err(Error::TestHook)?,
-                    }
+                    tokio::select! {
+                    biased;
+                            () = super::stopping(&mut stop) => {
+                                self.stopped = true;
+                                return Ok(Vec::new());
+                            },
+                            result = hook.pause(&mut self.stop) => result.map_err(Error::TestHook)?,
+                        }
                 }
                 Event::Committed(token)
             }
