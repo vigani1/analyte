@@ -1,10 +1,6 @@
 //! Runs blocking storage requests on an owned worker thread.
 use crate::{Error, FreeSpace, Limits, Store};
-use std::{
-    path::PathBuf,
-    thread,
-    time::{Duration, Instant},
-};
+use std::{path::PathBuf, thread, time::Instant};
 use tokio::sync::{mpsc, oneshot};
 
 type Operation = Box<dyn FnOnce(&mut Store) + Send>;
@@ -22,7 +18,7 @@ impl Request {
     }
 }
 
-// This guard is declared after Handle so cancellation precedes its joining Drop.
+// This guard is declared after Handle so cancellation precedes closing its queue.
 struct CancelStartup(crate::startup::Startup);
 
 impl Drop for CancelStartup {
@@ -31,19 +27,33 @@ impl Drop for CancelStartup {
     }
 }
 
+// Completion is a notification, not a periodic probe of the thread state.
+struct Finished(Option<oneshot::Sender<()>>);
+
+impl Drop for Finished {
+    fn drop(&mut self) {
+        if let Some(sender) = self.0.take() {
+            let _ = sender.send(());
+        }
+    }
+}
+
 /// Owns the dedicated storage thread and a bounded request queue.
-/// Dropping closes the queue and joins the worker; explicitly shut down before runtime exit.
+/// Async owners must call `shutdown` before dropping, including on errors.
+/// Drop signals stop; it joins only outside a Tokio runtime.
 pub struct Handle {
     sender: Option<mpsc::Sender<Request>>,
     thread: Option<thread::JoinHandle<()>>,
+    finished: oneshot::Receiver<()>,
 }
 
 impl Handle {
     /// Starts a worker; opening and migration happen on that thread.
     /// # Errors
     /// Refuses invalid queue capacity, thread creation and opening failures. A startup
-    /// timeout names its active step; cancellation interrupts SQLite and joins the owner
-    /// after rollback. Earlier committed migration versions are preserved.
+    /// timeout names its active step; cancellation interrupts SQLite so the owner
+    /// can roll back. Earlier committed migration versions are preserved. The
+    /// caller must not abandon startup: dropping its future cannot await cleanup.
     pub async fn start(
         path: PathBuf,
         limits: Limits,
@@ -56,11 +66,15 @@ impl Handle {
         }
         let (sender, mut receiver) = mpsc::channel::<Request>(capacity);
         let (ready, opened) = oneshot::channel();
+        let (finished, completion) = oneshot::channel();
         let startup = crate::startup::Startup::new(deadline);
         let opening = startup.clone();
         let thread = thread::Builder::new()
             .name("analyte-store".into())
             .spawn(move || {
+                // Declared before the store so completion follows store destruction,
+                // including early returns and unwinding.
+                let _finished = Finished(Some(finished));
                 let mut store = match Store::open_with_startup(&path, limits, space, &opening) {
                     Ok(store) => {
                         if ready.send(Ok(())).is_err() {
@@ -77,18 +91,27 @@ impl Handle {
                     request.run(&mut store, Instant::now());
                 }
             })?;
-        let handle = Self {
+        let mut handle = Self {
             sender: Some(sender),
             thread: Some(thread),
+            finished: completion,
         };
         let _cancel = CancelStartup(startup.clone());
-        tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), opened)
+        let result = tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), opened)
             .await
             .map_err(|_| {
                 startup.cancel();
                 startup.error()
-            })?
-            .map_err(|_| Error::Closed)??;
+            })
+            .and_then(|result| result.map_err(|_| Error::Closed))
+            .and_then(|result| result);
+        if let Err(error) = result {
+            startup.cancel();
+            // Startup still owns cleanup on an opening error. Cancellation is
+            // cooperative; preserve the original opening error if cleanup expires.
+            let _ = handle.shutdown(deadline).await;
+            return Err(error);
+        }
         Ok(handle)
     }
 
@@ -131,15 +154,15 @@ impl Handle {
     /// Reports expiration; the handle still owns the worker and can be shut down again.
     pub async fn shutdown(&mut self, deadline: Instant) -> Result<(), Error> {
         self.sender.take();
-        while self
+        if self
             .thread
             .as_ref()
             .is_some_and(|thread| !thread.is_finished())
         {
-            if Instant::now() >= deadline {
-                return Err(Error::Timeout);
-            }
-            tokio::time::sleep(Duration::from_millis(1)).await;
+            tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), &mut self.finished)
+                .await
+                .map_err(|_| Error::Timeout)?
+                .map_err(|_| Error::Closed)?;
         }
         if let Some(thread) = self.thread.take() {
             thread.join().map_err(|_| Error::Closed)?;
@@ -150,9 +173,23 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        self.sender.take();
+        let explicit_close_skipped = self.sender.take().is_some();
         if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+            if tokio::runtime::Handle::try_current().is_ok() {
+                tracing::error!(
+                    explicit_close_skipped,
+                    "store owner dropped inside Tokio before shutdown completed"
+                );
+                // Never block an async worker, even when reporting misuse.
+                drop(thread);
+                #[cfg(test)]
+                debug_assert!(
+                    !explicit_close_skipped,
+                    "async store owner skipped explicit shutdown"
+                );
+            } else {
+                let _ = thread.join();
+            }
         }
     }
 }

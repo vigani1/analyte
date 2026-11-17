@@ -4,6 +4,12 @@ use analyte_contract::{ResponseAction, classify_response};
 use analyte_model::{DeliveryId, Identifier, IdentityStatus, ReceiptMetadata, ResultContent};
 use analyte_store::{Attempt, DeliveryKind, Handle};
 use std::time::Duration;
+/// Bounds idle outbox query frequency; cancellation wakes immediately.
+const IDLE_CLAIM_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Bounds claims by legacy workers with no configured destinations.
+const EMPTY_STORE_BUDGET: Duration = Duration::from_secs(30);
+
 use tokio::sync::watch;
 
 /// Builds immutable production bytes and creates their delivery ID exactly once.
@@ -80,12 +86,13 @@ pub enum DeliveryOutcome {
     RetryAt(i64),
 }
 
-/// One owner claims globally across configured destinations; no tasks are spawned.
-/// Run only one owner per store to avoid making destination configuration ambiguous.
+/// Claims and delivers in order; the host owns scheduling and cancellation.
+/// Use one `for_destination` worker per destination to isolate slow HTTP peers.
 pub struct Worker<'a> {
     store: &'a Handle,
     destinations: &'a [Destination],
     secrets: &'a dyn SecretsSource,
+    destination: Option<&'a Identifier>,
 }
 
 impl<'a> Worker<'a> {
@@ -100,6 +107,22 @@ impl<'a> Worker<'a> {
             store,
             destinations,
             secrets,
+            destination: None,
+        }
+    }
+
+    /// Restricts claims to one destination; other owners cannot steal its deliveries.
+    #[must_use]
+    pub fn for_destination(
+        store: &'a Handle,
+        destination: &'a Destination,
+        secrets: &'a dyn SecretsSource,
+    ) -> Self {
+        Self {
+            store,
+            destinations: std::slice::from_ref(destination),
+            secrets,
+            destination: Some(destination.id()),
         }
     }
 
@@ -110,7 +133,7 @@ impl<'a> Worker<'a> {
             .iter()
             .map(|d| d.limits.store_timeout)
             .max()
-            .unwrap_or(Duration::from_secs(30))
+            .unwrap_or(EMPTY_STORE_BUDGET)
     }
 
     /// Claims, sends and records one attempt. Cancellation can leave it in flight;
@@ -129,11 +152,16 @@ impl<'a> Worker<'a> {
         now: &(dyn Fn() -> i64 + Sync),
     ) -> Result<DeliveryOutcome, Error> {
         let claim_time = now();
+        let destination = self.destination.cloned();
         let claim = self
             .store
-            .request(deadline(self.claim_timeout())?, move |s| {
-                s.claim(claim_time)
-            })
+            .request(
+                deadline(self.claim_timeout())?,
+                move |s| match destination {
+                    Some(destination) => s.claim_destination(claim_time, &destination),
+                    None => s.claim(claim_time),
+                },
+            )
             .await?;
         let Some(claim) = claim else {
             return Ok(DeliveryOutcome::Idle);
@@ -292,7 +320,7 @@ impl<'a> Worker<'a> {
                 tokio::select! {
                     biased;
                     () = cancelled(&mut stop) => return Ok(()),
-                    () = tokio::time::sleep(Duration::from_millis(100)) => {}
+                    () = tokio::time::sleep(IDLE_CLAIM_INTERVAL) => {}
                 }
             }
         }
@@ -306,7 +334,7 @@ impl<'a> Worker<'a> {
         loop {
             let outcome = tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), result=self.deliver_once()=>result?};
             if outcome == DeliveryOutcome::Idle {
-                tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), ()=tokio::time::sleep(Duration::from_millis(100))=>{}}
+                tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), ()=tokio::time::sleep(IDLE_CLAIM_INTERVAL)=>{}}
             }
         }
     }

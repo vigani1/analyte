@@ -14,6 +14,8 @@ pub mod machine;
 pub mod operator;
 pub mod orders;
 pub mod runtime;
+/// Bounds ordinary orchestration storage requests independently of machine protocol timers.
+const STORE_OPERATION_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// The orchestration boundary retains concrete errors as their original causes.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -25,7 +27,7 @@ pub(crate) fn invalid(message: &str) -> Error {
 
 pub(crate) fn deadline() -> std::time::Instant {
     std::time::Instant::now()
-        .checked_add(std::time::Duration::from_secs(5))
+        .checked_add(STORE_OPERATION_BUDGET)
         .unwrap_or(std::time::Instant::now())
 }
 

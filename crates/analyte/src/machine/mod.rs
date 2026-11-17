@@ -23,6 +23,18 @@ use settings::{Link, Session};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 
+/// Bounds queued transport events and writes per machine connection.
+const TRANSPORT_QUEUE_CAPACITY: usize = 16;
+
+/// Bounds the transport close stage after receive commits finish.
+const TRANSPORT_CLOSE_BUDGET: Duration = Duration::from_secs(25);
+
+/// Caps reconnection churn while keeping cancellation responsive.
+const RECONNECT_MIN: Duration = Duration::from_millis(100);
+
+/// Caps exponential transport reconnection backoff.
+const RECONNECT_MAX: Duration = Duration::from_secs(5);
+
 /// Separates completed receive commits from transport closure during shutdown.
 pub(crate) struct Closing {
     pub(crate) ready: watch::Sender<bool>,
@@ -32,7 +44,7 @@ pub(crate) struct Closing {
 impl Closing {
     pub(crate) async fn after_commits(&mut self) -> Result<(), Error> {
         self.ready.send_replace(true);
-        tokio::time::timeout(Duration::from_secs(25), stopping(&mut self.close))
+        tokio::time::timeout(TRANSPORT_CLOSE_BUDGET, stopping(&mut self.close))
             .await
             .map_err(Error::TransportCloseStageExceeded25Seconds)?;
         Ok(())
@@ -56,7 +68,8 @@ pub(crate) async fn run(
         return law::independent::run(machine, store, stop, closing, capture).await;
     }
     let link = settings::transport(machine.snapshot.effective().stack());
-    let limits = Limits::new(16, Duration::from_millis(u64::from(link.timeout_ms())))?;
+    let timeout = Duration::from_millis(u64::from(link.timeout_ms()));
+    let limits = Limits::new(TRANSPORT_QUEUE_CAPACITY, timeout)?;
     let endpoint = &machine.snapshot.effective().site().endpoint;
     match link {
         Link::Tcp {
@@ -121,7 +134,7 @@ pub(crate) async fn run(
             // Reconnect backoff is cancellable; this is not polling for completion.
             tokio::select! {
                 () = stopping(&mut stop) => return Ok(()),
-                () = tokio::time::sleep(Duration::from_millis(100)) => {}
+                () = tokio::time::sleep(RECONNECT_MIN) => {}
             }
         },
         Link::Serial(link) => {
@@ -164,11 +177,7 @@ fn recorded_connection(
 }
 
 fn retry() -> Result<Backoff, Error> {
-    Ok(Backoff::new(
-        Duration::from_millis(100),
-        Duration::from_secs(5),
-        1,
-    )?)
+    Ok(Backoff::new(RECONNECT_MIN, RECONNECT_MAX, 1)?)
 }
 
 async fn session(
