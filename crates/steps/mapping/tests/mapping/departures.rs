@@ -39,7 +39,7 @@ fn adr0015_hl7_s74125_only_qualified_absence_is_discharged_and_v1_parks() -> Tes
         mapped
             .findings
             .iter()
-            .any(|f| f.problem == Problem::DepartureDerivedStatusRequiresContract)
+            .any(|f| f.problem == Problem::DerivedStatusContract)
     );
     assert!(
         !mapped

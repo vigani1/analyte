@@ -11,7 +11,7 @@ pub(crate) fn map_reading(mapping: Mapping) -> Result<MappedReading, Error> {
                 .findings
                 .iter()
                 .map(|f| match f.problem {
-                    analyte_mapping::Problem::DepartureDerivedStatusRequiresContract =>
+                    analyte_mapping::Problem::DerivedStatusContract =>
                         "departure-derived status requires a contract version that carries departure evidence".to_owned(),
                     analyte_mapping::Problem::DepartureConflict => format!("departure-conflict at {}: present non-final status contradicts documented final-only scope", f.position),
                     analyte_mapping::Problem::UnqualifiedHl7Report

@@ -237,7 +237,7 @@ impl Host<'_, '_> {
                         return Err(custody::effect_failure(failure, error.into()));
                     }
                     if failure.is_none() {
-                        failure = Some(Error::TransferParkedReconcileBeforeReconnect);
+                        failure = Some(Error::TransferUnreconciled);
                     }
                 }
                 Action::Close => match self.work.confirmed(store).await? {

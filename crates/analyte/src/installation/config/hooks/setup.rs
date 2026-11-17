@@ -62,7 +62,7 @@ impl Program {
                 analyte_config::Stack::Law(_)
             )
         {
-            return Err(Error::LawGatesRequireInjectedLoopbackListener);
+            return Err(Error::MissingLawGateListener);
         }
         machine.hooks.law_gates = gates;
         Ok(())
@@ -137,7 +137,7 @@ impl Program {
                 .ip()
                 .is_loopback()
         {
-            return Err(Error::ClosingHookRequiresALoopbackTcpClient);
+            return Err(Error::InvalidClosingHookTransport);
         }
         machine.hooks.connection_closing = Some(hook);
         Ok(())

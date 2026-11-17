@@ -249,7 +249,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let until = self
                         .orders
                         .due()
-                        .ok_or(Error::ResponseDeadlineAbsentAfterIssuance)?
+                        .ok_or(Error::MissingResponseDeadline)?
                         .saturating_duration_since(self.clock);
                     return Ok(self
                         .dialog
