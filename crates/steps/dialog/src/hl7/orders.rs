@@ -96,7 +96,10 @@ impl Dialog {
     /// # Errors
     /// Rejects reconfiguration of an active or already configured dialog.
     pub fn enable_orders(&mut self, version: Version) -> Result<(), Error> {
-        if self.orders.is_some() || self.pending.is_some() || !self.decoder.pending().is_empty() {
+        if self.orders.is_some()
+            || self.state.pending().is_some()
+            || !self.decoder.pending().is_empty()
+        {
             return Err(Error::Busy);
         }
         self.orders = Some(Orders {
