@@ -377,9 +377,9 @@ fn transfer(
         }
         match side.writes.try_recv() {
             Ok(write) => {
-                if write.session != side.generation {
+                let Some(write) = side.next_write(write) else {
                     continue;
-                }
+                };
                 let start = std::time::Instant::now();
                 let mut remaining = write.bytes.as_slice();
                 while !remaining.is_empty() {

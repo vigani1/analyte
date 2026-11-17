@@ -210,3 +210,87 @@ fn serial_write_and_read_are_recorded_without_modification() -> Result<(), Box<d
     );
     Ok(())
 }
+
+/// Keeps every byte written to it, so a test can see what reached the port.
+struct SinkPort {
+    written: Arc<std::sync::Mutex<Vec<u8>>>,
+}
+
+impl Read for SinkPort {
+    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+        std::thread::park_timeout(Duration::from_millis(1));
+        Err(io::ErrorKind::TimedOut.into())
+    }
+}
+
+impl Write for SinkPort {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.written
+            .lock()
+            .map_err(|_| io::Error::other("sink poisoned"))?
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// ADR 0003 (refuse visibly): a flushed reply has reached the port before the owner
+/// cancels, and a closed session reports offline instead of a confirmed flush.
+#[test]
+fn serial_flush_confirms_queued_reply_reached_the_port_before_cancel() -> Result<(), Box<dyn Error>>
+{
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let settings = serial::Settings::new(
+        "SINK".into(),
+        9600,
+        serial::DataBits::Eight,
+        serial::Parity::None,
+        serial::StopBits::One,
+        serial::FlowControl::None,
+        Duration::from_millis(5),
+    )?;
+    let written = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let port = written.clone();
+    let (mut dialog, side) = connection(Limits::new(16, Duration::from_secs(1))?);
+    let retry = Backoff::new(Duration::from_millis(5), Duration::from_millis(20), 3)?;
+    std::thread::scope(|scope| -> Result<(), Box<dyn Error>> {
+        let owner = scope.spawn(|| {
+            serial::run(&settings, side, retry, move |_| {
+                Ok(Box::new(SinkPort {
+                    written: port.clone(),
+                }))
+            })
+        });
+        let result = runtime.block_on(async {
+            assert!(matches!(
+                dialog.receive().await?,
+                Some(Event::Opened { .. })
+            ));
+            dialog.write(b"".to_vec()).await?;
+            dialog.flush().await?;
+            assert_eq!(
+                *written.lock().map_err(|_| "sink poisoned")?,
+                b"",
+                "the reply must reach the port before the flush returns"
+            );
+            dialog.cancellation().cancel();
+            assert!(matches!(
+                dialog.receive().await?,
+                Some(Event::Closed(Reason::Cancelled))
+            ));
+            assert!(matches!(
+                dialog.flush().await,
+                Err(analyte_transport::Error::Offline)
+            ));
+            Ok::<_, Box<dyn Error>>(())
+        });
+        dialog.cancellation().cancel();
+        owner.join().map_err(|_| "serial owner panic")??;
+        result
+    })?;
+    Ok(())
+}

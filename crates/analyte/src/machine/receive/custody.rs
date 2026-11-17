@@ -240,6 +240,7 @@ mod tests {
             DeadlineKind::Receive,
             DeadlineKind::QueueWrite,
             DeadlineKind::EventBackpressure,
+            DeadlineKind::Flush,
         ] {
             assert_eq!(
                 matches!(

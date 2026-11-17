@@ -26,6 +26,8 @@ pub enum DeadlineKind {
     QueueWrite,
     /// Deadline for event backpressure.
     EventBackpressure,
+    /// Deadline for confirming queued writes were sent (outcome uncertain).
+    Flush,
 }
 impl DeadlineKind {
     /// Stable operation text for display and retained evidence.
@@ -44,6 +46,7 @@ impl DeadlineKind {
             Self::Receive => "receive",
             Self::QueueWrite => "queue write",
             Self::EventBackpressure => "event backpressure",
+            Self::Flush => "flush (outcome uncertain)",
         }
     }
 }

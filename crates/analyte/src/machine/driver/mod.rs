@@ -8,6 +8,12 @@ use analyte_store::Handle;
 use std::{collections::VecDeque, time::Duration};
 use tokio::sync::watch;
 
+mod chunk;
+pub(super) use chunk::chunk_effects;
+/// Exercises each concrete host without opening a real analyzer connection.
+#[cfg(test)]
+mod tests;
+
 /// Transport input custody follows the protocol's existing durable boundary.
 #[derive(Clone, Copy)]
 pub(super) enum Custody {
@@ -200,6 +206,8 @@ pub(super) trait Effects {
 
 /// Opens a protocol owner, drives ordered effects, and always attempts its cleanup.
 /// A cancelled store or write can still have happened; protocol effects retain its identity.
+/// Returns only after the session's queued replies have left the transport, so the
+/// owner's close cannot discard a final refusal (ADR 0003: refuse visibly).
 pub(super) async fn run<P: Effects>(
     open: impl FnOnce() -> Result<P, P::Error>,
     mut host: Context<'_, '_>,
@@ -208,7 +216,27 @@ pub(super) async fn run<P: Effects>(
     let mut result = drive(&mut protocol, &mut host).await;
     let cleanup = protocol.close(&mut host, &mut result).await;
     custody::retain_cleanup(&mut result, cleanup);
+    custody::retain_cleanup(&mut result, sent(host.conn).await.map_err(Into::into));
     result
+}
+
+/// Waits until every write the session queued has been handed to the operating system.
+/// Writes only queue bytes, and the owner cancels the transport once this session
+/// returns, so without this wait a refusal written just before an error return (an HL7
+/// AR or an ASTM NAK after failed storage) could be dropped unsent. An offline session
+/// was ended by the transport, which reports its own reason; nothing more can be sent.
+async fn sent(conn: &analyte_transport::Connection) -> Result<(), analyte_transport::Error> {
+    match conn.flush().await {
+        Err(analyte_transport::Error::Offline) => Ok(()),
+        flushed @ (Ok(())
+        | Err(
+            analyte_transport::Error::InvalidLimits
+            | analyte_transport::Error::OversizedWrite
+            | analyte_transport::Error::ConsumerClosed
+            | analyte_transport::Error::Deadline(_)
+            | analyte_transport::Error::Io { .. },
+        )) => flushed,
+    }
 }
 async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_, '_>) -> Result<(), P::Error> {
     loop {
@@ -277,220 +305,10 @@ pub(super) async fn feed<H: ByteEffects>(
     Ok(Flow::Continue)
 }
 
-/// Supplies the common input-journal and monotonic-wait policy for chunk hosts.
-/// Hosts keep their protocol transitions and effects explicit; this only shares
-/// the Effects boilerplate for a dialog with a connection `start` epoch.
-macro_rules! chunk_effects {
-    ($error:ty) => {
-        type Error = $error;
-        const CUSTODY: $crate::machine::driver::Custody = $crate::machine::driver::Custody::Chunks;
-        fn wait(&self) -> Result<Option<std::time::Duration>, $error> {
-            Ok(self
-                .dialog
-                .next_deadline()
-                .map(|deadline| deadline.saturating_sub(self.start.elapsed())))
-        }
-    };
-}
-pub(super) use chunk_effects;
-
 async fn wait_for(wait: Option<Duration>) {
     match wait {
         Some(wait) if wait.is_zero() => {}
         Some(wait) => tokio::time::sleep(wait).await,
         None => std::future::pending().await,
-    }
-}
-
-/// Exercises each concrete host without opening a real analyzer connection.
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[derive(Debug, thiserror::Error)]
-    enum Error {
-        #[error("probe deadline")]
-        Deadline,
-        #[error("probe cleanup")]
-        Cleanup,
-        #[error("unexpected probe input")]
-        UnexpectedInput,
-        #[error(transparent)]
-        Link(#[from] super::super::link::error::Error),
-        #[error(transparent)]
-        Transport(#[from] analyte_transport::Error),
-        #[error(transparent)]
-        CleanupPair(Box<custody::Cleanup<Self>>),
-    }
-    impl CleanupFailure for Error {
-        fn with_effect(original: Self, effect: Self) -> Self {
-            Self::CleanupPair(Box::new(custody::Cleanup { original, effect }))
-        }
-    }
-    use std::{cell::RefCell, rc::Rc};
-
-    #[derive(Clone, Copy)]
-    enum Scenario {
-        Deadline,
-        Stop(Custody),
-    }
-    struct Probe<const CHUNKS: bool> {
-        trace: Rc<RefCell<Vec<&'static str>>>,
-    }
-    impl<const CHUNKS: bool> Effects for Probe<CHUNKS> {
-        type Error = Error;
-        const CUSTODY: Custody = if CHUNKS {
-            Custody::Chunks
-        } else {
-            Custody::Dialog
-        };
-        fn wait(&self) -> Result<Option<Duration>, Error> {
-            Ok(Some(Duration::ZERO))
-        }
-        async fn background(&mut self) -> Result<(), Error> {
-            self.trace.borrow_mut().push("background");
-            Err(Error::UnexpectedInput)
-        }
-        async fn input(&mut self, _: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
-            match input {
-                Input::Tick => {
-                    self.trace.borrow_mut().push("deadline");
-                    Err(Error::Deadline)
-                }
-                Input::Closed(None) => {
-                    self.trace.borrow_mut().push("disconnect");
-                    Ok(Flow::Stop)
-                }
-                Input::Closed(Some(_))
-                | Input::Opened { .. }
-                | Input::Bytes { .. }
-                | Input::Failed(_) => Err(Error::UnexpectedInput),
-            }
-        }
-        async fn close(
-            &mut self,
-            _: &mut Context<'_, '_>,
-            _: &mut Result<(), Error>,
-        ) -> Result<(), Error> {
-            self.trace.borrow_mut().push("close");
-            Err(Error::Cleanup)
-        }
-    }
-    #[test]
-    fn adr0012_apply_failures_outrank_stop_and_keep_every_cause() {
-        let mut failures = Failures::new();
-        assert!(matches!(
-            Failures::<Error>::new().finish(Ok(Flow::Stop)),
-            Ok(Flow::Stop)
-        ));
-        failures.keep(Error::Deadline);
-        assert!(matches!(
-            failures.finish(Ok(Flow::Stop)),
-            Err(Error::Deadline)
-        ));
-
-        let mut failures = Failures::new();
-        failures.keep(Error::Deadline);
-        assert!(matches!(
-            failures.finish(Err(Error::Cleanup)),
-            Err(Error::CleanupPair(causes))
-                if matches!(causes.original, Error::Deadline) && matches!(causes.effect, Error::Cleanup)
-        ));
-
-        let mut failures = Failures::new();
-        failures.keep(Error::Deadline);
-        failures.keep(Error::UnexpectedInput);
-        assert!(matches!(
-            failures.take(),
-            Some(Error::CleanupPair(causes))
-                if matches!(causes.original, Error::Deadline) && matches!(causes.effect, Error::UnexpectedInput)
-        ));
-        assert!(matches!(
-            failures.finish(Ok(Flow::Continue)),
-            Ok(Flow::Continue)
-        ));
-    }
-    #[tokio::test]
-    async fn adr0001_0003_stop_deadline_and_cleanup_preserve_priority_and_both_causes()
-    -> Result<(), crate::Error> {
-        let temp = tempfile::tempdir()?;
-        let path = analyte_fixtures::write_machine(
-            temp.path(),
-            include_str!("../../../core/config/examples/hl7.toml"),
-            "127.0.0.1:5600",
-        )?;
-        let program = crate::installation::config::Program::load(&path)?;
-        let machine = program.machines().first().ok_or("synthetic machine")?;
-        let connection = intake::ConnectionEvidence::new(machine)?;
-        let mut store = Handle::start(
-            temp.path().join("store.db"),
-            analyte_fixtures::store_limits(),
-            Box::new(analyte_fixtures::UnlimitedSpace),
-            4,
-            crate::test_startup_deadline()?,
-        )
-        .await?;
-        for scenario in [
-            Scenario::Deadline,
-            Scenario::Stop(Custody::Dialog),
-            Scenario::Stop(Custody::Chunks),
-        ] {
-            let trace = Rc::new(RefCell::new(Vec::new()));
-            let (mut conn, side) = analyte_transport::connection(analyte_transport::Limits::new(
-                4,
-                Duration::from_secs(1),
-            )?);
-            // EOF and background are ready as well: deadline must win, and stop must win both.
-            drop(side);
-            let (_signal, stop) = watch::channel(matches!(scenario, Scenario::Stop(_)));
-            let host = Context {
-                machine: &connection,
-                store: &store,
-                conn: &mut conn,
-                stop,
-            };
-            trace.borrow_mut().push("open");
-            let result = match scenario {
-                Scenario::Stop(Custody::Chunks) => {
-                    run(
-                        || {
-                            Ok(Probe::<true> {
-                                trace: trace.clone(),
-                            })
-                        },
-                        host,
-                    )
-                    .await
-                }
-                Scenario::Deadline | Scenario::Stop(Custody::Dialog) => {
-                    run(
-                        || {
-                            Ok(Probe::<false> {
-                                trace: trace.clone(),
-                            })
-                        },
-                        host,
-                    )
-                    .await
-                }
-            };
-            match scenario {
-                Scenario::Deadline => {
-                    assert_eq!(*trace.borrow(), ["open", "deadline", "close"]);
-                    assert!(
-                        matches!(result, Err(Error::CleanupPair(causes)) if matches!(causes.original, Error::Deadline) && matches!(causes.effect, Error::Cleanup))
-                    );
-                }
-                Scenario::Stop(Custody::Dialog) => {
-                    assert_eq!(*trace.borrow(), ["open", "close"]);
-                    assert!(matches!(result, Err(Error::Cleanup)));
-                }
-                Scenario::Stop(Custody::Chunks) => {
-                    assert_eq!(*trace.borrow(), ["open", "disconnect", "close"]);
-                    assert!(matches!(result, Err(Error::Cleanup)));
-                }
-            }
-        }
-        store.shutdown(crate::deadline()?).await?;
-        Ok(())
     }
 }

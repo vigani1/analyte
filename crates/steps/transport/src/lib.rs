@@ -1,4 +1,5 @@
 //! Reads and writes bounded transport bytes and recordings without interpreting protocols.
+//! Kept whole: `Connection` and `IoSide` share the private queue and session fields that tie each write and flush to one session.
 #![forbid(unsafe_code)]
 
 use std::{
@@ -184,11 +185,44 @@ struct Write {
     bytes: Vec<u8>,
 }
 
+/// One item on a connection's ordered outgoing queue.
+enum Outgoing {
+    /// Bytes for one session.
+    Bytes(Write),
+    /// Confirms that every earlier item for `session` has been handed to the
+    /// operating system. A stale session's marker is dropped unanswered.
+    Flush {
+        session: u64,
+        sent: tokio::sync::oneshot::Sender<()>,
+    },
+}
+
+impl IoSide {
+    /// Takes the next outgoing bytes for the current session, answering flush
+    /// markers on the way. Because the queue is ordered and each write completes
+    /// before the next item is taken, an answered marker proves every earlier
+    /// write left this owner.
+    fn next_write(&self, outgoing: Outgoing) -> Option<Write> {
+        match outgoing {
+            Outgoing::Bytes(write) if write.session == self.generation => Some(write),
+            Outgoing::Bytes(_) => None,
+            Outgoing::Flush { session, sent } => {
+                if session == self.generation {
+                    // A closed receiver means the flusher stopped waiting at its own
+                    // deadline and already reports that outcome as uncertain.
+                    let _ = sent.send(());
+                }
+                None
+            }
+        }
+    }
+}
+
 /// Dialog endpoint with bounded queues. Drop cancels its I/O owner.
 pub struct Connection {
     observed_session: u64,
     events: mpsc::Receiver<Event>,
-    writes: mpsc::Sender<Write>,
+    writes: mpsc::Sender<Outgoing>,
     limits: Limits,
     session: Arc<AtomicU64>,
     cancel: Cancellation,
@@ -255,24 +289,52 @@ impl Connection {
         if bytes.len() > CHUNK_LIMIT {
             return Err(Error::OversizedWrite);
         }
-        let session = self.observed_session;
-        if session == 0 || session != self.session.load(Ordering::Acquire) {
-            return Err(Error::Offline);
-        }
+        let session = self.open_session()?;
         tokio::time::timeout(
             self.limits.deadline,
-            self.writes.send(Write { session, bytes }),
+            self.writes.send(Outgoing::Bytes(Write { session, bytes })),
         )
         .await
         .map_err(|_| Error::Deadline(DeadlineKind::QueueWrite))?
         .map_err(|_| Error::ConsumerClosed)
+    }
+
+    /// Waits, within the configured deadline, until the I/O owner has handed every
+    /// write queued before this call to the operating system. Call it before
+    /// cancelling, so a final reply such as a refusal is not discarded with the
+    /// queue. It does not prove the peer received the bytes.
+    /// # Errors
+    /// `Offline` when the session is not open, or ends before its queued writes
+    /// were sent; a flush deadline when the owner did not reach them in time, which
+    /// leaves their outcome uncertain.
+    pub async fn flush(&self) -> Result<(), Error> {
+        let session = self.open_session()?;
+        let (sent, confirmed) = tokio::sync::oneshot::channel();
+        tokio::time::timeout(self.limits.deadline, async {
+            self.writes
+                .send(Outgoing::Flush { session, sent })
+                .await
+                .map_err(|_| Error::Offline)?;
+            confirmed.await.map_err(|_| Error::Offline)
+        })
+        .await
+        .map_err(|_| Error::Deadline(DeadlineKind::Flush))?
+    }
+
+    /// The observed session, if the I/O owner still serves it.
+    fn open_session(&self) -> Result<u64, Error> {
+        let session = self.observed_session;
+        if session == 0 || session != self.session.load(Ordering::Acquire) {
+            return Err(Error::Offline);
+        }
+        Ok(session)
     }
 }
 
 /// I/O endpoint consumed by one caller-owned future or dedicated thread.
 pub struct IoSide {
     events: mpsc::Sender<Event>,
-    writes: mpsc::Receiver<Write>,
+    writes: mpsc::Receiver<Outgoing>,
     limits: Limits,
     session: Arc<AtomicU64>,
     generation: u64,
@@ -538,7 +600,7 @@ mod tests {
             .collect();
         dialog.write_all(&bytes, None).await?;
         let mut recovered = Vec::new();
-        while let Ok(write) = side.writes.try_recv() {
+        while let Ok(Outgoing::Bytes(write)) = side.writes.try_recv() {
             assert!(write.bytes.len() <= CHUNK_LIMIT);
             recovered.extend(write.bytes);
         }
@@ -556,7 +618,9 @@ mod tests {
             dialog.write_all(&bytes, Some(until)).await,
             Err(Error::Deadline(DeadlineKind::WriteAll))
         ));
-        let prefix = side.writes.try_recv().map_err(|_| Error::ConsumerClosed)?;
+        let Ok(Outgoing::Bytes(prefix)) = side.writes.try_recv() else {
+            return Err(Error::ConsumerClosed);
+        };
         assert_eq!(Some(prefix.bytes.as_slice()), bytes.get(..CHUNK_LIMIT));
         assert!(side.writes.try_recv().is_err());
         Ok(())

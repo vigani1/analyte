@@ -169,7 +169,7 @@ async fn transfer(
         tokio::select! {
             write = side.writes.recv() => {
                 let Some(write) = write else { return Ok(Reason::Cancelled); };
-                if write.session != side.generation { continue; }
+                let Some(write) = side.next_write(write) else { continue; };
                 // Each successful write is recorded separately, so a later failure cannot hide a prefix.
                 let mut remaining = write.bytes.as_slice();
                 let deadline = tokio::time::Instant::now().checked_add(side.limits.deadline).ok_or(Error::InvalidLimits)?;
