@@ -93,7 +93,7 @@ The identity shapes deliberately follow the protocol's custody boundary:
 | ASTM | `CommitId` with `Epoch`, transfer ordinal and frame ordinal | Each frame needs its own durable ACK gate; transfer and frame counters cannot be collapsed to the wire's wrapping frame number. |
 | HL7 / LAW | `ExchangeId` | One complete MLLP message is the custody unit. HL7 supplies a fresh host epoch; LAW owns one outstanding exchange and keeps its connection incarnation in the host. |
 | Autolyser | `StoreId` | A connection-local packet ordinal is sufficient; the host owns the connection incarnation and never routes completions across hosts. |
-| POCT | `CommitId` | Correlation includes protocol session/message identity and interpretation custody, rather than an MLLP exchange. |
+| POCT | `CommitId` | Correlation includes protocol session identity, sequence and interpretation custody, rather than an MLLP exchange. |
 | VIDAS | One implicit outstanding packet | The host serially awaits storage before driving the next dialog event; a separate token would add no correlation check. |
 
 A universal token would either discard ASTM/POCT distinctions or require unused
