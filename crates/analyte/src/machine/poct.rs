@@ -380,7 +380,21 @@ async fn store_message(
     intake::receive(store, machine, id, message.document().raw().to_vec()).await?;
     match message.body() {
         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
-            if !intake::interpret(store, machine, id).await? {
+            intake::interpret(store, machine, id).await?;
+            // This fresh receipt has exactly one interpretation. POCT promises
+            // readable custody even when mapped findings require operator review.
+            let readable = store
+                .request(crate::deadline()?, move |s| {
+                    let evidence = s
+                        .interpretation(id, 1)?
+                        .ok_or(analyte_store::Error::Corruption)?;
+                    Ok(matches!(
+                        evidence.outcome,
+                        analyte_store::Reading::Results(_)
+                    ))
+                })
+                .await?;
+            if !readable {
                 return Ok(CommitOutcome::ApplicationError(
                     analyte_poct::ApplicationError::UnsupportedValue,
                 ));
@@ -389,7 +403,7 @@ async fn store_message(
         Body::Hello { .. } => {
             // Mark the complete, parsed Hello as connection context. Transport
             // journal fragments are also receipts, but are not interpreted Hellos.
-            intake::interpret(store, machine, id).await?;
+            intake::remember_hello(store, machine, id).await?;
         }
         Body::Status { .. }
         | Body::EndTopic(_)

@@ -89,19 +89,10 @@ pub(crate) async fn interpret(
     machine: &Machine,
     id: ReceiptId,
 ) -> Result<bool, Error> {
-    let (outcome, _, readable) = interpret_receipt(store, machine, id).await?;
-    // POCT acknowledges durable readable observations even when findings require
-    // operator review. HL7/LAW acceptance makes a stronger semantic promise.
-    Ok(
-        if matches!(
-            machine.snapshot.effective().stack(),
-            analyte_config::Stack::Poct(_)
-        ) {
-            readable
-        } else {
-            matches!(outcome, InterpretationOutcome::Accepted)
-        },
-    )
+    Ok(matches!(
+        interpret_with_location(store, machine, id).await?.0,
+        InterpretationOutcome::Accepted
+    ))
 }
 
 pub(crate) async fn interpret_with_location(
@@ -112,22 +103,6 @@ pub(crate) async fn interpret_with_location(
     (
         InterpretationOutcome,
         Option<crate::machine::hl7::error_location::Location>,
-    ),
-    Error,
-> {
-    let (outcome, location, _) = interpret_receipt(store, machine, id).await?;
-    Ok((outcome, location))
-}
-
-async fn interpret_receipt(
-    store: &Handle,
-    machine: &Machine,
-    id: ReceiptId,
-) -> Result<
-    (
-        InterpretationOutcome,
-        Option<crate::machine::hl7::error_location::Location>,
-        bool,
     ),
     Error,
 > {
@@ -149,7 +124,6 @@ async fn interpret_receipt(
                 options.terminator,
             )
         });
-    let readable = mapping.is_ok();
     // Preserve the vendor diagnostics historically retained for unreadable input.
     let mapping = match mapping {
         Ok(output) => Mapping::Mapped(output),
@@ -166,7 +140,7 @@ async fn interpret_receipt(
         }
     };
     let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
-    Ok((accepted, location, readable))
+    Ok((accepted, location))
 }
 
 fn poct_edits(machine: &Machine) -> bool {
@@ -503,6 +477,23 @@ pub(crate) async fn park_bytes(
             s.interpret_reconciled(id, evidence, &[], &[], |_, _| Ok(Vec::new()))
         })
         .await?;
+    Ok(())
+}
+
+/// Retains a parsed POCT Hello as connection context, never as a result transfer.
+pub(crate) async fn remember_hello(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+) -> Result<(), Error> {
+    persist_mapping(
+        store,
+        machine,
+        id,
+        Mapping::Mapped(analyte_mapping::Output::default()),
+        None,
+    )
+    .await?;
     Ok(())
 }
 

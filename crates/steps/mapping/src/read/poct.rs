@@ -23,10 +23,6 @@ pub(super) fn read(
         | analyte_poct::Body::Request(_) => None,
     });
     let message = analyte_poct::Message::parse(raw, limits(settings))?;
-    // A parsed Hello is durable connection context, not an observation transfer.
-    if matches!(message.body(), analyte_poct::Body::Hello { .. }) {
-        return Ok(crate::Output::default());
-    }
     Ok(crate::map_poct(
         config,
         input.receipt,
