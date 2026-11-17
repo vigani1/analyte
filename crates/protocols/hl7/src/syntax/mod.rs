@@ -475,7 +475,7 @@ impl<'a> Field<'a> {
     /// Distinguishes an explicit HL7 null from an empty value.
     #[must_use]
     pub fn is_null(self) -> bool {
-        self.raw == b"\"\""
+        is_null_text(self.raw)
     }
     /// Iterates repetitions without decoding escapes into delimiters.
     pub fn repetitions(self) -> impl Iterator<Item = Repetition<'a>> {
@@ -573,4 +573,10 @@ impl<'a> Iterator for Parts<'a> {
 mod text;
 mod truncation;
 pub(crate) use text::validate_escapes;
-pub use text::{TextEscape, decode_text, encode_text, inspect_text_escapes};
+pub use text::{TextEscape, decode_characters, decode_text, encode_text, inspect_text_escapes};
+
+/// Recognizes the explicit HL7 null token (HL7 2.5.1 section 2.5.3).
+#[must_use]
+pub fn is_null_text(raw: &[u8]) -> bool {
+    raw == b"\"\""
+}

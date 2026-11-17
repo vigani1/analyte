@@ -28,6 +28,16 @@ pub(crate) struct Source<'a> {
 }
 
 impl Source<'_> {
+    pub(crate) fn present(&self, value: Option<String>) -> Option<String> {
+        value.filter(|value| {
+            !value.is_empty()
+                && match self.syntax {
+                    FieldSyntax::AstmLis02 => true,
+                    FieldSyntax::Hl7V2 => !analyte_hl7::is_null_text(value.as_bytes()),
+                }
+        })
+    }
+
     // Source constructors already validate their control profile. Inspect only the
     // edition here; LAW's negotiated VID compatibility is a different contract.
     pub(crate) fn uses_compatibility_contract(&self, config: &analyte_config::Validated) -> bool {
@@ -161,14 +171,17 @@ impl Source<'_> {
                 resource: "source text",
             });
         }
-        match self.charset {
-            analyte_hl7::Charset::Ascii | analyte_hl7::Charset::Utf8 => std::str::from_utf8(raw)
-                .map(str::to_owned)
-                .map_err(|_| Error::Encoding {
-                    position: self.position(index, field),
-                }),
-            analyte_hl7::Charset::Latin1 => Ok(raw.iter().map(|byte| char::from(*byte)).collect()),
-        }
+        let decoded = match self.syntax {
+            FieldSyntax::AstmLis02 => match self.charset {
+                analyte_hl7::Charset::Ascii => analyte_astm::ascii(raw),
+                analyte_hl7::Charset::Latin1 => analyte_astm::latin1(raw),
+                analyte_hl7::Charset::Utf8 => analyte_astm::utf8(raw),
+            },
+            FieldSyntax::Hl7V2 => analyte_hl7::decode_characters(raw, self.charset).ok(),
+        };
+        decoded.ok_or(Error::Encoding {
+            position: self.position(index, field),
+        })
     }
 
     pub(crate) fn raw(&self, index: usize, field: usize) -> Result<Option<String>, Error> {
@@ -655,5 +668,47 @@ impl Hierarchy {
         }
         self.order = Some(index);
         Ok((parent, Group::Order))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn hl7_251_section_253_null_does_not_apply_to_lis02_fields() {
+        let mut source = Source {
+            message: None,
+            version: None,
+            nodes: Vec::new(),
+            syntax: FieldSyntax::AstmLis02,
+            component_separator: b'^',
+            charset: analyte_hl7::Charset::Ascii,
+        };
+        assert_eq!(source.present(Some("\"\"".into())), Some("\"\"".into()));
+        assert_eq!(source.present(Some(String::new())), None);
+        source.syntax = FieldSyntax::Hl7V2;
+        assert_eq!(source.present(Some("\"\"".into())), None);
+    }
+    #[test]
+    fn protocol_decoders_refuse_non_ascii_selected_as_ascii() {
+        let mut source = Source {
+            message: None,
+            version: None,
+            nodes: Vec::new(),
+            syntax: FieldSyntax::AstmLis02,
+            component_separator: b'^',
+            charset: analyte_hl7::Charset::Ascii,
+        };
+        assert!(matches!(
+            source.original_text("?".as_bytes(), 0, 1),
+            Err(Error::Encoding { .. })
+        ));
+        source.syntax = FieldSyntax::Hl7V2;
+        assert!(matches!(
+            source.original_text("?".as_bytes(), 0, 1),
+            Err(Error::Encoding { .. })
+        ));
+        source.charset = analyte_hl7::Charset::Utf8;
+        assert_eq!(source.original_text("?".as_bytes(), 0, 1).unwrap(), "?");
     }
 }

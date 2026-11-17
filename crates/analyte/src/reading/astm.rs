@@ -9,11 +9,9 @@ pub(super) fn read(
     let messages = analyte_astm::parse_with(payload, syntax.parser_limits(), |bytes| match syntax
         .encoding()
     {
-        analyte_config::Encoding::Ascii => bytes
-            .is_ascii()
-            .then(|| String::from_utf8_lossy(bytes).into_owned()),
+        analyte_config::Encoding::Ascii => analyte_astm::ascii(bytes),
         analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
-        analyte_config::Encoding::Utf8 => std::str::from_utf8(bytes).ok().map(str::to_owned),
+        analyte_config::Encoding::Utf8 => analyte_astm::utf8(bytes),
     })?;
     // A transfer may contain multiple messages; the host must retain every one.
     if messages.len() != 1 {

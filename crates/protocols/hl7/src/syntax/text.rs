@@ -72,7 +72,10 @@ fn formatting_command(code: &[u8]) -> bool {
     !digits.is_empty() && digits.iter().all(u8::is_ascii_digit) && digits.iter().any(|b| *b != b'0')
 }
 
-fn decode(raw: &[u8], charset: Charset) -> Result<String, Error> {
+/// Decodes bytes using the selected character set without interpreting escapes.
+/// # Errors
+/// Refuses bytes outside the selected repertoire.
+pub fn decode_characters(raw: &[u8], charset: Charset) -> Result<String, Error> {
     match charset {
         Charset::Ascii => {
             if raw.is_ascii() {
@@ -97,7 +100,7 @@ pub fn encode_text(raw: &[u8], message: &Message, maximum: usize) -> Result<Vec<
             field: 0,
         });
     }
-    decode(raw, message.charset)?;
+    decode_characters(raw, message.charset)?;
     let d = message.delimiters;
     let mut output = Vec::new();
     for byte in raw {
@@ -173,7 +176,7 @@ pub fn decode_text(raw: &[u8], message: &Message) -> Result<String, Error> {
         }
         output.extend_from_slice(tail.unwrap_or_default());
     }
-    decode(&output, message.charset)
+    decode_characters(&output, message.charset)
 }
 
 /// Escape content requiring an explicit text handling policy.

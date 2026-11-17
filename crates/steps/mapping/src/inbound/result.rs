@@ -2,7 +2,7 @@
 use crate::FieldSyntax;
 use crate::inbound::source::Source;
 use crate::inbound::time;
-use crate::{Error, Input, Output, Problem, finding, identifier, list, present, text};
+use crate::{Error, Input, Output, Problem, finding, identifier, list, text};
 use analyte_config::Classification;
 use analyte_config::Validated;
 use analyte_model::*;
@@ -22,7 +22,8 @@ pub(crate) fn part(
         .unwrap_or_default();
     let position = source.position(index, 0);
     let units_field = if astm { 5 } else { 6 };
-    let units = present(source.raw(index, units_field)?)
+    let units = source
+        .present(source.raw(index, units_field)?)
         .map(|value| {
             let original = text(&value, source.position(index, units_field))?;
             match crate::unit_translation(config.effective().machine().units(), &value) {
@@ -78,7 +79,8 @@ pub(crate) fn part(
         units,
         dilution: None,
         flags: list(flags, position)?,
-        reference_range: present(source.raw(index, range_field)?)
+        reference_range: source
+            .present(source.raw(index, range_field)?)
             .map(|s| text(&s, source.position(index, range_field)))
             .transpose()?,
         comments: list(comments, position)?,
@@ -226,7 +228,7 @@ fn source_times(
             if node.name == "OBX" && *field == 19 && !source.has_analysis_time(config) {
                 continue;
             }
-            if let Some(raw) = present(source.component(*ancestor, *field, 1, 1)?) {
+            if let Some(raw) = source.present(source.component(*ancestor, *field, 1, 1)?) {
                 let mut time = time::parse(&raw, source.position(*ancestor, *field))?;
                 // 2.9.1 section 2A.2.22: UTC does not establish a known civil offset.
                 // Keep the exact spelling without claiming a parsed local date/time.
@@ -237,7 +239,9 @@ fn source_times(
                 if let Some(original) = source.raw(*ancestor, *field)? {
                     time.original = text(&original, source.position(*ancestor, *field))?;
                 }
-                if !astm && let Some(degree) = present(source.component(*ancestor, *field, 1, 2)?) {
+                if !astm
+                    && let Some(degree) = source.present(source.component(*ancestor, *field, 1, 2)?)
+                {
                     let declared = match degree.as_str() {
                         "Y" => TimePrecision::Year,
                         "L" => TimePrecision::Month,

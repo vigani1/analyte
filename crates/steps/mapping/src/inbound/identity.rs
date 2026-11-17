@@ -1,6 +1,6 @@
 //! Resolves result identities using configured sample and source evidence only.
 use crate::inbound::source::Source;
-use crate::{Error, Output, Problem, finding, identifier, present, text};
+use crate::{Error, Output, Problem, finding, identifier, text};
 use analyte_config::Validated;
 use analyte_config::{NoSubId, OrderNamespace, SubId};
 use analyte_model::*;
@@ -13,7 +13,7 @@ pub(crate) fn sample(
 ) -> Result<Option<SampleIdentity>, Error> {
     let selection = &crate::field_mappings(config)?.sample;
     let position = source.selection_position(index, &selection.field)?;
-    let Some(value) = present(source.selected(index, &selection.field)?) else {
+    let Some(value) = source.present(source.selected(index, &selection.field)?) else {
         finding(output, position, Problem::MissingSample)?;
         return Ok(None);
     };
@@ -60,7 +60,7 @@ pub(crate) fn observation(
     let settings = &crate::field_mappings(config)?.identity;
     let mut missing = false;
     let mut required = |field: &analyte_config::Field, setting| -> Result<String, Error> {
-        match present(source.selected(index, field)?) {
+        match source.present(source.selected(index, field)?) {
             Some(value) => Ok(value),
             None => {
                 missing = true;
@@ -131,10 +131,10 @@ fn law_observation(
         return Ok(None);
     };
     let field = if observation.awos().is_some() { 2 } else { 3 };
-    let id = present(source.component(order, field, 1, 1)?);
-    let namespace = present(source.component(order, field, 1, 2)?);
-    let universal = present(source.component(order, field, 1, 3)?);
-    let kind = present(source.component(order, field, 1, 4)?);
+    let id = source.present(source.component(order, field, 1, 1)?);
+    let namespace = source.present(source.component(order, field, 1, 2)?);
+    let universal = source.present(source.component(order, field, 1, 3)?);
+    let kind = source.present(source.component(order, field, 1, 4)?);
     let namespace = if field == 2 {
         // TF-2b C.6-2: received EI.2+ are X, never assigning authority.
         match &crate::field_mappings(config)?.identity.order_namespace {
@@ -151,7 +151,7 @@ fn law_observation(
     } else {
         namespace
     };
-    let sub_id = present(Some(source.text(observation.sub_id(), index, 4)?));
+    let sub_id = source.present(Some(source.text(observation.sub_id(), index, 4)?));
     let (Some(id), Some(namespace), Some(sub_id)) = (id, namespace, sub_id) else {
         finding(
             output,

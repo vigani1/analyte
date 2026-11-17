@@ -3,7 +3,7 @@ use crate::FieldSyntax;
 use crate::MappedResult;
 use crate::inbound::source::Source;
 use crate::inbound::{identity, result, value};
-use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, present, text};
+use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, text};
 use analyte_config::Validated;
 use analyte_model::*;
 
@@ -198,9 +198,9 @@ fn map_codes(
     output: &mut Output,
 ) -> Result<Option<Codes>, Error> {
     let astm = source.syntax == FieldSyntax::AstmLis02;
-    let mut standard_code = present(source.component(index, 3, 1, 1)?);
+    let mut standard_code = source.present(source.component(index, 3, 1, 1)?);
     let mut manufacturer_code = if astm {
-        present(source.component(index, 3, 1, 4)?)
+        source.present(source.component(index, 3, 1, 4)?)
     } else {
         None
     };
@@ -390,7 +390,7 @@ fn map_test(
     let system = if astm {
         None
     } else {
-        present(source.component(index, 3, 1, 3)?)
+        source.present(source.component(index, 3, 1, 3)?)
     };
     // LIS02 section 5.6.1 provides both a universal and a manufacturer identifier.
     // The explicit table must select exactly one interpretation if both occur.

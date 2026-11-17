@@ -343,10 +343,6 @@ fn list<T>(entries: Vec<T>, position: Position) -> Result<EvidenceList<T>, Error
     })
 }
 
-fn present(value: Option<String>) -> Option<String> {
-    value.filter(|s| !s.is_empty() && s != "\"\"")
-}
-
 fn finding(output: &mut Output, position: Position, problem: Problem) -> Result<(), Error> {
     if output.findings.len() == 65536 {
         return Err(Error::Limit {
