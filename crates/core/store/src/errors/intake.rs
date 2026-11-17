@@ -1,33 +1,31 @@
 //! Distinguishes receipt and transfer refusals from persistence failures.
-use super::StorageError;
-/// Failures admitting raw receipts and transfer frames before acknowledgment.
-#[derive(Debug, thiserror::Error)]
-pub enum IntakeError {
-    /// The worker could not establish receipt custody completion.
-    #[error(transparent)]
-    Worker(#[from] crate::WorkerError),
-    /// Bounded persistence failed; no positive acknowledgment is authorized.
-    #[error(transparent)]
-    Storage(#[from] StorageError),
-    /// Receipt digests or protocol-supplied frame bounds do not agree.
-    #[error("invalid receipt input")]
-    InvalidReceiptInput,
-    /// Transfer state or immutable provenance conflicts with retained evidence.
-    #[error("identity or state constraint conflict")]
-    Conflict,
-}
-impl From<rusqlite::Error> for IntakeError {
-    fn from(error: rusqlite::Error) -> Self {
-        Self::Storage(error.into())
+storage_boundary! {
+    /// Failures admitting raw receipts and transfer frames before acknowledgment.
+    #[derive(Debug, thiserror::Error)]
+    pub enum IntakeError {
+        /// Receipt digests or protocol-supplied frame bounds do not agree.
+        #[error("invalid receipt input")]
+        InvalidReceiptInput,
+        /// Transfer state or immutable provenance conflicts with retained evidence.
+        #[error("identity or state constraint conflict")]
+        Conflict,
     }
 }
-
-// Compatibility for callers whose enclosing boundary has not yet been split.
 impl From<IntakeError> for crate::Error {
     fn from(error: IntakeError) -> Self {
         match error {
             IntakeError::Worker(cause) => Self::Worker(cause),
-            IntakeError::Storage(cause) => cause.into(),
+            IntakeError::StorageCorruption(cause) => Self::StorageCorruption(cause),
+            IntakeError::Capacity => Self::Capacity,
+            IntakeError::Corruption => Self::Corruption,
+            IntakeError::DiskFull(cause) => Self::DiskFull(cause),
+            IntakeError::LimitExceeded { what } => Self::LimitExceeded { what },
+            IntakeError::Busy(cause) => Self::Busy(cause),
+            IntakeError::ConstraintViolation(cause) => Self::ConstraintViolation(cause),
+            IntakeError::Text(cause) => Self::Text(cause),
+            IntakeError::Io(cause) => Self::Io(cause),
+            IntakeError::Sqlite(cause) => Self::Sqlite(cause),
+            IntakeError::Json(cause) => Self::Json(cause),
             IntakeError::InvalidReceiptInput => Self::InvalidReceiptInput,
             IntakeError::Conflict => Self::Conflict,
         }

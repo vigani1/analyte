@@ -254,10 +254,7 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
     drop(current);
     // No available bytes can admit even one byte above the configured disk reserve.
     let probe = Store::open(&temp.path().join("probe.db"), limits(), Box::new(Space(0)))?;
-    assert!(matches!(
-        probe.admission(1),
-        Err(IntakeError::Storage(StorageError::Capacity))
-    ));
+    assert!(matches!(probe.admission(1), Err(IntakeError::Capacity)));
     drop(probe);
     let audit = Audit {
         actor: Identifier::new("operator")?,

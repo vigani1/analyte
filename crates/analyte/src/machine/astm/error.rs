@@ -54,7 +54,7 @@ mod tests {
     async fn adr0003_astm_refusal_preserves_custody_cause_and_operator_text() {
         use crate::machine::custody::{StoreWaitError, store_within};
         let storage = Error::CommitRefused(StoreWaitError::Operation(
-            analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity),
+            analyte_store::IntakeError::Capacity,
         ));
         let expired = store_within(
             std::time::Duration::from_millis(1),
@@ -66,7 +66,7 @@ mod tests {
         assert!(matches!(
             &storage,
             Error::CommitRefused(StoreWaitError::Operation(
-                analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity)
+                analyte_store::IntakeError::Capacity
             ))
         ));
         assert!(matches!(
