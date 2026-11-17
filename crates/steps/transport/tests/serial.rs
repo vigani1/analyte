@@ -52,10 +52,10 @@ fn vanished_port_reopens_same_name_and_cancels() -> Result<(), Box<dyn Error>> {
     let settings = serial::Settings::new(
         "FIXED-PORT".into(),
         9600,
-        serialport::DataBits::Eight,
-        serialport::Parity::None,
-        serialport::StopBits::One,
-        serialport::FlowControl::None,
+        serial::DataBits::Eight,
+        serial::Parity::None,
+        serial::StopBits::One,
+        serial::FlowControl::None,
         Duration::from_millis(5),
     )?;
     let (mut dialog, side) = connection(Limits::new(16, Duration::from_secs(1))?);
@@ -162,10 +162,10 @@ fn serial_write_and_read_are_recorded_without_modification() -> Result<(), Box<d
     let settings = serial::Settings::new(
         "ECHO".into(),
         9600,
-        serialport::DataBits::Eight,
-        serialport::Parity::None,
-        serialport::StopBits::One,
-        serialport::FlowControl::None,
+        serial::DataBits::Eight,
+        serial::Parity::None,
+        serial::StopBits::One,
+        serial::FlowControl::None,
         Duration::from_millis(5),
     )?;
     let (mut dialog, side) = connection(Limits::new(16, Duration::from_secs(1))?);

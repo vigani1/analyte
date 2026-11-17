@@ -200,7 +200,12 @@ impl Host<'_, '_> {
                 match action {
                     Action::Write(bytes) => {
                         self.end_code = VidasEnd::WriteFailed;
-                        custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
+                        custody::write(
+                            conn,
+                            &bytes,
+                            custody::WriteDeadline::Within(ms(installed.acknowledgment_ms)),
+                        )
+                        .await?;
                         self.end_code = VidasEnd::TransferError;
                     }
                     Action::Store(packet) => {

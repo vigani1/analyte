@@ -541,6 +541,8 @@ These APIs remain pure and do not reserve, transmit, cancel or infer acceptance.
 ## LAW program integration
 
 The program receives results, answers supported queries and sends/cancels work
-on one persistent TCP link in either configured direction. Evidence remains
+on one persistent TCP link in either configured direction, or on independent
+directional links: inbound query and result links and an outbound work link.
+Evidence remains
 **documented**. The [LAW checklist](../../../docs/protocols/law/README.md) owns the
 current test matrix and remaining actor/simulator qualification gates.

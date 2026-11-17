@@ -52,7 +52,7 @@ pub enum Stack {
     Astm(RecordTransport<Box<AstmStack>, Box<FileAstmStack>>),
     /// Generic HL7 v2 receiver over MLLP/TCP.
     Hl7(RecordTransport<Box<Hl7Stack>, Box<FileHl7Stack>>),
-    /// IHE LAW Analyzer Manager over one persistent MLLP/TCP link.
+    /// IHE LAW Analyzer Manager over a persistent MLLP/TCP link or independent directional links.
     Law(Box<LawStack>),
     /// POCT1-A reviewer over TCP.
     Poct(Box<PoctStack>),

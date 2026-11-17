@@ -9,7 +9,7 @@ use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
 mod orders;
 use orders::Orders;
-pub use orders::{DisplayReply, ReplyPart};
+pub use orders::{DisplayReply, Expect, ReplyPart};
 mod evidence;
 mod state;
 use state::State;
@@ -106,8 +106,8 @@ pub enum Event<'a> {
     NotInterpretable(ExchangeId, AckError<'a>, AckChoice),
     /// Fresh response metadata for the requested response phase.
     Respond(ExchangeId, Response<'a>),
-    /// Explicit outgoing message; never retried automatically.
-    Send(&'a [u8]),
+    /// Explicit outgoing message and the reply it waits for; never retried automatically.
+    Send(&'a [u8], Expect),
     /// Reply prepared only after lookup and any required durable reservations.
     QueryReply(&'a DisplayReply),
     /// The requested reply part was queued by the transport within its budget.
@@ -501,8 +501,11 @@ impl Dialog {
                     self.frame_started = None;
                 }
             }
-            Event::Send(raw) => {
+            Event::Send(raw, Expect::Acknowledgment) => {
                 self.send(raw, out)?;
+            }
+            Event::Send(raw, Expect::OrderResponse(wait)) => {
+                self.send_order(raw, wait, out)?;
             }
             Event::Stored(id) => {
                 self.committed(id, out)?;

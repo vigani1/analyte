@@ -78,7 +78,7 @@ fn adr0012_lis01_mllp_poct_bci_rev18_all_six_stacks_share_decode()
         .body,
         b"synthetic"
     );
-    let raw = autolyser::finish(b"synthetic".to_vec());
+    let raw = autolyser::encode(b"synthetic".to_vec());
     let frames = {
         let mut decoder = autolyser::Decoder::new(autolyser::Mode::Report, 100)?;
         let events = collect(&raw, |byte| decoder.push(byte))?;

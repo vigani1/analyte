@@ -405,10 +405,10 @@ mod tests {
         let settings = serial::Settings::new(
             "synthetic".into(),
             9600,
-            serialport::DataBits::Eight,
-            serialport::Parity::None,
-            serialport::StopBits::One,
-            serialport::FlowControl::None,
+            serial::DataBits::Eight,
+            serial::Parity::None,
+            serial::StopBits::One,
+            serial::FlowControl::None,
             Duration::from_millis(5),
         )?;
         let (mut dialog, side) = connection(Limits::new(16, Duration::from_secs(2))?);

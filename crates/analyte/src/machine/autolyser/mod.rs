@@ -6,7 +6,7 @@ use super::driver::{self, Context, Effects, Failures, Flow};
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::receive;
-use crate::machine::receive::custody::ms;
+use crate::machine::receive::custody::{WriteDeadline, ms};
 use crate::orders::outcome::AutolyserEnd;
 mod error;
 pub(crate) mod settings;
@@ -291,7 +291,7 @@ impl Host<'_, '_> {
     ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
-        let policy = self.settings.policy();
+        let acknowledgment = WriteDeadline::Within(ms(self.settings.policy().acknowledgment_ms));
         let mut actions: VecDeque<_> = actions.into();
         let mut failures = Failures::new();
         let result = async {
@@ -300,7 +300,7 @@ impl Host<'_, '_> {
                 match action {
                     Action::Write(bytes) => {
                         self.end_code = AutolyserEnd::WriteFailed;
-                        receive::custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
+                        receive::custody::write(conn, &bytes, acknowledgment).await?;
                         self.end_code = AutolyserEnd::TransferError;
                     }
                     Action::Store(token, raw) => {

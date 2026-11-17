@@ -422,7 +422,7 @@ fn vidas_config() -> Result<analyte_framing::vidas::Config, Error> {
 
 fn report() -> Result<Vec<u8>, Error> {
     use analyte_autolyser::syntax::{Field, List, PatientCode, Report, Sample, Value};
-    Ok(analyte_framing::autolyser::finish(
+    Ok(analyte_framing::autolyser::encode(
         Report::new(
             &PatientCode::from_eight(b"00012aBC")?,
             List::Routine,
