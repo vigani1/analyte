@@ -9,7 +9,10 @@ use std::time::Duration;
 /// Allows the active HTTP attempt and its store outcome to finish on shutdown.
 pub(crate) const SHUTDOWN_BUDGET: Duration = Duration::from_secs(5);
 
-pub(crate) fn destinations(program: &Program, loopback: bool) -> Result<Vec<Destination>, Error> {
+pub(crate) fn destinations(
+    program: &Program,
+    mode: super::hooks::ServiceMode,
+) -> Result<Vec<Destination>, Error> {
     let mut destinations = Vec::new();
     for machine in program.machines() {
         let settings = &machine.snapshot().effective().site().destination;
@@ -24,7 +27,7 @@ pub(crate) fn destinations(program: &Program, loopback: bool) -> Result<Vec<Dest
             &program.hooks,
             settings,
             limits,
-            loopback,
+            mode,
         )?);
     }
     Ok(destinations)

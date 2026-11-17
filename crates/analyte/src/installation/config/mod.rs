@@ -323,7 +323,13 @@ mod admin_tests {
         }
         program.set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))?;
         assert_eq!(interval(&program)?, Duration::from_millis(100));
-        assert!(crate::runtime::delivery::destinations(&program, false).is_err());
+        assert!(
+            crate::runtime::delivery::destinations(
+                &program,
+                crate::runtime::hooks::ServiceMode::Production
+            )
+            .is_err()
+        );
         assert_eq!(interval(&Program::load(&path)?)?, Duration::from_secs(5));
         Ok(())
     }

@@ -131,7 +131,7 @@ pub(crate) async fn serve_bounded(
         stop,
         secrets,
         Supervision {
-            loopback: false,
+            mode: super::hooks::ServiceMode::Production,
             shutdown_bound: bound,
             watchdog,
             ready: None,
@@ -158,7 +158,7 @@ pub async fn serve(
         stop,
         secrets,
         Supervision {
-            loopback: false,
+            mode: super::hooks::ServiceMode::Production,
             shutdown_bound: SHUTDOWN_MIN,
             watchdog: None,
             ready: None,
@@ -171,7 +171,7 @@ pub async fn serve(
 pub use super::hooks::serve_loopback_test;
 
 pub(super) struct Supervision {
-    pub(super) loopback: bool,
+    pub(super) mode: super::hooks::ServiceMode,
     pub(super) shutdown_bound: Duration,
     pub(super) watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
     pub(super) ready: Option<tokio::sync::oneshot::Sender<()>>,
@@ -185,13 +185,13 @@ pub(super) async fn serve_with(
     supervision: Supervision,
 ) -> Result<(), Error> {
     let Supervision {
-        loopback,
+        mode,
         shutdown_bound,
         watchdog,
         ready,
     } = supervision;
     let shutdown_bound =
-        super::hooks::shutdown_bound(&program, loopback, watchdog.is_some(), shutdown_bound)?;
+        super::hooks::shutdown_bound(&program, mode, watchdog.as_deref(), shutdown_bound)?;
     let watchdog = match watchdog {
         Some(watchdog) => watchdog,
         None => Arc::new(crate::runtime::shutdown::Watchdog::new(
@@ -200,9 +200,9 @@ pub(super) async fn serve_with(
         )?),
     };
     let store_component = watchdog.component("store".into());
-    let destinations = crate::runtime::delivery::destinations(&program, loopback)?;
+    let destinations = crate::runtime::delivery::destinations(&program, mode)?;
     let secrets = Arc::new(secrets);
-    let (store, admin) = prepare_service(&program, space, loopback).await?;
+    let (store, admin) = prepare_service(&program, space, mode).await?;
     let admin_states = admin
         .as_ref()
         .map(|server| server.owners.clone())
@@ -255,7 +255,7 @@ pub(super) async fn serve_with(
 async fn prepare_service(
     program: &Program,
     space: Box<dyn FreeSpace>,
-    loopback: bool,
+    mode: crate::runtime::hooks::ServiceMode,
 ) -> Result<(Arc<Handle>, Option<crate::admin::Server>), Error> {
     let store = open_service_store(program, space).await?;
     let startup = async {
@@ -269,7 +269,7 @@ async fn prepare_service(
         );
         crate::runtime::delivery::recover(&store).await?;
         super::law_recovery::run(program, &store).await?;
-        crate::admin::prepare(program, store.clone(), loopback)
+        crate::admin::prepare(program, store.clone(), mode)
             .await
             .map_err(admin_startup_error)
     }

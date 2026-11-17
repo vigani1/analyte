@@ -57,7 +57,7 @@ pub(crate) struct Server {
 pub(crate) async fn prepare(
     program: &Program,
     store: Arc<analyte_store::Handle>,
-    loopback: bool,
+    mode: crate::runtime::hooks::ServiceMode,
 ) -> Result<Option<Server>, Error> {
     let Some(address) = program.admin_address() else {
         return Ok(None);
@@ -97,7 +97,7 @@ pub(crate) async fn prepare(
         host,
         store,
         machines,
-        destinations: crate::runtime::delivery::destinations(program, loopback)?,
+        destinations: crate::runtime::delivery::destinations(program, mode)?,
         directory: program.data_directory().to_owned(),
         reserve: program.store_limits.reserve_bytes,
         _released: released,

@@ -30,3 +30,21 @@ pub(crate) enum Operation {
     Cancel,
     CancelResult,
 }
+
+/// Selects production service policy or the feature-gated synthetic entry point.
+#[derive(Clone, Copy)]
+pub(crate) enum ServiceMode {
+    Production,
+    #[cfg(feature = "test-hooks")]
+    LoopbackTest,
+}
+#[cfg(feature = "test-hooks")]
+impl ServiceMode {
+    pub(crate) fn is_loopback(self) -> bool {
+        match self {
+            Self::Production => false,
+            #[cfg(feature = "test-hooks")]
+            Self::LoopbackTest => true,
+        }
+    }
+}
