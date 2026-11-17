@@ -33,12 +33,12 @@ pub struct VidasStack {
 impl VidasOrders {
     /// Explicit application-to-instrument test-code mapping.
     #[must_use]
-    pub fn tests(&self) -> &Vec<OutboundTest> {
+    pub fn tests(&self) -> &[OutboundTest] {
         &self.tests
     }
     /// Explicit order-priority mapping.
     #[must_use]
-    pub fn priorities(&self) -> &Vec<OrderPriority> {
+    pub fn priorities(&self) -> &[OrderPriority] {
         &self.priorities
     }
     /// Assigning system for patient identities from this connection.
