@@ -23,25 +23,18 @@ name = "law"
 path = "tests/law/mod.rs"
 
 [[test]]
-name = "law_control"
-path = "tests/law_control/mod.rs"
+name = "control"
+path = "tests/control/mod.rs"
 
 [[test]]
-name = "law_observation"
-path = "tests/law_observation/mod.rs"
-
-[[test]]
-name = "law_order"
-path = "tests/law_order/mod.rs"
-
-[[test]]
-name = "law_specimen"
-path = "tests/law_specimen/mod.rs"
+name = "syntax"
+path = "tests/syntax/mod.rs"
 
 [[test]]
 name = "order"
 path = "tests/order/mod.rs"
 
 [[test]]
-name = "query_validation"
-path = "tests/query_validation/mod.rs"
+name = "query"
+path = "tests/query/mod.rs"
+
