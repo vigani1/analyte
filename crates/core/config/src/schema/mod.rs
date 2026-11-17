@@ -73,6 +73,26 @@ pub enum FlowControl {
     Software,
 }
 
+impl From<Parity> for analyte_transport::serial::Parity {
+    fn from(parity: Parity) -> Self {
+        match parity {
+            Parity::None => Self::None,
+            Parity::Odd => Self::Odd,
+            Parity::Even => Self::Even,
+        }
+    }
+}
+
+impl From<FlowControl> for analyte_transport::serial::FlowControl {
+    fn from(flow: FlowControl) -> Self {
+        match flow {
+            FlowControl::None => Self::None,
+            FlowControl::Hardware => Self::Hardware,
+            FlowControl::Software => Self::Software,
+        }
+    }
+}
+
 /// LIS01 checksum compatibility.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
