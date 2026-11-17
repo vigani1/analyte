@@ -85,11 +85,11 @@ mod tests {
             let mut socket = TcpStream::connect(address).await?;
             socket.write_all(&[42]).await
         };
-        let (served, sent) = tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
+        let (result, sent) = tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
             tokio::join!(server, peer)
         })
         .await?;
-        served?;
+        result?;
         sent?;
         Ok(())
     }

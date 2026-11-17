@@ -58,6 +58,10 @@ impl Closing {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "keeps exhaustive transport ownership and shutdown paths together"
+)]
 pub(crate) async fn run(
     mut machine: Machine,
     store: Arc<Handle>,
