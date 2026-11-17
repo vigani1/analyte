@@ -361,7 +361,9 @@ async fn operator(
                     .checked_add(STORE_OPERATION_BUDGET)
                     .unwrap_or(Instant::now()),
                 move |store| match command {
-                    Parked::Reprocess { .. } => Err(analyte_store::Error::InvalidHostInput),
+                    Parked::Reprocess { .. } => {
+                        Err(analyte_store::Error::ReprocessRequiresInterpretation)
+                    }
                     Parked::Resolve { id, .. } => {
                         store.resolve(id, &audit)?;
                         Ok(Vec::new())
@@ -374,7 +376,7 @@ async fn operator(
                         store.audit(&audit)?;
                         let after = id
                             .checked_sub(1)
-                            .ok_or(analyte_store::Error::InvalidHostInput)?;
+                            .ok_or(analyte_store::Error::OperatorCursorOverflow)?;
                         let rows = store.parked(after)?;
                         let row = rows
                             .into_iter()

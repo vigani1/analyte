@@ -311,7 +311,7 @@ fn seed_overview_order(
     store.receive(
         &analyte_model::ReceiptMetadata {
             id: analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())
-                .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                .map_err(analyte_store::Error::Identity)?,
             raw_digest: analyte_model::Digest(analyte_contract::content_digest(raw)),
             connection: id("synthetic")?,
             machine: id("<script>alert('hostile')&\"</script>")?,
@@ -322,7 +322,7 @@ fn seed_overview_order(
             config_version: id("1")?,
             config_digest: analyte_model::Digest(analyte_contract::content_digest(config)),
             received_at: jiff::Timestamp::from_second(if order == "first" { 100 } else { 200 })
-                .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                .map_err(|cause| analyte_store::Error::EvidenceTimestamp(Box::new(cause)))?,
         },
         raw,
         config,
@@ -335,7 +335,7 @@ fn seed_overview_order(
                     orders: vec![analyte_store::CachedOrder {
                         id: id(order)?,
                         sample: analyte_model::SampleId::new("<script>sample</script>")
-                            .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                            .map_err(analyte_store::Error::Text)?,
                         document: "{\"version\":1,\"state\":\"requested\",\"tombstone\":false,\"tests\":[{\"namespace\":\"local\",\"value\":\"test\"}]}"
                             .into(),
                         tombstone: false,

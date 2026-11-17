@@ -72,7 +72,8 @@ impl PreparedMapping {
                     corrections: &corrections,
                     findings: &findings,
                     mode: analyte_store::ReconcileMode::Law {
-                        lifecycle: lifecycle.ok_or(analyte_store::Error::InvalidHostInput)?,
+                        lifecycle: lifecycle
+                            .ok_or(analyte_store::Error::LifecyclePolicyRequired)?,
                         custody,
                     },
                 },
@@ -138,7 +139,7 @@ fn reject_batch(
     findings: &[analyte_store::Parked],
     lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
 ) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
-    let rejected_evidence = conflict.ok_or(analyte_store::Error::InvalidHostInput)?;
+    let rejected_evidence = conflict.ok_or(analyte_store::Error::ConflictEvidenceRequired)?;
     let rejected = if let Some(mut custody) = custody.cloned() {
         custody.rejection = Some(analyte_store::law::Rejection {
             occurrence: 1,
@@ -154,7 +155,7 @@ fn reject_batch(
                 corrections: &[],
                 findings,
                 mode: analyte_store::ReconcileMode::Law {
-                    lifecycle: lifecycle.ok_or(analyte_store::Error::InvalidHostInput)?,
+                    lifecycle: lifecycle.ok_or(analyte_store::Error::LifecyclePolicyRequired)?,
                     custody: &custody,
                 },
             },

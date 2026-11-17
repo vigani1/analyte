@@ -254,10 +254,7 @@ pub(super) async fn detail(
             evidence.targets = evidence
                 .targets
                 .into_iter()
-                .skip(
-                    usize::try_from(cursor.after)
-                        .map_err(|_| analyte_store::Error::InvalidHostInput)?,
-                )
+                .skip(usize::try_from(cursor.after).map_err(analyte_store::Error::Integer)?)
                 .take(PAGE)
                 .collect();
             Ok(Some((metadata(s, &evidence)?, evidence, row.resolution)))

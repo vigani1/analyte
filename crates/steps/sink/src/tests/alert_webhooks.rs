@@ -10,7 +10,7 @@ async fn alert(store: &Handle, now: i64) -> Result<PendingAlert, Box<dyn std::er
             s.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), now)?;
             s.prepare_alert_event(&endpoint, now, 60, 10)?;
             s.claim_alert_attempt(&endpoint, now, 3, 5, 20)?
-                .ok_or(analyte_store::Error::InvalidHostInput)
+                .ok_or(analyte_store::Error::UnknownAlertAttempt)
         })
         .await?)
 }
@@ -75,7 +75,7 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
                 )?;
                 s.prepare_alert_event(&endpoint, now, 60, 10)?;
                 s.claim_alert_attempt(&endpoint, now, 3, 5, 20)?
-                    .ok_or(analyte_store::Error::InvalidHostInput)
+                    .ok_or(analyte_store::Error::UnknownAlertAttempt)
             })
             .await?;
         let body: serde_json::Value = serde_json::from_slice(event.payload())?;

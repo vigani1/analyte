@@ -222,7 +222,7 @@ async fn assert_resend_audit_atomicity(
             assert_eq!(
                 audits
                     .first()
-                    .ok_or(analyte_store::Error::InvalidHostInput)?
+                    .ok_or(analyte_store::Error::UnknownAudit)?
                     .1
                     .action
                     .as_str(),
@@ -231,7 +231,7 @@ async fn assert_resend_audit_atomicity(
             assert_eq!(
                 audits
                     .get(1)
-                    .ok_or(analyte_store::Error::InvalidHostInput)?
+                    .ok_or(analyte_store::Error::UnknownAudit)?
                     .1
                     .action
                     .as_str(),
@@ -381,7 +381,7 @@ async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result
             assert_eq!(
                 audits
                     .get(1)
-                    .ok_or(analyte_store::Error::InvalidHostInput)?
+                    .ok_or(analyte_store::Error::UnknownAudit)?
                     .1
                     .action
                     .as_str(),

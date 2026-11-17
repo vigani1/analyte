@@ -107,8 +107,7 @@ pub(super) async fn deliveries(
             },
             move |s| {
                 Ok(s.deliveries(
-                    i64::try_from(cursor.after)
-                        .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                    i64::try_from(cursor.after).map_err(analyte_store::Error::Integer)?,
                 )?)
             },
         )

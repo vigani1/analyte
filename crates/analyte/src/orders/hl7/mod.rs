@@ -689,14 +689,13 @@ mod tests {
                     polled: now,
                     orders: vec![analyte_store::CachedOrder {
                         id: identity.order.clone(),
-                        sample: SampleId::new("000Ab12")
-                            .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                        sample: SampleId::new("000Ab12").map_err(analyte_store::Error::Text)?,
                         document: include_str!("../../../../../docs/contract/vectors/order.json")
                             .rewrite("order-1", identity.order.as_str()),
                         tombstone: false,
                         expiry: now
                             .checked_add(100)
-                            .ok_or(analyte_store::Error::InvalidHostInput)?,
+                            .ok_or(analyte_store::Error::OrderExpiryOverflow)?,
                     }],
                 })?;
                 store

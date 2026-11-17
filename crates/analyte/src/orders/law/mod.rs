@@ -444,7 +444,9 @@ async fn query_orders(
                                 .checked_add(orders.len())
                                 .is_none_or(|count| count > bound)
                             {
-                                return Err(analyte_store::Error::InvalidHostInput);
+                                return Err(analyte_store::Error::LimitExceeded {
+                                    what: "pending_order_rows",
+                                });
                             }
                             found.extend(orders);
                             #[cfg(feature = "test-hooks")]
@@ -458,7 +460,9 @@ async fn query_orders(
                         }
                     }
                     if page.checked_add(1) == Some(bound) {
-                        return Err(analyte_store::Error::InvalidHostInput);
+                        return Err(analyte_store::Error::LimitExceeded {
+                            what: "pending_order_pages",
+                        });
                     }
                 }
             }

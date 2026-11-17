@@ -416,7 +416,7 @@ async fn check_cache_changes(
         .request(until()?, |s| {
             Ok(s.orders(
                 &Identifier::new("app").map_err(analyte_store::Error::Text)?,
-                &SampleId::new("000Ab12").map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                &SampleId::new("000Ab12").map_err(analyte_store::Error::Text)?,
                 jiff::Timestamp::now().as_second(),
                 30,
             )?)

@@ -32,7 +32,7 @@ async fn law_tf2b_3_27_4_competing_feed_during_pages_refuses_instead_of_mixing()
             let mut orders = Vec::new();
             for i in chunk {
                 let document = serde_json::json!({"id":format!("order-{i:03}"),"version":2,"state":"requested","sample_id":format!("new-{i:03}"),"tests":[{"namespace":"synthetic","value":"TEST"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string();
-                orders.push(analyte_store::CachedOrder { id: analyte_model::Identifier::new(&format!("order-{i:03}")).map_err(analyte_store::Error::Text)?, sample: analyte_model::SampleId::new(&format!("new-{i:03}")).map_err(|_| analyte_store::Error::InvalidHostInput)?, document, tombstone:false, expiry:now+3600 });
+                orders.push(analyte_store::CachedOrder { id: analyte_model::Identifier::new(&format!("order-{i:03}")).map_err(analyte_store::Error::Text)?, sample: analyte_model::SampleId::new(&format!("new-{i:03}")).map_err(analyte_store::Error::Text)?, document, tombstone:false, expiry:now+3600 });
             }
             s.order_page(&analyte_store::OrderPage {destination:destination.clone(), cursor:analyte_model::Identifier::new("updated").map_err(analyte_store::Error::Text)?, complete:true, polled:now, orders})?;
         }

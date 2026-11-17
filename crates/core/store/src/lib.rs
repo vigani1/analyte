@@ -74,6 +74,52 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A host UUID cannot represent the required receipt or delivery identity.
+    #[error(transparent)]
+    Identity(#[from] analyte_model::InvalidUuid),
+    /// An operator cursor cannot fit its target integer representation.
+    #[error(transparent)]
+    Integer(#[from] std::num::TryFromIntError),
+    /// A host timestamp could not be constructed; the precise cause is retained.
+    #[error("evidence timestamp construction failed")]
+    EvidenceTimestamp(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// A required LAW lifecycle policy was not supplied with custody.
+    #[error("custody lifecycle policy required")]
+    LifecyclePolicyRequired,
+    /// An atomic result conflict has no retained rejection interpretation.
+    #[error("atomic conflict evidence required")]
+    ConflictEvidenceRequired,
+    /// A receipt cursor incorrectly supplied a frame offset.
+    #[error("receipt raw view does not accept a frame offset")]
+    ReceiptOffsetNotAllowed,
+    /// A raw view cursor lies past the retained bytes.
+    #[error("raw view cursor is outside retained evidence")]
+    RawCursorOutsideEvidence,
+    /// Advancing a raw view cursor overflowed its representation.
+    #[error("raw view cursor overflow")]
+    RawCursorOverflow,
+    /// Reprocessing was dispatched through the parked-item metadata route.
+    #[error("reprocessing requires the interpretation route")]
+    ReprocessRequiresInterpretation,
+    /// The predecessor of a parked-item sequence cannot be represented.
+    #[error("operator sequence cursor overflow")]
+    OperatorCursorOverflow,
+    /// An expected protected audit record does not exist.
+    #[error("audit evidence does not exist")]
+    UnknownAudit,
+    /// No alert attempt was available for the requested endpoint and time.
+    #[error("alert attempt does not exist")]
+    UnknownAlertAttempt,
+    /// A retained order document lacks a required field.
+    #[error("order document lacks {field}")]
+    MissingOrderField {
+        /// Exact required field.
+        field: &'static str,
+    },
+    /// The requested expiry cannot be represented.
+    #[error("order expiry timestamp overflow")]
+    OrderExpiryOverflow,
+
     /// A migration refused legacy machine-order evidence.
     #[error(transparent)]
     MaintenanceOrderEvidence(Box<OrderError>),
@@ -211,9 +257,6 @@ pub enum Error {
     /// The host cannot represent a storage operation deadline.
     #[error("storage operation deadline overflow")]
     DeadlineOverflow,
-    /// The host could not construct its submitted store command.
-    #[error("invalid host command input")]
-    InvalidHostInput,
     /// An operator action or target does not match the operation being authorized.
     #[error("audit action or target mismatch")]
     AuditMismatch,
