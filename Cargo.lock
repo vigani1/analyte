@@ -261,7 +261,6 @@ dependencies = [
 name = "analyte-transport"
 version = "0.1.0"
 dependencies = [
- "analyte-model",
  "base64",
  "proptest",
  "serde",

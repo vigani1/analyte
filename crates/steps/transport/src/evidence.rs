@@ -1,6 +1,6 @@
 //! Writes stable transport close evidence with one fallback for unnamed external I/O kinds.
 use crate::Reason;
-use analyte_model::quoted;
+
 use std::{
     borrow::Cow,
     fmt::{self, Write},
@@ -245,4 +245,19 @@ fn validation_and_connection_reasons_remain_distinct() {
             "Io { endpoint: \"transport\", operation: \"validation\", kind: InvalidInput }"
         );
     }
+}
+
+// Preserve the historical evidence escaping independently of clinical model types.
+pub(crate) fn quoted(f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
+    f.write_char('"')?;
+    for character in value.chars() {
+        if character == '\'' {
+            f.write_char(character)?;
+        } else {
+            for escaped in character.escape_debug() {
+                f.write_char(escaped)?;
+            }
+        }
+    }
+    f.write_char('"')
 }
