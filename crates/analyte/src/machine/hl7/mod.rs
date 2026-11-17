@@ -8,7 +8,7 @@ use crate::intake;
 mod error;
 pub(crate) mod settings;
 use crate::orders::outcome::Code;
-use analyte_dialog::hl7::{Action, Dialog, Event};
+use analyte_dialog::hl7::{Action, Dialog, Event, Expect};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
@@ -223,9 +223,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 self.write_query(&bytes, until, part, conn, actions, failures)
                     .await?;
             }
-            Action::Write(write) => {
-                conn.write_all(&write.bytes, None).await?;
-            }
+            Action::Write(write) => self.write(&write, conn).await?,
             Action::Deadline(next) => self.wake = next,
             Action::Rejected(error, bytes) => {
                 intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await?;
@@ -397,6 +395,24 @@ impl<'a, 'm> Host<'a, 'm> {
 
         Ok(())
     }
+    /// Issues dialog bytes by the dialog's absolute deadline, or the transport budget.
+    async fn write(
+        &self,
+        write: &analyte_dialog::Write,
+        conn: &mut analyte_transport::Connection,
+    ) -> Result<(), Error> {
+        let until = write
+            .until
+            .map(|until| {
+                self.start
+                    .checked_add(until)
+                    .map(tokio::time::Instant::from_std)
+                    .ok_or(Error::WriteDeadlineOverflow)
+            })
+            .transpose()?;
+        conn.write_all(&write.bytes, until).await?;
+        Ok(())
+    }
     async fn write_query(
         &mut self,
         bytes: &[u8],
@@ -431,6 +447,35 @@ impl<'a, 'm> Host<'a, 'm> {
         }
 
         Ok(())
+    }
+    /// Sends at most one reserved order through the dialog's `Send` event. Stopping
+    /// during the write leaves its outcome to the exchange cleanup; it is never resent.
+    async fn send_order(
+        &mut self,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+    ) -> Result<Flow, Error> {
+        let Some(query) = &mut self.queries else {
+            return Ok(Flow::Continue);
+        };
+        let next = tokio::select! {
+            biased;
+            _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(Flow::Stop),
+            result = query.next(self.store, self.machine, &self.dialog, self.settings) => result?,
+        };
+        let Some(order) = next else {
+            return Ok(Flow::Continue);
+        };
+        let actions = self.dialog.step(
+            self.start.elapsed(),
+            Event::Send(order.message, Expect::OrderResponse(order.wait)),
+        )?;
+        let mut stopped = stop.clone();
+        tokio::select! {
+            biased;
+            _ = async { let _ = stopped.wait_for(|&stopped| stopped).await; } => Ok(Flow::Stop),
+            flow = self.apply(actions, conn, stop) => flow,
+        }
     }
     async fn order_response(
         &mut self,
@@ -485,7 +530,6 @@ impl Effects for Host<'_, '_> {
     }
     async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
         let machine = self.machine;
-        let store = self.store;
         let conn = &mut *host.conn;
         let stop = &mut host.stop;
         let bytes = match input {
@@ -515,12 +559,8 @@ impl Effects for Host<'_, '_> {
                 .await
                 .map_err(Error::from)?;
         }
-        if let Some(query) = &mut self.queries {
-            tokio::select! {
-                biased;
-                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(Flow::Stop),
-                result = query.idle(store, machine, conn, &mut self.dialog, self.start, self.settings) => result?,
-            }
+        if self.send_order(conn, stop).await? == Flow::Stop {
+            return Ok(Flow::Stop);
         }
         self.wake = self.dialog.next_deadline();
         Ok(Flow::Continue)

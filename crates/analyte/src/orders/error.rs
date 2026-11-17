@@ -54,12 +54,6 @@ pub enum OrderError {
     /// HL7 settings missing.
     #[error("HL7 settings missing")]
     Hl7SettingsMissing,
-    /// HL7 response deadline overflow.
-    #[error("HL7 response deadline overflow")]
-    Hl7ResponseDeadlineOverflow,
-    /// HL7 order exchange absent before transmission.
-    #[error("HL7 order exchange absent before transmission")]
-    Hl7ExchangeAbsent,
     /// HL7 send settings missing after order admission.
     #[error("HL7 send settings missing after order admission")]
     Hl7SendSettingsMissing,

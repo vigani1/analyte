@@ -2,7 +2,7 @@
 //! HL7 2.5.1 §§2.9.2–2.9.3 define response responsibility. Receipt ordinals,
 //! callback phases, a non-extending timeout and diagnostic byte ceilings are
 //! Analyte host policies; MLLP R1 does not prescribe a timeout duration.
-use analyte_dialog::hl7::{Action, Config, Dialog, Error, Event, ExchangeId};
+use analyte_dialog::hl7::{Action, Config, Dialog, Error, Event, ExchangeId, Expect};
 use analyte_hl7::{AckCode, AckError, ControlId, Options, Response};
 use std::time::Duration;
 
@@ -116,7 +116,7 @@ fn adr0010_hl7_251_2_9_send_cannot_replace_active_custody_or_response() -> TestR
                 receive(&mut d, b"malformed")?;
             }
             "sending" => {
-                d.step(Duration::ZERO, Event::Send(MESSAGE))?;
+                d.step(Duration::ZERO, Event::Send(MESSAGE, Expect::Acknowledgment))?;
             }
             "commit" | "interpret" | "respond" => {
                 let id = receive(&mut d, MESSAGE)?;
@@ -129,7 +129,7 @@ fn adr0010_hl7_251_2_9_send_cannot_replace_active_custody_or_response() -> TestR
             }
             _ => unreachable!("fixed test cases"),
         }
-        let refused = d.step(Duration::ZERO, Event::Send(MESSAGE))?;
+        let refused = d.step(Duration::ZERO, Event::Send(MESSAGE, Expect::Acknowledgment))?;
         assert!(
             refused
                 .iter()
@@ -259,5 +259,155 @@ fn rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt() -> T
             );
         }
     }
+    Ok(())
+}
+
+// HL7 2.5.1 §4.4.1–§4.4.2 define ORM^O01 and its ORR^O02 response.
+const ORDER: &[u8] = b"MSH|^~\\&|A|B|C|D|20261115||ORM^O01^ORM_O01|o1|P|2.5.1\rORC|NW|p1\r";
+const ORDER_RESPONSE: &[u8] =
+    b"MSH|^~\\&|C|D|A|B|20261115||ORR^O02^ORR_O02|r1|P|2.5.1\rMSA|AA|o1\r";
+
+fn writes(actions: &[Action]) -> Vec<&analyte_dialog::Write> {
+    actions
+        .iter()
+        .filter_map(|a| {
+            if let Action::Write(write) = a {
+                Some(write)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn hl7_251_4_4_2_rule8_order_send_issues_once_within_its_response_budget() -> TestResult {
+    let mut d = dialog(42)?;
+    d.enable_orders(analyte_hl7::Version::V251)?;
+    let wait = Duration::from_secs(2);
+    let sent = d.step(
+        Duration::from_secs(1),
+        Event::Send(ORDER, Expect::OrderResponse(wait)),
+    )?;
+    let framed = [b"\x0b".as_slice(), ORDER, b"\x1c\r"].concat();
+    let issued = writes(&sent);
+    assert_eq!(issued.len(), 1, "{sent:?}");
+    assert_eq!(
+        issued.first().map(|w| w.bytes.as_slice()),
+        Some(framed.as_slice())
+    );
+    assert_eq!(
+        issued.first().and_then(|w| w.until),
+        Some(Duration::from_secs(3))
+    );
+    assert!(
+        sent.iter()
+            .any(|a| matches!(a, Action::Deadline(Some(d)) if *d == Duration::from_secs(3)))
+    );
+    assert!(d.orders_busy());
+    let again = d.step(
+        Duration::from_secs(1),
+        Event::Send(ORDER, Expect::OrderResponse(wait)),
+    )?;
+    assert!(
+        again
+            .iter()
+            .any(|a| matches!(a, Action::Refused(Error::Busy)))
+    );
+    assert!(writes(&again).is_empty());
+
+    let raw = [b"\x0b".as_slice(), ORDER_RESPONSE, b"\x1c\r"].concat();
+    let mut received = Vec::new();
+    for byte in &raw {
+        received.extend(d.step(Duration::from_secs(1), Event::Byte(*byte))?);
+    }
+    let token = received
+        .iter()
+        .find_map(|a| {
+            if let Action::Store(id, bytes) = a
+                && *bytes == raw
+            {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .ok_or("order response not stored first")?;
+    let reported = d.step(Duration::from_secs(2), Event::Stored(token))?;
+    assert!(reported.iter().any(|a| matches!(a, Action::OrderResponse { receipt, message } if *receipt == token && message.raw() == ORDER_RESPONSE)));
+    assert!(writes(&reported).is_empty());
+    assert!(!d.orders_busy());
+    Ok(())
+}
+
+#[test]
+fn hl7_251_4_4_2_rule8_order_response_timeout_never_resends() -> TestResult {
+    let mut d = dialog(42)?;
+    d.enable_orders(analyte_hl7::Version::V251)?;
+    d.step(
+        Duration::ZERO,
+        Event::Send(ORDER, Expect::OrderResponse(Duration::from_secs(2))),
+    )?;
+    let early = d.step(Duration::from_millis(1_999), Event::Tick)?;
+    assert!(
+        !early
+            .iter()
+            .any(|a| matches!(a, Action::OrderResponseTimeout))
+    );
+    let expired = d.step(Duration::from_secs(2), Event::Tick)?;
+    assert_eq!(
+        expired
+            .iter()
+            .filter(|a| matches!(a, Action::OrderResponseTimeout))
+            .count(),
+        1
+    );
+    assert!(writes(&expired).is_empty());
+    assert!(!d.orders_busy());
+    assert!(writes(&d.step(Duration::from_secs(9), Event::Tick)?).is_empty());
+    Ok(())
+}
+
+#[test]
+fn hl7_order_send_refuses_disabled_zero_budget_and_partial_input_without_writing() -> TestResult {
+    let mut disabled = dialog(42)?;
+    let refused = disabled.step(
+        Duration::ZERO,
+        Event::Send(ORDER, Expect::OrderResponse(Duration::from_secs(2))),
+    )?;
+    assert!(
+        refused
+            .iter()
+            .any(|a| matches!(a, Action::Refused(Error::Configuration)))
+    );
+    assert!(writes(&refused).is_empty());
+
+    let mut zero = dialog(42)?;
+    zero.enable_orders(analyte_hl7::Version::V251)?;
+    let refused = zero.step(
+        Duration::ZERO,
+        Event::Send(ORDER, Expect::OrderResponse(Duration::ZERO)),
+    )?;
+    assert!(
+        refused
+            .iter()
+            .any(|a| matches!(a, Action::Refused(Error::Configuration)))
+    );
+    assert!(writes(&refused).is_empty());
+    assert!(!zero.orders_busy());
+
+    let mut partial = dialog(42)?;
+    partial.enable_orders(analyte_hl7::Version::V251)?;
+    feed(&mut partial, b"\x0bMSH")?;
+    let refused = partial.step(
+        Duration::ZERO,
+        Event::Send(ORDER, Expect::OrderResponse(Duration::from_secs(2))),
+    )?;
+    assert!(
+        refused
+            .iter()
+            .any(|a| matches!(a, Action::Refused(Error::Busy)))
+    );
+    assert!(writes(&refused).is_empty());
     Ok(())
 }
