@@ -72,7 +72,7 @@ fn rule7_display_text_bound_is_inclusive_and_refuses_delimiter_injection() -> Te
                     .expect("HL7 order fixture"),
                 cfg.effective().stack().limits()
             ),
-            Err(OrderMappingError::DisplayLineBounds)
+            Err(analyte_mapping::hl7::OrderError::DisplayLineBounds)
         ));
     }
     Ok(())
@@ -118,7 +118,12 @@ fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResul
             if accepted {
                 assert_eq!(mapped?.record()?, expected);
             } else {
-                assert!(matches!(mapped, Err(OrderMappingError::AstmRecordLimit)));
+                assert!(matches!(
+                    mapped,
+                    Err(analyte_mapping::DispatchError::Astm(
+                        analyte_mapping::astm::OrderError::RecordLimit
+                    ))
+                ));
             }
         }
     }
@@ -139,7 +144,9 @@ fn rule5_outbound_sample_reserved_characters_are_refused_without_rewriting() -> 
         assert!(
             matches!(
                 map_order(&input, settings.effective().stack()),
-                Err(OrderMappingError::AstmTextRepertoire)
+                Err(analyte_mapping::DispatchError::Astm(
+                    analyte_mapping::astm::OrderError::TextRepertoire
+                ))
             ),
             "{sample}"
         );
@@ -172,7 +179,12 @@ fn rule7_outbound_test_count_is_nonempty_and_inclusive() -> TestResult {
         let mapped = map_order(&input, settings.effective().stack());
         assert_eq!(mapped.is_ok(), accepted, "count={count}");
         if !accepted {
-            assert!(matches!(mapped, Err(OrderMappingError::AstmTestCount)));
+            assert!(matches!(
+                mapped,
+                Err(analyte_mapping::DispatchError::Astm(
+                    analyte_mapping::astm::OrderError::TestCount
+                ))
+            ));
         }
     }
     Ok(())
@@ -220,7 +232,9 @@ fn lis02_section8_outbound_table_preserves_sample_and_never_reverses_inbound() -
 fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output() -> TestResult {
     assert!(matches!(
         map_order(&order()?, config("")?.effective().stack()),
-        Err(OrderMappingError::Disabled)
+        Err(analyte_mapping::DispatchError::Shared(
+            OrderMappingError::Disabled
+        ))
     ));
     let section = include_str!("../../../core/config/examples/orders.toml");
     let settings = config(section)?;
@@ -228,20 +242,26 @@ fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output(
     input.tests[0].namespace = Identifier::new("different-system")?;
     assert!(matches!(
         map_order(&input, settings.effective().stack()),
-        Err(OrderMappingError::UnmappedTest(_))
+        Err(analyte_mapping::DispatchError::Astm(
+            analyte_mapping::astm::OrderError::Shared(OrderMappingError::UnmappedTest(_))
+        ))
     ));
     input = order()?;
     input.priority = AppOrderPriority::Stat;
     assert!(matches!(
         map_order(&input, settings.effective().stack()),
-        Err(OrderMappingError::UnmappedPriority)
+        Err(analyte_mapping::DispatchError::Astm(
+            analyte_mapping::astm::OrderError::Shared(OrderMappingError::UnmappedPriority)
+        ))
     ));
     let position = format!(
         "{section}\nposition = {{group=\"order\",record=\"O\",field=4,component=1,repetition=1}}\n"
     );
     assert!(matches!(
         map_order(&order()?, config(&position)?.effective().stack()),
-        Err(OrderMappingError::MissingPosition)
+        Err(analyte_mapping::DispatchError::Astm(
+            analyte_mapping::astm::OrderError::Shared(OrderMappingError::MissingPosition)
+        ))
     ));
     Ok(())
 }
@@ -300,7 +320,9 @@ fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> 
         Identifier::new("different-system")?;
     assert!(matches!(
         map_order(&value, settings.effective().stack()),
-        Err(OrderMappingError::UnmappedSpecimenType)
+        Err(analyte_mapping::DispatchError::Astm(
+            analyte_mapping::astm::OrderError::Shared(OrderMappingError::UnmappedSpecimenType)
+        ))
     ));
     // With no configured destination the same unknown value is not transmitted.
     assert_eq!(
@@ -310,7 +332,9 @@ fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> 
     value.specimen_type = None;
     assert!(matches!(
         map_order(&value, settings.effective().stack()),
-        Err(OrderMappingError::MissingSpecimenType)
+        Err(analyte_mapping::DispatchError::Astm(
+            analyte_mapping::astm::OrderError::Shared(OrderMappingError::MissingSpecimenType)
+        ))
     ));
     Ok(())
 }
@@ -368,7 +392,7 @@ fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> 
                 .expect("HL7 order fixture"),
             settings.effective().stack().limits()
         ),
-        Err(OrderMappingError::DisplayLineBounds)
+        Err(analyte_mapping::hl7::OrderError::DisplayLineBounds)
     ));
     wrong = order()?;
     wrong.tests.first_mut().ok_or("test")?.namespace = Identifier::new("unmapped-system")?;
@@ -383,7 +407,9 @@ fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> 
                 .expect("HL7 order fixture"),
             settings.effective().stack().limits()
         ),
-        Err(OrderMappingError::UnmappedTest(_))
+        Err(analyte_mapping::hl7::OrderError::Shared(
+            OrderMappingError::UnmappedTest(_)
+        ))
     ));
     wrong = order()?;
     wrong.priority = AppOrderPriority::Stat;
@@ -398,7 +424,9 @@ fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> 
                 .expect("HL7 order fixture"),
             settings.effective().stack().limits()
         ),
-        Err(OrderMappingError::UnmappedPriority)
+        Err(analyte_mapping::hl7::OrderError::Shared(
+            OrderMappingError::UnmappedPriority
+        ))
     ));
     Ok(())
 }
@@ -488,21 +516,19 @@ specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
                 .expect("HL7 order fixture"),
             settings.effective().stack().limits()
         ),
-        Err(OrderMappingError::PatientNamespace)
+        Err(analyte_mapping::hl7::OrderError::Shared(
+            OrderMappingError::PatientNamespace
+        ))
     ));
     Ok(())
 }
 
 #[test]
 fn hl7_ch4_patient_requirement_and_orc_group_bound_return_typed_refusals() -> TestResult {
-    use analyte_mapping::WireMappingError;
+    use analyte_mapping::hl7::WireError;
     for (require_patient, id, expected) in [
-        (
-            true,
-            "order-1".to_owned(),
-            WireMappingError::Hl7PatientNameRequired,
-        ),
-        (false, "x".repeat(23), WireMappingError::Hl7GroupIdTooLong),
+        (true, "order-1".to_owned(), WireError::PatientNameRequired),
+        (false, "x".repeat(23), WireError::GroupIdTooLong),
     ] {
         let definition = format!(
             "{}\n{}",
@@ -538,12 +564,9 @@ fn hl7_ch4_patient_requirement_and_orc_group_bound_return_typed_refusals() -> Te
         assert!(matches!(
             (&result, &expected),
             (
-                Err(WireMappingError::Hl7PatientNameRequired),
-                WireMappingError::Hl7PatientNameRequired
-            ) | (
-                Err(WireMappingError::Hl7GroupIdTooLong),
-                WireMappingError::Hl7GroupIdTooLong
-            )
+                Err(WireError::PatientNameRequired),
+                WireError::PatientNameRequired
+            ) | (Err(WireError::GroupIdTooLong), WireError::GroupIdTooLong)
         ));
     }
     Ok(())

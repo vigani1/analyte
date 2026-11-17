@@ -1,5 +1,5 @@
 //! Maps outgoing HL7 work using explicit code tables.
-use crate::orders::WireMappingError as Error;
+use super::WireError as Error;
 use analyte_hl7::{
     Options, Version,
     order::{self, OrderMessage},
@@ -28,19 +28,19 @@ pub fn map_order(
         .send()
         .is_some_and(|send| send.settings().require_patient_identification)
     {
-        return Err(Error::Hl7PatientNameRequired);
+        return Err(Error::PatientNameRequired);
     }
     let version: Version = edition.into();
     if version.orm_patient_name_required()
         && app.fields().patient.is_some()
         && app.fields().state == analyte_contract::document::OrderState::Requested
     {
-        return Err(Error::Hl7PatientNameRequired);
+        return Err(Error::PatientNameRequired);
     }
     let group = app.fields().id.as_str().to_owned();
     let namespace = settings
         .send()
-        .ok_or(Error::Hl7SendSettingsAbsent)?
+        .ok_or(Error::SendSettingsAbsent)?
         .placer_namespace()
         .as_str();
     if group
@@ -49,7 +49,7 @@ pub fn map_order(
         .and_then(|n| n.checked_add(1))
         .is_none_or(|n| n > order::EI_MAX_BYTES)
     {
-        return Err(Error::Hl7GroupIdTooLong);
+        return Err(Error::GroupIdTooLong);
     }
     Ok(Command {
         settings,
@@ -74,7 +74,7 @@ impl Command {
         cancel: bool,
         response: analyte_hl7::Response<'_>,
     ) -> Result<OrderMessage, Error> {
-        let cfg = self.settings.send().ok_or(Error::Hl7SendSettingsAbsent)?;
+        let cfg = self.settings.send().ok_or(Error::SendSettingsAbsent)?;
         let cfg = &cfg.settings();
         let header = self.map_header(cfg, response)?;
         if cancel {
@@ -85,7 +85,7 @@ impl Command {
         let priority = self.map_priority()?;
         let mut orders = Vec::new();
         for item in items {
-            let namespace = item.namespace.ok_or(Error::Hl7PlacerNamespaceMissing)?;
+            let namespace = item.namespace.ok_or(Error::PlacerNamespaceMissing)?;
             let placer =
                 order::OrderId::new(item.placer.as_bytes(), namespace.as_str().as_bytes())?;
             if cancel {
@@ -96,10 +96,10 @@ impl Command {
                 continue;
             }
             let [requested] = item.tests else {
-                return Err(Error::Hl7ItemTestCount);
+                return Err(Error::ItemTestCount);
             };
             let mapped = crate::orders::codes::map_test(self.settings.tables().tests(), requested)
-                .map_err(Error::Hl7UnmappedTest)?;
+                .map_err(Error::UnmappedTest)?;
             orders.push(order::Order::New {
                 placer,
                 filler: None,
@@ -131,7 +131,7 @@ impl Command {
                         namespace: patient.namespace.as_str().as_bytes(),
                     }
                 }
-                (Some(_), Some(_)) => return Err(Error::Hl7PatientNamespaceMismatch),
+                (Some(_), Some(_)) => return Err(Error::PatientNamespaceMismatch),
                 _ => order::Subject::Unspecified,
             }
         };
@@ -190,7 +190,7 @@ impl Command {
     ) -> Result<OrderMessage, Error> {
         let mut orders = Vec::new();
         for item in items {
-            let namespace = item.namespace.ok_or(Error::Hl7PlacerNamespaceMissing)?;
+            let namespace = item.namespace.ok_or(Error::PlacerNamespaceMissing)?;
             orders.push(order::Order::Cancel {
                 placer: order::OrderId::new(item.placer.as_bytes(), namespace.as_str().as_bytes())?,
                 filler: None,
@@ -216,7 +216,7 @@ impl Command {
         } else if self.version.oml_writer() {
             Ok(order::oml(orders, subject, header, self.options)?)
         } else {
-            Err(Error::Hl7EditionUnsupported)
+            Err(Error::EditionUnsupported)
         }
     }
 
@@ -230,7 +230,7 @@ impl Command {
                     self.settings.tables().specimen_types(),
                     specimen,
                 )
-                .map_err(Error::Hl7UnmappedSpecimenType)?;
+                .map_err(Error::UnmappedSpecimenType)?;
                 let code = order::Code::new(
                     mapped.machine.as_str().as_bytes(),
                     b"",
@@ -246,7 +246,7 @@ impl Command {
                     },
                 )
             }
-            (Some(_), None) => return Err(Error::Hl7SpecimenTypeMissing),
+            (Some(_), None) => return Err(Error::SpecimenTypeMissing),
             (None, _) => None,
         })
     }
@@ -256,7 +256,7 @@ impl Command {
             self.settings.tables().priorities(),
             self.app.priority,
         )
-        .map_err(Error::Hl7UnmappedPriority)?;
+        .map_err(Error::UnmappedPriority)?;
         let priority = match &priority.machine {
             analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
                 order::Priority::Routine
@@ -280,7 +280,7 @@ impl Command {
                 order::Priority::AsNeeded
             }
             analyte_config::MachinePriority::Custom(_) => {
-                return Err(Error::Hl7PriorityUnsupported);
+                return Err(Error::PriorityUnsupported);
             }
         };
         Ok(priority)
@@ -289,7 +289,7 @@ impl Command {
 
 fn test_code(components: &[String]) -> Result<order::Code<'_>, Error> {
     let [code, text, system, rest @ ..] = components else {
-        return Err(Error::Hl7TestComponents);
+        return Err(Error::TestComponents);
     };
     let code = order::Code::new(code.as_bytes(), text.as_bytes(), system.as_bytes())?;
     match rest {
@@ -299,6 +299,6 @@ fn test_code(components: &[String]) -> Result<order::Code<'_>, Error> {
         {
             Ok(code.with_version(revision.as_bytes())?)
         }
-        _ => Err(Error::Hl7TestComponents),
+        _ => Err(Error::TestComponents),
     }
 }

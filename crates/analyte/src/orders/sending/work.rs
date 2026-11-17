@@ -30,14 +30,15 @@ impl<T> Work<T> {
     pub(crate) fn next_poll(&self) -> Instant {
         self.next_poll
     }
-    pub(in crate::orders) async fn reserve(
+    pub(in crate::orders) async fn reserve<E>(
         &mut self,
         store: &Handle,
         machine: &Machine,
-        map: impl Fn(
-            &analyte_mapping::AppOrder,
-        ) -> Result<VecDeque<T>, analyte_mapping::OrderMappingError>,
-    ) -> Result<bool, OrderError> {
+        map: impl Fn(&analyte_mapping::AppOrder) -> Result<VecDeque<T>, E>,
+    ) -> Result<bool, OrderError>
+    where
+        OrderError: From<E>,
+    {
         let Some(reserved) = super::next(store, machine, &mut self.cursor, map).await? else {
             return Ok(false);
         };

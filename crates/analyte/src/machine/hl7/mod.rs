@@ -20,14 +20,14 @@ use tokio::sync::watch;
 mod tests;
 
 struct DisplayOutcome {
-    receipt: Option<analyte_dialog::hl7::ReceiptId>,
+    receipt: Option<analyte_dialog::hl7::ExchangeId>,
     accepted: bool,
     code: &'static str,
     detail: Option<String>,
 }
 
 struct QueryRequest {
-    token: analyte_dialog::hl7::ReceiptId,
+    token: analyte_dialog::hl7::ExchangeId,
     message: analyte_hl7::Message,
     started: Duration,
     edition_matches: bool,
@@ -242,8 +242,8 @@ impl<'a, 'm> Host<'a, 'm> {
             Action::QueryWrite { bytes, until, part } => {
                 self.write_query(&bytes, until, part, conn, actions).await?;
             }
-            Action::Write(bytes) => {
-                conn.write_all(&bytes, None).await?;
+            Action::Write(write) => {
+                conn.write_all(&write.bytes, None).await?;
             }
             Action::Deadline(next) => self.wake = next,
             Action::Rejected(error, bytes) => {
@@ -321,7 +321,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn commit(
         &mut self,
-        token: analyte_dialog::hl7::ReceiptId,
+        token: analyte_dialog::hl7::ExchangeId,
         raw: Vec<u8>,
         machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
@@ -357,7 +357,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn interpret(
         &mut self,
-        token: analyte_dialog::hl7::ReceiptId,
+        token: analyte_dialog::hl7::ExchangeId,
         machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         actions: &mut VecDeque<Action>,
@@ -374,7 +374,7 @@ impl<'a, 'm> Host<'a, 'm> {
             Event::NotInterpretable(
                 token,
                 error_location::build(location.as_ref(), b"207", b"operator-review"),
-                false,
+                analyte_dialog::hl7::AckChoice::ContentError,
             )
         };
         actions.extend(self.dialog.step(self.start.elapsed(), event)?);
@@ -447,7 +447,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn order_response(
         &mut self,
-        token: analyte_dialog::hl7::ReceiptId,
+        token: analyte_dialog::hl7::ExchangeId,
         message: &analyte_hl7::Message,
         store: &Handle,
     ) -> Result<(), Error> {
@@ -464,7 +464,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     fn respond(
         &mut self,
-        token: analyte_dialog::hl7::ReceiptId,
+        token: analyte_dialog::hl7::ExchangeId,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
         let metadata = crate::orders::hl7::response::response_metadata(

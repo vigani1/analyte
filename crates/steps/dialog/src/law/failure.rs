@@ -1,19 +1,22 @@
 //! Reports LAW parse failures and prepares located negative acknowledgments.
-use super::{AckCode, AckError, Action, Dialog, Error, Link, Plan, ReceiptId, State, header_error};
+use super::{
+    AckCode, AckError, Action, Dialog, Error, ExchangeId, Link, Plan, State, header_error,
+};
 
 impl Dialog {
     pub(super) fn parse_failed(
         &mut self,
-        id: ReceiptId,
+        id: ExchangeId,
         payload: &[u8],
         error: analyte_hl7::Error,
         out: &mut Vec<Action>,
     ) -> Result<(), Error> {
-        out.push(Action::Failed(id, error.to_string()));
+        let error = std::sync::Arc::new(error);
+        out.push(Action::Parked(id, super::Failure::Syntax(error.clone())));
         if self.link == Link::WorkResponse {
-            return Err(error.into());
+            return Err(Error::Syntax(error));
         }
-        let (code, location) = match &error {
+        let (code, location) = match error.as_ref() {
             analyte_hl7::Error::Control {
                 segment: "MSH",
                 field,
