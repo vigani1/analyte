@@ -179,6 +179,18 @@ pub(crate) enum RecordKind {
     Vendor,
 }
 impl crate::StackChoice {
+    pub(crate) const fn file_record_kind(self) -> Option<RecordKind> {
+        match self {
+            Self::FileAstm => Some(RecordKind::Astm),
+            Self::FileHl7 => Some(RecordKind::Hl7),
+            Self::AstmLis02
+            | Self::Hl7V2
+            | Self::LawManager
+            | Self::Poct
+            | Self::VidasLiteral
+            | Self::Autolyser => None,
+        }
+    }
     pub(crate) const fn record_kind(self) -> RecordKind {
         match self {
             Self::AstmLis02 | Self::FileAstm => RecordKind::Astm,
