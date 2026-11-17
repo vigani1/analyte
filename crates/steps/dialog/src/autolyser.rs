@@ -1,5 +1,6 @@
 //! Runs host-driven Autolyser conversations with host-owned I/O and dialog-owned deadlines.
 use analyte_autolyser::syntax::{self as records, Report, Worklist};
+use analyte_framing::autolyser::{ACK, Decoder, EOT, Frame, Mode, NAK, STX};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -240,14 +241,13 @@ enum State {
     Ack(Operation),
     Response {
         insertion: bool,
-        raw: Vec<u8>,
+        decoder: Decoder,
         total: Duration,
     },
     Store {
         token: u64,
-        raw: Vec<u8>,
+        frame: Frame,
         insertion: bool,
-        complete: bool,
     },
     Closed,
 }
@@ -327,26 +327,20 @@ impl Dialog {
         self.deadline = self.after(self.config.ack)?;
         self.state = State::Ack(operation);
         Ok(vec![
-            Action::Write(vec![2]),
+            Action::Write(vec![STX]),
             Action::Deadline(self.deadline),
         ])
     }
 
-    fn store(
-        &mut self,
-        raw: Vec<u8>,
-        insertion: bool,
-        complete: bool,
-    ) -> Result<Vec<Action>, Error> {
+    fn store(&mut self, frame: Frame, insertion: bool) -> Result<Vec<Action>, Error> {
         let token = self.next_token.checked_add(1).ok_or(Error::Time)?;
         self.next_token = token;
         self.deadline = self.after(self.config.storage)?;
-        let action = Action::Store(token, raw.clone());
+        let action = Action::Store(token, frame.raw().to_vec());
         self.state = State::Store {
             token,
-            raw,
+            frame,
             insertion,
-            complete,
         };
         Ok(vec![action, Action::Deadline(self.deadline)])
     }
@@ -408,16 +402,19 @@ impl Dialog {
         self.transport_ended = true;
         let state = std::mem::replace(&mut self.state, State::Closed);
         match state {
-            State::Response { insertion, raw, .. } => {
-                let mut actions = self.store(raw, insertion, false)?;
+            State::Response {
+                insertion,
+                mut decoder,
+                ..
+            } => {
+                let mut actions = self.store(decoder.finish(), insertion)?;
                 actions.push(Action::Close);
                 Ok(actions)
             }
             State::Store {
                 token,
-                raw,
+                frame,
                 insertion,
-                complete,
             } => {
                 if self.clock.now() >= self.deadline {
                     return Ok(vec![
@@ -428,9 +425,8 @@ impl Dialog {
                 }
                 self.state = State::Store {
                     token,
-                    raw,
+                    frame,
                     insertion,
-                    complete,
                 };
                 Ok(vec![Action::Park(Error::Storage), Action::Close])
             }
@@ -442,7 +438,7 @@ impl Dialog {
     fn byte(&mut self, byte: u8) -> Result<Vec<Action>, Error> {
         match &mut self.state {
             State::Ack(_) => {
-                if byte != 6 {
+                if byte != ACK {
                     self.state = State::Closed;
                     return Ok(vec![Action::Park(Error::Ack), Action::Close]);
                 }
@@ -453,31 +449,32 @@ impl Dialog {
                     return Err(Error::Busy);
                 };
                 let (bytes, insertion) = match operation {
-                    Operation::Poll(request) => (vec![request.byte(), 4], false),
+                    Operation::Poll(request) => (vec![request.byte(), EOT], false),
                     Operation::Download(bytes) => (bytes, true),
                 };
                 self.state = State::Response {
                     insertion,
-                    raw: Vec::new(),
+                    decoder: Decoder::new(
+                        if insertion {
+                            Mode::Insertion
+                        } else {
+                            Mode::Report
+                        },
+                        self.config.max_bytes,
+                    )?,
                     total,
                 };
                 Ok(vec![Action::Write(bytes), Action::Deadline(self.deadline)])
             }
             State::Response {
                 insertion,
-                raw,
+                decoder,
                 total,
             } => {
-                raw.push(byte);
-                let complete = if *insertion {
-                    raw.len() == 2
-                } else {
-                    byte == 4 || (raw.len() == 1 && byte == 21)
-                };
-                if complete || raw.len() >= self.config.max_bytes {
+                if let Some(frame) = decoder.push(byte)? {
                     let insertion = *insertion;
-                    let bytes = std::mem::take(raw);
-                    let mut actions = self.store(bytes, insertion, complete)?;
+                    let complete = frame.complete();
+                    let mut actions = self.store(frame, insertion)?;
                     if !complete {
                         actions.push(Action::Close);
                     }
@@ -503,15 +500,12 @@ impl Dialog {
         let deadline = self.after(self.config.poll)?;
         let state = std::mem::replace(&mut self.state, State::Closed);
         let State::Store {
-            raw,
-            insertion,
-            complete,
-            ..
+            frame, insertion, ..
         } = state
         else {
             return Err(Error::Stale);
         };
-        if !complete {
+        if !frame.complete() {
             self.recovery = true;
             return Ok(vec![
                 Action::Park(Error::Incomplete),
@@ -521,33 +515,33 @@ impl Dialog {
         }
         self.state = State::Idle;
         self.deadline = deadline;
-        let action = if insertion {
-            let mut bytes = raw.iter().copied();
-            let prefix = bytes.next().ok_or(Error::Incomplete)?;
-            let detail = bytes.next().ok_or(Error::Incomplete)?;
-            Action::Insertion(match prefix {
-                b'Y' => Reception::Accepted(detail),
-                b'N' => Reception::Rejected(detail.into()),
-                other => Reception::Other(other, detail),
-            })
-        } else if raw == [21] {
-            // An empty L does not resolve a previously corrupt report.
-            Action::Empty
-        } else {
-            match analyte_framing::autolyser::verified(&raw)
-                .map_err(Error::Framing)
-                .and_then(|body| Report::parse(body, self.config.controls).map_err(Error::Record))
-            {
-                Ok(report) => {
-                    self.recovery = false;
-                    Action::Report(report)
+        let action =
+            if insertion {
+                let mut bytes = frame.raw().iter().copied();
+                let prefix = bytes.next().ok_or(Error::Incomplete)?;
+                let detail = bytes.next().ok_or(Error::Incomplete)?;
+                Action::Insertion(match prefix {
+                    b'Y' => Reception::Accepted(detail),
+                    b'N' => Reception::Rejected(detail.into()),
+                    other => Reception::Other(other, detail),
+                })
+            } else if frame.raw() == [NAK] {
+                // An empty L does not resolve a previously corrupt report.
+                Action::Empty
+            } else {
+                match frame.body().map_err(Error::Framing).and_then(|body| {
+                    Report::parse(body, self.config.controls).map_err(Error::Record)
+                }) {
+                    Ok(report) => {
+                        self.recovery = false;
+                        Action::Report(report)
+                    }
+                    Err(error) => {
+                        self.recovery = true;
+                        Action::Park(error)
+                    }
                 }
-                Err(error) => {
-                    self.recovery = true;
-                    Action::Park(error)
-                }
-            }
-        };
+            };
         Ok(vec![action, Action::Deadline(self.deadline)])
     }
 }

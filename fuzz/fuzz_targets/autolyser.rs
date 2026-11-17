@@ -21,9 +21,25 @@ fuzz_target!(|data: &[u8]| {
         unreachable!("fuzz target bug: constant Autolyser configuration is invalid");
     };
     let _ = dialog.step(Duration::ZERO, Event::Poll(Request::Next));
-    let _ = dialog.step(Duration::ZERO, Event::Byte(6));
+    let _ = dialog.step(Duration::ZERO, Event::Byte(analyte_framing::autolyser::ACK));
     for &byte in data {
         let _ = dialog.step(Duration::ZERO, Event::Byte(byte));
+    }
+    for mode in [analyte_framing::autolyser::Mode::Report, analyte_framing::autolyser::Mode::Insertion] {
+        let mut decoder = analyte_framing::autolyser::Decoder::new(mode, 11_038)
+            .expect("constant byte ceiling is valid");
+        for &byte in data.iter().take(11_039) {
+            match decoder.push(byte) {
+                Ok(Some(frame)) => {
+                    assert!(frame.raw().len() <= 11_038);
+                    let _ = frame.body();
+                    break;
+                }
+                Ok(None) => {}
+                Err(_) => break,
+            }
+        }
+        let _ = decoder.finish();
     }
     if let Ok(worklist) = Worklist::parse(data) {
         assert_eq!(worklist.encode(), data);

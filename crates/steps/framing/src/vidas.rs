@@ -55,7 +55,7 @@ impl Config {
             || chunk > 80
             || maximum == 0
             || maximum > 1920
-            || !matches!(suffix, [] | [13] | [10] | [13, 10])
+            || !matches!(suffix, [] | [CR] | [LF] | [CR, LF])
         {
             return Err(Error::Config);
         }
@@ -92,16 +92,16 @@ impl Config {
         {
             return Err(Error::Payload);
         }
-        let mut raw = self.control(2);
+        let mut raw = self.control(STX);
         for chunk in body.chunks(self.chunk) {
-            raw.extend(self.control(30));
+            raw.extend(self.control(RS));
             raw.extend_from_slice(chunk);
         }
-        raw.extend(self.control(29));
+        raw.extend(self.control(GS));
         let sum = checksum(&raw, self);
         raw.extend(hex(sum, self.checksum.hex.uppercase).bytes());
         if self.mode == Mode::Alternate {
-            raw.extend(self.control(3));
+            raw.extend(self.control(ETX));
         }
         Ok(raw)
     }
@@ -116,8 +116,8 @@ fn checksum(raw: &[u8], config: &Config) -> u8 {
         })
         .copied()
         .filter(|b| {
-            (*b != 2 || config.checksum.include_stx)
-                && (config.checksum.include_suffix || !matches!(b, 10 | 13))
+            (*b != STX || config.checksum.include_stx)
+                && (config.checksum.include_suffix || !matches!(*b, LF | CR))
         })
         .fold(0u8, u8::wrapping_add)
 }
@@ -242,23 +242,23 @@ impl Decoder {
             }
             return self.complete();
         }
-        let control = matches!(byte, 2 | 30 | 29 | 3);
+        let control = matches!(byte, STX | RS | GS | ETX);
         match self.state {
-            State::Start if byte == 2 => {
+            State::Start if byte == STX => {
                 self.state = State::Record;
                 if self.config.checksum.include_stx {
                     self.sum = byte;
                 }
             }
-            State::Record if byte == 30 => {
+            State::Record if byte == RS => {
                 self.state = State::Text;
                 self.sum = self.sum.wrapping_add(byte);
             }
-            State::Text if byte == 30 && self.chunk > 0 => {
+            State::Text if byte == RS && self.chunk > 0 => {
                 self.chunk = 0;
                 self.sum = self.sum.wrapping_add(byte);
             }
-            State::Text if byte == 29 && self.chunk > 0 => {
+            State::Text if byte == GS && self.chunk > 0 => {
                 self.state = State::HexFirst;
                 self.sum = self.sum.wrapping_add(byte);
             }
@@ -288,7 +288,7 @@ impl Decoder {
                     State::End
                 };
             }
-            State::End if byte == 3 => self.state = State::Done,
+            State::End if byte == ETX => self.state = State::Done,
             State::Start | State::Record | State::Text | State::End => return Err(Error::Sequence),
             State::Done | State::Failed => return Err(Error::Stopped),
         }
@@ -326,3 +326,24 @@ pub fn decode(raw: &[u8], config: Config) -> Result<Packet, Error> {
     }
     packet.ok_or(Error::Incomplete)
 }
+
+/// STX control byte (BCI Appendix A chapter 3).
+pub const STX: u8 = 0x02;
+/// ETX control byte (BCI Appendix A chapter 3).
+pub const ETX: u8 = 0x03;
+/// EOT control byte (BCI Appendix A chapter 3).
+pub const EOT: u8 = 0x04;
+/// ENQ control byte (BCI Appendix A chapter 3).
+pub const ENQ: u8 = 0x05;
+/// ACK control byte (BCI Appendix A chapter 3).
+pub const ACK: u8 = 0x06;
+/// LF control byte (BCI Appendix A chapter 3).
+pub const LF: u8 = 0x0a;
+/// CR control byte (BCI Appendix A chapter 3).
+pub const CR: u8 = 0x0d;
+/// NAK control byte (BCI Appendix A chapter 3).
+pub const NAK: u8 = 0x15;
+/// GS control byte (BCI Appendix A chapter 3).
+pub const GS: u8 = 0x1d;
+/// RS control byte (BCI Appendix A chapter 3).
+pub const RS: u8 = 0x1e;

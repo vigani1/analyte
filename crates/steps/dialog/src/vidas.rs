@@ -2,7 +2,7 @@
 //! Host owns byte journaling, storage and cancellation; the dialog owns timers.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
-use analyte_framing::vidas::{Config as FrameConfig, Mode, Packet};
+use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, Packet};
 use analyte_vidas::syntax::{Kind, Message};
 use std::time::Duration;
 
@@ -165,7 +165,7 @@ impl Dialog {
             Action::Arm(Timer::Interbyte, self.policy.inter_byte),
         ];
         if matches!(self.state, State::DownloadReady) {
-            actions.push(Action::Send(self.config.control(5)));
+            actions.push(Action::Send(self.config.control(ENQ)));
             actions.push(Action::Arm(Timer::Acknowledgment, self.policy.ack));
         }
         self.schedule(&actions);
@@ -263,9 +263,9 @@ impl Dialog {
             Action::Arm(Timer::Interbyte, self.policy.inter_byte),
         ];
         match (self.state, event) {
-            (State::UploadReady, Event::Control(5)) => {
+            (State::UploadReady, Event::Control(ENQ)) => {
                 self.state = State::UploadPacket;
-                actions.push(Action::Send(self.config.control(6)));
+                actions.push(Action::Send(self.config.control(ACK)));
             }
             (State::UploadPacket, Event::Packet(packet)) => {
                 self.state = State::Commit;
@@ -274,19 +274,19 @@ impl Dialog {
             }
             (State::Commit, Event::Stored) => {
                 actions.push(Action::Cancel(Timer::Commit));
-                actions.push(Action::Send(self.config.control(6)));
+                actions.push(Action::Send(self.config.control(ACK)));
                 self.state = if self.config.mode() == Mode::Literal {
                     State::UploadEtx
                 } else {
                     State::UploadEot
                 };
             }
-            (State::UploadEtx, Event::Control(3)) => self.state = State::UploadEot,
-            (State::UploadEot, Event::Control(4)) => {
+            (State::UploadEtx, Event::Control(ETX)) => self.state = State::UploadEot,
+            (State::UploadEot, Event::Control(EOT)) => {
                 self.state = State::Finished;
                 actions.push(Action::Complete);
             }
-            (State::DownloadReady, Event::Control(6)) => {
+            (State::DownloadReady, Event::Control(ACK)) => {
                 self.state = State::DownloadAck;
                 actions.push(Action::Cancel(Timer::Acknowledgment));
                 if let Some(bytes) = self.outbound.take() {
@@ -294,12 +294,12 @@ impl Dialog {
                 }
                 actions.push(Action::Arm(Timer::Acknowledgment, self.policy.ack));
             }
-            (State::DownloadAck, Event::Control(6)) => {
+            (State::DownloadAck, Event::Control(ACK)) => {
                 actions.push(Action::Cancel(Timer::Acknowledgment));
                 if self.config.mode() == Mode::Literal {
-                    actions.push(Action::Send(self.config.control(3)));
+                    actions.push(Action::Send(self.config.control(ETX)));
                 }
-                actions.push(Action::Send(self.config.control(4)));
+                actions.push(Action::Send(self.config.control(EOT)));
                 actions.push(Action::Complete);
                 self.state = State::Finished;
             }
