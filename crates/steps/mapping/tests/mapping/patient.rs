@@ -25,8 +25,13 @@ fn hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel()
         );
         let app = analyte_contract::decode(document.as_bytes())?;
         assert_eq!(
-            analyte_mapping::Hl7Command::new(&config, &app, analyte_hl7::Options::default())
-                .is_ok(),
+            analyte_mapping::Hl7Command::new(
+                crate::settings::hl7(&config).0,
+                crate::settings::orders(&config),
+                &app,
+                analyte_hl7::Options::default()
+            )
+            .is_ok(),
             allowed
         );
     }

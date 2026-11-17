@@ -2,14 +2,14 @@
 mod observations;
 use crate::inbound::evidence::{Error, map_result, map_test, map_units};
 use crate::{MappedResult, Output, Position};
-use analyte_config::Validated;
+
 use analyte_model::*;
 pub use observations::{MappedObservation, MappingError, map as map_observations};
 /// Applies explicit POCT code tables and identity policy to faithfully mapped observations.
 /// # Errors
 /// Preserves syntax, model, identity and mapping failures.
 pub fn map(
-    machine: &Validated,
+    machine: &analyte_config::PoctStack,
     receipt: ReceiptId,
     message: &analyte_poct::Message,
     time: jiff::Timestamp,
@@ -37,7 +37,7 @@ pub fn map(
             .system
             .as_deref()
             .or(observation.source_code.system_name.as_deref());
-        let Some(test) = map_test(machine, &observation.source_code.value, system) else {
+        let Some(test) = map_test(machine.codes(), &observation.source_code.value, system) else {
             output.unmapped_test(
                 Position {
                     record: observation.source_index.saturating_add(1),
@@ -48,7 +48,7 @@ pub fn map(
             continue;
         };
         part.test = test;
-        map_units(machine, &mut part)?;
+        map_units(machine.codes(), &mut part)?;
         let mut content = map_result(receipt, observation.sample, part, identity)?;
         content.processing = processing;
         output.results.push(MappedResult {
@@ -86,7 +86,7 @@ fn park_repeated_identities(output: &mut Output) -> Result<(), Error> {
 }
 
 fn map_identity(
-    machine: &Validated,
+    machine: &analyte_config::PoctStack,
     message: &analyte_poct::Message,
     mut identity: IdentityStatus,
     source_code: &analyte_poct::Code,
@@ -95,9 +95,7 @@ fn map_identity(
 ) -> Result<(IdentityStatus, ProcessingMode, bool), Error> {
     let mut processing = ProcessingMode::Unknown;
     let mut correction = false;
-    if let analyte_config::Stack::Poct(settings) = machine.effective().stack()
-        && let Some(policy) = &settings.policy().identity
-    {
+    if let Some(policy) = &machine.policy().identity {
         processing = policy.processing;
         let service_index = part
             .source_path

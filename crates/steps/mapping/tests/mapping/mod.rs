@@ -1,4 +1,6 @@
 //! Tests machine field mapping and exact value retention.
+#[path = "../settings.rs"]
+mod settings;
 use analyte_config::{Draft, Validated};
 use analyte_mapping::{Input, Output, Problem, map_astm, map_hl7};
 use analyte_model::*;
@@ -32,7 +34,13 @@ fn hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error
     let raw = format!("MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\r{body}");
     let options = config.effective().hl7_options().ok_or("missing options")?;
     let message = analyte_hl7::Message::parse(raw.as_bytes(), options)?;
-    Ok(map_hl7(&message, &config, input())?)
+    Ok(map_hl7(
+        &message,
+        settings::hl7(&config).0,
+        settings::hl7(&config).1,
+        &config.effective().machine().deviations,
+        input(),
+    )?)
 }
 
 fn astm(body: &str, mode: &str) -> Result<Output, Box<dyn std::error::Error>> {
@@ -41,7 +49,12 @@ fn astm(body: &str, mode: &str) -> Result<Output, Box<dyn std::error::Error>> {
         format!("H|\\^&||||||||||{mode}|LIS2-A2|20261115120000\rP|1\rO|1|000AbC\r{body}L|1|N\r");
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
     let message = messages.first().ok_or("missing parsed message")?;
-    Ok(map_astm(message, &config, input())?)
+    Ok(map_astm(
+        message,
+        settings::astm(&config).0,
+        settings::astm(&config).1,
+        input(),
+    )?)
 }
 
 fn first(output: &Output) -> Result<&ResultPart, Box<dyn std::error::Error>> {
@@ -60,7 +73,8 @@ fn with_parts(component: &str, definition: &str) -> Result<Output, Box<dyn std::
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
     Ok(map_astm(
         messages.first().ok_or("missing message")?,
-        &config,
+        settings::astm(&config).0,
+        settings::astm(&config).1,
         input(),
     )?)
 }

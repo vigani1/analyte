@@ -9,8 +9,6 @@ pub mod astm;
 pub mod autolyser;
 /// HL7 terms to common results and explicit outgoing orders.
 pub mod hl7;
-/// Reads retained wire receipts through framing, syntax and mapping without I/O.
-pub mod read;
 
 /// LAW terms to common results and explicit outgoing work.
 pub mod law;
@@ -39,7 +37,7 @@ mod orders;
 
 pub use orders::*;
 
-use analyte_config::{SyntaxKind, Validated};
+use analyte_config::StackChoice;
 use analyte_model::*;
 
 /// Record syntaxes supported by field-position mapping.
@@ -54,48 +52,25 @@ pub enum FieldSyntax {
 /// Vendor syntax must use its own parser and model mapping.
 #[derive(Debug, thiserror::Error)]
 #[error("{0} is not a field-position syntax")]
-pub struct UnsupportedFieldSyntax(pub SyntaxKind);
+pub struct UnsupportedFieldSyntax(pub StackChoice);
 
-impl TryFrom<SyntaxKind> for FieldSyntax {
+impl TryFrom<StackChoice> for FieldSyntax {
     type Error = UnsupportedFieldSyntax;
 
-    fn try_from(syntax: SyntaxKind) -> Result<Self, Self::Error> {
+    fn try_from(syntax: StackChoice) -> Result<Self, Self::Error> {
         match syntax {
-            SyntaxKind::AstmLis02 | SyntaxKind::FileAstm => Ok(Self::AstmLis02),
-            SyntaxKind::Hl7V2 | SyntaxKind::FileHl7 | SyntaxKind::LawManager => Ok(Self::Hl7V2),
-            SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
+            StackChoice::AstmLis02 | StackChoice::FileAstm => Ok(Self::AstmLis02),
+            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager => Ok(Self::Hl7V2),
+            StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser => {
                 Err(UnsupportedFieldSyntax(syntax))
             }
         }
     }
 }
 
-fn field_mappings(config: &Validated) -> Result<&analyte_config::Mappings, Error> {
-    config
-        .effective()
-        .stack()
-        .field_mappings()
-        .ok_or(Error::Syntax)
-}
-
-fn is_law(config: &Validated) -> bool {
-    config.effective().stack().law().is_some()
-}
-
-fn astm_syntax(config: &Validated) -> Result<&analyte_config::AstmSyntax, Error> {
-    config
-        .effective()
-        .stack()
-        .astm_syntax()
-        .ok_or(Error::Syntax)
-}
-
-fn hl7_edition(config: &Validated) -> Result<analyte_config::Edition, Error> {
-    config
-        .effective()
-        .stack()
-        .hl7_edition()
-        .ok_or(Error::Syntax)
+struct RecordSettings<'a> {
+    mappings: &'a analyte_config::Mappings,
+    limits: &'a analyte_config::SyntaxLimits,
 }
 
 /// Finds one exact test translation; ambiguous or absent matches remain unknown.
@@ -143,9 +118,21 @@ pub enum Error {
     /// A validated declaration could not be represented as bounded provenance.
     #[error("{0}")]
     DepartureEvidence(#[from] analyte_config::Error),
-    /// The validated config belongs to another syntax family.
-    #[error("configuration syntax does not match the parsed message")]
-    Syntax,
+    /// Parsed bytes use a different character set from the selected protocol settings.
+    #[error("parsed message character set disagrees with selected settings")]
+    CharsetMismatch,
+    /// A departure application selected a declaration with another meaning.
+    #[error("departure declaration does not describe a missing final status")]
+    DepartureKind,
+    /// A validated LAW message lacks its header.
+    #[error("LAW message header missing")]
+    MissingHeader,
+    /// A LAW notice references an order outside its original message.
+    #[error("LAW notice order is not in the original message")]
+    NoticeOrder,
+    /// A one-based LAW notice position cannot identify a source record.
+    #[error("LAW notice position is zero")]
+    NoticePosition,
     /// A bound was reached before producing a partial success.
     #[error("{position}: {resource} limit exceeded")]
     Limit {
@@ -343,10 +330,6 @@ fn list<T>(entries: Vec<T>, position: Position) -> Result<EvidenceList<T>, Error
         position,
         resource: "evidence entries",
     })
-}
-
-fn present(value: Option<String>) -> Option<String> {
-    value.filter(|s| !s.is_empty() && s != "\"\"")
 }
 
 fn finding(output: &mut Output, position: Position, problem: Problem) -> Result<(), Error> {

@@ -19,7 +19,25 @@ fn command(
     app: &analyte_contract::Order,
     options: Options,
 ) -> Result<Command, Error> {
-    Ok(Command::new(&machine.snapshot, app, options)?)
+    let (syntax, settings) = match machine.snapshot.effective().stack() {
+        analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => {
+            (s.syntax(), s.orders())
+        }
+        analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => {
+            (s.syntax(), s.orders())
+        }
+        analyte_config::Stack::Astm(_)
+        | analyte_config::Stack::Law(_)
+        | analyte_config::Stack::Poct(_)
+        | analyte_config::Stack::Vidas(_)
+        | analyte_config::Stack::Autolyser(_) => return Err(Error::Hl7OrdersMissing),
+    };
+    Ok(Command::new(
+        syntax,
+        settings.as_ref().ok_or(Error::Hl7OrdersMissing)?,
+        app,
+        options,
+    )?)
 }
 fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<OrderMessage, Error> {
     let items = record

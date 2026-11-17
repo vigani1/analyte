@@ -8,17 +8,12 @@ use analyte_model::{
     SourceText,
 };
 
-pub(crate) async fn for_receipt(
-    store: &analyte_store::Handle,
+pub(crate) fn for_receipt(
     machine: &Machine,
-    id: analyte_model::ReceiptId,
+    receipt: &analyte_store::Receipt,
+    wire: Option<&analyte_hl7::WireCompatibility>,
     mapping: Mapping,
 ) -> Result<(Mapping, DepartureEvidence), Error> {
-    let receipt = store
-        .request(crate::deadline()?, move |s| {
-            s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
-        })
-        .await?;
     let applied = mapping
         .output()
         .map_or(&[][..], |output| output.applied_departures.as_slice());
@@ -30,7 +25,7 @@ pub(crate) async fn for_receipt(
             .any(|f| f.problem == analyte_mapping::Problem::UnsupportedEscape)
     });
     let mut entries = evidence.applied.as_slice().to_vec();
-    if let Err(error) = compatibility(machine, &receipt.raw, preserved, &mut entries) {
+    if let Err(error) = compatibility(machine, &receipt.raw, wire, preserved, &mut entries) {
         evidence.incomplete = Some(analyte_model::Reason::new(&format!(
             "departure-evidence failure: {error}"
         ))?);
@@ -160,21 +155,11 @@ fn packed(
 fn compatibility(
     machine: &Machine,
     raw: &[u8],
+    hl7: Option<&analyte_hl7::WireCompatibility>,
     preserved_escape: bool,
     entries: &mut Vec<AppliedDeparture>,
 ) -> Result<(), Error> {
     let effective = machine.snapshot.effective();
-    let hl7 = if effective.hl7_options().is_some() {
-        analyte_mapping::read::payload(&machine.snapshot, raw)
-            .ok()
-            .and_then(|bytes| {
-                analyte_hl7::Message::parse(&bytes, effective.hl7_options()?)
-                    .ok()
-                    .map(|message| analyte_hl7::wire_compatibility(&message))
-            })
-    } else {
-        None
-    };
     for declaration in &effective.machine().deviations {
         let (exercised, standard) = match declaration {
             MachineDeparture::Hl7CrLfTerminators(_) => (

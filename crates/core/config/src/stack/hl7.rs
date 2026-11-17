@@ -282,3 +282,13 @@ pub(super) fn build(
             .transpose()?,
     })
 }
+
+impl Hl7Stack {
+    /// Returns whether this selected protocol permits unsolicited work.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.orders()
+            .as_ref()
+            .is_some_and(|orders| orders.send().is_some())
+    }
+}

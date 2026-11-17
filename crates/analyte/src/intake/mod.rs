@@ -10,6 +10,7 @@ use std::fmt::Write;
 mod law;
 mod parking;
 mod reading;
+pub(crate) mod retained;
 pub(crate) use parking::{Mapping, ParkReason};
 use reading::{map_reading, mapping_outcome};
 mod persistence;
@@ -115,36 +116,8 @@ pub(crate) async fn interpret_with_location(
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
-    let mapping = crate::machine::interpretation::map_retained(store, machine, &receipt).await;
-    let location = machine
-        .snapshot
-        .effective()
-        .hl7_options()
-        .and_then(|options| {
-            let payload = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw).ok()?;
-            crate::machine::hl7::error_location::mapping_location(
-                &mapping,
-                &payload,
-                options.terminator,
-            )
-        });
-    // Preserve the vendor diagnostics historically retained for unreadable input.
-    let mapping = match mapping {
-        Ok(output) => Mapping::Mapped(output),
-        Err(error) => {
-            let reason = match machine.snapshot.effective().stack() {
-                analyte_config::Stack::Vidas(_) => format!("VIDAS interpretation: {error}"),
-                analyte_config::Stack::Autolyser(_) => format!("Autolyser interpretation: {error}"),
-                analyte_config::Stack::Poct(_) => format!("POCT interpretation: {error}"),
-                analyte_config::Stack::Astm(_)
-                | analyte_config::Stack::Hl7(_)
-                | analyte_config::Stack::Law(_) => error.to_string(),
-            };
-            Mapping::Parked(ParkReason::Diagnostic(reason))
-        }
-    };
-    let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
-    Ok((accepted, location))
+    let (outcome, _, location) = retained::process(store, machine, &receipt, None, None).await?;
+    Ok((outcome, location))
 }
 
 fn poct_edits(machine: &Machine) -> bool {
@@ -165,22 +138,25 @@ fn reading_evidence(
     })
 }
 
-pub(crate) async fn persist_mapping(
+async fn persist_prepared(
     store: &Handle,
     machine: &Machine,
-    id: ReceiptId,
+    context: &retained::Context<'_>,
     mapping: Mapping,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
+    let id = context.receipt.metadata.id;
     let (mapping, departures) = super::machine::interpretation::departure_evidence::for_receipt(
-        store, machine, id, mapping,
-    )
-    .await?;
+        machine,
+        context.receipt,
+        context.wire.as_ref(),
+        mapping,
+    )?;
     let poct_edit_guard = poct_edits(machine);
     let atomic = atomic_batch(machine);
     let lifecycle = atomic.then_some(law_lifecycle());
-    let work_conflict = law::work_conflict(store, machine, id).await?;
-    let mut custody = law::plan(store, machine, id, work_conflict).await?;
+    let work_conflict = law::work_conflict(store, machine, context.results).await?;
+    let mut custody = law::plan(store, machine, context.results, work_conflict).await?;
     let mapping = if work_conflict.is_some() {
         Mapping::Parked(ParkReason::WorkConflict)
     } else {
@@ -319,6 +295,22 @@ pub(crate) async fn park_bytes(
             )
         })
         .await?;
+    Ok(())
+}
+
+async fn persist_mapping(
+    store: &Handle,
+    machine: &Machine,
+    id: ReceiptId,
+    mapping: Mapping,
+    action: Option<analyte_store::Reprocess>,
+) -> Result<(), Error> {
+    let receipt = store
+        .request(deadline()?, move |s| {
+            s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+        })
+        .await?;
+    retained::process(store, machine, &receipt, Some(mapping), action).await?;
     Ok(())
 }
 

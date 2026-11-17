@@ -7,7 +7,6 @@ pub(crate) fn values(
     source: &Source<'_>,
     index: usize,
     field: usize,
-    config: &analyte_config::Validated,
     output: &mut Output,
 ) -> Result<EvidenceList<ResultValue>, Error> {
     let position = source.position(index, field);
@@ -35,7 +34,7 @@ pub(crate) fn values(
             unsupported(&data_type, position, reason)?
         } else if astm {
             decimal(&original, true)
-        } else if data_type == "CWE" && source.uses_compatibility_contract(config) {
+        } else if data_type == "CWE" && source.uses_compatibility_contract() {
             unsupported(
                 &data_type,
                 position,
@@ -43,7 +42,7 @@ pub(crate) fn values(
             )?
         } else {
             match data_type.as_str() {
-                "DTM" if source.uses_dtm(config) => ValueInterpretation::Text,
+                "DTM" if source.uses_dtm() => ValueInterpretation::Text,
                 "NM" => decimal(&original, false),
                 "ST" | "TX" | "FT" | "DT" | "TM" | "TS" | "ID" | "IS" => ValueInterpretation::Text,
                 "CE" | "CWE" => coded(source, index, field, repetition)?.unwrap_or(unsupported(

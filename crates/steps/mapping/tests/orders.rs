@@ -21,7 +21,7 @@ fn rule7_outbound_selected_component_at_configured_ceiling_is_preserved() -> Tes
         ("local", "schema_version=1"),
     )?
     .validate()?;
-    let mapped = map_order(&order()?, &cfg)?;
+    let mapped = map_order(&order()?, cfg.effective().stack())?;
     assert_eq!(mapped.record()?, b"O|1|^^^001a||^^^SEND|R||||||N\r");
     Ok(())
 }
@@ -47,13 +47,30 @@ fn rule7_display_text_bound_is_inclusive_and_refuses_delimiter_injection() -> Te
     .validate()?;
     for (length, accepted) in [(299, true), (300, true), (301, false)] {
         assert_eq!(
-            analyte_mapping::map_display(&order()?, &"X".repeat(length), &cfg).is_ok(),
+            analyte_mapping::map_display(
+                &order()?,
+                &"X".repeat(length),
+                cfg.effective()
+                    .stack()
+                    .hl7_orders()
+                    .expect("HL7 order fixture"),
+                cfg.effective().stack().limits()
+            )
+            .is_ok(),
             accepted
         );
     }
     for text in ["injected|field", "injected^component", "café"] {
         assert!(matches!(
-            analyte_mapping::map_display(&order()?, text, &cfg),
+            analyte_mapping::map_display(
+                &order()?,
+                text,
+                cfg.effective()
+                    .stack()
+                    .hl7_orders()
+                    .expect("HL7 order fixture"),
+                cfg.effective().stack().limits()
+            ),
             Err(OrderMappingError::DisplayLineBounds)
         ));
     }
@@ -92,7 +109,10 @@ fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResul
         ("record_bytes", expected.len() - 1),
     ] {
         for (bound, accepted) in [(ceiling - 1, false), (ceiling, true), (ceiling + 1, true)] {
-            let mapped = map_order(&order()?, &bounded_order_config(key, bound)?);
+            let mapped = map_order(
+                &order()?,
+                bounded_order_config(key, bound)?.effective().stack(),
+            );
             assert_eq!(mapped.is_ok(), accepted, "{key}={bound}");
             if accepted {
                 assert_eq!(mapped?.record()?, expected);
@@ -101,7 +121,10 @@ fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResul
             }
         }
     }
-    let mapped = map_order(&order()?, &bounded_order_config("components", 4)?)?;
+    let mapped = map_order(
+        &order()?,
+        bounded_order_config("components", 4)?.effective().stack(),
+    )?;
     assert_eq!(mapped.record()?, expected);
     Ok(())
 }
@@ -114,7 +137,7 @@ fn rule5_outbound_sample_reserved_characters_are_refused_without_rewriting() -> 
         input.sample = SampleId::new(sample)?;
         assert!(
             matches!(
-                map_order(&input, &settings),
+                map_order(&input, settings.effective().stack()),
                 Err(OrderMappingError::AstmTextRepertoire)
             ),
             "{sample}"
@@ -145,7 +168,7 @@ fn rule7_outbound_test_count_is_nonempty_and_inclusive() -> TestResult {
         let mut input = order()?;
         let test = input.tests.first().ok_or("test")?.clone();
         input.tests = vec![test; count];
-        let mapped = map_order(&input, &settings);
+        let mapped = map_order(&input, settings.effective().stack());
         assert_eq!(mapped.is_ok(), accepted, "count={count}");
         if !accepted {
             assert!(matches!(mapped, Err(OrderMappingError::AstmTestCount)));
@@ -187,7 +210,7 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
 #[test]
 fn lis02_section8_outbound_table_preserves_sample_and_never_reverses_inbound() -> TestResult {
     let config = config(include_str!("../../../core/config/examples/orders.toml"))?;
-    let mapped = map_order(&order()?, &config)?;
+    let mapped = map_order(&order()?, config.effective().stack())?;
     assert_eq!(mapped.record()?, b"O|1|001a||^^^SEND|R||||||N\r");
     Ok(())
 }
@@ -195,7 +218,7 @@ fn lis02_section8_outbound_table_preserves_sample_and_never_reverses_inbound() -
 #[test]
 fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output() -> TestResult {
     assert!(matches!(
-        map_order(&order()?, &config("")?),
+        map_order(&order()?, config("")?.effective().stack()),
         Err(OrderMappingError::Disabled)
     ));
     let section = include_str!("../../../core/config/examples/orders.toml");
@@ -203,20 +226,20 @@ fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output(
     let mut input = order()?;
     input.tests[0].namespace = Identifier::new("different-system")?;
     assert!(matches!(
-        map_order(&input, &settings),
+        map_order(&input, settings.effective().stack()),
         Err(OrderMappingError::UnmappedTest(_))
     ));
     input = order()?;
     input.priority = AppOrderPriority::Stat;
     assert!(matches!(
-        map_order(&input, &settings),
+        map_order(&input, settings.effective().stack()),
         Err(OrderMappingError::UnmappedPriority)
     ));
     let position = format!(
         "{section}\nposition = {{group=\"order\",record=\"O\",field=4,component=1,repetition=1}}\n"
     );
     assert!(matches!(
-        map_order(&order()?, &config(&position)?),
+        map_order(&order()?, config(&position)?.effective().stack()),
         Err(OrderMappingError::MissingPosition)
     ));
     Ok(())
@@ -261,7 +284,10 @@ fn lis02_section8_4_4_and_8_4_16_1_configured_destinations_get_only_explicit_con
         (String::new(), b"O|1|001a||^^^SEND|R||||||N\r".as_slice()),
     ] {
         let settings = config(&format!("{}\n{destinations}", context_section()))?;
-        assert_eq!(map_order(&context_order()?, &settings)?.record()?, expected);
+        assert_eq!(
+            map_order(&context_order()?, settings.effective().stack())?.record()?,
+            expected
+        );
     }
     Ok(())
 }
@@ -272,17 +298,17 @@ fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> 
     value.specimen_type.as_mut().ok_or("specimen")?.namespace =
         Identifier::new("different-system")?;
     assert!(matches!(
-        map_order(&value, &settings),
+        map_order(&value, settings.effective().stack()),
         Err(OrderMappingError::UnmappedSpecimenType)
     ));
     // With no configured destination the same unknown value is not transmitted.
     assert_eq!(
-        map_order(&value, &config(&context_section())?)?.record()?,
+        map_order(&value, config(&context_section())?.effective().stack())?.record()?,
         b"O|1|001a||^^^SEND|R||||||N\r"
     );
     value.specimen_type = None;
     assert!(matches!(
-        map_order(&value, &settings),
+        map_order(&value, settings.effective().stack()),
         Err(OrderMappingError::MissingSpecimenType)
     ));
     Ok(())
@@ -309,7 +335,16 @@ fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> 
     .validate()?;
     let input = order()?;
     assert_eq!(
-        analyte_mapping::map_display(&input, "order-a", &settings)?,
+        analyte_mapping::map_display(
+            &input,
+            "order-a",
+            settings
+                .effective()
+                .stack()
+                .hl7_orders()
+                .expect("HL7 order fixture"),
+            settings.effective().stack().limits()
+        )?,
         vec![
             b"001a".to_vec(),
             b"SEND".to_vec(),
@@ -322,19 +357,46 @@ fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> 
     let mut wrong = order()?;
     wrong.sample = SampleId::new("bad|delimiter")?;
     assert!(matches!(
-        analyte_mapping::map_display(&wrong, "order-a", &settings),
+        analyte_mapping::map_display(
+            &wrong,
+            "order-a",
+            settings
+                .effective()
+                .stack()
+                .hl7_orders()
+                .expect("HL7 order fixture"),
+            settings.effective().stack().limits()
+        ),
         Err(OrderMappingError::DisplayLineBounds)
     ));
     wrong = order()?;
     wrong.tests.first_mut().ok_or("test")?.namespace = Identifier::new("unmapped-system")?;
     assert!(matches!(
-        analyte_mapping::map_display(&wrong, "order-a", &settings),
+        analyte_mapping::map_display(
+            &wrong,
+            "order-a",
+            settings
+                .effective()
+                .stack()
+                .hl7_orders()
+                .expect("HL7 order fixture"),
+            settings.effective().stack().limits()
+        ),
         Err(OrderMappingError::UnmappedTest(_))
     ));
     wrong = order()?;
     wrong.priority = AppOrderPriority::Stat;
     assert!(matches!(
-        analyte_mapping::map_display(&wrong, "order-a", &settings),
+        analyte_mapping::map_display(
+            &wrong,
+            "order-a",
+            settings
+                .effective()
+                .stack()
+                .hl7_orders()
+                .expect("HL7 order fixture"),
+            settings.effective().stack().limits()
+        ),
         Err(OrderMappingError::UnmappedPriority)
     ));
     Ok(())
@@ -372,7 +434,16 @@ specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
     )?
     .validate()?;
     let mut input = order()?;
-    let empty = analyte_mapping::map_display(&input, "order-a", &settings)?;
+    let empty = analyte_mapping::map_display(
+        &input,
+        "order-a",
+        settings
+            .effective()
+            .stack()
+            .hl7_orders()
+            .expect("HL7 order fixture"),
+        settings.effective().stack().limits(),
+    )?;
     assert_eq!(
         empty.get(5..),
         Some([Vec::new(), Vec::new(), Vec::new()].as_slice())
@@ -390,14 +461,32 @@ specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
         namespace: Identifier::new("patients")?,
         value: Identifier::new("000Patient")?,
     });
-    let mapped = analyte_mapping::map_display(&input, "order-a", &settings)?;
+    let mapped = analyte_mapping::map_display(
+        &input,
+        "order-a",
+        settings
+            .effective()
+            .stack()
+            .hl7_orders()
+            .expect("HL7 order fixture"),
+        settings.effective().stack().limits(),
+    )?;
     assert_eq!(
         mapped.get(5..),
         Some([b"007b".to_vec(), b"SER".to_vec(), b"000Patient".to_vec()].as_slice())
     );
     input.patient.as_mut().ok_or("patient")?.namespace = Identifier::new("wrong-namespace")?;
     assert!(matches!(
-        analyte_mapping::map_display(&input, "order-a", &settings),
+        analyte_mapping::map_display(
+            &input,
+            "order-a",
+            settings
+                .effective()
+                .stack()
+                .hl7_orders()
+                .expect("HL7 order fixture"),
+            settings.effective().stack().limits()
+        ),
         Err(OrderMappingError::PatientNamespace)
     ));
     Ok(())

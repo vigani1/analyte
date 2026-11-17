@@ -1,10 +1,10 @@
 //! Groups replacement results and coordinates result mapping.
 use crate::FieldSyntax;
 use crate::MappedResult;
+use crate::RecordSettings;
 use crate::inbound::source::Source;
 use crate::inbound::{identity, result, value};
-use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, present, text};
-use analyte_config::Validated;
+use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, text};
 use analyte_model::*;
 
 fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode, Error> {
@@ -50,11 +50,11 @@ fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode
 
 pub(crate) fn message(
     source: &Source<'_>,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     input: Input,
     law: Option<&analyte_hl7::law::Results<'_>>,
 ) -> Result<Output, Error> {
-    if source.nodes.len() > config.effective().stack().limits().records() {
+    if source.nodes.len() > config.limits.records() {
         return Err(Error::Limit {
             position: source.position(0, 0),
             resource: "records",
@@ -83,7 +83,7 @@ pub(crate) fn message(
         let finding_start = output.findings.len();
         let astm = source.syntax == FieldSyntax::AstmLis02;
         let value_field = if astm { 4 } else { 5 };
-        let values = value::values(source, index, value_field, config, &mut output)?;
+        let values = value::values(source, index, value_field, &mut output)?;
         let sample = identity::sample(source, index, config, &mut output)?;
         let Some(codes) = map_codes(source, index, config, &mut output)? else {
             output.unmapped_test(source.position(index, 3), values)?;
@@ -105,7 +105,8 @@ pub(crate) fn message(
         )?;
         let status_field = if astm { 9 } else { 11 };
         let status_text = source.raw(index, status_field)?.unwrap_or_default();
-        let correction = crate::field_mappings(config)?
+        let correction = config
+            .mappings
             .identity
             .correction_status_codes
             .iter()
@@ -194,18 +195,18 @@ struct Codes {
 fn map_codes(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     output: &mut Output,
 ) -> Result<Option<Codes>, Error> {
     let astm = source.syntax == FieldSyntax::AstmLis02;
-    let mut standard_code = present(source.component(index, 3, 1, 1)?);
+    let mut standard_code = source.present(source.component(index, 3, 1, 1)?);
     let mut manufacturer_code = if astm {
-        present(source.component(index, 3, 1, 4)?)
+        source.present(source.component(index, 3, 1, 4)?)
     } else {
         None
     };
     let mut dilution = None;
-    if let Some(parts) = &crate::field_mappings(config)?.component_parts {
+    if let Some(parts) = &config.mappings.component_parts {
         let original = source
             .component(index, 3, 1, usize::from(parts.component))?
             .unwrap_or_default();
@@ -373,12 +374,12 @@ fn append_result(
 fn map_test(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     codes: &Codes,
     values: &EvidenceList<ResultValue>,
     output: &mut Output,
 ) -> Result<Option<(NamespacedId, NamespacedId, bool)>, Error> {
-    let machine = config.effective().machine();
+    let machine = config.mappings;
     let astm = source.syntax == FieldSyntax::AstmLis02;
     let value_field = if astm { 4 } else { 5 };
     let position = source.position(index, 0);
@@ -390,7 +391,7 @@ fn map_test(
     let system = if astm {
         None
     } else {
-        present(source.component(index, 3, 1, 3)?)
+        source.present(source.component(index, 3, 1, 3)?)
     };
     // LIS02 section 5.6.1 provides both a universal and a manufacturer identifier.
     // The explicit table must select exactly one interpretation if both occur.
@@ -398,7 +399,7 @@ fn map_test(
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
-    let translation = crate::test_translation(machine.tests(), &candidates, system.as_deref());
+    let translation = crate::test_translation(&machine.tests, &candidates, system.as_deref());
     let source_code = match (standard_code.as_deref(), system.as_deref(), translation) {
         (Some(code), Some(system), _) => Some(NamespacedId {
             value: identifier(code, position)?,

@@ -151,3 +151,21 @@ impl FileHl7Stack {
         &self.orders
     }
 }
+
+impl FileAstmStack {
+    /// Returns whether this selected protocol permits unsolicited work.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.orders().as_ref().is_some_and(AstmOrders::send_ahead)
+    }
+}
+
+impl FileHl7Stack {
+    /// Returns whether this selected protocol permits unsolicited work.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.orders()
+            .as_ref()
+            .is_some_and(|orders| orders.send().is_some())
+    }
+}

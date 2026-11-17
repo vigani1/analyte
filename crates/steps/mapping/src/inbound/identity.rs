@@ -1,19 +1,19 @@
 //! Resolves result identities using configured sample and source evidence only.
+use crate::RecordSettings;
 use crate::inbound::source::Source;
-use crate::{Error, Output, Problem, finding, identifier, present, text};
-use analyte_config::Validated;
+use crate::{Error, Output, Problem, finding, identifier, text};
 use analyte_config::{NoSubId, OrderNamespace, SubId};
 use analyte_model::*;
 
 pub(crate) fn sample(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     output: &mut Output,
 ) -> Result<Option<SampleIdentity>, Error> {
-    let selection = &crate::field_mappings(config)?.sample;
+    let selection = &config.mappings.sample;
     let position = source.selection_position(index, &selection.field)?;
-    let Some(value) = present(source.selected(index, &selection.field)?) else {
+    let Some(value) = source.present(source.selected(index, &selection.field)?) else {
         finding(output, position, Problem::MissingSample)?;
         return Ok(None);
     };
@@ -33,7 +33,7 @@ pub(crate) fn sample(
 pub(crate) fn observation(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     code: NamespacedId,
     output: &mut Output,
     law: Option<&std::collections::BTreeMap<*const u8, &analyte_hl7::law::Observation<'_>>>,
@@ -57,10 +57,10 @@ pub(crate) fn observation(
         };
         return law_observation(source, index, config, code, output, observation);
     }
-    let settings = &crate::field_mappings(config)?.identity;
+    let settings = &config.mappings.identity;
     let mut missing = false;
     let mut required = |field: &analyte_config::Field, setting| -> Result<String, Error> {
-        match present(source.selected(index, field)?) {
+        match source.present(source.selected(index, field)?) {
             Some(value) => Ok(value),
             None => {
                 missing = true;
@@ -110,7 +110,7 @@ pub(crate) fn observation(
 fn law_observation(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     code: NamespacedId,
     output: &mut Output,
     observation: &analyte_hl7::law::Observation<'_>,
@@ -131,13 +131,13 @@ fn law_observation(
         return Ok(None);
     };
     let field = if observation.awos().is_some() { 2 } else { 3 };
-    let id = present(source.component(order, field, 1, 1)?);
-    let namespace = present(source.component(order, field, 1, 2)?);
-    let universal = present(source.component(order, field, 1, 3)?);
-    let kind = present(source.component(order, field, 1, 4)?);
+    let id = source.present(source.component(order, field, 1, 1)?);
+    let namespace = source.present(source.component(order, field, 1, 2)?);
+    let universal = source.present(source.component(order, field, 1, 3)?);
+    let kind = source.present(source.component(order, field, 1, 4)?);
     let namespace = if field == 2 {
         // TF-2b C.6-2: received EI.2+ are X, never assigning authority.
-        match &crate::field_mappings(config)?.identity.order_namespace {
+        match &config.mappings.identity.order_namespace {
             OrderNamespace::Fixed { fixed } => Some(fixed.as_str().to_owned()),
             OrderNamespace::Field { .. } => None,
         }
@@ -151,7 +151,7 @@ fn law_observation(
     } else {
         namespace
     };
-    let sub_id = present(Some(source.text(observation.sub_id(), index, 4)?));
+    let sub_id = source.present(Some(source.text(observation.sub_id(), index, 4)?));
     let (Some(id), Some(namespace), Some(sub_id)) = (id, namespace, sub_id) else {
         finding(
             output,

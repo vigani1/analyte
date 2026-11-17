@@ -258,3 +258,11 @@ impl LawStack {
         &self.orders
     }
 }
+
+impl LawStack {
+    /// Returns whether this selected protocol permits unsolicited work.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.orders().as_ref().is_some_and(LawOrders::send_ahead)
+    }
+}

@@ -3,10 +3,10 @@ use super::Error;
 use analyte_config::Stack;
 pub(super) fn read(
     config: &analyte_config::Validated,
-    input: crate::Input,
+    input: analyte_mapping::Input,
     raw: &[u8],
     settings: &analyte_config::VidasStack,
-) -> Result<crate::Output, Error> {
+) -> Result<analyte_mapping::Output, Error> {
     let packet = analyte_framing::vidas::decode(raw, framing(config)?)?;
     let limit = match settings.policy().sample_limit {
         analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
@@ -15,8 +15,8 @@ pub(super) fn read(
         }
     };
     let message = analyte_vidas::syntax::Message::parse(std::str::from_utf8(&packet.body)?, limit)?;
-    Ok(crate::map_vidas(
-        config,
+    Ok(analyte_mapping::map_vidas(
+        settings,
         input.receipt,
         &message,
         input.received_at,
@@ -25,7 +25,7 @@ pub(super) fn read(
 /// Translates installed VIDAS framing choices once for live and retained input.
 /// # Errors
 /// Rejects another stack or invalid framing settings.
-pub fn framing(
+pub(crate) fn framing(
     config: &analyte_config::Validated,
 ) -> Result<analyte_framing::vidas::Config, Error> {
     use analyte_framing::vidas::{Checksum, Config, Mode};

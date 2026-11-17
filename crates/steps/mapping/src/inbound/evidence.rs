@@ -1,6 +1,6 @@
 //! Adapts vendor evidence while retaining unresolved identities and exact values.
 use crate::{MappedResult, Output};
-use analyte_config::Validated;
+
 use analyte_model::*;
 
 /// Specific vendor-to-model boundary failures; original receipts must remain protected.
@@ -58,8 +58,11 @@ pub(crate) fn map_part(
     })
 }
 
-pub(crate) fn map_units(machine: &Validated, part: &mut ResultPart) -> Result<(), Error> {
-    let (_, units) = machine.effective().stack().code_tables();
+pub(crate) fn map_units(
+    machine: &analyte_config::CodeTables,
+    part: &mut ResultPart,
+) -> Result<(), Error> {
+    let units = &machine.units;
     if let Some(unit) = &part.units {
         let original = unit.original_text().clone();
         if let Some(entry) = crate::unit_translation(units, original.as_str()) {
@@ -91,16 +94,14 @@ pub(crate) fn map_result(
 }
 
 pub(crate) fn map_test(
-    machine: &Validated,
+    machine: &analyte_config::CodeTables,
     code: &str,
     system: Option<&str>,
 ) -> Option<NamespacedId> {
-    crate::test_translation(machine.effective().stack().code_tables().0, &[code], system).map(
-        |entry| NamespacedId {
-            namespace: entry.app_system.clone(),
-            value: entry.app_code.clone(),
-        },
-    )
+    crate::test_translation(&machine.tests, &[code], system).map(|entry| NamespacedId {
+        namespace: entry.app_system.clone(),
+        value: entry.app_code.clone(),
+    })
 }
 
 pub(crate) fn push_result(output: &mut Output, content: ResultContent) -> Result<(), Error> {

@@ -119,40 +119,52 @@ pub enum Escapes {
     Preserve,
 }
 
-/// Supported HL7 editions.
+/// A config spelling of the protocol-owned HL7 edition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Edition {
-    /// Explicit HL7 2.3 selection; no patch-edition upgrade.
-    V23,
-    /// Explicit HL7 2.3.1 selection.
-    V231,
-    /// Explicit HL7 2.4 selection.
-    V24,
-    /// Explicit HL7 2.5 selection; no patch-edition upgrade.
-    V25,
-    /// Explicit HL7 2.5.1 selection.
-    V251,
-    /// Explicit HL7 2.6 selection.
-    V26,
-    /// Explicit HL7 2.8.2 selection.
-    V282,
-    /// Explicit HL7 2.9.1 selection.
-    V291,
-}
+#[serde(try_from = "String", into = "String")]
+pub struct Edition(analyte_hl7::Version);
 
+impl Edition {
+    /// Explicit HL7 23 selection.
+    pub const V23: Self = Self(analyte_hl7::Version::V23);
+    /// Explicit HL7 231 selection.
+    pub const V231: Self = Self(analyte_hl7::Version::V231);
+    /// Explicit HL7 24 selection.
+    pub const V24: Self = Self(analyte_hl7::Version::V24);
+    /// Explicit HL7 25 selection.
+    pub const V25: Self = Self(analyte_hl7::Version::V25);
+    /// Explicit HL7 251 selection.
+    pub const V251: Self = Self(analyte_hl7::Version::V251);
+    /// Explicit HL7 26 selection.
+    pub const V26: Self = Self(analyte_hl7::Version::V26);
+    /// Explicit HL7 282 selection.
+    pub const V282: Self = Self(analyte_hl7::Version::V282);
+    /// Explicit HL7 291 selection.
+    pub const V291: Self = Self(analyte_hl7::Version::V291);
+}
+impl TryFrom<String> for Edition {
+    type Error = String;
+    fn try_from(key: String) -> Result<Self, Self::Error> {
+        analyte_hl7::Version::from_config_key(&key)
+            .map(Self)
+            .ok_or_else(|| {
+                format!(
+                    "unknown variant `{key}`, expected one of {}",
+                    analyte_hl7::Version::config_keys()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+    }
+}
+impl From<Edition> for String {
+    fn from(edition: Edition) -> Self {
+        edition.0.config_key().into()
+    }
+}
 impl From<Edition> for analyte_hl7::Version {
     fn from(edition: Edition) -> Self {
-        match edition {
-            Edition::V23 => Self::V23,
-            Edition::V231 => Self::V231,
-            Edition::V24 => Self::V24,
-            Edition::V25 => Self::V25,
-            Edition::V251 => Self::V251,
-            Edition::V26 => Self::V26,
-            Edition::V282 => Self::V282,
-            Edition::V291 => Self::V291,
-        }
+        edition.0
     }
 }
 

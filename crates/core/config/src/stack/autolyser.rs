@@ -137,3 +137,13 @@ pub(super) fn build(
             .transpose()?,
     })
 }
+
+impl AutolyserStack {
+    /// Returns whether this selected protocol permits unsolicited work.
+    #[must_use]
+    pub fn send_ahead(&self) -> bool {
+        self.orders()
+            .as_ref()
+            .is_some_and(AutolyserOrders::send_ahead)
+    }
+}

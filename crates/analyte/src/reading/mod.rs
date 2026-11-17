@@ -1,6 +1,6 @@
 //! Reads retained receipts through the same framing, syntax and mapping policies as live intake.
-use crate::{Input, Output};
 use analyte_config::{RecordTransport, Stack, Validated};
+use analyte_mapping::{Input, Output};
 mod astm;
 mod autolyser;
 mod envelope;
@@ -8,9 +8,9 @@ mod hl7;
 mod law;
 mod poct;
 mod vidas;
-pub use envelope::payload;
-pub use poct::limits as poct_limits;
-pub use vidas::framing as vidas_config;
+pub(crate) use envelope::payload;
+pub(crate) use poct::limits as poct_limits;
+pub(crate) use vidas::framing as vidas_config;
 
 /// Specific failures from each owned reading layer; callers retain and park the receipt.
 #[derive(Debug, thiserror::Error)]
@@ -56,10 +56,10 @@ pub enum Error {
     Encoding(#[from] std::str::Utf8Error),
     /// Preserves the `Mapping` boundary failure.
     #[error(transparent)]
-    Mapping(#[from] crate::Error),
+    Mapping(#[from] analyte_mapping::Error),
     /// Preserves the `Evidence` boundary failure.
     #[error(transparent)]
-    Evidence(#[from] crate::ResultMappingError),
+    Evidence(#[from] analyte_mapping::ResultMappingError),
     /// Required receipt or configuration context is unavailable.
     #[error("{0}")]
     Context(Context),
@@ -69,7 +69,7 @@ pub enum Error {
 /// `hello` is the original durable POCT connection Hello, when available.
 /// # Errors
 /// Returns the original layer failure; never supplies a partial mapping on failure.
-pub fn read(
+pub(crate) fn read(
     config: &Validated,
     input: Input,
     raw: &[u8],
@@ -77,17 +77,23 @@ pub fn read(
 ) -> Result<Output, Error> {
     match config.effective().stack() {
         Stack::Astm(RecordTransport::Stream(s)) => {
-            astm::read(config, input, &payload(config, raw)?, s.syntax())
+            astm::read(input, &payload(config, raw)?, s.syntax(), s.mappings())
         }
-        Stack::Astm(RecordTransport::Folder(s)) => astm::read(config, input, raw, s.syntax()),
-        Stack::Hl7(RecordTransport::Stream(s)) => {
-            hl7::read(config, input, &payload(config, raw)?, s.syntax())
+        Stack::Astm(RecordTransport::Folder(s)) => astm::read(input, raw, s.syntax(), s.mappings()),
+        Stack::Hl7(RecordTransport::Stream(s)) => hl7::read(
+            config,
+            input,
+            &payload(config, raw)?,
+            s.syntax(),
+            s.mappings(),
+        ),
+        Stack::Hl7(RecordTransport::Folder(s)) => {
+            hl7::read(config, input, raw, s.syntax(), s.mappings())
         }
-        Stack::Hl7(RecordTransport::Folder(s)) => hl7::read(config, input, raw, s.syntax()),
-        Stack::Law(s) => law::read(config, input, &payload(config, raw)?, s),
-        Stack::Poct(s) => poct::read(config, input, raw, s, hello),
+        Stack::Law(s) => law::read(input, &payload(config, raw)?, s),
+        Stack::Poct(s) => poct::read(input, raw, s, hello),
         Stack::Vidas(s) => vidas::read(config, input, raw, s),
-        Stack::Autolyser(s) => autolyser::read(config, input, raw, s),
+        Stack::Autolyser(s) => autolyser::read(input, raw, s),
     }
 }
 

@@ -311,6 +311,19 @@ fn legal(byte: u8) -> bool {
     matches!(byte, 7 | 9 | 11 | 12 | 32..=126 | 128..=254)
 }
 
+/// Decodes ASCII text, refusing non-ASCII bytes.
+#[must_use]
+pub fn ascii(bytes: &[u8]) -> Option<String> {
+    bytes
+        .is_ascii()
+        .then(|| String::from_utf8_lossy(bytes).into_owned())
+}
+/// Decodes UTF-8 text, refusing malformed byte sequences.
+#[must_use]
+pub fn utf8(bytes: &[u8]) -> Option<String> {
+    std::str::from_utf8(bytes).ok().map(str::to_owned)
+}
+
 /// Decodes every byte reversibly as a Latin-1 code point.
 #[must_use]
 pub fn latin1(bytes: &[u8]) -> Option<String> {

@@ -14,12 +14,9 @@ impl Command {
     /// # Errors
     /// Preserves disabled LAW order capability errors.
     pub fn new(
-        config: &analyte_config::Validated,
+        law: &analyte_config::LawStack,
         app: &analyte_contract::Order,
     ) -> Result<Self, Error> {
-        let analyte_config::Stack::Law(law) = config.effective().stack() else {
-            return Err(Error::Context("LAW settings absent"));
-        };
         let peer = law.policy().peer().capabilities();
         Ok(Self {
             app: crate::orders::app_order(app)?,

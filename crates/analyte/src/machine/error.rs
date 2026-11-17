@@ -1,6 +1,9 @@
 //! Combines protocol and link failures at the machine worker orchestration boundary.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// Complete-file pickup cannot be driven as a stream session.
+    #[error("folder stack cannot drive a stream session")]
+    FolderStream,
     /// The ASTM session refused further processing.
     #[error(transparent)]
     Astm(Box<super::astm::Error>),

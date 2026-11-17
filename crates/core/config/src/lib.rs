@@ -8,7 +8,7 @@ mod retention;
 pub use retention::Retention;
 mod selection;
 use selection::ParsedMachine;
-pub use selection::{StackChoice, SyntaxKind};
+pub use selection::StackChoice;
 mod schema;
 mod stack;
 mod validation;

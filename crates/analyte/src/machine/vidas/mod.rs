@@ -56,7 +56,7 @@ impl ConnectionState {
         settings: &analyte_config::VidasStack,
     ) -> Result<Self, Error> {
         let installed = &settings.policy();
-        let config = analyte_mapping::read::vidas_config(&machine.snapshot)?;
+        let config = crate::reading::vidas_config(&machine.snapshot)?;
         let policy = DialogConfig {
             ack: ms(installed.acknowledgment_ms),
             inter_byte: ms(installed.interbyte_ms),

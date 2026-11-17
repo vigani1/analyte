@@ -2,18 +2,18 @@
 use crate::inbound::{grouping, source};
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_specimen};
-use crate::{Error, Input, Output, Position, astm_syntax};
-use analyte_config::Validated;
+use crate::{Error, Input, Output, Position};
+
 /// Maps one parsed LIS02 message, retaining hierarchy and original value text.
 /// # Errors
 /// Rejects a mismatched config, invalid ownership, encoding or model resource bounds.
 pub fn map(
     message: &analyte_astm::Message,
-    config: &Validated,
+    syntax: &analyte_config::AstmSyntax,
+    mappings: &analyte_config::Mappings,
     input: Input,
 ) -> Result<Output, Error> {
-    let syntax = astm_syntax(config)?;
-    let settings = config.effective().stack().limits();
+    let settings = syntax.limits();
     if message.records().len() > settings.records() {
         return Err(Error::Limit {
             position: Position {
@@ -52,7 +52,15 @@ pub fn map(
         analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
     };
     source.attach_comments()?;
-    grouping::message(&source, config, input, None)
+    grouping::message(
+        &source,
+        &crate::RecordSettings {
+            mappings,
+            limits: settings,
+        },
+        input,
+        None,
+    )
 }
 
 /// Maps explicit ASTM order fields without guessing missing codes or context.

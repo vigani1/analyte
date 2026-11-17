@@ -13,6 +13,9 @@ pub use orders::law::validation::ValidationError as WorkValidationError;
 pub mod machine;
 pub mod operator;
 pub mod orders;
+mod reading;
+/// Failures reading retained receipts through framing, syntax and mapping.
+pub use reading::{Context as ReceiptReadContext, Error as ReceiptReadError};
 pub mod runtime;
 /// Bounds ordinary orchestration storage requests independently of machine protocol timers.
 const STORE_OPERATION_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
