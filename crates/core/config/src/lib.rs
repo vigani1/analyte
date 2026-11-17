@@ -75,7 +75,7 @@ pub enum Error {
     },
     /// A recognized HL7 edition has no implemented result-processing profile.
     #[error(
-        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.8.2, 2.9.1"
+        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: {}", analyte_hl7::Version::config_keys().filter_map(analyte_hl7::Version::from_config_key).filter(|edition| edition.supports_result_reception()).map(analyte_hl7::Version::as_str).collect::<Vec<_>>().join(", ")
     )]
     UnsupportedHl7Edition {
         /// Source configuration layer.
