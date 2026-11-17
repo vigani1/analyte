@@ -33,7 +33,7 @@ pub(crate) fn deadline() -> std::time::Instant {
 /// Reports directory, migration, integrity or worker errors.
 pub async fn open_system_store(
     program: &installation::config::Program,
-) -> Result<analyte_store::Handle, Error> {
+) -> Result<analyte_store::Handle, runtime::Error> {
     runtime::service::open_store(program, Box::new(runtime::space::Volume)).await
 }
 

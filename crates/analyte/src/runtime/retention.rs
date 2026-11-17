@@ -1,5 +1,6 @@
 //! Runs supervised, cancellable retention batches without machine I/O or clinical logging.
-use crate::{Error, installation::config::Program};
+use crate::installation::config::Program;
+use crate::runtime::Error;
 use analyte_model::Identifier;
 use analyte_store::Handle;
 use std::{
@@ -42,7 +43,7 @@ pub(crate) async fn run(
             let now = jiff::Timestamp::now().as_second();
             let batch_deadline = Instant::now()
                 .checked_add(Duration::from_millis(250))
-                .ok_or_else(|| crate::invalid("retention deadline overflow"))?;
+                .ok_or_else(|| Error::RetentionDeadlineOverflow)?;
             let outcome = store
                 .request(crate::deadline(), move |store| {
                     store.purge_batch(&machine, days, after, now, batch_deadline)
@@ -102,6 +103,7 @@ pub(crate) async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     struct Space;
     impl analyte_store::FreeSpace for Space {
         fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
