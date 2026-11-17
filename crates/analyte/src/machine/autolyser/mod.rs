@@ -55,7 +55,7 @@ impl ConnectionState {
             response: ms(policy.response_ms),
             inter_byte: ms(policy.interbyte_ms),
             storage: ms(policy.storage_ms),
-            max_bytes: settings.frame_limit(),
+            max_bytes: settings.settings().frame_limit(),
             controls: policy.controls,
             recovery: if policy.recover_last_on_poll {
                 Recovery::LastOnPoll

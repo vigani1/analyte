@@ -35,7 +35,10 @@ pub(super) fn read(
 pub(crate) fn limits(settings: &analyte_config::PoctStack) -> analyte_poct::Limits {
     let policy = &settings.policy();
     analyte_poct::Limits {
-        message_bytes: settings.frame_limit().min(settings.limits().bytes()),
+        message_bytes: settings
+            .settings()
+            .frame_limit()
+            .min(settings.settings().limits().bytes()),
         depth: policy.depth,
         elements: policy.elements,
         attribute_bytes: policy.attribute_bytes,

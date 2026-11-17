@@ -54,11 +54,16 @@ struct ConnectionState {
 
 impl ConnectionState {
     fn open(settings: &analyte_config::Hl7Stack) -> Result<Self, Error> {
-        let mut options = settings.syntax().options();
-        options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit());
+        let mut options = settings.settings().syntax().options();
+        options.limits.message_bytes = options
+            .limits
+            .message_bytes
+            .min(settings.settings().frame_limit());
         let config = Config::new(
             options,
-            Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
+            Duration::from_millis(u64::from(
+                settings.settings().timeouts().receive_timeout_ms(),
+            )),
             1,
         )?;
         let mut dialog = Dialog::new(config, 0);
@@ -67,7 +72,6 @@ impl ConnectionState {
         let pending = BTreeMap::new();
         let enabled = settings
             .orders()
-            .as_ref()
             .is_some_and(|o| o.query().is_some() || o.send().is_some());
         let queries = if enabled {
             Some(crate::orders::hl7::Connection::new(options)?)
@@ -75,7 +79,7 @@ impl ConnectionState {
             None
         };
         if enabled {
-            dialog.enable_orders(settings.syntax().edition().into())?;
+            dialog.enable_orders(settings.settings().syntax().edition().into())?;
         }
         let input_evidence = connection_input::Custody::default();
         let write_error = None;

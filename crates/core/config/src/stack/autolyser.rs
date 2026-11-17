@@ -22,16 +22,8 @@ pub struct AutolyserOrders {
 /// Autolyser stack with its required installed policy.
 #[derive(Debug, Clone)]
 pub struct AutolyserStack {
-    /// Supported connection settings.
-    pub(super) transport: StreamTransport,
-    /// Maximum framed payload bytes.
-    pub(super) frame_limit: usize,
-    /// Host receive and send deadlines.
-    pub(super) timeouts: DialogTimeouts,
-    /// Syntax resource ceilings.
-    pub(super) limits: SyntaxLimits,
-    /// Required exact test and unit translations.
-    pub(super) codes: CodeTables,
+    /// Shared link, resource and interpretation settings.
+    pub(super) settings: super::StackSettings<StreamTransport, SyntaxLimits, CodeTables>,
     /// Required installed protocol policy.
     pub(super) policy: Autolyser,
     /// Explicit outbound capability; omission disables it.
@@ -62,31 +54,6 @@ impl AutolyserOrders {
 }
 
 impl AutolyserStack {
-    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
-    #[must_use]
-    pub fn transport(&self) -> &StreamTransport {
-        &self.transport
-    }
-    /// Maximum retained frame size before framing refuses more bytes.
-    #[must_use]
-    pub fn frame_limit(&self) -> usize {
-        self.frame_limit
-    }
-    /// Bounded protocol waits used by the connection state machine.
-    #[must_use]
-    pub fn timeouts(&self) -> &DialogTimeouts {
-        &self.timeouts
-    }
-    /// Size and count ceilings applied before parsing untrusted records.
-    #[must_use]
-    pub fn limits(&self) -> &SyntaxLimits {
-        &self.limits
-    }
-    /// Explicit instrument code mappings used during interpretation.
-    #[must_use]
-    pub fn codes(&self) -> &CodeTables {
-        &self.codes
-    }
     /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
     pub fn policy(&self) -> &Autolyser {
@@ -94,8 +61,8 @@ impl AutolyserStack {
     }
     /// Validated order policy used before encoding commands.
     #[must_use]
-    pub fn orders(&self) -> &Option<AutolyserOrders> {
-        &self.orders
+    pub fn orders(&self) -> Option<&AutolyserOrders> {
+        self.orders.as_ref()
     }
 }
 
@@ -105,11 +72,13 @@ pub(super) fn build(
     path: &str,
 ) -> Result<AutolyserStack, Error> {
     Ok(AutolyserStack {
-        transport: stream(&machine.transport, path)?,
-        frame_limit: machine.framing.limit,
-        timeouts,
-        limits: limits(&machine.syntax),
-        codes: code_tables(machine, path)?,
+        settings: super::StackSettings {
+            transport: stream(&machine.transport, path)?,
+            frame_limit: machine.framing.limit,
+            timeouts,
+            syntax: limits(&machine.syntax),
+            codes: code_tables(machine, path)?,
+        },
         policy: machine
             .autolyser
             .clone()
@@ -145,8 +114,14 @@ impl AutolyserStack {
     /// Returns whether this selected protocol permits unsolicited work.
     #[must_use]
     pub fn send_ahead(&self) -> bool {
-        self.orders()
-            .as_ref()
-            .is_some_and(AutolyserOrders::send_ahead)
+        self.orders().is_some_and(AutolyserOrders::send_ahead)
+    }
+}
+
+impl AutolyserStack {
+    /// Borrows the shared validated settings without changing protocol-specific types.
+    #[must_use]
+    pub fn settings(&self) -> &super::StackSettings<StreamTransport, SyntaxLimits, CodeTables> {
+        &self.settings
     }
 }

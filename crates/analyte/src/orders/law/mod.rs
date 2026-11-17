@@ -187,7 +187,6 @@ impl Connection {
         let cfg = super::settings::law(machine)?;
         let work = Arc::new(
             cfg.orders()
-                .as_ref()
                 .ok_or(Error::LawWorkLayoutAbsent)?
                 .work()
                 .clone(),

@@ -14,20 +14,20 @@ pub(crate) fn payload<'a>(config: &Validated, raw: &'a [u8]) -> Result<Cow<'a, [
         | Stack::Autolyser(_) => Ok(raw.into()),
         Stack::Astm(RecordTransport::Stream(s)) => Ok(analyte_framing::astm::decode(
             raw,
-            analyte_framing::astm::Limit::new(s.frame_limit())?,
+            analyte_framing::astm::Limit::new(s.settings().frame_limit())?,
             s.checksum_policy(),
             s.record_boundaries(),
-            s.syntax().limits().bytes(),
+            s.settings().syntax().limits().bytes(),
         )?
         .into()),
         Stack::Hl7(RecordTransport::Stream(s)) => Ok(analyte_framing::hl7::decode(
             raw,
-            analyte_framing::hl7::Limit::new(s.frame_limit())?,
+            analyte_framing::hl7::Limit::new(s.settings().frame_limit())?,
         )?
         .into()),
         Stack::Law(s) => Ok(analyte_framing::hl7::decode(
             raw,
-            analyte_framing::hl7::Limit::new(s.frame_limit())?,
+            analyte_framing::hl7::Limit::new(s.settings().frame_limit())?,
         )?
         .into()),
     }

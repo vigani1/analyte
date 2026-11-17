@@ -55,21 +55,27 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         store: &'a Handle,
     ) -> Result<Self, Error> {
         let timers = Timers {
-            establish: Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
-            frame: Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
-            receive: Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
+            establish: Duration::from_millis(u64::from(
+                settings.settings().timeouts().send_timeout_ms(),
+            )),
+            frame: Duration::from_millis(u64::from(
+                settings.settings().timeouts().send_timeout_ms(),
+            )),
+            receive: Duration::from_millis(u64::from(
+                settings.settings().timeouts().receive_timeout_ms(),
+            )),
             commit: super::custody::budget(machine.machine()),
             ..Timers::default()
         };
         let config = Config::new(
-            analyte_framing::astm::Limit::new(settings.frame_limit())?,
+            analyte_framing::astm::Limit::new(settings.settings().frame_limit())?,
             timers,
             match settings.contention_priority() {
                 analyte_config::Priority::Host => Role::Instrument,
                 analyte_config::Priority::Instrument => Role::Computer,
             },
-            settings.syntax().limits().bytes(),
-            settings.syntax().limits().records(),
+            settings.settings().syntax().limits().bytes(),
+            settings.settings().syntax().limits().records(),
             true,
         )?
         .with_record_boundaries(settings.record_boundaries())
@@ -236,6 +242,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 self.response_deadline = None;
             }
             let expected = settings
+                .settings()
                 .frame_limit()
                 .checked_add(self.machine.machine().snapshot.canonical().len())
                 .ok_or_else(|| Error::AdmissionSizeOverflow)?;
@@ -280,7 +287,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     .payload
                     .len()
                     .checked_add(record.len())
-                    .is_none_or(|n| n > settings.syntax().limits().bytes())
+                    .is_none_or(|n| n > settings.settings().syntax().limits().bytes())
                 {
                     return Err(Error::MessageBoundExceeded);
                 }
@@ -341,7 +348,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             .raw
             .len()
             .checked_add(bytes.len())
-            .is_none_or(|n| n > settings.syntax().limits().bytes())
+            .is_none_or(|n| n > settings.settings().syntax().limits().bytes())
         {
             return Err(Error::TransferWireByteBoundExceeded);
         }

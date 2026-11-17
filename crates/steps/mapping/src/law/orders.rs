@@ -20,12 +20,7 @@ impl Command {
         let peer = law.policy().peer().capabilities();
         Ok(Self {
             app: crate::orders::app_order(app)?,
-            settings: Arc::new(
-                law.orders()
-                    .as_ref()
-                    .ok_or(Error::LawMappingsAbsent)?
-                    .clone(),
-            ),
+            settings: Arc::new(law.orders().ok_or(Error::LawMappingsAbsent)?.clone()),
             priority: peer.instructions.priority,
             specimen: peer.content.specimen,
         })

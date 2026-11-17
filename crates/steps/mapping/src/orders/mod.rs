@@ -181,24 +181,20 @@ pub fn map_order(
     match stack {
         Stack::Astm(analyte_config::RecordTransport::Stream(s)) => crate::astm::map_order(
             order,
-            s.syntax().limits(),
-            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
+            s.settings().syntax().limits(),
+            s.orders().ok_or(OrderMappingError::Disabled)?,
         ),
         Stack::Astm(analyte_config::RecordTransport::Folder(s)) => crate::astm::map_order(
             order,
-            s.syntax().limits(),
-            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
+            s.settings().syntax().limits(),
+            s.orders().ok_or(OrderMappingError::Disabled)?,
         ),
-        Stack::Vidas(s) => crate::vidas::map_order(
-            order,
-            s,
-            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
-        ),
-        Stack::Autolyser(s) => crate::autolyser::map_order(
-            order,
-            s,
-            s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
-        ),
+        Stack::Vidas(s) => {
+            crate::vidas::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
+        }
+        Stack::Autolyser(s) => {
+            crate::autolyser::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
+        }
         Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
         | Stack::Law(_)

@@ -19,7 +19,7 @@ pub fn map(
 ) -> Result<Output, Error> {
     let evidence = map_evidence(message)?;
     let mut output = Output::default();
-    let Some(test) = map_test(machine.codes(), evidence.assay.as_str(), None) else {
+    let Some(test) = map_test(machine.settings().codes(), evidence.assay.as_str(), None) else {
         output.unmapped_test(
             Position {
                 record: 1,
@@ -40,7 +40,7 @@ pub fn map(
             applied: DilutionApplied::Unknown,
         });
     }
-    map_units(machine.codes(), &mut source)?;
+    map_units(machine.settings().codes(), &mut source)?;
     push_result(
         &mut output,
         map_result(
@@ -139,8 +139,8 @@ pub fn map_order(
     }
     if order.tests.is_empty()
         || order.tests.len() > 100
-        || order.tests.len() > machine.limits().records()
-        || order.tests.len() > machine.limits().repetitions()
+        || order.tests.len() > machine.settings().limits().records()
+        || order.tests.len() > machine.settings().limits().repetitions()
     {
         return Err(OrderMappingError::VidasTestCount);
     }
@@ -168,13 +168,13 @@ pub fn map_order(
             ],
             limit,
         )?;
-        if request.text().len() > machine.frame_limit() {
+        if request.text().len() > machine.settings().frame_limit() {
             return Err(OrderMappingError::VidasFrameLimit);
         }
         total_bytes = total_bytes
             .checked_add(request.text().len())
             .ok_or(OrderMappingError::VidasByteCountOverflow)?;
-        if total_bytes > machine.limits().bytes() {
+        if total_bytes > machine.settings().limits().bytes() {
             return Err(OrderMappingError::VidasMessageLimit);
         }
         requests.push(request);

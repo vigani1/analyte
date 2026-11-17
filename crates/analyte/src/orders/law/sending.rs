@@ -28,7 +28,7 @@ impl Connection {
         };
         let until = Instant::now()
             .checked_add(Duration::from_millis(u64::from(
-                cfg.timeouts().send_timeout_ms(),
+                cfg.settings().timeouts().send_timeout_ms(),
             )))
             .ok_or(Error::LawPreparationDeadlineOverflow)?;
         let cancels = super::super::reservation::cancellations(store, machine, until).await?;

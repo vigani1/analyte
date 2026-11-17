@@ -21,10 +21,10 @@ fn command(
 ) -> Result<Command, Error> {
     let (syntax, settings) = match machine.snapshot.effective().stack() {
         analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => {
-            (s.syntax(), s.orders())
+            (s.settings().syntax(), s.orders())
         }
         analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => {
-            (s.syntax(), s.orders())
+            (s.settings().syntax(), s.orders())
         }
         analyte_config::Stack::Astm(_)
         | analyte_config::Stack::Law(_)

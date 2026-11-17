@@ -65,7 +65,7 @@ impl Connection {
         .await?
         {
             let wait = crate::orders::settings::hl7(machine.machine())
-                .and_then(|orders| orders.send().as_ref())
+                .and_then(|orders| orders.send())
                 .ok_or(Error::Hl7SendSettingsMissing)?
                 .settings()
                 .response_ms;
@@ -215,7 +215,6 @@ impl Connection {
             crate::orders::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
         let query = settings
             .query()
-            .as_ref()
             .ok_or_else(|| Error::Hl7QueryPolicyMissing)?;
         let policy = &query.policy();
         let layout = &query.layout();
@@ -295,7 +294,6 @@ impl Connection {
             crate::orders::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
         let query = settings
             .query()
-            .as_ref()
             .ok_or_else(|| Error::Hl7QueryPolicyMissing)?;
         let layout = &query.layout();
         let mut answer = CacheAnswer::Unavailable;

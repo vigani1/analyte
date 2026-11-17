@@ -6,8 +6,8 @@ impl Stack {
     #[must_use]
     pub fn astm_orders(&self) -> Option<&AstmOrders> {
         match self {
-            Stack::Astm(RecordTransport::Stream(s)) => s.orders().as_ref(),
-            Stack::Astm(RecordTransport::Folder(s)) => s.orders().as_ref(),
+            Stack::Astm(RecordTransport::Stream(s)) => s.orders(),
+            Stack::Astm(RecordTransport::Folder(s)) => s.orders(),
             Stack::Hl7(RecordTransport::Stream(_))
             | Stack::Law(_)
             | Stack::Poct(_)
@@ -20,8 +20,8 @@ impl Stack {
     #[must_use]
     pub fn hl7_orders(&self) -> Option<&Hl7Orders> {
         match self {
-            Stack::Hl7(RecordTransport::Stream(s)) => s.orders().as_ref(),
-            Stack::Hl7(RecordTransport::Folder(s)) => s.orders().as_ref(),
+            Stack::Hl7(RecordTransport::Stream(s)) => s.orders(),
+            Stack::Hl7(RecordTransport::Folder(s)) => s.orders(),
             Stack::Astm(RecordTransport::Stream(_))
             | Stack::Law(_)
             | Stack::Poct(_)

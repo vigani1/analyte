@@ -32,8 +32,12 @@ pub(crate) async fn process(
     action: Option<Reprocess>,
 ) -> Result<Outcome, Error> {
     let profile = match machine.snapshot.effective().stack() {
-        Stack::Hl7(RecordTransport::Stream(s)) => Some(Profile::Hl7(s.syntax(), s.mappings())),
-        Stack::Hl7(RecordTransport::Folder(s)) => Some(Profile::Hl7(s.syntax(), s.mappings())),
+        Stack::Hl7(RecordTransport::Stream(s)) => {
+            Some(Profile::Hl7(s.settings().syntax(), s.settings().codes()))
+        }
+        Stack::Hl7(RecordTransport::Folder(s)) => {
+            Some(Profile::Hl7(s.settings().syntax(), s.settings().codes()))
+        }
         Stack::Law(s) => Some(Profile::Law(s)),
         Stack::Astm(_) | Stack::Poct(_) | Stack::Vidas(_) | Stack::Autolyser(_) => None,
     };

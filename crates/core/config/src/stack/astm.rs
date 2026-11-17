@@ -31,21 +31,13 @@ pub struct AstmOrders {
 /// LIS01/LIS02 settings; no independently selectable layer kinds.
 #[derive(Debug, Clone)]
 pub struct AstmStack {
-    /// Serial or TCP link.
-    pub(super) transport: StreamTransport,
-    /// Maximum frame bytes including overhead.
-    pub(super) frame_limit: usize,
+    /// Shared link, resource and interpretation settings.
+    pub(super) settings: super::StackSettings<StreamTransport, AstmSyntax, Mappings>,
     record_boundaries: analyte_framing::astm::RecordBoundaries,
     /// Required LIS01 checksum policy.
     pub(super) checksum_hex: ChecksumHex,
-    /// Host receive and send deadlines.
-    pub(super) timeouts: DialogTimeouts,
     /// Required simultaneous-ENQ policy.
     pub(super) contention_priority: Priority,
-    /// LIS02 settings.
-    pub(super) syntax: AstmSyntax,
-    /// Required field selectors and code tables.
-    pub(super) mappings: Mappings,
     /// Explicit outbound capability; omission disables it.
     pub(super) orders: Option<AstmOrders>,
 }
@@ -104,8 +96,8 @@ impl AstmOrders {
     }
     /// Host-query settings validated for this protocol.
     #[must_use]
-    pub fn query(&self) -> &Option<OrderQuery> {
-        &self.query
+    pub fn query(&self) -> Option<&OrderQuery> {
+        self.query.as_ref()
     }
     /// Work-list settings; absence does not authorize unsolicited orders.
     #[must_use]
@@ -120,16 +112,6 @@ impl AstmOrders {
 }
 
 impl AstmStack {
-    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
-    #[must_use]
-    pub fn transport(&self) -> &StreamTransport {
-        &self.transport
-    }
-    /// Maximum retained frame size before framing refuses more bytes.
-    #[must_use]
-    pub fn frame_limit(&self) -> usize {
-        self.frame_limit
-    }
     /// Returns the inbound record policy selected only by a validated departure.
     #[must_use]
     pub fn record_boundaries(&self) -> analyte_framing::astm::RecordBoundaries {
@@ -148,30 +130,15 @@ impl AstmStack {
     pub fn checksum_hex(&self) -> ChecksumHex {
         self.checksum_hex
     }
-    /// Bounded protocol waits used by the connection state machine.
-    #[must_use]
-    pub fn timeouts(&self) -> &DialogTimeouts {
-        &self.timeouts
-    }
     /// Side that wins simultaneous link establishment.
     #[must_use]
     pub fn contention_priority(&self) -> Priority {
         self.contention_priority
     }
-    /// Record grammar settings applied after framing.
-    #[must_use]
-    pub fn syntax(&self) -> &AstmSyntax {
-        &self.syntax
-    }
-    /// Explicit source-to-common-model mappings; unknown codes are not guessed.
-    #[must_use]
-    pub fn mappings(&self) -> &Mappings {
-        &self.mappings
-    }
     /// Validated order policy used before encoding commands.
     #[must_use]
-    pub fn orders(&self) -> &Option<AstmOrders> {
-        &self.orders
+    pub fn orders(&self) -> Option<&AstmOrders> {
+        self.orders.as_ref()
     }
 }
 
@@ -181,8 +148,16 @@ pub(super) fn build(
     path: &str,
 ) -> Result<AstmStack, Error> {
     Ok(AstmStack {
-        transport: stream(&machine.transport, path)?,
-        frame_limit: machine.framing.limit,
+        settings: super::StackSettings {
+            transport: stream(&machine.transport, path)?,
+            frame_limit: machine.framing.limit,
+            timeouts,
+            syntax: astm_syntax(&machine.syntax),
+            codes: machine
+                .mappings
+                .clone()
+                .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
+        },
         record_boundaries: if machine
             .deviations
             .iter()
@@ -192,7 +167,6 @@ pub(super) fn build(
         } else {
             analyte_framing::astm::RecordBoundaries::Separate
         },
-        timeouts,
         checksum_hex: machine.framing.checksum_hex.ok_or_else(|| {
             invalid(
                 path,
@@ -207,11 +181,6 @@ pub(super) fn build(
                 "LIS01 dialog requires contention priority",
             )
         })?,
-        syntax: astm_syntax(&machine.syntax),
-        mappings: machine
-            .mappings
-            .clone()
-            .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
         orders: machine
             .orders
             .as_ref()
@@ -224,6 +193,14 @@ impl AstmStack {
     /// Returns whether this selected protocol permits unsolicited work.
     #[must_use]
     pub fn send_ahead(&self) -> bool {
-        self.orders().as_ref().is_some_and(AstmOrders::send_ahead)
+        self.orders().is_some_and(AstmOrders::send_ahead)
+    }
+}
+
+impl AstmStack {
+    /// Borrows the shared validated settings without changing protocol-specific types.
+    #[must_use]
+    pub fn settings(&self) -> &super::StackSettings<StreamTransport, AstmSyntax, Mappings> {
+        &self.settings
     }
 }

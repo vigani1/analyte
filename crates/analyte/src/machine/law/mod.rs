@@ -94,7 +94,10 @@ impl<'a, 'm> Host<'a, 'm> {
         link: Link,
     ) -> Result<Self, Error> {
         let mut options = settings.options();
-        options.limits.message_bytes = options.limits.message_bytes.min(settings.frame_limit());
+        options.limits.message_bytes = options
+            .limits
+            .message_bytes
+            .min(settings.settings().frame_limit());
         Ok(Self {
             machine,
             settings,
@@ -105,8 +108,10 @@ impl<'a, 'm> Host<'a, 'm> {
             orders,
             dialog: Dialog::new(
                 options,
-                Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
-                Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
+                Duration::from_millis(u64::from(
+                    settings.settings().timeouts().receive_timeout_ms(),
+                )),
+                Duration::from_millis(u64::from(settings.settings().timeouts().send_timeout_ms())),
                 link,
             )?,
             clock: Instant::now(),

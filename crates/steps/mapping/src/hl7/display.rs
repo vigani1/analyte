@@ -15,11 +15,7 @@ pub fn map(
     orders: &Hl7Orders,
     limits: &SyntaxLimits,
 ) -> Result<Vec<Vec<u8>>, OrderMappingError> {
-    let layout = &orders
-        .query()
-        .as_ref()
-        .ok_or(OrderMappingError::Disabled)?
-        .layout();
+    let layout = &orders.query().ok_or(OrderMappingError::Disabled)?.layout();
     let settings = &orders.tables();
     let mut lines = Vec::new();
     for test in &order.tests {
@@ -38,9 +34,7 @@ pub fn map(
                 DsrLine::Position => order.position.as_ref().map_or("", |p| p.slot.as_str()),
                 DsrLine::PatientId => match &order.patient {
                     None => "",
-                    Some(patient)
-                        if orders.patient_namespace().as_ref() == Some(&patient.namespace) =>
-                    {
+                    Some(patient) if orders.patient_namespace() == Some(&patient.namespace) => {
                         patient.value.as_str()
                     }
                     Some(_) => return Err(OrderMappingError::PatientNamespace),

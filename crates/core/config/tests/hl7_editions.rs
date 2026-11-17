@@ -87,7 +87,7 @@ fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> 
         else {
             panic!("synthetic fixture must remain an HL7 stream stack");
         };
-        assert_eq!(stack.syntax().edition(), edition);
+        assert_eq!(stack.settings().syntax().edition(), edition);
         assert_eq!(Version::from(edition).as_str(), wire);
         assert!(
             config

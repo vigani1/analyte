@@ -58,18 +58,10 @@ pub struct Hl7Orders {
 /// Generic HL7 over MLLP/TCP.
 #[derive(Debug, Clone)]
 pub struct Hl7Stack {
-    /// TCP link.
-    pub(super) transport: TcpTransport,
-    /// Maximum MLLP payload bytes.
-    pub(super) frame_limit: usize,
-    /// Host receive and send deadlines.
-    pub(super) timeouts: DialogTimeouts,
+    /// Shared link, resource and interpretation settings.
+    pub(super) settings: super::StackSettings<TcpTransport, Hl7Syntax, Mappings>,
     /// Required acknowledgment promise.
     pub(super) acknowledgment: Responsibility,
-    /// Complete HL7 settings.
-    pub(super) syntax: Hl7Syntax,
-    /// Required field selectors and code tables.
-    pub(super) mappings: Mappings,
     /// Explicit outbound capability; omission disables it.
     pub(super) orders: Option<Hl7Orders>,
 }
@@ -200,8 +192,8 @@ impl Hl7SendOrders {
 impl Hl7Orders {
     /// Assigning system for patient identities from this connection.
     #[must_use]
-    pub fn patient_namespace(&self) -> &Option<Identifier> {
-        &self.patient_namespace
+    pub fn patient_namespace(&self) -> Option<&Identifier> {
+        self.patient_namespace.as_ref()
     }
     /// Configured code tables used without guessing unknown values.
     #[must_use]
@@ -210,51 +202,26 @@ impl Hl7Orders {
     }
     /// Host-query settings validated for this protocol.
     #[must_use]
-    pub fn query(&self) -> &Option<Hl7Query> {
-        &self.query
+    pub fn query(&self) -> Option<&Hl7Query> {
+        self.query.as_ref()
     }
     /// Validated outgoing command settings.
     #[must_use]
-    pub fn send(&self) -> &Option<Hl7SendOrders> {
-        &self.send
+    pub fn send(&self) -> Option<&Hl7SendOrders> {
+        self.send.as_ref()
     }
 }
 
 impl Hl7Stack {
-    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
-    #[must_use]
-    pub fn transport(&self) -> &TcpTransport {
-        &self.transport
-    }
-    /// Maximum retained frame size before framing refuses more bytes.
-    #[must_use]
-    pub fn frame_limit(&self) -> usize {
-        self.frame_limit
-    }
-    /// Bounded protocol waits used by the connection state machine.
-    #[must_use]
-    pub fn timeouts(&self) -> &DialogTimeouts {
-        &self.timeouts
-    }
     /// Acknowledgment responsibility promised only after durable custody.
     #[must_use]
     pub fn acknowledgment(&self) -> Responsibility {
         self.acknowledgment
     }
-    /// Record grammar settings applied after framing.
-    #[must_use]
-    pub fn syntax(&self) -> &Hl7Syntax {
-        &self.syntax
-    }
-    /// Explicit source-to-common-model mappings; unknown codes are not guessed.
-    #[must_use]
-    pub fn mappings(&self) -> &Mappings {
-        &self.mappings
-    }
     /// Validated order policy used before encoding commands.
     #[must_use]
-    pub fn orders(&self) -> &Option<Hl7Orders> {
-        &self.orders
+    pub fn orders(&self) -> Option<&Hl7Orders> {
+        self.orders.as_ref()
     }
 }
 
@@ -264,9 +231,16 @@ pub(super) fn build(
     path: &str,
 ) -> Result<Hl7Stack, Error> {
     Ok(Hl7Stack {
-        transport: tcp(&machine.transport, path)?,
-        frame_limit: machine.framing.limit,
-        timeouts,
+        settings: super::StackSettings {
+            transport: tcp(&machine.transport, path)?,
+            frame_limit: machine.framing.limit,
+            timeouts,
+            syntax: hl7_syntax(&machine.syntax, path)?,
+            codes: machine
+                .mappings
+                .clone()
+                .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
+        },
         acknowledgment: machine.dialog.acknowledgment.ok_or_else(|| {
             invalid(
                 path,
@@ -274,11 +248,6 @@ pub(super) fn build(
                 "MLLP dialog requires acknowledgment policy",
             )
         })?,
-        syntax: hl7_syntax(&machine.syntax, path)?,
-        mappings: machine
-            .mappings
-            .clone()
-            .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
         orders: machine
             .orders
             .as_ref()
@@ -291,8 +260,14 @@ impl Hl7Stack {
     /// Returns whether this selected protocol permits unsolicited work.
     #[must_use]
     pub fn send_ahead(&self) -> bool {
-        self.orders()
-            .as_ref()
-            .is_some_and(|orders| orders.send().is_some())
+        self.orders().is_some_and(|orders| orders.send().is_some())
+    }
+}
+
+impl Hl7Stack {
+    /// Borrows the shared validated settings without changing protocol-specific types.
+    #[must_use]
+    pub fn settings(&self) -> &super::StackSettings<TcpTransport, Hl7Syntax, Mappings> {
+        &self.settings
     }
 }

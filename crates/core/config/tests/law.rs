@@ -162,7 +162,6 @@ fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() ->
     assert!(
         law(&valid)?
             .orders()
-            .as_ref()
             .map(analyte_config::LawOrders::work)
             .is_some()
     );

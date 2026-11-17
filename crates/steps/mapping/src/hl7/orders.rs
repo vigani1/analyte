@@ -27,7 +27,6 @@ impl Command {
         let settings = settings.clone();
         if settings
             .send()
-            .as_ref()
             .is_some_and(|send| send.settings().require_patient_identification)
         {
             return Err(Error::Hl7PatientNameRequired);
@@ -42,7 +41,6 @@ impl Command {
         let group = app.fields().id.as_str().to_owned();
         let namespace = settings
             .send()
-            .as_ref()
             .ok_or(Error::Hl7SendSettingsAbsent)?
             .placer_namespace()
             .as_str();
@@ -76,11 +74,7 @@ impl Command {
         cancel: bool,
         response: analyte_hl7::Response<'_>,
     ) -> Result<OrderMessage, Error> {
-        let cfg = self
-            .settings
-            .send()
-            .as_ref()
-            .ok_or(Error::Hl7SendSettingsAbsent)?;
+        let cfg = self.settings.send().ok_or(Error::Hl7SendSettingsAbsent)?;
         let cfg = &cfg.settings();
         let header = self.map_header(cfg, response)?;
         if cancel {
@@ -130,7 +124,7 @@ impl Command {
         let subject = if cancel {
             order::Subject::Unspecified
         } else {
-            match (&self.settings.patient_namespace(), &self.app.patient) {
+            match (self.settings.patient_namespace(), &self.app.patient) {
                 (Some(namespace), Some(patient)) if *namespace == patient.namespace => {
                     order::Subject::Identifier {
                         identifier: patient.value.as_str().as_bytes(),

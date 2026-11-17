@@ -530,8 +530,8 @@ fn hl7_ch4_patient_requirement_and_orc_group_bound_return_typed_refusals() -> Te
             include_str!("../../../../docs/contract/vectors/order.json").replace("order-1", &id);
         let app = analyte_contract::decode(raw.as_bytes())?;
         let result = Hl7Command::new(
-            stack.syntax(),
-            stack.orders().as_ref().ok_or("orders")?,
+            stack.settings().syntax(),
+            stack.orders().ok_or("orders")?,
             &app,
             analyte_hl7::Options::default(),
         );
