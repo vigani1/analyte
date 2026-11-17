@@ -10,6 +10,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+# One definition of protected-evidence escaping (`analyte_model::quoted`).
+analyte-model.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 base64 = { workspace = true }
