@@ -32,7 +32,7 @@ fn command(
         | analyte_config::Stack::Vidas(_)
         | analyte_config::Stack::Autolyser(_) => return Err(Error::Hl7OrdersMissing),
     };
-    Ok(Command::new(
+    Ok(analyte_mapping::map_hl7_order(
         syntax,
         settings.as_ref().ok_or(Error::Hl7OrdersMissing)?,
         app,

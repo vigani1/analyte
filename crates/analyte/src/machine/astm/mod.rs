@@ -1,5 +1,6 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
+use super::driver::{self, Context, Effects, Flow};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
@@ -20,11 +21,19 @@ pub(super) async fn session(
     settings: &analyte_config::AstmStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
-    mut stop: watch::Receiver<bool>,
+    stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let mut state = ConnectionState::open(machine, settings, store)?;
-    let result = state.receive_loop(conn, &mut stop).await;
-    state.close(result).await
+    driver::run(
+        || ConnectionState::open(machine, settings, store),
+        Context {
+            machine,
+            settings,
+            store,
+            conn,
+            stop,
+        },
+    )
+    .await
 }
 
 struct ConnectionState<'a, 'm> {
@@ -103,55 +112,6 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             order_cursor: String::new(),
             next_order_poll: Instant::now(),
         })
-    }
-    async fn receive_loop(
-        &mut self,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-    ) -> Result<(), Error> {
-        loop {
-            let event = tokio::select! {
-                biased;
-                () = super::stopping(stop) => break,
-                () = std::future::ready(()), if self.response.is_some() && self.dialog.next_deadline().is_none() => None,
-                () = tokio::time::sleep(self.dialog.next_deadline().map_or(Duration::from_secs(1), |d: Duration| d.saturating_sub(self.start.elapsed()))) => None,
-                event = connection_input::receive(conn) => match event {
-                    Ok(event) => Some(event),
-                    Err(analyte_transport::Error::Deadline(_)) => None,
-                    Err(error) => return Err(error.into()),
-                },
-                answer = async {
-                    match self.pending.as_mut() {
-                        Some(query) => query.finish(self.machine.machine()).await,
-                        None => std::future::pending().await,
-                    }
-                }, if self.pending.is_some() => {
-                    self.response_deadline = self.pending.as_ref().map(Pending::deadline);
-                    self.pending = None;
-                    self.response = answer?;
-                    None
-                },
-            };
-            let bytes = match event {
-                Some(Input::Opened { session }) => {
-                    tracing::info!(
-                        machine = self.machine.machine().id.as_str(),
-                        session,
-                        "ASTM connection opened"
-                    );
-                    self.dialog =
-                        Dialog::new(self.config.clone(), Epoch(uuid::Uuid::now_v7().as_u128()));
-                    Vec::new()
-                }
-                Some(Input::Bytes { bytes }) => bytes,
-                Some(Input::Closed(_)) => break,
-                Some(Input::Failed(_) | Input::RecordingFailed(_)) | Some(Input::Tick) | None => {
-                    Vec::new()
-                }
-            };
-            self.receive_bytes(bytes, conn, stop).await?;
-        }
-        Ok(())
     }
     async fn receive_bytes(
         &mut self,
@@ -448,11 +408,69 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
 
         Ok(())
     }
-    async fn close(&mut self, mut result: Result<(), Error>) -> Result<(), Error> {
+}
+
+impl Effects for ConnectionState<'_, '_> {
+    type Settings = analyte_config::AstmStack;
+    type Error = Error;
+    fn wait(&self) -> Result<Option<Duration>, Error> {
+        if self.response.is_some() && self.dialog.next_deadline().is_none() {
+            return Ok(Some(Duration::ZERO));
+        }
+        Ok(Some(
+            self.dialog
+                .next_deadline()
+                .map_or(Duration::from_secs(1), |deadline| {
+                    deadline.saturating_sub(self.start.elapsed())
+                }),
+        ))
+    }
+    async fn background(
+        &mut self,
+        _machine: &intake::Connection<'_>,
+        _store: &Handle,
+    ) -> Result<(), Error> {
+        let answer = match self.pending.as_mut() {
+            Some(query) => query.finish(self.machine.machine()).await,
+            None => std::future::pending().await,
+        };
+        self.response_deadline = self.pending.as_ref().map(Pending::deadline);
+        self.pending = None;
+        self.response = answer?;
+        Ok(())
+    }
+    async fn input(
+        &mut self,
+        host: &mut Context<'_, '_, Self::Settings>,
+        input: Input,
+    ) -> Result<Flow, Error> {
+        let bytes = match input {
+            Input::Opened { session } => {
+                tracing::info!(
+                    machine = self.machine.machine().id.as_str(),
+                    session,
+                    "ASTM connection opened"
+                );
+                self.dialog =
+                    Dialog::new(self.config.clone(), Epoch(uuid::Uuid::now_v7().as_u128()));
+                Vec::new()
+            }
+            Input::Bytes { bytes } => bytes,
+            Input::Closed(_) => return Ok(Flow::Stop),
+            Input::Failed(_) | Input::RecordingFailed(_) | Input::Tick => Vec::new(),
+        };
+        self.receive_bytes(bytes, host.conn, &mut host.stop).await?;
+        Ok(Flow::Continue)
+    }
+    async fn close(
+        &mut self,
+        _host: &mut Context<'_, '_, Self::Settings>,
+        result: &mut Result<(), Error>,
+    ) -> Result<(), Error> {
         // A failed NAK write can interrupt the action queue before CommitFailed.
         // Keep that transport failure and the original custody cause together.
         if let Some(error) = self.commit_failure.take() {
-            super::custody::retain_cleanup(&mut result, Err(Error::CommitRefused(error)));
+            super::custody::retain_cleanup(result, Err(Error::CommitRefused(error)));
         }
         // Disconnect drains the dialog-owned decoder on every exit, including failed
         // host effects. Transfer and order identities are reconciled below even if
@@ -468,14 +486,14 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                             ByteReason::AstmFrame(&error),
                         )
                         .await;
-                        super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
+                        super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
                     }
                 }
             }
-            Err(error) => super::custody::retain_cleanup(&mut result, Err(error.into())),
+            Err(error) => super::custody::retain_cleanup(result, Err(error.into())),
         }
         let cleanup = self.input_evidence.retain(self.store, self.machine).await;
-        super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
+        super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         for order in self.active_orders.drain(..) {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,
@@ -483,14 +501,14 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 "connection-ended-before-transfer-confirmation",
             )
             .await;
-            super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
+            super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         }
         if let Some(transfer) = self.transfer.take() {
             let cleanup = finish_incomplete(self.store, transfer).await;
-            super::custody::retain_cleanup(&mut result, cleanup);
+            super::custody::retain_cleanup(result, cleanup);
         }
 
-        result
+        Ok(())
     }
 }
 

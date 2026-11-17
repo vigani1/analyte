@@ -13,53 +13,53 @@ pub struct Command {
     app: crate::orders::AppOrder,
     group: String,
 }
-impl Command {
-    /// Captures validated outgoing mappings and the app's exact group identity.
-    /// # Errors
-    /// Preserves disabled capability, patient requirements and group-length refusals.
-    pub fn new(
-        syntax: &analyte_config::Hl7Syntax,
-        settings: &analyte_config::Hl7Orders,
-        app: &analyte_contract::Order,
-        options: Options,
-    ) -> Result<Self, Error> {
-        let edition = syntax.edition();
-        let settings = settings.clone();
-        if settings
-            .send()
-            .is_some_and(|send| send.settings().require_patient_identification)
-        {
-            return Err(Error::Hl7PatientNameRequired);
-        }
-        let version: Version = edition.into();
-        if version.orm_patient_name_required()
-            && app.fields().patient.is_some()
-            && app.fields().state == analyte_contract::document::OrderState::Requested
-        {
-            return Err(Error::Hl7PatientNameRequired);
-        }
-        let group = app.fields().id.as_str().to_owned();
-        let namespace = settings
-            .send()
-            .ok_or(Error::Hl7SendSettingsAbsent)?
-            .placer_namespace()
-            .as_str();
-        if group
-            .len()
-            .checked_add(namespace.len())
-            .and_then(|n| n.checked_add(1))
-            .is_none_or(|n| n > order::EI_MAX_BYTES)
-        {
-            return Err(Error::Hl7GroupIdTooLong);
-        }
-        Ok(Self {
-            settings,
-            version,
-            options,
-            app: crate::orders::app_order(app)?,
-            group,
-        })
+/// Captures validated outgoing mappings and the app's exact group identity.
+/// # Errors
+/// Preserves disabled capability, patient requirements and group-length refusals.
+pub fn map_order(
+    syntax: &analyte_config::Hl7Syntax,
+    settings: &analyte_config::Hl7Orders,
+    app: &analyte_contract::Order,
+    options: Options,
+) -> Result<Command, Error> {
+    let edition = syntax.edition();
+    let settings = settings.clone();
+    if settings
+        .send()
+        .is_some_and(|send| send.settings().require_patient_identification)
+    {
+        return Err(Error::Hl7PatientNameRequired);
     }
+    let version: Version = edition.into();
+    if version.orm_patient_name_required()
+        && app.fields().patient.is_some()
+        && app.fields().state == analyte_contract::document::OrderState::Requested
+    {
+        return Err(Error::Hl7PatientNameRequired);
+    }
+    let group = app.fields().id.as_str().to_owned();
+    let namespace = settings
+        .send()
+        .ok_or(Error::Hl7SendSettingsAbsent)?
+        .placer_namespace()
+        .as_str();
+    if group
+        .len()
+        .checked_add(namespace.len())
+        .and_then(|n| n.checked_add(1))
+        .is_none_or(|n| n > order::EI_MAX_BYTES)
+    {
+        return Err(Error::Hl7GroupIdTooLong);
+    }
+    Ok(Command {
+        settings,
+        version,
+        options,
+        app: crate::orders::app_order(app)?,
+        group,
+    })
+}
+impl Command {
     /// Requested app tests for atomic per-item reservation; no wire lookup occurs here.
     #[must_use]
     pub fn tests(&self) -> &[analyte_model::NamespacedId] {

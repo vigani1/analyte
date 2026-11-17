@@ -4,7 +4,7 @@ use crate::{Error, Input, Output};
 
 mod orders;
 mod status;
-pub use orders::{Command, address, map_order};
+pub use orders::{Command, address, map_order, map_work};
 pub use status::{AvailabilityEstimate, StatusNotice};
 /// Maps atomically validated LAB-29 through the shared field mapper and translations.
 /// AWOS identity takes precedence; unsolicited work needs an explicit analyzer identity.

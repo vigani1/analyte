@@ -45,6 +45,12 @@ impl Decoder {
         }
     }
 
+    /// Returns exact pending bytes when the owning dialog stops or rejects input.
+    pub fn take_pending(&mut self) -> Vec<u8> {
+        self.reset();
+        std::mem::take(&mut self.stream)
+    }
+
     /// Starts the next root after the host consumes the previous message.
     pub fn reset(&mut self) {
         self.cursor = 0;
@@ -145,6 +151,9 @@ impl crate::Decode for Decoder {
             return Err(Error::Limit);
         }
         self.stream.push(byte);
+        if byte != b'>' {
+            return Ok(None);
+        }
         let raw = std::mem::take(&mut self.stream);
         let result = self.scan(&raw);
         match result {

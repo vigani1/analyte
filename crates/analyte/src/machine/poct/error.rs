@@ -4,9 +4,6 @@ pub(crate) enum Error {
     /// POCT backpressure violated.
     #[error("POCT backpressure violated")]
     BackpressureViolated,
-    /// POCT framing length.
-    #[error("POCT framing length")]
-    FramingLength,
     /// POCT message limit exceeded.
     #[error("POCT message limit exceeded")]
     MessageLimitExceeded,

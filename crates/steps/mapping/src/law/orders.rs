@@ -9,22 +9,22 @@ pub struct Command {
     priority: bool,
     specimen: bool,
 }
+/// Captures LAW mappings and the peer's explicitly configured capabilities.
+/// # Errors
+/// Preserves disabled LAW order capability errors.
+pub fn map_order(
+    law: &analyte_config::LawStack,
+    app: &analyte_contract::Order,
+) -> Result<Command, Error> {
+    let peer = law.policy().peer().capabilities();
+    Ok(Command {
+        app: crate::orders::app_order(app)?,
+        settings: Arc::new(law.orders().ok_or(Error::LawMappingsAbsent)?.clone()),
+        priority: peer.instructions.priority,
+        specimen: peer.content.specimen,
+    })
+}
 impl Command {
-    /// Captures LAW mappings and the peer's explicitly configured capabilities.
-    /// # Errors
-    /// Preserves disabled LAW order capability errors.
-    pub fn new(
-        law: &analyte_config::LawStack,
-        app: &analyte_contract::Order,
-    ) -> Result<Self, Error> {
-        let peer = law.policy().peer().capabilities();
-        Ok(Self {
-            app: crate::orders::app_order(app)?,
-            settings: Arc::new(law.orders().ok_or(Error::LawMappingsAbsent)?.clone()),
-            priority: peer.instructions.priority,
-            specimen: peer.content.specimen,
-        })
-    }
     /// Exact app tests for the host's atomic AWOS reservation.
     #[must_use]
     pub fn tests(&self) -> &[analyte_model::NamespacedId] {
@@ -56,7 +56,7 @@ fn validate_field(value: &str) -> Result<&str, Error> {
 /// Maps every reserved AWOS using explicit specimen, test and priority translations.
 /// # Errors
 /// Preserves unmapped-code, repertoire, cardinality and LAW-profile failures.
-pub fn map_order(
+pub fn map_work(
     commands: &[(&Command, &[crate::orders::OutboundItem<'_>])],
     action: law::WorkAction,
     options: Options,
