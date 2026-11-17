@@ -58,7 +58,7 @@ pub(crate) async fn stall(
     if program.hooks.stall_store_on_shutdown {
         // Child-process tests emulate a stuck OS flush; the watchdog owns exit.
         store
-            .request::<(), analyte_store::Error>(deadline()?, |_| {
+            .request::<(), analyte_store::WorkerError>(deadline()?, |_| {
                 loop {
                     std::thread::park();
                 }

@@ -66,10 +66,12 @@ mod tests {
                 "write all"
             )))
         ));
-        let store = Shared::from(analyte_store::StorageError::Capacity);
+        let store = Shared::from(analyte_store::IntakeError::from(
+            analyte_store::StorageError::Capacity,
+        ));
         assert!(matches!(
             store,
-            Shared::Evidence(Evidence::Store(analyte_store::Error::Capacity))
+            Shared::Evidence(Evidence::Store(analyte_store::IntakeError::Capacity))
         ));
     }
 }

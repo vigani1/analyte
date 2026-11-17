@@ -2,6 +2,9 @@
 /// Failures owned by runtime workers and protected-store startup.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// The runtime cannot safely continue the requested operation.
     #[error(
         "SCM dispatcher unavailable; use analyte run instead outside the Service Control Manager"
@@ -77,12 +80,33 @@ pub enum Error {
     /// Preserves the original runtime dependency failure.
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// Preserves the Maintenance store boundary.
+    #[error(transparent)]
+    Maintenance(#[from] analyte_store::MaintenanceError),
+    /// Preserves the Evidence store boundary.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
+    /// Preserves the Delivery store boundary.
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    /// Preserves the Worker store boundary.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    /// Preserves the `WorkerStart` store boundary.
+    #[error(transparent)]
+    WorkerStart(#[from] analyte_store::WorkerStartError),
+    /// Startup LAW recovery combined retained evidence with reconciliation.
+    #[error(transparent)]
+    LawRecovery(#[from] super::law_recovery::RecoveryError),
     /// Preserves the original runtime dependency failure.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
-    /// Preserves the original runtime dependency failure.
+    SinkDestinationError(#[from] analyte_sink::DestinationError),
+    /// Preserves the owning sink API boundary.
     #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
+    SinkDeliveryError(#[from] analyte_sink::DeliveryError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkPollError(#[from] analyte_sink::PollError),
     /// Preserves the original runtime dependency failure.
     #[error(transparent)]
     Secrets(#[from] crate::installation::secrets::SecretError),
@@ -107,5 +131,3 @@ pub enum Error {
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct DispatchCause(pub &'static str);
-
-crate::runtime::service::conversions::causes!(Error; store);

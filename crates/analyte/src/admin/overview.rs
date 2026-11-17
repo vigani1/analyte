@@ -48,8 +48,8 @@ async fn render(state: &Context) -> Result<Markup, Error> {
     let directory = state.directory.clone();
     let (paused, free) = state
         .store
-        .request::<_, analyte_store::Error>(until, move |store| {
-            Ok::<_, analyte_store::Error>((
+        .request::<_, crate::admin::error::CommandError>(until, move |store| {
+            Ok::<_, crate::admin::error::CommandError>((
                 store.restore_unreconciled()?,
                 fs4::available_space(&directory)?,
             ))
@@ -148,12 +148,14 @@ async fn render_uncertain_orders(
     loop {
         let page = state
             .store
-            .request::<_, analyte_store::Error>(until, move |store| {
-                Ok::<_, analyte_store::Error>(store.machine_orders(&MachineOrderFilter {
-                    after,
-                    machine: None,
-                    state: Some(OrderState::Uncertain),
-                })?)
+            .request::<_, crate::admin::error::CommandError>(until, move |store| {
+                Ok::<_, crate::admin::error::CommandError>(store.machine_orders(
+                    &MachineOrderFilter {
+                        after,
+                        machine: None,
+                        state: Some(OrderState::Uncertain),
+                    },
+                )?)
             })
             .await?;
         let Some(last) = page.last() else {
@@ -306,9 +308,9 @@ mod webhook_tests {
         )
         .await?;
         store
-            .request::<_, analyte_store::Error>(deadline()?, |s| {
-                let endpoint =
-                    analyte_model::Identifier::new("relay").map_err(analyte_store::Error::Text)?;
+            .request::<_, analyte_store::OperatorError>(deadline()?, |s| {
+                let endpoint = analyte_model::Identifier::new("relay")
+                    .map_err(analyte_store::OperatorError::Text)?;
                 s.register_alert_endpoint(&endpoint)?;
                 s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,
@@ -321,8 +323,8 @@ mod webhook_tests {
                 s.prepare_alert_event(&endpoint, 100, 60, 1)?;
                 let event = s
                     .claim_alert_attempt(&endpoint, 100, 1, 5, 10)?
-                    .ok_or(analyte_store::Error::Corruption)?;
-                Ok(s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)?)
+                    .ok_or(analyte_store::OperatorError::Corruption)?;
+                s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)
             })
             .await?;
         let mut html = Markup::new();

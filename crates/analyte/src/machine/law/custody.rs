@@ -1,5 +1,5 @@
 //! Prepares immutable LAW work references; the store admits execution inside its transaction.
-use crate::installation::config::Machine;
+use crate::{deadline, installation::config::Machine};
 use analyte_hl7::law;
 use analyte_model::{Digest, Identifier};
 use analyte_store::Handle;
@@ -125,7 +125,8 @@ async fn retained_work(
     occurrence: u16,
 ) -> Result<Option<Work>, Error> {
     let placer = std::str::from_utf8(placer)?.to_owned();
-    let record = crate::orders::law::validation::retained(store, machine, &placer).await?;
+    let record =
+        crate::orders::law::validation::retained(store, machine, &placer, deadline()?).await?;
     let Some(record) = record else {
         return Ok(None);
     };
@@ -187,6 +188,9 @@ fn execution_status(status: &law::ExecutionStatus) -> analyte_model::AwosExecuti
 /// LAW context and retained-work failures; none authorize a positive acknowledgement.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// The source message lacks a valid custody header.
     #[error("LAW header")]
     Header,
@@ -201,7 +205,7 @@ pub enum Error {
     Validation(#[from] crate::orders::law::validation::ValidationError),
     /// Storage could not establish durable custody.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OrderError),
     /// Source text exceeds a model bound.
     #[error(transparent)]
     Text(#[from] analyte_model::TextError),
@@ -212,5 +216,3 @@ pub enum Error {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 }
-
-crate::runtime::service::conversions::causes!(Error; store);

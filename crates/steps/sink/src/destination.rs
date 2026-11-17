@@ -1,5 +1,5 @@
 //! Validates HTTP destinations, credentials and limits for delivery, order and health requests.
-use crate::Error;
+use crate::DestinationError;
 use analyte_contract::SigningSecret;
 use analyte_model::Identifier;
 use std::time::Duration;
@@ -17,8 +17,8 @@ pub struct Credentials {
 pub trait SecretsSource: Send + Sync {
     /// Resolves the current credentials without logging their contents.
     /// # Errors
-    /// Returns `Error::Secrets` when the named secret is unavailable.
-    fn credentials(&self, name: &Identifier) -> Result<Credentials, Error>;
+    /// Returns `DestinationError::Secrets` when the named secret is unavailable.
+    fn credentials(&self, name: &Identifier) -> Result<Credentials, DestinationError>;
 }
 
 /// Explicit operational bounds, validated by Destination construction.
@@ -63,8 +63,8 @@ impl Destination {
         base: &str,
         secrets: Identifier,
         limits: Limits,
-    ) -> Result<Self, Error> {
-        let base = analyte_config::HttpsUrl::parse(base).map_err(Error::UrlPolicy)?;
+    ) -> Result<Self, DestinationError> {
+        let base = analyte_config::HttpsUrl::parse(base).map_err(DestinationError::UrlPolicy)?;
         Self::from_url(id, &base, secrets, limits)
     }
 
@@ -76,7 +76,7 @@ impl Destination {
         base: &analyte_config::HttpsUrl,
         secrets: Identifier,
         limits: Limits,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, DestinationError> {
         Self::from_parsed(id, base.url().clone(), secrets, limits)
     }
 
@@ -85,7 +85,7 @@ impl Destination {
         mut base: reqwest::Url,
         secrets: Identifier,
         limits: Limits,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, DestinationError> {
         if limits.request_timeout.is_zero()
             || limits.request_timeout > Duration::from_secs(300)
             || limits.store_timeout.is_zero()
@@ -99,7 +99,7 @@ impl Destination {
             || !(1..=100).contains(&limits.page_size)
             || limits.max_pages == 0
         {
-            return Err(Error::Configuration);
+            return Err(DestinationError::Configuration);
         }
         if !base.path().ends_with('/') {
             base.set_path(&format!("{}/", base.path()));
@@ -114,13 +114,16 @@ impl Destination {
         })
     }
 
-    pub(crate) fn url(&self, path: &str) -> Result<reqwest::Url, Error> {
+    pub(crate) fn url(&self, path: &str) -> Result<reqwest::Url, DestinationError> {
         self.base
             .join(path)
-            .map_err(|cause| Error::UrlJoin(Box::new(cause)))
+            .map_err(|cause| DestinationError::UrlJoin(Box::new(cause)))
     }
 
-    pub(crate) fn credentials(&self, source: &dyn SecretsSource) -> Result<Credentials, Error> {
+    pub(crate) fn credentials(
+        &self,
+        source: &dyn SecretsSource,
+    ) -> Result<Credentials, DestinationError> {
         let credentials = source.credentials(&self.secrets)?;
         if credentials.api_key.is_empty()
             || credentials.api_key.len() > 4096
@@ -130,7 +133,7 @@ impl Destination {
             || reqwest::header::HeaderValue::from_str(&format!("Bearer {}", credentials.api_key))
                 .is_err()
         {
-            return Err(Error::Secrets);
+            return Err(DestinationError::Secrets);
         }
         Ok(credentials)
     }
@@ -150,15 +153,21 @@ impl Destination {
         store: &analyte_store::Handle,
         sample: &analyte_model::SampleId,
         now: i64,
-    ) -> Result<analyte_store::Lookup, Error> {
+    ) -> Result<analyte_store::Lookup, analyte_store::OrderError> {
         let id = self.id.clone();
         let sample = sample.clone();
         let freshness = self.limits.freshness.as_secs();
-        Ok(store
-            .request(crate::deadline(self.limits.store_timeout)?, move |s| {
-                s.orders(&id, &sample, now, freshness)
-            })
-            .await?)
+        store
+            .request(
+                crate::deadline(
+                    self.limits.store_timeout,
+                    analyte_store::OrderError::Worker(
+                        analyte_store::WorkerError::AdmissionTimeout { cause: None },
+                    ),
+                )?,
+                move |s| s.orders(&id, &sample, now, freshness),
+            )
+            .await
     }
 
     /// Reads durable health and applies this destination's freshness policy.
@@ -168,13 +177,19 @@ impl Destination {
         &self,
         store: &analyte_store::Handle,
         now: i64,
-    ) -> Result<analyte_store::Health, Error> {
+    ) -> Result<analyte_store::Health, analyte_store::OperatorError> {
         let id = self.id.clone();
         let freshness = self.limits.freshness.as_secs();
         let health = store
-            .request(crate::deadline(self.limits.store_timeout)?, move |s| {
-                s.health(&id, now, freshness)
-            })
+            .request(
+                crate::deadline(
+                    self.limits.store_timeout,
+                    analyte_store::OperatorError::Worker(
+                        analyte_store::WorkerError::AdmissionTimeout { cause: None },
+                    ),
+                )?,
+                move |s| s.health(&id, now, freshness),
+            )
             .await?;
         Ok(health)
     }

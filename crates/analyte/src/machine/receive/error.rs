@@ -4,9 +4,21 @@ pub(crate) enum Error {
     /// A bounded synthetic gate stopped or could not resume the connection.
     #[error(transparent)]
     TestHook(#[from] crate::runtime::test_hooks::Error),
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// A durable store operation failed before its promised completion.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::IntakeError),
+    /// Order or poll lifecycle storage failed.
+    #[error(transparent)]
+    Order(#[from] analyte_store::OrderError),
+    /// Protected evidence lookup failed.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
+    /// Stored interpretations could not be reconciled.
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
     /// Receipt retention or interpretation failed at the intake boundary.
     #[error(transparent)]
     Intake(Box<crate::IntakeError>),
@@ -42,7 +54,7 @@ pub(crate) enum Error {
     IntakeWait(#[from] crate::machine::custody::StoreWaitError<crate::IntakeError>),
     /// A durable store request failed or exceeded its custody budget.
     #[error(transparent)]
-    StoreWait(#[from] crate::machine::custody::StoreWaitError<analyte_store::Error>),
+    StoreWait(#[from] crate::machine::custody::StoreWaitError<analyte_store::IntakeError>),
 }
 
 impl From<crate::IntakeError> for Error {
@@ -63,4 +75,4 @@ impl From<crate::machine::interpretation::ReadError> for Error {
     }
 }
 
-crate::runtime::service::conversions::causes!(Error; store);
+crate::runtime::service::conversions::causes!(Error; worker analyte_store::IntakeError);

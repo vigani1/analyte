@@ -58,7 +58,10 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
         Err(IntakeError::Conflict)
     ));
     assert_eq!(
-        store.receipt(metadata.id)?.ok_or(Error::Corruption)?.config,
+        store
+            .receipt(metadata.id)?
+            .ok_or(OperatorError::Corruption)?
+            .config,
         b"config"
     );
     Ok(())

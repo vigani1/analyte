@@ -24,8 +24,8 @@ pub(crate) fn limits() -> Limits {
     }
 }
 
-pub(crate) fn open(path: &Path) -> Result<Store, Error> {
-    Ok(Store::open(path, limits(), Box::new(Space(u64::MAX)))?)
+pub(crate) fn open(path: &Path) -> Result<Store, MaintenanceError> {
+    Store::open(path, limits(), Box::new(Space(u64::MAX)))
 }
 
 pub(crate) fn receipt(raw: &[u8]) -> Result<ReceiptMetadata, Box<dyn std::error::Error>> {
@@ -59,7 +59,7 @@ pub(crate) fn seed_delivery(
     receipt: ReceiptId,
     id: DeliveryId,
     ordering_key: &str,
-) -> Result<(), Error> {
+) -> Result<(), StorageError> {
     store.db.execute("INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES (?1,?2,1,'app',?3,x'001122',?4,1,'pending',0)",params![key(&id)?,key(&receipt)?,ordering_key,digest(&[0,17,34]).0.as_slice()])?;
     Ok(())
 }
@@ -139,7 +139,10 @@ pub(crate) fn revised_receipt(
         ReconcileInput::standard(&[correction], &[]),
         |_, _| Ok(Vec::new()),
     )?;
-    Ok(*commit.outcomes.first().ok_or(Error::Corruption)?)
+    Ok(*commit
+        .outcomes
+        .first()
+        .ok_or(ReconciliationError::Corruption)?)
 }
 
 /// Removes only empty post-v11 notification tables when constructing an older fixture.

@@ -85,7 +85,7 @@ pub(crate) async fn open_store_with_deadline(
     )
     .await?;
     let result = handle
-        .request::<_, analyte_store::Error>(until, move |store| {
+        .request::<_, analyte_store::MaintenanceError>(until, move |store| {
             store.configure_retention_key(key, finite)?;
             if finite {
                 store.retention_space_ready()?;
@@ -350,7 +350,7 @@ struct Draining {
     captures: Vec<Arc<machine::capture::Capture>>,
     alert_owners: JoinSet<Result<(), Error>>,
     admin_owners: JoinSet<Result<(), Error>>,
-    delivery_owners: JoinSet<Result<(), analyte_sink::Error>>,
+    delivery_owners: JoinSet<Result<(), DeliveryOwnerError>>,
     owners: JoinSet<()>,
     ready_to_close: Vec<watch::Receiver<bool>>,
     delivery_stop: watch::Sender<bool>,
@@ -462,15 +462,21 @@ async fn close_store(store: Arc<Handle>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Supervised owners combine exactly polling and app delivery boundaries.
+#[derive(Debug, thiserror::Error)]
+enum DeliveryOwnerError {
+    #[error(transparent)]
+    Poll(#[from] analyte_sink::PollError),
+    #[error(transparent)]
+    Delivery(#[from] analyte_sink::DeliveryError),
+}
+
 fn start_delivery(
     destinations: Vec<analyte_sink::Destination>,
     store: &Arc<Handle>,
     secrets: &Arc<crate::installation::secrets::Environment>,
     watchdog: &crate::runtime::shutdown::Watchdog,
-) -> (
-    watch::Sender<bool>,
-    JoinSet<Result<(), analyte_sink::Error>>,
-) {
+) -> (watch::Sender<bool>, JoinSet<Result<(), DeliveryOwnerError>>) {
     let (delivery_stop, delivery_stopped) = watch::channel(false);
     let mut delivery_owners = JoinSet::new();
     for destination in &destinations {
@@ -484,6 +490,7 @@ fn start_delivery(
             analyte_sink::Poller::new(&store, &destination, secrets.as_ref())
                 .run(stop)
                 .await
+                .map_err(DeliveryOwnerError::from)
         });
     }
     for destination in destinations {
@@ -497,6 +504,7 @@ fn start_delivery(
             analyte_sink::Worker::for_destination(&store, &destination, secrets.as_ref())
                 .run_draining(stop, crate::runtime::delivery::SHUTDOWN_BUDGET)
                 .await
+                .map_err(DeliveryOwnerError::from)
         });
     }
     (delivery_stop, delivery_owners)
@@ -570,7 +578,7 @@ async fn supervise(
     stop: impl Future<Output = Result<(), Error>>,
     alert_owners: &mut JoinSet<Result<(), Error>>,
     admin_owners: &mut JoinSet<Result<(), Error>>,
-    delivery_owners: &mut JoinSet<Result<(), analyte_sink::Error>>,
+    delivery_owners: &mut JoinSet<Result<(), DeliveryOwnerError>>,
     owners: &mut JoinSet<()>,
 ) -> Result<(), Error> {
     tokio::pin!(stop);
@@ -707,6 +715,9 @@ async fn open_service_store(
 // The service's existing startup API exposes original dependency causes to recovery callers.
 fn admin_startup_error(error: crate::admin::Error) -> Error {
     match error {
+        crate::admin::Error::Raw(source) => Error::from(source),
+        crate::admin::Error::Reconciliation(source) => Error::from(source),
+        crate::admin::Error::Deadline(source) => Error::from(source),
         crate::admin::Error::Join(source) => Error::from(source),
         crate::admin::Error::MachineConfig(source) => Error::from(source),
         crate::admin::Error::Operator(source) => Error::from(*source),
@@ -721,7 +732,9 @@ fn admin_startup_error(error: crate::admin::Error) -> Error {
         crate::admin::Error::ParseInteger(source) => Error::from(source),
         crate::admin::Error::Json(source) => Error::from(source),
         crate::admin::Error::Token(source) => Error::from(source),
-        crate::admin::Error::Sink(source) => Error::from(source),
+        crate::admin::Error::SinkDestinationError(source) => Error::from(source),
+        crate::admin::Error::SinkDeliveryError(source) => Error::from(source),
+        crate::admin::Error::SinkPollError(source) => Error::from(source),
         crate::admin::Error::Io(source) => Error::from(source),
         crate::admin::Error::Secret(source) => Error::from(source),
         other @ (crate::admin::Error::AwosItemNotRetained

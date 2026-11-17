@@ -158,14 +158,14 @@ impl StoreGate {
         });
         (gate.clone(), StoreControl { gate, release })
     }
-    pub(crate) fn pause(&self) -> Result<(), analyte_store::Error> {
+    pub(crate) fn pause(&self) -> Result<(), Error> {
         if self.armed.swap(false, Ordering::AcqRel) {
             self.reached.notify_one();
             self.release
                 .lock()
-                .map_err(|_| analyte_store::Error::Corruption)?
+                .map_err(|_| Error::ProbePoisoned)?
                 .recv_timeout(std::time::Duration::from_secs(5))
-                .map_err(|_| analyte_store::Error::Timeout)?;
+                .map_err(|_| Error::Deadline)?;
         }
         Ok(())
     }

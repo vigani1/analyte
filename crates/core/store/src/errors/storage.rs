@@ -63,21 +63,3 @@ impl From<rusqlite::Error> for StorageError {
         Self::Sqlite(error)
     }
 }
-// Compatibility for boundaries still being migrated. No cause is discarded.
-impl From<StorageError> for crate::Error {
-    fn from(error: StorageError) -> Self {
-        match error {
-            StorageError::Worker(cause) => Self::Worker(cause),
-            StorageError::Capacity => Self::Capacity,
-            StorageError::LimitExceeded { what } => Self::LimitExceeded { what },
-            StorageError::Busy(cause) => Self::Busy(cause),
-            StorageError::Corruption(cause) => Self::StorageCorruption(cause),
-            StorageError::ConstraintViolation(cause) => Self::ConstraintViolation(cause),
-            StorageError::DiskFull(cause) => Self::DiskFull(cause),
-            StorageError::Sqlite(cause) => Self::Sqlite(cause),
-            StorageError::Io(cause) => Self::Io(cause),
-            StorageError::Json(cause) => Self::Json(cause),
-            StorageError::Text(cause) => Self::Text(cause),
-        }
-    }
-}

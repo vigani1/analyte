@@ -339,13 +339,12 @@ mod tests {
         let (entered, waiting) = tokio::sync::oneshot::channel();
         let (release, released) = std::sync::mpsc::channel();
         let owner = store.clone();
+        let until = deadline()?;
         let blocking = tokio::spawn(async move {
             owner
-                .request::<_, analyte_store::Error>(deadline()?, move |_| {
+                .request::<_, Error>(until, move |_| {
                     let _ = entered.send(());
-                    released
-                        .recv_timeout(Duration::from_secs(2))
-                        .map_err(|_| analyte_store::Error::Timeout)?;
+                    released.recv_timeout(Duration::from_secs(2))?;
                     Ok(())
                 })
                 .await
@@ -380,11 +379,9 @@ mod tests {
         let blocking = tokio::spawn(async move {
             let until = std::time::Instant::now() + Duration::from_secs(8);
             owner
-                .request::<_, analyte_store::Error>(until, move |_| {
+                .request::<_, Error>(until, move |_| {
                     let _ = entered.send(());
-                    released
-                        .recv_timeout(Duration::from_secs(8))
-                        .map_err(|_| analyte_store::Error::Timeout)?;
+                    released.recv_timeout(Duration::from_secs(8))?;
                     Ok(())
                 })
                 .await
@@ -401,8 +398,8 @@ mod tests {
             .err()
             .ok_or("queued read succeeded without store access")?;
         assert!(matches!(
-            error.downcast_ref::<analyte_store::Error>(),
-            Some(analyte_store::Error::Worker(
+            error,
+            crate::operator::Error::Store(analyte_store::OperatorError::Worker(
                 analyte_store::WorkerError::ResponseTimeout(_)
             ))
         ));

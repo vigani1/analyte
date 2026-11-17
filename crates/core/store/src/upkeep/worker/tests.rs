@@ -12,7 +12,7 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
     let id = runtime.block_on(async {
         let deadline = Instant::now()
             .checked_add(HANG_GUARD)
-            .ok_or(Error::Timeout)?;
+            .ok_or(MaintenanceError::DeadlineOverflow)?;
         let mut handle = Handle::start(
             path.clone(),
             limits(),
@@ -21,7 +21,7 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
             deadline,
         )
         .await?;
-        let metadata = receipt(b"raw").map_err(|_| Error::InvalidMaintenanceInput)?;
+        let metadata = receipt(b"raw")?;
         let id = metadata.id;
         handle
             .request(deadline, move |store| {
@@ -45,7 +45,7 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
             handle.request(deadline, move |store| store.raw(id)).await,
             Err(IntakeError::Worker(WorkerError::Closed))
         ));
-        Ok::<_, Error>(id)
+        Ok::<_, Box<dyn std::error::Error>>(id)
     })?;
     assert_eq!(open(&path)?.raw(id)?, Some(b"raw".to_vec()));
     Ok(())
@@ -61,7 +61,7 @@ fn plan11_worker_open_reports_newer_schema_specifically() -> TestResult {
         .build()?;
     let deadline = Instant::now()
         .checked_add(HANG_GUARD)
-        .ok_or(Error::Timeout)?;
+        .ok_or(MaintenanceError::DeadlineOverflow)?;
     let result = runtime.block_on(Handle::start(
         path,
         limits(),
@@ -100,7 +100,7 @@ fn mutation_rule7_worker_capacity_bounds_are_inclusive() -> TestResult {
                 assert!(matches!(result, Err(WorkerStartError::QueueCapacity { capacity: rejected }) if rejected == capacity));
             }
         }
-        Ok::<_, Error>(())
+        Ok::<_, Box<dyn std::error::Error>>(())
     })?;
     Ok(())
 }
@@ -141,7 +141,6 @@ fn mutation_rule7_worker_drop_joins_the_store_owner_before_returning() -> TestRe
 mod mutation_tests {
 
     use super::*;
-    use crate::Error;
     use crate::test_support::{HANG_GUARD, Space, TestResult, limits};
 
     #[test]
@@ -161,13 +160,18 @@ mod mutation_tests {
             .await?;
             handle.sender.take();
             let guard = Instant::now() + HANG_GUARD;
-            while !handle.thread.as_ref().ok_or(Error::Closed)?.is_finished() {
+            while !handle
+                .thread
+                .as_ref()
+                .ok_or(WorkerError::Closed)?
+                .is_finished()
+            {
                 assert!(Instant::now() < guard, "closed worker did not finish");
                 tokio::task::yield_now().await;
             }
             handle.shutdown(Instant::now()).await?;
             assert!(handle.thread.is_none());
-            Ok::<_, Error>(())
+            Ok::<_, Box<dyn std::error::Error>>(())
         })?;
         Ok(())
     }
@@ -251,10 +255,10 @@ fn rule7_shutdown_timeout_retains_owner_and_can_resume_after_notification() -> T
             Err(WorkerError::ShutdownTimeout(_))
         ));
         assert!(handle.thread.is_some());
-        release.send(()).map_err(|_| Error::Closed)?;
+        release.send(()).map_err(|_| WorkerError::Closed)?;
         handle.shutdown(Instant::now() + HANG_GUARD).await?;
         assert!(handle.thread.is_none());
-        Ok::<_, Error>(())
+        Ok::<_, Box<dyn std::error::Error>>(())
     })?;
     Ok(())
 }

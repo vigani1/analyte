@@ -1,4 +1,14 @@
 //! Tests sending behavior with synthetic fixtures.
+#[derive(Debug, thiserror::Error)]
+enum FixtureError {
+    #[error(transparent)]
+    Order(#[from] analyte_store::OrderError),
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+}
+
 use super::*;
 use crate::Error;
 use analyte_model::{Identifier, SampleId};
@@ -54,7 +64,7 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
     let completed = completed_key.clone();
     let interrupted = interrupted_key.clone();
     let (completed, interrupted) = store
-        .request::<_, analyte_store::Error>(deadline()?, move |store| {
+        .request::<_, FixtureError>(deadline()?, move |store| {
             store.order_page(&page)?;
             let completed = store
                 .reserve_send(
@@ -66,7 +76,7 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
                     },
                     analyte_store::ReserveOptions::default(),
                 )?
-                .map_err(|_| analyte_store::Error::Conflict)?;
+                .map_err(|_| analyte_store::OrderError::Conflict)?;
             let interrupted = store
                 .reserve_send(
                     &OrderReservation {
@@ -77,12 +87,12 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
                     },
                     analyte_store::ReserveOptions::default(),
                 )?
-                .map_err(|_| analyte_store::Error::Conflict)?;
+                .map_err(|_| analyte_store::OrderError::Conflict)?;
             assert!(
                 store.claim(101)?.is_none(),
                 "reservation must not enqueue an app event"
             );
-            Ok::<_, analyte_store::Error>((completed, interrupted))
+            Ok::<_, FixtureError>((completed, interrupted))
         })
         .await?;
     assert_eq!(completed.state, OrderState::Sending);
@@ -106,7 +116,7 @@ async fn assert_recovered_outcomes(
     interrupted_key: MachineOrderKey,
 ) -> Result<(), Error> {
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |store| {
+        .request::<_, FixtureError>(deadline()?, move |store| {
             let rows = store.machine_orders(&analyte_store::MachineOrderFilter {
                 after: 0,
                 machine: None,
@@ -114,10 +124,12 @@ async fn assert_recovered_outcomes(
             })?;
             assert_eq!(rows.len(), 2);
             assert_eq!(
-                rows.first().ok_or(analyte_store::Error::Corruption)?.state,
+                rows.first()
+                    .ok_or(analyte_store::OrderError::Corruption)?
+                    .state,
                 OrderState::Sent
             );
-            let interrupted = rows.last().ok_or(analyte_store::Error::Corruption)?;
+            let interrupted = rows.last().ok_or(analyte_store::OrderError::Corruption)?;
             assert_eq!(interrupted.state, OrderState::Uncertain);
             assert_eq!(interrupted.source_code.as_str(), "host-restart");
             for key in [completed_key, interrupted_key] {
@@ -144,7 +156,7 @@ async fn assert_recovered_outcomes(
                 )?;
             }
             assert_eq!(events.len(), 2, "exactly one app event per real outcome");
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     Ok(())

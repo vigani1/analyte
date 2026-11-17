@@ -100,14 +100,7 @@ impl driver::ByteEffects for Host<'_, '_> {
 }
 
 impl Effects for Host<'_, '_> {
-    type Error = Error;
-    const CUSTODY: driver::Custody = driver::Custody::Chunks;
-    fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
-        Ok(self
-            .dialog
-            .next_deadline()
-            .map(|deadline| deadline.saturating_sub(self.start.elapsed())))
-    }
+    driver::chunk_effects!(Error);
     async fn prepare(&mut self, _host: &mut Context<'_, '_>) -> Result<Flow, Error> {
         self.end_code = AutolyserEnd::InputFailed;
         Ok(Flow::Continue)

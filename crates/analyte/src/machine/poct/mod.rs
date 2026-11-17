@@ -78,14 +78,7 @@ impl driver::ByteEffects for Host<'_, '_> {
 }
 
 impl Effects for Host<'_, '_> {
-    type Error = Error;
-    const CUSTODY: driver::Custody = driver::Custody::Chunks;
-    fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
-        Ok(self
-            .dialog
-            .next_deadline()
-            .map(|deadline| deadline.saturating_sub(self.start.elapsed())))
-    }
+    driver::chunk_effects!(Error);
     async fn prepare(&mut self, _host: &mut Context<'_, '_>) -> Result<Flow, Error> {
         Ok(if self.dialog.next_deadline().is_some() {
             Flow::Continue
@@ -296,11 +289,11 @@ async fn store_message(
             // This fresh receipt has exactly one interpretation. POCT promises
             // readable custody even when mapped findings require operator review.
             let readable = store
-                .request::<_, analyte_store::Error>(crate::deadline()?, move |s| {
+                .request::<_, analyte_store::OperatorError>(crate::deadline()?, move |s| {
                     let evidence = s
                         .interpretation(id, 1)?
-                        .ok_or(analyte_store::Error::Corruption)?;
-                    Ok::<_, analyte_store::Error>(matches!(
+                        .ok_or(analyte_store::OperatorError::Corruption)?;
+                    Ok::<_, analyte_store::OperatorError>(matches!(
                         evidence.outcome,
                         analyte_store::Reading::Results(_)
                     ))

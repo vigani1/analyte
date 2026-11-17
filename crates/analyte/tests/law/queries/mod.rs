@@ -115,21 +115,21 @@ async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
     let loaded = program(path, url)?;
     let mut store = analyte::open_system_store(&loaded).await?;
     store
-        .request::<_, analyte_store::Error>(
+        .request::<_, analyte_store::StorageError>(
             std::time::Instant::now()
                 .checked_add(Duration::from_secs(5))
                 .ok_or("deadline")?,
             |store| {
-                Ok(store.audit(&analyte_store::Audit {
+                store.audit(&analyte_store::Audit {
                     actor: analyte_model::Identifier::new("operator")
-                        .map_err(analyte_store::Error::Text)?,
+                        .map_err(analyte_store::StorageError::Text)?,
                     action: analyte_model::Identifier::new("store-restore")
-                        .map_err(analyte_store::Error::Text)?,
+                        .map_err(analyte_store::StorageError::Text)?,
                     targets: Vec::new(),
                     time: jiff::Timestamp::now().as_second(),
                     reason: analyte_model::Reason::new("synthetic restore")
-                        .map_err(analyte_store::Error::Text)?,
-                })?)
+                        .map_err(analyte_store::StorageError::Text)?,
+                })
             },
         )
         .await?;

@@ -1,5 +1,5 @@
 //! Tests ADR 0015 durable provenance, contract-v1 parking and strict source retention.
-use super::tests::{Space, program};
+use super::tests::{FixtureError, Space, program};
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
@@ -35,16 +35,16 @@ async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Res
     )
     .await?;
     assert!(!intake::interpret(&store, machine, id).await?);
-    store.request::<_, analyte_store::Error>(deadline()?,move |s| {
+    store.request::<_, FixtureError>(deadline()?,move |s| {
         assert_eq!(s.raw(id)?.as_deref(),Some(raw.as_slice()));
         assert!(s.deliveries(0)?.is_empty());
-        let interpretation=s.interpretation(id,1)?.ok_or(analyte_store::Error::Corruption)?;
-        let ledger=interpretation.departures.ok_or(analyte_store::Error::Corruption)?;
+        let interpretation=s.interpretation(id,1)?.ok_or(FixtureError::Corruption)?;
+        let ledger=interpretation.departures.ok_or(FixtureError::Corruption)?;
         assert_eq!(ledger.enabled.as_slice().len(),1);
         assert_eq!(ledger.applied.as_slice().len(),1);
         assert_eq!(ledger.applied.as_slice().first().map(|e| e.meaning),Some(analyte_model::DepartureMeaning::FinalReportFromDocumentation));
         assert!(s.parked(0)?.iter().any(|row| row.details().is_ok_and(|e| e.reason.as_str().contains("departure-derived status requires a contract version that carries departure evidence"))));
-        Ok::<_, analyte_store::Error>(())
+        Ok::<_, FixtureError>(())
     }).await?;
     store.shutdown(deadline()?).await?;
     Ok(())
@@ -77,18 +77,14 @@ async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Resu
     .await?;
     assert!(!intake::interpret(&store, machine, id).await?);
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+        .request::<_, FixtureError>(deadline()?, move |s| {
             assert_eq!(s.raw(id)?.as_deref(), Some(raw.as_slice()));
-            let interpretation = s
-                .interpretation(id, 1)?
-                .ok_or(analyte_store::Error::Corruption)?;
+            let interpretation = s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?;
             assert!(matches!(
                 interpretation.outcome,
                 analyte_store::Reading::Failed(_)
             ));
-            let ledger = interpretation
-                .departures
-                .ok_or(analyte_store::Error::Corruption)?;
+            let ledger = interpretation.departures.ok_or(FixtureError::Corruption)?;
             assert_eq!(ledger.enabled.as_slice().len(), 1);
             assert_eq!(ledger.applied.as_slice().len(), 2);
             assert!(
@@ -99,7 +95,7 @@ async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Resu
                     .all(|entry| !entry.spans.as_slice().is_empty())
             );
             assert!(s.deliveries(0)?.is_empty());
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     store.shutdown(deadline()?).await?;
@@ -135,16 +131,12 @@ async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meani
     .await?;
     assert!(intake::interpret(&store, machine, id).await?);
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+        .request::<_, FixtureError>(deadline()?, move |s| {
             assert_eq!(s.raw(id)?.as_deref(), Some(raw.as_slice()));
-            let interpretation = s
-                .interpretation(id, 1)?
-                .ok_or(analyte_store::Error::Corruption)?;
-            let ledger = interpretation
-                .departures
-                .ok_or(analyte_store::Error::Corruption)?;
+            let interpretation = s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?;
+            let ledger = interpretation.departures.ok_or(FixtureError::Corruption)?;
             assert_eq!(ledger.applied.as_slice().len(), 5);
-            let claim = s.claim(1)?.ok_or(analyte_store::Error::Corruption)?;
+            let claim = s.claim(1)?.ok_or(FixtureError::Corruption)?;
             assert_eq!(claim.contract_version, 1);
             let wire: serde_json::Value = serde_json::from_slice(&claim.payload)?;
             assert_eq!(
@@ -155,7 +147,7 @@ async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meani
             assert!(
                 !String::from_utf8_lossy(&claim.payload).contains("astm_packed_records_in_frame")
             );
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     store.shutdown(deadline()?).await?;

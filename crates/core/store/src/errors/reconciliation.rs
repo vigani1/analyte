@@ -44,34 +44,3 @@ storage_boundary! {
         DigestKey(#[from] hmac::digest::InvalidLength),
     }
 }
-impl From<ReconciliationError> for crate::Error {
-    fn from(error: ReconciliationError) -> Self {
-        match error {
-            ReconciliationError::Worker(cause) => Self::Worker(cause),
-            ReconciliationError::Identity(cause) => Self::Identity(cause),
-            ReconciliationError::Receipt(cause) => cause.into(),
-            ReconciliationError::Work(cause) => cause.into(),
-            ReconciliationError::DigestKey(cause) => Self::DigestKey(cause),
-            ReconciliationError::StorageCorruption(cause) => Self::StorageCorruption(cause),
-            ReconciliationError::Capacity => Self::Capacity,
-            ReconciliationError::Corruption => Self::Corruption,
-            ReconciliationError::DiskFull(cause) => Self::DiskFull(cause),
-            ReconciliationError::LimitExceeded { what } => Self::LimitExceeded { what },
-            ReconciliationError::Busy(cause) => Self::Busy(cause),
-            ReconciliationError::ConstraintViolation(cause) => Self::ConstraintViolation(cause),
-            ReconciliationError::Text(cause) => Self::Text(cause),
-            ReconciliationError::Io(cause) => Self::Io(cause),
-            ReconciliationError::Sqlite(cause) => Self::Sqlite(cause),
-            ReconciliationError::Json(cause) => Self::Json(cause),
-            ReconciliationError::RevisionHistoryLimit => Self::RevisionHistoryLimit,
-            ReconciliationError::UnknownReceipt => Self::UnknownReceipt,
-            ReconciliationError::ReprocessParked => Self::ReprocessParked,
-            ReconciliationError::Conflict => Self::Conflict,
-            ReconciliationError::InvalidInterpretationInput => Self::InvalidInterpretationInput,
-            ReconciliationError::AuditMismatch => Self::AuditMismatch,
-            ReconciliationError::DeliveryBuild(cause) => Self::DeliveryBuild(cause),
-            ReconciliationError::LifecyclePolicyRequired => Self::LifecyclePolicyRequired,
-            ReconciliationError::ConflictEvidenceRequired => Self::ConflictEvidenceRequired,
-        }
-    }
-}

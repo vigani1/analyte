@@ -23,7 +23,7 @@ pub async fn reprocess(
     let id = action.receipt;
     let receipt = store
         .request(deadline()?, move |s| {
-            s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+            s.receipt(id)?.ok_or(intake::Error::UnknownReceipt)
         })
         .await?;
     if receipt.metadata.machine != *machine.id() {
@@ -84,10 +84,13 @@ mod tests;
 /// Failures reading retained receipt context, separate from a stored parked interpretation.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ReadError {
+    /// The host could not represent the storage request deadline.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Deadline(#[from] crate::DeadlineError),
+    #[error(transparent)]
+    Store(#[from] analyte_store::OperatorError),
     #[error(transparent)]
     Mapping(#[from] crate::reading::Error),
 }
 
-crate::runtime::service::conversions::causes!(ReadError; store);
+crate::runtime::service::conversions::causes!(ReadError; worker analyte_store::OperatorError);

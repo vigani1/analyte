@@ -11,14 +11,17 @@ pub(crate) async fn retained(
     store: &Handle,
     machine: &Machine,
     placer: &str,
-) -> Result<Option<analyte_store::MachineOrder>, analyte_store::Error> {
+    until: std::time::Instant,
+) -> Result<Option<analyte_store::MachineOrder>, analyte_store::OrderError> {
     let target = machine.id.clone();
     let lookup = placer.to_owned();
     store
-        .request(deadline()?, move |s| {
+        .request(until, move |s| {
             match s.machine_order_by_placer(&target, &lookup) {
-                Err(analyte_store::OrderError::Conflict) => Ok::<_, analyte_store::Error>(None),
-                other => Ok(other?),
+                Err(analyte_store::OrderError::Conflict) => {
+                    Ok::<_, analyte_store::OrderError>(None)
+                }
+                other => other,
             }
         })
         .await
@@ -35,7 +38,7 @@ pub(crate) async fn check(
             continue;
         };
         let placer = std::str::from_utf8(placer)?.to_owned();
-        let record = retained(store, machine, &placer).await?;
+        let record = retained(store, machine, &placer, deadline()?).await?;
         let unknown = returned.unknown();
         let Some(record) = record else {
             return Ok(Some(unknown));
@@ -74,7 +77,10 @@ pub enum ValidationError {
     ObrOccurrenceOverflow,
     /// Preserves the original comparison failure.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OrderError),
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// Preserves the original comparison failure.
     #[error(transparent)]
     Encoding(#[from] std::str::Utf8Error),
@@ -82,5 +88,3 @@ pub enum ValidationError {
     #[error(transparent)]
     Hl7(#[from] analyte_hl7::Error),
 }
-
-crate::runtime::service::conversions::causes!(ValidationError; store);

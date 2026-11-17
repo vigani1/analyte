@@ -24,7 +24,7 @@ impl MachineHooks {
 }
 pub(crate) struct Pages;
 impl Pages {
-    pub(crate) fn pause(&self) -> Result<(), analyte_store::Error> {
+    pub(crate) fn pause(&self) -> Result<(), Error> {
         Ok(())
     }
 }

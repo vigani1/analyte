@@ -88,7 +88,7 @@ async fn next_cancel(
         .await
         {
             Ok(record) => return Ok(Some(Exchange { record, message })),
-            Err(analyte_store::Error::Conflict) => {
+            Err(analyte_store::OrderError::Conflict) => {
                 reserving.clear();
                 continue;
             }
@@ -163,7 +163,7 @@ async fn next_work(
                 tracing::info!(reason=%refusal,"HL7 order reservation refused");
                 reserving.clear();
             }
-            Err(analyte_store::Error::ItemIdentityTooLong) => {
+            Err(analyte_store::OrderError::ItemIdentityTooLong) => {
                 reserving.clear();
                 reject(
                     store,
@@ -174,7 +174,7 @@ async fn next_work(
                 )
                 .await?;
             }
-            Err(analyte_store::Error::DeliveryBuild(error)) => {
+            Err(analyte_store::OrderError::DeliveryBuild(error)) => {
                 reserving.clear();
                 reject(
                     store,
@@ -291,10 +291,10 @@ pub(super) async fn finish(
     }
     let identity = exchange.record.key.clone();
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |store| {
+        .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
             let current = store
                 .machine_order(&identity)?
-                .ok_or(analyte_store::Error::Corruption)?;
+                .ok_or(analyte_store::OrderError::Corruption)?;
             if matches!(
                 current.state,
                 OrderState::Sending | OrderState::CancelRequested
@@ -306,7 +306,7 @@ pub(super) async fn finish(
                     crate::orders::event,
                 )?;
             }
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, analyte_store::OrderError>(())
         })
         .await?;
     Ok(())

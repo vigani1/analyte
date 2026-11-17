@@ -255,13 +255,8 @@ pub enum EvidenceError {
     Text(#[from] analyte_model::TextError),
     /// Preserves the original evidence failure.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
-    /// Preserves the original evidence failure.
-    #[error(transparent)]
     Config(#[from] analyte_config::Error),
     /// Preserves the original evidence failure.
     #[error(transparent)]
     Astm(#[from] analyte_framing::astm::Error),
 }
-
-crate::runtime::service::conversions::causes!(EvidenceError; store);

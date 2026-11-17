@@ -16,84 +16,11 @@ pub use polling::Poller;
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
-/// Failures retain their owning boundary and never include payloads or credentials.
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// Invalid destination URL or operational limits.
-    #[error("invalid destination configuration")]
-    Configuration,
-    /// Delivery identity is not an RFC `UUIDv7`.
-    #[error("invalid delivery identity")]
-    Identity(#[from] analyte_model::InvalidUuid),
-    /// Delivery identity text cannot be decoded as a UUID.
-    #[error("invalid delivery UUID text")]
-    Uuid(#[from] uuid::Error),
-    /// Order identity exceeds the store text bounds.
-    #[error("invalid order identity")]
-    OrderId(#[from] analyte_model::TextError),
-    /// Retry duration cannot fit the timestamp representation.
-    #[error("retry duration exceeds timestamp range")]
-    Integer(#[from] std::num::TryFromIntError),
-    /// Retry timestamp addition exceeded its representable range.
-    #[error("retry timestamp overflow: {now} + {delay}")]
-    RetryOverflow {
-        /// Unix timestamp before scheduling the retry.
-        now: i64,
-        /// Requested retry delay in seconds.
-        delay: i64,
-    },
-    /// Outgoing immutable bytes exceed the contract ceiling.
-    #[error("outgoing payload exceeds document limit")]
-    PayloadTooLarge,
-    /// URL violates the shared endpoint policy; retains the precise rejection reason.
-    #[error("destination URL policy rejected: {0}")]
-    UrlPolicy(&'static str),
-    /// URL joining failed; the parser cause remains available without logging the URL.
-    #[error("destination URL path rejected")]
-    UrlJoin(#[source] Box<dyn std::error::Error + Send + Sync>),
-    /// Host could not resolve named credentials.
-    #[error("named credentials unavailable")]
-    Secrets,
-    /// Non-production processing cannot enter the production outbox.
-    #[error("processing mode is not eligible for production delivery")]
-    ProcessingMode,
-    /// Unresolved or unsupported evidence needs operator reconciliation.
-    #[error("result requires parking")]
-    RequiresParking,
-    /// Invalid immutable document.
-    #[error("contract document rejected")]
-    Document(#[from] analyte_contract::DocumentError),
-    /// Document serialization failed.
-    #[error("document encoding failed")]
-    Json(#[from] serde_json::Error),
-    /// Signing metadata or secret rejected.
-    #[error("signing failed")]
-    Signature(#[from] analyte_contract::SignatureError),
-    /// Storage failure; a submitted write may have committed.
-    #[error("storage operation failed")]
-    Store(#[from] analyte_store::Error),
-    /// Network failure; an app may already have committed the delivery.
-    #[error("HTTP operation failed")]
-    Http(#[from] reqwest::Error),
-    /// Deadline expired; a sent request may have committed.
-    #[error("operation deadline expired")]
-    Timeout,
-    /// Peer exceeded the document byte limit.
-    #[error("response exceeds document limit")]
-    ResponseTooLarge,
-    /// Order endpoint returned a non-success status.
-    #[error("order poll returned HTTP {0}")]
-    PollStatus(u16),
-    /// Page count or cursor progress violated polling bounds.
-    #[error("order feed did not complete within its bounds")]
-    FeedProgress,
-    /// Stored destination is not configured; claimed delivery remains uncertain.
-    #[error("claimed destination is not configured")]
-    UnknownDestination,
-}
+mod errors;
+pub use errors::{DeliveryError, DestinationError, PollError};
 
-fn deadline(duration: Duration) -> Result<Instant, Error> {
-    Instant::now().checked_add(duration).ok_or(Error::Timeout)
+fn deadline<E>(duration: Duration, expired: E) -> Result<Instant, E> {
+    Instant::now().checked_add(duration).ok_or(expired)
 }
 
 async fn cancelled(stop: &mut watch::Receiver<bool>) {
@@ -107,11 +34,14 @@ async fn cancelled(stop: &mut watch::Receiver<bool>) {
     }
 }
 
-async fn body(mut response: reqwest::Response) -> Result<Vec<u8>, Error> {
+async fn body<E: From<reqwest::Error>>(
+    mut response: reqwest::Response,
+    too_large: E,
+) -> Result<Vec<u8>, E> {
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await? {
         if chunk.len() > analyte_contract::MAX_DOCUMENT_BYTES.saturating_sub(bytes.len()) {
-            return Err(Error::ResponseTooLarge);
+            return Err(too_large);
         }
         bytes.extend_from_slice(&chunk);
     }
@@ -129,5 +59,3 @@ fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
         .timeout(timeout)
         .build()
 }
-
-analyte_store::forward_command_errors!(Error);

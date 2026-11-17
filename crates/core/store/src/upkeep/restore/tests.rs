@@ -54,7 +54,7 @@ fn plan11_interrupted_restore_staging_refuses_startup_without_deleting_evidence(
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     std::fs::write(path.with_extension("restore-pending"), b"interrupted stage")?;
-    assert!(matches!(open(&path), Err(Error::Conflict)));
+    assert!(matches!(open(&path), Err(MaintenanceError::Conflict)));
     assert!(!path.exists());
     assert_eq!(
         std::fs::read(path.with_extension("restore-pending"))?,
@@ -254,10 +254,7 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
     drop(current);
     // No available bytes can admit even one byte above the configured disk reserve.
     let probe = Store::open(&temp.path().join("probe.db"), limits(), Box::new(Space(0)))?;
-    assert!(matches!(
-        probe.admission(1),
-        Err(IntakeError::Storage(StorageError::Capacity))
-    ));
+    assert!(matches!(probe.admission(1), Err(IntakeError::Capacity)));
     drop(probe);
     let audit = Audit {
         actor: Identifier::new("operator")?,

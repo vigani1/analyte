@@ -59,7 +59,7 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
         let (w, p, ()) = tokio::join!(work, poll, cancel);
         w?;
         p?;
-        Ok::<_, Error>(())
+        Ok::<_, Box<dyn std::error::Error>>(())
     })
     .await??;
     store.shutdown(until()?).await?;
@@ -148,13 +148,11 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         }
         assert_eq!(
             store
-                .request::<_, analyte_store::Error>(until()?, |s| Ok::<_, analyte_store::Error>(
-                    s.health(
-                        &Identifier::new("app").map_err(analyte_store::Error::Text)?,
-                        jiff::Timestamp::now().as_second(),
-                        30
-                    )?
-                ))
+                .request::<_, TestStoreError>(until()?, |s| Ok::<_, TestStoreError>(s.health(
+                    &Identifier::new("app").map_err(TestStoreError::Text)?,
+                    jiff::Timestamp::now().as_second(),
+                    30
+                )?))
                 .await?
                 .pending_count,
             0
@@ -241,21 +239,19 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
                 0
             );
         } else {
-            assert!(matches!(outcome, Err(Error::Timeout)));
+            assert!(matches!(outcome, Err(DeliveryError::Timeout)));
             store
-                .request::<_, analyte_store::Error>(until()?, |s| {
-                    Ok::<_, analyte_store::Error>(
+                .request::<_, TestStoreError>(until()?, |s| {
+                    Ok::<_, TestStoreError>(
                         s.recover_in_flight(
                             jiff::Timestamp::now().as_second(),
                             &analyte_store::Audit {
-                                actor: Identifier::new("startup")
-                                    .map_err(analyte_store::Error::Text)?,
-                                action: Identifier::new("recover")
-                                    .map_err(analyte_store::Error::Text)?,
+                                actor: Identifier::new("startup").map_err(TestStoreError::Text)?,
+                                action: Identifier::new("recover").map_err(TestStoreError::Text)?,
                                 targets: vec![],
                                 time: 0,
                                 reason: Reason::new("ADR 0008 interrupted idempotent delivery")
-                                    .map_err(analyte_store::Error::Text)?,
+                                    .map_err(TestStoreError::Text)?,
                             },
                         )?,
                     )
@@ -331,7 +327,7 @@ fn mutation_adr0003_rule4_rule5_encode_delivery_preserves_three_identities_and_e
             Identifier::new("app")?,
             metadata.received_at
         ),
-        Err(Error::RequiresParking)
+        Err(DeliveryError::RequiresParking)
     ));
     Ok(())
 }

@@ -5,6 +5,23 @@ use analyte_model::{Identifier, OrderState, Reason};
 use analyte_store::{Audit, MachineOrderFilter};
 use clap::{Subcommand, ValueEnum};
 
+/// Store boundaries combined by the operator's order command.
+#[derive(Debug, thiserror::Error)]
+pub enum CommandError {
+    /// Protected audit recording failed.
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    /// Order lookup or lifecycle storage failed.
+    #[error(transparent)]
+    Order(#[from] analyte_store::OrderError),
+    /// Restore reconciliation failed.
+    #[error(transparent)]
+    Maintenance(#[from] analyte_store::MaintenanceError),
+    /// Worker admission or completion failed.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+}
+
 /// Protected operator operations; every invocation records its actor and reason.
 #[derive(Subcommand)]
 pub enum Command {
@@ -95,7 +112,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         )?;
     }
     let result = store
-        .request::<_, analyte_store::Error>(deadline()?, move |store| match command {
+        .request::<_, CommandError>(deadline()?, move |store| match command {
             Command::ResumeAfterRestore { .. } => {
                 store.resume_after_restore(&audit)?;
                 Ok(Vec::new())
@@ -118,7 +135,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         })
         .await;
     store.shutdown(deadline()?).await?;
-    for order in result? {
+    for order in result.map_err(Error::OrderCommand)? {
         crate::operator::output::line(&format!(
             "{} app={} order={} machine={} version={} state={} updated_at={}",
             order.id,

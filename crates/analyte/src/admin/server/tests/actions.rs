@@ -58,17 +58,17 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             .starts_with("HTTP/1.1 409")
     );
     store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, move |s| {
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
             assert!(s.interpretation(receipt, 2)?.is_none());
             assert!(
                 s.parked_item(parked)?
-                    .ok_or(analyte_store::Error::Corruption)?
+                    .ok_or(FixtureError::Corruption)?
                     .resolution
                     .is_none()
             );
             assert!(s.audits(0)?.is_empty());
             assert!(s.deliveries(0)?.is_empty());
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     rusqlite::Connection::open(&database)?.execute_batch("DROP TRIGGER refuse_operator_audit;")?;
@@ -80,15 +80,15 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             .starts_with("HTTP/1.1 409")
     );
     let delivery = store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, move |s| {
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
             assert!(
                 s.parked_item(parked)?
-                    .ok_or(analyte_store::Error::Corruption)?
+                    .ok_or(FixtureError::Corruption)?
                     .resolution
                     .is_some()
             );
             assert_eq!(s.audits(0)?.len(), 1);
-            let claim = s.claim(0)?.ok_or(analyte_store::Error::Corruption)?;
+            let claim = s.claim(0)?.ok_or(FixtureError::Corruption)?;
             s.attempted(claim.id, &analyte_store::Attempt::Done, 0)?;
             Ok(claim.id)
         })
@@ -151,13 +151,8 @@ async fn seed_parked_receipt(
     .await?;
     assert!(!crate::intake::interpret(&store, machine, receipt).await?);
     let parked = store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, |s| {
-            Ok::<_, analyte_store::Error>(
-                s.parked(0)?
-                    .first()
-                    .ok_or(analyte_store::Error::Corruption)?
-                    .id,
-            )
+        .request::<_, FixtureError>(fixture_deadline()?, |s| {
+            Ok::<_, FixtureError>(s.parked(0)?.first().ok_or(FixtureError::Corruption)?.id)
         })
         .await?;
     std::fs::write(root.join("machine.toml"), definition)?;
@@ -194,15 +189,15 @@ async fn assert_resend_audit_atomicity(
             .starts_with("HTTP/1.1 409")
     );
     store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, move |s| {
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
             assert_eq!(
                 s.delivery(delivery)?
-                    .ok_or(analyte_store::Error::UnknownDelivery)?
+                    .ok_or(FixtureError::UnknownDelivery)?
                     .state,
                 analyte_store::DeliveryState::Done
             );
             assert_eq!(s.audits(0)?.len(), 1);
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     rusqlite::Connection::open(database)?.execute_batch("DROP TRIGGER refuse_operator_audit;")?;
@@ -212,10 +207,10 @@ async fn assert_resend_audit_atomicity(
             .starts_with("HTTP/1.1 200")
     );
     store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, move |s| {
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
             assert_eq!(
                 s.delivery(delivery)?
-                    .ok_or(analyte_store::Error::UnknownDelivery)?
+                    .ok_or(FixtureError::UnknownDelivery)?
                     .state,
                 analyte_store::DeliveryState::Pending
             );
@@ -224,7 +219,7 @@ async fn assert_resend_audit_atomicity(
             assert_eq!(
                 audits
                     .first()
-                    .ok_or(analyte_store::Error::UnknownAudit)?
+                    .ok_or(FixtureError::UnknownAudit)?
                     .1
                     .action
                     .as_str(),
@@ -233,7 +228,7 @@ async fn assert_resend_audit_atomicity(
             assert_eq!(
                 audits
                     .get(1)
-                    .ok_or(analyte_store::Error::UnknownAudit)?
+                    .ok_or(FixtureError::UnknownAudit)?
                     .1
                     .action
                     .as_str(),
@@ -250,16 +245,8 @@ async fn assert_resend_audit_atomicity(
                     .all(|(_, a)| a.actor.as_str().starts_with("admin-session-"))
             );
             assert_eq!(
-                audits
-                    .first()
-                    .ok_or(analyte_store::Error::Corruption)?
-                    .1
-                    .actor,
-                audits
-                    .last()
-                    .ok_or(analyte_store::Error::Corruption)?
-                    .1
-                    .actor
+                audits.first().ok_or(FixtureError::Corruption)?.1.actor,
+                audits.last().ok_or(FixtureError::Corruption)?.1.actor
             );
             Ok(())
         })
@@ -350,20 +337,20 @@ async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result
     let refused = request(&host, "/retention", &post_auth, Some(&form)).await?;
     assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
     store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, move |store| {
+        .request::<_, FixtureError>(fixture_deadline()?, move |store| {
             assert!(!store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
             assert!(store.audits(0)?.is_empty());
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     rusqlite::Connection::open(&database)?.execute_batch("DROP TRIGGER refuse_hold_audit;")?;
     let placed = request(&host, "/retention", &post_auth, Some(&form)).await?;
     assert!(placed.starts_with("HTTP/1.1 200"), "{placed}");
     store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, move |store| {
+        .request::<_, FixtureError>(fixture_deadline()?, move |store| {
             assert!(store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
             let audits = store.audits(0)?;
-            let audit = &audits.last().ok_or(analyte_store::Error::Corruption)?.1;
+            let audit = &audits.last().ok_or(FixtureError::Corruption)?.1;
             assert_eq!(audit.action.as_str(), "retention-hold-place");
             assert_eq!(audit.reason.as_str(), "review required");
             Ok(())
@@ -376,14 +363,14 @@ async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result
             .starts_with("HTTP/1.1 200")
     );
     store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, move |store| {
+        .request::<_, FixtureError>(fixture_deadline()?, move |store| {
             assert!(!store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
             let audits = store.audits(0)?;
             assert_eq!(audits.len(), 2);
             assert_eq!(
                 audits
                     .get(1)
-                    .ok_or(analyte_store::Error::UnknownAudit)?
+                    .ok_or(FixtureError::UnknownAudit)?
                     .1
                     .action
                     .as_str(),

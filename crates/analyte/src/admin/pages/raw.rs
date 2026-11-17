@@ -14,6 +14,36 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+/// Refusals and boundary failures of an audited raw-evidence page.
+#[derive(Debug, thiserror::Error)]
+pub enum RawError {
+    /// Retained evidence could not be queried.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
+    /// Disclosure could not be audited durably.
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    /// A supplied cursor does not fit its representation.
+    #[error(transparent)]
+    Integer(#[from] std::num::TryFromIntError),
+    /// Receipt pages do not support a frame offset.
+    #[error("receipt raw view does not accept a frame offset")]
+    ReceiptOffsetNotAllowed,
+    /// The cursor lies outside retained bytes.
+    #[error("raw view cursor is outside retained evidence")]
+    RawCursorOutsideEvidence,
+    /// The next cursor cannot be represented.
+    #[error("raw view cursor overflow")]
+    RawCursorOverflow,
+    /// A retained frame sequence is invalid.
+    #[error("stored evidence is corrupt")]
+    Corruption,
+}
+impl From<analyte_store::WorkerError> for RawError {
+    fn from(error: analyte_store::WorkerError) -> Self {
+        Self::Evidence(error.into())
+    }
+}
 const RAW_PAGE: usize = 4096;
 fn raw_form(
     html: &mut Markup,
@@ -90,11 +120,11 @@ struct RawCursor {
     offset: u64,
 }
 
-fn read_raw(s: &Store, form: &RawForm) -> Result<Option<RawPage>, analyte_store::Error> {
+fn read_raw(s: &Store, form: &RawForm) -> Result<Option<RawPage>, RawError> {
     match form.source {
         Source::Receipt => {
             if form.offset != 0 {
-                return Err(analyte_store::Error::ReceiptOffsetNotAllowed);
+                return Err(RawError::ReceiptOffsetNotAllowed);
             }
             let Some(id) = receipt_id(&form.target) else {
                 return Ok(None);
@@ -102,19 +132,19 @@ fn read_raw(s: &Store, form: &RawForm) -> Result<Option<RawPage>, analyte_store:
             let Some(receipt) = s.receipt(id)? else {
                 return Ok(None);
             };
-            let after = usize::try_from(form.after).map_err(analyte_store::Error::Integer)?;
+            let after = usize::try_from(form.after).map_err(RawError::Integer)?;
             let Some(tail) = receipt.raw.get(after..) else {
-                return Err(analyte_store::Error::RawCursorOutsideEvidence);
+                return Err(RawError::RawCursorOutsideEvidence);
             };
             let bytes: Vec<u8> = tail.iter().take(RAW_PAGE).copied().collect();
             let next = after
                 .checked_add(bytes.len())
-                .ok_or(analyte_store::Error::RawCursorOverflow)?;
+                .ok_or(RawError::RawCursorOverflow)?;
             Ok(Some(RawPage {
                 bytes,
                 next: if next < receipt.raw.len() {
                     Some(RawCursor {
-                        after: u64::try_from(next).map_err(analyte_store::Error::Integer)?,
+                        after: u64::try_from(next).map_err(RawError::Integer)?,
                         offset: 0,
                     })
                 } else {
@@ -123,31 +153,30 @@ fn read_raw(s: &Store, form: &RawForm) -> Result<Option<RawPage>, analyte_store:
             }))
         }
         Source::Frames => {
-            let after = i64::try_from(form.after).map_err(analyte_store::Error::Integer)?;
+            let after = i64::try_from(form.after).map_err(RawError::Integer)?;
             let frames = s.frames(&form.target, after)?;
             let Some(frame) = frames.first() else {
                 return Ok(None);
             };
-            let offset = usize::try_from(form.offset).map_err(analyte_store::Error::Integer)?;
+            let offset = usize::try_from(form.offset).map_err(RawError::Integer)?;
             let tail = frame
                 .raw
                 .get(offset..)
-                .ok_or(analyte_store::Error::RawCursorOutsideEvidence)?;
+                .ok_or(RawError::RawCursorOutsideEvidence)?;
             let bytes: Vec<_> = tail.iter().take(RAW_PAGE).copied().collect();
             let end = offset
                 .checked_add(bytes.len())
-                .ok_or(analyte_store::Error::RawCursorOverflow)?;
+                .ok_or(RawError::RawCursorOverflow)?;
             Ok(Some(RawPage {
                 bytes,
                 next: Some(if end < frame.raw.len() {
                     RawCursor {
                         after: form.after,
-                        offset: u64::try_from(end).map_err(analyte_store::Error::Integer)?,
+                        offset: u64::try_from(end).map_err(RawError::Integer)?,
                     }
                 } else {
                     RawCursor {
-                        after: u64::try_from(frame.sequence)
-                            .map_err(|_| analyte_store::Error::Corruption)?,
+                        after: u64::try_from(frame.sequence).map_err(|_| RawError::Corruption)?,
                         offset: 0,
                     }
                 }),
@@ -191,13 +220,13 @@ pub(in crate::admin) async fn raw(
         Ok::<_, Error>(
             state
                 .store
-                .request::<_, analyte_store::Error>(deadline()?, move |s| {
+                .request::<_, RawError>(deadline()?, move |s| {
                     let Some(row) = s.parked_item(id)? else {
                         return Ok(None);
                     };
-                    let evidence = row.details()?;
+                    let evidence = row.details().map_err(analyte_store::OperatorError::from)?;
                     if !evidence.targets.contains(&form.target) {
-                        return Err(analyte_store::Error::AuditMismatch);
+                        return Err(analyte_store::OperatorError::AuditMismatch.into());
                     }
                     let page = read_raw(s, &form)?;
                     if page.is_some() {

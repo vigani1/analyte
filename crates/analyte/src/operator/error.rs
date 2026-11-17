@@ -2,6 +2,12 @@
 /// Failures running a bounded operator action or reading an operational snapshot.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
+    /// Order command combined restore and order storage operations.
+    #[error(transparent)]
+    OrderCommand(#[from] crate::orders::CommandError),
     /// The operator action or snapshot cannot proceed.
     #[error("active alert snapshot exceeds 4096 rows")]
     ActiveAlertSnapshotExceeds4096Rows,
@@ -19,7 +25,25 @@ pub enum Error {
     Runtime(#[from] crate::runtime::Error),
     /// Preserves the original operator dependency failure.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OperatorError),
+    /// Reading restored-store state failed.
+    #[error(transparent)]
+    Storage(#[from] analyte_store::StorageError),
+    /// Retention or restored-store reconciliation failed.
+    #[error(transparent)]
+    Maintenance(#[from] analyte_store::MaintenanceError),
+    /// Analyzer execution evidence could not be queried.
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
+    /// A delivery recovery operation failed.
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    /// Worker admission, completion or shutdown failed.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    /// The selected retained receipt does not exist.
+    #[error("receipt does not exist")]
+    UnknownReceipt,
     /// Preserves the original operator dependency failure.
     #[error(transparent)]
     Intake(#[from] crate::IntakeError),
@@ -49,17 +73,11 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     /// Preserves the original operator dependency failure.
     #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
+    SinkDestinationError(#[from] analyte_sink::DestinationError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkDeliveryError(#[from] analyte_sink::DeliveryError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkPollError(#[from] analyte_sink::PollError),
 }
-#[cfg(all(test, feature = "test-hooks"))]
-impl Error {
-    pub(super) fn downcast_ref<T: std::error::Error + 'static>(&self) -> Option<&T> {
-        if let Self::Store(cause) = self {
-            let cause: &(dyn std::error::Error + 'static) = cause;
-            return cause.downcast_ref();
-        }
-        None
-    }
-}
-
-crate::runtime::service::conversions::causes!(Error; store);
