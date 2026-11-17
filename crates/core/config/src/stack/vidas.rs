@@ -1,7 +1,7 @@
 //! Constructs validated VIDAS protocol settings.
 use super::{
-    CodeTables, DialogTimeouts, Error, OrderPriority, OutboundTest, StreamTransport, SyntaxLimits,
-    Vidas, code_tables, invalid, limits, stream,
+    CodeTables, DialogTimeouts, Error, OrderTables, StreamTransport, SyntaxLimits, Vidas,
+    code_tables, invalid, limits, order_tables, stream,
 };
 use crate::ParsedMachine;
 use analyte_model::Identifier;
@@ -9,10 +9,8 @@ use analyte_model::Identifier;
 /// VIDAS work lists carry only supported outbound settings.
 #[derive(Debug, Clone)]
 pub struct VidasOrders {
-    /// Exact assay translations.
-    pub(super) tests: Vec<OutboundTest>,
-    /// Explicit accepted app priorities.
-    pub(super) priorities: Vec<OrderPriority>,
+    /// Exact assay and priority translations; VIDAS has no specimen table.
+    pub(super) tables: OrderTables,
     /// Required patient assigning namespace.
     pub(super) patient_namespace: Identifier,
     /// Explicit download permission.
@@ -31,15 +29,10 @@ pub struct VidasStack {
 }
 
 impl VidasOrders {
-    /// Explicit application-to-instrument test-code mapping.
+    /// Explicit assay and priority mappings; the specimen table is always absent.
     #[must_use]
-    pub fn tests(&self) -> &Vec<OutboundTest> {
-        &self.tests
-    }
-    /// Explicit order-priority mapping.
-    #[must_use]
-    pub fn priorities(&self) -> &Vec<OrderPriority> {
-        &self.priorities
+    pub fn tables(&self) -> &OrderTables {
+        &self.tables
     }
     /// Assigning system for patient identities from this connection.
     #[must_use]
@@ -88,8 +81,7 @@ pub(super) fn build(
             .as_ref()
             .map(|orders| {
                 Ok::<_, Error>(VidasOrders {
-                    tests: orders.tests.clone(),
-                    priorities: orders.priorities.clone(),
+                    tables: order_tables(orders),
                     patient_namespace: orders.patient_namespace.clone().ok_or_else(|| {
                         invalid(
                             path,

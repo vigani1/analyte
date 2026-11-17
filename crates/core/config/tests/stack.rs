@@ -91,7 +91,12 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
                 assert_eq!(stack.policy().query_deadline_ms(), 1500);
                 assert_eq!(stack.orders().is_some(), name == "law_orders.toml");
                 if let Some(orders) = &stack.orders() {
-                    assert!(!orders.specimen_types().is_empty());
+                    assert!(
+                        orders
+                            .tables()
+                            .specimen_types()
+                            .is_some_and(|types| !types.is_empty())
+                    );
                     assert_eq!(orders.work().application.as_str(), "HOST");
                 }
             }

@@ -1,7 +1,7 @@
 //! Holds validated outbound order translation tables.
 use super::{OrderPriority, Orders, OutboundSpecimen, OutboundTest};
 
-/// Outbound field-based translations shared by ASTM and HL7.
+/// Outbound test, specimen and priority translations shared by every order-sending protocol.
 #[derive(Debug, Clone)]
 pub struct OrderTables {
     /// Exact outbound test translations.
