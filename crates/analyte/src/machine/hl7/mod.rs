@@ -3,7 +3,7 @@ use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod error_location;
 use super::connection_input::{self, Input};
-use super::driver::{Context, Effects, Flow};
+use super::driver::{Context, Effects, Failures, Flow};
 use crate::intake;
 mod error;
 pub(crate) mod settings;
@@ -47,8 +47,6 @@ pub(super) struct Host<'a, 'm> {
     pending: BTreeMap<analyte_dialog::ExchangeId, ReceiptId>,
     queries: Option<crate::orders::hl7::Hl7OrderLink>,
     input_evidence: connection_input::Custody,
-    write_error: Option<analyte_transport::Error>,
-    commit_error: Option<Error>,
 }
 
 impl<'a, 'm> Host<'a, 'm> {
@@ -78,7 +76,6 @@ impl<'a, 'm> Host<'a, 'm> {
             dialog.enable_orders(settings.settings().syntax().edition().into())?;
         }
         let input_evidence = connection_input::Custody::default();
-        let write_error = None;
         Ok(Self {
             machine,
             settings,
@@ -89,8 +86,6 @@ impl<'a, 'm> Host<'a, 'm> {
             pending,
             queries,
             input_evidence,
-            write_error,
-            commit_error: None,
         })
     }
     async fn receive_bytes(
@@ -98,7 +93,7 @@ impl<'a, 'm> Host<'a, 'm> {
         bytes: Vec<u8>,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         self.input_evidence.begin(&bytes);
         let events = if bytes.is_empty() {
             vec![Event::Tick]
@@ -109,18 +104,18 @@ impl<'a, 'm> Host<'a, 'm> {
             if matches!(event, Event::Byte(_)) {
                 self.input_evidence.fed();
             }
-            if self.transition(event, conn, stop).await? {
-                return Ok(true);
+            if self.transition(event, conn, stop).await? == Flow::Stop {
+                return Ok(Flow::Stop);
             }
         }
-        Ok(false)
+        Ok(Flow::Continue)
     }
     async fn transition(
         &mut self,
         event: Event<'_>,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         let actions = self.dialog.step(self.start.elapsed(), event)?;
         self.apply(actions, conn, stop).await
     }
@@ -129,32 +124,23 @@ impl<'a, 'm> Host<'a, 'm> {
         actions: Vec<Action>,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         let mut actions: VecDeque<_> = actions.into();
+        let mut failures = Failures::new();
         let result = async {
             while let Some(action) = actions.pop_front() {
-                if self.effect(action, conn, stop, &mut actions).await? {
-                    return Ok(true);
+                if self
+                    .effect(action, conn, stop, &mut actions, &mut failures)
+                    .await?
+                    == Flow::Stop
+                {
+                    return Ok(Flow::Stop);
                 }
             }
-            Ok(false)
+            Ok(Flow::Continue)
         }
         .await;
-        if let Some(error) = self.commit_error.take() {
-            return Err(match result {
-                Ok(_) => error,
-                Err(effect) => {
-                    crate::machine::receive::custody::effect_failure(Some(error), effect)
-                }
-            });
-        }
-        if result? {
-            return Ok(true);
-        }
-        if let Some(error) = self.write_error.take() {
-            return Err(error.into());
-        }
-        Ok(false)
+        failures.finish(result)
     }
     async fn effect(
         &mut self,
@@ -162,7 +148,8 @@ impl<'a, 'm> Host<'a, 'm> {
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
-    ) -> Result<bool, Error> {
+        failures: &mut Failures<Error>,
+    ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
         match action {
@@ -224,7 +211,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .await?;
             }
             Action::Store(token, raw) => {
-                self.commit(token, raw, machine, store, actions).await?;
+                self.commit(token, raw, actions, failures).await?;
             }
             Action::Interpret(token, _payload) => {
                 self.interpret(token, machine, store, actions).await?;
@@ -233,7 +220,8 @@ impl<'a, 'm> Host<'a, 'm> {
                 self.respond(token, actions)?;
             }
             Action::QueryWrite { bytes, until, part } => {
-                self.write_query(&bytes, until, part, conn, actions).await?;
+                self.write_query(&bytes, until, part, conn, actions, failures)
+                    .await?;
             }
             Action::Write(write) => {
                 conn.write_all(&write.bytes, None).await?;
@@ -257,7 +245,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Err(Error::UnexpectedOutgoingHl7Outcome);
             }
         }
-        Ok(false)
+        Ok(Flow::Continue)
     }
     async fn answer_query(
         &mut self,
@@ -266,7 +254,7 @@ impl<'a, 'm> Host<'a, 'm> {
         store: &Handle,
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         let QueryRequest {
             token,
             message,
@@ -298,7 +286,7 @@ impl<'a, 'm> Host<'a, 'm> {
             };
             let reply = tokio::select! {
                 biased;
-                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(true),
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(Flow::Stop),
                 result = query.answer(store, machine.machine(), request, &self.dialog, self.start) => result?,
             };
             if let Some(reply) = reply {
@@ -310,16 +298,17 @@ impl<'a, 'm> Host<'a, 'm> {
         }
         actions.extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
 
-        Ok(false)
+        Ok(Flow::Continue)
     }
     async fn commit(
         &mut self,
         token: analyte_dialog::hl7::ExchangeId,
         raw: Vec<u8>,
-        machine: &intake::ConnectionEvidence<'_>,
-        store: &Handle,
         actions: &mut VecDeque<Action>,
+        failures: &mut Failures<Error>,
     ) -> Result<(), Error> {
+        let machine = self.machine;
+        let store = self.store;
         let id = ReceiptId::new();
         match crate::machine::receive::custody::store_before_ack(
             machine.machine(),
@@ -338,7 +327,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 );
             }
             Err(error) => {
-                self.commit_error = Some(error.into());
+                failures.keep(error.into());
                 actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::StoreFailed(token))?,
@@ -415,6 +404,7 @@ impl<'a, 'm> Host<'a, 'm> {
         part: analyte_dialog::hl7::ReplyPart,
         conn: &mut analyte_transport::Connection,
         actions: &mut VecDeque<Action>,
+        failures: &mut Failures<Error>,
     ) -> Result<(), Error> {
         match conn
             .write_all(
@@ -436,7 +426,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     self.dialog
                         .step(self.start.elapsed(), Event::QueryWriteFailed(part))?,
                 );
-                self.write_error = Some(error);
+                failures.keep(error.into());
             }
         }
 
@@ -479,7 +469,7 @@ impl<'a, 'm> Host<'a, 'm> {
         machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         bytes: Vec<u8>,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         intake::park_bytes(store, machine, bytes, ByteReason::Hl7Unsolicited).await?;
         Err(Error::MessageRefused)
     }
@@ -512,7 +502,7 @@ impl Effects for Host<'_, '_> {
             Input::Failed(_) | Input::Tick => Vec::new(),
         };
         let has_bytes = !bytes.is_empty();
-        if self.receive_bytes(bytes, conn, stop).await? {
+        if self.receive_bytes(bytes, conn, stop).await? == Flow::Stop {
             return Ok(Flow::Stop);
         }
         self.input_evidence.complete();

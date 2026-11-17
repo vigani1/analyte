@@ -1,6 +1,6 @@
 # autolyser
 
-**Kind: protocol.** Reads and writes fixed-width records in the syntax module.
+**Kind: protocol.** Reads fixed-width records in the syntax module and writes them in the encode module.
 
 **What it does:** Reads and writes Autolyser fixed-width message records.
 
@@ -11,5 +11,6 @@
 **Main parts:**
 
 - `syntax`: Fixed-width record grammar.
+- `encode`: Worklist and report record bodies built from typed fields.
 
 [Technical details and safety guidance](DETAILS.md).

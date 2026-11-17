@@ -1,8 +1,7 @@
 //! Constructs validated LAW protocol settings.
 use super::{
     DialogTimeouts, Error, LawConnectionMode, LawPeer, LawQueryForm, LawWork, Mappings,
-    OrderPriority, OutboundSpecimen, OutboundTest, Responsibility, SyntaxLimits, TcpTransport,
-    invalid, limits, tcp,
+    OrderTables, Responsibility, SyntaxLimits, TcpTransport, invalid, limits, order_tables, tcp,
 };
 use crate::ParsedMachine;
 use analyte_model::Identifier;
@@ -39,12 +38,8 @@ pub struct LawPolicy {
 pub struct LawOrders {
     /// Required LAW work layout.
     pub(super) work: LawWork,
-    /// Exact outbound test translations.
-    pub(super) tests: Vec<OutboundTest>,
-    /// Required specimen translations.
-    pub(super) specimen_types: Vec<OutboundSpecimen>,
-    /// Exact priority translations.
-    pub(super) priorities: Vec<OrderPriority>,
+    /// Test, specimen and priority translations; the specimen table is always present.
+    pub(super) tables: OrderTables,
     /// Required assigning namespace.
     pub(super) placer_namespace: Identifier,
     /// Permission for unsolicited work.
@@ -117,15 +112,7 @@ pub(super) fn law_stack(
                     work: law.work.clone().ok_or_else(|| {
                         invalid(path, "law.work", "LAW orders require work layout")
                     })?,
-                    tests: orders.tests.clone(),
-                    priorities: orders.priorities.clone(),
-                    specimen_types: orders.specimen_types.clone().ok_or_else(|| {
-                        invalid(
-                            path,
-                            "orders.specimen_types",
-                            "LAW orders require specimen mappings",
-                        )
-                    })?,
+                    tables: required_specimens(order_tables(orders), path)?,
                     placer_namespace: orders.placer_namespace.clone().ok_or_else(|| {
                         invalid(
                             path,
@@ -138,6 +125,18 @@ pub(super) fn law_stack(
             })
             .transpose()?,
     })
+}
+
+/// LAW work names every specimen, so its shared tables must carry specimen mappings.
+fn required_specimens(tables: OrderTables, path: &str) -> Result<OrderTables, Error> {
+    if tables.specimen_types().is_none() {
+        return Err(invalid(
+            path,
+            "orders.specimen_types",
+            "LAW orders require specimen mappings",
+        ));
+    }
+    Ok(tables)
 }
 
 impl LawPolicy {
@@ -174,20 +173,10 @@ impl LawOrders {
     pub fn work(&self) -> &LawWork {
         &self.work
     }
-    /// Explicit application-to-instrument test-code mapping.
+    /// Explicit test, specimen and priority mappings; LAW always has a specimen table.
     #[must_use]
-    pub fn tests(&self) -> &[OutboundTest] {
-        &self.tests
-    }
-    /// Explicit specimen-code mappings; unknown specimens remain unresolved.
-    #[must_use]
-    pub fn specimen_types(&self) -> &[OutboundSpecimen] {
-        &self.specimen_types
-    }
-    /// Explicit order-priority mapping.
-    #[must_use]
-    pub fn priorities(&self) -> &[OrderPriority] {
-        &self.priorities
+    pub fn tables(&self) -> &OrderTables {
+        &self.tables
     }
     /// Assigning system required for retained placer order identities.
     #[must_use]

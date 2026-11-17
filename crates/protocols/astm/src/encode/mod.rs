@@ -1,4 +1,7 @@
 //! Encodes ASTM header, patient groups and termination records (LIS02-A2 sections 6, 7 and 12).
+mod order;
+pub use order::{OrderError, OrderRecord};
+
 /// Explicit completion reason for an outbound order envelope.
 #[derive(Clone, Copy, Debug)]
 pub enum OrderTermination {

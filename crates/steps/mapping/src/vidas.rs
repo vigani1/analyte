@@ -145,7 +145,7 @@ pub fn map_order(
     {
         return Err(OrderError::TestCount);
     }
-    map_priority(settings.priorities(), order.priority)?;
+    map_priority(settings.tables().priorities(), order.priority)?;
     let limit = match installed.sample_limit {
         analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
         analyte_config::VidasSampleLimit::Seventeen => {
@@ -155,7 +155,7 @@ pub fn map_order(
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
     for test in &order.tests {
-        let mapped = codes::map_test(settings.tests(), test)?;
+        let mapped = codes::map_test(settings.tables().tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
             return Err(OrderError::AssayComponents);
         };

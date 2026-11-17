@@ -19,7 +19,4 @@ mod query;
 pub use query::{QueryIntent, QuerySelectorError, query_intent, starts_query};
 
 mod encode;
-pub use encode::{OrderTermination, encode_order_envelope};
-
-mod order;
-pub use order::{OrderError, OrderRecord};
+pub use encode::{OrderError, OrderRecord, OrderTermination, encode_order_envelope};

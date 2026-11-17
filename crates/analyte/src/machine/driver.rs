@@ -16,9 +16,50 @@ pub(super) enum Custody {
     /// Vendor and POCT input chunks additionally commit before dialog input.
     Chunks,
 }
+/// The one result shape of every driver step and every host's `apply`.
+///
+/// Each host drains its dialog actions in one `apply` returning
+/// `Result<Flow, Error>`: `Stop` ends the session without an error and an
+/// error ends it with that cause. A failure that must wait until the dialog's
+/// own queued replies (NAK, refusal, park) have run is kept in one
+/// [`Failures`] for that queue and reported when the queue ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Flow {
+    /// Keep serving this connection.
     Continue,
+    /// End this session normally.
     Stop,
+}
+
+/// Holds the failures one `apply` defers until its queued actions have run.
+/// Nothing kept is dropped: a second failure, or an effect error that ends the
+/// queue early, joins the first one as its effect.
+pub(super) struct Failures<E>(Option<E>);
+
+impl<E: CleanupFailure> Failures<E> {
+    pub(super) const fn new() -> Self {
+        Self(None)
+    }
+    /// Keeps a failure; the first one stays the original cause.
+    pub(super) fn keep(&mut self, error: E) {
+        self.0 = Some(custody::effect_failure(self.0.take(), error));
+    }
+    pub(super) fn is_empty(&self) -> bool {
+        self.0.is_none()
+    }
+    /// Hands a kept failure to the action that reports it inside the queue.
+    pub(super) fn take(&mut self) -> Option<E> {
+        self.0.take()
+    }
+    /// Ends one `apply`: a kept failure outranks the flow, and an error that
+    /// ended the queue early is retained beside it.
+    pub(super) fn finish(self, result: Result<Flow, E>) -> Result<Flow, E> {
+        match (self.0, result) {
+            (Some(kept), Ok(_)) => Err(kept),
+            (Some(kept), Err(effect)) => Err(E::with_effect(kept, effect)),
+            (None, result) => result,
+        }
+    }
 }
 
 /// Shared host ownership; cancellation never cancels a queued durable-store request.
@@ -123,7 +164,7 @@ pub(super) trait ByteEffects: Effects + Send {
         byte: u8,
         conn: &mut analyte_transport::Connection,
         stop: &watch::Receiver<bool>,
-    ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Flow, Self::Error>> + Send;
 }
 
 /// Completes every byte's effects before advancing a merged input chunk.
@@ -134,13 +175,13 @@ pub(super) async fn feed<H: ByteEffects>(
     bytes: Vec<u8>,
     conn: &mut analyte_transport::Connection,
     stop: &watch::Receiver<bool>,
-) -> Result<bool, H::Error> {
+) -> Result<Flow, H::Error> {
     for byte in bytes {
-        if host.apply_byte(byte, conn, stop).await? {
-            return Ok(true);
+        if host.apply_byte(byte, conn, stop).await? == Flow::Stop {
+            return Ok(Flow::Stop);
         }
     }
-    Ok(false)
+    Ok(Flow::Continue)
 }
 
 /// Supplies the common input-journal and monotonic-wait policy for chunk hosts.
@@ -240,6 +281,42 @@ mod tests {
             self.trace.borrow_mut().push("close");
             Err(Error::Cleanup)
         }
+    }
+    #[test]
+    fn adr0012_apply_failures_outrank_stop_and_keep_every_cause() {
+        let mut failures = Failures::new();
+        assert!(failures.is_empty());
+        assert!(matches!(
+            Failures::<Error>::new().finish(Ok(Flow::Stop)),
+            Ok(Flow::Stop)
+        ));
+        failures.keep(Error::Deadline);
+        assert!(!failures.is_empty());
+        assert!(matches!(
+            failures.finish(Ok(Flow::Stop)),
+            Err(Error::Deadline)
+        ));
+
+        let mut failures = Failures::new();
+        failures.keep(Error::Deadline);
+        assert!(matches!(
+            failures.finish(Err(Error::Cleanup)),
+            Err(Error::CleanupPair(causes))
+                if matches!(causes.original, Error::Deadline) && matches!(causes.effect, Error::Cleanup)
+        ));
+
+        let mut failures = Failures::new();
+        failures.keep(Error::Deadline);
+        failures.keep(Error::UnexpectedInput);
+        assert!(matches!(
+            failures.take(),
+            Some(Error::CleanupPair(causes))
+                if matches!(causes.original, Error::Deadline) && matches!(causes.effect, Error::UnexpectedInput)
+        ));
+        assert!(matches!(
+            failures.finish(Ok(Flow::Continue)),
+            Ok(Flow::Continue)
+        ));
     }
     #[tokio::test]
     async fn adr0001_0003_stop_deadline_and_cleanup_preserve_priority_and_both_causes()

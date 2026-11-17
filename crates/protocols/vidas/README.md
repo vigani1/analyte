@@ -1,6 +1,6 @@
 # vidas
 
-**Kind: protocol.** Reads and writes tagged message fields in the syntax module.
+**Kind: protocol.** Reads tagged message fields in the syntax module and writes them in the encode module.
 
 **What it does:** Reads and writes tagged messages for the VIDAS PC Literal format.
 
@@ -11,5 +11,6 @@
 **Main parts:**
 
 - `syntax`: Tagged message fields.
+- `encode`: Outgoing tagged messages, checked by the same parser.
 
 [Technical details and safety guidance](DETAILS.md).

@@ -64,12 +64,6 @@ pub enum List {
 }
 
 impl List {
-    fn byte(self) -> u8 {
-        match self {
-            Self::Routine => b'T',
-            Self::Stat => b'R',
-        }
-    }
     fn parse(b: u8) -> Result<Self, Error> {
         match b {
             b'T' => Ok(Self::Routine),
@@ -89,12 +83,6 @@ pub enum Sample {
 }
 
 impl Sample {
-    fn byte(self) -> u8 {
-        match self {
-            Self::Serum => b'S',
-            Self::Urine => b'U',
-        }
-    }
     fn parse(b: u8) -> Result<Self, Error> {
         match b {
             b'S' => Ok(Self::Serum),
@@ -200,22 +188,6 @@ impl Worklist {
             position,
             tests,
         })
-    }
-
-    /// Serializes the record body; framing adds its checksum and EOT.
-    #[must_use]
-    pub fn encode(&self) -> Vec<u8> {
-        let mut out = self.patient.bytes().to_vec();
-        out.extend_from_slice(&[
-            self.list.byte(),
-            self.sample.byte(),
-            if self.clone { b'Y' } else { b'N' },
-        ]);
-        out.extend_from_slice(format!("{:02}{:02}", self.position, self.tests.len()).as_bytes());
-        for test in &self.tests {
-            out.extend_from_slice(test.bytes());
-        }
-        out
     }
 
     /// Parses a verified record body, retaining every fixed-width field.
@@ -345,36 +317,5 @@ impl Report {
             control,
             values,
         })
-    }
-
-    /// Builds a report from typed fields, checking bounds and control invariants.
-    /// # Errors
-    /// Rejects counts above 999 and inconsistent control fields.
-    pub fn new(
-        patient: &PatientCode,
-        list: List,
-        sample: Sample,
-        control: Option<&Control>,
-        values: &[Value],
-    ) -> Result<Self, Error> {
-        if values.len() > 999 {
-            return Err(Error::Count);
-        }
-        let mut out = patient.bytes().to_vec();
-        out.extend_from_slice(&[list.byte(), sample.byte()]);
-        if let Some(c) = control {
-            out.extend_from_slice(&[
-                if c.is_control { b'Y' } else { b'N' },
-                if c.known { b'K' } else { b'U' },
-            ]);
-            out.extend_from_slice(c.level.bytes());
-            out.extend_from_slice(c.lot.bytes());
-        }
-        out.extend_from_slice(format!("{:03}", values.len()).as_bytes());
-        for v in values {
-            out.extend_from_slice(v.code.bytes());
-            out.extend_from_slice(v.text.bytes());
-        }
-        Self::parse(&out, control.is_some())
     }
 }

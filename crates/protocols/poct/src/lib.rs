@@ -18,8 +18,8 @@ pub use views::message::{
     Role, Service, hello_error_reference,
 };
 
-mod messages;
-pub use messages::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
+mod encode;
+pub use encode::{ApplicationError, EscapeReason, Outbound, TerminationReason, encode};
 
 pub use syntax::structure::{child, children, literal};
 

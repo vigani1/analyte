@@ -14,6 +14,6 @@
 - `views/data`: Values with original spelling.
 - `views/message`: Required Basic Profile message fields.
 - `syntax/structure`: Message structure checks.
-- `messages`: Reply message construction and XML escaping.
+- `encode`: Reply message construction and XML escaping.
 
 [Technical details and safety guidance](DETAILS.md).

@@ -1,7 +1,7 @@
 //! Validates and encodes typed HL7 orders.
-use super::{
+use crate::order::{
     Code, Control, Error, Family, Header, Order, OrderId, OrderMessage, SampleField, Subject,
-    invalid, types::scalar,
+    invalid, scalar,
 };
 use crate::{Charset, Message, Options, Terminator, Version};
 use std::collections::BTreeSet;
@@ -30,7 +30,7 @@ impl<'a> IdentitySet<'a> {
 }
 
 fn append(output: &mut Vec<u8>, value: &[u8], maximum: usize) -> Result<(), Error> {
-    crate::wire::append(output, value, maximum).map_err(|_| Error::Limit)
+    crate::encode::wire::append(output, value, maximum).map_err(|_| Error::Limit)
 }
 
 fn segment(
@@ -39,7 +39,7 @@ fn segment(
     fields: &[&[u8]],
     maximum: usize,
 ) -> Result<(), Error> {
-    crate::wire::segment(output, name, fields, maximum, b'|').map_err(Into::into)
+    crate::encode::wire::segment(output, name, fields, maximum, b'|').map_err(Into::into)
 }
 
 fn escape(value: &[u8], segment: &str, field: usize, maximum: usize) -> Result<Vec<u8>, Error> {
@@ -278,7 +278,7 @@ pub fn context(
     position: Option<(SampleField, &[u8])>,
     options: Options,
 ) -> Result<OrderMessage, Error> {
-    scalar(group, "ORC", 4, super::EI_MAX_BYTES, true)?;
+    scalar(group, "ORC", 4, crate::order::EI_MAX_BYTES, true)?;
     let mut output = Vec::new();
     for row in sent.message.segments() {
         if row.id() == b"ORC" || row.id() == b"OBR" {
@@ -287,12 +287,12 @@ pub fn context(
                 .count()
                 .max(if row.id() == b"ORC" { 4 } else { 19 });
             let mut fields = (1..=count)
-                .map(|n| super::raw(row, n).to_vec())
+                .map(|n| crate::order::raw(row, n).to_vec())
                 .collect::<Vec<_>>();
             if row.id() == b"ORC" {
                 // ORC-4 repeats ORC-2's complete assigning authority, not just EI.1.
                 // Both editions constrain the entire encoded EI to 22 bytes.
-                let placer = super::raw(row, 2);
+                let placer = crate::order::raw(row, 2);
                 let authority = placer
                     .iter()
                     .position(|byte| *byte == b'^')
@@ -301,7 +301,7 @@ pub fn context(
                 if group
                     .len()
                     .checked_add(authority.len())
-                    .is_none_or(|n| n > super::EI_MAX_BYTES)
+                    .is_none_or(|n| n > crate::order::EI_MAX_BYTES)
                 {
                     return Err(invalid("ORC", 4));
                 }

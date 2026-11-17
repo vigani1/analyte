@@ -11,12 +11,11 @@
 **Main parts:**
 
 - `syntax`: Parses HL7 message grammar.
-- `wire`: Writes size-capped segments without escaping.
+- `encode`: Writes acknowledgments, order requests and display query replies; `encode/wire` writes size-capped segments without escaping.
 - `views`: Named field access.
 - `version`: Explicit edition rules.
-- `ack`: Acknowledgment message syntax.
 - `order`: Order messages and responses.
 - `query`: Legacy display query messages.
-- `law`: LAW queries, work and results.
+- `law`: LAW queries, work and results; `law/encode` writes LAW replies and work orders.
 
 [Technical details and safety guidance](DETAILS.md).

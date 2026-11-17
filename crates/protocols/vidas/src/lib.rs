@@ -4,3 +4,5 @@
 #![forbid(unsafe_code)]
 
 pub mod syntax;
+
+mod encode;

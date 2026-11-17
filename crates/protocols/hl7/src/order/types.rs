@@ -1,7 +1,7 @@
 //! Holds typed outbound HL7 order fields.
 use super::{Error, invalid};
 
-pub(super) fn scalar(
+pub(crate) fn scalar(
     value: &[u8],
     segment: &str,
     field: usize,
@@ -23,9 +23,9 @@ pub(super) fn scalar(
 /// Namespaced EI order identity. It is never generated from a sample ID.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrderId<'a> {
-    pub(super) id: &'a [u8],
-    pub(super) namespace: &'a [u8],
-    pub(super) universal: Option<(&'a [u8], &'a [u8])>,
+    pub(crate) id: &'a [u8],
+    pub(crate) namespace: &'a [u8],
+    pub(crate) universal: Option<(&'a [u8], &'a [u8])>,
 }
 
 impl<'a> OrderId<'a> {
@@ -124,10 +124,10 @@ pub enum SampleField {
 /// A CE test or specimen code with its supplied coding system.
 #[derive(Debug, Clone, Copy)]
 pub struct Code<'a> {
-    pub(super) identifier: &'a [u8],
-    pub(super) text: &'a [u8],
-    pub(super) system: &'a [u8],
-    pub(super) version: Option<&'a [u8]>,
+    pub(crate) identifier: &'a [u8],
+    pub(crate) text: &'a [u8],
+    pub(crate) system: &'a [u8],
+    pub(crate) version: Option<&'a [u8]>,
 }
 
 impl<'a> Code<'a> {
@@ -200,7 +200,7 @@ pub enum Priority {
 }
 
 impl Priority {
-    pub(super) fn wire(self) -> &'static [u8] {
+    pub(crate) fn wire(self) -> &'static [u8] {
         match self {
             Self::Routine => b"R",
             Self::Stat => b"S",
@@ -309,7 +309,7 @@ pub enum Processing {
 }
 
 impl Processing {
-    pub(super) fn wire(self) -> &'static [u8] {
+    pub(crate) fn wire(self) -> &'static [u8] {
         match self {
             Self::Production => b"P",
             Self::Training => b"T",
@@ -342,8 +342,8 @@ pub struct Header<'a> {
 /// A validated ORM/O01 or OML/O21; its message identity is host supplied.
 #[derive(Debug)]
 pub struct OrderMessage {
-    pub(super) message: crate::Message,
-    pub(super) family: super::Family,
+    pub(crate) message: crate::Message,
+    pub(crate) family: super::Family,
 }
 
 impl OrderMessage {
