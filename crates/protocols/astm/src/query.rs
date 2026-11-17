@@ -92,6 +92,13 @@ pub fn query_intent(messages: &[Message]) -> Result<QueryIntent, QuerySelectorEr
     Ok(QueryIntent::Orders(samples))
 }
 
+/// Recognizes the query record prefix for starting the host's deadline.
+/// This hint does not validate query intent or authorize a cache answer.
+#[must_use]
+pub fn starts_query(record: &[u8]) -> bool {
+    record.first() == Some(&b'Q')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,5 +131,15 @@ mod tests {
             assert_eq!(query_intent(&messages).expect("plain selector"), expected);
         }
         Ok(())
+    }
+}
+
+#[test]
+fn lis02_a2_11_query_prefix_starts_budget_without_claiming_validity() {
+    for raw in [b"Q|1|^001\r".as_slice(), b"Q", b"Q|malformed"] {
+        assert!(starts_query(raw));
+    }
+    for raw in [b"".as_slice(), b"H|x\r", b"q|1\r"] {
+        assert!(!starts_query(raw));
     }
 }

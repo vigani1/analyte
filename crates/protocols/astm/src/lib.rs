@@ -11,7 +11,7 @@ mod codes;
 pub use codes::*;
 
 mod query;
-pub use query::{QueryIntent, QuerySelectorError, query_intent};
+pub use query::{QueryIntent, QuerySelectorError, query_intent, starts_query};
 
 mod encode;
 pub use encode::{OrderTermination, encode_order_envelope};

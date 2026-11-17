@@ -282,7 +282,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 self.commit_frame(id, number, bytes, stop, actions).await?;
             }
             Action::Record(record) => {
-                if record.first() == Some(&b'Q') && self.query_started.is_none() {
+                if analyte_astm::starts_query(&record) && self.query_started.is_none() {
                     self.query_started = Some(Instant::now());
                 }
                 if self
