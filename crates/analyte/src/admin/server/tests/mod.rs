@@ -14,6 +14,19 @@ mod pages;
 
 use analyte_fixtures::UnlimitedSpace as Space;
 
+fn admin_program() -> String {
+    analyte_fixtures::program_with_limits(
+        "[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n",
+        &analyte_store::Limits {
+            reserve_bytes: 1,
+            database_bytes: 100_000_000,
+            record_bytes: 2_097_152,
+            page_rows: 1,
+            busy_timeout: Duration::from_millis(100),
+        },
+    )
+}
+
 // Fixture migration/seeding is not an assertion about production latency.
 fn fixture_deadline() -> Result<std::time::Instant, Error> {
     std::time::Instant::now()
@@ -42,10 +55,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     let file = directory.path().join("program.toml");
     std::fs::write(
         &file,
-        format!(
-            "schema_version = 1\ndata_directory = 'data'\n[admin]\nport = {}\n[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n[store]\nreserve_bytes = 1\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 1\nbusy_timeout_ms = 100\n",
-            address.port()
-        ),
+        format!("{}[admin]\nport = {}\n", admin_program(), address.port()),
     )?;
     let program = || -> Result<Program, Error> {
         let mut program = Program::load(&file)?;

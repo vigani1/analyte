@@ -36,15 +36,10 @@ pub(crate) fn observation(
     config: &RecordSettings<'_>,
     code: NamespacedId,
     output: &mut Output,
-    law: Option<&std::collections::BTreeMap<*const u8, &analyte_hl7::law::Observation<'_>>>,
+    law: Option<&std::collections::BTreeMap<usize, &analyte_hl7::law::Observation<'_>>>,
 ) -> Result<Option<ObservationIdentity>, Error> {
     if let Some(observations) = law {
-        let segment = source.nodes.get(index).and_then(|node| match node.record {
-            crate::inbound::source::Record::Hl7(segment) => Some(segment),
-            crate::inbound::source::Record::Astm(_) => None,
-        });
-        let observation =
-            segment.and_then(|segment| observations.get(&segment.raw().as_ptr()).copied());
+        let observation = observations.get(&index).copied();
         let Some(observation) = observation else {
             finding(
                 output,

@@ -16,3 +16,7 @@
 - `recording`: Protected, append-only conversation recordings.
 
 [Technical details and safety guidance](DETAILS.md).
+
+Transport deliberately uses `analyte-model` for the single protected-evidence
+escaping helper (`quoted`), so network and serial evidence share one escaping
+rule rather than duplicating it in each transport.

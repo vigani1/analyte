@@ -65,13 +65,12 @@ pub(crate) fn message(
         });
     }
     let mut output = Output::default();
-    // Join borrowed views of the same original, not clinical identities. Index
-    // once so large batches cannot cause quadratic scans.
+    // Join source occurrences, never clinical identities or buffer addresses.
     let law = law.map(|results| {
         results
             .observations()
             .iter()
-            .map(|observation| (observation.segment().raw().as_ptr(), observation))
+            .map(|observation| (observation.segment_index(), observation))
             .collect::<std::collections::BTreeMap<_, _>>()
     });
     let mode = processing(source, &mut output)?;

@@ -2,22 +2,11 @@
 use super::*;
 use crate::Error;
 use crate::installation::config::Program;
-use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::UnlimitedSpace as Space;
 use std::path::Path;
 
 fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Error> {
-    std::fs::write(root.join("machine.toml"), definition)?;
-    std::fs::write(
-        root.join("site.toml"),
-        include_str!("../../../../core/config/examples/site.toml")
-            .rewrite("127.0.0.1:5600", endpoint),
-    )?;
-    let path = root.join("program.toml");
-    std::fs::write(
-        &path,
-        "schema_version = 1\ndata_directory = 'data'\n[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 1000\n",
-    )?;
+    let path = analyte_fixtures::write_machine(root, definition, endpoint)?;
     Program::load(&path).map_err(Into::into)
 }
 
