@@ -5,13 +5,11 @@ use std::collections::HashSet;
 
 impl Orders {
     fn validate_stack(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
-        if matches!(machine.choice(), StackChoice::LawManager) {
+        if machine.choice().allows_law_section() {
             return crate::schema::law::validate_orders(machine, path, self);
         }
-        if !matches!(
-            machine.choice(),
-            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager
-        ) && (self.hl7.is_some() || self.hl7_send.is_some() || self.placer_namespace.is_some())
+        if !machine.choice().has_hl7_records()
+            && (self.hl7.is_some() || self.hl7_send.is_some() || self.placer_namespace.is_some())
         {
             return Err(invalid(
                 path,
@@ -19,30 +17,28 @@ impl Orders {
                 "HL7 query layout applies only to HL7",
             ));
         }
-        let vendor_download = match machine.choice() {
-            StackChoice::AstmLis02 | StackChoice::FileAstm => {
-                if self.astm.is_none() {
-                    return Err(invalid(
-                        path,
-                        "orders.astm",
-                        "ASTM orders require explicit O-record destinations",
-                    ));
-                }
-                None
-            }
-            StackChoice::VidasLiteral => Some(machine.vidas.as_ref().is_some_and(|v| v.download)),
-            StackChoice::Autolyser => Some(machine.autolyser.as_ref().is_some_and(|a| a.download)),
-            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager => {
-                self.validate_hl7(machine, path)?;
-                return Ok(());
-            }
-            StackChoice::Poct => {
+        let vendor_download = if machine.choice().has_astm_records() {
+            if self.astm.is_none() {
                 return Err(invalid(
                     path,
-                    "orders",
-                    "outbound orders are unsupported for this stack",
+                    "orders.astm",
+                    "ASTM orders require explicit O-record destinations",
                 ));
             }
+            None
+        } else if machine.choice().has_vidas_assay_codes() {
+            Some(machine.vidas.as_ref().is_some_and(|v| v.download))
+        } else if matches!(machine.choice(), StackChoice::Autolyser) {
+            Some(machine.autolyser.as_ref().is_some_and(|a| a.download))
+        } else if machine.choice().has_hl7_records() {
+            self.validate_hl7(machine, path)?;
+            return Ok(());
+        } else {
+            return Err(invalid(
+                path,
+                "orders",
+                "outbound orders are unsupported for this stack",
+            ));
         };
         if let Some(download) = vendor_download {
             if self.patient_namespace.is_none() {
@@ -133,7 +129,7 @@ impl Orders {
                 return Err(invalid_tables(path));
             }
         }
-        if matches!(machine.choice(), StackChoice::VidasLiteral)
+        if machine.choice().has_vidas_assay_codes()
             && self.tests.iter().any(|test| {
                 let [code] = test.machine_components.as_slice() else {
                     return true;
@@ -163,20 +159,21 @@ impl Orders {
                 || types.len() > 4096
                 || types.iter().any(|t| {
                     !seen.insert((&t.app.namespace, &t.app.value))
-                        || match machine.choice() {
-                            StackChoice::Autolyser => !matches!(t.machine.as_str(), "S" | "U"),
-                            StackChoice::AstmLis02 | StackChoice::FileAstm => t
+                        || match machine.choice().record_kind() {
+                            crate::stack::RecordKind::Astm => t
                                 .machine
                                 .as_str()
                                 .bytes()
                                 .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b)),
-                            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager => {
-                                t.machine
-                                    .as_str()
-                                    .bytes()
-                                    .any(|b| !(32..127).contains(&b) || b"|^~\\&".contains(&b))
+                            crate::stack::RecordKind::Hl7 => t
+                                .machine
+                                .as_str()
+                                .bytes()
+                                .any(|b| !(32..127).contains(&b) || b"|^~\\&".contains(&b)),
+                            crate::stack::RecordKind::Vendor => {
+                                !matches!(machine.choice(), StackChoice::Autolyser)
+                                    || !matches!(t.machine.as_str(), "S" | "U")
                             }
-                            StackChoice::VidasLiteral | StackChoice::Poct => true,
                         }
                 })
             {
@@ -223,10 +220,8 @@ impl Orders {
                 "Autolyser list codes are T (routine) and R (STAT)",
             ));
         }
-        if matches!(
-            machine.choice(),
-            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager
-        ) && self.hl7_send.is_some()
+        if machine.choice().has_hl7_records()
+            && self.hl7_send.is_some()
             && self
                 .priorities
                 .iter()

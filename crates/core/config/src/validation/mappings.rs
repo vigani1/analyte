@@ -11,17 +11,15 @@ pub(super) fn field(
     key: &str,
 ) -> Result<(), Error> {
     let record = field.record.as_str();
-    let valid_record = match syntax {
-        StackChoice::AstmLis02 | StackChoice::FileAstm => {
-            matches!(record, "H" | "P" | "O" | "R" | "C" | "Q" | "L" | "M" | "S")
-        }
-        StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser => false,
-        StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager => {
-            record.len() == 3
-                && record
-                    .bytes()
-                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
-        }
+    let valid_record = if syntax.has_astm_records() {
+        matches!(record, "H" | "P" | "O" | "R" | "C" | "Q" | "L" | "M" | "S")
+    } else if syntax.has_hl7_records() {
+        record.len() == 3
+            && record
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+    } else {
+        false
     };
     if !valid_record
         || field.field == 0
@@ -118,7 +116,7 @@ pub(super) fn validate_component_parts(
     path: &str,
 ) -> Result<(), Error> {
     if let Some(parts) = &mapping.component_parts {
-        if !matches!(m.choice(), StackChoice::AstmLis02 | StackChoice::FileAstm) {
+        if !m.choice().has_astm_records() {
             return Err(invalid(
                 path,
                 "mappings.component_parts",
@@ -196,44 +194,12 @@ pub(super) fn validate_tables(
 
 pub(super) fn validate_mapping_family(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     // The permissive TOML document becomes exactly one table family at this boundary.
-    match (&m.mappings, &m.codes, m.choice()) {
-        (
-            Some(_),
-            None,
-            StackChoice::AstmLis02
-            | StackChoice::FileAstm
-            | StackChoice::Hl7V2
-            | StackChoice::FileHl7
-            | StackChoice::LawManager,
-        )
-        | (None, Some(_), StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser) =>
-            {}
-        (
-            Some(_),
-            Some(_) | None,
-            StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser,
-        )
-        | (None, None, StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser) => {
+    match (&m.mappings, &m.codes, m.choice().has_field_mappings()) {
+        (Some(_), None, true) | (None, Some(_), false) => {}
+        (Some(_), Some(_) | None, false) | (None, None, false) => {
             return Err(Error::VendorFieldMappings { path: path.into() });
         }
-        (
-            None,
-            Some(_) | None,
-            StackChoice::AstmLis02
-            | StackChoice::FileAstm
-            | StackChoice::Hl7V2
-            | StackChoice::FileHl7
-            | StackChoice::LawManager,
-        )
-        | (
-            Some(_),
-            Some(_),
-            StackChoice::AstmLis02
-            | StackChoice::FileAstm
-            | StackChoice::Hl7V2
-            | StackChoice::FileHl7
-            | StackChoice::LawManager,
-        ) => {
+        (None, Some(_) | None, true) | (Some(_), Some(_), true) => {
             return Err(invalid(
                 path,
                 "mappings",

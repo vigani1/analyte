@@ -77,3 +77,136 @@ impl Stack {
         }
     }
 }
+
+impl crate::StackChoice {
+    /// Returns whether this stack uses ASTM records.
+    #[must_use]
+    pub const fn has_astm_records(self) -> bool {
+        match self {
+            Self::AstmLis02 | Self::FileAstm => true,
+            Self::Hl7V2
+            | Self::FileHl7
+            | Self::LawManager
+            | Self::Poct
+            | Self::VidasLiteral
+            | Self::Autolyser => false,
+        }
+    }
+    /// Returns whether this stack uses HL7 segments.
+    #[must_use]
+    pub const fn has_hl7_records(self) -> bool {
+        match self {
+            Self::Hl7V2 | Self::FileHl7 | Self::LawManager => true,
+            Self::AstmLis02
+            | Self::FileAstm
+            | Self::Poct
+            | Self::VidasLiteral
+            | Self::Autolyser => false,
+        }
+    }
+    /// Returns whether this stack requires field mappings.
+    #[must_use]
+    pub const fn has_field_mappings(self) -> bool {
+        match self {
+            Self::AstmLis02 | Self::Hl7V2 | Self::FileAstm | Self::FileHl7 | Self::LawManager => {
+                true
+            }
+            Self::Poct | Self::VidasLiteral | Self::Autolyser => false,
+        }
+    }
+    /// Returns whether this stack requires a LAW section.
+    #[must_use]
+    pub const fn allows_law_section(self) -> bool {
+        match self {
+            Self::LawManager => true,
+            Self::AstmLis02
+            | Self::Hl7V2
+            | Self::FileAstm
+            | Self::FileHl7
+            | Self::Poct
+            | Self::VidasLiteral
+            | Self::Autolyser => false,
+        }
+    }
+    /// Returns whether this stack uses the HL7 stream acknowledgment policy.
+    #[must_use]
+    pub const fn has_hl7_acknowledgment(self) -> bool {
+        match self {
+            Self::Hl7V2 | Self::LawManager => true,
+            Self::AstmLis02
+            | Self::FileAstm
+            | Self::FileHl7
+            | Self::Poct
+            | Self::VidasLiteral
+            | Self::Autolyser => false,
+        }
+    }
+    /// Returns whether this stack uses the LIS01 link.
+    #[must_use]
+    pub const fn has_astm_link(self) -> bool {
+        match self {
+            Self::AstmLis02 => true,
+            Self::Hl7V2
+            | Self::FileAstm
+            | Self::FileHl7
+            | Self::LawManager
+            | Self::Poct
+            | Self::VidasLiteral
+            | Self::Autolyser => false,
+        }
+    }
+    /// Returns whether this stack uses VIDAS assay codes.
+    #[must_use]
+    pub const fn has_vidas_assay_codes(self) -> bool {
+        match self {
+            Self::VidasLiteral => true,
+            Self::AstmLis02
+            | Self::Hl7V2
+            | Self::FileAstm
+            | Self::FileHl7
+            | Self::LawManager
+            | Self::Poct
+            | Self::Autolyser => false,
+        }
+    }
+}
+
+/// Grammar family used for field selectors and specimen code validation.
+#[derive(Clone, Copy)]
+pub(crate) enum RecordKind {
+    Astm,
+    Hl7,
+    Vendor,
+}
+impl crate::StackChoice {
+    pub(crate) const fn record_kind(self) -> RecordKind {
+        match self {
+            Self::AstmLis02 | Self::FileAstm => RecordKind::Astm,
+            Self::Hl7V2 | Self::FileHl7 | Self::LawManager => RecordKind::Hl7,
+            Self::Poct | Self::VidasLiteral | Self::Autolyser => RecordKind::Vendor,
+        }
+    }
+    pub(crate) const fn has_hl7_departures(self) -> bool {
+        match self {
+            Self::Hl7V2 | Self::FileHl7 => true,
+            Self::AstmLis02
+            | Self::FileAstm
+            | Self::LawManager
+            | Self::Poct
+            | Self::VidasLiteral
+            | Self::Autolyser => false,
+        }
+    }
+    pub(crate) const fn supports_transport(self, kind: crate::TransportKind) -> bool {
+        use crate::TransportKind;
+        match self {
+            Self::AstmLis02 | Self::VidasLiteral | Self::Autolyser => {
+                !matches!(kind, TransportKind::WatchedFolder)
+            }
+            Self::Hl7V2 | Self::LawManager | Self::Poct => {
+                matches!(kind, TransportKind::TcpClient | TransportKind::TcpServer)
+            }
+            Self::FileAstm | Self::FileHl7 => matches!(kind, TransportKind::WatchedFolder),
+        }
+    }
+}
