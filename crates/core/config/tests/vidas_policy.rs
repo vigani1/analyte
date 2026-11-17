@@ -27,7 +27,7 @@ fn adr0002_vidas_bci_a_ch4_ack_and_checksum_choices_keep_boolean_toml()
             ("overrides", "schema_version=1"),
         )?
         .validate()?;
-        let Stack::VidasLiteral(stack) = validated.effective().stack() else {
+        let Stack::Vidas(stack) = validated.effective().stack() else {
             return Err("VIDAS stack expected".into());
         };
         let policy = stack.policy();

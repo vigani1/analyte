@@ -1,5 +1,5 @@
 //! Tests VIDAS result uploads and work downloads.
-use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
+use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
 use analyte_framing::vidas::{Checksum, Config, Decoder, Mode};
 use analyte_vidas::syntax::{Message, SampleLimit};
 use std::time::Duration;
@@ -25,10 +25,10 @@ fn config(
     )?)
 }
 
-fn policy() -> Policy {
-    Policy {
-        acknowledgment: Duration::from_secs(1),
-        interbyte: Duration::from_secs(2),
+fn policy() -> DialogConfig {
+    DialogConfig {
+        ack: Duration::from_secs(1),
+        inter_byte: Duration::from_secs(2),
         session: Duration::from_secs(3),
         commit: Duration::from_secs(1),
         retries: 0,

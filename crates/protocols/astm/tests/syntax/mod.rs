@@ -615,4 +615,4 @@ fn check_terminator(records: &[analyte_astm::Record]) -> Result<(), Error> {
     Ok(())
 }
 
-mod scenarios_1;
+mod grammar;

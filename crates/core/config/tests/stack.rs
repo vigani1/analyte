@@ -25,7 +25,7 @@ fn variant(stack: &Stack) -> &str {
         Stack::Hl7(analyte_config::RecordTransport::Stream(_)) => "hl7",
         Stack::Law(_) => "law",
         Stack::Poct(_) => "poct",
-        Stack::VidasLiteral(_) => "vidas",
+        Stack::Vidas(_) => "vidas",
         Stack::Autolyser(_) => "autolyser",
         Stack::Astm(analyte_config::RecordTransport::Folder(_)) => "file_astm",
         Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => "file_hl7",
@@ -98,7 +98,7 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
                 assert_eq!(stack.policy().depth, 32);
                 assert!(!stack.codes().tests.is_empty());
             }
-            Stack::VidasLiteral(stack) => {
+            Stack::Vidas(stack) => {
                 assert_eq!(u8::from(stack.policy().sample_limit), 12);
                 assert!(!stack.codes().tests.is_empty());
                 assert!(stack.orders().is_none());

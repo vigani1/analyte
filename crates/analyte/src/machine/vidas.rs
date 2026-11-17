@@ -4,7 +4,7 @@ use super::custody::{self, ms};
 use super::transfer_end::VidasEnd;
 use crate::intake;
 use crate::machine::error::SessionError as Error;
-use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
+use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
 use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -27,7 +27,7 @@ pub(crate) struct ConnectionState {
     pub(crate) cursor: String,
     pub(crate) next_poll: Instant,
     pub(crate) config: Config,
-    pub(crate) policy: Policy,
+    pub(crate) policy: DialogConfig,
 }
 
 pub(super) async fn session(
@@ -53,9 +53,9 @@ impl ConnectionState {
     ) -> Result<Self, Error> {
         let installed = &settings.policy();
         let config = analyte_mapping::read::vidas_config(&machine.snapshot)?;
-        let policy = Policy {
-            acknowledgment: ms(installed.acknowledgment_ms),
-            interbyte: ms(installed.interbyte_ms),
+        let policy = DialogConfig {
+            ack: ms(installed.acknowledgment_ms),
+            inter_byte: ms(installed.interbyte_ms),
             session: ms(installed.session_ms),
             commit: ms(installed.commit_ms),
             retries: installed.retries,

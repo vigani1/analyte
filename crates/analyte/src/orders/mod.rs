@@ -95,7 +95,7 @@ fn build_event(
         source_status: (&record.source_code).into(),
         reason: reason.map(text).transpose()?,
     })?;
-    Ok(analyte_sink::build_order_event(
+    Ok(analyte_sink::encode_order_event(
         &event,
         record.key.destination.clone(),
     )?)

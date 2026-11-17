@@ -87,7 +87,7 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         let worker = Worker::new(&store, &destinations, &secrets);
         let metadata = receipt()?;
         let result = make_result(metadata.id, "retry-run")?;
-        let delivery = build_delivery(
+        let delivery = encode_delivery(
             &result,
             &metadata,
             Identifier::new("app")?,
@@ -174,7 +174,7 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
         let destinations = [destination(&format!("http://{}", listener.local_addr()?))?];
         let metadata = receipt()?;
         let result = make_result(metadata.id, "drain-run")?;
-        let delivery = build_delivery(
+        let delivery = encode_delivery(
             &result,
             &metadata,
             Identifier::new("app")?,
@@ -271,7 +271,7 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
 
 // Contract v1 HTTP document ceiling and clinical rule 7; synthetic local HTTP only.
 #[test]
-fn mutation_adr0003_rule4_rule5_build_delivery_preserves_three_identities_and_exact_values()
+fn mutation_adr0003_rule4_rule5_encode_delivery_preserves_three_identities_and_exact_values()
 -> TestResult {
     let metadata = receipt()?;
     let mut result = make_result(metadata.id, "run-A")?;
@@ -289,7 +289,7 @@ fn mutation_adr0003_rule4_rule5_build_delivery_preserves_three_identities_and_ex
             .collect::<Result<Vec<_>, TextError>>()?,
     )?;
     result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
-    let delivery = build_delivery(
+    let delivery = encode_delivery(
         &result,
         &metadata,
         Identifier::new("app")?,
@@ -321,7 +321,7 @@ fn mutation_adr0003_rule4_rule5_build_delivery_preserves_three_identities_and_ex
     assert_eq!(wire["results"][0]["sample"]["id"], "000123");
     result.identity = IdentityStatus::Unresolved(Reason::new("run identity unknown")?);
     assert!(matches!(
-        build_delivery(
+        encode_delivery(
             &result,
             &metadata,
             Identifier::new("app")?,
@@ -347,7 +347,7 @@ async fn mutation_contract_v1_conflict_detail_requires_conflict_status_and_versi
         let destinations = [destination(&format!("http://{}", listener.local_addr()?))?];
         let metadata = receipt()?;
         let result = make_result(metadata.id, "detail-run")?;
-        let delivery = build_delivery(
+        let delivery = encode_delivery(
             &result,
             &metadata,
             Identifier::new("app")?,

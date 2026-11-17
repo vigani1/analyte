@@ -267,8 +267,8 @@ fn validate_container_detail_cases(
     Ok(())
 }
 
-mod scenarios_1;
+mod specimens;
 
-mod scenarios_2;
+mod containers;
 
 mod preservation;

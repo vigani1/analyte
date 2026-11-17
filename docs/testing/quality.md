@@ -289,7 +289,7 @@ cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'delivery.rs:143:28|delivery.rs:199:35' --cargo-test-arg contract_v1_conflict_detail_requires_conflict_status_and_version_one -o target/mutation-delivery-final/sink
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'in body$' --cargo-test-arg contract_v1_rule7_response_body_ceiling_is_inclusive -o target/mutation-body-recheck/sink
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'replace body ->|delivery.rs:250:32|delivery.rs:253:54' --cargo-test-arg contract_v1_ -o target/mutation-http-recheck/sink
-cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'replace build_delivery ->.*Default|Worker.*deliver_once ->.*Default' --cargo-test-arg mutation_ -o target/mutation-build-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'replace encode_delivery ->.*Default|Worker.*deliver_once ->.*Default' --cargo-test-arg mutation_ -o target/mutation-build-recheck/sink
 $misses = Get-Content target/mutation-before/sink/mutants.out/missed.txt
 $pattern = ($misses | ForEach-Object { '^' + [regex]::Escape($_) + '$' }) -join '|'
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F $pattern --cargo-test-arg mutation_ -o target/mutation-misses-recheck/sink

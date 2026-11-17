@@ -1,6 +1,6 @@
 # sink
 
-**Kind: steps.** Groups files by the data and operations they handle.
+**Kind: steps.** Groups delivery, polling and alert operations by role.
 
 **What it does:** Delivers results to lab apps over HTTP, polls apps for order changes and sends operational alert webhooks.
 

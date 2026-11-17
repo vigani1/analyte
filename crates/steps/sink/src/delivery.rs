@@ -10,7 +10,7 @@ use tokio::sync::watch;
 /// The caller commits this with its interpretation using `Store::interpret_reconciled`.
 /// # Errors
 /// Refuses non-production modes, parked evidence, receipt mismatch and wire errors.
-pub fn build_delivery(
+pub fn encode_delivery(
     result: &ResultContent,
     receipt: &ReceiptMetadata,
     destination: Identifier,
@@ -42,7 +42,7 @@ pub fn build_delivery(
 /// Freezes a validated order event for atomic enqueue. Its supplied ID is retained.
 /// # Errors
 /// Refuses oversized bytes or an order identity outside the store's identifier bounds.
-pub fn build_order_event(
+pub fn encode_order_event(
     event: &analyte_contract::OrderEvent,
     destination: Identifier,
 ) -> Result<analyte_store::OrderEventDelivery, Error> {

@@ -58,7 +58,7 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
         assert_eq!(vendor_namespace(&valid)?.as_str(), "synthetic-patients");
         assert!(matches!(
             valid.effective().stack(),
-            analyte_config::Stack::VidasLiteral(_) | analyte_config::Stack::Autolyser(_)
+            analyte_config::Stack::Vidas(_) | analyte_config::Stack::Autolyser(_)
         ));
         invalid_key(
             vendor_config(
@@ -536,7 +536,7 @@ fn vendor_namespace(
     config: &Validated,
 ) -> Result<&analyte_model::Identifier, Box<dyn std::error::Error>> {
     match config.effective().stack() {
-        analyte_config::Stack::VidasLiteral(s) => {
+        analyte_config::Stack::Vidas(s) => {
             Ok(s.orders().as_ref().ok_or("orders")?.patient_namespace())
         }
         analyte_config::Stack::Autolyser(s) => {

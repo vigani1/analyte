@@ -2,17 +2,17 @@
 //! Host owns byte journaling, storage and cancellation; the dialog owns timers.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
-use analyte_framing::vidas::{Config, Mode, Packet};
+use analyte_framing::vidas::{Config as FrameConfig, Mode, Packet};
 use analyte_vidas::syntax::{Kind, Message};
 use std::time::Duration;
 
 /// Required site timing/retry evidence; no ASTM constants or defaults.
 #[derive(Debug, Clone)]
-pub struct Policy {
+pub struct Config {
     /// Maximum peer response wait.
-    pub acknowledgment: Duration,
+    pub ack: Duration,
     /// Maximum gap between received bytes.
-    pub interbyte: Duration,
+    pub inter_byte: Duration,
     /// Maximum entire conversation duration.
     pub session: Duration,
     /// Maximum host commit wait.
@@ -26,7 +26,7 @@ pub struct Policy {
 /// Names a dialog-owned deadline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Timer {
-    /// Peer acknowledgment.
+    /// Peer ack.
     Acknowledgment,
     /// Byte gap.
     Interbyte,
@@ -91,7 +91,7 @@ enum State {
 pub enum Error {
     /// Deadlines must all be positive.
     #[error("zero conversation deadline")]
-    Policy,
+    Config,
     /// Connection time moved backwards.
     #[error("dialog time moved backwards")]
     TimeReversed,
@@ -108,8 +108,8 @@ pub enum Error {
 
 /// Deterministic state machine; one transfer identity per instance.
 pub struct Dialog {
-    config: Config,
-    policy: Policy,
+    config: FrameConfig,
+    policy: Config,
     state: State,
     outbound: Option<Vec<u8>>,
     clock: crate::Clock,
@@ -121,14 +121,14 @@ impl Dialog {
     /// Prepares an upload receiver; ENQ readiness requires reserved store capacity.
     /// # Errors
     /// Rejects zero deadlines. Caller must reserve storage before creation.
-    pub fn upload(config: Config, policy: Policy) -> Result<Self, Error> {
+    pub fn upload(config: FrameConfig, policy: Config) -> Result<Self, Error> {
         Self::new(config, policy, State::UploadReady, None)
     }
 
     /// Prepares one work-list request, with no automatic resend path.
     /// # Errors
     /// Rejects non-request messages, invalid policy or encoding failures.
-    pub fn download(config: Config, policy: Policy, request: &Message) -> Result<Self, Error> {
+    pub fn download(config: FrameConfig, policy: Config, request: &Message) -> Result<Self, Error> {
         if request.kind() != Kind::Request {
             return Err(Error::Request);
         }
@@ -137,20 +137,14 @@ impl Dialog {
     }
 
     fn new(
-        config: Config,
-        policy: Policy,
+        config: FrameConfig,
+        policy: Config,
         state: State,
         outbound: Option<Vec<u8>>,
     ) -> Result<Self, Error> {
-        if [
-            policy.acknowledgment,
-            policy.interbyte,
-            policy.session,
-            policy.commit,
-        ]
-        .contains(&Duration::ZERO)
+        if [policy.ack, policy.inter_byte, policy.session, policy.commit].contains(&Duration::ZERO)
         {
-            return Err(Error::Policy);
+            return Err(Error::Config);
         }
         Ok(Self {
             config,
@@ -168,14 +162,11 @@ impl Dialog {
     pub fn start(&mut self) -> Vec<Action> {
         let mut actions = vec![
             Action::Arm(Timer::Session, self.policy.session),
-            Action::Arm(Timer::Interbyte, self.policy.interbyte),
+            Action::Arm(Timer::Interbyte, self.policy.inter_byte),
         ];
         if matches!(self.state, State::DownloadReady) {
             actions.push(Action::Send(self.config.control(5)));
-            actions.push(Action::Arm(
-                Timer::Acknowledgment,
-                self.policy.acknowledgment,
-            ));
+            actions.push(Action::Arm(Timer::Acknowledgment, self.policy.ack));
         }
         self.schedule(&actions);
         actions
@@ -187,8 +178,8 @@ impl Dialog {
         [
             self.timers.session,
             self.timers.commit,
-            self.timers.acknowledgment,
-            self.timers.interbyte,
+            self.timers.ack,
+            self.timers.inter_byte,
         ]
         .into_iter()
         .flatten()
@@ -208,9 +199,9 @@ impl Dialog {
         let headroom = self
             .policy
             .session
-            .max(self.policy.interbyte)
+            .max(self.policy.inter_byte)
             .max(self.policy.commit)
-            .max(self.policy.acknowledgment);
+            .max(self.policy.ack);
         self.clock
             .advance(now, headroom)
             .map_err(|error| match error {
@@ -237,8 +228,8 @@ impl Dialog {
             return Ok(Vec::new());
         }
         if matches!(event, Event::Activity) {
-            if self.timers.interbyte.is_some() {
-                self.timers.interbyte = now.checked_add(self.policy.interbyte);
+            if self.timers.inter_byte.is_some() {
+                self.timers.inter_byte = now.checked_add(self.policy.inter_byte);
             }
             return Ok(Vec::new());
         }
@@ -272,7 +263,7 @@ impl Dialog {
         }
         let mut actions = vec![
             Action::Cancel(Timer::Interbyte),
-            Action::Arm(Timer::Interbyte, self.policy.interbyte),
+            Action::Arm(Timer::Interbyte, self.policy.inter_byte),
         ];
         match (self.state, event) {
             (State::UploadReady, Event::Control(5)) => {
@@ -304,10 +295,7 @@ impl Dialog {
                 if let Some(bytes) = self.outbound.take() {
                     actions.push(Action::Send(bytes));
                 }
-                actions.push(Action::Arm(
-                    Timer::Acknowledgment,
-                    self.policy.acknowledgment,
-                ));
+                actions.push(Action::Arm(Timer::Acknowledgment, self.policy.ack));
             }
             (State::DownloadAck, Event::Control(6)) => {
                 actions.push(Action::Cancel(Timer::Acknowledgment));
@@ -367,16 +355,16 @@ impl Dialog {
 
 #[derive(Default)]
 struct Deadlines {
-    acknowledgment: Option<Duration>,
-    interbyte: Option<Duration>,
+    ack: Option<Duration>,
+    inter_byte: Option<Duration>,
     session: Option<Duration>,
     commit: Option<Duration>,
 }
 impl Deadlines {
     fn get_mut(&mut self, timer: Timer) -> &mut Option<Duration> {
         match timer {
-            Timer::Acknowledgment => &mut self.acknowledgment,
-            Timer::Interbyte => &mut self.interbyte,
+            Timer::Acknowledgment => &mut self.ack,
+            Timer::Interbyte => &mut self.inter_byte,
             Timer::Session => &mut self.session,
             Timer::Commit => &mut self.commit,
         }

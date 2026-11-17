@@ -7,7 +7,7 @@ mod polling;
 mod webhook;
 pub use webhook::{WebhookSender, WebhookUrl};
 
-pub use delivery::{DeliveryOutcome, Worker, build_delivery, build_order_event};
+pub use delivery::{DeliveryOutcome, Worker, encode_delivery, encode_order_event};
 pub use destination::{Credentials, Destination, Limits, SecretsSource};
 pub use polling::Poller;
 

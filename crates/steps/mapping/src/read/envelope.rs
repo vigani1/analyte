@@ -10,7 +10,7 @@ pub fn payload<'a>(config: &Validated, raw: &'a [u8]) -> Result<Cow<'a, [u8]>, E
         Stack::Astm(RecordTransport::Folder(_))
         | Stack::Hl7(RecordTransport::Folder(_))
         | Stack::Poct(_)
-        | Stack::VidasLiteral(_)
+        | Stack::Vidas(_)
         | Stack::Autolyser(_) => Ok(raw.into()),
         Stack::Astm(RecordTransport::Stream(s)) => Ok(analyte_framing::astm::decode(
             raw,

@@ -431,7 +431,7 @@ impl Effective {
             Stack::Hl7(RecordTransport::Stream(_))
             | Stack::Law(_)
             | Stack::Poct(_)
-            | Stack::VidasLiteral(_)
+            | Stack::Vidas(_)
             | Stack::Autolyser(_)
             | Stack::Hl7(RecordTransport::Folder(_)) => None,
         }
@@ -447,7 +447,7 @@ impl Effective {
             Stack::Astm(RecordTransport::Stream(_))
             | Stack::Astm(RecordTransport::Folder(_))
             | Stack::Poct(_)
-            | Stack::VidasLiteral(_)
+            | Stack::Vidas(_)
             | Stack::Autolyser(_) => None,
         }
     }

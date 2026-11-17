@@ -286,9 +286,9 @@ async fn wait_audit(path: &Path) -> Result<(), Error> {
 }
 
 #[cfg(feature = "test-hooks")]
-mod scenarios_1;
+mod lookup;
 
-mod scenarios_2;
+mod downloads;
 
 #[cfg(feature = "test-hooks")]
 #[path = "../gates/mod.rs"]

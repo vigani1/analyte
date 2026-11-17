@@ -205,9 +205,9 @@ fn reprocess_deadline() -> Result<std::time::Instant, &'static str> {
         .ok_or("deadline")
 }
 
-mod scenarios_1;
+mod custody;
 
-mod scenarios_2;
+mod delivery;
 mod text;
 
 // ADR 0003: the failed interpretation owns exactly this operator audit.

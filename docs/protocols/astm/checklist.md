@@ -114,7 +114,7 @@ Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its
 
 ### Additional safety tests owned by Analyte, not attributed to ASTM
 
-- [x] Frame commit before data ACK, capacity reservation before ENQ ACK, disk-full/commit failure refusal. Temporal proof: `adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_retains_original_and_delivers_once` in [paused custody test](../../../crates/analyte/tests/delivery/scenarios_1.rs). Tests: `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack`, `lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted`, `adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded` in [host tests](../../../crates/analyte/tests/receive/scenarios_1.rs).
+- [x] Frame commit before data ACK, capacity reservation before ENQ ACK, disk-full/commit failure refusal. Temporal proof: `adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_retains_original_and_delivers_once` in [paused custody test](../../../crates/analyte/tests/delivery/credentials.rs). Tests: `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack`, `lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted`, `adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded` in [host tests](../../../crates/analyte/tests/receive/connections.rs).
 - [ ] Crash after write/before ACK, repeated previous frame, same-number conflicting payload, incomplete ETB record and repeated hierarchy ancestors. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] Split/merge every byte boundary; high-bit checksum before character decode; rollover and separate frame/record/message/session boundaries. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
 - [ ] Fixed bounds for trickles, frames, records and sessions, while retaining raw evidence. Remaining: a named test covering the complete row, beyond parser retention and the link tests listed above.
@@ -126,7 +126,7 @@ Source caveats: serial §6.3.1 uses an inconsistent payload threshold; honor its
 The parser retains positional fields without requiring every optional field.
 Counts include type/sequence/delimiter positions. They describe retained field
 positions, not complete semantic validation. All rows use
-[syntax field-position tests](../../../crates/protocols/astm/tests/syntax/scenarios_1.rs),
+[syntax field-position tests](../../../crates/protocols/astm/tests/syntax/grammar.rs),
 `lis02_sections_6_through_14_read_only_field_positions`.
 
 | Record role | Positions handled | Coverage |

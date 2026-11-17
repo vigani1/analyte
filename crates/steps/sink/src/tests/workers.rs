@@ -17,7 +17,7 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
         if !polling {
             let metadata = receipt()?;
             let result = make_result(metadata.id, "cancel-run")?;
-            let delivery = build_delivery(
+            let delivery = encode_delivery(
                 &result,
                 &metadata,
                 Identifier::new("app")?,
@@ -107,7 +107,7 @@ async fn mutation_rule7_idle_workers_wait_before_claiming_again() -> TestResult 
         let mut store = store(&directory.path().join("store.db")).await?;
         let metadata = receipt()?;
         let result = make_result(metadata.id, "idle-run")?;
-        let delivery = build_delivery(
+        let delivery = encode_delivery(
             &result,
             &metadata,
             Identifier::new("app")?,

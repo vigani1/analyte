@@ -30,7 +30,7 @@ pub fn framing(
 ) -> Result<analyte_framing::vidas::Config, Error> {
     use analyte_framing::vidas::{Checksum, Config, Mode};
     let settings = match config.effective().stack() {
-        Stack::VidasLiteral(settings) => settings,
+        Stack::Vidas(settings) => settings,
         Stack::Astm(analyte_config::RecordTransport::Stream(_))
         | Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | Stack::Law(_)

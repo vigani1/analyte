@@ -155,7 +155,7 @@ pub fn map_order(
         let [code] = mapped.machine_components.as_slice() else {
             return Err(OrderMappingError::Representation);
         };
-        let request = analyte_vidas::syntax::Message::build(
+        let request = analyte_vidas::syntax::Message::new(
             &[
                 ("mt", "mpr"),
                 ("pi", patient),
