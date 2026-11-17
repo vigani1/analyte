@@ -58,20 +58,6 @@ impl Stack {
             Stack::Poct(s) => s.send_ahead(),
         }
     }
-    /// Returns the selected stack's is law.
-    #[must_use]
-    pub fn atomic_batches(&self) -> bool {
-        match self {
-            Stack::Law(_) => true,
-            Stack::Astm(RecordTransport::Stream(_))
-            | Stack::Astm(RecordTransport::Folder(_))
-            | Stack::Hl7(RecordTransport::Stream(_))
-            | Stack::Hl7(RecordTransport::Folder(_))
-            | Stack::Poct(_)
-            | Stack::Vidas(_)
-            | Stack::Autolyser(_) => false,
-        }
-    }
 }
 
 impl Stack {
@@ -88,17 +74,6 @@ impl Stack {
             Stack::Poct(_) => "analyte-poct",
             Stack::Vidas(_) => "analyte-vidas",
             Stack::Autolyser(_) => "analyte-autolyser",
-        }
-    }
-
-    /// Returns whether each POCT reading has independent custody.
-    #[must_use]
-    pub fn independent_readings(&self) -> bool {
-        match self {
-            Self::Poct(_) => true,
-            Self::Astm(_) | Self::Hl7(_) | Self::Law(_) | Self::Vidas(_) | Self::Autolyser(_) => {
-                false
-            }
         }
     }
 }
