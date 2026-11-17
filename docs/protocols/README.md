@@ -17,6 +17,13 @@ themselves are never committed.
 Each folder contains `README.md`, `decisions.md`, `checklist.md` and
 `versions.md`. See the [glossary](../glossary.md) for shared terms.
 
+## Checklist test references
+
+Every backticked test name in a `checklist.md` is a test reference, and
+`scripts/check-protocol-tests.py` fails CI when the test does not exist. Future
+work is written as `Planned test: ` followed by one backticked name, once per
+name; only that name is skipped, and it must not name an existing test.
+
 ## Durable custody boundaries
 
 [ADR 0003](../adr/0003-clinical-safety-rules.md) and [ADR 0010](../adr/0010-acknowledgment-boundaries.md)
