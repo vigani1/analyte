@@ -79,16 +79,32 @@ impl From<super::autolyser::Error> for Error {
 
 impl<C> From<C> for Error
 where
-    super::receive::shared::Shared: From<C>,
+    super::receive::error::Error: From<C>,
 {
     fn from(cause: C) -> Self {
-        match super::receive::shared::Shared::from(cause) {
-            super::receive::shared::Shared::Link(cause) => Self::Link(cause),
-            super::receive::shared::Shared::Evidence(cause) => Self::Evidence(cause),
-        }
+        Self::Evidence(super::receive::error::Error::from(cause))
     }
 }
-
+impl From<std::io::Error> for Error {
+    fn from(cause: std::io::Error) -> Self {
+        Self::Link(super::link::error::Error::from(cause))
+    }
+}
+impl From<analyte_transport::Error> for Error {
+    fn from(cause: analyte_transport::Error) -> Self {
+        Self::Link(super::link::error::Error::from(cause))
+    }
+}
+impl From<std::net::AddrParseError> for Error {
+    fn from(cause: std::net::AddrParseError) -> Self {
+        Self::Link(super::link::error::Error::from(cause))
+    }
+}
+impl From<analyte_transport::folder::WatchError> for Error {
+    fn from(cause: analyte_transport::folder::WatchError) -> Self {
+        Self::Link(super::link::error::Error::from(cause))
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +153,11 @@ mod tests {
         ));
         let source = Error::from(std::io::Error::other("synthetic owner failure"));
         assert_eq!(source.to_string(), "synthetic owner failure");
+    }
+}
+
+impl From<super::link::error::Error> for Error {
+    fn from(cause: super::link::error::Error) -> Self {
+        Self::Link(cause)
     }
 }

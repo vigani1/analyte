@@ -37,10 +37,10 @@ pub(crate) enum Error {
     /// ASTM record syntax could not be decoded.
     #[error(transparent)]
     Syntax(#[from] analyte_astm::Error),
-    /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
+    /// Retains link, store and evidence causes from [`crate::machine::custody::Refusal`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
-    Refusal(#[from] crate::machine::custody::Refusal<Self>),
+    Refusal(crate::machine::custody::Refusal<Self>),
 }
 
 #[cfg(test)]

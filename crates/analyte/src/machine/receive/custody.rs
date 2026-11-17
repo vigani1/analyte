@@ -218,3 +218,61 @@ mod tests {
         );
     }
 }
+
+use super::error::Error as Evidence;
+use crate::machine::link::error::Error as Link;
+
+impl<E: std::error::Error + 'static, C> From<C> for Refusal<E>
+where
+    Evidence: From<C>,
+{
+    fn from(cause: C) -> Self {
+        Self::Evidence(Box::new(Evidence::from(cause)))
+    }
+}
+impl<E: std::error::Error + 'static> From<std::io::Error> for Refusal<E> {
+    fn from(cause: std::io::Error) -> Self {
+        Self::Link(Box::new(Link::from(cause)))
+    }
+}
+impl<E: std::error::Error + 'static> From<analyte_transport::Error> for Refusal<E> {
+    fn from(cause: analyte_transport::Error) -> Self {
+        Self::Link(Box::new(Link::from(cause)))
+    }
+}
+impl<E: std::error::Error + 'static> From<std::net::AddrParseError> for Refusal<E> {
+    fn from(cause: std::net::AddrParseError) -> Self {
+        Self::Link(Box::new(Link::from(cause)))
+    }
+}
+impl<E: std::error::Error + 'static> From<analyte_transport::folder::WatchError> for Refusal<E> {
+    fn from(cause: analyte_transport::folder::WatchError) -> Self {
+        Self::Link(Box::new(Link::from(cause)))
+    }
+}
+#[cfg(test)]
+mod conversions_tests {
+    use super::*;
+
+    #[test]
+    fn adr0003_shared_conversions_retain_typed_link_and_store_causes() {
+        let link = Refusal::<std::io::Error>::from(analyte_transport::Error::Deadline("write all"));
+        assert!(matches!(
+            link,
+            Refusal::Link(cause) if matches!(*cause, Link::Transport(analyte_transport::Error::Deadline("write all")))
+        ));
+        let store = Refusal::<std::io::Error>::from(analyte_store::IntakeError::from(
+            analyte_store::StorageError::Capacity,
+        ));
+        assert!(matches!(
+            store,
+            Refusal::Evidence(cause) if matches!(*cause, Evidence::Store(analyte_store::IntakeError::Capacity))
+        ));
+    }
+}
+
+impl<E: std::error::Error + 'static> From<Link> for Refusal<E> {
+    fn from(cause: Link) -> Self {
+        Self::Link(Box::new(cause))
+    }
+}

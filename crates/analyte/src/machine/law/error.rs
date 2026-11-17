@@ -83,10 +83,10 @@ pub(crate) enum Error {
     /// The HL7 transport envelope failed MLLP framing.
     #[error(transparent)]
     Mllp(#[from] analyte_framing::hl7::Error),
-    /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
+    /// Retains link, store and evidence causes from [`crate::machine::custody::Refusal`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
-    Refusal(#[from] crate::machine::custody::Refusal<Self>),
+    Refusal(crate::machine::custody::Refusal<Self>),
 }
 
 #[derive(Debug)]

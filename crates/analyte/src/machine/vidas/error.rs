@@ -25,10 +25,10 @@ pub(crate) enum Error {
     /// The VIDAS packet failed framing or checksum validation.
     #[error(transparent)]
     Frame(#[from] analyte_framing::vidas::Error),
-    /// Retains link, store and evidence causes from [`crate::machine::receive::shared::Shared`],
+    /// Retains link, store and evidence causes from [`crate::machine::custody::Refusal`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
-    Refusal(#[from] crate::machine::custody::Refusal<Self>),
+    Refusal(crate::machine::custody::Refusal<Self>),
 }
 
 crate::runtime::service::conversions::causes!(Error; protocol);

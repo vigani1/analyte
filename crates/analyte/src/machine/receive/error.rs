@@ -75,4 +75,8 @@ impl From<crate::machine::interpretation::ReadError> for Error {
     }
 }
 
-crate::runtime::service::conversions::causes!(Error; worker analyte_store::IntakeError);
+impl From<analyte_store::WorkerError> for Error {
+    fn from(cause: analyte_store::WorkerError) -> Self {
+        Self::Store(analyte_store::IntakeError::from(cause))
+    }
+}

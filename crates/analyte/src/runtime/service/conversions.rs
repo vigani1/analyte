@@ -7,10 +7,10 @@ macro_rules! causes {
     ($target:ty; protocol) => {
         impl<C> From<C> for $target
         where
-            $crate::machine::receive::shared::Shared: From<C>,
+            $crate::machine::custody::Refusal<Self>: From<C>,
         {
             fn from(cause: C) -> Self {
-                Self::Refusal($crate::machine::receive::shared::Shared::from(cause).into())
+                Self::Refusal(cause.into())
             }
         }
         impl From<$crate::machine::custody::StoreWaitError<Self>> for $target {
@@ -23,13 +23,6 @@ macro_rules! causes {
                 Self::Refusal($crate::machine::custody::Refusal::Cleanup(Box::new(
                     $crate::machine::custody::Cleanup { original, effect },
                 )))
-            }
-        }
-    };
-    ($target:ty; worker $boundary:ty) => {
-        impl From<analyte_store::WorkerError> for $target {
-            fn from(cause: analyte_store::WorkerError) -> Self {
-                Self::Store(<$boundary>::from(cause))
             }
         }
     };

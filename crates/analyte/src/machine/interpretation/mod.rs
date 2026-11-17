@@ -92,4 +92,8 @@ pub(crate) enum ReadError {
     Mapping(#[from] crate::reading::Error),
 }
 
-crate::runtime::service::conversions::causes!(ReadError; worker analyte_store::OperatorError);
+impl From<analyte_store::WorkerError> for ReadError {
+    fn from(cause: analyte_store::WorkerError) -> Self {
+        Self::Store(analyte_store::OperatorError::from(cause))
+    }
+}
