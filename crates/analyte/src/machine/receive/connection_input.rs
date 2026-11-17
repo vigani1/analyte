@@ -1,7 +1,7 @@
 //! Reads transport outcomes before bytes enter protocol custody.
 //! ASTM commits frames with transfer identity; HL7 commits complete messages and
 //! interpretation; LAW commits raw results and interpretation. POCT, VIDAS and
-//! Autolyser additionally journal chunks before dialog input via `journaled`.
+//! Autolyser additionally journal chunks in the shared driver before dialog input.
 //! Their positive steps remain guarded by their own complete receipt/transfer/poll
 //! commits (ADR 0010). Cancelling a receive does not cancel queued store work.
 use crate::intake::ByteReason;
@@ -29,39 +29,7 @@ pub(crate) async fn receive(conn: &mut Connection) -> Result<Input, analyte_tran
 }
 
 use crate::intake;
-use analyte_model::ReceiptId;
 use analyte_store::Handle;
-use std::time::Duration;
-use tokio::sync::watch;
-
-/// Every transport chunk is durably journaled before a dialog sees any byte.
-/// Dropping this wait cannot cancel an already queued store request.
-pub(crate) async fn journaled(
-    machine: &intake::Connection<'_>,
-    store: &Handle,
-    conn: &mut Connection,
-    stop: &mut watch::Receiver<bool>,
-    wait: Option<Duration>,
-) -> Result<Input, Error> {
-    let event = tokio::select! {
-        biased;
-        () = crate::machine::stopping(stop) => return Ok(Input::Closed(None)),
-        () = async { match wait {
-            Some(wait) => tokio::time::sleep(wait).await,
-            None => std::future::pending().await,
-        } } => return Ok(Input::Tick),
-        event = receive(conn) => event,
-    };
-    match event {
-        Ok(Input::Bytes { bytes }) => {
-            intake::receive(store, machine, ReceiptId::new(), bytes.clone()).await?;
-            Ok(Input::Bytes { bytes })
-        }
-        Ok(event) => Ok(event),
-        Err(analyte_transport::Error::Deadline(_)) => Ok(Input::Tick),
-        Err(error) => Err(error.into()),
-    }
-}
 
 /// Bounded by one transport read. Fed bytes can overlap dialog receipts after
 /// interruption; the untouched tail has never entered the dialog.

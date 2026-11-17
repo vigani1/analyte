@@ -1,6 +1,7 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
 use super::connection_input::Input;
 use super::custody::{self, ms};
+use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::intake::ByteReason;
 mod error;
@@ -17,22 +18,21 @@ pub(super) async fn session(
     settings: &analyte_config::PoctStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
-    mut stop: watch::Receiver<bool>,
+    stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let mut state = ConnectionState::open(settings)?;
-    match state
-        .receive_loop(machine, settings, store, conn, &mut stop)
-        .await?
-    {
-        Close::Drain => state.close(machine, store).await,
-        Close::Complete => Ok(()),
-    }
+    driver::run(
+        ConnectionState::open(settings),
+        Context {
+            machine,
+            settings,
+            store,
+            conn,
+            stop,
+        },
+    )
+    .await
 }
 
-enum Close {
-    Drain,
-    Complete,
-}
 struct ConnectionState {
     dialog: Dialog,
     start: Instant,
@@ -54,87 +54,6 @@ impl ConnectionState {
         )?;
         let start = Instant::now();
         Ok(Self { dialog, start })
-    }
-
-    async fn receive_loop(
-        &mut self,
-        machine: &intake::Connection<'_>,
-        settings: &analyte_config::PoctStack,
-        store: &Handle,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-    ) -> Result<Close, Error> {
-        loop {
-            let Some(deadline) = self.dialog.next_deadline() else {
-                return Ok(Close::Drain);
-            };
-            let input = super::connection_input::journaled(
-                machine,
-                store,
-                conn,
-                stop,
-                Some(deadline.saturating_sub(self.start.elapsed())),
-            )
-            .await?;
-            // Incoming fragments must not postpone the absolute dialog deadline.
-            let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-            if process(
-                actions,
-                &mut self.dialog,
-                self.start,
-                machine,
-                store,
-                conn,
-                settings,
-            )
-            .await?
-            {
-                return Ok(Close::Drain);
-            }
-            match input {
-                Input::Opened { .. } => {}
-                Input::Tick => {
-                    let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-                    if process(
-                        actions,
-                        &mut self.dialog,
-                        self.start,
-                        machine,
-                        store,
-                        conn,
-                        settings,
-                    )
-                    .await?
-                    {
-                        return Ok(Close::Drain);
-                    }
-                }
-                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
-                    let actions = self
-                        .dialog
-                        .step(self.start.elapsed(), Event::Disconnected)?;
-                    process(
-                        actions,
-                        &mut self.dialog,
-                        self.start,
-                        machine,
-                        store,
-                        conn,
-                        settings,
-                    )
-                    .await?;
-                    return Ok(Close::Drain);
-                }
-                Input::Bytes { bytes } => {
-                    if self
-                        .receive_bytes(bytes, machine, settings, store, conn, stop)
-                        .await?
-                    {
-                        return Ok(Close::Complete);
-                    }
-                }
-            }
-        }
     }
 
     async fn receive_bytes(
@@ -177,15 +96,111 @@ impl ConnectionState {
         }
         Ok(false)
     }
+}
 
+impl Effects for ConnectionState {
+    type Settings = analyte_config::PoctStack;
+    type Error = Error;
+    fn custody(&self) -> driver::Custody {
+        driver::Custody::Chunks
+    }
+    fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
+        Ok(self
+            .dialog
+            .next_deadline()
+            .map(|deadline| deadline.saturating_sub(self.start.elapsed())))
+    }
+    async fn prepare(
+        &mut self,
+        _host: &mut Context<'_, '_, Self::Settings>,
+    ) -> Result<Flow, Error> {
+        Ok(if self.dialog.next_deadline().is_some() {
+            Flow::Continue
+        } else {
+            Flow::Stop
+        })
+    }
+    async fn input(
+        &mut self,
+        host: &mut Context<'_, '_, Self::Settings>,
+        input: Input,
+    ) -> Result<Flow, Error> {
+        let Context {
+            machine,
+            store,
+            conn,
+            stop,
+            settings,
+        } = host;
+        // Incoming fragments must not postpone the absolute dialog deadline.
+        let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
+        if process(
+            actions,
+            &mut self.dialog,
+            self.start,
+            machine,
+            store,
+            conn,
+            settings,
+        )
+        .await?
+        {
+            return Ok(Flow::Stop);
+        }
+        match input {
+            Input::Opened { .. } => {}
+            Input::Tick => {
+                let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
+                if process(
+                    actions,
+                    &mut self.dialog,
+                    self.start,
+                    machine,
+                    store,
+                    conn,
+                    settings,
+                )
+                .await?
+                {
+                    return Ok(Flow::Stop);
+                }
+            }
+            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+                let actions = self
+                    .dialog
+                    .step(self.start.elapsed(), Event::Disconnected)?;
+                process(
+                    actions,
+                    &mut self.dialog,
+                    self.start,
+                    machine,
+                    store,
+                    conn,
+                    settings,
+                )
+                .await?;
+                return Ok(Flow::Stop);
+            }
+            Input::Bytes { bytes } => {
+                if self
+                    .receive_bytes(bytes, machine, settings, store, conn, stop)
+                    .await?
+                {
+                    return Ok(Flow::Stop);
+                }
+            }
+        }
+
+        Ok(Flow::Continue)
+    }
     async fn close(
-        mut self,
-        machine: &intake::Connection<'_>,
-        store: &Handle,
+        &mut self,
+        host: &mut Context<'_, '_, Self::Settings>,
+        _result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         let raw = self.dialog.take_input();
         if !raw.is_empty() {
-            intake::park_bytes(store, machine, raw, ByteReason::PoctIncomplete).await?;
+            intake::park_bytes(host.store, host.machine, raw, ByteReason::PoctIncomplete).await?;
         }
         Ok(())
     }
