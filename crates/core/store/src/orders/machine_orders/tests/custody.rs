@@ -193,8 +193,8 @@ fn adr0003_0010_law_projection_commit_failure_leaves_raw_pending_and_retry_safe(
             .expect_err("input must be refused");
         assert!(
             matches!(
-                refusal.downcast_ref::<Error>(),
-                Some(Error::ConstraintViolation(_))
+                refusal.downcast_ref::<ReconciliationError>(),
+                Some(ReconciliationError::ConstraintViolation(_))
             ),
             "unexpected refusal: {refusal:?}"
         );
