@@ -700,15 +700,18 @@ mod tests {
             charset: analyte_hl7::Charset::Ascii,
         };
         assert!(matches!(
-            source.original_text("?".as_bytes(), 0, 1),
+            source.original_text("\u{e9}".as_bytes(), 0, 1),
             Err(Error::Encoding { .. })
         ));
         source.syntax = FieldSyntax::Hl7V2;
         assert!(matches!(
-            source.original_text("?".as_bytes(), 0, 1),
+            source.original_text("\u{e9}".as_bytes(), 0, 1),
             Err(Error::Encoding { .. })
         ));
         source.charset = analyte_hl7::Charset::Utf8;
-        assert_eq!(source.original_text("?".as_bytes(), 0, 1).unwrap(), "?");
+        assert_eq!(
+            source.original_text("\u{e9}".as_bytes(), 0, 1).unwrap(),
+            "\u{e9}"
+        );
     }
 }
