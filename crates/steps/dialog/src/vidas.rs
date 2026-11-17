@@ -2,7 +2,6 @@
 //! Host owns byte journaling, storage and cancellation; the dialog owns timers.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
-use analyte_framing::Decode as _;
 use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, Packet};
 use analyte_vidas::syntax::{Kind, Message};
 use std::time::Duration;

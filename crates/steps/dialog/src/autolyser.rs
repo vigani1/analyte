@@ -1,6 +1,5 @@
 //! Runs host-driven Autolyser conversations with host-owned I/O and dialog-owned deadlines.
 use analyte_autolyser::syntax::{self as records, Report, Worklist};
-use analyte_framing::Decode as _;
 use analyte_framing::autolyser::{ACK, Decoder, EOT, Frame, Mode, NAK, STX};
 use std::time::Duration;
 use thiserror::Error;
@@ -491,7 +490,7 @@ impl Dialog {
                 decoder,
                 total,
             } => {
-                if let Some(frame) = decoder.push_byte(byte)? {
+                if let Some(frame) = decoder.push(byte)? {
                     let insertion = *insertion;
                     let complete = frame.complete();
                     let mut actions = self.store(frame, insertion)?;

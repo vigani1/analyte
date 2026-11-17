@@ -1,6 +1,5 @@
 //! Frames journaled POCT input and retains every rejected or unfinished root.
 use super::{Action, Dialog, Error, Event};
-use analyte_framing::Decode as _;
 use std::time::Duration;
 impl Dialog {
     /// Drains unfinished evidence when the host cancels or closes the connection.
