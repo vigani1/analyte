@@ -43,6 +43,34 @@ struct EffectFailure {
     effect: crate::Error,
 }
 
+/// Keeps a triggering failure and a later independent cleanup failure in order.
+#[derive(Debug, thiserror::Error)]
+#[error("{original}; dialog effect failed: {effect}")]
+pub(crate) struct Cleanup<E> {
+    /// Failure that caused the session to refuse further positive effects.
+    #[source]
+    pub(crate) original: E,
+    /// Secondary failure while retaining evidence or settling owned work.
+    pub(crate) effect: E,
+}
+
+/// Shared causes that require a protocol owner to refuse positive effects.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Refusal<E: std::error::Error + 'static> {
+    /// A transport operation or input journal could not complete.
+    #[error(transparent)]
+    Link(Box<crate::machine::link::error::Error>),
+    /// A durable-store or interpretation operation failed.
+    #[error(transparent)]
+    Evidence(Box<crate::machine::receive::error::Error>),
+    /// Both the original failure and the attempted cleanup failed.
+    #[error(transparent)]
+    Cleanup(Box<Cleanup<E>>),
+    /// A custody operation failed or its completion remains uncertain.
+    #[error(transparent)]
+    Custody(Box<StoreWaitError<E>>),
+}
+
 /// A boundary keeps its own error type when retaining independent cleanup failures.
 pub(crate) trait CleanupFailure: Sized {
     fn with_effect(original: Self, effect: Self) -> Self;
@@ -165,7 +193,7 @@ mod tests {
         );
         let error = result.unwrap_err();
         assert!(
-            matches!(&error, crate::machine::poct::Error::Cleanup { original, .. } if matches!(original.as_ref(), crate::machine::poct::Error::Evidence(crate::machine::receive::error::Error::IntakeWait(StoreWaitError::Operation(_)))))
+            matches!(&error, crate::machine::poct::Error::Refusal(Refusal::Cleanup(failure)) if matches!(&failure.original, crate::machine::poct::Error::Refusal(Refusal::Evidence(error)) if matches!(error.as_ref(), crate::machine::receive::error::Error::IntakeWait(StoreWaitError::Operation(_)))))
         );
         assert!(error.source().is_some());
         Ok(())

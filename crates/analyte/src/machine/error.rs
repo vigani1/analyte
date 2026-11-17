@@ -30,104 +30,15 @@ pub(crate) enum Error {
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
     /// Retains both the triggering failure and an independent cleanup failure.
-    #[error("{original}; dialog effect failed: {effect}")]
-    Cleanup {
-        #[source]
-        original: Box<Self>,
-        effect: Box<Self>,
-    },
-}
-impl From<std::io::Error> for Error {
-    fn from(error: std::io::Error) -> Self {
-        Self::Link(error.into())
-    }
-}
-impl From<analyte_transport::Error> for Error {
-    fn from(error: analyte_transport::Error) -> Self {
-        Self::Link(error.into())
-    }
-}
-impl From<std::net::AddrParseError> for Error {
-    fn from(error: std::net::AddrParseError) -> Self {
-        Self::Link(error.into())
-    }
-}
-impl From<analyte_transport::folder::WatchError> for Error {
-    fn from(error: analyte_transport::folder::WatchError) -> Self {
-        Self::Link(error.into())
-    }
-}
-impl From<analyte_store::Error> for Error {
-    fn from(error: analyte_store::Error) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<crate::IntakeError> for Error {
-    fn from(error: crate::IntakeError) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<crate::machine::interpretation::ReadError> for Error {
-    fn from(error: crate::machine::interpretation::ReadError) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<analyte_model::TextError> for Error {
-    fn from(error: analyte_model::TextError) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<analyte_model::ListError> for Error {
-    fn from(error: analyte_model::ListError) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<analyte_config::Error> for Error {
-    fn from(error: analyte_config::Error) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<std::num::TryFromIntError> for Error {
-    fn from(error: std::num::TryFromIntError) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<serde_json::Error> for Error {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<jiff::Error> for Error {
-    fn from(error: jiff::Error) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<analyte_mapping::read::Error> for Error {
-    fn from(error: analyte_mapping::read::Error) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<crate::machine::custody::WriteError> for Error {
-    fn from(error: crate::machine::custody::WriteError) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<crate::machine::custody::StoreWaitError<crate::IntakeError>> for Error {
-    fn from(error: crate::machine::custody::StoreWaitError<crate::IntakeError>) -> Self {
-        Self::Evidence(error.into())
-    }
-}
-impl From<crate::machine::custody::StoreWaitError<analyte_store::Error>> for Error {
-    fn from(error: crate::machine::custody::StoreWaitError<analyte_store::Error>) -> Self {
-        Self::Evidence(error.into())
-    }
+    #[error(transparent)]
+    Cleanup(Box<crate::machine::custody::Cleanup<Self>>),
 }
 impl crate::machine::custody::CleanupFailure for Error {
     fn with_effect(original: Self, effect: Self) -> Self {
-        Self::Cleanup {
-            original: Box::new(original),
-            effect: Box::new(effect),
-        }
+        Self::Cleanup(Box::new(crate::machine::custody::Cleanup {
+            original,
+            effect,
+        }))
     }
 }
 
@@ -216,3 +127,7 @@ mod tests {
         assert_eq!(source.to_string(), "synthetic owner failure");
     }
 }
+
+crate::machine::link::error::forward!(Error, Self::Link);
+
+crate::machine::receive::error::forward!(Error, Self::Evidence);

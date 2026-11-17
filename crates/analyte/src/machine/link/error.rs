@@ -58,71 +58,6 @@ pub(crate) enum Error {
     #[error(transparent)]
     Custody(Box<crate::machine::receive::error::Error>),
 }
-impl From<analyte_store::Error> for Error {
-    fn from(error: analyte_store::Error) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<crate::IntakeError> for Error {
-    fn from(error: crate::IntakeError) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<crate::machine::interpretation::ReadError> for Error {
-    fn from(error: crate::machine::interpretation::ReadError) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<analyte_model::TextError> for Error {
-    fn from(error: analyte_model::TextError) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<analyte_model::ListError> for Error {
-    fn from(error: analyte_model::ListError) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<analyte_config::Error> for Error {
-    fn from(error: analyte_config::Error) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<std::num::TryFromIntError> for Error {
-    fn from(error: std::num::TryFromIntError) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<serde_json::Error> for Error {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<jiff::Error> for Error {
-    fn from(error: jiff::Error) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<analyte_mapping::read::Error> for Error {
-    fn from(error: analyte_mapping::read::Error) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<crate::machine::custody::WriteError> for Error {
-    fn from(error: crate::machine::custody::WriteError) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<crate::machine::custody::StoreWaitError<crate::IntakeError>> for Error {
-    fn from(error: crate::machine::custody::StoreWaitError<crate::IntakeError>) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
-impl From<crate::machine::custody::StoreWaitError<analyte_store::Error>> for Error {
-    fn from(error: crate::machine::custody::StoreWaitError<analyte_store::Error>) -> Self {
-        Self::Custody(Box::new(error.into()))
-    }
-}
 
 #[cfg(test)]
 impl Error {
@@ -143,3 +78,32 @@ impl From<crate::machine::receive::error::Error> for Error {
         Self::Custody(Box::new(error))
     }
 }
+
+crate::machine::receive::error::forward!(Error, |cause| Self::Custody(Box::new(cause)));
+
+// Preserve the source classification when a protocol wraps a shared link error.
+macro_rules! forward {
+    ($target:ty, $wrap:expr) => {
+        impl From<std::io::Error> for $target {
+            fn from(error: std::io::Error) -> Self {
+                ($wrap)(crate::machine::link::error::Error::from(error))
+            }
+        }
+        impl From<analyte_transport::Error> for $target {
+            fn from(error: analyte_transport::Error) -> Self {
+                ($wrap)(crate::machine::link::error::Error::from(error))
+            }
+        }
+        impl From<std::net::AddrParseError> for $target {
+            fn from(error: std::net::AddrParseError) -> Self {
+                ($wrap)(crate::machine::link::error::Error::from(error))
+            }
+        }
+        impl From<analyte_transport::folder::WatchError> for $target {
+            fn from(error: analyte_transport::folder::WatchError) -> Self {
+                ($wrap)(crate::machine::link::error::Error::from(error))
+            }
+        }
+    };
+}
+pub(crate) use forward;
