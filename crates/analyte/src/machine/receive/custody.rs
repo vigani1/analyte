@@ -189,7 +189,7 @@ mod tests {
         let mut result = Err(custody);
         retain_cleanup(
             &mut result,
-            Err(crate::machine::poct::Error::PoctBackpressureViolated),
+            Err(crate::machine::poct::Error::BackpressureViolated),
         );
         let error = result.unwrap_err();
         assert!(

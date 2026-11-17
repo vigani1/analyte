@@ -66,7 +66,7 @@ mod tests {
         use analyte_hl7::{AckCode, ControlId, Message, Options, Response, Responsibility};
         let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ORU^R01^ORU_R01|message1|P|2.5.1\rOBX|1|NM|SYN||12\r";
         for error in [
-            crate::reading::Error::Syntax(analyte_hl7::Error::Escape {
+            crate::reading::Error::Hl7(analyte_hl7::Error::Escape {
                 segment: 2,
                 field: 5,
                 offset: 0,
