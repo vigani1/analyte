@@ -57,9 +57,8 @@ pub(super) struct Host<'a, 'm> {
     payload: Vec<u8>,
     input_evidence: connection_input::Custody,
     query: Query<'a>,
-    active_orders: Vec<analyte_store::MachineOrder>,
-    order_cursor: String,
-    next_order_poll: Instant,
+    query_orders: Vec<analyte_store::MachineOrder>,
+    work: crate::orders::sending::Work<Vec<u8>>,
 }
 
 impl<'a, 'm> Host<'a, 'm> {
@@ -87,9 +86,8 @@ impl<'a, 'm> Host<'a, 'm> {
             payload: Vec::new(),
             input_evidence: connection_input::Custody::default(),
             query: Query::Idle,
-            active_orders: Vec::new(),
-            order_cursor: String::new(),
-            next_order_poll: Instant::now(),
+            query_orders: Vec::new(),
+            work: crate::orders::sending::Work::default(),
         })
     }
     async fn receive_bytes(
@@ -113,16 +111,9 @@ impl<'a, 'm> Host<'a, 'm> {
         let outgoing = if bytes.is_empty()
             && self.dialog.next_deadline().is_none()
             && matches!(self.query, Query::Idle | Query::Receiving { .. })
-            && Instant::now() >= self.next_order_poll
         {
-            self.next_order_poll = Instant::now()
-                .checked_add(Duration::from_secs(1))
-                .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
-            crate::orders::sending::next(
-                self.store,
-                self.machine.machine(),
-                &mut self.order_cursor,
-                |order| {
+            self.work
+                .poll_one(self.store, self.machine.machine(), |order| {
                     analyte_mapping::astm::map_order(
                         order,
                         self.settings.settings().syntax().limits(),
@@ -132,17 +123,16 @@ impl<'a, 'm> Host<'a, 'm> {
                                 analyte_mapping::OrderMappingError::Disabled,
                             ))?,
                     )
-                },
-            )
-            .await?
+                    .map(|record| record.encode())
+                })
+                .await?
         } else {
             None
         };
         let events = if let Some(reserved) = outgoing {
-            self.active_orders.push(reserved.order);
             vec![Event::Send(crate::orders::astm::envelope(
                 self.machine.machine(),
-                vec![reserved.payload.encode()],
+                vec![reserved],
                 analyte_astm::OrderTermination::Normal,
             ))]
         } else if bytes.is_empty()
@@ -163,7 +153,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     self.machine.machine(),
                     reply,
                     until,
-                    &mut self.active_orders,
+                    &mut self.query_orders,
                 )
                 .await?
                 {
@@ -288,7 +278,8 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Action::LimitReached => return Err(Error::ResourceLimitRefusedTransfer),
             Action::Sent(end) => {
-                for order in self.active_orders.drain(..) {
+                self.work.astm_finished(self.store, end).await?;
+                for order in self.query_orders.drain(..) {
                     crate::orders::sending::finished(self.store, &order, end).await?;
                 }
             }
@@ -442,13 +433,10 @@ impl Effects for Host<'_, '_> {
         if matches!(self.query, Query::Answer { .. }) && self.dialog.next_deadline().is_none() {
             return Ok(Some(Duration::ZERO));
         }
-        Ok(Some(
-            self.dialog
-                .next_deadline()
-                .map_or(Duration::from_secs(1), |deadline| {
-                    deadline.saturating_sub(self.start.elapsed())
-                }),
-        ))
+        Ok(Some(self.dialog.next_deadline().map_or(
+            crate::orders::sending::ORDER_POLL_INTERVAL,
+            |deadline| deadline.saturating_sub(self.start.elapsed()),
+        )))
     }
     async fn background(
         &mut self,
@@ -528,7 +516,15 @@ impl Effects for Host<'_, '_> {
         }
         let cleanup = self.input_evidence.retain(self.store, self.machine).await;
         crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
-        for order in self.active_orders.drain(..) {
+        let cleanup = self
+            .work
+            .close(
+                self.store,
+                crate::orders::outcome::Code::ConnectionEndedBeforeConfirmation.into(),
+            )
+            .await;
+        crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+        for order in self.query_orders.drain(..) {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,
                 &order,

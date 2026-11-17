@@ -24,9 +24,6 @@ pub(crate) enum Error {
     /// ASTM transfer wire-byte bound exceeded.
     #[error("ASTM transfer wire-byte bound exceeded")]
     TransferWireByteBoundExceeded,
-    /// Order poll deadline overflow.
-    #[error("order poll deadline overflow")]
-    OrderPollDeadlineOverflow,
     /// An outbound command could not represent the mapped order.
     #[error(transparent)]
     OrderMapping(#[from] analyte_mapping::OrderMappingError),
