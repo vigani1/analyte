@@ -39,22 +39,22 @@ pub struct VidasStack {
 }
 
 impl VidasOrders {
-    /// Returns the validated tests setting.
+    /// Explicit application-to-instrument test-code mapping.
     #[must_use]
     pub fn tests(&self) -> &Vec<OutboundTest> {
         &self.tests
     }
-    /// Returns the validated priorities setting.
+    /// Explicit order-priority mapping.
     #[must_use]
     pub fn priorities(&self) -> &Vec<OrderPriority> {
         &self.priorities
     }
-    /// Returns the validated patient namespace setting.
+    /// Assigning system for patient identities from this connection.
     #[must_use]
     pub fn patient_namespace(&self) -> &Identifier {
         &self.patient_namespace
     }
-    /// Returns the validated send ahead setting.
+    /// Work-list settings; absence does not authorize unsolicited orders.
     #[must_use]
     pub fn send_ahead(&self) -> bool {
         self.send_ahead
@@ -62,37 +62,37 @@ impl VidasOrders {
 }
 
 impl VidasStack {
-    /// Returns the validated transport setting.
+    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
     #[must_use]
     pub fn transport(&self) -> &StreamTransport {
         &self.transport
     }
-    /// Returns the validated frame limit setting.
+    /// Maximum retained frame size before framing refuses more bytes.
     #[must_use]
     pub fn frame_limit(&self) -> usize {
         self.frame_limit
     }
-    /// Returns the validated timeouts setting.
+    /// Bounded protocol waits used by the connection state machine.
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         &self.timeouts
     }
-    /// Returns the validated limits setting.
+    /// Size and count ceilings applied before parsing untrusted records.
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {
         &self.limits
     }
-    /// Returns the validated codes setting.
+    /// Explicit instrument code mappings used during interpretation.
     #[must_use]
     pub fn codes(&self) -> &CodeTables {
         &self.codes
     }
-    /// Returns the validated policy setting.
+    /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
     pub fn policy(&self) -> &Vidas {
         &self.policy
     }
-    /// Returns the validated orders setting.
+    /// Validated order policy used before encoding commands.
     #[must_use]
     pub fn orders(&self) -> &Option<VidasOrders> {
         &self.orders

@@ -50,6 +50,10 @@ impl PendingAlert {
 pub enum AlertFailure {
     /// HTTP attempt failed without a trustworthy response.
     Network,
+    /// Host could not initialize the configured sender.
+    Setup,
+    /// Verified TLS client initialization failed before any request.
+    Tls,
     /// Installation credential unavailable or malformed.
     Credentials,
     /// Peer returned a non-success status.
@@ -61,6 +65,8 @@ impl AlertFailure {
     fn as_str(self) -> &'static str {
         match self {
             Self::Network => "network",
+            Self::Setup => "setup",
+            Self::Tls => "tls_setup",
             Self::Credentials => "credentials",
             Self::Http => "http",
             Self::Interrupted => "interrupted",
@@ -87,6 +93,8 @@ pub struct AlertEndpointStatus {
     pub queue_full: bool,
     /// Events with a recorded failure or interrupted attempt.
     pub failed: u64,
+    /// Fixed failure category of the newest observed event with a recorded failure.
+    pub last_failure: Option<String>,
 }
 impl Store {
     /// Registers an endpoint without resetting its cursor, queue or retry deadlines.
@@ -233,7 +241,7 @@ impl Store {
     /// # Errors
     /// Reports corruption or SQLite failures rather than a healthy empty snapshot.
     pub fn alert_endpoint_status(&self) -> Result<Vec<AlertEndpointStatus>, Error> {
-        let mut stmt = self.db.prepare("SELECT d.id,count(e.id),min(e.observed),d.last_success,min(CASE WHEN p.exhausted=0 THEN p.next_attempt END),coalesce(sum(p.exhausted),0),d.queue_full,coalesce(sum(p.failure IS NOT NULL),0) FROM alert_endpoints d LEFT JOIN alert_events e ON e.endpoint=d.id LEFT JOIN alert_progress p ON p.event=e.id GROUP BY d.id ORDER BY d.id LIMIT 129")?;
+        let mut stmt = self.db.prepare("SELECT d.id,count(e.id),min(e.observed),d.last_success,min(CASE WHEN p.exhausted=0 THEN p.next_attempt END),coalesce(sum(p.exhausted),0),d.queue_full,coalesce(sum(p.failure IS NOT NULL),0),(SELECT failure FROM alert_progress ap JOIN alert_events ae ON ae.id=ap.event WHERE ae.endpoint=d.id AND failure IS NOT NULL ORDER BY ae.observed DESC,ae.id DESC LIMIT 1) FROM alert_endpoints d LEFT JOIN alert_events e ON e.endpoint=d.id LEFT JOIN alert_progress p ON p.event=e.id GROUP BY d.id ORDER BY d.id LIMIT 129")?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -244,12 +252,22 @@ impl Store {
                 u64::from(r.get::<_, u32>(5)?),
                 r.get(6)?,
                 u64::from(r.get::<_, u32>(7)?),
+                r.get(8)?,
             ))
         })?;
         let mut result = Vec::new();
         for row in rows {
-            let (id, pending, oldest, last_success, next_attempt, exhausted, queue_full, failed) =
-                row?;
+            let (
+                id,
+                pending,
+                oldest,
+                last_success,
+                next_attempt,
+                exhausted,
+                queue_full,
+                failed,
+                last_failure,
+            ) = row?;
             if result.len() == 128 {
                 return Err(Error::Corruption);
             }
@@ -262,6 +280,7 @@ impl Store {
                 exhausted,
                 queue_full,
                 failed,
+                last_failure,
             });
         }
         Ok(result)

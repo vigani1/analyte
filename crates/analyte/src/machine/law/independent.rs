@@ -238,7 +238,7 @@ async fn worker(
                     let outgoing = tokio::select! {
                         biased;
                         () = crate::machine::stopping(&mut stop) => break,
-                        result = idle_orders.idle(&store, &context, settings.options()) => result,
+                        result = idle_orders.idle(&store, context.machine(), settings.options()) => result,
                     };
                     match outgoing {
                         Ok(Some(message))=>{let result=exchange(&machine,&store,&settings,&mut idle_orders,&message,stop.clone(),capture.as_deref()).await;settle(&machine,&store,&mut idle_orders,result).await?;},

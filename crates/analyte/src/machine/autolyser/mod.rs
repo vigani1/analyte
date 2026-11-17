@@ -35,7 +35,7 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    custody::ensure_reconciled(store, machine).await?;
+    custody::ensure_reconciled(store, machine.machine()).await?;
     driver::run(
         ConnectionState::open(settings),
         Context {
@@ -159,7 +159,7 @@ impl Effects for ConnectionState {
                 if self.ready
                     && self.guard.is_none()
                     && !self.work.is_active()
-                    && let Some(hook) = &machine.hooks.autolyser_quiescent
+                    && let Some(hook) = &machine.machine().hooks.autolyser_quiescent
                 {
                     hook.pause(stop).await.map_err(Error::TestHook)?;
                 }
@@ -194,7 +194,7 @@ impl Effects for ConnectionState {
         };
         for event in events {
             if matches!(event, Event::Poll(Request::Next)) {
-                self.guard = Some(custody::reserve(store, machine).await?);
+                self.guard = Some(custody::reserve(store, machine.machine()).await?);
             }
             let actions = self.dialog.step(self.start.elapsed(), event)?;
             if process(actions, self, machine, store, conn, policy).await? {
@@ -212,8 +212,13 @@ impl Effects for ConnectionState {
         host: &mut Context<'_, '_, Self::Settings>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
-        let cleanup =
-            custody::uncertain(host.store, self.guard, host.machine, self.end_code.as_str()).await;
+        let cleanup = custody::uncertain(
+            host.store,
+            self.guard,
+            host.machine.machine(),
+            self.end_code.as_str(),
+        )
+        .await;
         receive_custody::retain_cleanup(result, cleanup);
         self.work.close(host.store, self.end_code.as_str()).await
     }
@@ -231,9 +236,11 @@ impl ConnectionState {
         let prior_code = self.end_code;
         self.end_code = AutolyserEnd::StorageFailed;
         let id = ReceiptId::new();
-        let stored =
-            receive_custody::store_before_ack(machine, intake::receive(store, machine, id, raw))
-                .await;
+        let stored = receive_custody::store_before_ack(
+            machine.machine(),
+            intake::receive(store, machine, id, raw),
+        )
+        .await;
         match stored {
             Ok(time) => {
                 self.end_code = prior_code;
@@ -274,10 +281,10 @@ impl ConnectionState {
             .receipt
             .take()
             .ok_or_else(|| Error::ReportReceiptMissing)?;
-        intake::interpret(store, machine, id).await?;
+        intake::interpret(store, machine.machine(), id).await?;
         self.ready = true;
         self.recovering = false;
-        custody::complete(store, &mut self.guard, machine).await?;
+        custody::complete(store, &mut self.guard, machine.machine()).await?;
 
         Ok(())
     }
@@ -332,7 +339,9 @@ async fn process(
                 state.recovering = true;
                 let reason = format!("Autolyser: {error}");
                 let parked = match state.receipt.take() {
-                    Some((id, _)) => intake::failed_reading(store, machine, id, &reason).await,
+                    Some((id, _)) => {
+                        intake::failed_reading(store, machine.machine(), id, &reason).await
+                    }
                     None => {
                         intake::park_bytes(
                             store,
@@ -346,7 +355,9 @@ async fn process(
                 if let Err(error) = parked {
                     return Err(receive_custody::effect_failure(failure, error.into()));
                 }
-                if let Err(error) = custody::uncertain(store, state.guard, machine, &reason).await {
+                if let Err(error) =
+                    custody::uncertain(store, state.guard, machine.machine(), &reason).await
+                {
                     return Err(receive_custody::effect_failure(failure, error));
                 }
             }
@@ -354,7 +365,7 @@ async fn process(
                 state.receipt.take();
                 state.ready = !state.recovering;
                 if !state.recovering {
-                    custody::complete(store, &mut state.guard, machine).await?;
+                    custody::complete(store, &mut state.guard, machine.machine()).await?;
                 }
             }
             Action::Insertion(reception) => {
@@ -367,7 +378,7 @@ async fn process(
                 custody::uncertain(
                     store,
                     state.guard,
-                    machine,
+                    machine.machine(),
                     "Autolyser poll response outcome uncertain",
                 )
                 .await?;

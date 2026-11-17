@@ -160,27 +160,27 @@ impl LawStack {
 }
 
 impl LawPolicy {
-    /// Returns the validated links setting.
+    /// Validated directional LAW links and their endpoint roles.
     #[must_use]
     pub fn links(&self) -> LawLinks {
         self.links
     }
-    /// Returns the validated query forms setting.
+    /// Query forms this peer explicitly supports.
     #[must_use]
     pub fn query_forms(&self) -> &[LawQueryForm] {
         &self.query_forms
     }
-    /// Returns the validated peer setting.
+    /// Declared peer capabilities; unsupported exchanges are refused.
     #[must_use]
     pub fn peer(&self) -> &LawPeer {
         &self.peer
     }
-    /// Returns the validated query deadline ms setting.
+    /// Maximum host-query wait in milliseconds.
     #[must_use]
     pub fn query_deadline_ms(&self) -> u32 {
         self.query_deadline_ms
     }
-    /// Returns the validated response ms setting.
+    /// Maximum time allowed for a protocol response, in milliseconds.
     #[must_use]
     pub fn response_ms(&self) -> u32 {
         self.response_ms
@@ -188,32 +188,32 @@ impl LawPolicy {
 }
 
 impl LawOrders {
-    /// Returns the validated work setting.
+    /// LAW work-handling policy validated against peer capabilities.
     #[must_use]
     pub fn work(&self) -> &LawWork {
         &self.work
     }
-    /// Returns the validated tests setting.
+    /// Explicit application-to-instrument test-code mapping.
     #[must_use]
     pub fn tests(&self) -> &Vec<OutboundTest> {
         &self.tests
     }
-    /// Returns the validated specimen types setting.
+    /// Explicit specimen-code mappings; unknown specimens remain unresolved.
     #[must_use]
     pub fn specimen_types(&self) -> &Vec<OutboundSpecimen> {
         &self.specimen_types
     }
-    /// Returns the validated priorities setting.
+    /// Explicit order-priority mapping.
     #[must_use]
     pub fn priorities(&self) -> &Vec<OrderPriority> {
         &self.priorities
     }
-    /// Returns the validated placer namespace setting.
+    /// Assigning system required for retained placer order identities.
     #[must_use]
     pub fn placer_namespace(&self) -> &Identifier {
         &self.placer_namespace
     }
-    /// Returns the validated send ahead setting.
+    /// Work-list settings; absence does not authorize unsolicited orders.
     #[must_use]
     pub fn send_ahead(&self) -> bool {
         self.send_ahead
@@ -221,42 +221,42 @@ impl LawOrders {
 }
 
 impl LawStack {
-    /// Returns the validated transport setting.
+    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
     #[must_use]
     pub fn transport(&self) -> &TcpTransport {
         &self.transport
     }
-    /// Returns the validated frame limit setting.
+    /// Maximum retained frame size before framing refuses more bytes.
     #[must_use]
     pub fn frame_limit(&self) -> usize {
         self.frame_limit
     }
-    /// Returns the validated timeouts setting.
+    /// Bounded protocol waits used by the connection state machine.
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         &self.timeouts
     }
-    /// Returns the validated acknowledgment setting.
+    /// Acknowledgment responsibility promised only after durable custody.
     #[must_use]
     pub fn acknowledgment(&self) -> Responsibility {
         self.acknowledgment
     }
-    /// Returns the validated limits setting.
+    /// Size and count ceilings applied before parsing untrusted records.
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {
         &self.limits
     }
-    /// Returns the validated mappings setting.
+    /// Explicit source-to-common-model mappings; unknown codes are not guessed.
     #[must_use]
     pub fn mappings(&self) -> &Mappings {
         &self.mappings
     }
-    /// Returns the validated policy setting.
+    /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
     pub fn policy(&self) -> &LawPolicy {
         &self.policy
     }
-    /// Returns the validated orders setting.
+    /// Validated order policy used before encoding commands.
     #[must_use]
     pub fn orders(&self) -> &Option<LawOrders> {
         &self.orders

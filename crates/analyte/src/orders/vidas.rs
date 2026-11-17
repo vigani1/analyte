@@ -44,7 +44,9 @@ impl Work {
         self.next_poll = Instant::now()
             .checked_add(Duration::from_secs(1))
             .ok_or(Error::OrderPollDeadlineOverflow)?;
-        let Some(reserved) = super::sending::next(store, machine, &mut self.cursor).await? else {
+        let Some(reserved) =
+            super::sending::next(store, machine.machine(), &mut self.cursor).await?
+        else {
             return Ok(None);
         };
         self.active = Some(reserved.order);

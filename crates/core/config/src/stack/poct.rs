@@ -23,32 +23,32 @@ pub struct PoctStack {
 }
 
 impl PoctStack {
-    /// Returns the validated transport setting.
+    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
     #[must_use]
     pub fn transport(&self) -> &TcpTransport {
         &self.transport
     }
-    /// Returns the validated frame limit setting.
+    /// Maximum retained frame size before framing refuses more bytes.
     #[must_use]
     pub fn frame_limit(&self) -> usize {
         self.frame_limit
     }
-    /// Returns the validated timeouts setting.
+    /// Bounded protocol waits used by the connection state machine.
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         &self.timeouts
     }
-    /// Returns the validated limits setting.
+    /// Size and count ceilings applied before parsing untrusted records.
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {
         &self.limits
     }
-    /// Returns the validated codes setting.
+    /// Explicit instrument code mappings used during interpretation.
     #[must_use]
     pub fn codes(&self) -> &CodeTables {
         &self.codes
     }
-    /// Returns the validated policy setting.
+    /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
     pub fn policy(&self) -> &Poct {
         &self.policy

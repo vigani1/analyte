@@ -31,9 +31,8 @@ impl<'a> Connection<'a> {
     }
 }
 
-impl std::ops::Deref for Connection<'_> {
-    type Target = Machine;
-    fn deref(&self) -> &Machine {
+impl Connection<'_> {
+    pub(crate) fn machine(&self) -> &Machine {
         self.machine
     }
 }
@@ -61,15 +60,15 @@ pub(crate) async fn receive(
     raw: Vec<u8>,
 ) -> Result<jiff::Timestamp, Error> {
     let received_at = jiff::Timestamp::now();
-    let config = machine.snapshot.canonical().as_bytes().to_vec();
+    let config = machine.machine().snapshot.canonical().as_bytes().to_vec();
     let metadata = ReceiptMetadata {
         id,
         raw_digest: Digest(analyte_contract::content_digest(&raw)),
         connection: machine.connection_id.clone(),
         machine: machine.machine.id.clone(),
-        driver: driver(machine)?,
-        config_version: config_version(machine)?,
-        config_digest: Digest(machine.snapshot.digest()),
+        driver: driver(machine.machine())?,
+        config_version: config_version(machine.machine())?,
+        config_digest: Digest(machine.machine().snapshot.digest()),
         received_at,
     };
     store
@@ -275,14 +274,17 @@ pub(crate) async fn park_bytes(
     reason: ByteReason<'_>,
 ) -> Result<(), Error> {
     let id = ReceiptId::new();
-    let departures =
-        super::machine::interpretation::departure_evidence::collect(machine, &bytes, &[])?;
+    let departures = super::machine::interpretation::departure_evidence::collect(
+        machine.machine(),
+        &bytes,
+        &[],
+    )?;
     receive(store, machine, id, bytes).await?;
     let evidence = Interpretation {
         departures: Some(departures),
-        driver: driver(machine)?,
-        config_version: config_version(machine)?,
-        config: machine.snapshot.canonical().as_bytes().to_vec(),
+        driver: driver(machine.machine())?,
+        config_version: config_version(machine.machine())?,
+        config: machine.machine().snapshot.canonical().as_bytes().to_vec(),
         outcome: Reading::Failed(analyte_model::Reason::new(&reason.to_string())?),
     };
     store

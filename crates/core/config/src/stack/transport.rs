@@ -32,7 +32,7 @@ impl StreamTransport {
     pub fn kind(&self) -> &StreamKind {
         &self.kind
     }
-    /// Returns the validated, nonzero external-operation deadline.
+    /// Nonzero deadline bounding each external transport operation.
     #[must_use]
     pub fn operation_timeout_ms(&self) -> u32 {
         self.operation_timeout_ms
@@ -109,12 +109,12 @@ pub(super) fn stream_timeout(transport: &StreamTransport) -> u32 {
 }
 
 impl TcpTransport {
-    /// Returns the validated role setting.
+    /// Configured endpoint role used when opening the transport.
     #[must_use]
     pub fn role(&self) -> TcpRole {
         self.role
     }
-    /// Returns the validated operation timeout ms setting.
+    /// Upper bound in milliseconds for a transport operation.
     #[must_use]
     pub fn operation_timeout_ms(&self) -> u32 {
         self.operation_timeout_ms

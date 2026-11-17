@@ -83,12 +83,12 @@ pub(super) fn hl7_options(
 }
 
 impl DialogTimeouts {
-    /// Returns the validated receive timeout ms setting.
+    /// Maximum receive wait in milliseconds.
     #[must_use]
     pub fn receive_timeout_ms(&self) -> u32 {
         self.receive_timeout_ms
     }
-    /// Returns the validated send timeout ms setting.
+    /// Maximum send wait in milliseconds.
     #[must_use]
     pub fn send_timeout_ms(&self) -> u32 {
         self.send_timeout_ms
@@ -96,32 +96,32 @@ impl DialogTimeouts {
 }
 
 impl SyntaxLimits {
-    /// Returns the validated bytes setting.
+    /// Maximum message bytes accepted before refusing further input.
     #[must_use]
     pub fn bytes(&self) -> usize {
         self.bytes
     }
-    /// Returns the validated records setting.
+    /// Maximum records accepted in one message.
     #[must_use]
     pub fn records(&self) -> usize {
         self.records
     }
-    /// Returns the validated record bytes setting.
+    /// Maximum bytes accepted in one record.
     #[must_use]
     pub fn record_bytes(&self) -> usize {
         self.record_bytes
     }
-    /// Returns the validated fields setting.
+    /// Maximum fields accepted in one segment.
     #[must_use]
     pub fn fields(&self) -> usize {
         self.fields
     }
-    /// Returns the validated repetitions setting.
+    /// Maximum repetitions accepted in one field.
     #[must_use]
     pub fn repetitions(&self) -> usize {
         self.repetitions
     }
-    /// Returns the validated components setting.
+    /// Maximum components accepted in one field.
     #[must_use]
     pub fn components(&self) -> usize {
         self.components

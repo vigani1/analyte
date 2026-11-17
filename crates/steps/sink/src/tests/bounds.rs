@@ -212,7 +212,7 @@ fn mutation_rule7_destination_url_byte_ceiling_is_inclusive() -> TestResult {
                 Identifier::new("key")?,
                 limits()
             ),
-            Err(Error::Configuration)
+            Err(Error::UrlPolicy(_))
         ));
     }
     Ok(())
@@ -282,5 +282,21 @@ async fn mutation_adr0004_contract_v1_pagination_progress_and_page_bounds() -> T
         assert_eq!(health.cache_trusted, case == 1);
         store.shutdown(until()?).await?;
     }
+    Ok(())
+}
+
+#[test]
+fn adr0004_order_event_rejects_store_identity_with_original_cause() -> TestResult {
+    use std::error::Error as _;
+    let mut fields: analyte_contract::EventFields = serde_json::from_slice(include_bytes!(
+        "../../../../../docs/contract/vectors/event.json"
+    ))?;
+    fields.order_id = analyte_contract::Text::try_from("x".repeat(257))?;
+    let event = analyte_contract::OrderEvent::try_from(fields)?;
+    let error = encode_order_event(&event, Identifier::new("app")?)
+        .err()
+        .ok_or("store identity must be bounded")?;
+    assert!(matches!(error, Error::OrderId(_)));
+    assert!(error.source().is_some());
     Ok(())
 }

@@ -139,32 +139,32 @@ impl Hl7Syntax {
 }
 
 impl Hl7Syntax {
-    /// Returns the validated encoding setting.
+    /// Text decoding policy; undecodable bytes remain retained evidence.
     #[must_use]
     pub fn encoding(&self) -> Encoding {
         self.encoding
     }
-    /// Returns the validated edition setting.
+    /// HL7 grammar edition used for parsing and encoding.
     #[must_use]
     pub fn edition(&self) -> Edition {
         self.edition
     }
-    /// Returns the validated terminator setting.
+    /// Segment ending accepted on this link.
     #[must_use]
     pub fn terminator(&self) -> Terminator {
         self.terminator
     }
-    /// Returns the validated escapes setting.
+    /// Policy for malformed HL7 escapes; original bytes remain available.
     #[must_use]
     pub fn escapes(&self) -> Escapes {
         self.escapes
     }
-    /// Returns the validated allow utf8 in v231 setting.
+    /// Whether this dialect explicitly permits UTF-8 under HL7 2.3.1.
     #[must_use]
     pub fn allow_utf8_in_v231(&self) -> bool {
         self.allow_utf8_in_v231
     }
-    /// Returns the validated limits setting.
+    /// Size and count ceilings applied before parsing untrusted records.
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {
         &self.limits
@@ -172,12 +172,12 @@ impl Hl7Syntax {
 }
 
 impl Hl7Query {
-    /// Returns the validated policy setting.
+    /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
     pub fn policy(&self) -> &OrderQuery {
         &self.policy
     }
-    /// Returns the validated layout setting.
+    /// Record field positions used to read this configured dialect.
     #[must_use]
     pub fn layout(&self) -> &Hl7OrderQuery {
         &self.layout
@@ -185,12 +185,12 @@ impl Hl7Query {
 }
 
 impl Hl7SendOrders {
-    /// Returns the validated settings setting.
+    /// Protocol-specific settings checked for internal consistency.
     #[must_use]
     pub fn settings(&self) -> &Hl7Send {
         &self.settings
     }
-    /// Returns the validated placer namespace setting.
+    /// Assigning system required for retained placer order identities.
     #[must_use]
     pub fn placer_namespace(&self) -> &Identifier {
         &self.placer_namespace
@@ -198,22 +198,22 @@ impl Hl7SendOrders {
 }
 
 impl Hl7Orders {
-    /// Returns the validated patient namespace setting.
+    /// Assigning system for patient identities from this connection.
     #[must_use]
     pub fn patient_namespace(&self) -> &Option<Identifier> {
         &self.patient_namespace
     }
-    /// Returns the validated tables setting.
+    /// Configured code tables used without guessing unknown values.
     #[must_use]
     pub fn tables(&self) -> &OrderTables {
         &self.tables
     }
-    /// Returns the validated query setting.
+    /// Host-query settings validated for this protocol.
     #[must_use]
     pub fn query(&self) -> &Option<Hl7Query> {
         &self.query
     }
-    /// Returns the validated send setting.
+    /// Validated outgoing command settings.
     #[must_use]
     pub fn send(&self) -> &Option<Hl7SendOrders> {
         &self.send
@@ -221,37 +221,37 @@ impl Hl7Orders {
 }
 
 impl Hl7Stack {
-    /// Returns the validated transport setting.
+    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
     #[must_use]
     pub fn transport(&self) -> &TcpTransport {
         &self.transport
     }
-    /// Returns the validated frame limit setting.
+    /// Maximum retained frame size before framing refuses more bytes.
     #[must_use]
     pub fn frame_limit(&self) -> usize {
         self.frame_limit
     }
-    /// Returns the validated timeouts setting.
+    /// Bounded protocol waits used by the connection state machine.
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         &self.timeouts
     }
-    /// Returns the validated acknowledgment setting.
+    /// Acknowledgment responsibility promised only after durable custody.
     #[must_use]
     pub fn acknowledgment(&self) -> Responsibility {
         self.acknowledgment
     }
-    /// Returns the validated syntax setting.
+    /// Record grammar settings applied after framing.
     #[must_use]
     pub fn syntax(&self) -> &Hl7Syntax {
         &self.syntax
     }
-    /// Returns the validated mappings setting.
+    /// Explicit source-to-common-model mappings; unknown codes are not guessed.
     #[must_use]
     pub fn mappings(&self) -> &Mappings {
         &self.mappings
     }
-    /// Returns the validated orders setting.
+    /// Validated order policy used before encoding commands.
     #[must_use]
     pub fn orders(&self) -> &Option<Hl7Orders> {
         &self.orders

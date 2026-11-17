@@ -17,7 +17,7 @@ pub enum Retention {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Days(u16);
 impl Days {
-    /// Returns the validated number of days.
+    /// Borrows the checked number of days.
     #[must_use]
     pub fn get(self) -> u16 {
         self.0

@@ -518,7 +518,7 @@ fn migrate_fixture_to_version(db: &mut Connection, version: i64) -> TestResult {
 }
 
 #[test]
-fn current_schema_matches_fresh_store() -> TestResult {
+fn current_schema_v15_matches_fresh_store() -> TestResult {
     let dir = tempfile::tempdir()?;
     let store = Store::open(
         &dir.path().join("schema.db"),
