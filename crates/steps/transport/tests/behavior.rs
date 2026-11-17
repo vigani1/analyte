@@ -64,6 +64,39 @@ async fn dropping_dialog_cancels_owner() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// ADR 0003 (refuse visibly): a reply queued just before the owner cancels must still
+/// reach the peer. The single-threaded runtime fixes the order: without the flush the
+/// cancel is seen before the pump takes the queued bytes.
+#[tokio::test(flavor = "current_thread")]
+async fn flush_sends_queued_reply_before_cancel_closes_the_socket() -> Result<(), Box<dyn Error>> {
+    let listener = tcp::bind("127.0.0.1:0".parse()?).await?;
+    let mut socket = TcpStream::connect(listener.local_addr()?).await?;
+    let (stream, _) = listener.accept().await?;
+    let (mut dialog, side) = connection(Limits::new(4, Duration::from_secs(2))?);
+    assert!(matches!(
+        dialog.flush().await,
+        Err(analyte_transport::Error::Offline)
+    ));
+    let cancel = dialog.cancellation();
+    let host = async {
+        assert!(matches!(
+            dialog.receive().await?,
+            Some(Event::Opened { .. })
+        ));
+        dialog.write(b"refusal".to_vec()).await?;
+        dialog.flush().await?;
+        cancel.cancel();
+        Ok::<_, Box<dyn Error>>(())
+    };
+    let (host, pumped) = tokio::join!(host, tcp::pump(stream, side));
+    host?;
+    pumped?;
+    let mut received = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), socket.read_to_end(&mut received)).await??;
+    assert_eq!(received, b"refusal");
+    Ok(())
+}
+
 #[test]
 fn folder_keeps_claimed_bytes_after_crash() -> Result<(), Box<dyn Error>> {
     use analyte_transport::folder::Claimed;
