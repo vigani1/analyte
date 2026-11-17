@@ -114,23 +114,19 @@ fn mutation_rule7_worker_drop_joins_the_store_owner_before_returning() -> TestRe
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()?;
-    runtime.block_on(async {
-        for attempt in 0..16 {
-            let (closed, observed) = std::sync::mpsc::channel();
-            let handle = Handle::start(
-                temp.path().join(format!("drop-{attempt}.db")),
-                limits(),
-                Box::new(DropSpace(closed)),
-                1,
-                Instant::now() + HANG_GUARD,
-            )
-            .await?;
-            drop(handle);
-            // Drop promises the owner has already finished, not eventual cleanup.
-            assert_eq!(observed.try_recv(), Ok(()));
-        }
-        Ok::<_, Error>(())
-    })?;
+    for attempt in 0..16 {
+        let (closed, observed) = std::sync::mpsc::channel();
+        let handle = runtime.block_on(Handle::start(
+            temp.path().join(format!("drop-{attempt}.db")),
+            limits(),
+            Box::new(DropSpace(closed)),
+            1,
+            Instant::now() + HANG_GUARD,
+        ))?;
+        drop(handle);
+        // Synchronous owners retain the joined-before-return guarantee.
+        assert_eq!(observed.try_recv(), Ok(()));
+    }
     Ok(())
 }
 
@@ -250,6 +246,38 @@ fn rule7_shutdown_timeout_retains_owner_and_can_resume_after_notification() -> T
         handle.shutdown(Instant::now() + HANG_GUARD).await?;
         assert!(handle.thread.is_none());
         Ok::<_, Error>(())
+    })?;
+    Ok(())
+}
+
+#[test]
+fn rule7_async_drop_reports_missing_close_without_waiting_for_worker() -> TestResult {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()?;
+    let (release, released) = std::sync::mpsc::channel();
+    let (finished, completion) = tokio::sync::oneshot::channel();
+    let thread = std::thread::spawn(move || {
+        let _finished = super::Finished(Some(finished));
+        released
+            .recv_timeout(HANG_GUARD)
+            .expect("test releases owner after Drop");
+    });
+    let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+    let handle = Handle {
+        sender: Some(sender),
+        thread: Some(thread),
+        finished: completion,
+    };
+    runtime.block_on(async {
+        let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(handle)));
+        assert!(
+            error.is_err(),
+            "test build must diagnose skipped explicit close"
+        );
+        // A joining Drop cannot reach this release; the worker is still blocked.
+        release.send(())?;
+        Ok::<_, Box<dyn std::error::Error>>(())
     })?;
     Ok(())
 }

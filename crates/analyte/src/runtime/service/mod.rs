@@ -57,7 +57,7 @@ pub(crate) async fn open_store_with_deadline(
         )
     });
     let key = crate::installation::secrets::retention_key(finite)?;
-    let handle = Handle::start(
+    let mut handle = Handle::start(
         program.data_directory.join("analyte.db"),
         limits,
         space,
@@ -65,7 +65,7 @@ pub(crate) async fn open_store_with_deadline(
         until,
     )
     .await?;
-    handle
+    let result = handle
         .request(until, move |store| {
             store.configure_retention_key(key, finite)?;
             if finite {
@@ -73,7 +73,11 @@ pub(crate) async fn open_store_with_deadline(
             }
             Ok(())
         })
-        .await?;
+        .await;
+    if let Err(error) = result {
+        handle.shutdown(deadline()).await?;
+        return Err(error.into());
+    }
     Ok(handle)
 }
 
@@ -213,18 +217,28 @@ async fn serve_with(
     let store = open_service_store(&program, space).await?;
     #[cfg(feature = "test-hooks")]
     super::test_hooks::publish_store_probes(&program, &store)?;
-    let paused = store
-        .request(deadline(), |store| store.restore_unreconciled())
-        .await?;
-    tracing::info!(
-        order_sending_paused_after_restore = paused,
-        "store restore reconciliation status"
-    );
-    crate::runtime::delivery::recover(&store).await?;
-    super::law_recovery::run(&program, &store).await?;
-    let admin = crate::admin::prepare(&program, store.clone(), loopback)
-        .await
-        .map_err(admin_startup_error)?;
+    let startup = async {
+        let paused = store
+            .request(deadline(), |store| store.restore_unreconciled())
+            .await?;
+        tracing::info!(
+            order_sending_paused_after_restore = paused,
+            "store restore reconciliation status"
+        );
+        crate::runtime::delivery::recover(&store).await?;
+        super::law_recovery::run(&program, &store).await?;
+        crate::admin::prepare(&program, store.clone(), loopback)
+            .await
+            .map_err(admin_startup_error)
+    }
+    .await;
+    let admin = match startup {
+        Ok(admin) => admin,
+        Err(error) => {
+            close_store(store).await?;
+            return Err(error);
+        }
+    };
     let admin_states = admin
         .as_ref()
         .map(|server| server.owners.clone())
@@ -735,49 +749,4 @@ fn admin_startup_error(error: crate::admin::Error) -> Error {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn plan11_supervision_preserves_stop_failure_and_refuses_unexpected_admin_exit() {
-        let mut alerts = JoinSet::new();
-        let mut admin = JoinSet::new();
-        let mut deliveries = JoinSet::new();
-        let mut machines = JoinSet::new();
-        let result = supervise(
-            async { Err(crate::invalid("synthetic stop signal failure")) },
-            &mut alerts,
-            &mut admin,
-            &mut deliveries,
-            &mut machines,
-        )
-        .await;
-        assert_eq!(
-            result.expect_err("signal failure").to_string(),
-            "synthetic stop signal failure"
-        );
-        admin.spawn(async { Ok(()) });
-        let result = supervise(
-            std::future::pending(),
-            &mut alerts,
-            &mut admin,
-            &mut deliveries,
-            &mut machines,
-        )
-        .await;
-        assert_eq!(
-            result.expect_err("admin exit must be visible").to_string(),
-            "admin owner stopped unexpectedly"
-        );
-        assert!(admin.is_empty());
-        supervise(
-            async { Ok(()) },
-            &mut alerts,
-            &mut admin,
-            &mut deliveries,
-            &mut machines,
-        )
-        .await
-        .expect("normal stop succeeds without owners");
-    }
-}
+mod tests;

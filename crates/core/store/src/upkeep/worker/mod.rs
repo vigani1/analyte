@@ -39,7 +39,8 @@ impl Drop for Finished {
 }
 
 /// Owns the dedicated storage thread and a bounded request queue.
-/// Dropping closes the queue and joins the worker; explicitly shut down before runtime exit.
+/// Async owners must call `shutdown` before dropping, including on errors.
+/// Drop signals stop; it joins only outside a Tokio runtime.
 pub struct Handle {
     sender: Option<mpsc::Sender<Request>>,
     thread: Option<thread::JoinHandle<()>>,
@@ -89,19 +90,27 @@ impl Handle {
                     request.run(&mut store, Instant::now());
                 }
             })?;
-        let handle = Self {
+        let mut handle = Self {
             sender: Some(sender),
             thread: Some(thread),
             finished: completion,
         };
         let _cancel = CancelStartup(startup.clone());
-        tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), opened)
+        let result = tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), opened)
             .await
             .map_err(|_| {
                 startup.cancel();
                 startup.error()
-            })?
-            .map_err(|_| Error::Closed)??;
+            })
+            .and_then(|result| result.map_err(|_| Error::Closed))
+            .and_then(|result| result);
+        if let Err(error) = result {
+            startup.cancel();
+            // Startup still owns cleanup on an opening error. Cancellation is
+            // cooperative; preserve the original opening error if cleanup expires.
+            let _ = handle.shutdown(deadline).await;
+            return Err(error);
+        }
         Ok(handle)
     }
 
@@ -163,9 +172,23 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        self.sender.take();
+        let explicit_close_skipped = self.sender.take().is_some();
         if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+            if tokio::runtime::Handle::try_current().is_ok() {
+                tracing::error!(
+                    explicit_close_skipped,
+                    "store owner dropped inside Tokio before shutdown completed"
+                );
+                // Never block an async worker, even when reporting misuse.
+                drop(thread);
+                #[cfg(test)]
+                debug_assert!(
+                    !explicit_close_skipped,
+                    "async store owner skipped explicit shutdown"
+                );
+            } else {
+                let _ = thread.join();
+            }
         }
     }
 }
