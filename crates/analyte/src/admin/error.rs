@@ -2,6 +2,9 @@
 /// Failures at the authenticated local administration boundary.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// A blocking owner failed while loading the current installation.
     #[error(transparent)]
     Join(#[from] tokio::task::JoinError),

@@ -2,6 +2,9 @@
 /// Failures owned by runtime workers and protected-store startup.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// The runtime cannot safely continue the requested operation.
     #[error(
         "SCM dispatcher unavailable; use analyte run instead outside the Service Control Manager"

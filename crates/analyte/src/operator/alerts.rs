@@ -339,9 +339,10 @@ mod tests {
         let (entered, waiting) = tokio::sync::oneshot::channel();
         let (release, released) = std::sync::mpsc::channel();
         let owner = store.clone();
+        let until = deadline()?;
         let blocking = tokio::spawn(async move {
             owner
-                .request::<_, analyte_store::Error>(deadline()?, move |_| {
+                .request::<_, analyte_store::Error>(until, move |_| {
                     let _ = entered.send(());
                     released
                         .recv_timeout(Duration::from_secs(2))

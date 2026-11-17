@@ -196,6 +196,9 @@ fn execution_status(status: &law::ExecutionStatus) -> analyte_model::AwosExecuti
 /// LAW context and retained-work failures; none authorize a positive acknowledgement.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// The source message lacks a valid custody header.
     #[error("LAW header")]
     Header,

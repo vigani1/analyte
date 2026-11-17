@@ -80,6 +80,9 @@ mod tests;
 /// Failures reading retained receipt context, separate from a stored parked interpretation.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ReadError {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     #[error(transparent)]
     Store(#[from] analyte_store::Error),
     #[error(transparent)]

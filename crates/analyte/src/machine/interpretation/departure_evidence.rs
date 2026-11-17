@@ -226,6 +226,9 @@ fn lowercase_checksum(machine: &Machine, raw: &[u8]) -> Result<bool, Error> {
 /// Failures constructing complete departure evidence; original source bytes remain retained.
 #[derive(Debug, thiserror::Error)]
 pub enum EvidenceError {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// Source span coordinates are reversed.
     #[error("departure span end precedes start")]
     ReversedSpan,

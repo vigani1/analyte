@@ -51,7 +51,10 @@ pub(crate) fn mapping_location(
                 }
             }
         }
-        Err(crate::machine::interpretation::ReadError::Store(_)) => return None,
+        Err(
+            crate::machine::interpretation::ReadError::Store(_)
+            | crate::machine::interpretation::ReadError::Deadline(_),
+        ) => return None,
     };
     Location::at(raw, ending, position.record, position.field)
 }

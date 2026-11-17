@@ -68,9 +68,9 @@ pub enum ValidationError {
     /// Preserves the original comparison failure.
     #[error(transparent)]
     Store(#[from] analyte_store::OrderError),
-    /// Transitional host deadline failure.
+    /// The host could not represent the storage request deadline.
     #[error(transparent)]
-    Deadline(#[from] analyte_store::Error),
+    Deadline(#[from] crate::DeadlineError),
     /// Preserves the original comparison failure.
     #[error(transparent)]
     Encoding(#[from] std::str::Utf8Error),

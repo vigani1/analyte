@@ -104,9 +104,9 @@ pub enum OrderError {
     /// Durable order lookup or lifecycle persistence failed.
     #[error(transparent)]
     Store(#[from] analyte_store::OrderError),
-    /// Transitional deadline cause until the shared host deadline is migrated.
+    /// The host could not represent the storage request deadline.
     #[error(transparent)]
-    Deadline(#[from] analyte_store::Error),
+    Deadline(#[from] crate::DeadlineError),
     /// Retained operator evidence could not be read.
     #[error(transparent)]
     Evidence(#[from] analyte_store::OperatorError),

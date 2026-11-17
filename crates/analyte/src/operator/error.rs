@@ -2,6 +2,9 @@
 /// Failures running a bounded operator action or reading an operational snapshot.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// Order command combined restore and order storage operations.
     #[error(transparent)]
     OrderCommand(#[from] crate::orders::CommandError),

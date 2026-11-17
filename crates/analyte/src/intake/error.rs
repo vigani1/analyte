@@ -2,6 +2,9 @@
 /// Operational failures while retaining or interpreting an already received message.
 #[derive(Debug, thiserror::Error)]
 pub enum IntakeError {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// Protocol-specific intake failed before durable acceptance.
     #[error(transparent)]
     Protocol(#[from] crate::machine::law::custody::Error),

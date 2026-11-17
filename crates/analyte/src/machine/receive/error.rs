@@ -1,6 +1,9 @@
 //! Classifies shared durable-store, interpretation and evidence failures.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// A durable store operation failed before its promised completion.
     #[error(transparent)]
     Store(#[from] analyte_store::Error),
@@ -65,6 +68,11 @@ macro_rules! forward {
     ($target:ty, $wrap:expr) => {
         analyte_store::forward_command_errors!($target);
 
+        impl From<crate::DeadlineError> for $target {
+            fn from(error: crate::DeadlineError) -> Self {
+                ($wrap)(crate::machine::receive::error::Error::from(error))
+            }
+        }
         impl From<analyte_store::Error> for $target {
             fn from(error: analyte_store::Error) -> Self {
                 ($wrap)(crate::machine::receive::error::Error::from(error))
