@@ -99,7 +99,7 @@ async fn cycle(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-hooks"))]
 mod tests {
     use super::*;
     use crate::Error;

@@ -84,7 +84,7 @@ impl Destination {
     /// This explicit opt-in never disables TLS verification for HTTPS.
     /// # Errors
     /// Rejects non-loopback HTTP and the same invalid bounds as `new`.
-    #[cfg(feature = "test-hooks")]
+    #[cfg(any(test, feature = "test-hooks"))]
     pub fn for_loopback_test(
         id: Identifier,
         base: &str,

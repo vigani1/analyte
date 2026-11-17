@@ -47,7 +47,6 @@ jiff = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-analyte = { path = ".", features = ["test-hooks"] }
 analyte-fixtures.workspace = true
 tokio = { workspace = true, features = ["process", "test-util"] }
 analyte-sim = { workspace = true }
@@ -67,10 +66,12 @@ path = "tests/admin_token.rs"
 
 [[test]]
 name = "delivery"
+required-features = ["test-hooks"]
 path = "tests/delivery/mod.rs"
 
 [[test]]
 name = "receive"
+required-features = ["test-hooks"]
 path = "tests/receive/mod.rs"
 
 [[test]]
@@ -79,17 +80,21 @@ path = "tests/service_unit.rs"
 
 [[test]]
 name = "vendor_receive"
+required-features = ["test-hooks"]
 path = "tests/vendor_receive/mod.rs"
 
 
 [[test]]
 name = "orders"
+required-features = ["test-hooks"]
 path = "tests/orders/mod.rs"
 
 [[test]]
 name = "service"
+required-features = ["test-hooks"]
 path = "tests/service/mod.rs"
 
 [[test]]
 name = "law"
+required-features = ["test-hooks"]
 path = "tests/law/mod.rs"

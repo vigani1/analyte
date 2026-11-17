@@ -27,7 +27,6 @@ serde_json = { workspace = true }
 
 
 [dev-dependencies]
-analyte-sink = { path = ".", features = ["test-hooks"] }
 analyte-fixtures.workspace = true
 analyte-receiver = { workspace = true }
 tempfile = { workspace = true }

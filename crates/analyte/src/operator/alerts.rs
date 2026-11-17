@@ -148,7 +148,7 @@ pub(crate) async fn run(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-hooks"))]
 mod tests {
     use super::*;
     use crate::Error;

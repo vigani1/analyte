@@ -57,7 +57,7 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Production libraries exclude test hooks
-        run: cargo check -p analyte -p analyte-sink --lib --no-default-features --locked
+        run: cargo clippy -p analyte -p analyte-sink --lib --no-default-features --locked -- -D warnings
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test-shard:
@@ -82,6 +82,8 @@ jobs:
       # nextest runs test binaries in parallel, each test in its own process; the
       # partition gives each machine a fixed half of the tests.
       - run: cargo nextest run --workspace --all-features --locked --no-fail-fast --partition count:${{ matrix.shard }}/${{ matrix.total }}
+      # Reuses the existing OS shards; only the two hook-bearing crates are rebuilt.
+      - run: cargo nextest run -p analyte -p analyte-sink --no-default-features --locked --no-fail-fast --partition count:${{ matrix.shard }}/${{ matrix.total }}
       - if: matrix.shard == 1
         run: cargo test --doc --workspace --all-features --locked
       - if: matrix.shard == 1

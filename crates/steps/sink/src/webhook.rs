@@ -61,7 +61,7 @@ impl WebhookSender {
     /// Creates an HTTP sender for a literal loopback synthetic receiver only.
     /// # Errors
     /// Refuses non-loopback hosts, credentials, queries and fragments.
-    #[cfg(feature = "test-hooks")]
+    #[cfg(any(test, feature = "test-hooks"))]
     pub fn for_loopback_test(url: &str, timeout: std::time::Duration) -> Result<Self, Error> {
         let url = analyte_config::loopback_test_url(url).map_err(|_| Error::Configuration)?;
         if timeout.is_zero() || timeout > std::time::Duration::from_secs(300) {
