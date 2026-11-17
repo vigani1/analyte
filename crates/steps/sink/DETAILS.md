@@ -11,9 +11,9 @@ SecretsSource returns preloaded host credentials promptly without I/O. The host
 loads/rotates secrets with bounded I/O and supplies up to eight signing secrets.
 No secret belongs in machine config or logs.
 
-`build_delivery` checks production eligibility before creating one UUIDv7 and
+`encode_delivery` checks production eligibility before creating one UUIDv7 and
 serializing the contract conversion. Commit it atomically with its interpretation.
-`build_order_event` freezes a validated event (including its host-created ID) for
+`encode_order_event` freezes a validated event (including its host-created ID) for
 `enqueue_order_event`. The store keeps result and per-order event ordering apart.
 
 One Worker owns delivery for the store's configured destinations. `deliver_once`

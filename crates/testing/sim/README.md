@@ -1,6 +1,6 @@
 # sim
 
-**Kind: core.** Groups files by the data and operations they handle.
+**Kind: testing.** Plays synthetic machine conversations.
 
 **What it does:** Plays the machine side of synthetic recordings and compares the bridge replies byte for byte. It is a test building block.
 

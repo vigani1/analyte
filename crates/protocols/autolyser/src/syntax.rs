@@ -348,7 +348,7 @@ impl Report {
     /// Builds a report from typed fields, checking bounds and control invariants.
     /// # Errors
     /// Rejects counts above 999 and inconsistent control fields.
-    pub fn build(
+    pub fn new(
         patient: &PatientCode,
         list: List,
         sample: Sample,

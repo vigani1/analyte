@@ -434,7 +434,7 @@ fn vidas_config() -> Result<analyte_framing::vidas::Config, Error> {
 fn report() -> Result<Vec<u8>, Error> {
     use analyte_autolyser::syntax::{Field, List, PatientCode, Report, Sample, Value};
     Ok(analyte_framing::autolyser::finish(
-        Report::build(
+        Report::new(
             &PatientCode::from_eight(b"00012aBC")?,
             List::Routine,
             Sample::Serum,
@@ -607,7 +607,7 @@ async fn assert_missing_device_retained(run: &mut Running, hello: &str) -> Resul
 
 // POCT01-A2 Appendix B 4.1.2 p.78, 3.4.1 p.73: error ACK precedes abnormal END.
 
-mod scenarios_1;
+mod custody;
 
 mod edits;
 mod identity;

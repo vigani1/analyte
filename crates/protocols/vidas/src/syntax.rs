@@ -179,7 +179,7 @@ impl Message {
     /// Builds through the same validation boundary, without reordering or truncation.
     /// # Errors
     /// Returns the same syntax errors as parsing; pipe/control injection is rejected.
-    pub fn build(fields: &[(&str, &str)], limit: SampleLimit) -> Result<Self, Error> {
+    pub fn new(fields: &[(&str, &str)], limit: SampleLimit) -> Result<Self, Error> {
         let mut text = String::new();
         for (tag, value) in fields {
             if tag.len() != 2

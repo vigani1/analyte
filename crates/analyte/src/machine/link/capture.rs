@@ -379,11 +379,11 @@ mod tests {
         create_data_directory(&root.path().join("data"))?;
         std::fs::write(
             root.path().join("machine.toml"),
-            include_str!("../../../core/config/examples/astm.toml"),
+            include_str!("../../../../core/config/examples/astm.toml"),
         )?;
         std::fs::write(
             root.path().join("site.toml"),
-            include_str!("../../../core/config/examples/site.toml"),
+            include_str!("../../../../core/config/examples/site.toml"),
         )?;
         let program = root.path().join("program.toml");
         std::fs::write(

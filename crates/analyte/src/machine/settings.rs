@@ -44,7 +44,7 @@ pub(super) fn transport(stack: &Stack) -> Link<'_> {
         Stack::Astm(analyte_config::RecordTransport::Stream(s)) => {
             stream(s.transport(), Session::Astm(s))
         }
-        Stack::VidasLiteral(s) => stream(s.transport(), Session::Vidas(s)),
+        Stack::Vidas(s) => stream(s.transport(), Session::Vidas(s)),
         Stack::Autolyser(s) => stream(s.transport(), Session::Autolyser(s)),
         Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => Link::Tcp {
             session: Session::Hl7(s),

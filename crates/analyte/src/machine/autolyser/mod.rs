@@ -1,9 +1,10 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
-use super::connection_input::Input;
-use super::custody::{self, ms};
-use super::transfer_end::AutolyserEnd;
+mod custody;
 use crate::intake;
+use crate::machine::connection_input::Input;
+use crate::machine::custody::{self as receive_custody, ms};
 use crate::machine::error::SessionError as Error;
+use crate::machine::transfer_end::AutolyserEnd;
 use crate::orders::outcome::Code;
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
@@ -12,16 +13,16 @@ use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 /// Mutable conversation state has one owner for the entire connection.
-struct ConnectionState {
-    dialog: Dialog,
-    start: Instant,
-    receipt: Option<(ReceiptId, jiff::Timestamp)>,
-    ready: bool,
-    recovering: bool,
-    guard: Option<analyte_store::PollIntentId>,
-    active: Option<analyte_store::MachineOrder>,
-    cursor: String,
-    end_code: AutolyserEnd,
+pub(crate) struct ConnectionState {
+    pub(crate) dialog: Dialog,
+    pub(crate) start: Instant,
+    pub(crate) receipt: Option<(ReceiptId, jiff::Timestamp)>,
+    pub(crate) ready: bool,
+    pub(crate) recovering: bool,
+    pub(crate) guard: Option<analyte_store::PollIntentId>,
+    pub(crate) active: Option<analyte_store::MachineOrder>,
+    pub(crate) cursor: String,
+    pub(crate) end_code: AutolyserEnd,
 }
 
 pub(super) async fn session(
@@ -31,7 +32,7 @@ pub(super) async fn session(
     conn: &mut analyte_transport::Connection,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    super::poll_custody::ensure_reconciled(store, machine).await?;
+    custody::ensure_reconciled(store, machine).await?;
     let mut state = ConnectionState::open(settings)?;
     // Dropping this owner after reservation leaves Sending for shared recovery.
     // Observed failures are finalized Uncertain before returning, without replay.
@@ -81,7 +82,7 @@ impl ConnectionState {
     ) -> Result<(), Error> {
         loop {
             self.end_code = AutolyserEnd::InputFailed;
-            let input = super::connection_input::journaled(
+            let input = crate::machine::connection_input::journaled(
                 machine,
                 store,
                 conn,
@@ -125,18 +126,7 @@ impl ConnectionState {
                     // Tick alone can initiate L recovery. Never interleave R with it.
                     if actions.is_empty() && self.ready && !self.recovering {
                         self.ready = false;
-                        if let Some(reserved) =
-                            crate::orders::sending::next(store, machine, &mut self.cursor).await?
-                        {
-                            self.active = Some(reserved.order);
-                            let analyte_mapping::MachineOrder::Autolyser(worklist) =
-                                reserved.payload
-                            else {
-                                return Err(Error::AutolyserReceivedAnotherStackSOrder);
-                            };
-                            let actions = self
-                                .dialog
-                                .step(self.start.elapsed(), Event::Download(&worklist));
+                        if let Some(actions) = self.next_download(store, machine).await? {
                             if process(actions, self, machine, store, conn, policy).await? {
                                 return Ok(());
                             }
@@ -157,7 +147,7 @@ impl ConnectionState {
             };
             for event in events {
                 if matches!(event, Event::Poll(Request::Next)) {
-                    self.guard = Some(super::poll_custody::reserve(store, machine).await?);
+                    self.guard = Some(custody::reserve(store, machine).await?);
                 }
                 let actions = self.dialog.step(self.start.elapsed(), event);
                 if process(actions, self, machine, store, conn, policy).await? {
@@ -195,15 +185,15 @@ impl ConnectionState {
     ) -> Result<(), Error> {
         let mut result = result;
         if let Err(effect) =
-            super::poll_custody::uncertain(store, self.guard, machine, self.end_code.as_str()).await
+            custody::uncertain(store, self.guard, machine, self.end_code.as_str()).await
         {
-            result = Err(custody::effect_failure(result.err(), effect));
+            result = Err(receive_custody::effect_failure(result.err(), effect));
         }
         if let Some(order) = self.active.as_ref()
             && let Err(effect) =
                 crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await
         {
-            result = Err(custody::effect_failure(result.err(), effect.into()));
+            result = Err(receive_custody::effect_failure(result.err(), effect.into()));
         }
         result
     }
@@ -221,8 +211,8 @@ impl ConnectionState {
         let prior_code = self.end_code;
         self.end_code = AutolyserEnd::StorageFailed;
         let id = ReceiptId::new();
-        let stored = custody::store_within(
-            custody::budget(machine),
+        let stored = receive_custody::store_within(
+            receive_custody::budget(machine),
             intake::receive(store, machine, id, raw),
         )
         .await;
@@ -233,7 +223,7 @@ impl ConnectionState {
                 actions.extend(self.dialog.step(self.start.elapsed(), Event::Stored(token)));
             }
             Err(error) => {
-                if matches!(error, custody::StoreWaitError::Timeout(_)) {
+                if matches!(error, receive_custody::StoreWaitError::Timeout(_)) {
                     self.end_code = AutolyserEnd::StorageTimeout;
                 }
                 actions.extend(
@@ -260,7 +250,7 @@ impl ConnectionState {
                 s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
             })
             .await?;
-        match super::interpretation::map_retained(store, machine, &receipt).await {
+        match crate::machine::interpretation::map_retained(store, machine, &receipt).await {
             Ok(reading) => intake::vendor_reading(store, machine, id, reading).await?,
             Err(error) => {
                 intake::failed_reading(
@@ -274,33 +264,9 @@ impl ConnectionState {
         }
         self.ready = true;
         self.recovering = false;
-        super::poll_custody::complete(store, &mut self.guard, machine).await?;
+        custody::complete(store, &mut self.guard, machine).await?;
 
         Ok(())
-    }
-    async fn complete_insertion(
-        &mut self,
-        reception: analyte_dialog::autolyser::Reception,
-        store: &Handle,
-    ) -> Result<bool, Error> {
-        self.receipt.take();
-        let order = self
-            .active
-            .as_ref()
-            .ok_or_else(|| Error::UnexpectedAutolyserInsertionOutcome)?;
-        let code = super::transfer_end::insertion(reception);
-        let outcome = match reception {
-            analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,
-            analyte_dialog::autolyser::Reception::Rejected(_)
-            | analyte_dialog::autolyser::Reception::Other(_, _) => {
-                analyte_model::OrderState::Uncertain
-            }
-        };
-        crate::orders::sending::complete(store, order, outcome, &code).await?;
-        self.active = None;
-        self.ready = outcome == analyte_model::OrderState::Sent;
-
-        Ok(!self.ready)
     }
 }
 
@@ -319,7 +285,7 @@ async fn process(
         match action {
             Action::Write(bytes) => {
                 state.end_code = AutolyserEnd::WriteFailed;
-                custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
+                receive_custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
                 state.end_code = AutolyserEnd::TransferError;
             }
             Action::Store(token, raw) => {
@@ -358,19 +324,17 @@ async fn process(
                     None => intake::park_bytes(store, machine, Vec::new(), &reason).await,
                 };
                 if let Err(error) = parked {
-                    return Err(custody::effect_failure(failure, error.into()));
+                    return Err(receive_custody::effect_failure(failure, error.into()));
                 }
-                if let Err(error) =
-                    super::poll_custody::uncertain(store, state.guard, machine, &reason).await
-                {
-                    return Err(custody::effect_failure(failure, error));
+                if let Err(error) = custody::uncertain(store, state.guard, machine, &reason).await {
+                    return Err(receive_custody::effect_failure(failure, error));
                 }
             }
             Action::Empty => {
                 state.receipt.take();
                 state.ready = !state.recovering;
                 if !state.recovering {
-                    super::poll_custody::complete(store, &mut state.guard, machine).await?;
+                    custody::complete(store, &mut state.guard, machine).await?;
                 }
             }
             Action::Insertion(reception) => {
@@ -378,7 +342,7 @@ async fn process(
             }
             Action::Uncertain => {
                 state.ready = false;
-                super::poll_custody::uncertain(
+                custody::uncertain(
                     store,
                     state.guard,
                     machine,

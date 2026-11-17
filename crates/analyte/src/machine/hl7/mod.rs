@@ -477,8 +477,8 @@ impl ConnectionState {
         token: analyte_dialog::hl7::ReceiptId,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
-        let metadata = crate::machine::hl7_response::response_metadata(
-            crate::machine::hl7_response::Profile::Hl7,
+        let metadata = crate::orders::hl7::response::response_metadata(
+            crate::orders::hl7::response::Profile::Hl7,
         );
         actions.extend(self.dialog.step(
             self.start.elapsed(),

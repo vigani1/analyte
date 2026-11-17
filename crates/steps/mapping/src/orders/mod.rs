@@ -133,7 +133,7 @@ pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, O
             s.syntax().limits(),
             s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,
         ),
-        Stack::VidasLiteral(s) => crate::vidas::map_order(
+        Stack::Vidas(s) => crate::vidas::map_order(
             order,
             s,
             s.orders().as_ref().ok_or(OrderMappingError::Disabled)?,

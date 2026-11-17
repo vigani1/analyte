@@ -424,7 +424,7 @@ fn build_deliveries(
                 && !result.requires_parking()
             {
                 deliveries.push(
-                    analyte_sink::build_delivery(
+                    analyte_sink::encode_delivery(
                         result,
                         receipt,
                         destination.clone(),

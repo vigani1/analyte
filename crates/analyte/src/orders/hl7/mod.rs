@@ -1,5 +1,7 @@
 //! Drives HL7 order lookups, reservations and delivery outcomes (HL7 2.3.1 §2.18 and 2.5.1 §5.10).
 //! Kept whole: HL7 order exchange driving keeps cancellation, peer replies and durable transitions together.
+pub(crate) mod response;
+mod send;
 use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
 use crate::{deadline, installation::config::Machine, intake};
@@ -20,7 +22,7 @@ pub(crate) struct Connection {
     active: Vec<MachineOrder>,
     reserving: Vec<analyte_store::MachineOrderKey>,
     owner: analyte_model::Identifier,
-    exchange: Option<super::hl7_send::Exchange>,
+    exchange: Option<send::Exchange>,
     cursor: String,
 }
 pub(crate) struct Request<'a> {
@@ -50,7 +52,7 @@ impl Connection {
         if dialog.orders_busy() {
             return Ok(());
         }
-        if let Some(exchange) = super::hl7_send::next(
+        if let Some(exchange) = send::next(
             store,
             machine,
             &self.owner,
@@ -60,7 +62,7 @@ impl Connection {
         )
         .await?
         {
-            let wait = super::settings::hl7(machine)
+            let wait = crate::orders::settings::hl7(machine)
                 .and_then(|orders| orders.send().as_ref())
                 .ok_or(Error::SendSettings)?
                 .settings()
@@ -87,7 +89,7 @@ impl Connection {
         message: Option<&Message>,
     ) -> Result<(), Error> {
         if let Some(exchange) = &self.exchange {
-            super::hl7_send::finish(
+            send::finish(
                 store,
                 exchange,
                 message,
@@ -105,17 +107,17 @@ impl Connection {
         code: &str,
     ) -> Result<(), Error> {
         let mut result = Ok(());
-        let cleanup = super::sending::settle_owned(
+        let cleanup = crate::orders::sending::settle_owned(
             store,
             std::mem::take(&mut self.reserving),
             &self.owner,
             code,
-            super::sending::Settlement::Order,
+            crate::orders::sending::Settlement::Order,
         )
         .await;
         crate::machine::custody::retain_cleanup(&mut result, cleanup);
         if let Some(exchange) = &self.exchange {
-            let cleanup = super::hl7_send::finish(
+            let cleanup = send::finish(
                 store,
                 exchange,
                 None,
@@ -164,7 +166,7 @@ impl Connection {
                             current.id,
                             &outcomes,
                             jiff::Timestamp::now().as_second(),
-                            super::event,
+                            crate::orders::event,
                         )?;
                     } else if current.state == analyte_model::OrderState::Sending {
                         store.transition_order(
@@ -176,7 +178,7 @@ impl Connection {
                             },
                             code,
                             jiff::Timestamp::now().as_second(),
-                            super::event,
+                            crate::orders::event,
                         )?;
                     }
                     Ok(())
@@ -207,7 +209,8 @@ impl Connection {
                 return Ok(None);
             }
         };
-        let settings = super::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
+        let settings =
+            crate::orders::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
         let query = settings
             .query()
             .as_ref()
@@ -230,12 +233,8 @@ impl Connection {
         if Instant::now() >= until {
             answer = CacheAnswer::Unavailable;
         }
-        let qck_metadata = crate::machine::hl7_response::response_metadata(
-            crate::machine::hl7_response::Profile::Hl7,
-        );
-        let mut dsr_metadata = crate::machine::hl7_response::response_metadata(
-            crate::machine::hl7_response::Profile::Hl7,
-        );
+        let qck_metadata = response::response_metadata(response::Profile::Hl7);
+        let mut dsr_metadata = response::response_metadata(response::Profile::Hl7);
         dsr_metadata.timestamp.clone_from(&qck_metadata.timestamp);
         let mut dsr = None;
         if answer == CacheAnswer::Found {
@@ -256,7 +255,7 @@ impl Connection {
                 .iter()
                 .map(|candidate| candidate.identity.clone())
                 .collect();
-            if !super::sending::reserve_candidates(
+            if !crate::orders::sending::reserve_candidates(
                 store,
                 candidates,
                 until,
@@ -288,9 +287,10 @@ impl Connection {
         receipt: ReceiptId,
         until: Instant,
         busy: bool,
-    ) -> Result<(CacheAnswer, Vec<Vec<u8>>, Vec<super::Candidate>), Error> {
+    ) -> Result<(CacheAnswer, Vec<Vec<u8>>, Vec<crate::orders::Candidate>), Error> {
         let freshness = machine.destination_limits.freshness.as_secs();
-        let settings = super::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
+        let settings =
+            crate::orders::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
         let query = settings
             .query()
             .as_ref()
@@ -304,7 +304,7 @@ impl Connection {
             && Instant::now() < until
             && let Some(sample) = selected
         {
-            let lookup = match super::lookup(store, machine, sample, until).await {
+            let lookup = match crate::orders::lookup(store, machine, sample, until).await {
                 Ok(answer) => answer,
                 Err(error) => {
                     tracing::error!(error_kind=%error,"HL7 order cache unavailable after raw query storage");
@@ -320,19 +320,18 @@ impl Connection {
                         let order: analyte_contract::Order =
                             analyte_contract::decode(cached.document.as_bytes())?;
                         let fields = order.fields();
-                        if !super::eligible(&order, machine) {
+                        if !crate::orders::eligible(&order, machine) {
                             continue;
                         }
-                        let mapped =
-                            super::app_order(&order)
-                                .map_err(Error::from)
-                                .and_then(|app| {
-                                    Ok(analyte_mapping::map_display(
-                                        &app,
-                                        fields.id.as_str(),
-                                        &machine.snapshot,
-                                    )?)
-                                });
+                        let mapped = crate::orders::app_order(&order)
+                            .map_err(Error::from)
+                            .and_then(|app| {
+                                Ok(analyte_mapping::map_display(
+                                    &app,
+                                    fields.id.as_str(),
+                                    &machine.snapshot,
+                                )?)
+                            });
                         match mapped {
                             Ok(mapped) => {
                                 if lines
@@ -344,14 +343,14 @@ impl Connection {
                                     break;
                                 }
                                 lines.extend(mapped);
-                                candidates.push(super::Candidate {
-                                    identity: super::reservation::key(machine, cached.id),
+                                candidates.push(crate::orders::Candidate {
+                                    identity: crate::orders::reservation::key(machine, cached.id),
                                     version: fields.version,
                                 });
                                 answer = CacheAnswer::Found;
                             }
                             Err(error) => {
-                                let identity = super::reservation::key(machine, cached.id);
+                                let identity = crate::orders::reservation::key(machine, cached.id);
                                 let version = fields.version;
                                 let reason = analyte_model::SourceText::new(
                                     &crate::orders::outcome::Detail::Hl7DisplayMapping(
@@ -359,7 +358,7 @@ impl Connection {
                                     )
                                     .to_string(),
                                 )?;
-                                let rejected = super::reservation::reject(
+                                let rejected = crate::orders::reservation::reject(
                                     store, until, identity, version, freshness, reason,
                                 )
                                 .await?;
@@ -492,18 +491,18 @@ mod tests {
         )
         .await?;
         let owner = Identifier::new("owner")?;
-        let first = super::super::reservation::key(&machine, Identifier::new("order-2")?);
-        let second = super::super::reservation::key(&machine, Identifier::new("order-1")?);
+        let first = crate::orders::reservation::key(&machine, Identifier::new("order-2")?);
+        let second = crate::orders::reservation::key(&machine, Identifier::new("order-1")?);
         reserve_original_connection(&store, &first, &owner).await?;
         reserve_original_connection(&store, &second, &owner).await?;
         let database = rusqlite::Connection::open(temp.path().join("owned-cleanup.db"))?;
         database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
-        let result = super::super::sending::settle_owned(
+        let result = crate::orders::sending::settle_owned(
             &store,
             vec![first.clone(), second.clone()],
             &owner,
             "disconnect",
-            super::super::sending::Settlement::Items,
+            crate::orders::sending::Settlement::Items,
         )
         .await;
         assert!(result.is_err());
@@ -545,7 +544,7 @@ mod tests {
         )
         .await?;
         let key = analyte_store::MachineOrderKey {
-            destination: super::super::destination(&machine),
+            destination: crate::orders::destination(&machine),
             order: Identifier::new("order-1")?,
             machine: machine.id.clone(),
         };
@@ -626,7 +625,7 @@ mod tests {
         )
         .await?;
         let key = analyte_store::MachineOrderKey {
-            destination: super::super::destination(&machine),
+            destination: crate::orders::destination(&machine),
             order: Identifier::new("order-1")?,
             machine: machine.id.clone(),
         };
@@ -675,14 +674,14 @@ mod tests {
     fn query_machine() -> Result<Machine, crate::Error> {
         let definition = format!(
             "{}\n{}",
-            include_str!("../../../core/config/examples/hl7.toml"),
-            include_str!("../../../core/config/examples/hl7_orders.toml")
+            include_str!("../../../../core/config/examples/hl7.toml"),
+            include_str!("../../../../core/config/examples/hl7_orders.toml")
         );
         let snapshot = analyte_config::Draft::load(
             ("machine", &definition),
             (
                 "site",
-                include_str!("../../../core/config/examples/site.toml"),
+                include_str!("../../../../core/config/examples/site.toml"),
             ),
             ("overrides", "schema_version=1"),
         )?
@@ -725,7 +724,7 @@ mod tests {
                         id: identity.order.clone(),
                         sample: SampleId::new("000Ab12")
                             .map_err(|_| analyte_store::Error::InvalidHostInput)?,
-                        document: include_str!("../../../../docs/contract/vectors/order.json")
+                        document: include_str!("../../../../../docs/contract/vectors/order.json")
                             .replace("order-1", identity.order.as_str()),
                         tombstone: false,
                         expiry: now

@@ -105,6 +105,6 @@ macro_rules! bad_order_reply {
     };
 }
 
-mod scenarios_1;
+mod commands;
 
-mod scenarios_2;
+mod responses;

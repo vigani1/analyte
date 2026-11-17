@@ -165,10 +165,10 @@ fn validate_builder_repeat_permissions(
     Ok(())
 }
 
-mod scenarios_1;
+mod controls;
 
-mod scenarios_2;
+mod timing;
 
-mod scenarios_3;
+mod responses;
 
 mod priority;

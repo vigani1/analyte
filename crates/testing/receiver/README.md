@@ -1,6 +1,6 @@
 # receiver
 
-**Kind: program.** The small reference program currently keeps its server role in `lib` and its entry in `main`; larger program roles use folders, with per-protocol files inside when needed.
+**Kind: testing.** Runs a reference lab-app endpoint.
 
 **What it does:** Provides a reference lab-app endpoint for integration tests and examples. It is a separate runnable test stand-in.
 

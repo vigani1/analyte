@@ -34,7 +34,7 @@ pub enum Stack {
     /// POCT1-A reviewer over TCP.
     Poct(Box<PoctStack>),
     /// VIDAS Literal over serial or TCP.
-    VidasLiteral(Box<VidasStack>),
+    Vidas(Box<VidasStack>),
     /// Autolyser polling over serial or TCP.
     Autolyser(Box<AutolyserStack>),
 }
@@ -61,7 +61,7 @@ impl Stack {
             StackChoice::LawManager => Self::Law(Box::new(law_stack(machine, timeouts, path)?)),
             StackChoice::Poct => Self::Poct(Box::new(poct::build(machine, timeouts, path)?)),
             StackChoice::VidasLiteral => {
-                Self::VidasLiteral(Box::new(vidas::build(machine, timeouts, path)?))
+                Self::Vidas(Box::new(vidas::build(machine, timeouts, path)?))
             }
             StackChoice::Autolyser => {
                 Self::Autolyser(Box::new(autolyser::build(machine, timeouts, path)?))
@@ -82,7 +82,7 @@ impl Stack {
             Self::Hl7(RecordTransport::Folder(s)) => &s.syntax.limits,
             Self::Law(s) => &s.limits,
             Self::Poct(s) => &s.limits,
-            Self::VidasLiteral(s) => &s.limits,
+            Self::Vidas(s) => &s.limits,
             Self::Autolyser(s) => &s.limits,
         }
     }
@@ -97,7 +97,7 @@ impl Stack {
             Self::Hl7(RecordTransport::Folder(s)) => &s.timeouts,
             Self::Law(s) => &s.timeouts,
             Self::Poct(s) => &s.timeouts,
-            Self::VidasLiteral(s) => &s.timeouts,
+            Self::Vidas(s) => &s.timeouts,
             Self::Autolyser(s) => &s.timeouts,
         }
     }
@@ -112,7 +112,7 @@ impl Stack {
             Self::Hl7(RecordTransport::Folder(s)) => (&s.mappings.tests, &s.mappings.units),
             Self::Law(s) => (&s.mappings.tests, &s.mappings.units),
             Self::Poct(s) => (&s.codes.tests, &s.codes.units),
-            Self::VidasLiteral(s) => (&s.codes.tests, &s.codes.units),
+            Self::Vidas(s) => (&s.codes.tests, &s.codes.units),
             Self::Autolyser(s) => (&s.codes.tests, &s.codes.units),
         }
     }
@@ -124,7 +124,7 @@ impl Stack {
     pub fn transport_kind(&self) -> TransportKind {
         match self {
             Self::Astm(RecordTransport::Stream(s)) => stream_kind(&s.transport),
-            Self::VidasLiteral(s) => stream_kind(&s.transport),
+            Self::Vidas(s) => stream_kind(&s.transport),
             Self::Autolyser(s) => stream_kind(&s.transport),
             Self::Hl7(RecordTransport::Stream(s)) => tcp_kind(s.transport.role),
             Self::Law(s) => tcp_kind(s.transport.role),
@@ -140,7 +140,7 @@ impl Stack {
     pub fn operation_timeout_ms(&self) -> u32 {
         match self {
             Self::Astm(RecordTransport::Stream(s)) => stream_timeout(&s.transport),
-            Self::VidasLiteral(s) => stream_timeout(&s.transport),
+            Self::Vidas(s) => stream_timeout(&s.transport),
             Self::Autolyser(s) => stream_timeout(&s.transport),
             Self::Hl7(RecordTransport::Stream(s)) => s.transport.operation_timeout_ms,
             Self::Law(s) => s.transport.operation_timeout_ms,
@@ -166,7 +166,7 @@ impl Stack {
             Self::Hl7(RecordTransport::Stream(_)) => [transport, "mllp", "hl7_receiver", "hl7_v2"],
             Self::Law(_) => [transport, "mllp", "law_manager", "hl7_v2"],
             Self::Poct(_) => [transport, "poct", "poct", "poct"],
-            Self::VidasLiteral(_) => [transport, "vidas_literal", "vidas_literal", "vidas_literal"],
+            Self::Vidas(_) => [transport, "vidas_literal", "vidas_literal", "vidas_literal"],
             Self::Autolyser(_) => [transport, "autolyser", "autolyser", "autolyser"],
             Self::Astm(RecordTransport::Folder(_)) => {
                 [transport, "none", "file_pickup", "astm_lis02"]
@@ -186,7 +186,7 @@ impl Stack {
             Self::Hl7(RecordTransport::Stream(s)) => Some(&s.mappings),
             Self::Hl7(RecordTransport::Folder(s)) => Some(&s.mappings),
             Self::Law(s) => Some(&s.mappings),
-            Self::Poct(_) | Self::VidasLiteral(_) | Self::Autolyser(_) => None,
+            Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => None,
         }
     }
 }

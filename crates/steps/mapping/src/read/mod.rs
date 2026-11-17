@@ -86,7 +86,7 @@ pub fn read(
         Stack::Hl7(RecordTransport::Folder(s)) => hl7::read(config, input, raw, s.syntax()),
         Stack::Law(s) => law::read(config, input, &payload(config, raw)?, s),
         Stack::Poct(s) => poct::read(config, input, raw, s, hello),
-        Stack::VidasLiteral(s) => vidas::read(config, input, raw, s),
+        Stack::Vidas(s) => vidas::read(config, input, raw, s),
         Stack::Autolyser(s) => autolyser::read(config, input, raw, s),
     }
 }

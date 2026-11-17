@@ -32,7 +32,7 @@ fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<Order
         })
         .collect::<Vec<_>>();
     let metadata =
-        crate::machine::hl7_response::response_metadata(crate::machine::hl7_response::Profile::Hl7);
+        crate::orders::hl7::response::response_metadata(crate::orders::hl7::response::Profile::Hl7);
     Ok(command.map(&items, cancel, metadata.response()?)?)
 }
 
@@ -44,7 +44,7 @@ pub(super) async fn next(
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
-    let settings = super::settings::hl7(machine).ok_or(Error::Hl7SettingsMissing)?;
+    let settings = crate::orders::settings::hl7(machine).ok_or(Error::Hl7SettingsMissing)?;
     let Some(_) = &settings.send() else {
         return Ok(None);
     };
@@ -62,7 +62,7 @@ async fn next_cancel(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let cancels = super::reservation::cancellations(store, machine, deadline()).await?;
+    let cancels = crate::orders::reservation::cancellations(store, machine, deadline()).await?;
     for (record, cached) in cancels {
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
         let command = command(machine, &app, options)?;
@@ -70,8 +70,15 @@ async fn next_cancel(
         let id = record.id;
         reserving.push(record.key.clone());
         let version = app.fields().version;
-        match super::reservation::cancel(store, deadline(), id, version, owner.clone(), freshness)
-            .await
+        match crate::orders::reservation::cancel(
+            store,
+            deadline(),
+            id,
+            version,
+            owner.clone(),
+            freshness,
+        )
+        .await
         {
             Ok(record) => return Ok(Some(Exchange { record, message })),
             Err(analyte_store::Error::Conflict) => {
@@ -93,18 +100,18 @@ async fn next_work(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let settings = super::settings::hl7(machine).ok_or(Error::Hl7SettingsMissing)?;
+    let settings = crate::orders::settings::hl7(machine).ok_or(Error::Hl7SettingsMissing)?;
     let Some(send) = &settings.send() else {
         return Ok(None);
     };
-    let candidates = super::sending::candidate_page(store, machine, after).await?;
+    let candidates = crate::orders::sending::candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
-        if !super::eligible(&app, machine) {
+        if !crate::orders::eligible(&app, machine) {
             continue;
         }
-        let key = super::reservation::key(machine, cached.id);
+        let key = crate::orders::reservation::key(machine, cached.id);
         let version = app.fields().version;
         let Some(command) = prepare_command(store, machine, &app, options, key.clone()).await?
         else {
@@ -123,10 +130,10 @@ async fn next_work(
         let identity = key.clone();
         let owner = owner.clone();
         reserving.push(key.clone());
-        let reserved = super::reservation::admit(
+        let reserved = crate::orders::reservation::admit(
             store,
             deadline(),
-            super::reservation::Admission {
+            crate::orders::reservation::Admission {
                 identity,
                 version,
                 freshness,
@@ -184,7 +191,8 @@ async fn reject(
 ) -> Result<(), Error> {
     let reason = SourceText::new(reason)?;
     let result =
-        super::reservation::reject(store, deadline(), key, version, freshness, reason).await?;
+        crate::orders::reservation::reject(store, deadline(), key, version, freshness, reason)
+            .await?;
     if let Err(refusal) = result {
         tracing::info!(reason=%refusal,"HL7 rejection superseded");
     }
@@ -286,7 +294,7 @@ pub(super) async fn finish(
                     current.id,
                     &outcomes,
                     jiff::Timestamp::now().as_second(),
-                    super::event,
+                    crate::orders::event,
                 )?;
             }
             Ok(())

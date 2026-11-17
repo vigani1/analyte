@@ -34,7 +34,7 @@ invented. Unit tables translate exact spelling only and never change numbers.
 QC equality rules carry classification evidence, not acceptance decisions.
 
 After validation, `Effective::stack()` is the single runtime protocol selection.
-`Stack` has `Astm`, `Hl7`, `Law`, `Poct`, `VidasLiteral`, `Autolyser`,
+`Stack` has `Astm`, `Hl7`, `Law`, `Poct`, `Vidas`, `Autolyser`,
 ASTM and HL7 variants with a `RecordTransport::Folder` selection. Each carries only its supported transport,
 framing/dialog/syntax settings and required mapping tables or vendor policy.
 Serial transport carries installed serial settings; TCP-only stacks cannot select
@@ -226,3 +226,7 @@ days, or `retention = "keep"`. Missing retention is a specific validation failur
 there is no default or override-layer fallback. Finite retention requires the
 host `retention-digest` credential. See the program guide for offline conversion,
 holds, backup rotation and key continuity (ADR 0013 items 1, 6 and 7).
+
+The Rust stack variant is `Stack::Vidas`, matching protocol key `vidas`.
+Named departures retain the TOML field `deviations` for compatibility, as
+specified by [ADR 0015](../../../docs/adr/0015-named-machine-departures.md).

@@ -212,7 +212,7 @@ async fn adr0014_slow_endpoint_never_holds_store_or_clinical_intake() -> TestRes
         // still completes using its independently owned store operations.
         let metadata = receipt()?;
         let content = make_result(metadata.id, "slow-alert")?;
-        let delivery = build_delivery(
+        let delivery = encode_delivery(
             &content,
             &metadata,
             Identifier::new("app")?,

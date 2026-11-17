@@ -1,23 +1,19 @@
 //! Owns machine workers and transport sessions without replaying queued writes.
 use crate::machine::error::SessionError as Error;
 mod astm;
-mod autolyser;
-pub(crate) mod capture;
-pub(crate) mod error_location;
-mod folder;
+pub(crate) mod autolyser;
+pub(crate) mod link;
+pub(crate) use link::capture;
+use link::{folder, serial};
 mod hl7;
 pub(crate) mod interpretation;
-mod poll_custody;
 pub use interpretation::reprocess;
-mod connection_input;
-pub(crate) mod custody;
-pub(crate) mod hl7_response;
 mod law;
 mod poct;
-mod serial;
+pub(crate) mod receive;
 mod settings;
-mod transfer_end;
-mod vidas;
+pub(crate) use receive::{connection_input, custody, error_location, transfer_end};
+pub(crate) mod vidas;
 mod worker;
 use crate::installation::config::Machine;
 use analyte_config::TcpRole;
@@ -236,4 +232,4 @@ async fn drive(
     result
 }
 
-mod error;
+pub(crate) mod error;

@@ -12,7 +12,7 @@ pub(crate) enum WriteError {
     Transport(#[from] analyte_transport::Error),
 }
 
-pub(super) async fn write(
+pub(crate) async fn write(
     conn: &mut analyte_transport::Connection,
     bytes: &[u8],
     budget: Duration,
@@ -29,7 +29,7 @@ pub(super) async fn write(
     })
 }
 
-pub(super) fn ms(value: u32) -> Duration {
+pub(crate) fn ms(value: u32) -> Duration {
     Duration::from_millis(u64::from(value))
 }
 
@@ -100,7 +100,7 @@ pub(crate) fn budget(machine: &crate::installation::config::Machine) -> Duration
     let stack = machine.snapshot.effective().stack();
     let operation = ms(stack.operation_timeout_ms());
     match stack {
-        Stack::VidasLiteral(settings) => operation.min(ms(settings.policy().commit_ms)),
+        Stack::Vidas(settings) => operation.min(ms(settings.policy().commit_ms)),
         Stack::Autolyser(settings) => operation.min(ms(settings.policy().storage_ms)),
         Stack::Astm(_) | Stack::Hl7(_) | Stack::Law(_) | Stack::Poct(_) => operation,
     }

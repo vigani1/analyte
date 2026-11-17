@@ -19,7 +19,7 @@ async fn adr0008_app_diagnostics_park_and_worker_continues() -> TestResult {
             for run in ["rejected", "next"] {
                 let metadata = receipt()?;
                 let result = make_result(metadata.id, run)?;
-                let delivery = build_delivery(
+                let delivery = encode_delivery(
                     &result,
                     &metadata,
                     Identifier::new("app")?,
