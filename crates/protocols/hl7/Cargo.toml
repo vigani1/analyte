@@ -37,4 +37,3 @@ path = "tests/order/mod.rs"
 [[test]]
 name = "query"
 path = "tests/query/mod.rs"
-
