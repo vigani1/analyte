@@ -47,13 +47,13 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(worklist) = Worklist::parse(data) {
         assert_eq!(worklist.encode(), data);
     }
-    if let Ok(body) = analyte_framing::autolyser::verified(data) {
+    if let Ok(body) = analyte_framing::autolyser::decode(data) {
         if let Ok(worklist) = Worklist::parse(body) {
-            assert_eq!(analyte_framing::autolyser::finish(worklist.encode()), data);
+            assert_eq!(analyte_framing::autolyser::encode(worklist.encode()), data);
         }
         for controls in [false, true] {
             if let Ok(report) = Report::parse(body, controls) {
-                assert_eq!(analyte_framing::autolyser::finish(report.raw), data);
+                assert_eq!(analyte_framing::autolyser::encode(report.raw), data);
             }
         }
     }

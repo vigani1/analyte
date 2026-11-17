@@ -5,7 +5,7 @@ pub(super) fn read(
     raw: &[u8],
     settings: &analyte_config::AutolyserStack,
 ) -> Result<analyte_mapping::Output, Error> {
-    let body = analyte_framing::autolyser::verified(raw)?;
+    let body = analyte_framing::autolyser::decode(raw)?;
     let report = analyte_autolyser::syntax::Report::parse(body, settings.policy().controls)?;
     Ok(analyte_mapping::autolyser::map(settings, &report, input)?)
 }

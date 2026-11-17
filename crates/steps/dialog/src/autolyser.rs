@@ -387,7 +387,7 @@ impl Dialog {
         match event {
             Event::Poll(request) => self.begin(Operation::Poll(request)),
             Event::Download(item) => self.begin(Operation::Download(
-                analyte_framing::autolyser::finish(item.encode()),
+                analyte_framing::autolyser::encode(item.encode()),
             )),
             Event::Byte(byte) => self.byte(byte),
             Event::Stored(token) => self.stored(token),
