@@ -27,6 +27,9 @@ jobs:
           persist-credentials: false
       - run: bash scripts/check-layout.sh
       - run: python3 scripts/check-hook-layout.py
+      - run: python3 scripts/test-line-length.py
+      - run: python3 scripts/check-line-length.py
+      - run: python3 scripts/check-fuzz-targets.py
 
   fmt:
     name: Format
@@ -58,7 +61,7 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Production libraries exclude test hooks
-        run: cargo clippy -p analyte -p analyte-sink --lib --no-default-features --locked -- -D warnings
+        run: cargo clippy -p analyte -p analyte-sink --all-targets --no-default-features --locked -- -D warnings
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test-shard:

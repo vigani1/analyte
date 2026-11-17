@@ -33,9 +33,6 @@ pub(super) struct Context<'a, 'm> {
 pub(super) trait Effects {
     const CUSTODY: Custody = Custody::Dialog;
     type Error: CleanupFailure + From<super::link::error::Error> + From<analyte_transport::Error>;
-    fn custody(&self) -> Custody {
-        Self::CUSTODY
-    }
     fn wait(&self) -> Result<Option<Duration>, Self::Error>;
     fn receive_error(&self, error: analyte_transport::Error) -> Result<Input, Self::Error> {
         match error {
@@ -89,7 +86,7 @@ async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_, '_>) -> Resu
             return Ok(());
         }
         let wait = protocol.wait()?;
-        let custody = protocol.custody();
+        let custody = P::CUSTODY;
         let input = tokio::select! {
             biased;
             () = analyte_sink::stopped(&mut host.stop) => {
@@ -178,7 +175,26 @@ async fn wait_for(wait: Option<Duration>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::machine::vidas::Error;
+    #[derive(Debug, thiserror::Error)]
+    enum Error {
+        #[error("probe deadline")]
+        Deadline,
+        #[error("probe cleanup")]
+        Cleanup,
+        #[error("unexpected probe input")]
+        UnexpectedInput,
+        #[error(transparent)]
+        Link(#[from] super::super::link::error::Error),
+        #[error(transparent)]
+        Transport(#[from] analyte_transport::Error),
+        #[error(transparent)]
+        CleanupPair(Box<custody::Cleanup<Self>>),
+    }
+    impl CleanupFailure for Error {
+        fn with_effect(original: Self, effect: Self) -> Self {
+            Self::CleanupPair(Box::new(custody::Cleanup { original, effect }))
+        }
+    }
     use std::{cell::RefCell, rc::Rc};
 
     #[derive(Clone, Copy)]
@@ -186,18 +202,16 @@ mod tests {
         Deadline,
         Stop(Custody),
     }
-    struct Probe {
-        scenario: Scenario,
+    struct Probe<const CHUNKS: bool> {
         trace: Rc<RefCell<Vec<&'static str>>>,
     }
-    impl Effects for Probe {
+    impl<const CHUNKS: bool> Effects for Probe<CHUNKS> {
         type Error = Error;
-        fn custody(&self) -> Custody {
-            match self.scenario {
-                Scenario::Deadline => Custody::Dialog,
-                Scenario::Stop(custody) => custody,
-            }
-        }
+        const CUSTODY: Custody = if CHUNKS {
+            Custody::Chunks
+        } else {
+            Custody::Dialog
+        };
         fn wait(&self) -> Result<Option<Duration>, Error> {
             Ok(Some(Duration::ZERO))
         }
@@ -207,13 +221,13 @@ mod tests {
             _: &Handle,
         ) -> Result<(), Error> {
             self.trace.borrow_mut().push("background");
-            Err(Error::ActiveDialogHasNoDeadline)
+            Err(Error::UnexpectedInput)
         }
         async fn input(&mut self, _: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
             match input {
                 Input::Tick => {
                     self.trace.borrow_mut().push("deadline");
-                    Err(crate::orders::OrderError::MappedRequestMissing.into())
+                    Err(Error::Deadline)
                 }
                 Input::Closed(None) => {
                     self.trace.borrow_mut().push("disconnect");
@@ -223,7 +237,7 @@ mod tests {
                 | Input::Opened { .. }
                 | Input::Bytes { .. }
                 | Input::Failed(_)
-                | Input::RecordingFailed(_) => Err(Error::ActiveDialogHasNoDeadline),
+                | Input::RecordingFailed(_) => Err(Error::UnexpectedInput),
             }
         }
         async fn close(
@@ -232,7 +246,7 @@ mod tests {
             _: &mut Result<(), Error>,
         ) -> Result<(), Error> {
             self.trace.borrow_mut().push("close");
-            Err(Error::ControlSuffixMismatch)
+            Err(Error::Cleanup)
         }
     }
     #[tokio::test]
@@ -261,10 +275,6 @@ mod tests {
             Scenario::Stop(Custody::Chunks),
         ] {
             let trace = Rc::new(RefCell::new(Vec::new()));
-            let probe = Probe {
-                scenario,
-                trace: trace.clone(),
-            };
             let (mut conn, side) = analyte_transport::connection(analyte_transport::Limits::new(
                 4,
                 Duration::from_secs(1),
@@ -272,33 +282,51 @@ mod tests {
             // EOF and background are ready as well: deadline must win, and stop must win both.
             drop(side);
             let (_signal, stop) = watch::channel(matches!(scenario, Scenario::Stop(_)));
-            let result = run(
-                || {
-                    trace.borrow_mut().push("open");
-                    Ok(probe)
-                },
-                Context {
-                    machine: &connection,
-                    store: &store,
-                    conn: &mut conn,
-                    stop,
-                },
-            )
-            .await;
+            let host = Context {
+                machine: &connection,
+                store: &store,
+                conn: &mut conn,
+                stop,
+            };
+            trace.borrow_mut().push("open");
+            let result = match scenario {
+                Scenario::Stop(Custody::Chunks) => {
+                    run(
+                        || {
+                            Ok(Probe::<true> {
+                                trace: trace.clone(),
+                            })
+                        },
+                        host,
+                    )
+                    .await
+                }
+                Scenario::Deadline | Scenario::Stop(Custody::Dialog) => {
+                    run(
+                        || {
+                            Ok(Probe::<false> {
+                                trace: trace.clone(),
+                            })
+                        },
+                        host,
+                    )
+                    .await
+                }
+            };
             match scenario {
                 Scenario::Deadline => {
                     assert_eq!(*trace.borrow(), ["open", "deadline", "close"]);
                     assert!(
-                        matches!(result, Err(Error::Refusal(custody::Refusal::Cleanup(causes))) if matches!(causes.original, Error::Orders(crate::orders::OrderError::MappedRequestMissing)) && matches!(causes.effect, Error::ControlSuffixMismatch))
+                        matches!(result, Err(Error::CleanupPair(causes)) if matches!(causes.original, Error::Deadline) && matches!(causes.effect, Error::Cleanup))
                     );
                 }
                 Scenario::Stop(Custody::Dialog) => {
                     assert_eq!(*trace.borrow(), ["open", "close"]);
-                    assert!(matches!(result, Err(Error::ControlSuffixMismatch)));
+                    assert!(matches!(result, Err(Error::Cleanup)));
                 }
                 Scenario::Stop(Custody::Chunks) => {
                     assert_eq!(*trace.borrow(), ["open", "disconnect", "close"]);
-                    assert!(matches!(result, Err(Error::ControlSuffixMismatch)));
+                    assert!(matches!(result, Err(Error::Cleanup)));
                 }
             }
         }

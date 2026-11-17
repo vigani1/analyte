@@ -120,7 +120,7 @@ impl Hl7OrderLink {
             crate::orders::sending::Settlement::Order,
         )
         .await;
-        crate::runtime::service::cleanup::retain_cleanup(&mut result, cleanup);
+        crate::cleanup::retain_cleanup(&mut result, cleanup);
         if let Some(exchange) = &self.exchange {
             let cleanup = send::finish(
                 store,
@@ -133,11 +133,11 @@ impl Hl7OrderLink {
                 },
             )
             .await;
-            crate::runtime::service::cleanup::retain_cleanup(&mut result, cleanup);
+            crate::cleanup::retain_cleanup(&mut result, cleanup);
         }
         self.exchange = None;
         let cleanup = self.outcome(store, code, false).await;
-        crate::runtime::service::cleanup::retain_cleanup(&mut result, cleanup);
+        crate::cleanup::retain_cleanup(&mut result, cleanup);
         result
     }
     pub(crate) async fn outcome(
@@ -190,7 +190,7 @@ impl Hl7OrderLink {
                 })
                 .await
                 .map_err(Into::into);
-            crate::runtime::service::cleanup::retain_cleanup(&mut result, cleanup);
+            crate::cleanup::retain_cleanup(&mut result, cleanup);
         }
         result
     }
@@ -548,7 +548,7 @@ mod tests {
         connection.owner = owner;
         connection.active = vec![failed, good];
         let mut result = Err(crate::invalid("original wire failure"));
-        crate::runtime::service::cleanup::retain_cleanup(
+        crate::cleanup::retain_cleanup(
             &mut result,
             connection
                 .close(

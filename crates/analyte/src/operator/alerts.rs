@@ -137,7 +137,7 @@ pub(crate) async fn run(
         }
         tokio::select! {
             biased;
-            _ = stop.changed() => return Ok(()),
+            () = analyte_sink::stopped(&mut stop) => return Ok(()),
             result = evaluate(&store, &policies, &destinations, jiff::Timestamp::now().as_second()) => result?,
         }
     }

@@ -45,7 +45,7 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                 targets: Vec::new(),
                 time: now,
                 reason: Reason::new("uncertain (interrupted); ADR 0008 idempotent receiver permits retry with the same delivery ID and bytes").map_err(analyte_store::StorageError::Text)?,
-            };
+                                };
             store.recover_in_flight(now, &audit)
         }).await?;
         if count == 0 {

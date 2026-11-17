@@ -43,7 +43,8 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
     )? {
         let health = destination.health(store, now).await?;
         lines.push(format!("destination={} pending_count={} pending_bytes={} oldest_pending_age_seconds={} paused={} last_poll={} cache_trusted={}",
-            destination.id().as_str(), health.pending_count, health.pending_bytes, super::display::optional(health.oldest_pending_age),
+                        destination.id().as_str(), health.pending_count, health.pending_bytes,
+                        super::display::optional(health.oldest_pending_age),
             health.paused, super::display::optional(health.last_successful_poll), health.cache_trusted));
     }
     let until = deadline()?;

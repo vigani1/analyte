@@ -402,7 +402,10 @@ impl<'a, 'm> Host<'a, 'm> {
             .write_all(&write.bytes, Some(self.absolute(until)?.into()))
             .await
             .map_err(|error| {
-                if matches!(error, analyte_transport::Error::Deadline("write all")) {
+                if matches!(
+                    error,
+                    analyte_transport::Error::Deadline(analyte_transport::DeadlineKind::WriteAll)
+                ) {
                     Error::ResponseSendDeadlineExpired(error)
                 } else {
                     error.into()
@@ -604,11 +607,15 @@ impl Host<'_, '_> {
                         let outgoing = tokio::select! {
                             biased;
                             () = analyte_sink::stopped(&mut stop) => { self.stopped = true; return Ok(()); },
-                            result = self.orders.idle(self.store, self.machine.machine(), settings::options(self.settings)) => match result {
+                            result = self.orders.idle(self.store,
+                                self.machine.machine(),
+                                settings::options(self.settings)) => match result {
                                 Ok(message) => message,
                                 Err(error) => {
                                     self.orders.close(self.store, Code::LawIdleAdmissionFailed.as_str()).await?;
-                                    tracing::error!(machine=self.machine.machine().id.as_str(),error_kind=%error,"LAW idle admission stopped; no command retried");
+                                    tracing::error!(machine=self.machine.machine().id.as_str(),
+                                        error_kind=%error,
+                                        "LAW idle admission stopped; no command retried");
                                     None
                                 }
                             },

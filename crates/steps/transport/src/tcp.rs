@@ -74,8 +74,10 @@ async fn run_client(
                 .await?;
             }
             Err(_) => {
-                side.emit(Event::Failed(Reason::Deadline("connect")))
-                    .await?;
+                side.emit(Event::Failed(Reason::Deadline(
+                    crate::DeadlineKind::Connect,
+                )))
+                .await?;
             }
         }
         tokio::select! { () = cancel.cancelled() => break, () = tokio::time::sleep(retry.delay()) => {} }
@@ -90,7 +92,7 @@ async fn run_client(
 pub async fn bind(address: SocketAddr) -> Result<TcpListener, Error> {
     tokio::time::timeout(Duration::from_secs(5), TcpListener::bind(address))
         .await
-        .map_err(|_| Error::Deadline("bind"))?
+        .map_err(|_| Error::Deadline(crate::DeadlineKind::Bind))?
         .map_err(|source| Error::Io {
             operation: "bind",
             endpoint: address.to_string(),
@@ -162,7 +164,7 @@ async fn transfer(
     loop {
         side.check_recording().await?;
         if last_read.elapsed() >= side.limits.deadline {
-            return Err(Error::Deadline("TCP read"));
+            return Err(Error::Deadline(crate::DeadlineKind::TcpRead));
         }
         tokio::select! {
             write = side.writes.recv() => {
@@ -172,8 +174,14 @@ async fn transfer(
                 let mut remaining = write.bytes.as_slice();
                 let deadline = tokio::time::Instant::now().checked_add(side.limits.deadline).ok_or(Error::InvalidLimits)?;
                 while !remaining.is_empty() {
-                    let count = tokio::time::timeout_at(deadline, stream.write(remaining)).await.map_err(|_| Error::Deadline("TCP write (outcome uncertain)"))?.map_err(|source| Error::Io { operation: "write", endpoint: endpoint.into(), source })?;
-                    if count == 0 { return Err(Error::Io { operation: "write", endpoint: endpoint.into(), source: std::io::ErrorKind::WriteZero.into() }); }
+                    let count = tokio::time::timeout_at(deadline,
+                        stream.write(remaining)).await.map_err(|_| Error::Deadline(crate::DeadlineKind::TcpWrite))?.map_err(|source| Error::Io { operation: "write",
+                        endpoint: endpoint.into(),
+                        source })?;
+                                            if count == 0 { return Err(Error::Io { operation: "write",
+                        endpoint: endpoint.into(),
+                        source: std::io::ErrorKind::WriteZero.into() });
+                        }
                     let sent = remaining.get(..count).ok_or(Error::OversizedWrite)?;
                     side.outgoing(sent).await?;
                     remaining = remaining.get(count..).ok_or(Error::OversizedWrite)?;
@@ -188,7 +196,7 @@ async fn transfer(
             }
             () = tokio::time::sleep(Duration::from_millis(2)) => {
                 side.check_recording().await?;
-                if last_read.elapsed() >= side.limits.deadline { return Err(Error::Deadline("TCP read")); }
+                if last_read.elapsed() >= side.limits.deadline { return Err(Error::Deadline(crate::DeadlineKind::TcpRead)); }
             }
         }
     }
@@ -254,8 +262,10 @@ where
                 biased;
                 () = cancel.cancelled() => return Ok(()),
                 done = tasks.join_next(), if !tasks.is_empty() => {
-                    done.ok_or(Error::ConsumerClosed)?.map_err(|source| Error::Io { operation: "join TCP owner", endpoint: "server".into(), source: std::io::Error::other(source) })??;
-                }
+                    done.ok_or(Error::ConsumerClosed)?.map_err(|source| Error::Io { operation: "join TCP owner",
+                        endpoint: "server".into(),
+                        source: std::io::Error::other(source) })??;
+                                        }
                 accepted = listener.accept() => {
                     let (stream, peer) = accepted.map_err(|source| Error::Io { operation: "accept", endpoint: "server".into(), source })?;
                     let notification = if tasks.len() >= maximum {
@@ -270,13 +280,19 @@ where
                             // Propagate server shutdown through the same session cancellation path.
                             tokio::select! {
                                 result = session(stream, &mut side) => result,
-                                () = shutdown.cancelled() => { own.cancel(); side.stop(); side.emit(Event::Closed(Reason::Cancelled)).await }
+                                () = shutdown.cancelled() => { own.cancel();
+                                    side.stop();
+                                    side.emit(Event::Closed(Reason::Cancelled)).await }
                             }
                         });
                         ServerEvent::Accepted { peer, connection }
                     };
-                    tokio::time::timeout(limits.deadline, events.send(notification)).await.map_err(|_| Error::Deadline("server notification"))?.map_err(|_| Error::ConsumerClosed)?;
-                }
+                    tokio::time::timeout(limits.deadline,
+                        events.send(notification))
+                        .await
+                        .map_err(|_| Error::Deadline(crate::DeadlineKind::ServerNotification))?
+                        .map_err(|_| Error::ConsumerClosed)?;
+                                        }
             }
         }
     }.await;
@@ -293,6 +309,6 @@ where
         Ok::<(), Error>(())
     })
     .await
-    .map_err(|_| Error::Deadline("server shutdown"))?;
+    .map_err(|_| Error::Deadline(crate::DeadlineKind::ServerShutdown))?;
     result.and(shutdown)
 }

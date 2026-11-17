@@ -480,7 +480,8 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
     .validate()?;
     if matches!(
         snapshot.effective().stack(),
-        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex()
+            == analyte_config::ChecksumHex::AcceptLowercase
     ) {
         return Err(Error::UnsupportedChecksumMode);
     }

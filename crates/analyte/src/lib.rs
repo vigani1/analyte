@@ -4,6 +4,7 @@
 pub use machine::law::custody::Error as WorkPolicyError;
 
 pub mod admin;
+mod cleanup;
 pub mod installation;
 mod intake;
 /// Operational failures retaining and interpreting machine receipts.

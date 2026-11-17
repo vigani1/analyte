@@ -31,7 +31,8 @@ fn analyzer(
     body: &str,
 ) -> ExportResult<Message> {
     let ack = if trigger { "NE|AL" } else { "|" };
-    Ok(law::parse_message(format!("MSH|^~\\&|SYN-ANALYZER|ANALYTE-TEST|ANALYTE|ANALYTE-TEST|20260101120000+0000||{kind}|{id}|P|2.5.1|||{ack}||UNICODE UTF-8|||{transaction}^IHE\r{body}").as_bytes(), options())?)
+    Ok(law::parse_message(format!("MSH|^~\\&|SYN-ANALYZER|ANALYTE-TEST|ANALYTE|ANALYTE-TEST|20260101120000+0000||{kind}|{id}|P|2.5.1|||{ack}||UNICODE UTF-8|||{transaction}^IHE\r{body}").as_bytes(),
+        options())?)
 }
 fn capabilities() -> Capabilities {
     Capabilities {

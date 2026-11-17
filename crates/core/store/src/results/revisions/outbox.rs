@@ -14,7 +14,13 @@ impl Reconciliation<'_, '_> {
     ) -> Result<(), Error> {
         for delivery in deliveries {
             let eligible = match &evidence.outcome {
-                Reading::Results(results) => results.iter().zip(outcomes).any(|(r,o)| r.may_deliver_to_production() && self.lifecycle.is_none_or(|policy|policy.may_deliver(r)) && matches!(o, RevisionOutcome::New(_) | RevisionOutcome::Correction(_)) && matches!(&r.identity, IdentityStatus::Resolved(id) if id.observation == delivery.ordering_key.observation)),
+                Reading::Results(results) => results.iter().zip(outcomes).any(|(r, o)| {
+                    r.may_deliver_to_production()
+                        && self.lifecycle.is_none_or(|policy| policy.may_deliver(r))
+                        && matches!(o, RevisionOutcome::New(_) | RevisionOutcome::Correction(_))
+                        && matches!(&r.identity, IdentityStatus::Resolved(id)
+                            if id.observation == delivery.ordering_key.observation)
+                }),
                 Reading::Failed(_) => false,
             };
             if !eligible
