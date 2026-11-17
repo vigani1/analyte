@@ -1,5 +1,5 @@
 # Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
-schema_version = 1
+schema_version = 2
 protocol = "poct"
 name = "generic-synthetic"
 deviations = []
@@ -8,15 +8,12 @@ kind = "tcp_server"
 operation_timeout_ms = 10000
 
 [framing]
-kind = "poct"
 limit = 1048576
 
 [dialog]
-kind = "poct"
 receive_timeout_ms = 30000
 send_timeout_ms = 15000
 [syntax]
-kind = "poct"
 encoding = "utf8"
 bytes = 1048576
 records = 4096

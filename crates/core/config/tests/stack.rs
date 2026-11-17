@@ -171,10 +171,8 @@ fn adr0002_file_pickup_is_a_distinct_stack_for_each_record_syntax() -> TestResul
 kind="watched_folder"
 operation_timeout_ms=10000
 [framing]
-kind="none"
 limit=1048576
 [dialog]
-kind="file_pickup"
 receive_timeout_ms=30000
 send_timeout_ms=15000
 "#,
@@ -213,6 +211,10 @@ fn adr0012_protocol_and_transport_are_independent_and_invalid_pairs_fail_loading
                 || (serial && transport == "serial");
             if allowed {
                 assert!(result.is_ok(), "{protocol}/{transport}: {result:?}");
+            } else if matches!(protocol, "astm" | "hl7") && transport == "watched_folder" {
+                assert!(
+                    matches!(result, Err(analyte_config::Error::Invalid { key, .. }) if key == "dialog")
+                );
             } else {
                 assert!(
                     matches!(result, Err(analyte_config::Error::IncompatibleStack { .. })),

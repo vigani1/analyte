@@ -4,7 +4,7 @@ mod tests;
 use crate::installation::config::Machine;
 use crate::intake::{Mapping, ParkReason};
 use EvidenceError as Error;
-use analyte_config::{MachineDeparture, RecordTransport, Stack};
+use analyte_config::MachineDeparture;
 use analyte_model::{
     AppliedDeparture, DepartureEvidence, DepartureMeaning, DepartureSpan, EvidenceList, Identifier,
     SourceText,
@@ -84,7 +84,7 @@ fn try_collect(
         .map(MachineDeparture::evidence_snapshot)
         .collect::<Result<Vec<_>, _>>()?;
     let mut entries = applied.to_vec();
-    if let Stack::Astm(RecordTransport::Stream(settings)) = machine.snapshot.effective().stack()
+    if let Some(settings) = machine.snapshot.effective().stack().astm_link()
         && let Some(declaration) = declarations
             .iter()
             .find(|d| matches!(d, MachineDeparture::AstmPackedRecordsInFrame(_)))
@@ -218,8 +218,7 @@ fn compatibility(
 
 fn lowercase_checksum(machine: &Machine, raw: &[u8]) -> Result<bool, Error> {
     use analyte_framing::astm::{Decoder, Event, Limit};
-    let Stack::Astm(RecordTransport::Stream(settings)) = machine.snapshot.effective().stack()
-    else {
+    let Some(settings) = machine.snapshot.effective().stack().astm_link() else {
         return Ok(false);
     };
     let mut decoder = Decoder::new(

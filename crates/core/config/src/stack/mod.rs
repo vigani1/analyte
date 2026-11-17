@@ -136,16 +136,7 @@ impl Stack {
             TransportKind::TcpServer => "tcp_server",
             TransportKind::WatchedFolder => "watched_folder",
         };
-        let choice = match self {
-            Self::Astm(RecordTransport::Stream(_)) => StackChoice::AstmLis02,
-            Self::Hl7(RecordTransport::Stream(_)) => StackChoice::Hl7V2,
-            Self::Law(_) => StackChoice::LawManager,
-            Self::Poct(_) => StackChoice::Poct,
-            Self::Vidas(_) => StackChoice::VidasLiteral,
-            Self::Autolyser(_) => StackChoice::Autolyser,
-            Self::Astm(RecordTransport::Folder(_)) => StackChoice::FileAstm,
-            Self::Hl7(RecordTransport::Folder(_)) => StackChoice::FileHl7,
-        };
+        let choice = self.choice();
         let [_, framing, dialog, syntax] = choice.layer_names();
         [transport, framing, dialog, syntax]
     }

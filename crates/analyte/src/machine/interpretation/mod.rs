@@ -6,6 +6,7 @@ pub(crate) mod retained;
 use crate::Error;
 pub(super) use crate::machine::poct::settings::limits as poct_limits;
 use crate::{deadline, installation::config::Machine, intake};
+#[cfg(test)]
 use analyte_config::Stack;
 #[cfg(test)]
 use analyte_model::ReceiptId;
@@ -50,7 +51,13 @@ pub(crate) async fn map_retained(
     machine: &Machine,
     receipt: &analyte_store::Receipt,
 ) -> Result<analyte_mapping::Output, ReadError> {
-    let hello = if matches!(machine.snapshot.effective().stack(), Stack::Poct(_)) {
+    let hello = if machine
+        .snapshot
+        .effective()
+        .stack()
+        .choice()
+        .connection_context()
+    {
         let machine_id = receipt.metadata.machine.clone();
         let connection = receipt.metadata.connection.clone();
         store

@@ -6,6 +6,7 @@ pub use https::{HttpsUrl, loopback_test_url};
 mod orders;
 mod retention;
 pub use retention::Retention;
+mod migration;
 mod selection;
 use selection::ParsedMachine;
 pub use selection::StackChoice;
@@ -181,11 +182,19 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
     if text.len() > MAX_FILE_BYTES {
         return Err(Error::FileSize { path: path.into() });
     }
-    let value: toml::Table = toml::from_str(text).map_err(|source| Error::Schema {
+    let mut value: toml::Table = toml::from_str(text).map_err(|source| Error::Schema {
         path: path.into(),
         source,
     })?;
-    if value
+    let machine = value.contains_key("protocol");
+    let migrating = machine
+        && value
+            .get("schema_version")
+            .and_then(toml::Value::as_integer)
+            == Some(1);
+    if machine {
+        migration::normalize(&mut value, path)?;
+    } else if value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
         != Some(1)
@@ -224,7 +233,12 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
             }
         }
     }
-    toml::from_str(text).map_err(|source| Error::Schema {
+    let normalized = if migrating {
+        toml::to_string(&value)?
+    } else {
+        text.to_owned()
+    };
+    toml::from_str(&normalized).map_err(|source| Error::Schema {
         path: path.into(),
         source,
     })

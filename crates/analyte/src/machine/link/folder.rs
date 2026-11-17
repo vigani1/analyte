@@ -284,7 +284,7 @@ mod tests {
             let start = definition.find("[transport]").ok_or("transport section")?;
             let end = definition.find("[syntax]").ok_or("syntax section")?;
             let definition = format!(
-                "{}[transport]\nkind='watched_folder'\noperation_timeout_ms=10000\n[framing]\nkind='none'\nlimit=65536\n[dialog]\nkind='file_pickup'\nreceive_timeout_ms=30000\nsend_timeout_ms=15000\n{}",
+                "{}[transport]\nkind='watched_folder'\noperation_timeout_ms=10000\n[framing]\nlimit=65536\n[dialog]\nreceive_timeout_ms=30000\nsend_timeout_ms=15000\n{}",
                 &definition[..start],
                 &definition[end..]
             );
