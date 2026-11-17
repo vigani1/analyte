@@ -8,7 +8,7 @@ use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
 use analyte_hl7::{Message, Options, law};
 use analyte_model::SourceText;
-use analyte_store::{Handle, MachineOrder, OrderReservation};
+use analyte_store::{Handle, MachineOrder};
 use std::time::{Duration, Instant};
 impl Connection {
     /// Admits at most one idle exchange. Once reserved, only an outcome may change it;
@@ -139,20 +139,10 @@ impl Connection {
                             &crate::orders::outcome::Detail::LawOrderPreflight(error.to_string())
                                 .to_string(),
                         )?;
-                        store
-                            .request(until, move |store| {
-                                store.reject_unsent(
-                                    &OrderReservation {
-                                        identity: &key,
-                                        version,
-                                        now: jiff::Timestamp::now().as_second(),
-                                        freshness,
-                                    },
-                                    reason,
-                                    super::super::event,
-                                )
-                            })
-                            .await??;
+                        super::super::reservation::reject(
+                            store, until, key, version, freshness, reason,
+                        )
+                        .await??;
                         continue;
                     }
                     return Err(error);

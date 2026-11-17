@@ -15,14 +15,20 @@ impl AutolyserEnd {
     /// Returns the exact historical spelling retained in the protected store.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
-            Self::InputFailed => "Autolyser-input-failed",
-            Self::StorageFailed => "Autolyser-storage-failed",
-            Self::StorageTimeout => "Autolyser-storage-timeout",
-            Self::TransferCancelled => "Autolyser-transfer-cancelled",
-            Self::TransferDisconnected => "Autolyser-transfer-disconnected",
-            Self::TransferError => "Autolyser-transfer-error",
-            Self::TransferTimeout => "Autolyser-transfer-timeout",
-            Self::WriteFailed => "Autolyser-write-failed",
+            Self::InputFailed => crate::orders::outcome::Code::AutolyserInputFailed.as_str(),
+            Self::StorageFailed => crate::orders::outcome::Code::AutolyserStorageFailed.as_str(),
+            Self::StorageTimeout => crate::orders::outcome::Code::AutolyserStorageTimeout.as_str(),
+            Self::TransferCancelled => {
+                crate::orders::outcome::Code::AutolyserTransferCancelled.as_str()
+            }
+            Self::TransferDisconnected => {
+                crate::orders::outcome::Code::AutolyserTransferDisconnected.as_str()
+            }
+            Self::TransferError => crate::orders::outcome::Code::AutolyserTransferError.as_str(),
+            Self::TransferTimeout => {
+                crate::orders::outcome::Code::AutolyserTransferTimeout.as_str()
+            }
+            Self::WriteFailed => crate::orders::outcome::Code::AutolyserWriteFailed.as_str(),
         }
     }
 }

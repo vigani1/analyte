@@ -21,19 +21,31 @@ impl VidasEnd {
     /// Returns the exact historical spelling retained in the protected store.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
-            Self::AcknowledgmentTimeout => "VIDAS-acknowledgment-timeout",
-            Self::CommitTimeout => "VIDAS-commit-timeout",
-            Self::ControlSuffixMismatch => "VIDAS-control-suffix-mismatch",
-            Self::FramingError => "VIDAS-framing-error",
-            Self::InputFailed => "VIDAS-input-failed",
-            Self::InterbyteTimeout => "VIDAS-interbyte-timeout",
-            Self::SessionTimeout => "VIDAS-session-timeout",
-            Self::TransferCancelled => "VIDAS-transfer-cancelled",
-            Self::TransferConfirmed => "VIDAS-transfer-confirmed",
-            Self::TransferDisconnected => "VIDAS-transfer-disconnected",
-            Self::TransferError => "VIDAS-transfer-error",
-            Self::TransferRefusedOrUnexpected => "VIDAS-transfer-refused-or-unexpected",
-            Self::WriteFailed => "VIDAS-write-failed",
+            Self::AcknowledgmentTimeout => {
+                crate::orders::outcome::Code::VidasAcknowledgmentTimeout.as_str()
+            }
+            Self::CommitTimeout => crate::orders::outcome::Code::VidasCommitTimeout.as_str(),
+            Self::ControlSuffixMismatch => {
+                crate::orders::outcome::Code::VidasControlSuffixMismatch.as_str()
+            }
+            Self::FramingError => crate::orders::outcome::Code::VidasFramingError.as_str(),
+            Self::InputFailed => crate::orders::outcome::Code::VidasInputFailed.as_str(),
+            Self::InterbyteTimeout => crate::orders::outcome::Code::VidasInterbyteTimeout.as_str(),
+            Self::SessionTimeout => crate::orders::outcome::Code::VidasSessionTimeout.as_str(),
+            Self::TransferCancelled => {
+                crate::orders::outcome::Code::VidasTransferCancelled.as_str()
+            }
+            Self::TransferConfirmed => {
+                crate::orders::outcome::Code::VidasTransferConfirmed.as_str()
+            }
+            Self::TransferDisconnected => {
+                crate::orders::outcome::Code::VidasTransferDisconnected.as_str()
+            }
+            Self::TransferError => crate::orders::outcome::Code::VidasTransferError.as_str(),
+            Self::TransferRefusedOrUnexpected => {
+                crate::orders::outcome::Code::VidasTransferRefusedOrUnexpected.as_str()
+            }
+            Self::WriteFailed => crate::orders::outcome::Code::VidasWriteFailed.as_str(),
         }
     }
 }
