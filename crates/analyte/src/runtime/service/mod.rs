@@ -500,14 +500,16 @@ fn start_delivery(
                 .await
         });
     }
-    {
+    for destination in destinations {
         let store = store.clone();
         let secrets = secrets.clone();
-        let component = watchdog.component("delivery-worker".into());
+        let stop = delivery_stopped.clone();
+        let component =
+            watchdog.component(format!("delivery-worker:{}", destination.id().as_str()));
         delivery_owners.spawn(async move {
             let _component = component;
-            analyte_sink::Worker::new(&store, &destinations, secrets.as_ref())
-                .run_draining(delivery_stopped, crate::runtime::delivery::SHUTDOWN_BUDGET)
+            analyte_sink::Worker::for_destination(&store, &destination, secrets.as_ref())
+                .run_draining(stop, crate::runtime::delivery::SHUTDOWN_BUDGET)
                 .await
         });
     }

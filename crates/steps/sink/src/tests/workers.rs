@@ -200,3 +200,83 @@ async fn mutation_rule7_owner_loops_and_cancellation_wait_for_their_signal() -> 
     store.shutdown(until()?).await?;
     Ok(())
 }
+
+// ADR 0008: a stalled app must not hold another destination's immutable delivery.
+#[tokio::test]
+async fn adr0008_slow_destination_does_not_delay_another_owned_worker() -> TestResult {
+    use tokio::io::AsyncWriteExt as _;
+    let directory = tempfile::tempdir()?;
+    let mut store = store(&directory.path().join("isolated.db")).await?;
+    let slow_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let fast_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let mut slow = destination(&format!("http://{}", slow_listener.local_addr()?))?;
+    slow.id = Identifier::new("slow")?;
+    slow.limits.request_timeout = HANG_GUARD;
+    let mut fast = destination(&format!("http://{}", fast_listener.local_addr()?))?;
+    fast.id = Identifier::new("fast")?;
+    let mut ids = Vec::new();
+    for destination in [&slow, &fast] {
+        let metadata = receipt()?;
+        let result = make_result(metadata.id, destination.id.as_str())?;
+        let delivery = build_delivery(
+            &result,
+            &metadata,
+            destination.id.clone(),
+            jiff::Timestamp::now(),
+        )?;
+        ids.push(delivery.id);
+        enqueue(&store, metadata, result, delivery).await?;
+    }
+    let secrets = Secrets("key");
+    let slow_worker = Worker::for_destination(&store, &slow, &secrets);
+    let fast_worker = Worker::for_destination(&store, &fast, &secrets);
+    let mut slow_attempt = Box::pin(slow_worker.deliver_once());
+    let fast_flow = async {
+        let (mut stalled, _) = slow_listener.accept().await?;
+        let mut byte = [0; 1];
+        stalled.read_exact(&mut byte).await?;
+        let (finished, finish) = tokio::sync::oneshot::channel();
+        let respond = async {
+            let (mut socket, _) = fast_listener.accept().await?;
+            socket.read_exact(&mut byte).await?;
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 42\r\nConnection: close\r\n\r\n{\"contract_version\":1,\"status\":\"accepted\"}").await?;
+            let _ = finish.await;
+            drop(socket);
+            Ok::<_, std::io::Error>(())
+        };
+        let deliver = async {
+            let result = fast_worker.deliver_once().await;
+            let _ = finished.send(());
+            result
+        };
+        let (outcome, response) = tokio::join!(deliver, respond);
+        response?;
+        assert_eq!(
+            outcome?,
+            DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
+        );
+        // Fast completion is observed while the slow socket still has no reply.
+        drop(stalled);
+        Ok::<_, Box<dyn std::error::Error>>(())
+    };
+    tokio::time::timeout(HANG_GUARD, async {
+        tokio::select! {
+            result = &mut slow_attempt => panic!("stalled destination completed first: {result:?}"),
+            result = fast_flow => result,
+        }
+    })
+    .await??;
+    drop(slow_attempt);
+    let rows = store.request(until()?, |store| store.deliveries(0)).await?;
+    assert!(
+        rows.iter().any(|row| Some(&row.id) == ids.first()
+            && row.state == analyte_store::DeliveryState::InFlight)
+    );
+    assert!(
+        rows.iter()
+            .any(|row| Some(&row.id) == ids.get(1)
+                && row.state == analyte_store::DeliveryState::Done)
+    );
+    store.shutdown(until()?).await?;
+    Ok(())
+}

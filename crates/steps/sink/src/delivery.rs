@@ -80,12 +80,13 @@ pub enum DeliveryOutcome {
     RetryAt(i64),
 }
 
-/// One owner claims globally across configured destinations; no tasks are spawned.
-/// Run only one owner per store to avoid making destination configuration ambiguous.
+/// Claims and delivers in order; the host owns scheduling and cancellation.
+/// Use one `for_destination` worker per destination to isolate slow HTTP peers.
 pub struct Worker<'a> {
     store: &'a Handle,
     destinations: &'a [Destination],
     secrets: &'a dyn SecretsSource,
+    destination: Option<&'a Identifier>,
 }
 
 impl<'a> Worker<'a> {
@@ -100,6 +101,22 @@ impl<'a> Worker<'a> {
             store,
             destinations,
             secrets,
+            destination: None,
+        }
+    }
+
+    /// Restricts claims to one destination; other owners cannot steal its deliveries.
+    #[must_use]
+    pub fn for_destination(
+        store: &'a Handle,
+        destination: &'a Destination,
+        secrets: &'a dyn SecretsSource,
+    ) -> Self {
+        Self {
+            store,
+            destinations: std::slice::from_ref(destination),
+            secrets,
+            destination: Some(destination.id()),
         }
     }
 
@@ -129,11 +146,16 @@ impl<'a> Worker<'a> {
         now: &(dyn Fn() -> i64 + Sync),
     ) -> Result<DeliveryOutcome, Error> {
         let claim_time = now();
+        let destination = self.destination.cloned();
         let claim = self
             .store
-            .request(deadline(self.claim_timeout())?, move |s| {
-                s.claim(claim_time)
-            })
+            .request(
+                deadline(self.claim_timeout())?,
+                move |s| match destination {
+                    Some(destination) => s.claim_destination(claim_time, &destination),
+                    None => s.claim(claim_time),
+                },
+            )
             .await?;
         let Some(claim) = claim else {
             return Ok(DeliveryOutcome::Idle);
