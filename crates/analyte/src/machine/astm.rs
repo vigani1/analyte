@@ -32,6 +32,8 @@ struct ConnectionState<'a, 'm> {
     dialog: Dialog,
     start: Instant,
     transfer: Option<Identifier>,
+    // Keep the failure until the dialog's NAK and refusal actions have run.
+    commit_failure: Option<super::custody::StoreWaitError<analyte_store::Error>>,
     raw: Vec<u8>,
     payload: Vec<u8>,
     input_evidence: connection_input::Custody,
@@ -91,6 +93,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             dialog,
             start,
             transfer,
+            commit_failure: None,
             raw,
             payload,
             input_evidence: connection_input::Custody::default(),
@@ -312,9 +315,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Action::Rejected(error, bytes) => {
                 intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
-            Action::CommitFailed(_) | Action::LimitReached => {
-                return Err(Error::AstmStorageOrResourceLimitRefusedTransfer);
+            Action::CommitFailed(_) => {
+                return Err(self
+                    .commit_failure
+                    .take()
+                    .map_or(Error::AstmCommitDeadline, Error::AstmCommitRefused));
             }
+            Action::LimitReached => return Err(Error::AstmResourceLimitRefusedTransfer),
             Action::Sent(end) => {
                 for order in self.active_orders.drain(..) {
                     crate::orders::sending::finished(store, &order, end).await?;
@@ -373,14 +380,14 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         {
             hook.pause(stop).await.map_err(Error::TestHook)?;
         }
-        actions.extend(self.dialog.step(
-            self.start.elapsed(),
-            if committed.is_ok() {
-                Event::Committed(id)
-            } else {
+        let event = match committed {
+            Ok(_) => Event::Committed(id),
+            Err(error) => {
+                self.commit_failure = Some(error);
                 Event::CommitFailed(id)
-            },
-        )?);
+            }
+        };
+        actions.extend(self.dialog.step(self.start.elapsed(), event)?);
 
         Ok(())
     }
@@ -440,6 +447,11 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         Ok(())
     }
     async fn close(&mut self, mut result: Result<(), Error>) -> Result<(), Error> {
+        // A failed NAK write can interrupt the action queue before CommitFailed.
+        // Keep that transport failure and the original custody cause together.
+        if let Some(error) = self.commit_failure.take() {
+            super::custody::retain_cleanup(&mut result, Err(Error::AstmCommitRefused(error)));
+        }
         // Disconnect drains the dialog-owned decoder on every exit, including failed
         // host effects. Transfer and order identities are reconciled below even if
         // parking one piece of framing evidence fails.

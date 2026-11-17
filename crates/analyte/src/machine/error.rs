@@ -25,7 +25,13 @@ pub(crate) enum SessionError {
     AstmMessageBoundExceeded,
     /// The session cannot safely proceed under this state or bound.
     #[error("ASTM storage or resource limit refused transfer")]
-    AstmStorageOrResourceLimitRefusedTransfer,
+    AstmResourceLimitRefusedTransfer,
+    /// A refused frame keeps the storage failure or uncertain custody deadline.
+    #[error("ASTM storage or resource limit refused transfer")]
+    AstmCommitRefused(#[source] super::custody::StoreWaitError<analyte_store::Error>),
+    /// The dialog expired before receiving a frame custody result.
+    #[error("ASTM storage or resource limit refused transfer")]
+    AstmCommitDeadline,
     /// The session cannot safely proceed under this state or bound.
     #[error("ASTM transfer wire-byte bound exceeded")]
     AstmTransferWireByteBoundExceeded,
@@ -330,5 +336,49 @@ impl std::fmt::Display for DeadlineReason {
             Self::Write => "LAW response send deadline expired",
             Self::Effect => "LAW processing deadline expired; no acceptance promised",
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error as _;
+
+    #[tokio::test(start_paused = true)]
+    async fn adr0003_astm_refusal_preserves_custody_cause_and_operator_text() {
+        use crate::machine::custody::{StoreWaitError, store_within};
+        let storage = SessionError::AstmCommitRefused(StoreWaitError::Operation(
+            analyte_store::Error::Capacity,
+        ));
+        let expired = store_within(
+            std::time::Duration::from_millis(1),
+            std::future::pending::<Result<(), analyte_store::Error>>(),
+        )
+        .await
+        .unwrap_err();
+        let timeout = SessionError::AstmCommitRefused(expired);
+        assert!(matches!(
+            &storage,
+            SessionError::AstmCommitRefused(StoreWaitError::Operation(
+                analyte_store::Error::Capacity
+            ))
+        ));
+        assert!(matches!(
+            &timeout,
+            SessionError::AstmCommitRefused(StoreWaitError::Timeout(_))
+        ));
+        assert!(storage.source().is_some());
+        assert!(timeout.source().is_some());
+        for error in [
+            storage,
+            timeout,
+            SessionError::AstmCommitDeadline,
+            SessionError::AstmResourceLimitRefusedTransfer,
+        ] {
+            assert_eq!(
+                error.to_string(),
+                "ASTM storage or resource limit refused transfer"
+            );
+        }
     }
 }
