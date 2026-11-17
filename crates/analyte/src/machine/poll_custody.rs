@@ -1,5 +1,6 @@
 //! Records poll custody and blocks R while its outcome is uncertain.
-use crate::{Error, deadline, installation::config::Machine, invalid};
+use crate::machine::error::SessionError as Error;
+use crate::{deadline, installation::config::Machine};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, Handle, PollIntentId, PollIntentState, PollOutcome};
 
@@ -8,7 +9,7 @@ fn audit(
     machine: &Identifier,
     outcome: PollOutcome,
     reason: Reason,
-) -> Result<Audit, Error> {
+) -> Result<Audit, analyte_model::TextError> {
     Ok(Audit {
         actor: Identifier::new("analyte")?,
         action: Identifier::new(match outcome {
@@ -35,7 +36,7 @@ pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Resu
                     )
                     .map_err(analyte_store::Error::Text)?;
                     let audit = audit(intent.id, &machine_id, PollOutcome::Uncertain, reason)
-                        .map_err(analyte_store::Error::DeliveryBuild)?;
+                        .map_err(|error| analyte_store::Error::DeliveryBuild(Box::new(error)))?;
                     store.record_poll_outcome(intent.id, PollOutcome::Uncertain, &audit)?;
                 }
                 PollIntentState::Uncertain => {}
@@ -45,9 +46,7 @@ pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Resu
         })
         .await?;
     if blocked {
-        return Err(invalid(
-            "Autolyser previous poll requires operator reconciliation before R can advance",
-        ));
+        return Err(Error::AutolyserPreviousPollRequiresOperatorReconciliationBeforeRCanAdvance);
     }
     Ok(())
 }
@@ -110,9 +109,7 @@ pub(super) async fn complete(
         match state {
             PollIntentState::Confirmed => *guard = None,
             PollIntentState::Pending | PollIntentState::Uncertain => {
-                return Err(invalid(
-                    "Autolyser poll confirmation did not reconcile custody",
-                ));
+                return Err(Error::AutolyserPollConfirmationDidNotReconcileCustody);
             }
         }
     }

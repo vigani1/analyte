@@ -1,5 +1,7 @@
 //! Records enabled declarations and wire applications even when syntax or mapping is parked.
-use crate::{Error, installation::config::Machine, invalid};
+use crate::installation::config::Machine;
+use crate::intake::{Mapping, ParkReason};
+use EvidenceError as Error;
 use analyte_config::{MachineDeparture, RecordTransport, Stack};
 use analyte_model::{
     AppliedDeparture, DepartureEvidence, DepartureMeaning, DepartureSpan, EvidenceList, Identifier,
@@ -10,18 +12,18 @@ pub(crate) async fn for_receipt(
     store: &analyte_store::Handle,
     machine: &Machine,
     id: analyte_model::ReceiptId,
-    mapping: Result<analyte_mapping::Output, Error>,
-) -> Result<(Result<analyte_mapping::Output, Error>, DepartureEvidence), Error> {
+    mapping: Mapping,
+) -> Result<(Mapping, DepartureEvidence), Error> {
     let receipt = store
         .request(crate::deadline(), move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
     let applied = mapping
-        .as_ref()
+        .output()
         .map_or(&[][..], |output| output.applied_departures.as_slice());
     let mut evidence = collect(machine, &receipt.raw, applied)?;
-    let preserved = mapping.as_ref().is_ok_and(|output| {
+    let preserved = mapping.output().is_some_and(|output| {
         output
             .findings
             .iter()
@@ -35,9 +37,9 @@ pub(crate) async fn for_receipt(
     }
     evidence.applied = EvidenceList::new(entries)?;
     let mapping = if let Some(reason) = &evidence.incomplete
-        && mapping.is_ok()
+        && mapping.output().is_some()
     {
-        Err(invalid(reason.as_str()))
+        Mapping::Parked(ParkReason::IncompleteDepartures(reason.clone()))
     } else {
         mapping
     };
@@ -114,10 +116,10 @@ fn packed(
             let start = index
                 .saturating_add(1)
                 .checked_sub(frame.raw().len())
-                .ok_or_else(|| invalid("ASTM evidence frame span underflow"))?;
+                .ok_or_else(|| Error::AstmEvidenceFrameSpanUnderflow)?;
             let text_start = start
                 .checked_add(2)
-                .ok_or_else(|| invalid("ASTM evidence frame offset overflow"))?;
+                .ok_or_else(|| Error::AstmEvidenceFrameOffsetOverflow)?;
             let crs = frame.text().iter().filter(|b| **b == b'\r').count();
             let nonstandard =
                 crs > 1 || (crs > 0 && (!frame.is_final() || frame.text().last() != Some(&b'\r')));
@@ -127,12 +129,15 @@ fn packed(
                 let end = text_start
                     .checked_add(offset)
                     .and_then(|n| n.checked_add(1))
-                    .ok_or_else(|| invalid("ASTM record span overflow"))?;
+                    .ok_or_else(|| Error::AstmRecordSpanOverflow)?;
                 if *byte == b'\r' {
-                    spans.push(DepartureSpan::try_from(fragment_start..end).map_err(invalid)?);
+                    spans.push(
+                        DepartureSpan::try_from(fragment_start..end)
+                            .map_err(|_| Error::ReversedSpan)?,
+                    );
                     if nonstandard || continued_packing {
                         if entries.len() == 256 {
-                            return Err(invalid("applied departure evidence limit"));
+                            return Err(Error::AppliedDepartureEvidenceLimit);
                         }
                         entries.push(AppliedDeparture {
                             rule:Identifier::new(declaration.tag())?,declaration:declaration.evidence_snapshot()?,
@@ -147,16 +152,19 @@ fn packed(
                     continued_packing = false;
                     record = record
                         .checked_add(1)
-                        .ok_or_else(|| invalid("ASTM record count overflow"))?;
+                        .ok_or_else(|| Error::AstmRecordCountOverflow)?;
                     fragment_start = end;
                 }
             }
             let text_end = text_start
                 .checked_add(frame.text().len())
-                .ok_or_else(|| invalid("ASTM frame span overflow"))?;
+                .ok_or_else(|| Error::AstmFrameSpanOverflow)?;
             if fragment_start < text_end {
                 continued_packing |= nonstandard;
-                spans.push(DepartureSpan::try_from(fragment_start..text_end).map_err(invalid)?);
+                spans.push(
+                    DepartureSpan::try_from(fragment_start..text_end)
+                        .map_err(|_| Error::ReversedSpan)?,
+                );
             }
         }
     }
@@ -219,13 +227,13 @@ fn compatibility(
         };
         if exercised {
             if entries.len() == 256 {
-                return Err(invalid("applied departure evidence limit"));
+                return Err(Error::AppliedDepartureEvidenceLimit);
             }
             entries.push(AppliedDeparture {
                 rule:Identifier::new(declaration.tag())?,declaration:declaration.evidence_snapshot()?,standard:Identifier::new(standard)?,
                 record:0,field:0,source:SourceText::new("Declared wire compatibility exercised; original bytes and semantic values retained")?,
                 meaning:DepartureMeaning::WireCompatibility,coordinates:Identifier::new("receipt_bytes")?,
-                spans:EvidenceList::new(vec![DepartureSpan::try_from(0..raw.len()).map_err(invalid)?])?,
+                spans:EvidenceList::new(vec![DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?])?,
             });
         }
     }
@@ -253,4 +261,45 @@ fn lowercase_checksum(machine: &Machine, raw: &[u8]) -> Result<bool, Error> {
         }
     }
     Ok(false)
+}
+
+/// Failures constructing complete departure evidence; original source bytes remain retained.
+#[derive(Debug, thiserror::Error)]
+pub enum EvidenceError {
+    /// Source span coordinates are reversed.
+    #[error("departure span end precedes start")]
+    ReversedSpan,
+    /// A bounded evidence list refused an entry.
+    #[error(transparent)]
+    List(#[from] analyte_model::ListError),
+    /// Evidence cannot be represented within its declared bounds.
+    #[error("ASTM evidence frame offset overflow")]
+    AstmEvidenceFrameOffsetOverflow,
+    /// Evidence cannot be represented within its declared bounds.
+    #[error("ASTM evidence frame span underflow")]
+    AstmEvidenceFrameSpanUnderflow,
+    /// Evidence cannot be represented within its declared bounds.
+    #[error("ASTM frame span overflow")]
+    AstmFrameSpanOverflow,
+    /// Evidence cannot be represented within its declared bounds.
+    #[error("ASTM record count overflow")]
+    AstmRecordCountOverflow,
+    /// Evidence cannot be represented within its declared bounds.
+    #[error("ASTM record span overflow")]
+    AstmRecordSpanOverflow,
+    /// Evidence cannot be represented within its declared bounds.
+    #[error("applied departure evidence limit")]
+    AppliedDepartureEvidenceLimit,
+    /// Preserves the original evidence failure.
+    #[error(transparent)]
+    Text(#[from] analyte_model::TextError),
+    /// Preserves the original evidence failure.
+    #[error(transparent)]
+    Store(#[from] analyte_store::Error),
+    /// Preserves the original evidence failure.
+    #[error(transparent)]
+    Config(#[from] analyte_config::Error),
+    /// Preserves the original evidence failure.
+    #[error(transparent)]
+    Astm(#[from] analyte_framing::astm::Error),
 }

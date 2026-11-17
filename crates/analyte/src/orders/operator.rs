@@ -1,5 +1,6 @@
 //! Records operator order decisions and app events without issuing machine commands.
-use crate::{Error, deadline, installation::config::Program};
+use crate::operator::Error;
+use crate::{deadline, installation::config::Program};
 use analyte_model::{Identifier, OrderState, Reason};
 use analyte_store::{Audit, MachineOrderFilter};
 use clap::{Subcommand, ValueEnum};
@@ -110,8 +111,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             Command::Reconcile { id, outcome, .. } => {
                 let reason = audit.reason.as_str().to_owned();
                 let order = store.reconcile_order(id, outcome.state(), &audit, move |record| {
-                    super::build_event(record, Some(&reason))
-                        .map_err(analyte_store::Error::DeliveryBuild)
+                    super::build_event(record, Some(&reason)).map_err(super::EventError::into_store)
                 })?;
                 Ok(vec![order])
             }

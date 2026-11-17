@@ -1,6 +1,7 @@
 //! Admits send-ahead orders before reserving and writing machine commands.
+use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
-use crate::{Error, deadline, installation::config::Machine};
+use crate::{deadline, installation::config::Machine};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};
 #[cfg(test)]

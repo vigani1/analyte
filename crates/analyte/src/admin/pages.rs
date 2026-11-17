@@ -1,6 +1,7 @@
 //! Renders bounded operator pages and gates raw evidence behind audited POST requests.
 use super::{escape, server::Context, sessions::Session};
-use crate::{Error, deadline};
+use crate::admin::Error;
+use crate::deadline;
 use analyte_model::{Identifier, Reason, ReceiptId};
 use analyte_store::{Audit, MachineOrderFilter, Parked, Store};
 use axum::{
@@ -130,7 +131,7 @@ pub(super) async fn machines(
                     "/machines",
                     after
                         .checked_add(page.len())
-                        .ok_or("machine cursor overflow")?,
+                        .ok_or(Error::MachineCursorOverflow)?,
                 );
             }
             Ok(html)
@@ -288,7 +289,7 @@ pub(super) async fn detail(
             .ok()
             .and_then(|len| cursor.after.checked_add(len))
         else {
-            return finish(Err(crate::invalid("parked target cursor overflow")));
+            return finish(Err(Error::ParkedTargetCursorOverflow));
         };
         next(&mut html, &format!("/parked/{id}"), after);
     }

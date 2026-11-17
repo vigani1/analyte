@@ -1,5 +1,6 @@
 //! Runs the Windows service control adapter.
-use crate::{Error, installation::config::Program, invalid, runtime::service};
+use crate::runtime::Error as Failure;
+use crate::{Error, installation::config::Program, runtime::service};
 use std::{
     path::PathBuf,
     sync::{
@@ -22,7 +23,7 @@ enum Event {
 /// Reports dispatcher, startup, worker and graceful shutdown errors.
 pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
     if !(Duration::from_secs(30)..=Duration::from_secs(300)).contains(&bound) {
-        return Err(invalid("shutdown bound must be 30 through 300 seconds"));
+        return Err(Failure::ShutdownBoundMustBe30Through300Seconds.into());
     }
     let (start, started) = mpsc::sync_channel(1);
     let (stop, stopped) = tokio::sync::oneshot::channel();
@@ -95,8 +96,12 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
         drop(start);
         let result = worker
             .join()
-            .map_err(|_| invalid("SCM runtime owner panicked"))?;
-        dispatch.map_err(|_| invalid("SCM dispatcher unavailable; use analyte run instead outside the Service Control Manager"))?;
+            .map_err(|_| Failure::ScmRuntimeOwnerPanicked)?;
+        dispatch.map_err(|source| {
+            Failure::ScmDispatcherUnavailableUseAnalyteRunInsteadOutsideTheServiceControlManager(
+                crate::runtime::error::DispatchCause(source),
+            )
+        })?;
         result
     })
 }
@@ -139,7 +144,11 @@ fn run_host(
         drop(startup);
         service::serve_bounded(
             program,
-            async { stopped.await.map_err(|_| invalid("SCM stop sender closed")) },
+            async {
+                stopped
+                    .await
+                    .map_err(|source| Error::from(Failure::ScmStopSenderClosed(source)))
+            },
             secrets,
             bound,
             Some(runtime_watchdog),
@@ -151,6 +160,7 @@ fn run_host(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     #[test]
     fn plan11_scm_reports_stopped_before_forced_exit_acknowledgment() -> Result<(), Error> {
         let (events, received) = mpsc::sync_channel(1);

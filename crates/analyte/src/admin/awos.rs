@@ -4,7 +4,8 @@ use super::{
     pages::{Cursor, finish, next, start},
     server::Context,
 };
-use crate::{Error, deadline};
+use crate::admin::Error;
+use crate::deadline;
 use axum::{
     extract::{Path, Query, State},
     response::Response,
@@ -60,7 +61,7 @@ pub(super) async fn detail(
     finish(async {
         let after=i64::try_from(cursor.after)?;
         let (retained,rows)=state.store.request(deadline(),move |s|Ok((s.machine_order_by_id(order)?,s.law_work_evidence(order,item,after)?))).await?;
-        let item=retained.items.iter().find(|i|i.index==item).ok_or("AWOS item not retained")?;
+        let item=retained.items.iter().find(|i|i.index==item).ok_or(Error::AwosItemNotRetained)?;
         let mut html=start("AWOS execution history");
         html.push_str(&projection(item));
         html.push_str("<p>Command acceptance and execution are independent. Estimate ordering is uncertain unless source evidence proves otherwise. Estimates keep source spelling and use only the MSH-7 zone; an absent estimate does not erase earlier evidence. Rejected message evidence below was not applied.</p>");

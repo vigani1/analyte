@@ -1,5 +1,7 @@
 //! Maps stored receipts without transport handles, orders or acknowledgments.
-use crate::{Error, deadline, installation::config::Machine, intake, invalid};
+#[cfg(test)]
+use crate::Error;
+use crate::{deadline, installation::config::Machine, intake};
 use analyte_config::Stack;
 use analyte_model::{ReceiptId, Revision};
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
@@ -15,7 +17,7 @@ pub async fn reprocess(
     store: &Handle,
     machine: &Machine,
     action: Reprocess,
-) -> Result<InterpretationCommit, Error> {
+) -> Result<InterpretationCommit, intake::Error> {
     let id = action.receipt;
     let receipt = store
         .request(deadline(), move |s| {
@@ -23,11 +25,11 @@ pub async fn reprocess(
         })
         .await?;
     if receipt.metadata.machine != *machine.id() {
-        return Err(invalid("receipt belongs to a different machine"));
+        return Err(intake::Error::WrongMachine);
     }
     let mapping = map_retained(store, machine, &receipt).await;
     Ok(
-        intake::persist_mapping(store, machine, id, mapping, Some(action))
+        intake::persist_mapping(store, machine, id, mapping.into(), Some(action))
             .await?
             .1,
     )
@@ -38,7 +40,7 @@ pub(crate) async fn map_retained(
     store: &Handle,
     machine: &Machine,
     receipt: &analyte_store::Receipt,
-) -> Result<analyte_mapping::Output, Error> {
+) -> Result<analyte_mapping::Output, ReadError> {
     let hello = if matches!(machine.snapshot.effective().stack(), Stack::Poct(_)) {
         let machine_id = receipt.metadata.machine.clone();
         let connection = receipt.metadata.connection.clone();
@@ -67,7 +69,7 @@ pub(crate) fn map(
     id: ReceiptId,
     time: jiff::Timestamp,
     raw: &[u8],
-) -> Result<analyte_mapping::Output, Error> {
+) -> Result<analyte_mapping::Output, ReadError> {
     Ok(analyte_mapping::read::read(
         &machine.snapshot,
         analyte_mapping::Input {
@@ -83,7 +85,7 @@ pub(crate) fn map(
 pub(super) use analyte_mapping::read::poct_limits;
 
 #[cfg(test)]
-fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Error> {
+fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, ReadError> {
     Ok(analyte_mapping::read::vidas_config(&machine.snapshot)?)
 }
 pub(crate) mod departure_evidence;
@@ -91,3 +93,12 @@ pub(crate) mod departure_evidence;
 mod departure_tests;
 #[cfg(test)]
 mod tests;
+
+/// Failures reading retained receipt context, separate from a stored parked interpretation.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ReadError {
+    #[error(transparent)]
+    Store(#[from] analyte_store::Error),
+    #[error(transparent)]
+    Mapping(#[from] analyte_mapping::read::Error),
+}

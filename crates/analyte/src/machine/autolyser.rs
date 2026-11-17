@@ -2,8 +2,9 @@
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use super::transfer_end::AutolyserEnd;
+use crate::intake;
+use crate::machine::error::SessionError as Error;
 use crate::orders::outcome::Code;
-use crate::{Error, intake, invalid};
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -131,7 +132,7 @@ impl ConnectionState {
                             let analyte_mapping::MachineOrder::Autolyser(worklist) =
                                 reserved.payload
                             else {
-                                return Err(invalid("Autolyser received another stack's order"));
+                                return Err(Error::AutolyserReceivedAnotherStackSOrder);
                             };
                             let actions = self
                                 .dialog
@@ -202,7 +203,7 @@ impl ConnectionState {
             && let Err(effect) =
                 crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await
         {
-            result = Err(custody::effect_failure(result.err(), effect));
+            result = Err(custody::effect_failure(result.err(), effect.into()));
         }
         result
     }
@@ -232,14 +233,14 @@ impl ConnectionState {
                 actions.extend(self.dialog.step(self.start.elapsed(), Event::Stored(token)));
             }
             Err(error) => {
-                if error.downcast_ref::<custody::StoreTimeout>().is_some() {
+                if matches!(error, custody::StoreWaitError::Timeout(_)) {
                     self.end_code = AutolyserEnd::StorageTimeout;
                 }
                 actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::StoreFailed(token)),
                 );
-                return Some(error);
+                return Some(error.into());
             }
         }
 
@@ -253,7 +254,7 @@ impl ConnectionState {
         let (id, _) = self
             .receipt
             .take()
-            .ok_or_else(|| invalid("Autolyser report receipt missing"))?;
+            .ok_or_else(|| Error::AutolyserReportReceiptMissing)?;
         let receipt = store
             .request(crate::deadline(), move |s| {
                 s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
@@ -286,7 +287,7 @@ impl ConnectionState {
         let order = self
             .active
             .as_ref()
-            .ok_or_else(|| invalid("unexpected Autolyser insertion outcome"))?;
+            .ok_or_else(|| Error::UnexpectedAutolyserInsertionOutcome)?;
         let code = super::transfer_end::insertion(reception);
         let outcome = match reception {
             analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,
@@ -357,7 +358,7 @@ async fn process(
                     None => intake::park_bytes(store, machine, Vec::new(), &reason).await,
                 };
                 if let Err(error) = parked {
-                    return Err(custody::effect_failure(failure, error));
+                    return Err(custody::effect_failure(failure, error.into()));
                 }
                 if let Err(error) =
                     super::poll_custody::uncertain(store, state.guard, machine, &reason).await

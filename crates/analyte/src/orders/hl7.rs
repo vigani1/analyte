@@ -1,7 +1,8 @@
 //! Drives HL7 order lookups, reservations and delivery outcomes (HL7 2.3.1 §2.18 and 2.5.1 §5.10).
 //! Kept whole: HL7 order exchange driving keeps cancellation, peer replies and durable transitions together.
+use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
-use crate::{Error, deadline, installation::config::Machine, intake, invalid};
+use crate::{deadline, installation::config::Machine, intake};
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::{
     Message, Options,
@@ -61,19 +62,19 @@ impl Connection {
         {
             let wait = super::settings::hl7(machine)
                 .and_then(|orders| orders.send().as_ref())
-                .ok_or("send settings")?
+                .ok_or(Error::SendSettings)?
                 .settings()
                 .response_ms;
             let until = Instant::now()
                 .checked_add(Duration::from_millis(u64::from(wait)))
-                .ok_or("HL7 response deadline overflow")?;
+                .ok_or(Error::Hl7ResponseDeadlineOverflow)?;
             self.exchange = Some(exchange);
             dialog.await_order_response(clock.elapsed(), Duration::from_millis(u64::from(wait)))?;
             self.reserving.clear();
             let message = self
                 .exchange
                 .as_ref()
-                .ok_or("exchange absent")?
+                .ok_or(Error::ExchangeAbsent)?
                 .message
                 .message();
             write(conn, message.raw(), self.options, until).await?;
@@ -206,17 +207,16 @@ impl Connection {
                 return Ok(None);
             }
         };
-        let settings =
-            super::settings::hl7(machine).ok_or_else(|| invalid("HL7 orders missing"))?;
+        let settings = super::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
         let query = settings
             .query()
             .as_ref()
-            .ok_or_else(|| invalid("HL7 query policy missing"))?;
+            .ok_or_else(|| Error::Hl7QueryPolicyMissing)?;
         let policy = &query.policy();
         let layout = &query.layout();
         let until = started
             .checked_add(Duration::from_millis(u64::from(policy.deadline_ms)))
-            .ok_or_else(|| invalid("HL7 query deadline overflow"))?;
+            .ok_or_else(|| Error::Hl7QueryDeadlineOverflow)?;
         let (mut answer, lines, candidates) = self
             .lookup_display(
                 store,
@@ -290,12 +290,11 @@ impl Connection {
         busy: bool,
     ) -> Result<(CacheAnswer, Vec<Vec<u8>>, Vec<super::Candidate>), Error> {
         let freshness = machine.destination_limits.freshness.as_secs();
-        let settings =
-            super::settings::hl7(machine).ok_or_else(|| invalid("HL7 orders missing"))?;
+        let settings = super::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
         let query = settings
             .query()
             .as_ref()
-            .ok_or_else(|| invalid("HL7 query policy missing"))?;
+            .ok_or_else(|| Error::Hl7QueryPolicyMissing)?;
         let layout = &query.layout();
         let mut answer = CacheAnswer::Unavailable;
         let mut lines = Vec::new();
@@ -474,7 +473,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn adr0003_shared_cleanup_settles_later_key_after_store_failure() -> Result<(), Error> {
+    async fn adr0003_shared_cleanup_settles_later_key_after_store_failure()
+    -> Result<(), crate::Error> {
         let machine = query_machine()?;
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
@@ -527,7 +527,7 @@ mod tests {
 
     #[tokio::test]
     async fn rule8_cleanup_preserves_session_error_and_attempts_every_reservation()
-    -> Result<(), Error> {
+    -> Result<(), crate::Error> {
         let machine = query_machine()?;
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
@@ -574,7 +574,7 @@ mod tests {
         let mut connection = Connection::new(options)?;
         connection.owner = owner;
         connection.active = vec![failed, good];
-        let mut result = Err(invalid("original wire failure"));
+        let mut result = Err(crate::invalid("original wire failure"));
         crate::machine::custody::retain_cleanup(
             &mut result,
             connection
@@ -583,7 +583,8 @@ mod tests {
                     &intake::Connection::new(&machine)?,
                     "HL7-DSR-session-error",
                 )
-                .await,
+                .await
+                .map_err(Into::into),
         );
         let error = result.expect_err("cleanup fails");
         assert!(error.to_string().contains("original wire failure"));
@@ -607,7 +608,7 @@ mod tests {
 
     #[tokio::test]
     async fn adr0003_rule8_cancelled_query_cleanup_never_claims_another_connection()
-    -> Result<(), Error> {
+    -> Result<(), crate::Error> {
         let machine = query_machine()?;
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
@@ -671,7 +672,7 @@ mod tests {
         store.shutdown(deadline()).await?;
         Ok(())
     }
-    fn query_machine() -> Result<Machine, Error> {
+    fn query_machine() -> Result<Machine, crate::Error> {
         let definition = format!(
             "{}\n{}",
             include_str!("../../../core/config/examples/hl7.toml"),
@@ -709,7 +710,7 @@ mod tests {
         store: &Handle,
         key: &analyte_store::MachineOrderKey,
         owner: &Identifier,
-    ) -> Result<(), Error> {
+    ) -> Result<(), crate::Error> {
         let identity = key.clone();
         let original_owner = owner.clone();
         store

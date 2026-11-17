@@ -1,6 +1,7 @@
 //! Runs audited operator actions with GET confirmations and CSRF-checked POST requests.
 use super::{escape, pages::NAV, server::Context, sessions::Session};
-use crate::{Error, deadline};
+use crate::admin::Error;
+use crate::deadline;
 use analyte_model::{DeliveryId, Reason};
 use analyte_store::DeliveryState;
 use axum::{
@@ -136,7 +137,7 @@ pub(super) async fn confirm_resend(
     };
     let delivery = match id(&text) {
         Ok(id) => id,
-        Err(error) => return failure(error.as_ref()),
+        Err(error) => return failure(&error),
     };
     match state
         .store
@@ -185,9 +186,7 @@ pub(super) async fn reprocess(
             tokio::task::spawn_blocking(move || crate::installation::config::Program::load(&path))
                 .await??;
         if program.data_directory().canonicalize()? != state.directory.canonicalize()? {
-            return Err(crate::invalid(
-                "current configuration points to a different store",
-            ));
+            return Err(Error::CurrentConfigurationPointsToADifferentStore);
         }
         crate::operator::recovery::reprocess(
             &state.store,
@@ -197,6 +196,7 @@ pub(super) async fn reprocess(
             reason,
         )
         .await
+        .map_err(Error::from)
     }
     .await;
     match result {
@@ -208,7 +208,7 @@ pub(super) async fn reprocess(
                 crate::operator::display::list(&commit.outcomes)
             ),
         ),
-        Err(error) => failure(error.as_ref()),
+        Err(error) => failure(&error),
     }
 }
 
@@ -230,6 +230,7 @@ pub(super) async fn resend(
             Reason::new(&form.reason)?,
         )
         .await
+        .map_err(Error::from)
     }
     .await;
     match result {
@@ -237,6 +238,6 @@ pub(super) async fn resend(
             "Resend queued",
             "<p>The original delivery ID and bytes are queued for the app.</p>",
         ),
-        Err(error) => failure(error.as_ref()),
+        Err(error) => failure(&error),
     }
 }

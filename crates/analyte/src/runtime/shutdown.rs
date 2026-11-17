@@ -1,5 +1,5 @@
 //! Enforces a process shutdown deadline independent of async scheduling.
-use crate::Error;
+use crate::runtime::Error;
 use std::{
     collections::BTreeSet,
     sync::{
@@ -99,6 +99,7 @@ impl Drop for Watchdog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     struct Stuck;
     impl Drop for Stuck {
         fn drop(&mut self) {

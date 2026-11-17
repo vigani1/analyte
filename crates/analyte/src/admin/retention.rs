@@ -1,6 +1,7 @@
 //! Shows retention policy and committed purge evidence and applies audited operator holds.
 use super::{escape, pages::NAV, server::Context, sessions::Session};
-use crate::{Error, deadline};
+use crate::admin::Error;
+use crate::deadline;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, HoldTarget};
 use axum::{
@@ -38,7 +39,7 @@ pub(super) async fn show(
     .await
     {
         Ok(body) => page(&body),
-        Err(error) => failure(error.as_ref()),
+        Err(error) => failure(&error),
     }
 }
 async fn render(state: &Context, session: Option<&Session>, after: u64) -> Result<String, Error> {
@@ -122,7 +123,7 @@ pub(super) async fn hold(
     let result = apply(&state, &session, form).await;
     match result {
         Ok(()) => page("<p>Hold change recorded with your actor identity and reason.</p>"),
-        Err(error) => failure(error.as_ref()),
+        Err(error) => failure(&error),
     }
 }
 async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(), Error> {
@@ -134,12 +135,12 @@ async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(),
             destination: Identifier::new(&form.destination)?,
             order: Identifier::new(&form.id)?,
         },
-        _ => return Err(crate::invalid("choose receipt or order")),
+        _ => return Err(Error::ChooseReceiptOrOrder),
     };
     let active = match form.operation.as_str() {
         "place" => true,
         "release" => false,
-        _ => return Err(crate::invalid("choose place or release")),
+        _ => return Err(Error::ChoosePlaceOrRelease),
     };
     let audit = Audit {
         actor: session.actor.clone(),

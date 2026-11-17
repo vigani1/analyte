@@ -19,7 +19,7 @@ fn adr0003_0010_law_status_maps_for_transactional_custody()
         estimate: analyte_mapping::law::AvailabilityEstimate::Absent,
     }];
 
-    let reading = map_reading(Ok(mapped))?;
+    let reading = map_reading(Mapping::Mapped(mapped))?;
     assert!(reading.accepted);
     assert!(matches!(reading.reading, Reading::Results(ref results) if results.is_empty()));
     assert!(reading.corrections.is_empty());

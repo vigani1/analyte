@@ -1,8 +1,7 @@
 //! Starts supervised service workers and handles signals and bounded shutdown.
 //! Kept whole: Service startup and shutdown retain the ownership order of supervised workers.
-use crate::{
-    Error, deadline, installation::config::Program, invalid, machine, runtime::space::Volume,
-};
+use crate::runtime::Error as Failure;
+use crate::{Error, deadline, installation::config::Program, machine, runtime::space::Volume};
 use analyte_store::{FreeSpace, Handle};
 use std::{
     future::Future,
@@ -26,13 +25,13 @@ impl Drop for AdminOwner {
 /// The installation must restrict access to the data directory and backups.
 /// # Errors
 /// Reports directory, migration, integrity or worker failures.
-pub async fn open_store(program: &Program, space: Box<dyn FreeSpace>) -> Result<Handle, Error> {
+pub async fn open_store(program: &Program, space: Box<dyn FreeSpace>) -> Result<Handle, Failure> {
     open_store_with_deadline(
         program,
         space,
         Instant::now()
             .checked_add(program.store_startup_timeout())
-            .ok_or_else(|| invalid("store startup deadline overflow"))?,
+            .ok_or_else(|| Failure::StoreStartupDeadlineOverflow)?,
     )
     .await
 }
@@ -42,7 +41,7 @@ pub(crate) async fn open_store_with_deadline(
     program: &Program,
     space: Box<dyn FreeSpace>,
     until: Instant,
-) -> Result<Handle, Error> {
+) -> Result<Handle, Failure> {
     create_data_directory(&program.data_directory)?;
     let limits = analyte_store::Limits {
         reserve_bytes: program.store_limits.reserve_bytes,
@@ -101,7 +100,7 @@ pub(crate) async fn serve_bounded(
     watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
     if !(Duration::from_secs(30)..=Duration::from_secs(300)).contains(&bound) {
-        return Err(invalid("shutdown bound must be 30 through 300 seconds"));
+        return Err(Failure::ShutdownBoundMustBe30Through300Seconds.into());
     }
     serve_with(
         program,
@@ -195,9 +194,7 @@ async fn serve_with(
     #[cfg(feature = "test-hooks")]
     let shutdown_bound = if program.stall_store_on_shutdown {
         if !loopback || watchdog.is_some() {
-            return Err(invalid(
-                "stuck shutdown hook requires the loopback test service",
-            ));
+            return Err(Failure::StuckShutdownHookRequiresTheLoopbackTestService.into());
         }
         Duration::from_millis(500)
     } else {
@@ -213,7 +210,7 @@ async fn serve_with(
     let store_component = watchdog.component("store".into());
     let destinations = crate::runtime::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
-    let store = Arc::new(open_store(&program, space).await?);
+    let store = open_service_store(&program, space).await?;
     #[cfg(feature = "test-hooks")]
     super::test_hooks::publish_store_probes(&program, &store)?;
     let paused = store
@@ -225,7 +222,9 @@ async fn serve_with(
     );
     crate::runtime::delivery::recover(&store).await?;
     super::law_recovery::run(&program, &store).await?;
-    let admin = crate::admin::prepare(&program, store.clone(), loopback).await?;
+    let admin = crate::admin::prepare(&program, store.clone(), loopback)
+        .await
+        .map_err(admin_startup_error)?;
     let admin_states = admin
         .as_ref()
         .map(|server| server.owners.clone())
@@ -236,7 +235,7 @@ async fn serve_with(
         let component = watchdog.component("admin-server".into());
         admin_owners.spawn(async move {
             let _component = component;
-            admin.run(admin_stopped).await
+            admin.run(admin_stopped).await.map_err(Into::into)
         });
     }
     let (delivery_stop, mut delivery_owners) =
@@ -433,27 +432,25 @@ impl Draining {
         }
         for capture in captures {
             let mut capture = Arc::try_unwrap(capture)
-                .map_err(|_| invalid("capture ownership retained after machine shutdown"))?;
+                .map_err(|_| Failure::CaptureOwnershipRetainedAfterMachineShutdown)?;
             capture.close().await;
         }
         close_store(store).await?;
         drop(store_component);
-        alerts_drained.map_err(|_| invalid("alert evaluator shutdown exceeded 5 seconds"))??;
-        admin_drained.map_err(|_| invalid("admin shutdown exceeded 5 seconds"))??;
-        commits_drained.map_err(|_| invalid("receive commits exceeded 15 seconds"))?;
-        drained.map_err(|_| invalid("transport shutdown exceeded 5 seconds"))??;
-        delivery_drained.map_err(|_| {
-        invalid(
-            "delivery shutdown exceeded 5 seconds; interrupted attempts will recover on restart",
-        )
-    })??;
+        alerts_drained.map_err(Failure::AlertEvaluatorShutdownExceeded5Seconds)??;
+        admin_drained.map_err(Failure::AdminShutdownExceeded5Seconds)??;
+        commits_drained.map_err(Failure::ReceiveCommitsExceeded15Seconds)?;
+        drained.map_err(Failure::TransportShutdownExceeded5Seconds)??;
+        delivery_drained.map_err(
+            Failure::DeliveryShutdownExceeded5SecondsInterruptedAttemptsWillRecoverOnRestart,
+        )??;
         Ok(())
     }
 }
 
 async fn close_store(store: Arc<Handle>) -> Result<(), Error> {
-    let mut store = Arc::try_unwrap(store)
-        .map_err(|_| invalid("machine retained store ownership after shutdown"))?;
+    let mut store =
+        Arc::try_unwrap(store).map_err(|_| Failure::MachineRetainedStoreOwnershipAfterShutdown)?;
     store
         .shutdown(
             Instant::now()
@@ -518,7 +515,9 @@ fn start_alerts(
         let component = watchdog.component(format!("alert-endpoint-{}", endpoint.id().as_str()));
         alert_owners.spawn(async move {
             let _component = component;
-            crate::runtime::alert_delivery::run(store, endpoint, policy, stop).await
+            crate::runtime::alert_delivery::run(store, endpoint, policy, stop)
+                .await
+                .map_err(Into::into)
         });
     }
 
@@ -533,7 +532,9 @@ fn start_alerts(
         if !policies.is_empty() {
             alert_owners.spawn(async move {
                 let _component = component;
-                crate::runtime::retention::run(store, policies, stop).await
+                crate::runtime::retention::run(store, policies, stop)
+                    .await
+                    .map_err(Into::into)
             });
         }
     }
@@ -555,7 +556,9 @@ fn start_alerts(
         let component = watchdog.component("alert-evaluator".into());
         alert_owners.spawn(async move {
             let _component = component;
-            crate::operator::alerts::run(store, policies, destinations, interval, stop).await
+            crate::operator::alerts::run(store, policies, destinations, interval, stop)
+                .await
+                .map_err(Into::into)
         });
     }
     alert_owners
@@ -576,21 +579,21 @@ async fn supervise(
                 break match owner {
                     Some(Ok(Err(error))) => Err(error),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(invalid("alert evaluator stopped unexpectedly")),
+                    Some(Ok(Ok(()))) | None => Err(Failure::AlertEvaluatorStoppedUnexpectedly.into()),
                 }
             }
             owner = admin_owners.join_next(), if !admin_owners.is_empty() => {
                 break match owner {
                     Some(Ok(Err(error))) => Err(error),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(invalid("admin owner stopped unexpectedly")),
+                    Some(Ok(Ok(()))) | None => Err(Failure::AdminOwnerStoppedUnexpectedly.into()),
                 }
             }
             owner = delivery_owners.join_next(), if !delivery_owners.is_empty() => {
                 break match owner {
                     Some(Ok(Err(error))) => Err(error.into()),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(invalid("delivery owner stopped unexpectedly")),
+                    Some(Ok(Ok(()))) | None => Err(Failure::DeliveryOwnerStoppedUnexpectedly.into()),
                 }
             }
             owner = owners.join_next(), if !owners.is_empty() => {
@@ -609,8 +612,8 @@ async fn termination() -> Result<(), Error> {
         let mut interrupt =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
         tokio::select! {
-            signal = interrupt.recv() => signal.ok_or_else(|| invalid("SIGINT signal stream closed"))?,
-            signal = term.recv() => signal.ok_or_else(|| invalid("SIGTERM signal stream closed"))?,
+            signal = interrupt.recv() => signal.ok_or_else(|| Failure::SigintSignalStreamClosed)?,
+            signal = term.recv() => signal.ok_or_else(|| Failure::SigtermSignalStreamClosed)?,
         }
     }
     #[cfg(windows)]
@@ -621,7 +624,7 @@ async fn termination() -> Result<(), Error> {
     Ok(())
 }
 
-pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Error> {
+pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Failure> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -630,7 +633,7 @@ pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Error>
             .mode(0o700)
             .create(path)?;
         if std::fs::metadata(path)?.permissions().mode() & 0o077 != 0 {
-            return Err(invalid("data directory must deny group and other access"));
+            return Err(Failure::DataDirectoryMustDenyGroupAndOtherAccess);
         }
     }
     #[cfg(windows)]
@@ -684,6 +687,53 @@ pub async fn prepare_retention(program: Program) -> Result<(), Error> {
     .await??)
 }
 
+// Shared ownership begins only in orchestration; preserve its original I/O failure identity.
+async fn open_service_store(
+    program: &Program,
+    space: Box<dyn FreeSpace>,
+) -> Result<Arc<Handle>, Error> {
+    let store = open_store(program, space).await.map_err(|error| {
+        if let Failure::Io(source) = error {
+            Error::from(source)
+        } else {
+            Error::from(error)
+        }
+    })?;
+    Ok(Arc::new(store))
+}
+
+// The service's existing startup API exposes original dependency causes to recovery callers.
+fn admin_startup_error(error: crate::admin::Error) -> Error {
+    match error {
+        crate::admin::Error::Join(source) => Error::from(source),
+        crate::admin::Error::MachineConfig(source) => Error::from(source),
+        crate::admin::Error::Operator(source) => Error::from(*source),
+        crate::admin::Error::Runtime(source) => Error::from(source),
+        crate::admin::Error::Store(source) => Error::from(source),
+        crate::admin::Error::Intake(source) => Error::from(source),
+        crate::admin::Error::Config(source) => Error::from(source),
+        crate::admin::Error::Text(source) => Error::from(source),
+        crate::admin::Error::Identity(source) => Error::from(source),
+        crate::admin::Error::Uuid(source) => Error::from(source),
+        crate::admin::Error::Integer(source) => Error::from(source),
+        crate::admin::Error::ParseInteger(source) => Error::from(source),
+        crate::admin::Error::Json(source) => Error::from(source),
+        crate::admin::Error::Token(source) => Error::from(source),
+        crate::admin::Error::Sink(source) => Error::from(source),
+        crate::admin::Error::Io(source) => Error::from(source),
+        crate::admin::Error::Secret(source) => Error::from(source),
+        other @ (crate::admin::Error::AwosItemNotRetained
+        | crate::admin::Error::AdminSessionCapacityReachedRestartOrWaitForExpiry
+        | crate::admin::Error::AdminSessionLockPoisoned
+        | crate::admin::Error::ChoosePlaceOrRelease
+        | crate::admin::Error::ChooseReceiptOrOrder
+        | crate::admin::Error::CurrentConfigurationPointsToADifferentStore
+        | crate::admin::Error::MachineCursorOverflow
+        | crate::admin::Error::ParkedTargetCursorOverflow
+        | crate::admin::Error::UncertainOrderCountOverflow) => Error::from(other),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -695,7 +745,7 @@ mod tests {
         let mut deliveries = JoinSet::new();
         let mut machines = JoinSet::new();
         let result = supervise(
-            async { Err(invalid("synthetic stop signal failure")) },
+            async { Err(crate::invalid("synthetic stop signal failure")) },
             &mut alerts,
             &mut admin,
             &mut deliveries,

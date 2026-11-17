@@ -44,3 +44,6 @@ pub(crate) fn private_tempdir() -> std::io::Result<tempfile::TempDir> {
     }
     Ok(directory)
 }
+
+mod error;
+pub use error::Error;

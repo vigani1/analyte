@@ -1,5 +1,6 @@
 //! Owns delivery workers and bounds startup recovery.
-use crate::{Error, deadline, installation::config::Program, invalid};
+use crate::runtime::Error;
+use crate::{deadline, installation::config::Program};
 use analyte_model::{Identifier, Reason};
 use analyte_sink::{Destination, Limits};
 use analyte_store::{Audit, Handle};
@@ -23,9 +24,7 @@ pub(crate) fn destinations(program: &Program, loopback: bool) -> Result<Vec<Dest
             .get(settings.name.as_str())
             .map_or(settings.base_url.as_str(), String::as_str);
         if !loopback && !program.loopback_destinations.is_empty() {
-            return Err(invalid(
-                "loopback overrides require the test service entry point",
-            ));
+            return Err(Error::LoopbackOverridesRequireTheTestServiceEntryPoint);
         }
         destinations.push(if loopback {
             Destination::for_loopback_test(

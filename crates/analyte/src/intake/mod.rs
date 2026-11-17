@@ -1,10 +1,14 @@
 //! Stores receipts, maps results, commits interpretations, revisions and deliveries, and parks failures.
-use crate::{Error, deadline, installation::config::Machine, invalid};
+use crate::{deadline, installation::config::Machine};
+mod error;
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
+pub use error::IntakeError as Error;
 use std::fmt::Write;
 mod law;
+mod parking;
 mod reading;
+pub(crate) use parking::{Mapping, ParkReason};
 use reading::{map_reading, mapping_outcome};
 
 /// Binds all evidence from one host connection to its immutable configuration.
@@ -116,7 +120,9 @@ pub(crate) async fn interpret_with_location(
             let payload = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw).ok()?;
             crate::machine::error_location::mapping_location(&mapping, &payload, options.terminator)
         });
-    let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
+    let accepted = persist_mapping(store, machine, id, mapping.into(), None)
+        .await?
+        .0;
     Ok((accepted, location))
 }
 
@@ -146,7 +152,7 @@ pub(crate) async fn persist_mapping(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
-    mapping: Result<analyte_mapping::Output, Error>,
+    mapping: Mapping,
     action: Option<analyte_store::Reprocess>,
 ) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
     let (mapping, departures) = super::machine::interpretation::departure_evidence::for_receipt(
@@ -159,9 +165,7 @@ pub(crate) async fn persist_mapping(
     let work_conflict = law::work_conflict(store, machine, id).await?;
     let mut custody = law::plan(store, machine, id, work_conflict).await?;
     let mapping = if work_conflict.is_some() {
-        Err(invalid(
-            "LAW returned work differs from retained downloaded command; operator review required",
-        ))
+        Mapping::Parked(ParkReason::WorkConflict)
     } else {
         mapping
     };
@@ -467,7 +471,7 @@ pub(crate) async fn vendor_reading(
     id: ReceiptId,
     output: analyte_mapping::Output,
 ) -> Result<(), Error> {
-    persist_mapping(store, machine, id, Ok(output), None).await?;
+    persist_mapping(store, machine, id, Mapping::Mapped(output), None).await?;
     Ok(())
 }
 
@@ -477,7 +481,14 @@ pub(crate) async fn failed_reading(
     id: ReceiptId,
     reason: &str,
 ) -> Result<(), Error> {
-    persist_mapping(store, machine, id, Err(invalid(reason)), None).await?;
+    persist_mapping(
+        store,
+        machine,
+        id,
+        Mapping::Parked(ParkReason::Diagnostic(reason.to_owned())),
+        None,
+    )
+    .await?;
     Ok(())
 }
 

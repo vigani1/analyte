@@ -4,6 +4,12 @@
 pub mod admin;
 pub mod installation;
 mod intake;
+/// Operational failures retaining and interpreting machine receipts.
+pub use intake::Error as IntakeError;
+/// Failures constructing complete departure evidence.
+pub use machine::interpretation::departure_evidence::EvidenceError as DepartureEvidenceError;
+/// Failures comparing returned LAW work with retained immutable commands.
+pub use orders::law::validation::ValidationError as WorkValidationError;
 pub mod machine;
 pub mod operator;
 pub mod orders;
@@ -12,6 +18,7 @@ pub mod runtime;
 /// The orchestration boundary retains concrete errors as their original causes.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
+#[cfg(any(test, feature = "test-hooks"))]
 pub(crate) fn invalid(message: &str) -> Error {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, message).into()
 }
@@ -27,7 +34,7 @@ pub(crate) fn deadline() -> std::time::Instant {
 /// Reports directory, migration, integrity or worker errors.
 pub async fn open_system_store(
     program: &installation::config::Program,
-) -> Result<analyte_store::Handle, Error> {
+) -> Result<analyte_store::Handle, runtime::Error> {
     runtime::service::open_store(program, Box::new(runtime::space::Volume)).await
 }
 

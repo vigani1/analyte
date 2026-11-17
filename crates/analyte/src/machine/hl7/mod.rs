@@ -1,7 +1,8 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
 use super::connection_input::{self, Input};
+use crate::intake;
+use crate::machine::error::SessionError as Error;
 use crate::orders::outcome::Code;
-use crate::{Error, intake, invalid};
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -194,7 +195,7 @@ impl ConnectionState {
             Action::ReceiptRetained(token) => {
                 self.pending
                     .remove(&(token.epoch(), token.ordinal()))
-                    .ok_or("late receipt absent")?;
+                    .ok_or(Error::LateReceiptAbsent)?;
             }
             Action::Query {
                 receipt: token,
@@ -226,7 +227,7 @@ impl ConnectionState {
             Action::OrderResponseTimeout => {
                 self.queries
                     .as_mut()
-                    .ok_or("HL7 order services absent")?
+                    .ok_or(Error::Hl7OrderServicesAbsent)?
                     .order_response(store, None)
                     .await?;
             }
@@ -276,12 +277,10 @@ impl ConnectionState {
             }
             Action::Refused(error) => return Err(error.into()),
             Action::TimedOut(_) => {
-                return Err(invalid(
-                    "HL7 host phase timed out; receipt requires reconciliation",
-                ));
+                return Err(Error::Hl7HostPhaseTimedOutReceiptRequiresReconciliation);
             }
             Action::Sent(_, _) | Action::CommitAccepted(_) => {
-                return Err(invalid("unexpected outgoing HL7 outcome"));
+                return Err(Error::UnexpectedOutgoingHl7Outcome);
             }
         }
         Ok(false)
@@ -304,7 +303,7 @@ impl ConnectionState {
         let id = self
             .pending
             .remove(&(token.epoch(), token.ordinal()))
-            .ok_or("query receipt absent")?;
+            .ok_or(Error::QueryReceiptAbsent)?;
         if !edition_matches {
             intake::failed_reading(
                 store,
@@ -314,8 +313,8 @@ impl ConnectionState {
             )
             .await?;
         } else {
-            let query = self.queries.as_mut().ok_or("HL7 query services absent")?;
-            let reply = tokio::select! { biased; () = super::stopping(stop) => return Ok(true), result = query.answer(store,machine,crate::orders::hl7::Request { message: &message, started: self.start.checked_add(started).ok_or("query clock overflow")?, receipt: id },&self.dialog,self.start) => result? };
+            let query = self.queries.as_mut().ok_or(Error::Hl7QueryServicesAbsent)?;
+            let reply = tokio::select! { biased; () = super::stopping(stop) => return Ok(true), result = query.answer(store,machine,crate::orders::hl7::Request { message: &message, started: self.start.checked_add(started).ok_or(Error::QueryClockOverflow)?, receipt: id },&self.dialog,self.start) => result? };
             if let Some(reply) = reply {
                 actions.extend(
                     self.dialog
@@ -344,7 +343,7 @@ impl ConnectionState {
         {
             Ok(_) => {
                 if self.pending.len() >= 2 {
-                    return Err(invalid("HL7 pending receipt limit exceeded"));
+                    return Err(Error::Hl7PendingReceiptLimitExceeded);
                 }
                 self.pending.insert((token.epoch(), token.ordinal()), id);
                 actions.extend(
@@ -377,7 +376,7 @@ impl ConnectionState {
         let id = self
             .pending
             .remove(&(token.epoch(), token.ordinal()))
-            .ok_or_else(|| invalid("HL7 receipt correlation missing"))?;
+            .ok_or_else(|| Error::Hl7ReceiptCorrelationMissing)?;
         let (outcome, location) = intake::interpret_with_location(store, machine, id).await?;
         let event = if matches!(outcome, intake::InterpretationOutcome::Accepted) {
             Event::Interpreted(token)
@@ -409,14 +408,14 @@ impl ConnectionState {
             let id = self
                 .pending
                 .remove(&(token.epoch(), token.ordinal()))
-                .ok_or("display receipt absent")?;
+                .ok_or(Error::DisplayReceiptAbsent)?;
             if let Some(detail) = detail {
                 intake::failed_reading(store, machine, id, &detail).await?;
             }
         }
         self.queries
             .as_mut()
-            .ok_or("HL7 display services absent")?
+            .ok_or(Error::Hl7DisplayServicesAbsent)?
             .outcome(store, code, accepted)
             .await?;
 
@@ -436,7 +435,7 @@ impl ConnectionState {
                 Some(tokio::time::Instant::from_std(
                     self.start
                         .checked_add(until)
-                        .ok_or("query write deadline overflow")?,
+                        .ok_or(Error::QueryWriteDeadlineOverflow)?,
                 )),
             )
             .await
@@ -464,10 +463,10 @@ impl ConnectionState {
     ) -> Result<(), Error> {
         self.pending
             .remove(&(token.epoch(), token.ordinal()))
-            .ok_or("order response receipt absent")?;
+            .ok_or(Error::OrderResponseReceiptAbsent)?;
         self.queries
             .as_mut()
-            .ok_or("HL7 order services absent")?
+            .ok_or(Error::Hl7OrderServicesAbsent)?
             .order_response(store, Some(message))
             .await?;
 
@@ -501,7 +500,7 @@ impl ConnectionState {
             "HL7 unsolicited message or queue overflow",
         )
         .await?;
-        Err(invalid("HL7 message refused"))
+        Err(Error::Hl7MessageRefused)
     }
     async fn close(
         &mut self,
@@ -522,7 +521,7 @@ impl ConnectionState {
         for action in actions {
             if let Action::Rejected(error, bytes) = action {
                 let cleanup = intake::park_bytes(store, machine, bytes, &error.to_string()).await;
-                super::custody::retain_cleanup(&mut result, cleanup);
+                super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
             }
         }
         if let Some(query) = &mut self.queries {
@@ -537,7 +536,7 @@ impl ConnectionState {
                     },
                 )
                 .await;
-            super::custody::retain_cleanup(&mut result, cleanup);
+            super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         }
         result
     }

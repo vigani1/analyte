@@ -1,6 +1,7 @@
 //! Evaluates bounded nonclinical alert policies in a cancellable worker.
+use crate::operator::Error;
 use crate::{
-    Error, deadline,
+    deadline,
     installation::config::{Alert, Condition},
 };
 use analyte_model::Identifier;
@@ -75,7 +76,7 @@ pub(crate) async fn active(store: &Handle) -> Result<Vec<AlertState>, Error> {
         };
         cursor = serde_json::to_string(&last.key)?;
         if alerts.len().saturating_add(page.len()) > 4096 {
-            return Err(crate::invalid("active alert snapshot exceeds 4096 rows"));
+            return Err(Error::ActiveAlertSnapshotExceeds4096Rows);
         }
         alerts.extend(page);
     }
@@ -150,6 +151,7 @@ pub(crate) async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use std::{
         path::Path,
         sync::{

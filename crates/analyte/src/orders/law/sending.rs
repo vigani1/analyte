@@ -3,8 +3,9 @@ use super::{
     Connection, Exchange,
     work::{Command, render},
 };
+use crate::installation::config::Machine;
+use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
-use crate::{Error, installation::config::Machine, invalid};
 use analyte_hl7::{Message, Options, law};
 use analyte_model::SourceText;
 use analyte_store::{Handle, MachineOrder, OrderReservation};
@@ -29,7 +30,7 @@ impl Connection {
             .checked_add(Duration::from_millis(u64::from(
                 cfg.timeouts().send_timeout_ms(),
             )))
-            .ok_or("LAW preparation deadline overflow")?;
+            .ok_or(Error::LawPreparationDeadlineOverflow)?;
         let cancels = super::super::reservation::cancellations(store, machine, until).await?;
         if let Some(sent) = self
             .idle_cancel(store, machine, options, until, cancels)
@@ -63,14 +64,14 @@ impl Connection {
             self.reserving.push(record.key.clone());
             #[cfg(feature = "test-hooks")]
             if let Some(gate) = &machine.law_gates.cancel {
-                gate.operation().await?;
+                gate.operation().await.map_err(Error::TestHook)?;
             }
             let admission =
                 super::super::reservation::cancel(store, until, id, version, owner, freshness)
                     .await;
             #[cfg(feature = "test-hooks")]
             if let Some(gate) = &machine.law_gates.cancel_result {
-                gate.operation().await?;
+                gate.operation().await.map_err(Error::TestHook)?;
             }
             match admission {
                 Ok(record) => {
@@ -128,8 +129,8 @@ impl Connection {
                         ));
                     }
                     if matches!(
-                        error.downcast_ref::<analyte_store::Error>(),
-                        Some(
+                        &error,
+                        Error::Store(
                             analyte_store::Error::DeliveryBuild(_)
                                 | analyte_store::Error::ItemIdentityTooLong
                         )
@@ -196,7 +197,7 @@ impl Connection {
                 continue;
             }
             if Instant::now() >= until {
-                return Err(invalid("LAW query deadline before reservation"));
+                return Err(Error::LawQueryDeadlineBeforeReservation);
             }
             let command = super::work::command(machine, &app)?;
             let key = super::super::reservation::key(machine, cached.id);
@@ -230,12 +231,12 @@ impl Connection {
                 },
                 move |record| {
                     render(&[(&command, record)], law::WorkAction::New, options)
-                        .map_err(analyte_store::Error::DeliveryBuild)?;
+                        .map_err(|error| analyte_store::Error::DeliveryBuild(error.into()))?;
                     Ok(command)
                 },
             )
             .await?
-            .map_err(std::io::Error::other)?;
+            .map_err(Error::Refused)?;
 
             let bytes = render(&[(&reserved.1, &reserved.0)], law::WorkAction::New, options)?
                 .raw()

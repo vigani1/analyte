@@ -1,5 +1,6 @@
 //! Restarts exhausted notification attempts with an explicit audited operator decision.
-use crate::{Error, deadline, installation::config::Program};
+use crate::operator::Error;
+use crate::{deadline, installation::config::Program};
 use analyte_model::{Identifier, Reason};
 
 /// Retries retained exhausted alerts for a configured endpoint, preserving all bytes.
@@ -17,7 +18,7 @@ pub async fn retry(
         .iter()
         .any(|entry| entry.id() == &endpoint)
     {
-        return Err(crate::invalid("alert retry endpoint is not configured"));
+        return Err(Error::AlertRetryEndpointIsNotConfigured);
     }
     let audit = analyte_store::Audit {
         actor,

@@ -1,5 +1,6 @@
 //! Validates LAW work replies against retained orders (TF-2b B.3.1 and B.7.6).
-use crate::{Error, deadline, installation::config::Machine};
+use crate::{deadline, installation::config::Machine};
+use ValidationError as Error;
 use analyte_hl7::{Message, Options, Segment, law};
 use analyte_store::Handle;
 
@@ -36,16 +37,22 @@ pub(crate) async fn check(
     for segment in message.segments() {
         match segment.id() {
             b"SPM" => {
-                spm_count = spm_count.checked_add(1).ok_or("SPM occurrence overflow")?;
+                spm_count = spm_count
+                    .checked_add(1)
+                    .ok_or(Error::SpmOccurrenceOverflow)?;
                 specimen = Some(segment);
                 container = None;
             }
             b"SAC" => {
-                sac_count = sac_count.checked_add(1).ok_or("SAC occurrence overflow")?;
+                sac_count = sac_count
+                    .checked_add(1)
+                    .ok_or(Error::SacOccurrenceOverflow)?;
                 container = Some(segment);
             }
             b"OBR" => {
-                obr_count = obr_count.checked_add(1).ok_or("OBR occurrence overflow")?;
+                obr_count = obr_count
+                    .checked_add(1)
+                    .ok_or(Error::ObrOccurrenceOverflow)?;
                 let awos = raw(segment, 2);
                 if awos == b"\"\"" {
                     continue;
@@ -202,8 +209,8 @@ mod tests {
 
     // HL7 2.5.1 §§2.5.4/2.6: each field uses its own message's delimiters.
     #[test]
-    fn hl7_251_2_5_4_2_6_retained_work_components_use_each_message_delimiters() -> Result<(), Error>
-    {
+    fn hl7_251_2_5_4_2_6_retained_work_components_use_each_message_delimiters()
+    -> Result<(), crate::Error> {
         let default = Message::parse(b"MSH|^~\\&|A|AF|M|MF|20260101120000+0000||OUL^R22^OUL_R22|m1|P|2.5.1\rOBR||awos-01^LAB||SYN^Display^99LAB\r", Options::default())?;
         let changed = Message::parse(b"MSH|$~\\&|A|AF|M|MF|20260101120000+0000||OUL$R22$OUL_R22|m2|P|2.5.1\rOBR||awos-01$LAB||SYN$Other display$99LAB\r", Options::default())?;
         let a = default
@@ -219,4 +226,27 @@ mod tests {
         assert!(same_code(a, b, 4));
         Ok(())
     }
+}
+
+/// Operational failures comparing returned LAW work with retained immutable commands.
+#[derive(Debug, thiserror::Error)]
+pub enum ValidationError {
+    /// A source occurrence counter exceeded its bound.
+    #[error("SPM occurrence overflow")]
+    SpmOccurrenceOverflow,
+    /// A source occurrence counter exceeded its bound.
+    #[error("SAC occurrence overflow")]
+    SacOccurrenceOverflow,
+    /// A source occurrence counter exceeded its bound.
+    #[error("OBR occurrence overflow")]
+    ObrOccurrenceOverflow,
+    /// Preserves the original comparison failure.
+    #[error(transparent)]
+    Store(#[from] analyte_store::Error),
+    /// Preserves the original comparison failure.
+    #[error(transparent)]
+    Encoding(#[from] std::str::Utf8Error),
+    /// Preserves the original comparison failure.
+    #[error(transparent)]
+    Hl7(#[from] analyte_hl7::Error),
 }

@@ -1,5 +1,6 @@
 //! Runs operator recovery for app deliveries and receipt interpretation without resending machine orders.
-use crate::{Error, deadline, installation::config::Program, invalid};
+use crate::operator::Error;
+use crate::{deadline, installation::config::Program};
 use analyte_model::{DeliveryId, Identifier, Reason, ReceiptId};
 use analyte_store::{Audit, Handle, InterpretationCommit, Reprocess};
 
@@ -44,7 +45,7 @@ pub async fn reprocess(
         .machines()
         .iter()
         .find(|m| m.id() == &metadata.machine)
-        .ok_or_else(|| invalid("receipt machine is absent from current configuration"))?;
+        .ok_or_else(|| Error::ReceiptMachineIsAbsentFromCurrentConfiguration)?;
     crate::machine::reprocess(
         store,
         machine,
@@ -61,6 +62,7 @@ pub async fn reprocess(
         },
     )
     .await
+    .map_err(Into::into)
 }
 
 /// Requeues exactly the named delivery, preserving its ID and stored bytes.

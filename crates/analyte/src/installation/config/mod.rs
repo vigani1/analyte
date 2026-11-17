@@ -1,11 +1,12 @@
 //! Loads bounded program TOML and machine snapshots without secret values.
 //! Kept whole: Program configuration types and boundary validation express one installation contract.
 mod alerts;
+mod error;
 mod webhooks;
-use crate::{Error, invalid};
 pub(crate) use alerts::Condition;
 pub use alerts::{Alert, AlertConfigError, AlertKind};
 use analyte_config::{Draft, Validated};
+pub use error::Error;
 use serde::Deserialize;
 use std::{
     io::Read,
@@ -88,10 +89,10 @@ fn admin_loopback() -> std::net::Ipv4Addr {
 impl Admin {
     fn address(&self) -> Result<std::net::SocketAddrV4, Error> {
         if self.address != std::net::Ipv4Addr::LOCALHOST {
-            return Err(invalid("admin address must be 127.0.0.1"));
+            return Err(Error::AdminAddressMustBe127001);
         }
         if self.port == 0 {
-            return Err(invalid("admin port must be between 1 and 65535"));
+            return Err(Error::AdminPortMustBeBetween1And65535);
         }
         Ok(std::net::SocketAddrV4::new(self.address, self.port))
     }
@@ -130,7 +131,7 @@ fn read(path: &Path) -> Result<String, Error> {
         .take(1_048_577)
         .read_to_end(&mut bytes)?;
     if bytes.len() > analyte_config::MAX_FILE_BYTES {
-        return Err(invalid("configuration exceeds 1 MiB"));
+        return Err(Error::ConfigurationExceeds1Mib);
     }
     Ok(String::from_utf8(bytes)?)
 }
@@ -140,7 +141,7 @@ impl Program {
         self.machines
             .iter_mut()
             .find(|machine| machine.id.as_str() == id)
-            .ok_or_else(|| invalid("unknown test machine"))
+            .ok_or_else(|| Error::UnknownTestMachine)
     }
 
     /// Installs a one-shot LAW raw-commit/pre-response pause on an injected loopback machine.
@@ -159,9 +160,7 @@ impl Program {
                 analyte_config::Stack::Law(_)
             )
         {
-            return Err(invalid(
-                "commit hook requires injected LAW loopback listener",
-            ));
+            return Err(Error::CommitHookRequiresInjectedLawLoopbackListener);
         }
         machine.law_committed = Some(hook);
         Ok(())
@@ -182,7 +181,7 @@ impl Program {
                 analyte_config::Stack::Law(_)
             )
         {
-            return Err(invalid("LAW gates require injected loopback listener"));
+            return Err(Error::LawGatesRequireInjectedLoopbackListener);
         }
         machine.law_gates = gates;
         Ok(())
@@ -214,9 +213,7 @@ impl Program {
                 .iter()
                 .any(|machine| machine.listener.is_none())
         {
-            return Err(invalid(
-                "stuck shutdown hook requires injected loopback listeners",
-            ));
+            return Err(Error::StuckShutdownHookRequiresInjectedLoopbackListeners);
         }
         self.stall_store_on_shutdown = true;
         Ok(())
@@ -238,9 +235,7 @@ impl Program {
                 analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
             )
         {
-            return Err(invalid(
-                "commit hook requires injected ASTM loopback listener",
-            ));
+            return Err(Error::CommitHookRequiresInjectedAstmLoopbackListener);
         }
         machine.astm_committed = Some(hook);
         Ok(())
@@ -267,7 +262,7 @@ impl Program {
                 .ip()
                 .is_loopback()
         {
-            return Err(invalid("closing hook requires a loopback TCP client"));
+            return Err(Error::ClosingHookRequiresALoopbackTcpClient);
         }
         machine.connection_closing = Some(hook);
         Ok(())
@@ -288,9 +283,7 @@ impl Program {
                 != analyte_config::TransportKind::TcpServer
             || listener.local_addr()?.to_string() != machine.snapshot.effective().site().endpoint
         {
-            return Err(invalid(
-                "test listener does not match configured loopback server",
-            ));
+            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
         }
         listener.set_nonblocking(true)?;
         machine.listener = Some(listener);
@@ -312,17 +305,15 @@ impl Program {
             || !(1..=1000).contains(&file.store.busy_timeout_ms)
             || file.store.database_bytes <= file.store.reserve_bytes
         {
-            return Err(invalid(
-                "invalid program version, machine count or storage limits",
-            ));
+            return Err(Error::InvalidProgramVersionMachineCountOrStorageLimits);
         }
         let base = path
             .parent()
-            .ok_or_else(|| invalid("configuration has no parent directory"))?;
+            .ok_or_else(|| Error::ConfigurationHasNoParentDirectory)?;
         let mut machines: Vec<Machine> = Vec::new();
         for entry in file.machines {
             if machines.iter().any(|m| m.id == entry.id) {
-                return Err(invalid("duplicate machine identity"));
+                return Err(Error::DuplicateMachineIdentity);
             }
             machines.push(load_machine(entry, base, file.store.record_bytes)?);
         }
@@ -334,7 +325,7 @@ impl Program {
                     .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
             })
         {
-            return Err(invalid("invalid signing rotation references or count"));
+            return Err(Error::InvalidSigningRotationReferencesOrCount);
         }
         for machine in &machines {
             let destination = &machine.snapshot.effective().site().destination;
@@ -346,7 +337,7 @@ impl Program {
                         || other.signing_key_name != destination.signing_key_name
                         || other.freshness_seconds != destination.freshness_seconds)
             }) {
-                return Err(invalid("inconsistent shared destination"));
+                return Err(Error::InconsistentSharedDestination);
             }
         }
         if !(1..=3600).contains(&file.alert_interval_seconds) {
@@ -441,7 +432,7 @@ impl Program {
             .iter()
             .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
         {
-            return Err(invalid("unknown test destination"));
+            return Err(Error::UnknownTestDestination);
         }
         self.loopback_destinations.insert(name.into(), url);
         Ok(())
@@ -459,9 +450,7 @@ impl Program {
         if !self.loopback_destinations.contains_key(name)
             || !(Duration::from_millis(1)..=Duration::from_secs(5)).contains(&interval)
         {
-            return Err(invalid(
-                "test polling requires a loopback override and a bounded interval",
-            ));
+            return Err(Error::TestPollingRequiresALoopbackOverrideAndABoundedInterval);
         }
         for machine in &mut self.machines {
             if machine
@@ -509,6 +498,7 @@ impl Machine {
 #[cfg(test)]
 mod admin_tests {
     use super::*;
+    use crate::Error;
 
     #[test]
     fn plan11_loopback_poll_override_keeps_production_defaults_and_refuses_unbounded_waits()
@@ -580,6 +570,7 @@ mod admin_tests {
 #[cfg(test)]
 mod alert_program_tests {
     use super::*;
+    use crate::Error;
 
     // Plan section 11: policies identify installed machines and have unique identities.
     #[test]
@@ -652,6 +643,7 @@ fn startup_timeout<'de, D: serde::Deserializer<'de>>(
 #[cfg(test)]
 mod startup_tests {
     use super::*;
+    use crate::Error;
     const BASE: &str = "reserve_bytes=1\ndatabase_bytes=100000000\nrecord_bytes=65536\npage_rows=100\nbusy_timeout_ms=1000\n";
     #[test]
     fn startup_budget_is_typed_defaulted_and_bounded() -> Result<(), Error> {
@@ -691,21 +683,15 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
         snapshot.effective().stack(),
         analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
     ) {
-        return Err(invalid(
-            "ASTM receive dialog currently supports strict checksum hex only",
-        ));
+        return Err(Error::AstmReceiveDialogCurrentlySupportsStrictChecksumHexOnly);
     }
     if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
-        return Err(invalid(
-            "receive transport operation timeout cannot exceed 60000 ms",
-        ));
+        return Err(Error::ReceiveTransportOperationTimeoutCannotExceed60000Ms);
     }
     if snapshot.canonical().len() > record_bytes
         || snapshot.effective().stack().limits().bytes() > record_bytes
     {
-        return Err(invalid(
-            "store record limit is smaller than machine message or effective config",
-        ));
+        return Err(Error::StoreRecordLimitIsSmallerThanMachineMessageOrEffectiveConfig);
     }
     if entry.capture
         && (!entry
@@ -715,9 +701,7 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
             || matches!(entry.id.as_str(), "." | ".."))
     {
-        return Err(invalid(
-            "capture machine ID must be one directory component",
-        ));
+        return Err(Error::CaptureMachineIdMustBeOneDirectoryComponent);
     }
     Ok(Machine {
         capture: entry.capture,

@@ -1,7 +1,8 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
+use crate::machine::error::SessionError as Error;
 use crate::orders::astm::{Pending, Request};
-use crate::{Error, deadline, intake, invalid};
+use crate::{deadline, intake};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
@@ -31,6 +32,8 @@ struct ConnectionState<'a, 'm> {
     dialog: Dialog,
     start: Instant,
     transfer: Option<Identifier>,
+    // Keep the failure until the dialog's NAK and refusal actions have run.
+    commit_failure: Option<super::custody::StoreWaitError<analyte_store::Error>>,
     raw: Vec<u8>,
     payload: Vec<u8>,
     input_evidence: connection_input::Custody,
@@ -90,6 +93,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             dialog,
             start,
             transfer,
+            commit_failure: None,
             raw,
             payload,
             input_evidence: connection_input::Custody::default(),
@@ -175,7 +179,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         {
             self.next_order_poll = Instant::now()
                 .checked_add(Duration::from_secs(1))
-                .ok_or_else(|| invalid("order poll deadline overflow"))?;
+                .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
             crate::orders::sending::next(store, machine, &mut self.order_cursor).await?
         } else {
             None
@@ -242,7 +246,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             let expected = settings
                 .frame_limit()
                 .checked_add(machine.snapshot.canonical().len())
-                .ok_or_else(|| invalid("ASTM admission size overflow"))?;
+                .ok_or_else(|| Error::AstmAdmissionSizeOverflow)?;
             let capacity = store
                 .request(deadline(), move |s| s.admission(expected))
                 .await;
@@ -287,7 +291,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     .checked_add(record.len())
                     .is_none_or(|n| n > settings.syntax().limits().bytes())
                 {
-                    return Err(invalid("ASTM message bound exceeded"));
+                    return Err(Error::AstmMessageBoundExceeded);
                 }
                 self.payload.extend_from_slice(&record);
             }
@@ -311,9 +315,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Action::Rejected(error, bytes) => {
                 intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
-            Action::CommitFailed(_) | Action::LimitReached => {
-                return Err(invalid("ASTM storage or resource limit refused transfer"));
+            Action::CommitFailed(_) => {
+                return Err(self
+                    .commit_failure
+                    .take()
+                    .map_or(Error::AstmCommitDeadline, Error::AstmCommitRefused));
             }
+            Action::LimitReached => return Err(Error::AstmResourceLimitRefusedTransfer),
             Action::Sent(end) => {
                 for order in self.active_orders.drain(..) {
                     crate::orders::sending::finished(store, &order, end).await?;
@@ -344,7 +352,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             .checked_add(bytes.len())
             .is_none_or(|n| n > settings.syntax().limits().bytes())
         {
-            return Err(invalid("ASTM transfer wire-byte bound exceeded"));
+            return Err(Error::AstmTransferWireByteBoundExceeded);
         }
         self.raw.extend_from_slice(&bytes);
         let provenance = analyte_store::FrameProvenance {
@@ -370,16 +378,16 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         if committed.is_ok()
             && let Some(hook) = &machine.astm_committed
         {
-            hook.pause(stop).await?;
+            hook.pause(stop).await.map_err(Error::TestHook)?;
         }
-        actions.extend(self.dialog.step(
-            self.start.elapsed(),
-            if committed.is_ok() {
-                Event::Committed(id)
-            } else {
+        let event = match committed {
+            Ok(_) => Event::Committed(id),
+            Err(error) => {
+                self.commit_failure = Some(error);
                 Event::CommitFailed(id)
-            },
-        )?);
+            }
+        };
+        actions.extend(self.dialog.step(self.start.elapsed(), event)?);
 
         Ok(())
     }
@@ -439,6 +447,11 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         Ok(())
     }
     async fn close(&mut self, mut result: Result<(), Error>) -> Result<(), Error> {
+        // A failed NAK write can interrupt the action queue before CommitFailed.
+        // Keep that transport failure and the original custody cause together.
+        if let Some(error) = self.commit_failure.take() {
+            super::custody::retain_cleanup(&mut result, Err(Error::AstmCommitRefused(error)));
+        }
         // Disconnect drains the dialog-owned decoder on every exit, including failed
         // host effects. Transfer and order identities are reconciled below even if
         // parking one piece of framing evidence fails.
@@ -449,7 +462,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                         let cleanup =
                             intake::park_bytes(self.store, self.machine, bytes, &error.to_string())
                                 .await;
-                        super::custody::retain_cleanup(&mut result, cleanup);
+                        super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
                     }
                 }
             }
@@ -464,7 +477,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 "connection-ended-before-transfer-confirmation",
             )
             .await;
-            super::custody::retain_cleanup(&mut result, cleanup);
+            super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         }
         if let Some(transfer) = self.transfer.take() {
             let cleanup = finish_incomplete(self.store, transfer).await;

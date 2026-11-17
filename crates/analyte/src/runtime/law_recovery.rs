@@ -1,5 +1,6 @@
 //! Recovers raw LAW receipts before opening any machine connection.
-use crate::{Error, deadline, installation::config::Program};
+use crate::runtime::Error;
+use crate::{deadline, installation::config::Program};
 use analyte_store::{Handle, Interpretation, Reading};
 
 pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> {
@@ -38,9 +39,7 @@ pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> 
             }
         }
         if !complete {
-            return Err(crate::invalid(
-                "pending LAW recovery page bound exceeded; machine startup refused",
-            ));
+            return Err(Error::PendingLawRecoveryPageBoundExceededMachineStartupRefused);
         }
     }
     Ok(())

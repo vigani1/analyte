@@ -528,7 +528,9 @@ async fn ihe_palm_tf2b_b6_rule8_reconnect_waits_for_previous_dialog_owner() -> R
     let (hook, control) = analyte::runtime::test_hooks::Committed::new();
     let (_temp, path, reference, running, mut peer, listener) =
         client_with_setup(&settings, |program| {
-            program.pause_connection_closing_for_test("law", hook)
+            program
+                .pause_connection_closing_for_test("law", hook)
+                .map_err(Into::into)
         })
         .await?;
     packet(&mut peer).await?;

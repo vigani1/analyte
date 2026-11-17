@@ -1,6 +1,7 @@
 //! Sends unsolicited HL7 work and cancellations (HL7 ch.4).
+use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
-use crate::{Error, deadline, installation::config::Machine};
+use crate::{deadline, installation::config::Machine};
 use analyte_hl7::{
     Options,
     order::{self, OrderMessage, OrderResponse, Outcome},
@@ -43,7 +44,7 @@ pub(super) async fn next(
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
-    let settings = super::settings::hl7(machine).ok_or("HL7 settings missing")?;
+    let settings = super::settings::hl7(machine).ok_or(Error::Hl7SettingsMissing)?;
     let Some(_) = &settings.send() else {
         return Ok(None);
     };
@@ -92,7 +93,7 @@ async fn next_work(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let settings = super::settings::hl7(machine).ok_or("HL7 settings missing")?;
+    let settings = super::settings::hl7(machine).ok_or(Error::Hl7SettingsMissing)?;
     let Some(send) = &settings.send() else {
         return Ok(None);
     };
@@ -135,7 +136,8 @@ async fn next_work(
                 max_identity_bytes,
             },
             move |record| {
-                build(&command, record, false).map_err(analyte_store::Error::DeliveryBuild)
+                build(&command, record, false)
+                    .map_err(|error| analyte_store::Error::DeliveryBuild(error.into()))
             },
         )
         .await;

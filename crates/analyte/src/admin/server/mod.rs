@@ -4,7 +4,8 @@ use super::{
     listener::Listener,
     sessions::{Session, Sessions},
 };
-use crate::{Error, installation::config::Program};
+use crate::admin::Error;
+use crate::installation::config::Program;
 use analyte_model::Identifier;
 use axum::{
     Extension, Form, Router,

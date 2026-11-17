@@ -1,5 +1,5 @@
 //! Drives independent LAW connections with host-owned I/O (TF-2b B.6).
-use super::{Connection, Error, intake, invalid};
+use super::{Connection, Error, intake};
 use crate::orders::outcome::Code;
 use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
@@ -33,7 +33,7 @@ pub(in crate::machine) async fn run(
     capture: Option<Arc<crate::machine::capture::Capture>>,
 ) -> Result<(), Error> {
     let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() else {
-        return Err(invalid("independent LAW stack absent"));
+        return Err(Error::IndependentLawStackAbsent);
     };
     let settings = Arc::new(settings.as_ref().clone());
     let listener = match machine.listener.take() {
@@ -101,7 +101,7 @@ async fn server(
                 biased;
                 ()=crate::machine::stopping(&mut stop)=>break,
                 completed=sessions.join_next(),if !sessions.is_empty()=>{
-                    if let Some(completed)=completed { report(&machine,completed.map_err(|error|task_failure(&error))?); }
+                    if let Some(completed)=completed { report(&machine,completed.map_err(task_failure)?); }
                 },
                 accepted=listener.accept(),if sessions.len()<SESSION_LIMIT=>{
                     let (stream,_)=accepted?;
@@ -125,7 +125,7 @@ async fn server(
                     "LAW inbound task did not return an outcome during shutdown"
                 );
                 if result.is_ok() {
-                    result = Err(task_failure(&error));
+                    result = Err(task_failure(error));
                 }
             }
         }
@@ -176,11 +176,11 @@ async fn accepted_connection(
 }
 
 // Join diagnostics must not expose a panic payload from a source transaction.
-fn task_failure(error: &tokio::task::JoinError) -> Error {
+fn task_failure(error: tokio::task::JoinError) -> Error {
     if error.is_panic() {
-        invalid("LAW inbound task panicked; machine owner stopped")
+        Error::LawInboundTaskPanickedMachineOwnerStopped(error)
     } else {
-        invalid("LAW inbound task was cancelled before returning its outcome")
+        Error::LawInboundTaskWasCancelledBeforeReturningItsOutcome(error)
     }
 }
 fn report(machine: &Machine, result: Result<(), Error>) {
@@ -211,9 +211,9 @@ async fn worker(
                     if let Some(gate) = &machine.law_gates.queued
                         && let Err(error) = gate.pause(&mut stop).await {
                             job.orders.close(&store, "LAW-test-queue-gate-stopped").await?;
-                            return Err(error);
+                            return Err(Error::TestHook(error));
                     }
-                    let until=job.orders.due().ok_or("LAW queued work has no deadline")?;
+                    let until=job.orders.due().ok_or(Error::LawQueuedWorkHasNoDeadline)?;
                     #[cfg(feature = "test-hooks")]
                     let until = if machine.law_gates.expire_queued { std::time::Instant::now() } else { until };
                     let ready=tokio::select! {
@@ -239,7 +239,7 @@ async fn worker(
                     match outgoing {
                         Ok(Some(message))=>{let result=exchange(&machine,&store,&settings,&mut idle_orders,&message,stop.clone(),capture.as_deref()).await;settle(&machine,&store,&mut idle_orders,result).await?;},
                         Ok(None)=>{},
-                        Err(error)=>{idle_orders.close(&store,Code::LawIndependentAdmissionFailed.as_str()).await?;report(&machine,Err(error));},
+                        Err(error)=>{idle_orders.close(&store,Code::LawIndependentAdmissionFailed.as_str()).await?;report(&machine,Err(error.into()));},
                     }
                 }
             }
@@ -287,16 +287,16 @@ async fn exchange(
     capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
     let LawLinks::Independent { outbound } = settings.policy().links() else {
-        return Err(invalid("LAW independent destination absent"));
+        return Err(Error::LawIndependentDestinationAbsent);
     };
-    let until = orders.due().ok_or("LAW outbound deadline absent")?;
+    let until = orders.due().ok_or(Error::LawOutboundDeadlineAbsent)?;
     if std::time::Instant::now() >= until {
-        return Err(invalid("LAW outbound work expired before connection"));
+        return Err(Error::LawOutboundWorkExpiredBeforeConnection);
     }
     let stream = tokio::select! {
         biased;
         ()=crate::machine::stopping(&mut stop)=>return Ok(()),
-        result=tokio::time::timeout_at(until.into(),TcpStream::connect(outbound))=>result.map_err(|_|invalid("LAW outbound connect deadline"))??,
+        result=tokio::time::timeout_at(until.into(),TcpStream::connect(outbound))=>result.map_err(Error::LawOutboundConnectDeadline)??,
     };
     let limits = analyte_transport::Limits::new(
         CHANNEL_LIMIT,

@@ -227,24 +227,22 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         .clone()
         .unwrap_or(Identifier::new("local-operator")?);
     match cli.command {
-        Command::RetryAlerts { endpoint, reason } => {
-            analyte::operator::alert_recovery::retry(
-                &Program::load(&cli.config)?,
-                required_actor(cli.actor)?,
-                endpoint,
-                Reason::new(&reason)?,
-            )
-            .await
-        }
+        Command::RetryAlerts { endpoint, reason } => analyte::operator::alert_recovery::retry(
+            &Program::load(&cli.config)?,
+            required_actor(cli.actor)?,
+            endpoint,
+            Reason::new(&reason)?,
+        )
+        .await
+        .map_err(Into::into),
         Command::PrepareRetention => service::prepare_retention(Program::load(&cli.config)?).await,
-        Command::Holds { command } => {
-            analyte::operator::holds::run(
-                &Program::load(&cli.config)?,
-                required_actor(cli.actor)?,
-                command,
-            )
-            .await
-        }
+        Command::Holds { command } => analyte::operator::holds::run(
+            &Program::load(&cli.config)?,
+            required_actor(cli.actor)?,
+            command,
+        )
+        .await
+        .map_err(Into::into),
         Command::Admin {
             command: Admin::Token { rotate: _ },
         } => {
@@ -266,7 +264,9 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         ))
         .into()),
         Command::Orders { command } => {
-            analyte::orders::run(&Program::load(&cli.config)?, actor, command).await
+            analyte::orders::run(&Program::load(&cli.config)?, actor, command)
+                .await
+                .map_err(Into::into)
         }
         Command::CheckConfig { file } => check_config(&file),
         Command::Run {
@@ -279,7 +279,9 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             )
             .await
         }
-        Command::Status { file } => analyte::operator::status::print(&Program::load(&file)?).await,
+        Command::Status { file } => analyte::operator::status::print(&Program::load(&file)?)
+            .await
+            .map_err(Into::into),
         Command::Parked {
             command: Parked::Reprocess { id, reason },
         } => {

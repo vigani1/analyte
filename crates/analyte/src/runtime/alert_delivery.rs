@@ -1,6 +1,7 @@
 //! Drives independent alert endpoints without gating any clinical worker.
+use crate::runtime::Error;
 use crate::{
-    Error, deadline,
+    deadline,
     installation::config::{AlertDelivery, AlertEndpoint},
 };
 use analyte_store::{AlertFailure, Handle};
@@ -101,6 +102,7 @@ async fn cycle(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use std::sync::Mutex;
     use tracing::instrument::WithSubscriber as _;
     #[derive(Clone)]
