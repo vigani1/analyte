@@ -1,5 +1,6 @@
 //! Tests machine receipt storage and acknowledgment ordering.
-use analyte::{Error, installation::config::Program, runtime::service};
+type Error = Box<dyn std::error::Error + Send + Sync>;
+use analyte::{installation::config::Program, runtime::service};
 use analyte_fixtures as guard;
 use analyte_store::{FreeSpace, Store};
 use guard::HANG_GUARD;
@@ -83,7 +84,7 @@ const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|
 async fn serve(
     program: Program,
     space: Box<dyn FreeSpace>,
-    stop: impl Future<Output = Result<(), Error>>,
+    stop: impl Future<Output = Result<(), analyte::runtime::Error>>,
 ) -> Result<(), Error> {
     let secrets = analyte::installation::secrets::Environment::load_with(&program, |name| {
         Some(
@@ -95,7 +96,7 @@ async fn serve(
             .into(),
         )
     })?;
-    service::serve_loopback_test(program, space, stop, secrets, None).await
+    Ok(service::serve_loopback_test(program, space, stop, secrets, None).await?)
 }
 
 type ServiceTask = tokio::task::JoinHandle<Result<(), Error>>;
@@ -106,7 +107,8 @@ fn start_service(path: &Path) -> Result<(oneshot::Sender<()>, ServiceTask), Erro
         Program::load(path)?,
         Box::new(Space(u64::MAX)),
         async {
-            stop.await?;
+            stop.await
+                .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
             Ok(())
         },
     ));

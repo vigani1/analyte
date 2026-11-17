@@ -42,11 +42,11 @@ pub(crate) fn shutdown_bound(
     mode: ServiceMode,
     watchdog: Option<&crate::runtime::shutdown::Watchdog>,
     bound: Duration,
-) -> Result<Duration, crate::Error> {
+) -> Result<Duration, Error> {
     let loopback = mode.is_loopback();
     if program.hooks.stall_store_on_shutdown {
         if !loopback || watchdog.is_some() {
-            return Err(Error::StuckShutdownHookRequiresTheLoopbackTestService.into());
+            return Err(Error::StuckShutdownHookRequiresTheLoopbackTestService);
         }
         Ok(Duration::from_millis(500))
     } else {
@@ -56,7 +56,7 @@ pub(crate) fn shutdown_bound(
 pub(crate) async fn stall(
     program: &Program,
     store: &Arc<analyte_store::Handle>,
-) -> Result<(), crate::Error> {
+) -> Result<(), Error> {
     if program.hooks.stall_store_on_shutdown {
         // Child-process tests emulate a stuck OS flush; the watchdog owns exit.
         store
@@ -77,10 +77,10 @@ pub(crate) async fn stall(
 pub async fn serve_loopback_test(
     program: Program,
     space: Box<dyn FreeSpace>,
-    stop: impl Future<Output = Result<(), crate::Error>>,
+    stop: impl Future<Output = Result<(), Error>>,
     secrets: crate::installation::secrets::Environment,
     ready: Option<tokio::sync::oneshot::Sender<()>>,
-) -> Result<(), crate::Error> {
+) -> Result<(), Error> {
     serve_with(
         program,
         space,

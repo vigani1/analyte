@@ -22,7 +22,8 @@ use analyte_fixtures as test_guard;
 /// Bounds ordinary orchestration storage requests independently of machine protocol timers.
 const STORE_OPERATION_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// The orchestration boundary retains concrete errors as their original causes.
+/// Test helpers retain arbitrary fixture failures.
+#[cfg(test)]
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 #[cfg(test)]

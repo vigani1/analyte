@@ -4,8 +4,9 @@ pub(crate) mod cleanup;
 pub(crate) mod conversions;
 #[cfg(feature = "test-hooks")]
 pub use super::hooks::serve_loopback_test;
+use crate::runtime::Error;
 use crate::runtime::Error as Failure;
-use crate::{Error, deadline, installation::config::Program, machine, runtime::space::Volume};
+use crate::{deadline, installation::config::Program, machine, runtime::space::Volume};
 use analyte_store::{FreeSpace, Handle};
 use std::{
     future::Future,
@@ -127,7 +128,7 @@ pub(crate) async fn serve_bounded(
     watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
     if !(SHUTDOWN_MIN..=SHUTDOWN_MAX).contains(&bound) {
-        return Err(Failure::ShutdownBoundMustBe30Through300Seconds.into());
+        return Err(Failure::ShutdownBoundMustBe30Through300Seconds);
     }
     serve_with(
         program,
@@ -351,7 +352,7 @@ struct Draining {
     captures: Vec<Arc<machine::capture::Capture>>,
     alert_owners: JoinSet<Result<(), Error>>,
     admin_owners: JoinSet<Result<(), Error>>,
-    delivery_owners: JoinSet<Result<(), DeliveryOwnerError>>,
+    delivery_owners: JoinSet<Result<(), Error>>,
     owners: JoinSet<()>,
     ready_to_close: Vec<watch::Receiver<bool>>,
     delivery_stop: watch::Sender<bool>,
@@ -463,21 +464,12 @@ async fn close_store(store: Arc<Handle>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Supervised owners combine exactly polling and app delivery boundaries.
-#[derive(Debug, thiserror::Error)]
-enum DeliveryOwnerError {
-    #[error(transparent)]
-    Poll(#[from] analyte_sink::PollError),
-    #[error(transparent)]
-    Delivery(#[from] analyte_sink::DeliveryError),
-}
-
 fn start_delivery(
     destinations: Vec<analyte_sink::Destination>,
     store: &Arc<Handle>,
     secrets: &Arc<crate::installation::secrets::Environment>,
     watchdog: &crate::runtime::shutdown::Watchdog,
-) -> (watch::Sender<bool>, JoinSet<Result<(), DeliveryOwnerError>>) {
+) -> (watch::Sender<bool>, JoinSet<Result<(), Error>>) {
     let (delivery_stop, delivery_stopped) = watch::channel(false);
     let mut delivery_owners = JoinSet::new();
     for destination in &destinations {
@@ -491,7 +483,7 @@ fn start_delivery(
             analyte_sink::Poller::new(&store, &destination, secrets.as_ref())
                 .run(stop)
                 .await
-                .map_err(DeliveryOwnerError::from)
+                .map_err(Error::from)
         });
     }
     for destination in destinations {
@@ -505,7 +497,7 @@ fn start_delivery(
             analyte_sink::Worker::for_destination(&store, &destination, secrets.as_ref())
                 .run_draining(stop, crate::runtime::delivery::SHUTDOWN_BUDGET)
                 .await
-                .map_err(DeliveryOwnerError::from)
+                .map_err(Error::from)
         });
     }
     (delivery_stop, delivery_owners)
@@ -526,9 +518,7 @@ fn start_alerts(
         let component = watchdog.component(format!("alert-endpoint-{}", endpoint.id().as_str()));
         alert_owners.spawn(async move {
             let _component = component;
-            crate::runtime::alert_delivery::run(store, endpoint, policy, stop)
-                .await
-                .map_err(Into::into)
+            crate::runtime::alert_delivery::run(store, endpoint, policy, stop).await
         });
     }
 
@@ -543,9 +533,7 @@ fn start_alerts(
         if !policies.is_empty() {
             alert_owners.spawn(async move {
                 let _component = component;
-                crate::runtime::retention::run(store, policies, stop)
-                    .await
-                    .map_err(Into::into)
+                crate::runtime::retention::run(store, policies, stop).await
             });
         }
     }
@@ -579,7 +567,7 @@ async fn supervise(
     stop: impl Future<Output = Result<(), Error>>,
     alert_owners: &mut JoinSet<Result<(), Error>>,
     admin_owners: &mut JoinSet<Result<(), Error>>,
-    delivery_owners: &mut JoinSet<Result<(), DeliveryOwnerError>>,
+    delivery_owners: &mut JoinSet<Result<(), Error>>,
     owners: &mut JoinSet<()>,
 ) -> Result<(), Error> {
     tokio::pin!(stop);
@@ -590,21 +578,21 @@ async fn supervise(
                 break match owner {
                     Some(Ok(Err(error))) => Err(error),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(Failure::AlertEvaluatorStoppedUnexpectedly.into()),
+                    Some(Ok(Ok(()))) | None => Err(Failure::AlertEvaluatorStoppedUnexpectedly),
                 }
             }
             owner = admin_owners.join_next(), if !admin_owners.is_empty() => {
                 break match owner {
                     Some(Ok(Err(error))) => Err(error),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(Failure::AdminOwnerStoppedUnexpectedly.into()),
+                    Some(Ok(Ok(()))) | None => Err(Failure::AdminOwnerStoppedUnexpectedly),
                 }
             }
             owner = delivery_owners.join_next(), if !delivery_owners.is_empty() => {
                 break match owner {
-                    Some(Ok(Err(error))) => Err(error.into()),
+                    Some(Ok(Err(error))) => Err(error),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(Failure::DeliveryOwnerStoppedUnexpectedly.into()),
+                    Some(Ok(Ok(()))) | None => Err(Failure::DeliveryOwnerStoppedUnexpectedly),
                 }
             }
             owner = owners.join_next(), if !owners.is_empty() => {
@@ -707,7 +695,7 @@ async fn open_service_store(
         if let Failure::Io(source) = error {
             Error::from(source)
         } else {
-            Error::from(error)
+            error
         }
     })?;
     Ok(Arc::new(store))
@@ -715,37 +703,5 @@ async fn open_service_store(
 
 // The service's existing startup API exposes original dependency causes to recovery callers.
 fn admin_startup_error(error: crate::admin::Error) -> Error {
-    match error {
-        crate::admin::Error::Raw(source) => Error::from(source),
-        crate::admin::Error::Reconciliation(source) => Error::from(source),
-        crate::admin::Error::Deadline(source) => Error::from(source),
-        crate::admin::Error::Join(source) => Error::from(source),
-        crate::admin::Error::MachineConfig(source) => Error::from(source),
-        crate::admin::Error::Operator(source) => Error::from(*source),
-        crate::admin::Error::Runtime(source) => Error::from(source),
-        crate::admin::Error::Store(source) => Error::from(source),
-        crate::admin::Error::Intake(source) => Error::from(source),
-        crate::admin::Error::Config(source) => Error::from(source),
-        crate::admin::Error::Text(source) => Error::from(source),
-        crate::admin::Error::Identity(source) => Error::from(source),
-        crate::admin::Error::Uuid(source) => Error::from(source),
-        crate::admin::Error::Integer(source) => Error::from(source),
-        crate::admin::Error::ParseInteger(source) => Error::from(source),
-        crate::admin::Error::Json(source) => Error::from(source),
-        crate::admin::Error::Token(source) => Error::from(source),
-        crate::admin::Error::SinkDestinationError(source) => Error::from(source),
-        crate::admin::Error::SinkDeliveryError(source) => Error::from(source),
-        crate::admin::Error::SinkPollError(source) => Error::from(source),
-        crate::admin::Error::Io(source) => Error::from(source),
-        crate::admin::Error::Secret(source) => Error::from(source),
-        other @ (crate::admin::Error::AwosItemNotRetained
-        | crate::admin::Error::AdminSessionCapacityReachedRestartOrWaitForExpiry
-        | crate::admin::Error::AdminSessionLockPoisoned
-        | crate::admin::Error::ChoosePlaceOrRelease
-        | crate::admin::Error::ChooseReceiptOrOrder
-        | crate::admin::Error::CurrentConfigurationPointsToADifferentStore
-        | crate::admin::Error::MachineCursorOverflow
-        | crate::admin::Error::ParkedTargetCursorOverflow
-        | crate::admin::Error::UncertainOrderCountOverflow) => Error::from(other),
-    }
+    Error::Admin(Box::new(error))
 }

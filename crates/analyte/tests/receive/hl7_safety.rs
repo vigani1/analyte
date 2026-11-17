@@ -20,7 +20,8 @@ async fn hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked() -> Re
             Program::load(&path)?,
             Box::new(Space(u64::MAX)),
             async {
-                stop.await?;
+                stop.await
+                    .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
                 Ok(())
             },
         ));

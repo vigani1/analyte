@@ -72,7 +72,8 @@ async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_a
         Program::load(&path)?,
         Box::new(Space(u64::MAX)),
         async {
-            stop.await?;
+            stop.await
+                .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
             Ok(())
         },
     ));

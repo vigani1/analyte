@@ -2,6 +2,45 @@
 /// Failures owned by runtime workers and protected-store startup.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Retains the integer parsing failure.
+    #[error(transparent)]
+    ParseInteger(#[from] std::num::ParseIntError),
+    /// Retains the concrete integer failure.
+    #[error(transparent)]
+    Integer(#[from] std::num::TryFromIntError),
+    /// Retains the concrete identity failure.
+    #[error(transparent)]
+    Identity(#[from] analyte_model::InvalidUuid),
+    /// Retains the machine configuration failure.
+    #[error(transparent)]
+    MachineConfig(#[from] analyte_config::Error),
+    /// Retains the concrete token failure.
+    #[error(transparent)]
+    Token(#[from] crate::admin::TokenError),
+    /// Retains the concrete hooks failure.
+    #[error(transparent)]
+    Hooks(#[from] super::test_hooks::Error),
+    /// Retains the concrete operator failure.
+    #[error(transparent)]
+    Operator(Box<crate::operator::Error>),
+    /// Retains the concrete config failure.
+    #[error(transparent)]
+    Config(#[from] crate::installation::config::Error),
+    /// Retains the concrete storage failure.
+    #[error(transparent)]
+    Storage(#[from] analyte_store::StorageError),
+    /// Administration startup retains its owning error boundary.
+    #[error(transparent)]
+    Admin(Box<crate::admin::Error>),
+    /// Logging initialization preserves its original cause.
+    #[error(transparent)]
+    Logging(Box<dyn std::error::Error + Send + Sync>),
+    /// Operator evidence command failed.
+    #[error(transparent)]
+    ParkedCommand(#[from] ParkedCommand),
+    /// Operator delivery command failed.
+    #[error(transparent)]
+    DeliveryCommand(#[from] DeliveryCommand),
     /// The host could not represent the storage request deadline.
     #[error(transparent)]
     Deadline(#[from] crate::DeadlineError),
@@ -131,3 +170,49 @@ pub enum Error {
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct DispatchCause(pub &'static str);
+
+/// Failures of the parked-evidence command, including its host input refusals.
+#[derive(Debug, thiserror::Error)]
+pub enum ParkedCommand {
+    /// Retains the failure of this command operation.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
+    /// Retains the failure of this command operation.
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    /// Retains the failure of this command operation.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    /// Retains the failure of this command operation.
+    #[error("reprocessing requires the interpretation route")]
+    ReprocessRequiresInterpretation,
+    /// Retains the failure of this command operation.
+    #[error("operator sequence cursor overflow")]
+    OperatorCursorOverflow,
+}
+
+/// Boundaries combined by the audited delivery listing command.
+#[derive(Debug, thiserror::Error)]
+pub enum DeliveryCommand {
+    /// Retains the failure of this command operation.
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    /// Retains the failure of this command operation.
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    /// Retains the failure of this command operation.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+}
+
+impl From<crate::admin::Error> for Error {
+    fn from(error: crate::admin::Error) -> Self {
+        Self::Admin(Box::new(error))
+    }
+}
+
+impl From<crate::operator::Error> for Error {
+    fn from(error: crate::operator::Error) -> Self {
+        Self::Operator(Box::new(error))
+    }
+}

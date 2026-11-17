@@ -88,8 +88,8 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     .ok_or("missing credential unexpectedly admitted")?;
     assert!(
         matches!(
-            failure.downcast_ref::<super::super::TokenError>(),
-            Some(super::super::TokenError::Missing)
+            &failure,
+            crate::runtime::Error::Token(super::super::TokenError::Missing)
         ),
         "expected missing token after fixture migration, received: {failure}"
     );
@@ -101,7 +101,9 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
         program,
         Box::new(Space),
         async {
-            stopped.await?;
+            stopped
+                .await
+                .map_err(crate::runtime::Error::ScmStopSenderClosed)?;
             Ok(())
         },
         injected,

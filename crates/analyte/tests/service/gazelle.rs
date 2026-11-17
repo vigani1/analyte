@@ -100,7 +100,9 @@ async fn gazelle_lab28_live() -> Result<(), Error> {
         program,
         Box::new(Space),
         async {
-            stopped.await?;
+            stopped
+                .await
+                .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
             Ok(())
         },
         secrets,

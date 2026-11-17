@@ -1,6 +1,6 @@
 //! Runs the foreground service and protected operator command line.
 #![forbid(unsafe_code)]
-use analyte::{Error, installation::config::Program, runtime::service};
+use analyte::{installation::config::Program, runtime::Error, runtime::service};
 use analyte_model::{Identifier, Reason};
 use analyte_store::Audit;
 use clap::{Parser, Subcommand};
@@ -9,31 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Failures of the parked-evidence command, including its host input refusals.
-#[derive(Debug, thiserror::Error)]
-enum ParkedCommandError {
-    #[error(transparent)]
-    Evidence(#[from] analyte_store::OperatorError),
-    #[error(transparent)]
-    Audit(#[from] analyte_store::StorageError),
-    #[error(transparent)]
-    Worker(#[from] analyte_store::WorkerError),
-    #[error("reprocessing requires the interpretation route")]
-    ReprocessRequiresInterpretation,
-    #[error("operator sequence cursor overflow")]
-    OperatorCursorOverflow,
-}
-
-/// Boundaries combined by the audited delivery listing command.
-#[derive(Debug, thiserror::Error)]
-enum DeliveryCommandError {
-    #[error(transparent)]
-    Delivery(#[from] analyte_store::DeliveryError),
-    #[error(transparent)]
-    Audit(#[from] analyte_store::StorageError),
-    #[error(transparent)]
-    Worker(#[from] analyte_store::WorkerError),
-}
+use analyte::runtime::error::{DeliveryCommand, ParkedCommand};
 
 /// Allows backup execution plus queue and response overhead.
 const BACKUP_REQUEST_BUDGET: Duration = Duration::from_secs(30);
@@ -240,7 +216,8 @@ fn main() -> Result<(), Error> {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()?;
+        .try_init()
+        .map_err(Error::Logging)?;
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
@@ -374,32 +351,31 @@ async fn operator(
             time: jiff::Timestamp::now().as_second(),
             reason: Reason::new(&reason)?,
         };
-        let rows = store
-            .request::<_, ParkedCommandError>(analyte::deadline()?, move |store| match command {
-                Parked::Reprocess { .. } => {
-                    Err(ParkedCommandError::ReprocessRequiresInterpretation)
-                }
-                Parked::Resolve { id, .. } => {
-                    store.resolve(id, &audit)?;
-                    Ok(Vec::new())
-                }
-                Parked::List { after } => {
-                    store.audit(&audit)?;
-                    Ok(store.parked(after)?)
-                }
-                Parked::Show { id } => {
-                    store.audit(&audit)?;
-                    let after = id
-                        .checked_sub(1)
-                        .ok_or(ParkedCommandError::OperatorCursorOverflow)?;
-                    let rows = store.parked(after)?;
-                    let row = rows.into_iter().find(|r| r.id == id).ok_or(
-                        ParkedCommandError::Evidence(analyte_store::OperatorError::Conflict),
-                    )?;
-                    Ok(vec![row])
-                }
-            })
-            .await?;
+        let rows =
+            store
+                .request::<_, ParkedCommand>(analyte::deadline()?, move |store| match command {
+                    Parked::Reprocess { .. } => Err(ParkedCommand::ReprocessRequiresInterpretation),
+                    Parked::Resolve { id, .. } => {
+                        store.resolve(id, &audit)?;
+                        Ok(Vec::new())
+                    }
+                    Parked::List { after } => {
+                        store.audit(&audit)?;
+                        Ok(store.parked(after)?)
+                    }
+                    Parked::Show { id } => {
+                        store.audit(&audit)?;
+                        let after = id
+                            .checked_sub(1)
+                            .ok_or(ParkedCommand::OperatorCursorOverflow)?;
+                        let rows = store.parked(after)?;
+                        let row = rows.into_iter().find(|r| r.id == id).ok_or(
+                            ParkedCommand::Evidence(analyte_store::OperatorError::Conflict),
+                        )?;
+                        Ok(vec![row])
+                    }
+                })
+                .await?;
         for row in rows {
             analyte::operator::output::line(&format!(
                 "{} {} resolution={}",
@@ -453,7 +429,7 @@ async fn deliveries(
                     reason: Reason::new(&reason)?,
                 };
                 let rows = store
-                    .request::<_, DeliveryCommandError>(analyte::deadline()?, move |s| {
+                    .request::<_, DeliveryCommand>(analyte::deadline()?, move |s| {
                         let rows = s.deliveries(after)?;
                         s.audit(&audit)?;
                         Ok(rows)

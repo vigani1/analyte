@@ -2,7 +2,8 @@
 use std::collections::BTreeMap;
 
 #[test]
-fn plan11_agents_systemd_unit_structure_and_shutdown_margin() -> Result<(), analyte::Error> {
+fn plan11_agents_systemd_unit_structure_and_shutdown_margin()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let unit = include_str!("../../../packaging/linux/analyte.service");
     let mut section = "";
     let mut entries = BTreeMap::new();

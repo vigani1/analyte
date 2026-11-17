@@ -15,7 +15,7 @@ pub(crate) mod alert_delivery;
 
 mod law_recovery;
 
-mod error;
+pub mod error;
 pub use error::Error;
 
 pub(crate) mod ticks;

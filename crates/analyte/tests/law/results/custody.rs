@@ -374,7 +374,9 @@ async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<
         loaded,
         Box::new(NoSpace),
         async {
-            stopped.await?;
+            stopped
+                .await
+                .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
             Ok(())
         },
         credentials,

@@ -1,5 +1,5 @@
 //! Names integration waits while retaining their original error causes.
-use analyte::Error;
+type Error = Box<dyn std::error::Error + Send + Sync>;
 use std::future::Future;
 
 #[derive(Debug, thiserror::Error)]

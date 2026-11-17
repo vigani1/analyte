@@ -189,7 +189,8 @@ async fn adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded() -> Result<
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
     let service = tokio::spawn(serve(Program::load(&path)?, Box::new(Space(0)), async {
-        stop.await?;
+        stop.await
+            .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
         Ok(())
     }));
     let mut peer = connect(&program).await?;
@@ -231,7 +232,8 @@ async fn adr0003_hl7_full_disk_never_returns_positive_ack() -> Result<(), Error>
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
     let service = tokio::spawn(serve(Program::load(&path)?, Box::new(Space(0)), async {
-        stop.await?;
+        stop.await
+            .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
         Ok(())
     }));
     let mut peer = connect(&program).await?;

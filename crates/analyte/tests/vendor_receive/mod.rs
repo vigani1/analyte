@@ -1,6 +1,7 @@
 //! Tests vendor receipt custody.
 //! Kept whole: shared service fixture and durable identity assertions stay together.
-use analyte::{Error, installation::config::Program, runtime::service};
+type Error = Box<dyn std::error::Error + Send + Sync>;
+use analyte::{installation::config::Program, runtime::service};
 use analyte_fixtures as guard;
 use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::poct as poct_peer;
@@ -53,7 +54,7 @@ struct Running {
     peer: TcpStream,
     space: Arc<AtomicU64>,
     stop: oneshot::Sender<()>,
-    task: JoinHandle<Result<(), Error>>,
+    task: JoinHandle<Result<(), analyte::runtime::Error>>,
     url: String,
     result_requests: Arc<AtomicU64>,
     receiver: analyte_receiver::Receiver,
@@ -111,7 +112,9 @@ impl Running {
             program,
             Box::new(probe),
             async {
-                stopped.await?;
+                stopped
+                    .await
+                    .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
                 Ok(())
             },
             secrets,
@@ -159,7 +162,9 @@ impl Running {
             program,
             Box::new(probe),
             async {
-                stopped.await?;
+                stopped
+                    .await
+                    .map_err(analyte::runtime::Error::ScmStopSenderClosed)?;
                 Ok(())
             },
             secrets,
