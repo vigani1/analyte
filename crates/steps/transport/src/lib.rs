@@ -1,5 +1,5 @@
 //! Reads and writes bounded transport bytes and recordings without interpreting protocols.
-//! Kept whole: Connection and IoSide share the private queue and session fields that tie each write and flush to one session.
+//! Kept whole: `Connection` and `IoSide` share the private queue and session fields that tie each write and flush to one session.
 #![forbid(unsafe_code)]
 
 use std::{
