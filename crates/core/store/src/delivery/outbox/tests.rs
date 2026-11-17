@@ -427,7 +427,7 @@ fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_clai
         } else {
             assert!(matches!(
                 result,
-                Err(Error::LimitExceeded {
+                Err(DeliveryError::LimitExceeded {
                     what: "record_bytes"
                 })
             ));

@@ -89,7 +89,7 @@ pub async fn resend(
     };
     store
         .request(deadline()?, move |s| {
-            s.resend_delivery(id, acknowledge_superseded, &audit)
+            Ok(s.resend_delivery(id, acknowledge_superseded, &audit)?)
         })
         .await?;
     Ok(())

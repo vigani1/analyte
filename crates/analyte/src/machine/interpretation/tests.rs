@@ -170,7 +170,7 @@ async fn assert_repair_resolves_original(
             assert!(resolved.contains(":3"));
             assert_eq!(s.deliveries(0)?.len(), 1);
             let claim = s.claim(50)?.ok_or(analyte_store::Error::Corruption)?;
-            s.attempted(claim.id, &Attempt::Done, 50)
+            Ok(s.attempted(claim.id, &Attempt::Done, 50)?)
         })
         .await?;
     Ok(())

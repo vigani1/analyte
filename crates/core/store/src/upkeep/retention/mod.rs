@@ -90,7 +90,7 @@ impl Store {
     pub(crate) fn delivery_was_purged(
         &self,
         delivery: analyte_model::DeliveryId,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, crate::StorageError> {
         Ok(self.db.query_row(
             "SELECT EXISTS(SELECT 1 FROM retention_deliveries WHERE delivery=?1 UNION SELECT 1 FROM retention_order_deliveries WHERE delivery=?1)",
             [crate::key(&delivery)?],

@@ -296,7 +296,7 @@ fn adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate() -> TestRe
     assert!(matches!(store.receipt(id), Err(Error::Purged)));
     assert!(matches!(
         store.resend_delivery(delivery, false, &audit()?),
-        Err(Error::Purged)
+        Err(crate::DeliveryError::Purged)
     ));
     for table in [
         "receipts",

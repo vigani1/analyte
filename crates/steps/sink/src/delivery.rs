@@ -158,8 +158,8 @@ impl<'a> Worker<'a> {
             .request(
                 deadline(self.claim_timeout())?,
                 move |s| match destination {
-                    Some(destination) => s.claim_destination(claim_time, &destination),
-                    None => s.claim(claim_time),
+                    Some(destination) => Ok(s.claim_destination(claim_time, &destination)?),
+                    None => Ok(s.claim(claim_time)?),
                 },
             )
             .await?;
@@ -213,7 +213,7 @@ impl<'a> Worker<'a> {
         let id = claim.id;
         self.store
             .request(deadline(destination.limits.store_timeout)?, move |s| {
-                s.attempted(id, &attempt, now)
+                Ok(s.attempted(id, &attempt, now)?)
             })
             .await?;
         tracing::debug!(delivery_id=%uuid::Uuid::from(id),destination=%destination.id.as_str(),"delivery attempt recorded");

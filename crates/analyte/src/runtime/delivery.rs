@@ -73,7 +73,7 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                 time: now,
                 reason: Reason::new("uncertain (interrupted); ADR 0008 idempotent receiver permits retry with the same delivery ID and bytes").map_err(analyte_store::Error::Text)?,
             };
-            store.recover_in_flight(now, &audit)
+            Ok(store.recover_in_flight(now, &audit)?)
         }).await?;
         if count == 0 {
             return Ok(());

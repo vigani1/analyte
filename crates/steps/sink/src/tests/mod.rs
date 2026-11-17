@@ -513,7 +513,7 @@ async fn check_pause_and_resume(
     ))?];
     store
         .request(until()?, move |s| {
-            s.resend_delivery(pause_id, false, &release)
+            Ok(s.resend_delivery(pause_id, false, &release)?)
         })
         .await?;
     assert!(

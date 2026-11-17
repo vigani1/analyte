@@ -106,10 +106,10 @@ pub(super) async fn deliveries(
                 }
             },
             move |s| {
-                s.deliveries(
+                Ok(s.deliveries(
                     i64::try_from(cursor.after)
                         .map_err(|_| analyte_store::Error::InvalidHostInput)?,
-                )
+                )?)
             },
         )
         .await;

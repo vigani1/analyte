@@ -242,7 +242,7 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
             assert!(matches!(outcome, Err(Error::Timeout)));
             store
                 .request(until()?, |s| {
-                    s.recover_in_flight(
+                    Ok(s.recover_in_flight(
                         jiff::Timestamp::now().as_second(),
                         &analyte_store::Audit {
                             actor: Identifier::new("startup")
@@ -254,11 +254,13 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
                             reason: Reason::new("ADR 0008 interrupted idempotent delivery")
                                 .map_err(analyte_store::Error::Text)?,
                         },
-                    )
+                    )?)
                 })
                 .await?;
             let claim = store
-                .request(until()?, |s| s.claim(jiff::Timestamp::now().as_second()))
+                .request(until()?, |s| {
+                    Ok(s.claim(jiff::Timestamp::now().as_second())?)
+                })
                 .await?
                 .ok_or("recovered claim missing")?;
             assert_eq!(claim.id, id);
