@@ -47,6 +47,7 @@ jiff = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+analyte-fixtures.workspace = true
 tokio = { workspace = true, features = ["process", "test-util"] }
 analyte-sim = { workspace = true }
 analyte-receiver = { workspace = true }
@@ -79,3 +80,15 @@ path = "tests/service_unit.rs"
 name = "vendor_receive"
 path = "tests/vendor_receive/mod.rs"
 
+
+[[test]]
+name = "orders"
+path = "tests/orders/mod.rs"
+
+[[test]]
+name = "service"
+path = "tests/service/mod.rs"
+
+[[test]]
+name = "law"
+path = "tests/law/mod.rs"

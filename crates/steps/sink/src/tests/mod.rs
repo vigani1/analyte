@@ -1,10 +1,9 @@
 //! Tests src behavior with synthetic fixtures.
 //! Kept whole: Shared receiver, proxy and store fixtures keep delivery scenarios on the same controlled HTTP harness.
-#[path = "../../../../analyte/tests/support/guard.rs"]
-mod guard;
 use super::*;
+use analyte_fixtures as guard;
 use analyte_model::*;
-use analyte_store::{FreeSpace, Handle};
+use analyte_store::Handle;
 use guard::HANG_GUARD;
 use std::{
     path::Path,
@@ -42,13 +41,7 @@ impl SecretsSource for RotatingSecrets {
     }
 }
 
-struct Space;
-
-impl FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(u64::MAX)
-    }
-}
+use analyte_fixtures::UnlimitedSpace as Space;
 
 /// Storage deadline for test requests. CI machines with `synchronous=FULL`
 /// can be slow; the behavior under test never depends on this budget.

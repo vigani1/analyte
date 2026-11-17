@@ -2,14 +2,9 @@
 use super::*;
 use crate::Error;
 use analyte_model::Identifier;
-use std::{path::Path, time::Duration};
+use std::time::Duration;
 
-struct Space;
-impl analyte_store::FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(u64::MAX)
-    }
-}
+use analyte_fixtures::UnlimitedSpace as Space;
 
 fn machine(policy: &str) -> Result<Machine, Error> {
     let section = include_str!("../../../../core/config/examples/orders.toml").replace(

@@ -1,7 +1,9 @@
 //! Tests independent synthetic POCT peer messages.
 use analyte_poct::Limits;
 
-pub(crate) fn limits() -> Limits {
+/// Builds synthetic POCT test data.
+#[must_use]
+pub fn limits() -> Limits {
     Limits {
         message_bytes: 65536,
         depth: 16,
@@ -10,11 +12,15 @@ pub(crate) fn limits() -> Limits {
     }
 }
 
-pub(crate) fn field(name: &str, value: &str) -> String {
+/// Builds synthetic POCT test data.
+#[must_use]
+pub fn field(name: &str, value: &str) -> String {
     format!("<{name} V=\"{}\"/>", quick_xml::escape::escape(value))
 }
 
-pub(crate) fn message(kind: &str, id: &str, body: &str) -> String {
+/// Builds synthetic POCT test data.
+#[must_use]
+pub fn message(kind: &str, id: &str, body: &str) -> String {
     format!(
         "<{kind}><HDR>{}{}{}</HDR>{body}</{kind}>",
         field("HDR.control_id", id),
@@ -23,7 +29,9 @@ pub(crate) fn message(kind: &str, id: &str, body: &str) -> String {
     )
 }
 
-pub(crate) fn hello(id: &str) -> String {
+/// Builds synthetic POCT test data.
+#[must_use]
+pub fn hello(id: &str) -> String {
     message(
         "HEL.R01",
         id,
@@ -37,7 +45,9 @@ pub(crate) fn hello(id: &str) -> String {
     )
 }
 
-pub(crate) fn status(id: &str, count: &str) -> String {
+/// Builds synthetic POCT test data.
+#[must_use]
+pub fn status(id: &str, count: &str) -> String {
     message(
         "DST.R01",
         id,
@@ -50,7 +60,9 @@ pub(crate) fn status(id: &str, count: &str) -> String {
     )
 }
 
-pub(crate) fn observation(id: &str, patient: bool, value: &str) -> String {
+/// Builds synthetic POCT test data.
+#[must_use]
+pub fn observation(id: &str, patient: bool, value: &str) -> String {
     let (kind, subject, role) = if patient {
         (
             "OBS.R01",

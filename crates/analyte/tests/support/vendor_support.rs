@@ -2,7 +2,12 @@
 use super::*;
 use crate::support::HANG_GUARD;
 use tokio::{io::AsyncReadExt, net::TcpStream};
-pub(super) async fn state(path: &Path, expected: &str) -> Result<(), Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn state(path: &Path, expected: &str) -> Result<(), Error> {
     wait_database_count(
         path,
         "SELECT count(*) FROM machine_orders WHERE state=?1",
@@ -11,17 +16,32 @@ pub(super) async fn state(path: &Path, expected: &str) -> Result<(), Error> {
     )
     .await
 }
-pub(super) async fn byte(peer: &mut TcpStream) -> Result<u8, Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn byte(peer: &mut TcpStream) -> Result<u8, Error> {
     Ok(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??)
 }
-pub(super) async fn no_event(path: &Path) -> Result<(), Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn no_event(path: &Path) -> Result<(), Error> {
     assert_eq!(
         database(path)?.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
         0
     );
     Ok(())
 }
-pub(super) async fn event(
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn event(
     path: &Path,
     receiver: &Path,
     expected_state: &str,

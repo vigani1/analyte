@@ -2,15 +2,10 @@
 use super::*;
 use crate::installation::config::Program;
 use analyte_model::{Identifier, Reason};
-use analyte_store::{Attempt, Audit, FreeSpace, RevisionOutcome};
+use analyte_store::{Attempt, Audit, RevisionOutcome};
 use std::path::Path;
 
-pub(super) struct Space;
-impl FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(u64::MAX)
-    }
-}
+pub(super) use analyte_fixtures::UnlimitedSpace as Space;
 
 fn action(receipt: ReceiptId, parked: Option<i64>) -> Result<Reprocess, Error> {
     Ok(Reprocess {
@@ -232,8 +227,7 @@ async fn assert_retransmission_and_conflict(
     Ok(())
 }
 
-#[path = "../../../../protocols/poct/tests/peer_messages.rs"]
-mod poct_peer;
+use analyte_fixtures::poct as poct_peer;
 
 #[tokio::test]
 async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_parked_without_machine_io()

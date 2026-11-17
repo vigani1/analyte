@@ -1,10 +1,8 @@
 //! Tests vendor receipt custody.
 //! Kept whole: shared service fixture and durable identity assertions stay together.
-#[path = "../support/guard.rs"]
-mod guard;
-#[path = "../../../protocols/poct/tests/peer_messages.rs"]
-mod poct_peer;
 use analyte::{Error, installation::config::Program, runtime::service};
+use analyte_fixtures as guard;
+use analyte_fixtures::poct as poct_peer;
 use analyte_store::FreeSpace;
 use guard::HANG_GUARD;
 use std::{
@@ -86,17 +84,7 @@ impl Running {
         });
         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
         let address = listener.local_addr()?;
-        std::fs::write(root.join("machine.toml"), definition)?;
-        std::fs::write(
-            root.join("site.toml"),
-            include_str!("../../../core/config/examples/site.toml")
-                .replace("127.0.0.1:5600", &address.to_string()),
-        )?;
-        let path = root.join("program.toml");
-        std::fs::write(
-            &path,
-            "schema_version=1\ndata_directory='data'\n[[machines]]\nid='synthetic'\ndefinition='machine.toml'\nsite='site.toml'\n[store]\nreserve_bytes=1024\ndatabase_bytes=100000000\nrecord_bytes=2097152\npage_rows=100\nbusy_timeout_ms=1000\n",
-        )?;
+        let path = analyte_fixtures::write_machine(root, definition, &address.to_string())?;
         let mut program = Program::load(&path)?;
         program.set_loopback_destination_for_test("demo", url.clone())?;
         program.set_loopback_listener_for_test("synthetic", listener.try_clone()?)?;

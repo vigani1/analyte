@@ -3,8 +3,7 @@
 use analyte_dialog::poct::{
     CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent, Error as DialogError,
 };
-#[path = "../../../protocols/poct/tests/peer_messages.rs"]
-mod peer_messages;
+use analyte_fixtures::poct as peer_messages;
 use analyte_poct::{ApplicationError, ControlId, Message, Outbound};
 use std::time::Duration;
 

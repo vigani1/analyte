@@ -1,7 +1,6 @@
 //! Tests machine receipt storage and acknowledgment ordering.
-#[path = "../support/guard.rs"]
-mod guard;
 use analyte::{Error, installation::config::Program, runtime::service};
+use analyte_fixtures as guard;
 use analyte_store::{FreeSpace, Store};
 use guard::HANG_GUARD;
 use std::{path::Path, time::Duration};
@@ -11,32 +10,17 @@ use tokio::{
     sync::oneshot,
 };
 
-struct Space(u64);
-impl FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(self.0)
-    }
-}
+use analyte_fixtures::Space;
 
 fn config(temp: &Path, astm: bool) -> Result<std::path::PathBuf, Error> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     let address = listener.local_addr()?;
     let definition = if astm {
-        include_str!("../../../core/config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
+        analyte_fixtures::astm_tcp()
     } else {
         include_str!("../../../core/config/examples/hl7.toml").to_owned()
     };
-    std::fs::write(temp.join("machine.toml"), definition)?;
-    std::fs::write(
-        temp.join("site.toml"),
-        include_str!("../../../core/config/examples/site.toml")
-            .replace("127.0.0.1:5600", &address.to_string()),
-    )?;
-    let path = temp.join("program.toml");
-    std::fs::write(
-        &path,
-        "schema_version = 1\ndata_directory = 'data'\n[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 1000\n",
-    )?;
+    let path = analyte_fixtures::write_machine(temp, &definition, &address.to_string())?;
     Ok(path)
 }
 

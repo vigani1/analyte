@@ -39,8 +39,7 @@ pub async fn open_system_store(
 }
 
 #[cfg(test)]
-#[path = "../tests/support/guard.rs"]
-mod test_guard;
+use analyte_fixtures as test_guard;
 
 /// Fixture migrations use the existing test wait bound, not a production operation budget.
 #[cfg(test)]

@@ -20,6 +20,7 @@ dependencies = [
  "analyte-config",
  "analyte-contract",
  "analyte-dialog",
+ "analyte-fixtures",
  "analyte-framing",
  "analyte-hl7",
  "analyte-mapping",
@@ -107,6 +108,7 @@ name = "analyte-dialog"
 version = "0.1.0"
 dependencies = [
  "analyte-autolyser",
+ "analyte-fixtures",
  "analyte-framing",
  "analyte-hl7",
  "analyte-poct",
@@ -114,6 +116,15 @@ dependencies = [
  "proptest",
  "quick-xml",
  "thiserror",
+]
+
+[[package]]
+name = "analyte-fixtures"
+version = "0.1.0"
+dependencies = [
+ "analyte-poct",
+ "analyte-store",
+ "quick-xml",
 ]
 
 [[package]]
@@ -167,6 +178,7 @@ dependencies = [
 name = "analyte-poct"
 version = "0.1.0"
 dependencies = [
+ "analyte-fixtures",
  "jiff",
  "proptest",
  "quick-xml",
@@ -178,6 +190,7 @@ name = "analyte-receiver"
 version = "0.1.0"
 dependencies = [
  "analyte-contract",
+ "analyte-fixtures",
  "axum",
  "clap",
  "jiff",
@@ -206,6 +219,7 @@ version = "0.1.0"
 dependencies = [
  "analyte-config",
  "analyte-contract",
+ "analyte-fixtures",
  "analyte-model",
  "analyte-receiver",
  "analyte-store",

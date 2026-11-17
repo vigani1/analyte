@@ -2,14 +2,8 @@
 use super::*;
 use crate::Error;
 use crate::installation::config::Program;
-use analyte_store::FreeSpace;
+use analyte_fixtures::UnlimitedSpace as Space;
 use std::path::Path;
-struct Space;
-impl FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(u64::MAX)
-    }
-}
 
 fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Error> {
     std::fs::write(root.join("machine.toml"), definition)?;

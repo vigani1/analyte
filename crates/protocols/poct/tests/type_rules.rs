@@ -1,5 +1,5 @@
 //! Tests source-specific POCT field and type constraints with synthetic messages.
-mod peer_messages;
+use analyte_fixtures::poct as peer_messages;
 use analyte_poct::{Message, MessageError};
 use peer_messages::{hello, limits, observation, status};
 

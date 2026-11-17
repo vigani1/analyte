@@ -4,13 +4,7 @@ use crate::Error;
 use analyte_model::{Identifier, SampleId};
 use std::{path::Path, time::Duration};
 
-struct Space;
-
-impl analyte_store::FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(u64::MAX)
-    }
-}
+use analyte_fixtures::UnlimitedSpace as Space;
 
 async fn open(path: &Path) -> Result<Handle, Error> {
     let limits = analyte_store::Limits {

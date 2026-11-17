@@ -1,8 +1,7 @@
 //! Tests reference receiver HTTP contract requests.
 #![forbid(unsafe_code)]
-#[path = "../../../analyte/tests/support/guard.rs"]
-mod guard;
 use analyte_contract::{Order, SigningSecret};
+use analyte_fixtures as guard;
 use analyte_receiver::Receiver;
 use guard::HANG_GUARD;
 use serde_json::{Value, json};
