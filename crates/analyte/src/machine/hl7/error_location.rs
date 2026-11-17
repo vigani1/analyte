@@ -1,4 +1,4 @@
-﻿//! Locates HL7 and LAW errors without inventing unknown source positions.
+//! Locates HL7 and LAW errors without inventing unknown source positions.
 use analyte_hl7::Terminator;
 pub(crate) use analyte_hl7::location_error as build;
 use analyte_mapping::Output;
