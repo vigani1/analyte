@@ -85,7 +85,7 @@ struct Host<'a, 'm> {
     orders: &'a mut LawOrderLink,
     dialog: Dialog,
     mode: Mode<'a>,
-    clock: Instant,
+    start: Instant,
     custody: Custody,
     ready: Option<oneshot::Sender<()>>,
     outbound: Option<&'a tokio::sync::mpsc::Sender<independent::Work>>,
@@ -113,7 +113,7 @@ impl<'a, 'm> Host<'a, 'm> {
             orders,
             mode,
             dialog: settings::dialog(settings, link)?,
-            clock: Instant::now(),
+            start: Instant::now(),
             custody: Custody::Idle,
             ready: None,
             outbound: None,
@@ -123,7 +123,7 @@ impl<'a, 'm> Host<'a, 'm> {
         })
     }
     fn absolute(&self, until: Duration) -> Result<Instant, Error> {
-        self.clock
+        self.start
             .checked_add(until)
             .ok_or_else(|| Error::ConnectionDeadlineOverflow)
     }
@@ -142,7 +142,7 @@ impl<'a, 'm> Host<'a, 'm> {
         event: Event<'_>,
         host: &mut Context<'_, '_>,
     ) -> Result<(), Error> {
-        let actions = self.dialog.step(self.clock.elapsed(), event)?;
+        let actions = self.dialog.step(self.start.elapsed(), event)?;
         self.apply(actions, host).await
     }
     async fn apply(
@@ -259,7 +259,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     crate::orders::hl7::response::Profile::Law,
                 );
                 return Ok(self.dialog.step(
-                    self.clock.elapsed(),
+                    self.start.elapsed(),
                     Event::Respond(token, metadata.response()?),
                 )?);
             }
@@ -273,10 +273,10 @@ impl<'a, 'm> Host<'a, 'm> {
                         .orders
                         .due()
                         .ok_or(Error::ResponseDeadlineAbsentAfterIssuance)?
-                        .saturating_duration_since(self.clock);
+                        .saturating_duration_since(self.start);
                     return Ok(self
                         .dialog
-                        .step(self.clock.elapsed(), Event::WorkDeadline(until))?);
+                        .step(self.start.elapsed(), Event::WorkDeadline(until))?);
                 }
                 return Ok(Vec::new());
             }
@@ -298,7 +298,7 @@ impl<'a, 'm> Host<'a, 'm> {
             Effect::Refused(error) => return Err(error.into()),
             Effect::Deadline => return Ok(Vec::new()),
         };
-        Ok(self.dialog.step(self.clock.elapsed(), event)?)
+        Ok(self.dialog.step(self.start.elapsed(), event)?)
     }
     async fn complete_response(&mut self, host: &mut Context<'_, '_>) -> Result<(), Error> {
         self.completion = Completion::Complete;
@@ -337,7 +337,7 @@ impl<'a, 'm> Host<'a, 'm> {
         let due = self
             .orders
             .due()
-            .map(|until| until.saturating_duration_since(self.clock));
+            .map(|until| until.saturating_duration_since(self.start));
         if let (Reply::Followup { response, work }, Some(sender)) = (&reply, self.outbound) {
             let (notify, wait) = oneshot::channel();
             let pending = independent::Work {
@@ -362,7 +362,7 @@ impl<'a, 'm> Host<'a, 'm> {
         }
         Ok(self
             .dialog
-            .step(self.clock.elapsed(), Event::Reply(token, &reply, due))?)
+            .step(self.start.elapsed(), Event::Reply(token, &reply, due))?)
     }
     async fn interpret_receipt(
         &mut self,
@@ -394,7 +394,7 @@ impl<'a, 'm> Host<'a, 'm> {
         };
         Ok(self
             .dialog
-            .step(self.clock.elapsed(), Event::Interpreted(token, interpreted))?)
+            .step(self.start.elapsed(), Event::Interpreted(token, interpreted))?)
     }
     async fn park_failure(
         &self,
@@ -453,7 +453,7 @@ impl<'a, 'm> Host<'a, 'm> {
     async fn finish(&mut self) -> Result<(), Error> {
         for action in self
             .dialog
-            .step(self.clock.elapsed(), Event::Disconnected)?
+            .step(self.start.elapsed(), Event::Disconnected)?
         {
             match action {
                 Action::Rejected(error, raw) => {
@@ -542,7 +542,7 @@ impl Effects for Host<'_, '_> {
                         .orders
                         .due()
                         .ok_or(Error::OutboundDeadlineAbsent)?
-                        .saturating_duration_since(self.clock);
+                        .saturating_duration_since(self.start);
                     self.transition(Event::Send(message, until), host).await?;
                 }
             },
@@ -611,7 +611,7 @@ impl Host<'_, '_> {
                 } else if self
                     .dialog
                     .next_deadline()
-                    .is_some_and(|due| self.clock.elapsed() >= due)
+                    .is_some_and(|due| self.start.elapsed() >= due)
                 {
                     self.transition(Event::Tick, host).await?;
                 } else if now >= next_idle {
@@ -638,7 +638,7 @@ impl Host<'_, '_> {
                                 .orders
                                 .due()
                                 .ok_or(Error::OutgoingDeadlineAbsent)?
-                                .saturating_duration_since(self.clock);
+                                .saturating_duration_since(self.start);
                             self.transition(Event::Send(&message, until), host).await?;
                         }
                     }
