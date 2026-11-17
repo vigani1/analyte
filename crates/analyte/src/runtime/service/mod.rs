@@ -1,6 +1,7 @@
 //! Starts supervised service workers and handles signals and bounded shutdown.
 //! Kept whole: Service startup and shutdown retain the ownership order of supervised workers.
 pub(crate) mod cleanup;
+pub(crate) mod conversions;
 use crate::runtime::Error as Failure;
 use crate::{Error, deadline, installation::config::Program, machine, runtime::space::Volume};
 use analyte_store::{FreeSpace, Handle};

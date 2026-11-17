@@ -74,4 +74,16 @@ pub enum ValidationError {
     Hl7(#[from] analyte_hl7::Error),
 }
 
-analyte_store::forward_command_errors!(ValidationError);
+crate::runtime::service::conversions::causes!(ValidationError;
+    analyte_store::Error => [
+        analyte_store::WorkerError,
+        analyte_store::WorkerStartError,
+        analyte_store::IntakeError,
+        analyte_store::DeliveryError,
+        analyte_store::OrderError,
+        analyte_store::MaintenanceError,
+        analyte_store::OperatorError,
+        analyte_store::ReconciliationError,
+        analyte_store::StorageError,
+    ],
+);

@@ -222,4 +222,16 @@ pub enum Error {
     Json(#[from] serde_json::Error),
 }
 
-analyte_store::forward_command_errors!(Error);
+crate::runtime::service::conversions::causes!(Error;
+    analyte_store::Error => [
+        analyte_store::WorkerError,
+        analyte_store::WorkerStartError,
+        analyte_store::IntakeError,
+        analyte_store::DeliveryError,
+        analyte_store::OrderError,
+        analyte_store::MaintenanceError,
+        analyte_store::OperatorError,
+        analyte_store::ReconciliationError,
+        analyte_store::StorageError,
+    ],
+);

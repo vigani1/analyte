@@ -127,6 +127,37 @@ mod tests {
     }
 }
 
-crate::machine::link::error::forward!(Error, Self::Link);
-
-crate::machine::receive::error::forward!(Error, Self::Evidence);
+crate::runtime::service::conversions::causes!(Error;
+    crate::machine::link::error::Error => [
+        std::io::Error,
+        analyte_transport::Error,
+        std::net::AddrParseError,
+        analyte_transport::folder::WatchError,
+    ],
+    crate::machine::receive::error::Error => [
+        analyte_store::Error,
+        crate::IntakeError,
+        crate::machine::interpretation::ReadError,
+        analyte_model::TextError,
+        analyte_model::ListError,
+        analyte_config::Error,
+        std::num::TryFromIntError,
+        serde_json::Error,
+        jiff::Error,
+        crate::reading::Error,
+        crate::machine::custody::WriteError,
+        crate::machine::custody::StoreWaitError<crate::IntakeError>,
+        crate::machine::custody::StoreWaitError<analyte_store::Error>,
+    ],
+    analyte_store::Error => [
+        analyte_store::WorkerError,
+        analyte_store::WorkerStartError,
+        analyte_store::IntakeError,
+        analyte_store::DeliveryError,
+        analyte_store::OrderError,
+        analyte_store::MaintenanceError,
+        analyte_store::OperatorError,
+        analyte_store::ReconciliationError,
+        analyte_store::StorageError,
+    ],
+);
