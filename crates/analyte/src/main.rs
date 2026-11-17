@@ -9,8 +9,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Bounds ordinary local CLI requests and explicit store shutdown.
-const STORE_OPERATION_BUDGET: Duration = Duration::from_secs(5);
 /// Allows backup execution plus queue and response overhead.
 const BACKUP_REQUEST_BUDGET: Duration = Duration::from_secs(30);
 /// Leaves five seconds of the request budget for host overhead.
@@ -189,7 +187,7 @@ async fn recover(
     let mut store = analyte::open_system_store(&program).await?;
     let result =
         analyte::operator::recovery::reprocess(&store, &program, target, actor, reason).await;
-    store.shutdown(until()).await?;
+    store.shutdown(analyte::deadline()?).await?;
     let commit = result?;
     analyte::operator::output::line(&format!(
         "Interpretation {} recorded; decisions: {}. Inspect parked items for failures.",
@@ -197,11 +195,6 @@ async fn recover(
         analyte::operator::display::list(&commit.outcomes)
     ))?;
     Ok(())
-}
-fn until() -> Instant {
-    Instant::now()
-        .checked_add(STORE_OPERATION_BUDGET)
-        .unwrap_or(Instant::now())
 }
 
 fn main() -> Result<(), Error> {
@@ -356,34 +349,29 @@ async fn operator(
             reason: Reason::new(&reason)?,
         };
         let rows = store
-            .request(
-                Instant::now()
-                    .checked_add(STORE_OPERATION_BUDGET)
-                    .unwrap_or(Instant::now()),
-                move |store| match command {
-                    Parked::Reprocess { .. } => Err(analyte_store::Error::InvalidHostInput),
-                    Parked::Resolve { id, .. } => {
-                        store.resolve(id, &audit)?;
-                        Ok(Vec::new())
-                    }
-                    Parked::List { after } => {
-                        store.audit(&audit)?;
-                        store.parked(after)
-                    }
-                    Parked::Show { id } => {
-                        store.audit(&audit)?;
-                        let after = id
-                            .checked_sub(1)
-                            .ok_or(analyte_store::Error::InvalidHostInput)?;
-                        let rows = store.parked(after)?;
-                        let row = rows
-                            .into_iter()
-                            .find(|r| r.id == id)
-                            .ok_or(analyte_store::Error::Conflict)?;
-                        Ok(vec![row])
-                    }
-                },
-            )
+            .request(analyte::deadline()?, move |store| match command {
+                Parked::Reprocess { .. } => Err(analyte_store::Error::InvalidHostInput),
+                Parked::Resolve { id, .. } => {
+                    store.resolve(id, &audit)?;
+                    Ok(Vec::new())
+                }
+                Parked::List { after } => {
+                    store.audit(&audit)?;
+                    store.parked(after)
+                }
+                Parked::Show { id } => {
+                    store.audit(&audit)?;
+                    let after = id
+                        .checked_sub(1)
+                        .ok_or(analyte_store::Error::InvalidHostInput)?;
+                    let rows = store.parked(after)?;
+                    let row = rows
+                        .into_iter()
+                        .find(|r| r.id == id)
+                        .ok_or(analyte_store::Error::Conflict)?;
+                    Ok(vec![row])
+                }
+            })
             .await?;
         for row in rows {
             analyte::operator::output::line(&format!(
@@ -396,13 +384,7 @@ async fn operator(
         Ok::<_, Error>(())
     }
     .await;
-    store
-        .shutdown(
-            Instant::now()
-                .checked_add(STORE_OPERATION_BUDGET)
-                .unwrap_or(Instant::now()),
-        )
-        .await?;
+    store.shutdown(analyte::deadline()?).await?;
     result
 }
 
@@ -444,7 +426,7 @@ async fn deliveries(
                     reason: Reason::new(&reason)?,
                 };
                 let rows = store
-                    .request(until(), move |s| {
+                    .request(analyte::deadline()?, move |s| {
                         let rows = s.deliveries(after)?;
                         s.audit(&audit)?;
                         Ok(rows)
@@ -470,7 +452,7 @@ async fn deliveries(
         }
     }
     .await;
-    store.shutdown(until()).await?;
+    store.shutdown(analyte::deadline()?).await?;
     result
 }
 
@@ -514,13 +496,7 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
             },
         )
         .await;
-    store
-        .shutdown(
-            Instant::now()
-                .checked_add(STORE_OPERATION_BUDGET)
-                .unwrap_or(Instant::now()),
-        )
-        .await?;
+    store.shutdown(analyte::deadline()?).await?;
     result?;
     analyte::operator::output::line("Backup verified.")?;
     Ok(())

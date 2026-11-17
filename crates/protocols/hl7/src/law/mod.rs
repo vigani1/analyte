@@ -342,7 +342,7 @@ impl<'a> Query<'a> {
         })
     }
 
-    /// Returns the validated lookup scope.
+    /// Borrows the checked lookup scope.
     #[must_use]
     pub fn scope(self) -> Scope<'a> {
         self.scope

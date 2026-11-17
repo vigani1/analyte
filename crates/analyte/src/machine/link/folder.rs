@@ -94,7 +94,7 @@ pub(in crate::machine) async fn session(
     let context = intake::Connection::new(machine)?;
     let machine = &context;
     let (owner, mut files) = Owner::start(
-        PathBuf::from(&machine.snapshot.effective().site().endpoint),
+        PathBuf::from(&machine.machine().snapshot.effective().site().endpoint),
         root,
         u64::try_from(bytes)?,
         capture.map(|c| {
@@ -114,7 +114,7 @@ pub(in crate::machine) async fn session(
             };
             let id = ReceiptId::new();
             intake::receive(store, machine, id, raw).await?;
-            let accepted = intake::interpret(store, machine, id).await?;
+            let accepted = intake::interpret(store, machine.machine(), id).await?;
             item.completed
                 .send(if accepted {
                     Disposition::Archive

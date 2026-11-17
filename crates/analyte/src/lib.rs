@@ -28,7 +28,10 @@ pub(crate) fn invalid(message: &str) -> Error {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, message).into()
 }
 
-pub(crate) fn deadline() -> Result<std::time::Instant, analyte_store::Error> {
+/// Bounds a store operation by the shared five-second budget.
+/// # Errors
+/// Reports deadline overflow rather than submitting an expired request.
+pub fn deadline() -> Result<std::time::Instant, analyte_store::Error> {
     storage_deadline(std::time::Instant::now(), STORE_OPERATION_BUDGET)
 }
 

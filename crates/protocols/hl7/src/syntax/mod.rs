@@ -378,12 +378,12 @@ impl Message {
     pub fn raw(&self) -> &[u8] {
         &self.raw
     }
-    /// Returns the validated delimiter set.
+    /// Borrows the checked delimiter set.
     #[must_use]
     pub fn delimiters(&self) -> Delimiters {
         self.delimiters
     }
-    /// Returns the validated default character set.
+    /// Borrows the checked default character set.
     #[must_use]
     pub fn charset(&self) -> Charset {
         self.charset

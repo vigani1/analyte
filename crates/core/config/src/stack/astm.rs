@@ -84,12 +84,12 @@ impl AstmSyntax {
 }
 
 impl AstmSyntax {
-    /// Returns the validated encoding setting.
+    /// Text decoding policy; undecodable bytes remain retained evidence.
     #[must_use]
     pub fn encoding(&self) -> Encoding {
         self.encoding
     }
-    /// Returns the validated limits setting.
+    /// Size and count ceilings applied before parsing untrusted records.
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {
         &self.limits
@@ -97,22 +97,22 @@ impl AstmSyntax {
 }
 
 impl AstmOrders {
-    /// Returns the validated tables setting.
+    /// Configured code tables used without guessing unknown values.
     #[must_use]
     pub fn tables(&self) -> &OrderTables {
         &self.tables
     }
-    /// Returns the validated query setting.
+    /// Host-query settings validated for this protocol.
     #[must_use]
     pub fn query(&self) -> &Option<OrderQuery> {
         &self.query
     }
-    /// Returns the validated send ahead setting.
+    /// Work-list settings; absence does not authorize unsolicited orders.
     #[must_use]
     pub fn send_ahead(&self) -> bool {
         self.send_ahead
     }
-    /// Returns the validated layout setting.
+    /// Record field positions used to read this configured dialect.
     #[must_use]
     pub fn layout(&self) -> &AstmOrderFields {
         &self.layout
@@ -120,12 +120,12 @@ impl AstmOrders {
 }
 
 impl AstmStack {
-    /// Returns the validated transport setting.
+    /// Physical link settings, with unsupported protocol/link combinations rejected at load time.
     #[must_use]
     pub fn transport(&self) -> &StreamTransport {
         &self.transport
     }
-    /// Returns the validated frame limit setting.
+    /// Maximum retained frame size before framing refuses more bytes.
     #[must_use]
     pub fn frame_limit(&self) -> usize {
         self.frame_limit
@@ -143,32 +143,32 @@ impl AstmStack {
             ChecksumHex::AcceptLowercase => analyte_framing::astm::HexPolicy::AcceptLowercase,
         }
     }
-    /// Returns the validated checksum hex setting.
+    /// Checksum spelling accepted by the framer.
     #[must_use]
     pub fn checksum_hex(&self) -> ChecksumHex {
         self.checksum_hex
     }
-    /// Returns the validated timeouts setting.
+    /// Bounded protocol waits used by the connection state machine.
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         &self.timeouts
     }
-    /// Returns the validated contention priority setting.
+    /// Side that wins simultaneous link establishment.
     #[must_use]
     pub fn contention_priority(&self) -> Priority {
         self.contention_priority
     }
-    /// Returns the validated syntax setting.
+    /// Record grammar settings applied after framing.
     #[must_use]
     pub fn syntax(&self) -> &AstmSyntax {
         &self.syntax
     }
-    /// Returns the validated mappings setting.
+    /// Explicit source-to-common-model mappings; unknown codes are not guessed.
     #[must_use]
     pub fn mappings(&self) -> &Mappings {
         &self.mappings
     }
-    /// Returns the validated orders setting.
+    /// Validated order policy used before encoding commands.
     #[must_use]
     pub fn orders(&self) -> &Option<AstmOrders> {
         &self.orders

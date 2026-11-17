@@ -36,7 +36,7 @@ impl ConnectionState {
         machine: &crate::intake::Connection<'_>,
     ) -> Result<Option<Vec<analyte_dialog::autolyser::Action>>, Error> {
         if let Some(reserved) =
-            crate::orders::sending::next(store, machine, &mut self.cursor).await?
+            crate::orders::sending::next(store, machine.machine(), &mut self.cursor).await?
         {
             self.active = Some(reserved.order);
             let analyte_mapping::MachineOrder::Autolyser(worklist) = reserved.payload else {

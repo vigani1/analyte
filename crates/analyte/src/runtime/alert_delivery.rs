@@ -16,7 +16,7 @@ pub(crate) async fn run(
     policy: AlertDelivery,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let sender = analyte_sink::WebhookSender::new(endpoint.url(), policy.timeout()).ok();
+    let sender = analyte_sink::WebhookSender::new(endpoint.url(), policy.timeout());
     let mut ticks = tokio::time::interval(Duration::from_secs(1));
     ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -48,7 +48,7 @@ async fn cycle(
     endpoint: &analyte_model::Identifier,
     policy: &AlertDelivery,
     now: i64,
-    sender: Option<&analyte_sink::WebhookSender>,
+    sender: Result<&analyte_sink::WebhookSender, &analyte_sink::WebhookSetupError>,
     token: Option<&str>,
 ) -> Result<(), Error> {
     let id = endpoint.clone();
@@ -76,9 +76,12 @@ async fn cycle(
         return Ok(());
     };
     let outcome = match (token, sender) {
-        (Some(token), Some(sender)) => sender.send(&event, token).await,
-        (None, _) => Err(AlertFailure::Credentials),
-        (Some(_), None) => Err(AlertFailure::Network),
+        (Some(token), Ok(sender)) => sender.send(&event, token).await,
+        (None, Ok(_)) => Err(AlertFailure::Credentials),
+        (_, Err(error)) => Err(match error {
+            analyte_sink::WebhookSetupError::Tls(_) => AlertFailure::Tls,
+            analyte_sink::WebhookSetupError::TimeoutBounds => AlertFailure::Setup,
+        }),
     };
     match outcome {
         Ok(()) => {
@@ -172,7 +175,7 @@ mod tests {
             &endpoint,
             &policy,
             100,
-            Some(&sender),
+            Ok(&sender),
             Some("SECRET-CREDENTIAL\nPATIENT-SENTINEL"),
         )
         .with_subscriber(subscriber)
@@ -182,6 +185,7 @@ mod tests {
             .await?;
         assert_eq!(status[0].failed, 1);
         assert_eq!(status[0].exhausted, 1);
+        assert_eq!(status[0].last_failure.as_deref(), Some("credentials"));
         let output = String::from_utf8(
             log.0
                 .lock()
@@ -196,6 +200,44 @@ mod tests {
         ] {
             assert!(!output.contains(forbidden));
         }
+        store.shutdown(deadline()?).await?;
+        Ok(())
+    }
+    #[tokio::test]
+    async fn adr0014_setup_failure_reaches_operator_status() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let mut store = open(temp.path().join("store.db")).await?;
+        store
+            .request(deadline()?, |s| {
+                s.evaluate_alert(
+                    &analyte_store::AlertKey::ParkedItems,
+                    "Duty officer",
+                    true,
+                    Some(1),
+                    100,
+                )
+            })
+            .await?;
+        let policy = AlertDelivery::for_test("")?;
+        let endpoint = analyte_model::Identifier::new("relay")?;
+        let url = analyte_sink::WebhookUrl::parse("https://example.invalid/hook")?;
+        let sender = analyte_sink::WebhookSender::new(&url, Duration::ZERO);
+        assert!(sender.is_err());
+        cycle(
+            &store,
+            &endpoint,
+            &policy,
+            100,
+            sender.as_ref(),
+            Some("token"),
+        )
+        .await?;
+        let status = store
+            .request(deadline()?, |s| s.alert_endpoint_status())
+            .await?;
+        let text = crate::operator::notification_status::describe(&status[0], 100);
+        assert!(text.contains("last_failure=setup"));
+        assert!(!text.contains("network"));
         store.shutdown(deadline()?).await?;
         Ok(())
     }
@@ -227,7 +269,7 @@ mod tests {
             &endpoint,
             &policy,
             100,
-            Some(&sender),
+            Ok(&sender),
             Some("synthetic-token"),
         ));
         let mut peer = tokio::select! {

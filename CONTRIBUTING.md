@@ -21,8 +21,11 @@ these suspicious patterns.
 - Tests that fail without the change and pass with it. Protocol rules name
   their source in the test, for example `HL7 2.5.1 §2.7 escape sequences`.
 - A clean run of `cargo fmt --check`, `cargo clippy --all-targets
-  --all-features -- -D warnings`, `cargo test --workspace` and
-  `cargo deny check`.
+  --all-features -- -D warnings`, `cargo test --workspace --all-features` and
+  `cargo deny check`. Run the production feature pass too:
+  `cargo clippy -p analyte -p analyte-sink --all-targets --no-default-features -- -D warnings`
+  and `cargo test -p analyte -p analyte-sink --no-default-features`.
+  See [AGENTS.md Verification](AGENTS.md#verification) for the remaining handoff checks.
 - Only synthetic or de-identified data. Never commit patient data, vendor
   manuals, standards documents or text copied from them; write notes in your
   own words.

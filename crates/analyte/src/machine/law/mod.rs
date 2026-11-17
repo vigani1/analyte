@@ -178,23 +178,24 @@ impl<'a, 'm> Host<'a, 'm> {
         Ok(())
     }
     async fn effect(&mut self, action: Action) -> Result<Vec<Action>, Error> {
+        let machine = self.machine.machine();
         let event = match action {
             Action::Commit(token, raw) => {
                 let id = ReceiptId::new();
                 self.receipt = Some((token, id));
                 self.stored = false;
                 #[cfg(feature = "test-hooks")]
-                if let Some(hook) = &self.machine.hooks.law_precommit {
+                if let Some(hook) = &machine.hooks.law_precommit {
                     hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
                 }
                 super::custody::store_before_ack(
-                    self.machine,
+                    machine,
                     intake::receive(self.store, self.machine, id, raw),
                 )
                 .await?;
                 self.stored = true;
                 #[cfg(feature = "test-hooks")]
-                if let Some(hook) = &self.machine.hooks.law_committed {
+                if let Some(hook) = &machine.hooks.law_committed {
                     let mut stop = self.stop.clone();
                     tokio::select! { biased;
                         () = super::stopping(&mut stop) => { self.stopped = true; return Ok(Vec::new()); },
@@ -208,7 +209,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Action::WorkResponse(token, message) => {
                 self.orders
-                    .orl(self.store, self.machine, &message, self.receipt(token)?)
+                    .orl(self.store, machine, &message, self.receipt(token)?)
                     .await?;
                 Event::Complete(token)
             }
@@ -216,8 +217,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 return self.interpret_receipt(token).await;
             }
             Action::Failed(token, reason) => {
-                intake::failed_reading(self.store, self.machine, self.receipt(token)?, &reason)
-                    .await?;
+                intake::failed_reading(self.store, machine, self.receipt(token)?, &reason).await?;
                 return Ok(Vec::new());
             }
             Action::ResponseNeeded(token) => {
@@ -276,7 +276,7 @@ impl<'a, 'm> Host<'a, 'm> {
         self.stored = false;
         if self.ready.is_some() {
             #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &self.machine.hooks.law_gates.rsp {
+            if let Some(gate) = &self.machine.machine().hooks.law_gates.rsp {
                 gate.pause(&mut self.stop).await.map_err(Error::TestHook)?;
             }
         }
@@ -295,7 +295,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .orders
             .answer(
                 self.store,
-                self.machine,
+                self.machine.machine(),
                 &message,
                 self.receipt(token)?,
                 self.absolute(started)?,
@@ -319,7 +319,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             self.ready = Some(notify);
             #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &self.machine.hooks.law_gates.handover {
+            if let Some(gate) = &self.machine.machine().hooks.law_gates.handover {
                 gate.pause(&mut self.stop).await.map_err(Error::TestHook)?;
             }
             reply = Reply::Response(response.clone());
@@ -332,8 +332,12 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         token: protocol::ReceiptId,
     ) -> Result<Vec<Action>, Error> {
-        let (outcome, location) =
-            intake::interpret_with_location(self.store, self.machine, self.receipt(token)?).await?;
+        let (outcome, location) = intake::interpret_with_location(
+            self.store,
+            self.machine.machine(),
+            self.receipt(token)?,
+        )
+        .await?;
         let detail = crate::machine::hl7::error_location::build(location.as_ref(), b"", b"");
         let location = location.as_ref().map(|_| protocol::Location {
             segment: detail.segment,
@@ -386,7 +390,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
         }
         #[cfg(feature = "test-hooks")]
-        if let Some(hook) = &self.machine.hooks.input_processed {
+        if let Some(hook) = &self.machine.machine().hooks.input_processed {
             hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
         }
         Ok(())
@@ -456,11 +460,11 @@ impl<'a, 'm> Host<'a, 'm> {
                         let outgoing = tokio::select! {
                             biased;
                             () = super::stopping(&mut stop) => break,
-                            result = self.orders.idle(self.store, self.machine, self.settings.options()) => match result {
+                            result = self.orders.idle(self.store, self.machine.machine(), self.settings.options()) => match result {
                                 Ok(message) => message,
                                 Err(error) => {
                                     self.orders.close(self.store, Code::LawIdleAdmissionFailed.as_str()).await?;
-                                    tracing::error!(machine=self.machine.id.as_str(),error_kind=%error,"LAW idle admission stopped; no command retried"); None
+                                    tracing::error!(machine=self.machine.machine().id.as_str(),error_kind=%error,"LAW idle admission stopped; no command retried"); None
                                 },
                             },
                         };
@@ -488,7 +492,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 Input::Opened { .. } => opened = true,
                 Input::Closed(_) => break,
                 Input::Failed(reason) => {
-                    tracing::warn!(machine=self.machine.id.as_str(),error_kind=?reason,"LAW transport attempt failed");
+                    tracing::warn!(machine=self.machine.machine().id.as_str(),error_kind=?reason,"LAW transport attempt failed");
                 }
                 Input::RecordingFailed(_failure) => {}
                 Input::Tick => {}

@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceLevel {
-    /// Explicit `Documented` selection.
+    /// Built from documents only; no simulator or hardware evidence claimed.
     Documented,
-    /// Explicit `Simulated` selection.
+    /// Backed by simulator or vendor-trace evidence, without a hardware claim.
     Simulated,
-    /// Explicit `Proven` selection.
+    /// Backed by recorded conversations with the real instrument.
     Proven,
 }
 
@@ -23,13 +23,13 @@ pub enum EvidenceLevel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TransportKind {
-    /// Explicit `Serial` selection.
+    /// Opens a host-owned serial port.
     Serial,
-    /// Explicit `TcpClient` selection.
+    /// Connects to the configured peer TCP endpoint.
     TcpClient,
-    /// Explicit `TcpServer` selection.
+    /// Accepts inbound TCP connections on the configured listener.
     TcpServer,
-    /// Explicit `WatchedFolder` selection.
+    /// Receives files from a host-owned watched directory.
     WatchedFolder,
 }
 
@@ -37,11 +37,11 @@ pub enum TransportKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Parity {
-    /// Explicit `None` selection.
+    /// Disables this serial line option.
     None,
-    /// Explicit `Odd` selection.
+    /// Requires an odd parity bit count.
     Odd,
-    /// Explicit `Even` selection.
+    /// Requires an even parity bit count.
     Even,
 }
 
@@ -49,11 +49,11 @@ pub enum Parity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FlowControl {
-    /// Explicit `None` selection.
+    /// Disables this serial line option.
     None,
-    /// Explicit `Hardware` selection.
+    /// Uses hardware handshake lines for flow control.
     Hardware,
-    /// Explicit `Software` selection.
+    /// Uses XON/XOFF bytes for flow control.
     Software,
 }
 
@@ -61,9 +61,9 @@ pub enum FlowControl {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChecksumHex {
-    /// Explicit `Strict` selection.
+    /// Accepts only the standard uppercase checksum spelling.
     Strict,
-    /// Explicit `AcceptLowercase` selection.
+    /// Also accepts lowercase checksum hex digits.
     AcceptLowercase,
 }
 
@@ -71,9 +71,9 @@ pub enum ChecksumHex {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Priority {
-    /// Explicit `Instrument` selection.
+    /// Gives the instrument priority during simultaneous ENQ.
     Instrument,
-    /// Explicit `Host` selection.
+    /// Gives the host priority during simultaneous ENQ.
     Host,
 }
 
@@ -81,7 +81,7 @@ pub enum Priority {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Responsibility {
-    /// Explicit `StoreAndForward` selection.
+    /// Promises durable custody before acknowledging the transfer.
     StoreAndForward,
 }
 
@@ -89,11 +89,11 @@ pub enum Responsibility {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Encoding {
-    /// Explicit `Ascii` selection.
+    /// Rejects text bytes outside ASCII.
     Ascii,
-    /// Explicit `Latin1` selection.
+    /// Decodes each byte using ISO-8859-1.
     Latin1,
-    /// Explicit `Utf8` selection.
+    /// Requires well-formed UTF-8 text.
     Utf8,
 }
 
@@ -101,11 +101,11 @@ pub enum Encoding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Terminator {
-    /// Explicit `Cr` selection.
+    /// Ends segments with carriage return.
     Cr,
-    /// Explicit `CrLf` selection.
+    /// Ends segments with carriage return followed by line feed.
     CrLf,
-    /// Explicit `Lf` selection.
+    /// Ends segments with line feed.
     Lf,
 }
 
@@ -113,9 +113,9 @@ pub enum Terminator {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Escapes {
-    /// Explicit `Reject` selection.
+    /// Refuses malformed escape sequences while retaining their bytes.
     Reject,
-    /// Explicit `Preserve` selection.
+    /// Keeps malformed escape text for explicit downstream handling.
     Preserve,
 }
 
@@ -172,13 +172,13 @@ impl From<Edition> for analyte_hl7::Version {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SampleSource {
-    /// Explicit `Barcode` selection.
+    /// Sample identity comes from the instrument barcode reader.
     Barcode,
-    /// Explicit `HostOrder` selection.
+    /// Sample identity comes from the supplied host order.
     HostOrder,
-    /// Explicit `Operator` selection.
+    /// Sample identity was entered by an operator.
     Operator,
-    /// Explicit `Unknown` selection.
+    /// Makes no claim about the source or specimen role.
     Unknown,
 }
 
@@ -186,13 +186,13 @@ pub enum SampleSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Group {
-    /// Explicit `Message` selection.
+    /// Applies the configured rule to the whole message.
     Message,
-    /// Explicit `Patient` selection.
+    /// Applies the configured patient scope or patient specimen role.
     Patient,
-    /// Explicit `Order` selection.
+    /// Applies the configured rule to an order group.
     Order,
-    /// Explicit `Observation` selection.
+    /// Applies the configured rule to one observation.
     Observation,
 }
 
@@ -200,13 +200,13 @@ pub enum Group {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Classification {
-    /// Explicit `Patient` selection.
+    /// Applies the configured patient scope or patient specimen role.
     Patient,
-    /// Explicit `Control` selection.
+    /// Identifies a control specimen without making a QC decision.
     Control,
-    /// Explicit `Calibration` selection.
+    /// Identifies a calibration specimen without interpreting it.
     Calibration,
-    /// Explicit `Unknown` selection.
+    /// Makes no claim about the source or specimen role.
     Unknown,
 }
 

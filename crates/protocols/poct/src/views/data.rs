@@ -202,7 +202,7 @@ impl Timestamp {
         &self.original
     }
 
-    /// Returns the validated local calendar text, excluding the supplied offset.
+    /// Borrows the checked local calendar text, excluding the supplied offset.
     #[must_use]
     pub fn local(&self) -> &str {
         &self.local

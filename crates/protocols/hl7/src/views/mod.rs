@@ -388,7 +388,7 @@ impl<'a> Msa<'a> {
         }
         Ok(Self { segment, code })
     }
-    /// Returns the validated code.
+    /// Borrows the checked code.
     #[must_use]
     pub fn code(self) -> AckCode {
         self.code

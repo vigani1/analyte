@@ -329,7 +329,7 @@ then timed direction/base64-byte events. Use the bounded reader/writers
 specified in the simulator guide. Variable host control IDs/times need named,
 fixed byte-location exceptions, never broad masks.
 
-`cargo test --workspace` discovers every `machines/**/machine.toml`, validates
+`cargo test --workspace --all-features` discovers every `machines/**/machine.toml`, validates
 it with the real config loader, and replays every `.rec.jsonl` in its
 `recordings/` folder through the service. Use the fixed README sections in
 [machines/README.md](../machines/README.md), including one `Level: documented`,

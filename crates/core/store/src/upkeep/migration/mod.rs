@@ -244,6 +244,7 @@ const MIGRATIONS: &[(i64, i64, Step)] = &[
     (11, 12, Step::Sql(include_str!("../migration_v12.sql"))),
     (12, 13, Step::Sql(include_str!("../migration_v13.sql"))),
     (13, 14, Step::Sql(include_str!("../migration_v14.sql"))),
+    (14, 15, Step::Sql(include_str!("../migration_v15.sql"))),
 ];
 
 pub(super) fn apply(

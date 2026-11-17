@@ -69,7 +69,7 @@ impl FrameNumber {
         self.0
     }
 
-    /// Returns the validated numeric sequence without its ASCII encoding.
+    /// Borrows the checked numeric sequence without its ASCII encoding.
     #[must_use]
     pub const fn value(self) -> u8 {
         // Constructors and rollover retain ASCII digits, so this explicit offset cannot wrap.

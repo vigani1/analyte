@@ -2,7 +2,7 @@
 use super::{AstmOrders, Hl7Orders, LawStack, RecordTransport, Stack};
 
 impl Stack {
-    /// Returns the validated astm capability.
+    /// ASTM settings when this stack supports ASTM; otherwise absent.
     #[must_use]
     pub fn astm_orders(&self) -> Option<&AstmOrders> {
         match self {
@@ -16,7 +16,7 @@ impl Stack {
             | Stack::Hl7(RecordTransport::Folder(_)) => None,
         }
     }
-    /// Returns the validated hl7 capability.
+    /// HL7 settings when this stack supports HL7; otherwise absent.
     #[must_use]
     pub fn hl7_orders(&self) -> Option<&Hl7Orders> {
         match self {
@@ -30,7 +30,7 @@ impl Stack {
             | Stack::Astm(RecordTransport::Folder(_)) => None,
         }
     }
-    /// Returns the validated law capability.
+    /// LAW settings when this stack supports LAW; otherwise absent.
     #[must_use]
     pub fn law(&self) -> Option<&LawStack> {
         match self {
@@ -44,7 +44,7 @@ impl Stack {
             | Stack::Hl7(RecordTransport::Folder(_)) => None,
         }
     }
-    /// Returns the validated send ahead capability.
+    /// Whether this stack enables host-initiated work-list delivery.
     #[must_use]
     pub fn send_ahead(&self) -> bool {
         match self {
