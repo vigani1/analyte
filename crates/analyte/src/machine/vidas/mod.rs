@@ -13,6 +13,7 @@ use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
+use tokio::sync::watch;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -67,44 +68,40 @@ impl<'a, 'm> Host<'a, 'm> {
         self.actions.extend(self.dialog.start());
         Ok(())
     }
-    async fn receive_bytes(
+}
+
+impl driver::ByteEffects for Host<'_, '_> {
+    async fn apply_byte(
         &mut self,
-        bytes: Vec<u8>,
+        byte: u8,
         conn: &mut analyte_transport::Connection,
+        _stop: &watch::Receiver<bool>,
     ) -> Result<Flow, Error> {
-        let machine = self.machine;
-        let store = self.store;
-        self.phase = Phase::Transferring;
-        for byte in bytes {
-            match self.dialog.step(self.start.elapsed(), Event::Byte(byte)) {
-                Ok(actions) => self.actions.extend(actions),
-                Err(analyte_dialog::vidas::Error::Framing(error)) => {
-                    let suffix = error == analyte_framing::vidas::Error::ControlSuffix;
-                    let reason = if suffix {
-                        ByteReason::VidasSuffix
-                    } else {
-                        ByteReason::VidasFrame(&error)
-                    };
-                    let parked = intake::park_bytes(store, machine, vec![byte], reason).await;
-                    let cause = if suffix {
-                        Error::ControlSuffixMismatch
-                    } else {
-                        error.into()
-                    };
-                    // A failed park keeps the framing failure as the session's cause.
-                    return Err(match parked {
-                        Ok(()) => cause,
-                        Err(effect) => custody::effect_failure(Some(cause), effect.into()),
-                    });
-                }
-                Err(error) => return Err(error.into()),
+        match self.dialog.step(self.start.elapsed(), Event::Byte(byte)) {
+            Ok(actions) => self.actions.extend(actions),
+            Err(analyte_dialog::vidas::Error::Framing(error)) => {
+                let suffix = error == analyte_framing::vidas::Error::ControlSuffix;
+                let reason = if suffix {
+                    ByteReason::VidasSuffix
+                } else {
+                    ByteReason::VidasFrame(&error)
+                };
+                let parked = intake::park_bytes(self.store, self.machine, vec![byte], reason).await;
+                let cause = if suffix {
+                    Error::ControlSuffixMismatch
+                } else {
+                    error.into()
+                };
+                // A failed park keeps the framing failure as the session's cause.
+                return Err(match parked {
+                    Ok(()) => cause,
+                    Err(effect) => custody::effect_failure(Some(cause), effect.into()),
+                });
             }
-            // Process Store before consuming a merged ETX/EOT following it.
-            if self.apply(Vec::new(), conn).await? == Flow::Stop {
-                return Ok(Flow::Stop);
-            }
+            Err(error) => return Err(error.into()),
         }
-        Ok(Flow::Continue)
+        // Process Store before consuming a merged ETX/EOT following it.
+        self.apply(conn).await
     }
 }
 
@@ -136,7 +133,7 @@ impl Effects for Host<'_, '_> {
         {
             self.start_download(&request)?;
         }
-        if self.apply(Vec::new(), host.conn).await? == Flow::Stop {
+        if self.apply(host.conn).await? == Flow::Stop {
             return Ok(Flow::Stop);
         }
         Ok(Flow::Continue)
@@ -155,11 +152,12 @@ impl Effects for Host<'_, '_> {
                     self.dialog
                         .step(self.start.elapsed(), Event::Disconnected)?,
                 );
-                self.apply(Vec::new(), conn).await?;
+                self.apply(conn).await?;
                 return Ok(Flow::Stop);
             }
             Input::Bytes { bytes } => {
-                if self.receive_bytes(bytes, conn).await? == Flow::Stop {
+                self.phase = Phase::Transferring;
+                if driver::feed(self, bytes, conn, &host.stop).await? == Flow::Stop {
                     return Ok(Flow::Stop);
                 }
             }
@@ -180,15 +178,10 @@ impl Effects for Host<'_, '_> {
 }
 
 impl Host<'_, '_> {
-    async fn apply(
-        &mut self,
-        actions: Vec<Action>,
-        conn: &mut analyte_transport::Connection,
-    ) -> Result<Flow, Error> {
+    async fn apply(&mut self, conn: &mut analyte_transport::Connection) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
         let installed = self.settings.policy();
-        self.actions.extend(actions);
         let mut failures = Failures::new();
         let result = async {
             let mut complete = false;
@@ -221,14 +214,8 @@ impl Host<'_, '_> {
                         failures.keep(Error::TransferUnreconciled {
                             expired: self.dialog.expired_timer(),
                         });
-                        let parked = intake::park_bytes(
-                            store,
-                            machine,
-                            Vec::new(),
-                            ByteReason::VidasIncomplete,
-                        )
-                        .await;
-                        parked?;
+                        intake::park_bytes(store, machine, Vec::new(), ByteReason::VidasIncomplete)
+                            .await?;
                     }
                     Action::Close => match self.work.confirmed(store).await? {
                         crate::orders::vidas::Progress::DownloadNext(request) => {
