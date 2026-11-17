@@ -17,7 +17,7 @@ use tokio::sync::watch;
 
 /// Mutable conversation state has one owner for the entire connection.
 struct ConnectionState {
-    work: crate::orders::autolyser::Work,
+    work: crate::orders::sending::Work<analyte_autolyser::syntax::Worklist>,
     dialog: Dialog,
     start: Instant,
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
@@ -66,7 +66,7 @@ impl ConnectionState {
             },
         })?;
         Ok(Self {
-            work: crate::orders::autolyser::Work::default(),
+            work: crate::orders::sending::Work::default(),
             dialog,
             start: Instant::now(),
             receipt: None,
@@ -224,7 +224,10 @@ impl Effects for ConnectionState {
         )
         .await;
         receive_custody::retain_cleanup(result, cleanup);
-        self.work.close(host.store, self.end_code.into()).await
+        self.work
+            .close(host.store, self.end_code.into())
+            .await
+            .map_err(Into::into)
     }
 }
 

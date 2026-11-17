@@ -16,7 +16,7 @@ use tokio::sync::watch;
 
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
 struct ConnectionState {
-    work: crate::orders::vidas::Work,
+    work: crate::orders::sending::Work<analyte_vidas::syntax::Message>,
     dialog: Dialog,
     start: Instant,
     actions: VecDeque<Action>,
@@ -65,7 +65,7 @@ impl ConnectionState {
         let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
         let actions = dialog.start().into();
         Ok(Self {
-            work: crate::orders::vidas::Work::new(),
+            work: crate::orders::sending::Work::default(),
             dialog,
             start: Instant::now(),
             actions,
@@ -215,7 +215,10 @@ impl Effects for ConnectionState {
         host: &mut Context<'_, '_, Self::Settings>,
         _result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
-        self.work.close(host.store, self.end_code.into()).await
+        self.work
+            .close(host.store, self.end_code.into())
+            .await
+            .map_err(Into::into)
     }
 }
 

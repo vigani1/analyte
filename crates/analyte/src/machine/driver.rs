@@ -171,7 +171,7 @@ mod tests {
             _: &Handle,
         ) -> Result<(), Error> {
             self.trace.borrow_mut().push("background");
-            Err(Error::ForeignStackOrder)
+            Err(Error::ActiveDialogHasNoDeadline)
         }
         async fn input(
             &mut self,
@@ -181,7 +181,7 @@ mod tests {
             match input {
                 Input::Tick => {
                     self.trace.borrow_mut().push("deadline");
-                    Err(Error::MappedRequestMissing)
+                    Err(crate::orders::OrderError::MappedRequestMissing.into())
                 }
                 Input::Closed(None) => {
                     self.trace.borrow_mut().push("disconnect");
@@ -191,7 +191,7 @@ mod tests {
                 | Input::Opened { .. }
                 | Input::Bytes { .. }
                 | Input::Failed(_)
-                | Input::RecordingFailed(_) => Err(Error::ForeignStackOrder),
+                | Input::RecordingFailed(_) => Err(Error::ActiveDialogHasNoDeadline),
             }
         }
         async fn close(
@@ -258,7 +258,7 @@ mod tests {
                 Scenario::Deadline => {
                     assert_eq!(*trace.borrow(), ["open", "deadline", "close"]);
                     assert!(
-                        matches!(result, Err(Error::Refusal(custody::Refusal::Cleanup(causes))) if matches!(causes.original, Error::MappedRequestMissing) && matches!(causes.effect, Error::ControlSuffixMismatch))
+                        matches!(result, Err(Error::Refusal(custody::Refusal::Cleanup(causes))) if matches!(causes.original, Error::Orders(crate::orders::OrderError::MappedRequestMissing)) && matches!(causes.effect, Error::ControlSuffixMismatch))
                     );
                 }
                 Scenario::Stop(Custody::Dialog) => {

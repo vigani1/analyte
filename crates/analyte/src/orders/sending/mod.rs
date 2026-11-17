@@ -4,6 +4,9 @@ use crate::orders::outcome::Code;
 use crate::{deadline, installation::config::Machine};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey};
+mod work;
+pub(crate) use work::Work;
+
 #[cfg(test)]
 mod tests;
 
@@ -306,7 +309,7 @@ pub(crate) async fn settle_owned(
             })
             .await
             .map_err(Into::into);
-        crate::machine::custody::retain_cleanup(&mut result, cleanup);
+        crate::runtime::service::cleanup::retain_cleanup(&mut result, cleanup);
     }
     result
 }

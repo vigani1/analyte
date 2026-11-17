@@ -1,35 +1,21 @@
 //! Reserves VIDAS work and records confirmed or uncertain transfer outcomes.
-use crate::{intake, machine::vidas::Error, orders::outcome::VidasEnd};
-use analyte_store::{Handle, MachineOrder};
-use analyte_vidas::syntax::Message;
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
+use crate::{
+    intake,
+    orders::{OrderError as Error, outcome::VidasEnd, sending::Work},
 };
+use analyte_store::Handle;
+use analyte_vidas::syntax::Message;
+use std::time::{Duration, Instant};
+
+// Preserve the existing VIDAS idle polling cadence independently of dialog timers.
+const ORDER_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 pub(crate) enum Progress {
     UploadFinished,
     DownloadNext(Message),
     DownloadFinished,
 }
-pub(crate) struct Work {
-    active: Option<MachineOrder>,
-    requests: VecDeque<Message>,
-    cursor: String,
-    next_poll: Instant,
-}
-impl Work {
-    pub(crate) fn new() -> Self {
-        Self {
-            active: None,
-            requests: VecDeque::new(),
-            cursor: String::new(),
-            next_poll: Instant::now(),
-        }
-    }
-    pub(crate) fn next_poll(&self) -> Instant {
-        self.next_poll
-    }
+impl Work<Message> {
     pub(crate) async fn poll(
         &mut self,
         machine: &intake::ConnectionEvidence<'_>,
@@ -39,18 +25,19 @@ impl Work {
             return Ok(None);
         }
         self.next_poll = Instant::now()
-            .checked_add(Duration::from_secs(1))
+            .checked_add(ORDER_POLL_INTERVAL)
             .ok_or(Error::OrderPollDeadlineOverflow)?;
-        let Some(reserved) =
-            super::sending::next(store, machine.machine(), &mut self.cursor).await?
-        else {
+        if !self
+            .reserve(store, machine.machine(), |payload| {
+                let analyte_mapping::MachineOrder::Vidas(requests) = payload else {
+                    return Err(Error::ForeignStackOrder);
+                };
+                Ok(requests.into())
+            })
+            .await?
+        {
             return Ok(None);
-        };
-        self.active = Some(reserved.order);
-        let analyte_mapping::MachineOrder::Vidas(requests) = reserved.payload else {
-            return Err(Error::ForeignStackOrder);
-        };
-        self.requests = requests.into();
+        }
         Ok(Some(
             self.requests
                 .pop_front()
@@ -73,15 +60,5 @@ impl Work {
         .await?;
         self.active = None;
         Ok(Progress::DownloadFinished)
-    }
-    pub(crate) async fn close(
-        &self,
-        store: &Handle,
-        reason: super::outcome::Transfer,
-    ) -> Result<(), Error> {
-        if let Some(order) = &self.active {
-            super::sending::uncertain(store, order, reason).await?;
-        }
-        Ok(())
     }
 }
