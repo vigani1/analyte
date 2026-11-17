@@ -287,7 +287,7 @@ async fn plan11_operator_list_show_resolve_are_audited_and_backup_is_readable() 
     let id = handle
         .request::<_, analyte_store::OperatorError>(
             std::time::Instant::now()
-                .checked_add(Duration::from_secs(2))
+                .checked_add(analyte_fixtures::STORE_BUDGET)
                 .ok_or("deadline overflow")?,
             |store| {
                 store.park(&analyte_store::Parked {
@@ -311,7 +311,7 @@ async fn plan11_operator_list_show_resolve_are_audited_and_backup_is_readable() 
     handle
         .shutdown(
             std::time::Instant::now()
-                .checked_add(Duration::from_secs(2))
+                .checked_add(analyte_fixtures::STORE_BUDGET)
                 .ok_or("deadline overflow")?,
         )
         .await?;
@@ -398,7 +398,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
     store
         .request(
             std::time::Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(analyte_fixtures::STORE_BUDGET)
                 .ok_or("deadline overflow")?,
             |s| s.admission(1),
         )
@@ -406,7 +406,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
     store
         .shutdown(
             std::time::Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(analyte_fixtures::STORE_BUDGET)
                 .ok_or("deadline overflow")?,
         )
         .await?;

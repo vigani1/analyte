@@ -38,7 +38,7 @@ impl Committed {
         self.reached.notify_one();
         let mut decision = self.decision.clone();
         tokio::select! {
-            () = analyte_sink::stopped(stop) => Err(Error::Stopped),
+            _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => Err(Error::Stopped),
             result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match *decision.borrow_and_update() {

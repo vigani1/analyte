@@ -89,7 +89,7 @@ async fn setup_with_patient_requirement(
         store
             .request::<_, analyte_store::StorageError>(
                 std::time::Instant::now()
-                    .checked_add(Duration::from_secs(5))
+                    .checked_add(analyte_fixtures::STORE_BUDGET)
                     .ok_or("deadline")?,
                 |store| {
                     store.audit(&analyte_store::Audit {
@@ -108,7 +108,7 @@ async fn setup_with_patient_requirement(
         store
             .shutdown(
                 std::time::Instant::now()
-                    .checked_add(Duration::from_secs(5))
+                    .checked_add(analyte_fixtures::STORE_BUDGET)
                     .ok_or("deadline")?,
             )
             .await?;
@@ -320,12 +320,21 @@ async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> R
         ("v282", "2.8.2"),
     ] {
         for refused in [false, true] {
-            let (_temp, path, reference, service, mut peer) = setup(edition).await?;
-            let bytes = read_mllp_packet(&mut peer, "oversized packet").await?;
-            reply(&mut peer, &bytes, &["OK", "OK"], version).await?;
-            outcome(&path, "Accepted").await?;
-            cancel_cache(&path, &reference).await?;
-            let cancel = read_mllp_packet(&mut peer, "oversized packet").await?;
+            eprintln!("cancellation edition={edition} refused={refused}");
+            let (_temp, path, reference, service, mut peer) = step("setup", setup(edition)).await?;
+            let bytes = step(
+                "receive initial order",
+                read_mllp_packet(&mut peer, "oversized packet"),
+            )
+            .await?;
+            step("reply", reply(&mut peer, &bytes, &["OK", "OK"], version)).await?;
+            step("outcome", outcome(&path, "Accepted")).await?;
+            step("cancel_cache", cancel_cache(&path, &reference)).await?;
+            let cancel = step(
+                "receive cancellation",
+                read_mllp_packet(&mut peer, "oversized packet"),
+            )
+            .await?;
             let parsed = analyte_hl7::Message::parse(&cancel, analyte_hl7::Options::default())?;
             assert!(
                 parsed
@@ -334,27 +343,33 @@ async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> R
                     .all(|row| row.field(1).is_some_and(|field| field.raw() == b"CA"))
             );
             assert!(!parsed.segments().any(|row| row.id() == b"OBR"));
-            reply(
-                &mut peer,
-                &cancel,
-                if refused {
-                    &["UC", "UC"]
-                } else {
-                    &["CR", "CR"]
-                },
-                version,
+            step(
+                "reply to cancellation",
+                reply(
+                    &mut peer,
+                    &cancel,
+                    if refused {
+                        &["UC", "UC"]
+                    } else {
+                        &["CR", "CR"]
+                    },
+                    version,
+                ),
             )
             .await?;
-            state(
-                &path,
-                if refused {
-                    "Accepted"
-                } else {
-                    "CancelConfirmed"
-                },
+            step(
+                "persist cancellation outcome",
+                state(
+                    &path,
+                    if refused {
+                        "Accepted"
+                    } else {
+                        "CancelConfirmed"
+                    },
+                ),
             )
             .await?;
-            wait_state(&path, "done", 3).await?;
+            step("wait_state", wait_state(&path, "done", 3)).await?;
             assert_eq!(receiver_count(&_temp.path().join("receiver.db"))?, 3);
             assert_eq!(database(&path)?.query_row("SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.source_code') LIKE 'app-cancel:%'",[],|r|r.get::<_,i64>(0))?,1);
             if refused {
@@ -365,8 +380,8 @@ async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> R
                 )?;
                 assert!(code.contains("CancelRefused"));
             }
-            service.stop().await?;
-            reference.close().await?;
+            step("service.stop", service.stop()).await?;
+            step("reference.close", reference.close()).await?;
         }
     }
     Ok(())

@@ -394,7 +394,10 @@ impl Draining {
             }),
             tokio::time::timeout_at(until, async {
                 for ready in &mut ready_to_close {
-                    analyte_sink::stopped(ready).await;
+                    let _ = async {
+                        let _ = ready.wait_for(|&stopped| stopped).await;
+                    }
+                    .await;
                 }
             })
         );

@@ -14,6 +14,7 @@ pub use destination::{Credentials, Destination, Limits, SecretsSource};
 pub use polling::Poller;
 
 use std::time::{Duration, Instant};
+#[cfg(test)]
 use tokio::sync::watch;
 
 mod errors;
@@ -23,19 +24,6 @@ mod tests;
 
 fn deadline<E>(duration: Duration, expired: E) -> Result<Instant, E> {
     Instant::now().checked_add(duration).ok_or(expired)
-}
-
-/// Waits until shutdown is requested or its owner disappears, ignoring false updates.
-/// Cancellation leaves the receiver owned by the caller.
-pub async fn stopped(stop: &mut watch::Receiver<bool>) {
-    loop {
-        if *stop.borrow() {
-            return;
-        }
-        if stop.changed().await.is_err() {
-            return;
-        }
-    }
 }
 
 async fn body<E: From<reqwest::Error>>(
@@ -70,7 +58,7 @@ mod stop_tests {
     async fn rule7_stop_wait_ignores_false_and_wakes_on_true_or_owner_loss() {
         for close in [false, true] {
             let (sender, mut receiver) = watch::channel(false);
-            let wait = stopped(&mut receiver);
+            let wait = receiver.wait_for(|&stopped| stopped);
             tokio::pin!(wait);
             assert!(
                 std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx)))
@@ -88,7 +76,7 @@ mod stop_tests {
             } else {
                 sender.send(true).expect("receiver is alive");
             }
-            tokio::time::timeout(Duration::from_millis(1), wait)
+            let _ = tokio::time::timeout(Duration::from_millis(1), wait)
                 .await
                 .expect("stop wakes promptly");
         }

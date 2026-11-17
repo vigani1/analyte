@@ -122,7 +122,10 @@ impl Server {
         drain_server(
             axum::serve(self.listener, self.app)
                 .with_graceful_shutdown(async move {
-                    analyte_sink::stopped(&mut stop).await;
+                    let _ = async {
+                        let _ = stop.wait_for(|&stopped| stopped).await;
+                    }
+                    .await;
                 })
                 .into_future(),
             self.released,

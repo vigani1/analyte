@@ -312,7 +312,39 @@ mod admin_tests {
                 .set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))
                 .is_err()
         );
+        assert_eq!(
+            program.machines[0].destination_limits.store_timeout,
+            Duration::from_secs(2)
+        );
+        assert!(
+            program
+                .set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)
+                .is_err()
+        );
         program.set_loopback_destination_for_test("demo", "http://127.0.0.1:12345".into())?;
+        for invalid in [Duration::ZERO, Duration::from_secs(61)] {
+            assert!(
+                program
+                    .set_loopback_store_budget_for_test("demo", invalid)
+                    .is_err()
+            );
+            assert_eq!(
+                program.machines[0].destination_limits.store_timeout,
+                Duration::from_secs(2)
+            );
+        }
+        program.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;
+        assert_eq!(
+            program.machines[0].destination_limits.store_timeout,
+            analyte_fixtures::STORE_BUDGET
+        );
+        assert_eq!(
+            Program::load(&path)?.machines[0]
+                .destination_limits
+                .store_timeout,
+            Duration::from_secs(2)
+        );
+
         for invalid in [Duration::ZERO, Duration::from_secs(6)] {
             assert!(
                 program

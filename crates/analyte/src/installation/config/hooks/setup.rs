@@ -2,6 +2,36 @@
 use super::super::{Error, Machine, Program};
 use std::time::Duration;
 impl Program {
+    /// Overrides delivery/poller store waits for a synthetic loopback destination.
+    /// Production entry points reject the required destination override.
+    /// # Errors
+    /// Rejects missing loopback overrides and budgets outside 1 through 60 seconds.
+    pub fn set_loopback_store_budget_for_test(
+        &mut self,
+        name: &str,
+        budget: Duration,
+    ) -> Result<(), Error> {
+        if !self.hooks.loopback_destinations.contains_key(name)
+            || !(Duration::from_secs(1)..=Duration::from_secs(60)).contains(&budget)
+        {
+            return Err(Error::InvalidTestStoreBudget);
+        }
+        for machine in &mut self.machines {
+            if machine
+                .snapshot
+                .effective()
+                .site()
+                .destination
+                .name
+                .as_str()
+                == name
+            {
+                machine.destination_limits.store_timeout = budget;
+            }
+        }
+        Ok(())
+    }
+
     /// Pauses after an Autolyser exchange commits, before another poll.
     /// # Errors
     /// Rejects unknown machines and non-injected listeners.

@@ -126,7 +126,7 @@ async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_, '_>) -> Resu
         let custody = P::CUSTODY;
         let input = tokio::select! {
             biased;
-            () = analyte_sink::stopped(&mut host.stop) => {
+            _ = async { let _ = host.stop.wait_for(|&stopped| stopped).await; } => {
                 match custody {
                     Custody::Dialog => return Ok(()),
                     Custody::Chunks => Input::Closed(None),

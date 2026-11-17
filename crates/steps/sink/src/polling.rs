@@ -1,5 +1,5 @@
 //! Polls lab-app orders over HTTP without analyzer I/O.
-use crate::{Destination, PollError, SecretsSource, body, deadline, stopped};
+use crate::{Destination, PollError, SecretsSource, body, deadline};
 use analyte_model::{Identifier, SampleId};
 use analyte_store::{CachedOrder, Handle, OrderPage};
 use tokio::sync::watch;
@@ -130,14 +130,22 @@ impl<'a> Poller<'a> {
     /// Store failures stop the owner; transient network/feed errors retry next interval.
     pub async fn run(&self, mut stop: watch::Receiver<bool>) -> Result<(), PollError> {
         loop {
-            let result = tokio::select! {biased; ()=stopped(&mut stop)=>return Ok(()), result=self.poll_once()=>result};
+            let result = tokio::select! {
+                biased;
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
+                result = self.poll_once() => result,
+            };
             if let Err(error) = &result {
                 tracing::warn!(destination=%self.destination.id.as_str(), error=%error, "order poll failed");
             }
             if let Err(error @ (PollError::Store(_) | PollError::Cursor(_))) = result {
                 return Err(error);
             }
-            tokio::select! {biased; ()=stopped(&mut stop)=>return Ok(()), ()=tokio::time::sleep(self.destination.limits.poll_interval)=>{}}
+            tokio::select! {
+                biased;
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
+                () = tokio::time::sleep(self.destination.limits.poll_interval) => {}
+            }
         }
     }
 }

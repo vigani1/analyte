@@ -74,7 +74,14 @@ versions before deciding whether to repeat it.
 
 Each machine has one supervised owner. TCP servers accept one session at a time;
 TCP clients reconnect without carrying writes between sessions. Serial ports run
-on dedicated joined threads. File producers must rename complete files into the
+on dedicated joined threads. Every session loop (TCP server, TCP client, serial
+and inbound independent LAW) follows one rule when a session fails: it logs the
+specific error without payload, waits a short cancellable backoff and serves the
+next session. A failed serial session closes and reopens the port so the next
+session starts from a fresh connection. Only an unusable listener, invalid link
+settings, or a serial thread that panicked or could not be joined stop the owner.
+File links are the exception: a failed file keeps its claim and ends the file
+owner, because only restart recovery may offer that claim again. File producers must rename complete files into the
 configured incoming directory; the dedicated file owner claims, stores and
 interprets each file before moving it to protected archive or quarantine.
 Interrupted claims survive for recovery. No producer file is deleted.

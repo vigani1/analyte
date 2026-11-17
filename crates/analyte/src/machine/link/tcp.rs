@@ -1,18 +1,124 @@
-//! Keeps listener retries bounded and cancellable after per-session faults.
-use super::RECONNECT_MIN;
+//! Owns TCP server and client session loops and keeps listener retries bounded.
+use super::{Kind, Next, backoff, capture, recorded_connection, retry, session_ended};
+use crate::machine::{Closing, Error, Machine, drive, settings::StreamSession};
+use analyte_store::Handle;
+use analyte_transport::Limits;
 use std::{future::Future, io};
 use tokio::sync::watch;
 
-pub(super) async fn backoff(stop: &mut watch::Receiver<bool>) -> bool {
-    tokio::select! {
-        biased;
-        () = analyte_sink::stopped(stop) => false,
-        () = tokio::time::sleep(RECONNECT_MIN) => true,
+/// Accepts one session at a time; a failed session never ends the listener.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the adopted listener is the only input beyond the shared session-loop inputs"
+)]
+pub(in crate::machine) async fn server(
+    listener: Option<std::net::TcpListener>,
+    machine: &Machine,
+    store: &Handle,
+    session: StreamSession<'_>,
+    limits: Limits,
+    mut stop: watch::Receiver<bool>,
+    mut closing: Closing,
+    capture: Option<&capture::Capture>,
+) -> Result<(), Error> {
+    // A listener that cannot be adopted or bound is unusable: no session can start.
+    let listener = match listener {
+        Some(listener) => tokio::net::TcpListener::from_std(listener)?,
+        None => {
+            analyte_transport::tcp::bind(machine.snapshot.effective().site().endpoint.parse()?)
+                .await?
+        }
+    };
+    loop {
+        let stream = match accept(|| listener.accept(), machine.id.as_str(), &mut stop).await {
+            Ok(Some((stream, _))) => stream,
+            Ok(None) => {
+                closing.after_commits().await?;
+                return Ok(());
+            }
+            // accept retries every recoverable fault; only an unusable listening socket returns.
+            Err(error) => return Err(error.into()),
+        };
+        let (conn, side) = recorded_connection(limits, capture);
+        let cancel = conn.cancellation();
+        let processing = drive(machine, session, store, conn, stop.clone(), &mut closing);
+        let pumped = analyte_transport::tcp::pump(stream, side);
+        // Drain ordered received/closed events even if the I/O owner finishes first.
+        let (result, pumped) = tokio::join!(processing, pumped);
+        cancel.cancel();
+        match session_ended(
+            machine.id.as_str(),
+            Kind::TcpServer,
+            result,
+            pumped,
+            &mut stop,
+        )
+        .await
+        {
+            Next::Serve => {}
+            Next::Stop => return Ok(()),
+            Next::StopIdle => {
+                closing.after_commits().await?;
+                return Ok(());
+            }
+        }
+    }
+}
+
+/// Dials one session at a time and redials after every session, failed or clean.
+pub(in crate::machine) async fn client(
+    machine: &Machine,
+    store: &Handle,
+    session: StreamSession<'_>,
+    limits: Limits,
+    mut stop: watch::Receiver<bool>,
+    mut closing: Closing,
+    capture: Option<&capture::Capture>,
+) -> Result<(), Error> {
+    // An endpoint that is not a socket address can never be dialled.
+    let endpoint = machine.snapshot.effective().site().endpoint.parse()?;
+    // Fixed bounds; invalid only if the constants are wrong, so no session can start.
+    let retry = retry()?;
+    loop {
+        let (conn, side) = recorded_connection(limits, capture);
+        let cancel = conn.cancellation();
+        let dialled = analyte_transport::tcp::client_session(endpoint, side, retry.clone());
+        let (result, dialled) = tokio::join!(
+            drive(machine, session, store, conn, stop.clone(), &mut closing),
+            dialled
+        );
+        // drive cancels the I/O owner and drops its consumer after session cleanup.
+        // The client's final Closed event can therefore meet a closed queue; that
+        // expected owner shutdown is a clean end, not a transport failure.
+        let dialled = if matches!(dialled, Err(analyte_transport::Error::ConsumerClosed))
+            && cancel.is_cancelled()
+        {
+            Ok(())
+        } else {
+            dialled
+        };
+        let clean = result.is_ok() && dialled.is_ok();
+        match session_ended(
+            machine.id.as_str(),
+            Kind::TcpClient,
+            result,
+            dialled,
+            &mut stop,
+        )
+        .await
+        {
+            Next::Serve => {}
+            Next::Stop | Next::StopIdle => return Ok(()),
+        }
+        // A peer that accepts and closes at once must not make the owner spin.
+        if clean && !backoff(&mut stop).await {
+            return Ok(());
+        }
     }
 }
 
 // The callback is a test seam for OS accept faults that cannot be induced portably.
-pub(super) async fn accept<T, F, A>(
+pub(in crate::machine) async fn accept<T, F, A>(
     mut next: F,
     machine: &str,
     stop: &mut watch::Receiver<bool>,
@@ -24,7 +130,7 @@ where
     loop {
         let accepted = tokio::select! {
             biased;
-            () = analyte_sink::stopped(stop) => return Ok(None),
+            _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(None),
             accepted = next() => accepted,
         };
         match accepted {
@@ -101,7 +207,7 @@ mod tests {
         let address = listener.local_addr()?;
         let path = analyte_fixtures::write_machine(
             temp.path(),
-            include_str!("../../../core/config/examples/hl7.toml"),
+            include_str!("../../../../core/config/examples/hl7.toml"),
             &address.to_string(),
         )?;
         let mut program = crate::installation::config::Program::load(&path)?;
@@ -117,12 +223,12 @@ mod tests {
         let (stop, stopped) = watch::channel(false);
         let (ready, _ready) = watch::channel(false);
         let (_close, close) = watch::channel(true);
-        let owner = super::super::run(
+        let owner = crate::machine::run(
             machine,
             store.clone(),
             stopped,
             temp.path().into(),
-            super::super::Closing { ready, close },
+            Closing { ready, close },
             None,
         );
         let peers = async {
