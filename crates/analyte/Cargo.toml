@@ -11,7 +11,7 @@ publish.workspace = true
 
 [features]
 default = []
-test-hooks = []
+test-hooks = ["analyte-sink/test-hooks"]
 
 [dependencies]
 axum = { workspace = true, features = ["form"] }
@@ -47,6 +47,7 @@ jiff = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+analyte = { path = ".", features = ["test-hooks"] }
 analyte-fixtures.workspace = true
 tokio = { workspace = true, features = ["process", "test-util"] }
 analyte-sim = { workspace = true }

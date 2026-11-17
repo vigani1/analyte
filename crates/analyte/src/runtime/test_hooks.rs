@@ -195,7 +195,7 @@ pub(crate) fn publish_store_probes(
     store: &Arc<analyte_store::Handle>,
 ) -> Result<(), Error> {
     for machine in program.machines() {
-        if let Some(probe) = &machine.law_gates.store {
+        if let Some(probe) = &machine.hooks.law_gates.store {
             probe.publish(store)?;
         }
     }

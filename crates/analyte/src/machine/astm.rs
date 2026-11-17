@@ -376,7 +376,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         }
         #[cfg(feature = "test-hooks")]
         if committed.is_ok()
-            && let Some(hook) = &machine.astm_committed
+            && let Some(hook) = &machine.hooks.astm_committed
         {
             hook.pause(stop).await.map_err(Error::TestHook)?;
         }

@@ -149,6 +149,7 @@ pub async fn serve(
 /// An optional readiness signal fires after startup and owner creation succeed.
 /// # Errors
 /// Reports startup, supervision and bounded shutdown failures.
+#[cfg(feature = "test-hooks")]
 pub async fn serve_loopback_test(
     program: Program,
     space: Box<dyn FreeSpace>,
@@ -192,7 +193,7 @@ async fn serve_with(
         ready,
     } = supervision;
     #[cfg(feature = "test-hooks")]
-    let shutdown_bound = if program.stall_store_on_shutdown {
+    let shutdown_bound = if program.hooks.stall_store_on_shutdown {
         if !loopback || watchdog.is_some() {
             return Err(Failure::StuckShutdownHookRequiresTheLoopbackTestService.into());
         }
@@ -257,7 +258,7 @@ async fn serve_with(
     watchdog.arm();
     admin_stop.send_replace(true);
     #[cfg(feature = "test-hooks")]
-    if program.stall_store_on_shutdown {
+    if program.hooks.stall_store_on_shutdown {
         // Deliberately emulate a stuck OS flush without changing the store worker.
         // Only child-process tests enable this; no protocol or storage bytes change.
         store

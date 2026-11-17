@@ -306,15 +306,7 @@ mod tests {
                 capture: false,
                 destination_limits: crate::runtime::delivery::limits(30),
                 #[cfg(feature = "test-hooks")]
-                law_committed: None,
-                #[cfg(feature = "test-hooks")]
-                law_precommit: None,
-                #[cfg(feature = "test-hooks")]
-                law_gates: crate::runtime::test_hooks::LawGates::default(),
-                #[cfg(feature = "test-hooks")]
-                astm_committed: None,
-                #[cfg(feature = "test-hooks")]
-                connection_closing: None,
+                hooks: crate::installation::config::MachineHooks::default(),
             };
             let mut store = Handle::start(
                 temp.path().join("store.db"),

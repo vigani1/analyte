@@ -69,7 +69,7 @@ pub(crate) enum Condition {
 }
 
 impl Alert {
-    #[cfg(test)]
+    #[cfg(all(test, feature = "test-hooks"))]
     pub(crate) fn for_test(text: &str) -> Result<Self, crate::Error> {
         Ok(toml::from_str::<DraftAlert>(text)?.validate(1024)?)
     }

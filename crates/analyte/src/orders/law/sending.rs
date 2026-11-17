@@ -63,14 +63,14 @@ impl Connection {
             let owner = self.owner.clone();
             self.reserving.push(record.key.clone());
             #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &machine.law_gates.cancel {
+            if let Some(gate) = &machine.hooks.law_gates.cancel {
                 gate.operation().await.map_err(Error::TestHook)?;
             }
             let admission =
                 super::super::reservation::cancel(store, until, id, version, owner, freshness)
                     .await;
             #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &machine.law_gates.cancel_result {
+            if let Some(gate) = &machine.hooks.law_gates.cancel_result {
                 gate.operation().await.map_err(Error::TestHook)?;
             }
             match admission {
