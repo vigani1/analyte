@@ -1,7 +1,10 @@
 //! Tests Autolyser polling, checksums and order exchanges.
 use super::vendor_support::*;
 use super::*;
-use crate::support::HANG_GUARD;
+use crate::support::{
+    HANG_GUARD,
+    peer::{closed, while_servicing},
+};
 use analyte_fixtures::ConfigEdit as _;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -36,10 +39,10 @@ async fn setup_with_definition(
     value: serde_json::Value,
     definition: &str,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
-    setup_with_gate(value, definition, None).await
+    setup_with_gate(Some(value), definition, None).await
 }
 async fn setup_with_gate(
-    value: serde_json::Value,
+    value: Option<serde_json::Value>,
     definition: &str,
     hook: Option<Arc<analyte::runtime::test_hooks::Committed>>,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
@@ -51,12 +54,14 @@ async fn setup_with_gate(
         false,
     )
     .await?;
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(&serde_json::to_vec(
-            &value,
-        )?)?])
-        .await?;
+    if let Some(value) = value {
+        reference
+            .receiver
+            .seed(vec![analyte_contract::decode(&serde_json::to_vec(
+                &value,
+            )?)?])
+            .await?;
+    }
     let mut configured = program(&path, &reference.url)?;
     if let Some(hook) = hook {
         configured.pause_autolyser_quiescent_for_test("autolyser", hook)?;
@@ -113,21 +118,13 @@ async fn wait_count(path: &Path, sql: &str, expected: i64) -> Result<(), Error> 
     })
     .await?
 }
-async fn closed(peer: &mut TcpStream) -> Result<(), Error> {
-    let mut bytes = [0];
-    assert_eq!(
-        tokio::time::timeout(HANG_GUARD, peer.read(&mut bytes)).await??,
-        0
-    );
-    Ok(())
-}
 #[tokio::test]
 async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_stays_sent_on_restart()
 -> Result<(), Error> {
     for clone in [true, false] {
         let (hook, control) = analyte::runtime::test_hooks::Committed::new();
         let (temp, path, reference, service, mut peer) =
-            setup_with_gate(order()?, &definition(clone), Some(hook)).await?;
+            setup_with_gate(Some(order()?), &definition(clone), Some(hook)).await?;
         empty_poll(&mut peer).await?;
         step("initial empty poll committed", control.reached()).await?;
         control.resume();
@@ -340,9 +337,22 @@ async fn adr0004_rule8_autolyser_restart_during_send_recovers_only_sending_never
     Ok(())
 }
 async fn rejection(value: serde_json::Value, code: &str) -> Result<(), Error> {
-    let (temp, path, reference, service, mut peer) = setup(value, false).await?;
+    let (temp, path, reference, service, mut peer) =
+        setup_with_gate(None, &definition(false), None).await?;
     empty_poll(&mut peer).await?;
-    event(&path, &temp.path().join("receiver.db"), "Rejected", code).await?;
+    // Force the slow-feed ordering: work arrives only after the initial poll.
+    // A peer that waits for rejection without servicing later polls deadlocks.
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(&serde_json::to_vec(
+            &value,
+        )?)?])
+        .await?;
+    let receiver_path = temp.path().join("receiver.db");
+    while_servicing(event(&path, &receiver_path, "Rejected", code), async || {
+        empty_poll(&mut peer).await
+    })
+    .await?;
     only_polls(&mut peer).await?;
     drop(peer);
     service.stop().await?;

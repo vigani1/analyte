@@ -1,7 +1,5 @@
 //! Tests vendor order exchange assertions.
 use super::*;
-use crate::support::HANG_GUARD;
-use tokio::{io::AsyncReadExt, net::TcpStream};
 /// Runs a synthetic peer or inspects its durable test outcome.
 /// # Errors
 /// Propagates configuration, transport, storage or deadline failures.
@@ -16,14 +14,7 @@ pub async fn state(path: &Path, expected: &str) -> Result<(), Error> {
     )
     .await
 }
-/// Runs a synthetic peer or inspects its durable test outcome.
-/// # Errors
-/// Propagates configuration, transport, storage or deadline failures.
-/// # Panics
-/// Fails when a recorded byte or durable outcome differs from the expected fixture.
-pub async fn byte(peer: &mut TcpStream) -> Result<u8, Error> {
-    Ok(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??)
-}
+pub use crate::support::peer::byte;
 /// Runs a synthetic peer or inspects its durable test outcome.
 /// # Errors
 /// Propagates configuration, transport, storage or deadline failures.
