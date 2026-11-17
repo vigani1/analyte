@@ -300,23 +300,23 @@ impl Connection {
                 .unwrap_or_else(|_| "invalid".into());
             let actor = machine.id.clone();
             store
-                .request::<_, analyte_store::Error>(deadline()?, move |store| {
-                    Ok::<_, analyte_store::Error>(
+                .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
+                    Ok::<_, analyte_store::OrderError>(
                         store.audit(&analyte_store::Audit {
                             actor,
                             action: Identifier::new(Code::LawNegativeQueryOrl.as_str())
-                                .map_err(analyte_store::Error::Text)?,
+                                .map_err(analyte_store::OrderError::Text)?,
                             targets: vec![
                                 Identifier::new(&uuid::Uuid::from(receipt).to_string())
-                                    .map_err(analyte_store::Error::Text)?,
+                                    .map_err(analyte_store::OrderError::Text)?,
                                 Identifier::new(&uuid::Uuid::from(query).to_string())
-                                    .map_err(analyte_store::Error::Text)?,
+                                    .map_err(analyte_store::OrderError::Text)?,
                             ],
                             time: jiff::Timestamp::now().as_second(),
                             reason: analyte_model::Reason::new(&format!(
                                 "negative followup ORL correlated={correlated} acceptance={code}"
                             ))
-                            .map_err(analyte_store::Error::Text)?,
+                            .map_err(analyte_store::OrderError::Text)?,
                         })?,
                     )
                 })
@@ -327,7 +327,7 @@ impl Connection {
             let id = record.id;
             let key = record.key.clone();
             store
-                .request::<_, analyte_store::Error>(deadline()?, move |store| {
+                .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
                     if store.machine_order(&key)?.is_some_and(|current| {
                         matches!(
                             current.state,
@@ -408,7 +408,7 @@ async fn query_orders(
         .map_err(Error::TestHook)?;
     let pages_gate = machine.hooks.pages();
     let cached = store
-        .request::<_, analyte_store::Error>(until, move |store| {
+        .request::<_, Error>(until, move |store| {
             let now = jiff::Timestamp::now().as_second();
             let mut found = Vec::new();
             if let Some(sample) = sample {
@@ -426,17 +426,19 @@ async fn query_orders(
                         }
                     }
                     Lookup::NoOrders => {}
-                    Lookup::NotTrusted => return Err(analyte_store::Error::Conflict),
+                    Lookup::NotTrusted => {
+                        return Err(Error::Store(analyte_store::OrderError::Conflict));
+                    }
                 }
             } else {
                 let mut after = String::new();
                 for page in 0..bound {
                     if Instant::now() >= until {
-                        return Err(analyte_store::Error::Timeout);
+                        return Err(Error::LookupDeadline);
                     }
                     match store.pending_orders(&destination, &target, &after, now, freshness)? {
                         PendingOrders::NotTrusted => {
-                            return Err(analyte_store::Error::Conflict);
+                            return Err(Error::Store(analyte_store::OrderError::Conflict));
                         }
                         PendingOrders::Page {
                             orders,
@@ -447,12 +449,13 @@ async fn query_orders(
                                 .checked_add(orders.len())
                                 .is_none_or(|count| count > bound)
                             {
-                                return Err(analyte_store::Error::LimitExceeded {
+                                return Err(analyte_store::OrderError::LimitExceeded {
                                     what: "pending_order_rows",
-                                });
+                                }
+                                .into());
                             }
                             found.extend(orders);
-                            pages_gate.pause()?;
+                            pages_gate.pause().map_err(Error::TestHook)?;
                             match cursor {
                                 Some(cursor) => after = cursor.as_str().to_owned(),
                                 None => return Ok(found),
@@ -460,9 +463,10 @@ async fn query_orders(
                         }
                     }
                     if page.checked_add(1) == Some(bound) {
-                        return Err(analyte_store::Error::LimitExceeded {
+                        return Err(analyte_store::OrderError::LimitExceeded {
                             what: "pending_order_pages",
-                        });
+                        }
+                        .into());
                     }
                 }
             }

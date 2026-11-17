@@ -20,9 +20,11 @@ pub(crate) async fn check(
         let target = machine.id.clone();
         let lookup = placer.clone();
         let record = store
-            .request::<_, analyte_store::Error>(deadline()?, move |s| {
+            .request::<_, analyte_store::OrderError>(deadline()?, move |s| {
                 match s.machine_order_by_placer(&target, &lookup) {
-                    Err(analyte_store::OrderError::Conflict) => Ok::<_, analyte_store::Error>(None),
+                    Err(analyte_store::OrderError::Conflict) => {
+                        Ok::<_, analyte_store::OrderError>(None)
+                    }
                     other => Ok(other?),
                 }
             })
@@ -65,7 +67,10 @@ pub enum ValidationError {
     ObrOccurrenceOverflow,
     /// Preserves the original comparison failure.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OrderError),
+    /// Transitional host deadline failure.
+    #[error(transparent)]
+    Deadline(#[from] analyte_store::Error),
     /// Preserves the original comparison failure.
     #[error(transparent)]
     Encoding(#[from] std::str::Utf8Error),
@@ -73,5 +78,3 @@ pub enum ValidationError {
     #[error(transparent)]
     Hl7(#[from] analyte_hl7::Error),
 }
-
-analyte_store::forward_command_errors!(ValidationError);

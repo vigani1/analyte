@@ -5,6 +5,8 @@ pub(crate) mod autolyser;
 pub(crate) mod hl7;
 pub(crate) mod law;
 mod operator;
+/// Store failures of the audited order operator command.
+pub use operator::CommandError;
 mod reservation;
 pub(crate) mod sending;
 mod settings;

@@ -2,6 +2,9 @@
 /// Failures looking up, reserving, rendering or settling machine orders.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderError {
+    /// Cache collection exceeded the query deadline.
+    #[error("operation deadline expired")]
+    LookupDeadline,
     /// Failure injected only by the optional test harness.
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
@@ -100,7 +103,13 @@ pub enum OrderError {
     UnsupportedLawQueryScope,
     /// Durable order lookup or lifecycle persistence failed.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OrderError),
+    /// Transitional deadline cause until the shared host deadline is migrated.
+    #[error(transparent)]
+    Deadline(#[from] analyte_store::Error),
+    /// Retained operator evidence could not be read.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
     /// Retaining or interpreting the machine response failed.
     #[error(transparent)]
     Intake(#[from] crate::IntakeError),
@@ -156,4 +165,8 @@ impl crate::machine::custody::CleanupFailure for OrderError {
     }
 }
 
-analyte_store::forward_command_errors!(OrderError);
+impl From<analyte_store::WorkerError> for OrderError {
+    fn from(error: analyte_store::WorkerError) -> Self {
+        Self::Store(error.into())
+    }
+}

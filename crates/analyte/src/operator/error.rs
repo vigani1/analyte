@@ -2,6 +2,9 @@
 /// Failures running a bounded operator action or reading an operational snapshot.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Order command combined restore and order storage operations.
+    #[error(transparent)]
+    OrderCommand(#[from] crate::orders::CommandError),
     /// The operator action or snapshot cannot proceed.
     #[error("active alert snapshot exceeds 4096 rows")]
     ActiveAlertSnapshotExceeds4096Rows,
