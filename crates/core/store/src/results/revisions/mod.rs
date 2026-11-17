@@ -15,7 +15,7 @@ use assignment::{AssignedRevision, Reconciliation};
 use content::clinical_digest;
 use history::write_history;
 use parking::{park_outcomes, reconciliation_succeeded, write_reprocess_audit};
-use rusqlite::{OptionalExtension, params};
+use rusqlite::params;
 pub use status_policy::StatusLifecycle;
 
 /// Store decision for one result, in input order.

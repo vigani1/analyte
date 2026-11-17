@@ -1,5 +1,5 @@
 //! Holds raw Autolyser TOML policy settings.
-use super::*;
+use super::{Deserialize, Serialize};
 
 /// Autolyser connection timing and installed report layout.
 #[derive(Debug, Clone, Serialize, Deserialize)]

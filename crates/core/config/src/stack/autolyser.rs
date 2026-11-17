@@ -1,5 +1,8 @@
 //! Constructs validated AUTOLYSER protocol settings.
-use super::*;
+use super::{
+    Autolyser, CodeTables, DialogTimeouts, Error, OrderTables, StreamTransport, SyntaxLimits,
+    code_tables, invalid, limits, order_tables, stream,
+};
 use crate::ParsedMachine;
 use analyte_model::Identifier;
 

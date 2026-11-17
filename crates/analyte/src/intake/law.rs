@@ -1,5 +1,5 @@
 //! Prepares immutable LAW work references; the store admits execution inside its transaction.
-use super::*;
+use super::{Digest, Error, Handle, Identifier, Machine, deadline};
 use analyte_hl7::law;
 use analyte_store::{LawConflict, LawCustody, LawRejection, LawWork};
 

@@ -2,7 +2,10 @@
 
 mod format;
 use crate::CHUNK_LIMIT;
-pub use format::*;
+pub use format::{
+    Direction, Event, Evidence, Exception, FormatError, Header, Limits, Link, read, write_event,
+    write_header,
+};
 use std::{
     fs::OpenOptions,
     io::{self, Write as _},

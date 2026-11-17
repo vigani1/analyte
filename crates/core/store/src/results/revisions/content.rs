@@ -1,5 +1,5 @@
 //! Hashes clinical content for immutable revision comparisons.
-use super::*;
+use super::{Error, ResultContent, digest};
 pub(crate) fn clinical_digest(result: &ResultContent) -> Result<analyte_model::Digest, Error> {
     let mut parts = serde_json::to_value(&result.parts)?;
     if let Some(parts) = parts.as_array_mut() {

@@ -1,5 +1,8 @@
 //! Commits prepared mapping evidence and retains rejected LAW batches after rollback.
-use super::*;
+use super::{
+    Identifier, Interpretation, InterpretationOutcome, Reading, ReceiptId, ReceiptMetadata,
+    RevisionOutcome, park_findings,
+};
 pub(super) struct PreparedMapping {
     pub(super) id: ReceiptId,
     pub(super) findings: Vec<String>,

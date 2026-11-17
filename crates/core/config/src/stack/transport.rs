@@ -1,5 +1,5 @@
 //! Holds validated transport settings and converts raw settings.
-use super::*;
+use super::{Error, Serial, Transport, TransportKind, invalid};
 
 /// TCP connection direction; cannot select serial or folder transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,5 +1,8 @@
 //! Holds raw TOML field selectors and mapping tables.
-use super::*;
+use super::{
+    Classification, Deserialize, DilutionSource, Group, Identifier, SampleSource, Serialize,
+    ValueKind,
+};
 
 /// Group-relative one-based field selection.
 #[derive(Debug, Clone, Serialize, Deserialize)]

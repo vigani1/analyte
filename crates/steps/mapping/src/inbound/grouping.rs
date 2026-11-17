@@ -5,7 +5,11 @@ use crate::RecordSettings;
 use crate::inbound::source::Source;
 use crate::inbound::{identity, result, value};
 use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, text};
-use analyte_model::*;
+use analyte_model::{
+    Decimal, Dilution, DilutionApplied, EvidenceList, IdentityStatus, NamespacedId,
+    NonEmptyEvidenceList, ObservationIdentity, ProcessingMode, Reason, ResultContent,
+    ResultIdentity, ResultPart, ResultValue, SampleIdentity,
+};
 
 fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode, Error> {
     let (field, mode) = match source.syntax {

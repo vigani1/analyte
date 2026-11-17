@@ -1,5 +1,7 @@
 //! Checks configured field mappings and code tables.
-use super::*;
+use super::{
+    Error, Field, Mappings, NoSubId, OrderNamespace, SubId, TestMapping, UnitMapping, invalid,
+};
 use crate::{ParsedMachine, StackChoice};
 
 pub(super) fn field(

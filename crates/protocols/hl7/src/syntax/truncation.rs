@@ -1,5 +1,5 @@
 //! Preserves sender truncation markers and refuses incomplete clinical input.
-use super::*;
+use super::{Error, Message};
 
 impl Message {
     /// Refuses sender-marked incomplete data before typed interpretation or delivery.

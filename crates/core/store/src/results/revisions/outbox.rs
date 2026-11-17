@@ -1,5 +1,8 @@
 //! Writes eligible result deliveries within the caller transaction.
-use super::*;
+use super::{
+    Delivery, Error, IdentityStatus, Interpretation, Reading, Reconciliation, RevisionOutcome,
+    digest, key, params,
+};
 impl Reconciliation<'_, '_> {
     pub(super) fn write_deliveries(
         &self,

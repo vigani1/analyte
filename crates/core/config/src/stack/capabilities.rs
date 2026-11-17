@@ -1,5 +1,5 @@
 //! Answers protocol capability questions from the validated stack.
-use super::*;
+use super::{AstmOrders, Hl7Orders, LawStack, RecordTransport, Stack};
 
 impl Stack {
     /// Returns the validated astm capability.

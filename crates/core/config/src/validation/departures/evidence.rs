@@ -1,5 +1,8 @@
 //! Resolves bounded local recording references and checks per-rule evidence prerequisites.
-use super::*;
+use super::{
+    DepartureDirection, DepartureEdition, DepartureGuarantee, DepartureReference, DepartureScope,
+    EvidenceLevel, MachineDeparture, Refusal,
+};
 use crate::ParsedMachine;
 use analyte_transport::recording::Evidence as RecordingEvidence;
 

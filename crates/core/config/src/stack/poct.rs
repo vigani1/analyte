@@ -1,5 +1,8 @@
 //! Constructs validated POCT protocol settings.
-use super::*;
+use super::{
+    CodeTables, DialogTimeouts, Error, Poct, SyntaxLimits, TcpTransport, code_tables, invalid,
+    limits, tcp,
+};
 use crate::ParsedMachine;
 
 /// Poct stack with its required installed policy.

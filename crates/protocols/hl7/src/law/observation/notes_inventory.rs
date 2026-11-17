@@ -1,5 +1,9 @@
 //! Validates LAW NTE comment and INV substance segments without interpreting their content.
-use super::*;
+use super::{
+    ControlDirection, Error, Profile, Segment, TextKind, coded, component_error, content, excluded,
+    excluded_fields, extras, field, limit, part, positive, primitive, raw, scalar, text, timestamp,
+    vendor,
+};
 pub(super) fn nte(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error> {
     excluded_fields(segment, "NTE", &[1, 2, 3, 4], direction)?;
     scalar(segment, "NTE", 1, true, 4)?;

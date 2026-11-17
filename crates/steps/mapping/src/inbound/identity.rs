@@ -3,7 +3,7 @@ use crate::RecordSettings;
 use crate::inbound::source::Source;
 use crate::{Error, Output, Problem, finding, identifier, text};
 use analyte_config::{NoSubId, OrderNamespace, SubId};
-use analyte_model::*;
+use analyte_model::{NamespacedId, ObservationIdentity, SampleId, SampleIdentity, SampleSource};
 
 pub(crate) fn sample(
     source: &Source<'_>,

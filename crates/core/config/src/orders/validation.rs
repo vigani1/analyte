@@ -1,5 +1,5 @@
 //! Validates outbound capabilities and code translations.
-use super::*;
+use super::{Error, Field, Group, MachinePriority, Orders, PriorityCode, invalid};
 use crate::{ParsedMachine, StackChoice};
 use std::collections::HashSet;
 

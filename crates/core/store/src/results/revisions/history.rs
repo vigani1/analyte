@@ -1,5 +1,9 @@
 //! Reads and writes revision history within the caller transaction.
-use super::*;
+use super::{
+    AssignedRevision, Error, IdentityStatus, Interpretation, Reading, Reconciliation,
+    clinical_digest, params,
+};
+use rusqlite::OptionalExtension as _;
 pub(super) fn same_retained_content(
     tx: &rusqlite::Transaction<'_>,
     identity_key: &str,

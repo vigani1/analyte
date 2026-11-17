@@ -1,6 +1,10 @@
 //! Validates configuration mappings and protocol stacks.
 use crate::ParsedMachine;
-use crate::{Error, invalid, schema::*};
+use crate::schema::law::validate;
+use crate::{
+    Encoding, Error, EvidenceLevel, Field, MachineDocument, Mappings, NoSubId, OrderNamespace,
+    Site, SubId, TestMapping, Transport, TransportKind, UnitMapping, invalid,
+};
 
 pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> Result<(), Error> {
     if site.destination.freshness_seconds == 0 {
@@ -114,10 +118,14 @@ fn validate_evidence(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
 }
 
 mod mappings;
-use mappings::*;
 
 mod stack;
-use stack::*;
 
 mod departures;
 use departures::validate_departures;
+
+use mappings::{validate_mapping_family, validate_mappings};
+use stack::{
+    validate_dialog_and_framing, validate_protocol, validate_stack, validate_syntax,
+    validate_transport,
+};
