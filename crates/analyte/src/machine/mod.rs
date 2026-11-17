@@ -23,6 +23,8 @@ use analyte_transport::{Backoff, Limits, connection};
 use settings::Link;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
+pub(crate) mod error;
+pub(crate) mod hooks;
 
 /// Bounds queued transport events and writes per machine connection.
 const TRANSPORT_QUEUE_CAPACITY: usize = 16;
@@ -261,7 +263,3 @@ async fn drive(
     // wait behind unread events during shutdown.
     result
 }
-
-pub(crate) mod error;
-
-pub(crate) mod hooks;

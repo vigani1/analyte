@@ -8,6 +8,8 @@ use std::{
     time::Instant,
 };
 use tokio::sync::watch;
+#[cfg(test)]
+mod tests;
 
 /// Default startup budget, including full integrity verification and migrations.
 pub const DEFAULT_STARTUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
@@ -173,6 +175,3 @@ impl Startup {
         self.step.subscribe()
     }
 }
-
-#[cfg(test)]
-mod tests;

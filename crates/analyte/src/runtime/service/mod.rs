@@ -2,6 +2,8 @@
 //! Kept whole: Service startup and shutdown retain the ownership order of supervised workers.
 pub(crate) mod cleanup;
 pub(crate) mod conversions;
+#[cfg(feature = "test-hooks")]
+pub use super::hooks::serve_loopback_test;
 use crate::runtime::Error as Failure;
 use crate::{Error, deadline, installation::config::Program, machine, runtime::space::Volume};
 use analyte_store::{FreeSpace, Handle};
@@ -11,6 +13,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{sync::watch, task::JoinSet};
+#[cfg(test)]
+mod tests;
 /// Bounds pending storage work while allowing machine and operator requests.
 const STORE_QUEUE_CAPACITY: usize = 32;
 
@@ -166,9 +170,6 @@ pub async fn serve(
     )
     .await
 }
-
-#[cfg(feature = "test-hooks")]
-pub use super::hooks::serve_loopback_test;
 
 pub(super) struct Supervision {
     pub(super) mode: super::hooks::ServiceMode,
@@ -748,6 +749,3 @@ fn admin_startup_error(error: crate::admin::Error) -> Error {
         | crate::admin::Error::UncertainOrderCountOverflow) => Error::from(other),
     }
 }
-
-#[cfg(test)]
-mod tests;

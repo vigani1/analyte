@@ -2,6 +2,8 @@
 use crate::{Audit, OrderError as Error, Parked, Store, parked::ParkingEvidence};
 use analyte_model::{Identifier, Reason};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+#[cfg(test)]
+mod tests;
 
 /// Store-assigned identity of one poll admission; retained after confirmation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -260,6 +262,3 @@ pub(crate) fn resolve_on(
     )?;
     Ok(())
 }
-
-#[cfg(test)]
-mod tests;

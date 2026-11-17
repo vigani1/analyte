@@ -6,6 +6,22 @@ pub use vidas::{AckPoint, ChecksumAcceptance, ChecksumInclusion, HexCase, Settin
 
 use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
+mod mappings;
+pub use mappings::{
+    ComponentParts, Field, IdentityEvidence, Mappings, NoSubId, OrderNamespace, QcRule,
+    SampleSelection, SubId, TestMapping, UnitMapping,
+};
+mod poct;
+pub use poct::Poct;
+mod autolyser;
+pub use autolyser::Autolyser;
+mod departures;
+pub use departures::{
+    DepartureDeclaration, DepartureDirection, DepartureEdition, DepartureGuarantee,
+    DepartureMessage, DepartureReference, DepartureScope, MachineDeparture,
+};
+mod refusal;
+pub use refusal::DepartureRefusal;
 
 /// Declared evidence; loading never promotes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -520,24 +536,3 @@ pub struct PoctIdentity {
     /// Explicit installed processing mode; no source mode is inferred from Hello.
     pub processing: analyte_model::ProcessingMode,
 }
-
-mod mappings;
-pub use mappings::{
-    ComponentParts, Field, IdentityEvidence, Mappings, NoSubId, OrderNamespace, QcRule,
-    SampleSelection, SubId, TestMapping, UnitMapping,
-};
-
-mod poct;
-pub use poct::Poct;
-
-mod autolyser;
-pub use autolyser::Autolyser;
-
-mod departures;
-pub use departures::{
-    DepartureDeclaration, DepartureDirection, DepartureEdition, DepartureGuarantee,
-    DepartureMessage, DepartureReference, DepartureScope, MachineDeparture,
-};
-
-mod refusal;
-pub use refusal::DepartureRefusal;

@@ -4,6 +4,12 @@ use crate::test_support::{TestResult, open};
 use crate::*;
 use analyte_model::{OrderState, SourceText};
 use std::num::NonZeroU64;
+mod cancellation;
+mod custody;
+mod items;
+mod lifecycle;
+mod mutation;
+mod trust;
 
 fn identity() -> Result<MachineOrderKey, analyte_model::TextError> {
     Ok(MachineOrderKey {
@@ -328,15 +334,3 @@ fn seed_mutation_rule8_item_groups(
     };
     Ok((tests, groups))
 }
-
-mod mutation;
-
-mod cancellation;
-
-mod items;
-
-mod lifecycle;
-
-mod trust;
-
-mod custody;

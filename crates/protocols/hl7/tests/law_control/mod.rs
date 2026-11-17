@@ -3,6 +3,8 @@ use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection},
 };
+mod errors;
+mod headers;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -105,7 +107,3 @@ fn query_with(changes: &[(usize, &str)]) -> Result<Message, Box<dyn std::error::
     let bytes = wire("query", changes, body)?;
     Ok(law::parse_message(bytes.as_bytes(), options())?)
 }
-
-mod headers;
-
-mod errors;

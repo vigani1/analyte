@@ -12,6 +12,12 @@ use std::{
 use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
 
 use analyte_fixtures::SECRET;
+use analyte_fixtures::UnlimitedSpace as Space;
+mod alert_webhooks;
+mod bounds;
+mod delivery;
+mod diagnostics;
+mod workers;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 /// Mixed operations used only by synthetic fixture setup.
@@ -63,8 +69,6 @@ impl SecretsSource for RotatingSecrets {
         })
     }
 }
-
-use analyte_fixtures::UnlimitedSpace as Space;
 
 /// Storage deadline for test requests. CI machines with `synchronous=FULL`
 /// can be slow; the behavior under test never depends on this budget.
@@ -733,13 +737,3 @@ async fn enqueue_retry_correction(store: &Handle) -> TestResult {
     enqueue(store, metadata, correction, delivery).await?;
     Ok(())
 }
-
-mod workers;
-
-mod bounds;
-
-mod delivery;
-
-mod alert_webhooks;
-
-mod diagnostics;

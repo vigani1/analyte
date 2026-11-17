@@ -6,6 +6,8 @@ use super::order::limit;
 use super::patient::{authority_value, coded, excluded, extras};
 use super::{ControlDirection, Error, Profile, ResultStatus, content, raw};
 use crate::Segment;
+mod notes_inventory;
+use notes_inventory::{inv, nte};
 
 fn location(number: usize, component: usize) -> Error {
     component_error("OBX", number, component)
@@ -546,6 +548,3 @@ fn validate_flags(segment: Segment<'_>, direction: ControlDirection) -> Result<(
     }
     Ok(())
 }
-
-mod notes_inventory;
-use notes_inventory::{inv, nte};

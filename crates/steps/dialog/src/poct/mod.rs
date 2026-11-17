@@ -12,6 +12,8 @@ use std::{
     collections::{BTreeSet, VecDeque},
     time::Duration,
 };
+mod evidence;
+pub use evidence::ticket_evidence;
 
 /// Host limits and deadlines; these are policy, not claimed standard defaults.
 #[derive(Debug, Clone)]
@@ -696,6 +698,3 @@ fn parse_seconds(text: &str) -> Option<Duration> {
     let value = Duration::new(seconds, nanos);
     if value.is_zero() { None } else { Some(value) }
 }
-
-mod evidence;
-pub use evidence::ticket_evidence;

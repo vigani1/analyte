@@ -1,5 +1,7 @@
 //! Validates ORU and OUL segment order before exposing a result message.
 use crate::{Message, Msh, Version};
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone, Copy)]
 enum Patient {
@@ -215,6 +217,3 @@ impl<'a> ResultMessage<'a> {
         self.version
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -2,6 +2,8 @@
 use crate::{FreeSpace, Limits, StorageError as Error, Store};
 use rusqlite::Connection;
 use std::path::Path;
+#[cfg(test)]
+mod tests;
 
 impl Store {
     pub(crate) fn bound(&self, bytes: &[u8]) -> Result<(), Error> {
@@ -80,6 +82,3 @@ impl Store {
         Ok(self.capacity(expected_bytes)?)
     }
 }
-
-#[cfg(test)]
-mod tests;

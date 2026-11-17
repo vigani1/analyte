@@ -11,6 +11,9 @@ use tokio::{
 };
 
 use analyte_fixtures::Space;
+mod connections;
+mod custody;
+mod hl7_safety;
 
 fn config(temp: &Path, astm: bool) -> Result<std::path::PathBuf, Error> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
@@ -94,9 +97,3 @@ async fn serve(
     })?;
     service::serve_loopback_test(program, space, stop, secrets, None).await
 }
-
-mod connections;
-
-mod custody;
-
-mod hl7_safety;

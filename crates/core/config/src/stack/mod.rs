@@ -28,6 +28,18 @@ use file::file_stack;
 pub use file::{FileAstmStack, FileHl7Stack};
 use hl7::{hl7_orders, hl7_syntax};
 use law::law_stack;
+mod transport;
+pub use transport::{RecordTransport, StreamKind, StreamTransport, TcpRole, TcpTransport};
+use transport::{stream, stream_kind, stream_timeout, tcp, tcp_kind};
+mod limits;
+pub use limits::{DialogTimeouts, SyntaxLimits};
+use limits::{hl7_options, limits};
+mod order_tables;
+pub use order_tables::OrderTables;
+use order_tables::order_tables;
+mod capabilities;
+mod settings;
+pub use settings::{StackSettings, SyntaxBounds};
 
 /// A supported, validated protocol combination. Each payload has only its own settings.
 /// This runtime representation is not serialized; canonical TOML keeps the original layout.
@@ -228,20 +240,3 @@ fn code_tables(machine: &ParsedMachine<'_>, path: &str) -> Result<CodeTables, Er
         .clone()
         .ok_or_else(|| invalid(path, "codes", "vendor stack requires code tables"))
 }
-
-mod transport;
-pub use transport::{RecordTransport, StreamKind, StreamTransport, TcpRole, TcpTransport};
-use transport::{stream, stream_kind, stream_timeout, tcp, tcp_kind};
-
-mod limits;
-pub use limits::{DialogTimeouts, SyntaxLimits};
-use limits::{hl7_options, limits};
-
-mod order_tables;
-pub use order_tables::OrderTables;
-use order_tables::order_tables;
-
-mod capabilities;
-
-mod settings;
-pub use settings::{StackSettings, SyntaxBounds};

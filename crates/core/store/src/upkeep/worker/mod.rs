@@ -2,6 +2,8 @@
 use crate::{FreeSpace, Limits, Store, WorkerError, WorkerStartError};
 use std::{path::PathBuf, thread, time::Instant};
 use tokio::sync::{mpsc, oneshot};
+#[cfg(test)]
+mod tests;
 
 type Operation = Box<dyn FnOnce(&mut Store) + Send>;
 
@@ -193,6 +195,3 @@ impl Drop for Handle {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

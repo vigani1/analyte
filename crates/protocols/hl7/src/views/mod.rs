@@ -1,5 +1,13 @@
 //! Reads typed HL7 segment fields.
 use crate::{Error, Field, Message, Segment, Version};
+mod location;
+pub use location::{Location, location_error, syntax_location};
+mod result;
+pub use result::validate_result_fields;
+mod grammar;
+pub use grammar::{ResultGrammarError, ResultMessage};
+mod evidence;
+pub use evidence::{WireCompatibility, wire_compatibility};
 
 /// A nonempty bounded message identity; preserves spelling without numeric conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -496,11 +504,6 @@ impl<'a> ErrView<'a> {
     }
 }
 
-mod location;
-pub use location::{Location, location_error, syntax_location};
-mod result;
-pub use result::validate_result_fields;
-
 fn validate_message_type(segment: Segment<'_>, version: Version) -> Result<(), Error> {
     let rules = version.require_rules()?;
     let message_type = required(segment, 9)?;
@@ -586,10 +589,3 @@ pub(crate) fn error_code(code: &[u8], version: Version) -> bool {
                 | b"207"
         )
 }
-
-mod grammar;
-pub use grammar::{ResultGrammarError, ResultMessage};
-
-mod evidence;
-
-pub use evidence::{WireCompatibility, wire_compatibility};

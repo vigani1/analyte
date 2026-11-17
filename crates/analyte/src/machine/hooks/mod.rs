@@ -7,6 +7,7 @@ mod enabled;
 pub(crate) use enabled::MachineHooks;
 #[cfg(not(feature = "test-hooks"))]
 mod disabled;
+use crate::runtime::hooks::Operation;
 #[cfg(not(feature = "test-hooks"))]
 pub(crate) use disabled::MachineHooks;
 
@@ -22,4 +23,3 @@ pub(crate) enum Pause {
     LawHandover,
     LawQueued,
 }
-use crate::runtime::hooks::Operation;

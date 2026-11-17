@@ -15,6 +15,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{path::Path, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};
+#[cfg(test)]
+mod tests;
 
 /// Receiver initialization failures.
 #[derive(Debug, thiserror::Error)]
@@ -568,6 +570,3 @@ async fn deadline(request: axum::extract::Request, next: axum::middleware::Next)
         Err(_) => failure(StatusCode::REQUEST_TIMEOUT, "request_deadline"),
     }
 }
-
-#[cfg(test)]
-mod tests;

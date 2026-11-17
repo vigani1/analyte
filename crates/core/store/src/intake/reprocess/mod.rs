@@ -2,6 +2,8 @@
 use crate::{Audit, ReconciliationError as Error, key};
 use analyte_model::{Identifier, ReceiptId};
 use rusqlite::{OptionalExtension, Transaction};
+#[cfg(test)]
+mod tests;
 
 /// An explicit operator action on a receipt, optionally resolving one parked item.
 pub struct Reprocess {
@@ -65,6 +67,3 @@ pub(crate) fn audit_evidence(
         reason: action.audit.reason.clone(),
     })?)
 }
-
-#[cfg(test)]
-mod tests;

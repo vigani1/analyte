@@ -1,9 +1,13 @@
 //! Tests HL7 order messages and acknowledgments.
+#[macro_use]
+mod assertions;
 use analyte_hl7::order::{
     self, Code, Control, Error, Header, Order, OrderId, OrderMessage, OrderResponse, Outcome,
     Patient, Priority, Processing, SampleField, SampleId, Specimen, Subject, Timestamp, Timing,
 };
 use analyte_hl7::{AckCode, ControlId, Message, Options, Version, decode_text};
+mod commands;
+mod responses;
 
 fn header(version: Version) -> Result<Header<'static>, Error> {
     Ok(Header {
@@ -90,21 +94,3 @@ fn orc(control: &[u8], placer: &[u8], filler: &[u8], status: &[u8], reason: &[u8
     bytes.push(b'\r');
     bytes
 }
-
-macro_rules! bad_order_reply {
-    ($name:ident,$body:expr,$pattern:pat) => {
-        #[test]
-        fn $name() -> Result<(), Error> {
-            for version in [Version::V231, Version::V251] {
-                let sent = sent(version)?;
-                let message = reply(version, b"AA", $body)?;
-                assert!(matches!(OrderResponse::new(&message, &sent), Err($pattern)));
-            }
-            Ok(())
-        }
-    };
-}
-
-mod commands;
-
-mod responses;

@@ -16,6 +16,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
+#[cfg(test)]
+mod tests;
 
 struct DisplayOutcome {
     receipt: Option<analyte_dialog::hl7::ReceiptId>,
@@ -576,6 +578,3 @@ impl Effects for Host<'_, '_> {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;

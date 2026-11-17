@@ -18,6 +18,8 @@ use tokio::sync::watch;
 
 mod errors;
 pub use errors::{DeliveryError, DestinationError, PollError};
+#[cfg(test)]
+mod tests;
 
 fn deadline<E>(duration: Duration, expired: E) -> Result<Instant, E> {
     Instant::now().checked_add(duration).ok_or(expired)
@@ -47,9 +49,6 @@ async fn body<E: From<reqwest::Error>>(
     }
     Ok(bytes)
 }
-
-#[cfg(test)]
-mod tests;
 
 fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
     reqwest::Client::builder()

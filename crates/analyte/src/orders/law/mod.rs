@@ -7,6 +7,7 @@ mod sending;
 pub(crate) mod validation;
 mod work;
 use crate::{deadline, installation::config::Machine, intake};
+pub(crate) use analyte_dialog::law::Reply;
 use analyte_hl7::{AckCode, AckError, Message, Options, Responsibility, law};
 use analyte_model::{Identifier, OrderState, ReceiptId, SampleId, SourceText};
 use analyte_store::{
@@ -25,8 +26,6 @@ pub(crate) struct LawOrderLink {
     cursor: String,
     clock: Instant,
 }
-
-pub(crate) use analyte_dialog::law::Reply;
 
 struct Exchange {
     records: Vec<MachineOrder>,

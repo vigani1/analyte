@@ -13,6 +13,12 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::{Arc, atomic::Ordering};
+mod orders;
+pub(super) use orders::orders;
+mod raw;
+pub(super) use raw::RawError;
+pub(super) use raw::raw;
+use raw::raw_links;
 
 pub(super) const PAGE: usize = 50;
 pub(super) const NAV: &str = concat!(
@@ -359,11 +365,3 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
     }
     Ok(html)
 }
-
-mod orders;
-pub(super) use orders::orders;
-
-mod raw;
-pub(super) use raw::RawError;
-pub(super) use raw::raw;
-use raw::raw_links;

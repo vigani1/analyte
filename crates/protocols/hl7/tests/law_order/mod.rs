@@ -3,6 +3,10 @@ use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection, Error, OrderControl, OrderStatus, Profile},
 };
+mod controls;
+mod priority;
+mod responses;
+mod timing;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const TEST: &str = "test^Synthetic^99LAB";
 fn options() -> Options {
@@ -164,11 +168,3 @@ fn validate_builder_repeat_permissions(
     )?;
     Ok(())
 }
-
-mod controls;
-
-mod timing;
-
-mod responses;
-
-mod priority;

@@ -2,6 +2,8 @@
 use crate::{Error, Field, Group, invalid};
 use analyte_model::{Identifier, NamespacedId};
 use serde::{Deserialize, Serialize};
+mod hl7;
+mod validation;
 
 /// Unknown cache answers never become an empty work list.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -248,6 +250,3 @@ pub struct Orders {
     /// Explicit send-ahead and cancellation interface.
     pub hl7_send: Option<Hl7Send>,
 }
-
-mod hl7;
-mod validation;

@@ -23,6 +23,8 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{Semaphore, watch};
+#[cfg(all(test, feature = "test-hooks"))]
+mod tests;
 
 pub(super) struct Machine {
     pub(super) id: Identifier,
@@ -370,6 +372,3 @@ async fn login(
         .insert(header::LOCATION, header::HeaderValue::from_static("/"));
     response
 }
-
-#[cfg(all(test, feature = "test-hooks"))]
-mod tests;

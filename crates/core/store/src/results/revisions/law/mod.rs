@@ -3,6 +3,8 @@ use crate::{Receipt, ReconciliationError as Error, key};
 use analyte_model::{AwosExecution, Digest, Identifier, OrderState, SourceText};
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
+mod listing;
+pub use listing::{AnalyzerCancelledItem, WorkEvidence};
 
 /// Located whole-message rejection, retained so a retransmission reproduces AR.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -216,6 +218,3 @@ pub(super) fn write(
     }
     Ok(())
 }
-
-mod listing;
-pub use listing::{AnalyzerCancelledItem, WorkEvidence};

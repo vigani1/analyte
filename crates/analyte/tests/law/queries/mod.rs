@@ -10,6 +10,12 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
+mod downloads;
+#[cfg(feature = "test-hooks")]
+#[path = "../gates/mod.rs"]
+mod gates;
+#[cfg(feature = "test-hooks")]
+mod lookup;
 
 fn definition() -> String {
     format!(
@@ -297,12 +303,3 @@ async fn wait_audit(path: &Path) -> Result<(), Error> {
     })
     .await?
 }
-
-#[cfg(feature = "test-hooks")]
-mod lookup;
-
-mod downloads;
-
-#[cfg(feature = "test-hooks")]
-#[path = "../gates/mod.rs"]
-mod gates;

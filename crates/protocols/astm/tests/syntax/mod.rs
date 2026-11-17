@@ -2,6 +2,7 @@
 //! Kept whole: Shared synthetic record fixtures and malformed grammar tables support the child scenarios.
 use analyte_astm::{Delimiters, Error, Kind, Limits, Presence, ResultStatus, parse, parse_with};
 use proptest::prelude::*;
+mod grammar;
 
 fn check_header_fields_0(view: &analyte_astm::Header<'_>) {
     assert_eq!(
@@ -614,5 +615,3 @@ fn check_terminator(records: &[analyte_astm::Record]) -> Result<(), Error> {
     }
     Ok(())
 }
-
-mod grammar;

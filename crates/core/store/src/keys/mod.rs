@@ -4,6 +4,8 @@
 use crate::StorageError as Error;
 use analyte_model::{DeliveryId, Identifier, NamespacedId, ObservationIdentity, ReceiptId};
 use serde::Serialize;
+#[cfg(test)]
+mod tests;
 
 pub(crate) trait Key {
     fn wire(&self) -> impl Serialize;
@@ -138,6 +140,3 @@ impl Key for crate::AlertKey {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

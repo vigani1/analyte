@@ -14,6 +14,8 @@ use analyte_model::{Identifier, NamespacedId, OrderState, OrderTransition, Sourc
 use rusqlite::{Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU64;
+#[cfg(test)]
+mod tests;
 
 /// Stable app namespace, order and machine identity for one attempted command.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -640,6 +642,3 @@ mod item_transition_tests {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;

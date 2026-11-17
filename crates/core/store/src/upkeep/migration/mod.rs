@@ -2,6 +2,8 @@
 use crate::{MaintenanceError as Error, Store};
 use rusqlite::Connection;
 mod revisions;
+#[cfg(test)]
+mod tests;
 
 impl Store {
     pub(crate) fn migrate_v2(db: &mut Connection) -> Result<(), Error> {
@@ -219,9 +221,6 @@ fn parking(encoded: &str) -> Result<String, Error> {
     };
     Ok(crate::parked::evidence(name, &target, &reason, context)?)
 }
-
-#[cfg(test)]
-mod tests;
 
 /// Each entry advances exactly one version; SQL and evidence conversions share the same checks.
 enum Step {

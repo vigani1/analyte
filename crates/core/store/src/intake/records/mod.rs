@@ -1,6 +1,8 @@
 //! Stores parsed records and their receipt associations.
 use analyte_model::{DeliveryId, Identifier, Reason, ResultContent, SampleId};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+mod tests;
 
 /// Reproducible interpretation with exact effective config and typed result contents.
 #[derive(Clone)]
@@ -262,6 +264,3 @@ pub struct FrameProvenance {
     /// Exact effective configuration, without secrets.
     pub config: Vec<u8>,
 }
-
-#[cfg(test)]
-mod tests;

@@ -2,6 +2,8 @@
 use crate::{FrameProvenance, IntakeError as Error, Store, key};
 use analyte_model::{Identifier, Reason, ReceiptId};
 use rusqlite::{OptionalExtension, params};
+#[cfg(test)]
+mod tests;
 
 /// A sequence value checked against the bound supplied by its protocol owner.
 /// This is independent of the store's monotonic journal identity.
@@ -151,6 +153,3 @@ impl Store {
         self.frame(transfer, sequence, raw)
     }
 }
-
-#[cfg(test)]
-mod tests;

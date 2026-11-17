@@ -2,6 +2,9 @@
 use super::*;
 use analyte::runtime::test_hooks::{Committed, LawGates, StoreGate, StoreProbe};
 use std::sync::Arc;
+mod handover;
+mod lookup;
+mod paging;
 
 async fn start(
     settings: &str,
@@ -67,6 +70,3 @@ async fn uncertain(path: &Path, expected: &[(String, String)]) -> Result<(), Err
     );
     Ok(())
 }
-mod handover;
-mod lookup;
-mod paging;

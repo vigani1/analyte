@@ -2,6 +2,8 @@
 use crate::{MaintenanceError as Error, Store};
 use rusqlite::Connection;
 use std::{path::Path, time::Instant};
+#[cfg(test)]
+mod tests;
 
 impl Store {
     /// Uses SQLite online backup, then checks the restored copy before reporting success.
@@ -34,6 +36,3 @@ impl Store {
         Self::integrity(&copy)
     }
 }
-
-#[cfg(test)]
-mod tests;
