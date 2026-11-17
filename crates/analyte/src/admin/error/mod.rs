@@ -13,40 +13,40 @@ pub enum Error {
     /// The enabled departure declaration could not be rendered.
     #[error(transparent)]
     MachineConfig(#[from] analyte_config::Error),
-    /// The requested administration operation is refused.
+    /// Awos item not retained.
     #[error("AWOS item not retained")]
     AwosItemNotRetained,
-    /// The requested administration operation is refused.
+    /// Admin session capacity reached; restart or wait for expiry.
     #[error("admin session capacity reached; restart or wait for expiry")]
-    AdminSessionCapacityReachedRestartOrWaitForExpiry,
-    /// The requested administration operation is refused.
+    SessionCapacity,
+    /// Admin session lock poisoned.
     #[error("admin session lock poisoned")]
     AdminSessionLockPoisoned,
-    /// The requested administration operation is refused.
+    /// Choose place or release.
     #[error("choose place or release")]
     ChoosePlaceOrRelease,
-    /// The requested administration operation is refused.
+    /// Choose receipt or order.
     #[error("choose receipt or order")]
     ChooseReceiptOrOrder,
-    /// The requested administration operation is refused.
+    /// Current configuration points to a different store.
     #[error("current configuration points to a different store")]
-    CurrentConfigurationPointsToADifferentStore,
-    /// The requested administration operation is refused.
+    StoreMismatch,
+    /// Machine cursor overflow.
     #[error("machine cursor overflow")]
     MachineCursorOverflow,
-    /// The requested administration operation is refused.
+    /// Parked target cursor overflow.
     #[error("parked target cursor overflow")]
     ParkedTargetCursorOverflow,
-    /// The requested administration operation is refused.
+    /// Uncertain order count overflow.
     #[error("uncertain order count overflow")]
     UncertainOrderCountOverflow,
-    /// Preserves the original admin dependency failure.
+    /// An audited operator action failed.
     #[error(transparent)]
     Operator(Box<crate::operator::Error>),
-    /// Preserves the original admin dependency failure.
+    /// A runtime operation failed.
     #[error(transparent)]
     Runtime(#[from] crate::runtime::Error),
-    /// Preserves the original admin dependency failure.
+    /// An administration store command failed.
     #[error(transparent)]
     Store(#[from] CommandError),
     /// Retained analyzer execution evidence could not be queried.
@@ -55,34 +55,34 @@ pub enum Error {
     /// Audited raw-view input or evidence failed.
     #[error(transparent)]
     Raw(#[from] super::pages::RawError),
-    /// Preserves the original admin dependency failure.
+    /// Receipt interpretation failed.
     #[error(transparent)]
     Intake(#[from] crate::IntakeError),
-    /// Preserves the original admin dependency failure.
+    /// The installation configuration could not be read.
     #[error(transparent)]
     Config(#[from] crate::installation::config::Error),
-    /// Preserves the original admin dependency failure.
+    /// A bounded model text value is invalid.
     #[error(transparent)]
     Text(#[from] analyte_model::TextError),
-    /// Preserves the original admin dependency failure.
+    /// A model identity is invalid.
     #[error(transparent)]
     Identity(#[from] analyte_model::InvalidUuid),
-    /// Preserves the original admin dependency failure.
+    /// The supplied UUID is invalid.
     #[error(transparent)]
     Uuid(#[from] uuid::Error),
-    /// Preserves the original admin dependency failure.
+    /// An integer exceeds the target range.
     #[error(transparent)]
     Integer(#[from] std::num::TryFromIntError),
-    /// Preserves the original admin dependency failure.
+    /// The supplied integer is malformed.
     #[error(transparent)]
     ParseInteger(#[from] std::num::ParseIntError),
-    /// Preserves the original admin dependency failure.
+    /// The administration JSON could not be processed.
     #[error(transparent)]
     Json(#[from] serde_json::Error),
-    /// Preserves the original admin dependency failure.
+    /// The authentication token is invalid.
     #[error(transparent)]
     Token(#[from] super::TokenError),
-    /// Preserves the original admin dependency failure.
+    /// The delivery destination is invalid.
     #[error(transparent)]
     SinkDestinationError(#[from] analyte_sink::DestinationError),
     /// Preserves the owning sink API boundary.
@@ -91,10 +91,10 @@ pub enum Error {
     /// Preserves the owning sink API boundary.
     #[error(transparent)]
     SinkPollError(#[from] analyte_sink::PollError),
-    /// Preserves the original admin dependency failure.
+    /// An administration I/O operation failed.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// Preserves the original admin dependency failure.
+    /// The configured secret could not be loaded.
     #[error(transparent)]
     Secret(#[from] crate::installation::secrets::SecretError),
 }

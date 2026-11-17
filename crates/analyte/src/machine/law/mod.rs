@@ -342,7 +342,7 @@ impl<'a, 'm> Host<'a, 'm> {
             };
             if let Err(error) = sender.try_send(pending) {
                 *self.orders = error.into_inner().orders;
-                return Err(Error::OutboundQueueUnavailableReservedWorkNotIssued);
+                return Err(Error::OutboundQueueUnavailable);
             }
             self.ready = Some(notify);
 

@@ -17,7 +17,7 @@ impl Program {
     fn test_listener_machine_mut(&mut self, id: &str) -> Result<&mut Machine, Error> {
         let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none() {
-            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
+            return Err(Error::TestListenerMismatch);
         }
         Ok(machine)
     }
@@ -42,7 +42,7 @@ impl Program {
                 analyte_config::Stack::Law(_)
             )
         {
-            return Err(Error::CommitHookRequiresInjectedLawLoopbackListener);
+            return Err(Error::MissingLawCommitListener);
         }
         machine.hooks.law_committed = Some(hook);
         Ok(())
@@ -92,7 +92,7 @@ impl Program {
                 .iter()
                 .any(|machine| machine.listener.is_none())
         {
-            return Err(Error::StuckShutdownHookRequiresInjectedLoopbackListeners);
+            return Err(Error::MissingShutdownListeners);
         }
         self.hooks.stall_store_on_shutdown = true;
         Ok(())
@@ -112,7 +112,7 @@ impl Program {
                 analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
             )
         {
-            return Err(Error::CommitHookRequiresInjectedAstmLoopbackListener);
+            return Err(Error::MissingAstmCommitListener);
         }
         machine.hooks.astm_committed = Some(hook);
         Ok(())
@@ -157,7 +157,7 @@ impl Program {
                 != analyte_config::TransportKind::TcpServer
             || listener.local_addr()?.to_string() != machine.snapshot.effective().site().endpoint
         {
-            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
+            return Err(Error::TestListenerMismatch);
         }
         listener.set_nonblocking(true)?;
         machine.listener = Some(listener);
@@ -194,7 +194,7 @@ impl Program {
         if !self.hooks.loopback_destinations.contains_key(name)
             || !(Duration::from_millis(1)..=Duration::from_secs(5)).contains(&interval)
         {
-            return Err(Error::TestPollingRequiresALoopbackOverrideAndABoundedInterval);
+            return Err(Error::InvalidTestPolling);
         }
         for machine in &mut self.machines {
             if machine

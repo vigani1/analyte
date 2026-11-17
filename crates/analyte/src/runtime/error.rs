@@ -9,9 +9,7 @@ pub enum Error {
     #[error(
         "SCM dispatcher unavailable; use analyte run instead outside the Service Control Manager"
     )]
-    ScmDispatcherUnavailableUseAnalyteRunInsteadOutsideTheServiceControlManager(
-        #[source] DispatchCause,
-    ),
+    ScmDispatcherUnavailable(#[source] DispatchCause),
     /// The runtime cannot safely continue the requested operation.
     #[error("SCM runtime owner panicked")]
     ScmRuntimeOwnerPanicked,
@@ -38,7 +36,7 @@ pub enum Error {
     AlertEvaluatorStoppedUnexpectedly,
     /// The runtime cannot safely continue the requested operation.
     #[error("capture ownership retained after machine shutdown")]
-    CaptureOwnershipRetainedAfterMachineShutdown,
+    CaptureOwnershipRetained,
     /// The runtime cannot safely continue the requested operation.
     #[error("data directory must deny group and other access")]
     DataDirectoryMustDenyGroupAndOtherAccess,
@@ -47,18 +45,16 @@ pub enum Error {
     DeliveryOwnerStoppedUnexpectedly,
     /// The runtime cannot safely continue the requested operation.
     #[error("delivery shutdown exceeded 5 seconds; interrupted attempts will recover on restart")]
-    DeliveryShutdownExceeded5SecondsInterruptedAttemptsWillRecoverOnRestart(
-        #[source] tokio::time::error::Elapsed,
-    ),
+    DeliveryShutdownTimeout(#[source] tokio::time::error::Elapsed),
     /// The runtime cannot safely continue the requested operation.
     #[error("loopback overrides require the test service entry point")]
-    LoopbackOverridesRequireTheTestServiceEntryPoint,
+    TestServiceRequired,
     /// The runtime cannot safely continue the requested operation.
     #[error("machine retained store ownership after shutdown")]
-    MachineRetainedStoreOwnershipAfterShutdown,
+    StoreOwnershipRetained,
     /// The runtime cannot safely continue the requested operation.
     #[error("pending LAW recovery page bound exceeded; machine startup refused")]
-    PendingLawRecoveryPageBoundExceededMachineStartupRefused,
+    RecoveryPageLimit,
     /// The runtime cannot safely continue the requested operation.
     #[error("receive commits exceeded 15 seconds")]
     ReceiveCommitsExceeded15Seconds(#[source] tokio::time::error::Elapsed),
@@ -73,7 +69,7 @@ pub enum Error {
     StoreStartupDeadlineOverflow,
     /// The runtime cannot safely continue the requested operation.
     #[error("stuck shutdown hook requires the loopback test service")]
-    StuckShutdownHookRequiresTheLoopbackTestService,
+    ShutdownTestServiceRequired,
     /// The runtime cannot safely continue the requested operation.
     #[error("transport shutdown exceeded 5 seconds")]
     TransportShutdownExceeded5Seconds(#[source] tokio::time::error::Elapsed),

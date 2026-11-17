@@ -183,7 +183,7 @@ fn task_failure(error: tokio::task::JoinError) -> Error {
     if error.is_panic() {
         Error::InboundTaskPanickedMachineOwnerStopped(error)
     } else {
-        Error::InboundTaskWasCancelledBeforeReturningItsOutcome(error)
+        Error::InboundTaskCancelled(error)
     }
 }
 fn report(machine: &Machine, result: Result<(), Error>) {
@@ -223,7 +223,7 @@ async fn worker(
                         ()=crate::machine::stopping(&mut stop)=>Err(Code::LawIndependentShutdownBeforeResponse.as_str()),
                         ready=tokio::time::timeout_at(until.into(),&mut job.ready)=>match ready {
                             Ok(Ok(()))=>Ok(()),
-                            Ok(Err(_))=>Err(Code::LawIndependentQueryResponseIssuanceUncertain.as_str()),
+                            Ok(Err(_))=>Err(Code::LawQueryIssuanceUncertain.as_str()),
                             Err(_)=>Err(Code::LawIndependentQueueDeadline.as_str()),
                         },
                     };

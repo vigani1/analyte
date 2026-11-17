@@ -6,7 +6,7 @@ pub(crate) enum Error {
     DisplayServicesAbsent,
     /// HL7 host phase timed out; receipt requires reconciliation.
     #[error("HL7 host phase timed out; receipt requires reconciliation")]
-    HostPhaseTimedOutReceiptRequiresReconciliation,
+    HostPhaseTimeout,
     /// HL7 message refused.
     #[error("HL7 message refused")]
     MessageRefused,

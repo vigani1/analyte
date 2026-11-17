@@ -148,7 +148,7 @@ impl Program {
             || !(1..=1000).contains(&file.store.busy_timeout_ms)
             || file.store.database_bytes <= file.store.reserve_bytes
         {
-            return Err(Error::InvalidProgramVersionMachineCountOrStorageLimits);
+            return Err(Error::InvalidProgramLimits);
         }
         let base = path
             .parent()
@@ -482,7 +482,7 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
         snapshot.effective().stack(),
         analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
     ) {
-        return Err(Error::AstmReceiveDialogCurrentlySupportsStrictChecksumHexOnly);
+        return Err(Error::UnsupportedChecksumMode);
     }
     if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
         return Err(Error::ReceiveTransportOperationTimeoutCannotExceed60000Ms);
@@ -490,7 +490,7 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
     if snapshot.canonical().len() > record_bytes
         || snapshot.effective().stack().limits().bytes() > record_bytes
     {
-        return Err(Error::StoreRecordLimitIsSmallerThanMachineMessageOrEffectiveConfig);
+        return Err(Error::StoreRecordLimitTooSmall);
     }
     if entry.capture
         && (!entry
@@ -500,7 +500,7 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
             || matches!(entry.id.as_str(), "." | ".."))
     {
-        return Err(Error::CaptureMachineIdMustBeOneDirectoryComponent);
+        return Err(Error::InvalidCaptureMachineId);
     }
     Ok(Machine {
         capture: entry.capture,

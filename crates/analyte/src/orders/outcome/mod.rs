@@ -48,7 +48,7 @@ pub(crate) enum Code {
     LawIdleAdmissionFailed,
     LawIndependentAdmissionFailed,
     LawIndependentExchangeEnded,
-    LawIndependentQueryResponseIssuanceUncertain,
+    LawQueryIssuanceUncertain,
     LawIndependentQueueDeadline,
     LawIndependentShutdown,
     LawIndependentShutdownBeforeResponse,
@@ -104,9 +104,7 @@ impl Code {
             Self::LawIdleAdmissionFailed => "LAW-idle-admission-failed",
             Self::LawIndependentAdmissionFailed => "LAW-independent-admission-failed",
             Self::LawIndependentExchangeEnded => "LAW-independent-exchange-ended",
-            Self::LawIndependentQueryResponseIssuanceUncertain => {
-                "LAW-independent-query-response-issuance-uncertain"
-            }
+            Self::LawQueryIssuanceUncertain => "LAW-independent-query-response-issuance-uncertain",
             Self::LawIndependentQueueDeadline => "LAW-independent-queue-deadline",
             Self::LawIndependentShutdown => "LAW-independent-shutdown",
             Self::LawIndependentShutdownBeforeResponse => {
@@ -172,7 +170,7 @@ fn outcome_spellings_are_compatible() {
             "LAW-independent-exchange-ended",
         ),
         (
-            Code::LawIndependentQueryResponseIssuanceUncertain,
+            Code::LawQueryIssuanceUncertain,
             "LAW-independent-query-response-issuance-uncertain",
         ),
         (

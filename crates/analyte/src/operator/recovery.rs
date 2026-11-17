@@ -44,7 +44,7 @@ pub async fn reprocess(
         .machines()
         .iter()
         .find(|m| m.id() == &metadata.machine)
-        .ok_or_else(|| Error::ReceiptMachineIsAbsentFromCurrentConfiguration)?;
+        .ok_or_else(|| Error::ReceiptMachineMissing)?;
     crate::machine::reprocess(
         store,
         machine,

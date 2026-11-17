@@ -12,7 +12,7 @@ pub(crate) enum Error {
     InboundTaskPanickedMachineOwnerStopped(#[source] tokio::task::JoinError),
     /// LAW inbound task was cancelled before returning its outcome.
     #[error("LAW inbound task was cancelled before returning its outcome")]
-    InboundTaskWasCancelledBeforeReturningItsOutcome(#[source] tokio::task::JoinError),
+    InboundTaskCancelled(#[source] tokio::task::JoinError),
     /// LAW independent destination absent.
     #[error("LAW independent destination absent")]
     IndependentDestinationAbsent,
@@ -33,7 +33,7 @@ pub(crate) enum Error {
     OutboundDeadlineAbsent,
     /// LAW outbound queue unavailable; reserved work not issued.
     #[error("LAW outbound queue unavailable; reserved work not issued")]
-    OutboundQueueUnavailableReservedWorkNotIssued,
+    OutboundQueueUnavailable,
     /// LAW outbound work expired before connection.
     #[error("LAW outbound work expired before connection")]
     OutboundWorkExpiredBeforeConnection,

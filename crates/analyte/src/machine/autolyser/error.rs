@@ -6,7 +6,7 @@ pub(crate) enum Error {
     PollConfirmationDidNotReconcileCustody,
     /// Autolyser previous poll requires operator reconciliation before R can advance.
     #[error("Autolyser previous poll requires operator reconciliation before R can advance")]
-    PreviousPollRequiresOperatorReconciliationBeforeRCanAdvance,
+    PollUnreconciled,
     /// Autolyser report receipt missing.
     #[error("Autolyser report receipt missing")]
     ReportReceiptMissing,

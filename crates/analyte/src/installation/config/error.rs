@@ -7,7 +7,7 @@ pub enum Error {
     Encoding(#[from] std::string::FromUtf8Error),
     /// A required installation setting or relationship is refused.
     #[error("ASTM receive dialog currently supports strict checksum hex only")]
-    AstmReceiveDialogCurrentlySupportsStrictChecksumHexOnly,
+    UnsupportedChecksumMode,
     /// A required installation setting or relationship is refused.
     #[error("LAW gates require injected loopback listener")]
     LawGatesRequireInjectedLoopbackListener,
@@ -19,16 +19,16 @@ pub enum Error {
     AdminPortOutOfRange,
     /// A required installation setting or relationship is refused.
     #[error("capture machine ID must be one directory component")]
-    CaptureMachineIdMustBeOneDirectoryComponent,
+    InvalidCaptureMachineId,
     /// A required installation setting or relationship is refused.
     #[error("closing hook requires a loopback TCP client")]
     ClosingHookRequiresALoopbackTcpClient,
     /// A required installation setting or relationship is refused.
     #[error("commit hook requires injected ASTM loopback listener")]
-    CommitHookRequiresInjectedAstmLoopbackListener,
+    MissingAstmCommitListener,
     /// A required installation setting or relationship is refused.
     #[error("commit hook requires injected LAW loopback listener")]
-    CommitHookRequiresInjectedLawLoopbackListener,
+    MissingLawCommitListener,
     /// A required installation setting or relationship is refused.
     #[error("configuration exceeds 1 MiB")]
     ConfigurationTooLarge,
@@ -43,7 +43,7 @@ pub enum Error {
     InconsistentSharedDestination,
     /// A required installation setting or relationship is refused.
     #[error("invalid program version, machine count or storage limits")]
-    InvalidProgramVersionMachineCountOrStorageLimits,
+    InvalidProgramLimits,
     /// A required installation setting or relationship is refused.
     #[error("invalid signing rotation references or count")]
     InvalidSigningRotationReferencesOrCount,
@@ -52,16 +52,16 @@ pub enum Error {
     ReceiveTransportOperationTimeoutCannotExceed60000Ms,
     /// A required installation setting or relationship is refused.
     #[error("store record limit is smaller than machine message or effective config")]
-    StoreRecordLimitIsSmallerThanMachineMessageOrEffectiveConfig,
+    StoreRecordLimitTooSmall,
     /// A required installation setting or relationship is refused.
     #[error("stuck shutdown hook requires injected loopback listeners")]
-    StuckShutdownHookRequiresInjectedLoopbackListeners,
+    MissingShutdownListeners,
     /// A required installation setting or relationship is refused.
     #[error("test listener does not match configured loopback server")]
-    TestListenerDoesNotMatchConfiguredLoopbackServer,
+    TestListenerMismatch,
     /// A required installation setting or relationship is refused.
     #[error("test polling requires a loopback override and a bounded interval")]
-    TestPollingRequiresALoopbackOverrideAndABoundedInterval,
+    InvalidTestPolling,
     /// A required installation setting or relationship is refused.
     #[error("unknown test destination")]
     UnknownTestDestination,
@@ -112,25 +112,25 @@ impl Error {
             Self::Webhooks(cause) => cause,
             Self::Address(cause) => cause,
             Self::Integer(cause) => cause,
-            Self::AstmReceiveDialogCurrentlySupportsStrictChecksumHexOnly
+            Self::UnsupportedChecksumMode
             | Self::LawGatesRequireInjectedLoopbackListener
             | Self::AdminAddressNotLoopback
             | Self::AdminPortOutOfRange
-            | Self::CaptureMachineIdMustBeOneDirectoryComponent
+            | Self::InvalidCaptureMachineId
             | Self::ClosingHookRequiresALoopbackTcpClient
-            | Self::CommitHookRequiresInjectedAstmLoopbackListener
-            | Self::CommitHookRequiresInjectedLawLoopbackListener
+            | Self::MissingAstmCommitListener
+            | Self::MissingLawCommitListener
             | Self::ConfigurationTooLarge
             | Self::ConfigurationHasNoParentDirectory
             | Self::DuplicateMachineIdentity
             | Self::InconsistentSharedDestination
-            | Self::InvalidProgramVersionMachineCountOrStorageLimits
+            | Self::InvalidProgramLimits
             | Self::InvalidSigningRotationReferencesOrCount
             | Self::ReceiveTransportOperationTimeoutCannotExceed60000Ms
-            | Self::StoreRecordLimitIsSmallerThanMachineMessageOrEffectiveConfig
-            | Self::StuckShutdownHookRequiresInjectedLoopbackListeners
-            | Self::TestListenerDoesNotMatchConfiguredLoopbackServer
-            | Self::TestPollingRequiresALoopbackOverrideAndABoundedInterval
+            | Self::StoreRecordLimitTooSmall
+            | Self::MissingShutdownListeners
+            | Self::TestListenerMismatch
+            | Self::InvalidTestPolling
             | Self::UnknownTestDestination
             | Self::UnknownTestMachine => return None,
         };

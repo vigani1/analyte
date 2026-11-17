@@ -194,9 +194,7 @@ impl LawOrderLink {
         let sample = match query.scope() {
             law::Scope::Container(id) => {
                 if !id.is_local_to(work.container_namespace.as_str().as_bytes()) {
-                    return Err(
-                        Error::LawContainerAssigningAuthorityOutsideConfiguredSampleidBinding,
-                    );
+                    return Err(Error::ContainerAuthorityMismatch);
                 }
                 Some(SampleId::new(std::str::from_utf8(id.value())?)?)
             }
@@ -385,7 +383,7 @@ fn reject_query(message: &Message, error: &law::Failure, options: Options) -> Re
                 options,
             )?
             .map(Reply::Response)
-            .ok_or_else(|| Error::LawMalformedQueryLacksRecoverableCorrelation)
+            .ok_or_else(|| Error::QueryCorrelationMissing)
         })
 }
 

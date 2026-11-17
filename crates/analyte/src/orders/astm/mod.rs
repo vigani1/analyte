@@ -52,7 +52,7 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
     let messages = analyte_astm::parse(payload, limits)?;
     Ok(
         match analyte_astm::query_intent(&messages)
-            .map_err(|_| Error::AstmSpecimenSelectorContainsUnsupportedEscapes)?
+            .map_err(|_| Error::UnsupportedSpecimenEscapes)?
         {
             analyte_astm::QueryIntent::Absent => None,
             analyte_astm::QueryIntent::Unsupported => Some(Request::Unsupported),

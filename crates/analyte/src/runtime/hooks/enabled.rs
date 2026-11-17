@@ -15,7 +15,7 @@ pub(crate) fn destination(
 ) -> Result<Destination, Error> {
     let loopback = mode.is_loopback();
     if !loopback && !hooks.loopback_destinations.is_empty() {
-        return Err(Error::LoopbackOverridesRequireTheTestServiceEntryPoint);
+        return Err(Error::TestServiceRequired);
     }
     if loopback {
         let base = hooks
@@ -46,7 +46,7 @@ pub(crate) fn shutdown_bound(
     let loopback = mode.is_loopback();
     if program.hooks.stall_store_on_shutdown {
         if !loopback || watchdog.is_some() {
-            return Err(Error::StuckShutdownHookRequiresTheLoopbackTestService.into());
+            return Err(Error::ShutdownTestServiceRequired.into());
         }
         Ok(Duration::from_millis(500))
     } else {

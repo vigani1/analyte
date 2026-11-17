@@ -48,7 +48,7 @@ pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Resu
         })
         .await?;
     if blocked {
-        return Err(Error::PreviousPollRequiresOperatorReconciliationBeforeRCanAdvance);
+        return Err(Error::PollUnreconciled);
     }
     Ok(())
 }

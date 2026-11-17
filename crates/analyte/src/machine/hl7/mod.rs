@@ -258,7 +258,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Action::Refused(error) => return Err(error.into()),
             Action::TimedOut(_) => {
-                return Err(Error::HostPhaseTimedOutReceiptRequiresReconciliation);
+                return Err(Error::HostPhaseTimeout);
             }
             Action::Sent(_, _) | Action::CommitAccepted(_) => {
                 return Err(Error::UnexpectedOutgoingHl7Outcome);

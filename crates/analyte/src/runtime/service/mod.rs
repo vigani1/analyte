@@ -432,8 +432,8 @@ impl Draining {
             while owners.join_next().await.is_some() {}
         }
         for capture in captures {
-            let mut capture = Arc::try_unwrap(capture)
-                .map_err(|_| Failure::CaptureOwnershipRetainedAfterMachineShutdown)?;
+            let mut capture =
+                Arc::try_unwrap(capture).map_err(|_| Failure::CaptureOwnershipRetained)?;
             capture.close().await;
         }
         close_store(store).await?;
@@ -442,16 +442,13 @@ impl Draining {
         admin_drained.map_err(Failure::AdminShutdownExceeded5Seconds)??;
         commits_drained.map_err(Failure::ReceiveCommitsExceeded15Seconds)?;
         drained.map_err(Failure::TransportShutdownExceeded5Seconds)??;
-        delivery_drained.map_err(
-            Failure::DeliveryShutdownExceeded5SecondsInterruptedAttemptsWillRecoverOnRestart,
-        )??;
+        delivery_drained.map_err(Failure::DeliveryShutdownTimeout)??;
         Ok(())
     }
 }
 
 async fn close_store(store: Arc<Handle>) -> Result<(), Error> {
-    let mut store =
-        Arc::try_unwrap(store).map_err(|_| Failure::MachineRetainedStoreOwnershipAfterShutdown)?;
+    let mut store = Arc::try_unwrap(store).map_err(|_| Failure::StoreOwnershipRetained)?;
     store
         .shutdown(
             Instant::now()
@@ -739,11 +736,11 @@ fn admin_startup_error(error: crate::admin::Error) -> Error {
         crate::admin::Error::Io(source) => Error::from(source),
         crate::admin::Error::Secret(source) => Error::from(source),
         other @ (crate::admin::Error::AwosItemNotRetained
-        | crate::admin::Error::AdminSessionCapacityReachedRestartOrWaitForExpiry
+        | crate::admin::Error::SessionCapacity
         | crate::admin::Error::AdminSessionLockPoisoned
         | crate::admin::Error::ChoosePlaceOrRelease
         | crate::admin::Error::ChooseReceiptOrOrder
-        | crate::admin::Error::CurrentConfigurationPointsToADifferentStore
+        | crate::admin::Error::StoreMismatch
         | crate::admin::Error::MachineCursorOverflow
         | crate::admin::Error::ParkedTargetCursorOverflow
         | crate::admin::Error::UncertainOrderCountOverflow) => Error::from(other),

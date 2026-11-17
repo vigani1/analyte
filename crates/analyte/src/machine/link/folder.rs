@@ -121,7 +121,7 @@ pub(in crate::machine) async fn session(
                 } else {
                     Disposition::Quarantine
                 })
-                .map_err(Error::FileCompletionReplyLostSourceRemainsClaimed)?;
+                .map_err(Error::CompletionReplyLost)?;
         }
         Ok(())
     }
@@ -151,7 +151,7 @@ async fn receive(
             () = crate::machine::stopping(stop) => return Ok(None),
             event = connection.receive() => event?,
         }
-        .ok_or_else(|| Error::FileTransportEndedBeforeCompletionSourceRemainsClaimed)?;
+        .ok_or_else(|| Error::CompletionInterrupted)?;
         match event {
             Event::Opened { .. } => {
                 if opened {

@@ -98,9 +98,7 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
             .join()
             .map_err(|_| Failure::ScmRuntimeOwnerPanicked)?;
         dispatch.map_err(|source| {
-            Failure::ScmDispatcherUnavailableUseAnalyteRunInsteadOutsideTheServiceControlManager(
-                crate::runtime::error::DispatchCause(source),
-            )
+            Failure::ScmDispatcherUnavailable(crate::runtime::error::DispatchCause(source))
         })?;
         result
     })
