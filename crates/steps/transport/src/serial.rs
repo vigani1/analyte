@@ -29,7 +29,7 @@ pub struct Settings {
 impl std::fmt::Display for Settings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Settings { name: ")?;
-        crate::evidence::quoted(f, &self.name)?;
+        analyte_model::quoted(f, &self.name)?;
         let bits = match self.bits {
             DataBits::Five => "Five",
             DataBits::Six => "Six",

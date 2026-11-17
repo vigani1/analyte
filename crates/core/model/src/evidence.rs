@@ -125,7 +125,10 @@ impl fmt::Display for NamespacedId {
         f.write_str(") }")
     }
 }
-fn quoted(f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
+/// Writes the historical protected-evidence string spelling without normalization.
+/// # Errors
+/// Propagates failure from the supplied formatter.
+pub fn quoted(f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
     f.write_char('"')?;
     for character in value.chars() {
         if character == '\'' {

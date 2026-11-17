@@ -1,5 +1,6 @@
 //! Writes stable transport close evidence with one fallback for unnamed external I/O kinds.
 use crate::Reason;
+use analyte_model::quoted;
 use std::{
     borrow::Cow,
     fmt::{self, Write},
@@ -86,21 +87,6 @@ impl fmt::Display for Reason {
             }
         }
     }
-}
-
-pub(crate) fn quoted(f: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
-    f.write_char('"')?;
-    for character in value.chars() {
-        match character {
-            '\'' => f.write_char(character)?,
-            other => {
-                for escaped in other.escape_debug() {
-                    f.write_char(escaped)?;
-                }
-            }
-        }
-    }
-    f.write_char('"')
 }
 
 #[cfg(test)]

@@ -132,13 +132,8 @@ pub(crate) async fn run(
     let mut ticks = tokio::time::interval(interval);
     ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        if *stop.borrow() {
+        if !crate::runtime::ticks::until_stop(&mut ticks, &mut stop).await {
             return Ok(());
-        }
-        tokio::select! {
-            biased;
-            _ = stop.changed() => return Ok(()),
-            _ = ticks.tick() => {}
         }
         tokio::select! {
             biased;
@@ -283,26 +278,7 @@ mod tests {
         Ok(())
     }
 
-    #[derive(Clone)]
-    struct Log(Arc<Mutex<Vec<u8>>>);
-    impl std::io::Write for Log {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0
-                .lock()
-                .map_err(|_| std::io::Error::other("test log lock poisoned"))?
-                .extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Log {
-        type Writer = Self;
-        fn make_writer(&'a self) -> Self {
-            self.clone()
-        }
-    }
+    use crate::runtime::test_tracing::Log;
 
     // Rule 10 and plan section 11: only scalar values and machine IDs reach transition logs.
     #[test]
