@@ -62,6 +62,9 @@ pub enum Error {
     /// A required installation setting or relationship is refused.
     #[error("test polling requires a loopback override and a bounded interval")]
     InvalidTestPolling,
+    /// A synthetic store wait must remain bounded behind a loopback override.
+    #[error("test store budget requires a loopback override and 1 through 60 seconds")]
+    InvalidTestStoreBudget,
     /// A required installation setting or relationship is refused.
     #[error("unknown test destination")]
     UnknownTestDestination,
@@ -130,6 +133,7 @@ impl Error {
             | Self::StoreRecordLimitTooSmall
             | Self::MissingShutdownListeners
             | Self::TestListenerMismatch
+            | Self::InvalidTestStoreBudget
             | Self::InvalidTestPolling
             | Self::UnknownTestDestination
             | Self::UnknownTestMachine => return None,

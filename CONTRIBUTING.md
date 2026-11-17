@@ -32,6 +32,19 @@ these suspicious patterns.
 - Each machine config or driver states its evidence level (proven, simulated
   or documented) and never raises it without the evidence.
 
+## Test wall-clock budgets
+
+`analyte_fixtures` defines harness and store-request budgets with a fixed CI
+scale factor of three: a 180-second hang guard and a 30-second store wait.
+These allow scheduler delays and durable writes on loaded Windows runners;
+expiry still fails the test. Synthetic loopback service fixtures explicitly
+apply the store allowance to delivery workers and order pollers. Production
+entry points reject these overrides, and production deadlines stay unchanged.
+Do not use these allowances for a protocol timer whose expiry is under test.
+Keep those configured deadlines and quiet-window assertions exact. Name waits
+with the integration `step` helper so an expiry identifies its operation; print
+only synthetic case labels when looping over scenarios.
+
 ## Service test concurrency and startup benchmark
 
 To repeat the manual capacity measurement (creates and

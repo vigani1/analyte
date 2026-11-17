@@ -1,4 +1,5 @@
 //! Tests LAW order queries and query-triggered work downloads.
+//! Kept whole: related query cases share synthetic peer and custody assertions.
 use super::*;
 
 #[tokio::test]
@@ -292,46 +293,62 @@ async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage()
 async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain()
 -> Result<(), Error> {
     for action in ["timeout", "disconnect", "wrong-correlation"] {
+        eprintln!("LAW followup action={action}");
         let settings = if action == "timeout" {
             definition().rewrite("response_ms = 30000", "response_ms = 200")
         } else {
             definition()
         };
-        let (_temp, path, reference, running, mut peer) = setup(
-            vec![order("order-1", "000Ab12", None, 2)?],
-            &settings,
-            false,
+        let (_temp, path, reference, running, mut peer) = step(
+            "setup",
+            setup(
+                vec![order("order-1", "000Ab12", None, 2)?],
+                &settings,
+                false,
+            ),
         )
         .await?;
-        send(&mut peer, query(CONTAINER, "followup").as_bytes()).await?;
-        packet(&mut peer).await?;
-        let work = packet(&mut peer).await?;
+        step(
+            "send",
+            send(&mut peer, query(CONTAINER, "followup").as_bytes()),
+        )
+        .await?;
+        step("packet", packet(&mut peer)).await?;
+        let work = step("packet", packet(&mut peer)).await?;
         if action == "wrong-correlation" {
-            orl(&mut peer, &work, &["OK", "OK"], true).await?;
+            step("orl", orl(&mut peer, &work, &["OK", "OK"], true)).await?;
         }
         if action == "disconnect" {
             drop(peer);
         } else {
-            quiet(&mut peer).await?;
+            step("quiet", quiet(&mut peer)).await?;
         }
-        vendor::state(&path, "Uncertain").await?;
-        wait_state(&path, "done", 1).await?;
+        step("vendor::state", vendor::state(&path, "Uncertain")).await?;
+        step("wait_state", wait_state(&path, "done", 1)).await?;
         assert_eq!(count(&path, "machine_order_items")?, 2);
         assert_eq!(count(&path, "outbox")?, 1);
-        running.stop().await?;
-        let running = Running::start(&path, &reference.url, "synthetic-api").await?;
-        let mut peer = connect(&path, "law").await?;
-        send(&mut peer, query(CONTAINER, "after-failure").as_bytes()).await?;
+        step("running.stop", running.stop()).await?;
+        let running = step(
+            "Running::start",
+            Running::start(&path, &reference.url, "synthetic-api"),
+        )
+        .await?;
+        let mut peer = step("connect", connect(&path, "law")).await?;
+        step(
+            "send",
+            send(&mut peer, query(CONTAINER, "after-failure").as_bytes()),
+        )
+        .await?;
         assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"OK");
-        let negative = packet(&mut peer).await?;
+        let negative = step("packet", packet(&mut peer)).await?;
         assert!(!negative.segments().any(|s| s.id() == b"OBR"));
-        orl(&mut peer, &negative, &[], false).await?;
-        wait_audit(&path).await?;
+        step("orl", orl(&mut peer, &negative, &[], false)).await?;
+        step("wait_audit", wait_audit(&path)).await?;
         assert_eq!(count(&path, "machine_order_items")?, 2);
         assert_eq!(count(&path, "machine_orders")?, 1);
-        quiet(&mut peer).await?;
-        running.stop().await?;
-        reference.close().await?;
+        step("quiet", quiet(&mut peer)).await?;
+        step("running.stop", running.stop()).await?;
+        step("reference.close", reference.close()).await?;
     }
     Ok(())
 }

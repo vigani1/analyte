@@ -53,7 +53,7 @@ async fn law_tf2b_b6_queued_followup_expiry_settles_all_without_reissue() -> Res
     transfer_failure(true).await
 }
 async fn transfer_failure(expiry: bool) -> Result<(), Error> {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let listener = step("TcpListener::bind", TcpListener::bind("127.0.0.1:0")).await?;
     let (handover, owned) = Committed::new();
     let (queued, dequeued) = Committed::new();
     let gates = LawGates {
@@ -63,22 +63,29 @@ async fn transfer_failure(expiry: bool) -> Result<(), Error> {
         ..LawGates::default()
     };
     let settings = independent(listener.local_addr()?);
-    let (_temp, path, reference, running, mut peer) = start(
-        &settings,
-        vec![order("order-1", "000Ab12", None, 2)?],
-        gates,
+    let (_temp, path, reference, running, mut peer) = step(
+        "start",
+        start(
+            &settings,
+            vec![order("order-1", "000Ab12", None, 2)?],
+            gates,
+        ),
     )
     .await?;
-    send(&mut peer, query(CONTAINER, "interrupted").as_bytes()).await?;
-    owned.reached().await?;
+    step(
+        "send",
+        send(&mut peer, query(CONTAINER, "interrupted").as_bytes()),
+    )
+    .await?;
+    step("owned.reached", owned.reached()).await?;
     let before = items(&path)?;
     assert_eq!(before.len(), 2);
     assert!(before.iter().all(|(_, state)| state == "Sending"));
-    no_dial(&listener).await?;
+    step("no_dial", no_dial(&listener)).await?;
     if expiry {
-        dequeued.reached().await?;
+        step("dequeued.reached", dequeued.reached()).await?;
         dequeued.resume();
-        uncertain(&path, &before).await?;
+        step("uncertain", uncertain(&path, &before)).await?;
         let reason: String =
             database(&path)?
                 .query_row("SELECT source_code FROM machine_orders", [], |r| r.get(0))?;
@@ -86,15 +93,19 @@ async fn transfer_failure(expiry: bool) -> Result<(), Error> {
             reason,
             "item-outcomes: 1=Uncertain:LAW-independent-queue-deadline; 2=Uncertain:LAW-independent-queue-deadline"
         );
-        no_dial(&listener).await?;
+        step("no_dial", no_dial(&listener)).await?;
         owned.resume();
-        running.stop().await?;
+        step("running.stop", running.stop()).await?;
     } else {
-        running.stop().await?;
-        uncertain(&path, &before).await?;
+        step("running.stop", running.stop()).await?;
+        step("uncertain", uncertain(&path, &before)).await?;
     }
-    assert_no_reissue(&path, &reference, &listener, &before).await?;
-    reference.close().await?;
+    step(
+        "assert_no_reissue",
+        assert_no_reissue(&path, &reference, &listener, &before),
+    )
+    .await?;
+    step("reference.close", reference.close()).await?;
     Ok(())
 }
 

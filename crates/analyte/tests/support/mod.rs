@@ -93,6 +93,7 @@ pub fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
         program.set_loopback_listener_for_test(id, listener.try_clone()?)?;
     }
     program.set_loopback_destination_for_test("demo", url.into())?;
+    program.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;
     Ok(program)
 }
 
