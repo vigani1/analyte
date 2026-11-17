@@ -189,7 +189,7 @@ impl Effects for Host<'_, '_> {
         _host: &mut Context<'_, '_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
-        let code = outcome::end_code(self.trigger, result);
+        let code = outcome::session_end(self.trigger, result);
         let cleanup = custody::uncertain(
             self.store,
             self.guard,

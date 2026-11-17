@@ -7,7 +7,7 @@ use analyte_dialog::vidas::Timer;
 
 /// A closed or cancelled connection names the outcome; otherwise the cause
 /// that ended the session does, and a session without one is a transfer error.
-pub(super) fn end_code(trigger: Trigger, result: &Result<(), Error>) -> VidasEnd {
+pub(super) fn session_end(trigger: Trigger, result: &Result<(), Error>) -> VidasEnd {
     match trigger {
         Trigger::Cancelled => VidasEnd::TransferCancelled,
         Trigger::Disconnected => VidasEnd::TransferDisconnected,
@@ -69,14 +69,14 @@ mod tests {
     fn adr0004_vidas_write_failure_stores_write_failed() {
         let write = Error::from(WriteError::DeadlineOverflow);
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(write)),
+            session_end(Trigger::Exchange, &Err(write)),
             VidasEnd::WriteFailed
         );
         let uncertain = Error::from(WriteError::Deadline(analyte_transport::Error::Deadline(
             analyte_transport::DeadlineKind::WriteAll,
         )));
         assert_eq!(
-            end_code(Trigger::Deadline, &Err(uncertain)),
+            session_end(Trigger::Deadline, &Err(uncertain)),
             VidasEnd::WriteFailed
         );
     }
@@ -86,12 +86,12 @@ mod tests {
         // A failed upload store parks without an expired deadline.
         let failure = effect_failure(Some(store_failure()), parked(None));
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(failure)),
+            session_end(Trigger::Exchange, &Err(failure)),
             VidasEnd::TransferRefusedOrUnexpected
         );
         let late = effect_failure(Some(store_failure()), parked(Some(Timer::Commit)));
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(late)),
+            session_end(Trigger::Exchange, &Err(late)),
             VidasEnd::CommitTimeout
         );
         // A dialog that refuses the store failure ends before any park.
@@ -100,7 +100,7 @@ mod tests {
             Error::from(analyte_dialog::vidas::Error::TimeReversed),
         );
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(refused)),
+            session_end(Trigger::Exchange, &Err(refused)),
             VidasEnd::TransferError
         );
     }
@@ -113,10 +113,13 @@ mod tests {
             (Timer::Session, VidasEnd::SessionTimeout),
             (Timer::Commit, VidasEnd::CommitTimeout),
         ] {
-            assert_eq!(end_code(Trigger::Deadline, &Err(parked(Some(timer)))), code);
+            assert_eq!(
+                session_end(Trigger::Deadline, &Err(parked(Some(timer)))),
+                code
+            );
             // Parking that fails keeps the park as the outcome.
             let failed = effect_failure(Some(parked(Some(timer))), park_failure());
-            assert_eq!(end_code(Trigger::Deadline, &Err(failed)), code);
+            assert_eq!(session_end(Trigger::Deadline, &Err(failed)), code);
         }
     }
 
@@ -124,11 +127,11 @@ mod tests {
     fn adr0004_vidas_connection_end_outranks_the_session_result() {
         for result in [Ok(()), Err(parked(Some(Timer::Session)))] {
             assert_eq!(
-                end_code(Trigger::Cancelled, &result),
+                session_end(Trigger::Cancelled, &result),
                 VidasEnd::TransferCancelled
             );
             assert_eq!(
-                end_code(Trigger::Disconnected, &result),
+                session_end(Trigger::Disconnected, &result),
                 VidasEnd::TransferDisconnected
             );
         }
@@ -137,30 +140,30 @@ mod tests {
     #[test]
     fn adr0004_vidas_framing_input_and_other_failures_keep_their_codes() {
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(Error::ControlSuffixMismatch)),
+            session_end(Trigger::Exchange, &Err(Error::ControlSuffixMismatch)),
             VidasEnd::ControlSuffixMismatch
         );
         let framing = Error::from(analyte_framing::vidas::Error::Checksum);
         let failed = effect_failure(Some(framing), park_failure());
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(failed)),
+            session_end(Trigger::Exchange, &Err(failed)),
             VidasEnd::FramingError
         );
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(Error::ActiveDialogHasNoDeadline)),
+            session_end(Trigger::Exchange, &Err(Error::ActiveDialogHasNoDeadline)),
             VidasEnd::InputFailed
         );
         let input = Error::from(analyte_transport::Error::Offline);
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(input)),
+            session_end(Trigger::Exchange, &Err(input)),
             VidasEnd::InputFailed
         );
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(park_failure())),
+            session_end(Trigger::Exchange, &Err(park_failure())),
             VidasEnd::TransferError
         );
         assert_eq!(
-            end_code(Trigger::Exchange, &Ok(())),
+            session_end(Trigger::Exchange, &Ok(())),
             VidasEnd::TransferError
         );
     }

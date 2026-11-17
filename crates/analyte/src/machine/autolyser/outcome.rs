@@ -6,7 +6,7 @@ use crate::orders::outcome::{AutolyserEnd, Interruption, Transfer};
 
 /// The cause that ended the session names the outcome; a session without a
 /// named cause takes it from the input it was handling.
-pub(super) fn end_code(trigger: Trigger, result: &Result<(), Error>) -> AutolyserEnd {
+pub(super) fn session_end(trigger: Trigger, result: &Result<(), Error>) -> AutolyserEnd {
     result
         .as_ref()
         .err()
@@ -77,7 +77,7 @@ mod tests {
     fn adr0004_autolyser_write_failure_stores_write_failed() {
         for trigger in [Trigger::Exchange, Trigger::Deadline] {
             let write = Error::from(WriteError::DeadlineOverflow);
-            assert_eq!(end_code(trigger, &Err(write)), AutolyserEnd::WriteFailed);
+            assert_eq!(session_end(trigger, &Err(write)), AutolyserEnd::WriteFailed);
         }
     }
 
@@ -89,7 +89,7 @@ mod tests {
         let timeout = Error::from(StoreWaitError::<crate::IntakeError>::Timeout(elapsed));
         // A store that fails while the connection closes still names the store.
         assert_eq!(
-            end_code(Trigger::Disconnected, &Err(timeout)),
+            session_end(Trigger::Disconnected, &Err(timeout)),
             AutolyserEnd::StorageTimeout
         );
         let failed = || {
@@ -98,7 +98,7 @@ mod tests {
             ))
         };
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(failed())),
+            session_end(Trigger::Exchange, &Err(failed())),
             AutolyserEnd::StorageFailed
         );
         // The dialog's refusal of the failed store and a failed park keep the store.
@@ -108,7 +108,7 @@ mod tests {
         ] {
             let pair = effect_failure(Some(failed()), effect);
             assert_eq!(
-                end_code(Trigger::Deadline, &Err(pair)),
+                session_end(Trigger::Deadline, &Err(pair)),
                 AutolyserEnd::StorageFailed
             );
         }
@@ -117,12 +117,12 @@ mod tests {
     #[test]
     fn adr0004_autolyser_timeout_stores_transfer_timeout() {
         assert_eq!(
-            end_code(Trigger::Deadline, &Ok(())),
+            session_end(Trigger::Deadline, &Ok(())),
             AutolyserEnd::TransferTimeout
         );
         let refused = dialog(analyte_dialog::autolyser::Error::Busy);
         assert_eq!(
-            end_code(Trigger::Deadline, &Err(refused)),
+            session_end(Trigger::Deadline, &Err(refused)),
             AutolyserEnd::TransferTimeout
         );
     }
@@ -134,12 +134,15 @@ mod tests {
             (Trigger::Disconnected, AutolyserEnd::TransferDisconnected),
             (Trigger::Cancelled, AutolyserEnd::TransferCancelled),
         ] {
-            assert_eq!(end_code(trigger, &Ok(())), code);
-            assert_eq!(end_code(trigger, &Err(Error::ReportReceiptMissing)), code);
+            assert_eq!(session_end(trigger, &Ok(())), code);
+            assert_eq!(
+                session_end(trigger, &Err(Error::ReportReceiptMissing)),
+                code
+            );
         }
         let input = Error::from(analyte_transport::Error::Offline);
         assert_eq!(
-            end_code(Trigger::Exchange, &Err(input)),
+            session_end(Trigger::Exchange, &Err(input)),
             AutolyserEnd::InputFailed
         );
     }

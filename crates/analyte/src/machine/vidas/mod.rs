@@ -176,7 +176,10 @@ impl Effects for Host<'_, '_> {
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         self.work
-            .close(self.store, outcome::end_code(self.trigger, result).into())
+            .close(
+                self.store,
+                outcome::session_end(self.trigger, result).into(),
+            )
             .await
             .map_err(Into::into)
     }
