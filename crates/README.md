@@ -17,7 +17,7 @@ crates/
   steps/       transport, framing, dialog, mapping, sink
   protocols/   astm, hl7, poct, vidas, autolyser
   core/        model, store, config, contract
-  testing/     receiver, sim
+  testing/     receiver, sim, fixtures
 ```
 
 Crates of the same kind share a layout:
@@ -57,6 +57,7 @@ simply passing each message along once. Outgoing orders use these parts too.
 | [config](core/config/) | Loads size-limited configuration and checks settings before use. |
 | [analyte](analyte/) | Runs the bridge and coordinates all these parts. |
 | [receiver](testing/receiver/) | Provides a reference lab-app endpoint for integration tests and examples. |
+| [fixtures](testing/fixtures/) | Shares synthetic messages, storage probes and bounded waits across tests. |
 | [sim](testing/sim/) | Plays the machine side of synthetic recordings and compares the bridge replies byte for byte. |
 
 Protocol keys stay the same across layers: per-protocol files are `astm.rs`,

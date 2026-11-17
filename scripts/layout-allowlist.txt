@@ -1,0 +1,7 @@
+# Direct Rust file count exceptions to ADR 0012; one folder and reason per line.
+crates/analyte/src/admin | Each file owns one operator page or server concern; subfolders already own multi-file roles.
+crates/analyte/src/runtime | Each file owns a service lifecycle or platform concern; startup is grouped under service/.
+crates/core/config/src/stack | Protocol keys stay side by side under ADR 0012 section 9, alongside their shared settings.
+crates/protocols/hl7/src/law | Each file owns one LAW segment or transaction concern; grouping would obscure standard names.
+crates/protocols/hl7/tests | Cargo integration targets remain discoverable side by side; multi-file suites have role folders.
+crates/steps/dialog/tests | Protocol test targets stay side by side, with shared boundary and clock cases.

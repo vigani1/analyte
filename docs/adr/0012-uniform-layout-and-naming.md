@@ -45,6 +45,9 @@ Every protocol, standard or vendor, uses the same places:
 A file grows into a folder of the same name (`law/mod.rs` plus its pieces)
 when it has separate responsibilities. A concern that a protocol lacks has no file.
 
+HL7 also has `ack.rs` for acknowledgment grammar, `datatypes.rs` for shared
+field types, `order/` for order grammar and `query/` for query grammar.
+
 HL7 `wire.rs` writes size-capped segments without escaping; POCT `messages.rs`
 builds reviewer messages and escapes XML. These distinct jobs keep distinct names.
 
@@ -136,7 +139,10 @@ A source folder holding more than about ten files groups them into role
 folders named for what they hold (for example `intake/`, `delivery/`,
 `upkeep/` in the store), so a reader can tell from the folder why a file is
 there. Per-protocol files (`astm.rs`, `hl7.rs`, ...) stay side by side, since
-the protocol key already explains them. Small folders stay flat. Domain terms (receipt, delivery, revision, custody, parked item and so
+the protocol key already explains them. Small folders stay flat. The Layout check caps direct Rust files at ten and
+rejects file stems equal to, or prefixed by, their containing folder name.
+Justified flat folders are listed with reasons in `scripts/layout-allowlist.txt`;
+the check rejects stale exceptions. Domain terms (receipt, delivery, revision, custody, parked item and so
 on) are defined once in `docs/glossary.md`.
 
 ### 10. Crates are grouped by kind, and each kind has one inner layout
@@ -150,7 +156,7 @@ the same way, and its `README.md` states the kind first.
 | Steps | `crates/steps/` | transport, framing, dialog, mapping, sink | One file or folder per protocol key, plus shared pieces named for what they hold |
 | Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file per job: `syntax`, `views`, `version`, `wire` (HL7 segment writer), `messages` (POCT message builders); a profile (LAW) is a folder |
 | Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |
-| Testing | `crates/testing/` | receiver, sim | Stand-ins used only by tests |
+| Testing | `crates/testing/` | receiver, sim, fixtures | Stand-ins and shared synthetic fixtures used only by tests |
 
 Transport is arranged by connection kind because it has no per-protocol variants.
 Sink is arranged by role because it has no per-protocol variants.
