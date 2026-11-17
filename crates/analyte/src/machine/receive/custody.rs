@@ -33,16 +33,6 @@ pub(crate) fn ms(value: u32) -> Duration {
     Duration::from_millis(u64::from(value))
 }
 
-/// Retains both the triggering failure and a failure to save its dialog effects.
-#[cfg(test)]
-#[derive(Debug, thiserror::Error)]
-#[error("{original}; dialog effect failed: {effect}")]
-struct EffectFailure {
-    #[source]
-    original: crate::Error,
-    effect: crate::Error,
-}
-
 /// Keeps a triggering failure and a later independent cleanup failure in order.
 #[derive(Debug, thiserror::Error)]
 #[error("{original}; dialog effect failed: {effect}")]
@@ -71,35 +61,7 @@ pub(crate) enum Refusal<E: std::error::Error + 'static> {
     Custody(Box<StoreWaitError<E>>),
 }
 
-/// A boundary keeps its own error type when retaining independent cleanup failures.
-pub(crate) trait CleanupFailure: Sized {
-    fn with_effect(original: Self, effect: Self) -> Self;
-}
-#[cfg(test)]
-impl CleanupFailure for crate::Error {
-    fn with_effect(original: Self, effect: Self) -> Self {
-        Box::new(EffectFailure { original, effect })
-    }
-}
-pub(crate) fn effect_failure<E: CleanupFailure>(original: Option<E>, effect: E) -> E {
-    match original {
-        Some(original) => E::with_effect(original, effect),
-        None => effect,
-    }
-}
-
-/// Retains the triggering failure and every independent cleanup failure.
-pub(crate) fn retain_cleanup<E: CleanupFailure>(
-    result: &mut Result<(), E>,
-    cleanup: Result<(), E>,
-) {
-    if let Err(error) = cleanup {
-        *result = Err(effect_failure(
-            std::mem::replace(result, Ok(())).err(),
-            error,
-        ));
-    }
-}
+pub(crate) use crate::runtime::service::cleanup::{CleanupFailure, effect_failure, retain_cleanup};
 
 /// Uses the validated transport operation timeout as the complete custody budget.
 /// Cancelling the wait does not prove rollback: callers must refuse positive effects.

@@ -22,3 +22,11 @@ pub(crate) fn publish_store_probes(
     }
     Ok(())
 }
+
+#[derive(Clone, Copy)]
+pub(crate) enum Operation {
+    Lookup,
+    Reserved,
+    Cancel,
+    CancelResult,
+}

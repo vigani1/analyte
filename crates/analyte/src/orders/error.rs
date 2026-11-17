@@ -5,6 +5,16 @@ pub enum OrderError {
     /// Cache collection exceeded the query deadline.
     #[error("operation deadline expired")]
     LookupDeadline,
+    /// VIDAS mapped request missing.
+    #[error("VIDAS mapped request missing")]
+    MappedRequestMissing,
+    /// VIDAS order poll deadline overflow.
+    #[error("VIDAS order poll deadline overflow")]
+    OrderPollDeadlineOverflow,
+    /// Unexpected Autolyser insertion outcome.
+    #[error("unexpected Autolyser insertion outcome")]
+    UnexpectedAutolyserInsertionOutcome,
+
     /// Failure injected only by the optional test harness.
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
@@ -156,7 +166,7 @@ pub enum OrderError {
         effect: Box<Self>,
     },
 }
-impl crate::machine::custody::CleanupFailure for OrderError {
+impl crate::runtime::service::cleanup::CleanupFailure for OrderError {
     fn with_effect(original: Self, effect: Self) -> Self {
         Self::Cleanup {
             original: Box::new(original),

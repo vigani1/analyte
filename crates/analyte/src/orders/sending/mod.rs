@@ -4,6 +4,9 @@ use crate::orders::outcome::Code;
 use crate::{deadline, installation::config::Machine};
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey};
+mod work;
+pub(crate) use work::Work;
+
 #[cfg(test)]
 mod tests;
 
@@ -38,7 +41,7 @@ pub(crate) async fn reserve_candidates(
             Err(refusal) => {
                 tracing::info!(reason=%refusal,"query order reservation refused");
                 for order in active.drain(..) {
-                    uncertain(store, &order, Code::QueryReservationRefused.as_str()).await?;
+                    uncertain(store, &order, Code::QueryReservationRefused.into()).await?;
                 }
                 return Ok(false);
             }
@@ -46,7 +49,7 @@ pub(crate) async fn reserve_candidates(
     }
     if std::time::Instant::now() >= until && !active.is_empty() {
         for order in active.drain(..) {
-            uncertain(store, &order, Code::QueryDeadlineBeforeSend.as_str()).await?;
+            uncertain(store, &order, Code::QueryDeadlineBeforeSend.into()).await?;
         }
         return Ok(false);
     }
@@ -54,19 +57,20 @@ pub(crate) async fn reserve_candidates(
 }
 
 /// A durable reservation paired with its already mapped, bounded wire records.
-pub(crate) struct Reserved {
+pub(crate) struct Reserved<T> {
     /// Persisted identity used for every subsequent outcome.
     pub(crate) order: MachineOrder,
     /// Complete records ready for the connection sender.
-    pub(crate) payload: analyte_mapping::MachineOrder,
+    pub(crate) payload: T,
 }
 
 /// One bounded candidate page per idle interval; the cursor prevents starvation.
-pub(crate) async fn next(
+pub(crate) async fn next<T>(
     store: &Handle,
     machine: &Machine,
     after: &mut String,
-) -> Result<Option<Reserved>, Error> {
+    map: impl Fn(&analyte_mapping::AppOrder) -> Result<T, analyte_mapping::OrderMappingError>,
+) -> Result<Option<Reserved<T>>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
     if !super::settings::send_ahead(machine) {
         return Ok(None);
@@ -83,12 +87,7 @@ pub(crate) async fn next(
         let version = fields.version;
         let mapped = super::app_order(&order)
             .map_err(Error::from)
-            .and_then(|order| {
-                Ok(analyte_mapping::map_order(
-                    &order,
-                    machine.snapshot.effective().stack(),
-                )?)
-            });
+            .and_then(|order| map(&order).map_err(Error::from));
         let mapped = match mapped {
             Ok(mapped) => mapped,
             Err(error) => {
@@ -164,7 +163,7 @@ pub(crate) async fn candidate_page(
 pub(crate) async fn uncertain(
     store: &Handle,
     order: &MachineOrder,
-    code: &str,
+    code: super::outcome::Transfer,
 ) -> Result<(), Error> {
     complete(store, order, OrderState::Uncertain, code).await
 }
@@ -178,18 +177,18 @@ pub(crate) async fn finished(
     // LIS01 confirms transfer, not the analyzer application's acceptance.
     // Only explicit application evidence may advance Sent to Accepted.
     let code = match end {
-        analyte_dialog::astm::End::Normal => Code::AstmTransferConfirmed.as_str(),
-        analyte_dialog::astm::End::Abort => Code::AstmTransferAborted.as_str(),
-        analyte_dialog::astm::End::Timeout => Code::AstmTransferTimeout.as_str(),
-        analyte_dialog::astm::End::Interrupt => Code::AstmTransferInterrupted.as_str(),
-        analyte_dialog::astm::End::Incomplete => Code::AstmTransferIncomplete.as_str(),
+        analyte_dialog::astm::End::Normal => Code::AstmTransferConfirmed,
+        analyte_dialog::astm::End::Abort => Code::AstmTransferAborted,
+        analyte_dialog::astm::End::Timeout => Code::AstmTransferTimeout,
+        analyte_dialog::astm::End::Interrupt => Code::AstmTransferInterrupted,
+        analyte_dialog::astm::End::Incomplete => Code::AstmTransferIncomplete,
     };
     let state = if end == analyte_dialog::astm::End::Normal {
         OrderState::Sent
     } else {
         OrderState::Uncertain
     };
-    complete(store, order, state, code).await
+    complete(store, order, state, code.into()).await
 }
 
 /// Commits a protocol's definitive transport outcome with exactly one app event.
@@ -197,10 +196,10 @@ pub(crate) async fn complete(
     store: &Handle,
     order: &MachineOrder,
     state: OrderState,
-    code: &str,
+    code: super::outcome::Transfer,
 ) -> Result<(), Error> {
     let id = order.id;
-    let code = SourceText::new(code)?;
+    let code = SourceText::new(&code.to_string())?;
     store
         .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
             store.transition_order(
@@ -304,7 +303,7 @@ pub(crate) async fn settle_owned(
             })
             .await
             .map_err(Into::into);
-        crate::machine::custody::retain_cleanup(&mut result, cleanup);
+        crate::runtime::service::cleanup::retain_cleanup(&mut result, cleanup);
     }
     result
 }

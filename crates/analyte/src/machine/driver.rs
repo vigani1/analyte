@@ -23,7 +23,7 @@ pub(super) enum Flow {
 
 /// Shared host ownership; cancellation never cancels a queued durable-store request.
 pub(super) struct Context<'a, 'm, S> {
-    pub machine: &'a intake::Connection<'m>,
+    pub machine: &'a intake::ConnectionEvidence<'m>,
     pub settings: &'a S,
     pub store: &'a Handle,
     pub conn: &'a mut analyte_transport::Connection,
@@ -57,7 +57,7 @@ pub(super) trait Effects {
     /// Protocol-specific pending host work races input; dropping it never proves rollback.
     async fn background(
         &mut self,
-        _machine: &intake::Connection<'_>,
+        _machine: &intake::ConnectionEvidence<'_>,
         _store: &Handle,
     ) -> Result<(), Self::Error> {
         std::future::pending().await
@@ -167,11 +167,11 @@ mod tests {
         }
         async fn background(
             &mut self,
-            _: &intake::Connection<'_>,
+            _: &intake::ConnectionEvidence<'_>,
             _: &Handle,
         ) -> Result<(), Error> {
             self.trace.borrow_mut().push("background");
-            Err(Error::ForeignStackOrder)
+            Err(Error::ActiveDialogHasNoDeadline)
         }
         async fn input(
             &mut self,
@@ -181,7 +181,7 @@ mod tests {
             match input {
                 Input::Tick => {
                     self.trace.borrow_mut().push("deadline");
-                    Err(Error::MappedRequestMissing)
+                    Err(crate::orders::OrderError::MappedRequestMissing.into())
                 }
                 Input::Closed(None) => {
                     self.trace.borrow_mut().push("disconnect");
@@ -191,7 +191,7 @@ mod tests {
                 | Input::Opened { .. }
                 | Input::Bytes { .. }
                 | Input::Failed(_)
-                | Input::RecordingFailed(_) => Err(Error::ForeignStackOrder),
+                | Input::RecordingFailed(_) => Err(Error::ActiveDialogHasNoDeadline),
             }
         }
         async fn close(
@@ -214,7 +214,7 @@ mod tests {
         )?;
         let program = crate::installation::config::Program::load(&path)?;
         let machine = program.machines().first().ok_or("synthetic machine")?;
-        let connection = intake::Connection::new(machine)?;
+        let connection = intake::ConnectionEvidence::new(machine)?;
         let mut store = Handle::start(
             temp.path().join("store.db"),
             analyte_fixtures::store_limits(),
@@ -258,7 +258,7 @@ mod tests {
                 Scenario::Deadline => {
                     assert_eq!(*trace.borrow(), ["open", "deadline", "close"]);
                     assert!(
-                        matches!(result, Err(Error::Refusal(custody::Refusal::Cleanup(causes))) if matches!(causes.original, Error::MappedRequestMissing) && matches!(causes.effect, Error::ControlSuffixMismatch))
+                        matches!(result, Err(Error::Refusal(custody::Refusal::Cleanup(causes))) if matches!(causes.original, Error::Orders(crate::orders::OrderError::MappedRequestMissing)) && matches!(causes.effect, Error::ControlSuffixMismatch))
                     );
                 }
                 Scenario::Stop(Custody::Dialog) => {

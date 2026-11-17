@@ -1,7 +1,7 @@
 //! Drives LAW work exchanges with cached orders, reservations and item outcomes (TF-2b 3.27/3.28).
-use crate::machine::hooks::Operation;
 use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
+use crate::runtime::hooks::Operation;
 use std::error::Error as _;
 mod sending;
 pub(crate) mod validation;
@@ -18,7 +18,7 @@ use std::{
 };
 use work::{address, render};
 
-pub(crate) struct Connection {
+pub(crate) struct LawOrderLink {
     owner: Identifier,
     reserving: Vec<MachineOrderKey>,
     exchange: Option<Exchange>,
@@ -34,7 +34,7 @@ struct Exchange {
     query: Option<ReceiptId>,
 }
 
-impl Connection {
+impl LawOrderLink {
     pub(crate) fn new() -> Result<Self, Error> {
         Ok(Self {
             owner: Identifier::new(&uuid::Uuid::now_v7().to_string())?,

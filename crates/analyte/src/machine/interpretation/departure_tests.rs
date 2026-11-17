@@ -27,7 +27,13 @@ async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Res
     let payload=b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
     let raw = analyte_framing::hl7::encode(payload, analyte_framing::hl7::Limit::new(1048576)?)?;
     let id = ReceiptId::new();
-    intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
+    intake::receive(
+        &store,
+        &intake::ConnectionEvidence::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
     assert!(!intake::interpret(&store, machine, id).await?);
     store.request::<_, FixtureError>(deadline()?,move |s| {
         assert_eq!(s.raw(id)?.as_deref(),Some(raw.as_slice()));
@@ -62,7 +68,13 @@ async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Resu
     .collect();
     let raw = frames.concat();
     let id = ReceiptId::new();
-    intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
+    intake::receive(
+        &store,
+        &intake::ConnectionEvidence::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
     assert!(!intake::interpret(&store, machine, id).await?);
     store
         .request::<_, FixtureError>(deadline()?, move |s| {
@@ -110,7 +122,13 @@ async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meani
     .flatten()
     .collect();
     let id = ReceiptId::new();
-    intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
+    intake::receive(
+        &store,
+        &intake::ConnectionEvidence::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
     assert!(intake::interpret(&store, machine, id).await?);
     store
         .request::<_, FixtureError>(deadline()?, move |s| {

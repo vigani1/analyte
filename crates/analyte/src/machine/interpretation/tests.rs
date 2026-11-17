@@ -92,7 +92,13 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
-    intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
+    intake::receive(
+        &store,
+        &intake::ConnectionEvidence::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
     assert!(!intake::interpret(&store, machine, id).await?);
     let (parked, original) = store
         .request::<_, FixtureError>(deadline()?, move |s| {
@@ -286,14 +292,14 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let original = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
-    let connection = intake::Connection::new(original)?;
+    let connection = intake::ConnectionEvidence::new(original)?;
     intake::receive(&store, &connection, id, b"unparseable original".to_vec()).await?;
     intake::failed_reading(&store, original, id, "synthetic failure").await?;
     let changed = program(temp.path(), &definition, "127.0.0.1:5601")?;
     let current = changed.machines().first().ok_or("missing machine")?;
     intake::park_bytes(
         &store,
-        &intake::Connection::new(current)?,
+        &intake::ConnectionEvidence::new(current)?,
         b"unparseable changed".to_vec(),
         ByteReason::Synthetic,
     )
@@ -396,7 +402,13 @@ async fn assert_vendor_receipt_stays_parked(
     };
     let mut store = crate::runtime::service::open_store(&current, Box::new(Space)).await?;
     let id = ReceiptId::new();
-    intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
+    intake::receive(
+        &store,
+        &intake::ConnectionEvidence::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
     assert!(!intake::interpret(&store, machine, id).await?);
     let parked = store.request::<_, FixtureError>(deadline()?, move |s| {
         let version = s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?;
@@ -439,7 +451,7 @@ async fn assert_poct_controls_stay_failed(store: &Handle, machine: &Machine) -> 
             let id = ReceiptId::new();
             intake::receive(
                 store,
-                &intake::Connection::new(machine)?,
+                &intake::ConnectionEvidence::new(machine)?,
                 id,
                 control.into_bytes(),
             )
