@@ -176,17 +176,17 @@ impl LawOrders {
     }
     /// Explicit application-to-instrument test-code mapping.
     #[must_use]
-    pub fn tests(&self) -> &Vec<OutboundTest> {
+    pub fn tests(&self) -> &[OutboundTest] {
         &self.tests
     }
     /// Explicit specimen-code mappings; unknown specimens remain unresolved.
     #[must_use]
-    pub fn specimen_types(&self) -> &Vec<OutboundSpecimen> {
+    pub fn specimen_types(&self) -> &[OutboundSpecimen] {
         &self.specimen_types
     }
     /// Explicit order-priority mapping.
     #[must_use]
-    pub fn priorities(&self) -> &Vec<OrderPriority> {
+    pub fn priorities(&self) -> &[OrderPriority] {
         &self.priorities
     }
     /// Assigning system required for retained placer order identities.
