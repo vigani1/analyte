@@ -46,7 +46,7 @@ async fn law_tf2b_3_27_4_lookup_and_reservation_commit_precede_first_response_by
     assert_eq!(field(&packet(&mut peer).await?, b"MSA", 1)?, b"AA");
     let work = packet(&mut peer).await?;
     orl(&mut peer, &work, &["OK", "OK"], false).await?;
-    vendor_support::state(&path, "Accepted").await?;
+    vendor::state(&path, "Accepted").await?;
     running.stop().await?;
     reference.close().await?;
     Ok(())
@@ -71,7 +71,7 @@ async fn law_tf2b_3_28_4_cancel_rechecks_trust_after_candidate_selection() -> Re
     .await?;
     let sent = packet(&mut peer).await?;
     orl(&mut peer, &sent, &["OK", "OK"], false).await?;
-    vendor_support::state(&path, "Accepted").await?;
+    vendor::state(&path, "Accepted").await?;
     let before = items(&path)?;
     work::cancel_cache(&path, &reference).await?;
     admission.reached().await?;

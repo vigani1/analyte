@@ -1,5 +1,5 @@
 //! Tests VIDAS result uploads and work downloads.
-use super::vendor_support::*;
+use super::vendor::*;
 use super::*;
 use crate::support::HANG_GUARD;
 use analyte_fixtures::ConfigEdit as _;

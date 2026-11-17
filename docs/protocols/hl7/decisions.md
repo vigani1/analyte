@@ -431,7 +431,7 @@ ERR-3 uses table 0357; zero requires informational severity (2.5.1 §2.15.5.3–
 The error-only ACK renderer refuses zero. Fatal severity starts with the selected
 2.6 profile; code 104 starts with the selected 2.8.2 profile. Unknown codes are
 refused, with local application codes carried separately. Tests are in
-[standards_pass2.rs](../../../crates/protocols/hl7/tests/standards_pass2.rs).
+[control_boundaries.rs](../../../crates/protocols/hl7/tests/control_boundaries.rs).
 
 The strict modern withdrawal profile refuses explicit null as well as other
 nonempty encodings in withdrawn MSA/ERR fields (2.8.2 §2.14.8 and 2.9.1 §2.13.8).
@@ -472,6 +472,6 @@ carries clinical content. View regressions and the O22 response regressions in
 - **source**: HL7 2.3.1 §7.3.2; later supported editions §§7.4.1.25 and
   7.4.2.11; modern §7.4.1.22; ADRs 0003, 0005, 0008 and 0015.
 - **tests**: [paired mapping cases](../../../crates/steps/mapping/tests/mapping/departures.rs),
-  [durable v1 refusal](../../../crates/analyte/src/machine/interpretation/departure_tests.rs),
+  [durable v1 refusal](../../../crates/analyte/src/machine/interpretation/departure_evidence/tests.rs),
   [admin origin labels](../../../crates/analyte/src/admin/departures.rs).
   These are synthetic tests; no real analyzer gains an evidence level.

@@ -568,5 +568,5 @@ pub fn assert_failure_recording_retained(
 }
 
 /// Checks durable order outcomes and vendor peer bytes.
-#[path = "vendor_support.rs"]
-pub mod vendor_support;
+#[path = "vendor.rs"]
+pub mod vendor;

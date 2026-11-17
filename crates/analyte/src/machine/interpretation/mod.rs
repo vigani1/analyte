@@ -10,8 +10,6 @@ use analyte_model::Revision;
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
 pub(crate) mod departure_evidence;
 #[cfg(test)]
-mod departure_tests;
-#[cfg(test)]
 mod tests;
 
 /// Reinterprets only the retained original bytes using the supplied current machine.

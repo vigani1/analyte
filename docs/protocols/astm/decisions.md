@@ -195,6 +195,6 @@ therefore remains empty when no peer identity is agreed. Sites may configure
   tests do not qualify any machine.
 - **tests**: [paired strict/packed dialog cases](../../../crates/steps/dialog/tests/packed.rs)
   cover frame custody, checksum failure, retries and ETB continuation.
-  [Stored interpretation cases](../../../crates/analyte/src/machine/interpretation/departure_tests.rs)
+  [Stored interpretation cases](../../../crates/analyte/src/machine/interpretation/departure_evidence/tests.rs)
   cover v1 delivery without semantic changes and evidence retained after bad
   LIS02 hierarchy. Existing link/storage recovery fixtures remain unchanged.

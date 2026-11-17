@@ -135,8 +135,8 @@ every distinct mutation and give the test that checks its behavior.
 | `hl7.rs:369:33`, `:369:53`, each `||` → `&&` | Each oversized diagnostic component independently refuses: `rule7_hl7_251_2_15_5_error_metadata_bounds_refuse_without_losing_pending_receipt`. |
 | `hl7.rs:369:29`, `>` → `<`; `:369:49`, `>` → `<` | Valid segment/code widths must be accepted; oversize ones refused: same diagnostic-bounds test. |
 | `hl7.rs:369:81`, `>` → `==`; `>` → `>=` | Accept 64-byte application diagnostics, refuse 65-byte ones: same diagnostic-bounds test. |
-| `astm/types.rs:214:9`, transfer → `0`; transfer → `1` | Host-visible transfer identity must follow each accepted ENQ: `adr0003_0010_astm_commit_identity_tracks_transfer_and_failed_request_ordinals`. |
-| `astm/types.rs:220:9`, frame → `0`; frame → `1` | Each durable request consumes an ordinal, including failed writes: same commit-identity test. |
+| `astm/state.rs:214:9`, transfer → `0`; transfer → `1` | Host-visible transfer identity must follow each accepted ENQ: `adr0003_0010_astm_commit_identity_tracks_transfer_and_failed_request_ordinals`. |
+| `astm/state.rs:220:9`, frame → `0`; frame → `1` | Each durable request consumes an ordinal, including failed writes: same commit-identity test. |
 
 The complete rerun caught 124 mutants, with zero missed, ten unable to compile
 and no timeouts. Matching the before/after outcome records confirms that all

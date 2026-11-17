@@ -260,3 +260,6 @@ pub enum EvidenceError {
     #[error(transparent)]
     Astm(#[from] analyte_framing::astm::Error),
 }
+
+#[cfg(test)]
+mod tests;
