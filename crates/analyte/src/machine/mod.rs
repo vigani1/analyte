@@ -2,6 +2,7 @@
 use crate::machine::error::Error;
 mod astm;
 pub(crate) mod autolyser;
+mod driver;
 pub(crate) mod link;
 pub(crate) use link::capture;
 use link::{folder, serial};

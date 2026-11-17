@@ -1,9 +1,9 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
 use crate::intake::ByteReason;
 mod custody;
-mod orders;
-mod transfer_end;
+pub(crate) mod transfer_end;
 use self::transfer_end::AutolyserEnd;
+use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::custody::{self as receive_custody, ms};
@@ -18,14 +18,13 @@ use tokio::sync::watch;
 
 /// Mutable conversation state has one owner for the entire connection.
 struct ConnectionState {
+    work: crate::orders::autolyser::Work,
     dialog: Dialog,
     start: Instant,
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
     ready: bool,
     recovering: bool,
     guard: Option<analyte_store::PollIntentId>,
-    active: Option<analyte_store::MachineOrder>,
-    cursor: String,
     end_code: AutolyserEnd,
 }
 
@@ -34,16 +33,20 @@ pub(super) async fn session(
     settings: &analyte_config::AutolyserStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
-    mut stop: watch::Receiver<bool>,
+    stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     custody::ensure_reconciled(store, machine.machine()).await?;
-    let mut state = ConnectionState::open(settings)?;
-    // Dropping this owner after reservation leaves Sending for shared recovery.
-    // Observed failures are finalized Uncertain before returning, without replay.
-    let result = state
-        .receive_loop(machine, store, conn, &mut stop, settings.policy())
-        .await;
-    state.close(machine, store, result).await
+    driver::run(
+        || ConnectionState::open(settings),
+        Context {
+            machine,
+            settings,
+            store,
+            conn,
+            stop,
+        },
+    )
+    .await
 }
 
 impl ConnectionState {
@@ -64,112 +67,15 @@ impl ConnectionState {
             },
         })?;
         Ok(Self {
+            work: crate::orders::autolyser::Work::default(),
             dialog,
             start: Instant::now(),
             receipt: None,
             ready: false,
             recovering: false,
             guard: None,
-            active: None,
-            cursor: String::new(),
             end_code: AutolyserEnd::TransferError,
         })
-    }
-
-    async fn receive_loop(
-        &mut self,
-        machine: &intake::Connection<'_>,
-        store: &Handle,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-        policy: &analyte_config::Autolyser,
-    ) -> Result<(), Error> {
-        loop {
-            self.end_code = AutolyserEnd::InputFailed;
-            let input = crate::machine::connection_input::journaled(
-                machine,
-                store,
-                conn,
-                stop,
-                self.dialog
-                    .next_deadline()
-                    .map(|deadline| deadline.saturating_sub(self.start.elapsed())),
-            )
-            .await?;
-            let ended = matches!(
-                input,
-                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_)
-            );
-            self.end_code = match &input {
-                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
-                    if *stop.borrow() {
-                        AutolyserEnd::TransferCancelled
-                    } else {
-                        AutolyserEnd::TransferDisconnected
-                    }
-                }
-                Input::Tick => AutolyserEnd::TransferTimeout,
-                Input::Opened { .. } | Input::Bytes { .. } => AutolyserEnd::TransferError,
-            };
-            let events = match input {
-                Input::Opened { .. } => {
-                    self.ready = false;
-                    vec![Event::Poll(Request::Next)]
-                }
-                Input::Bytes { bytes } => {
-                    if self
-                        .receive_bytes(bytes, machine, store, conn, policy)
-                        .await?
-                    {
-                        return Ok(());
-                    }
-                    #[cfg(feature = "test-hooks")]
-                    if self.ready
-                        && self.guard.is_none()
-                        && self.active.is_none()
-                        && let Some(hook) = &machine.machine().hooks.autolyser_quiescent
-                    {
-                        hook.pause(stop).await.map_err(Error::TestHook)?;
-                    }
-                    Vec::new()
-                }
-                Input::Tick => {
-                    let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-                    // Tick alone can initiate L recovery. Never interleave R with it.
-                    if actions.is_empty() && self.ready && !self.recovering {
-                        self.ready = false;
-                        if let Some(actions) = self.next_download(store, machine).await? {
-                            if process(actions, self, machine, store, conn, policy).await? {
-                                return Ok(());
-                            }
-                            Vec::new()
-                        } else {
-                            vec![Event::Poll(Request::Next)]
-                        }
-                    } else {
-                        if process(actions, self, machine, store, conn, policy).await? {
-                            return Ok(());
-                        }
-                        Vec::new()
-                    }
-                }
-                Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
-                    vec![Event::Disconnect]
-                }
-            };
-            for event in events {
-                if matches!(event, Event::Poll(Request::Next)) {
-                    self.guard = Some(custody::reserve(store, machine.machine()).await?);
-                }
-                let actions = self.dialog.step(self.start.elapsed(), event)?;
-                if process(actions, self, machine, store, conn, policy).await? {
-                    return Ok(());
-                }
-            }
-            if ended {
-                return Ok(());
-            }
-        }
     }
 
     async fn receive_bytes(
@@ -188,26 +94,133 @@ impl ConnectionState {
         }
         Ok(false)
     }
+}
 
+impl Effects for ConnectionState {
+    type Settings = analyte_config::AutolyserStack;
+    type Error = Error;
+    fn custody(&self) -> driver::Custody {
+        driver::Custody::Chunks
+    }
+    fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
+        Ok(self
+            .dialog
+            .next_deadline()
+            .map(|deadline| deadline.saturating_sub(self.start.elapsed())))
+    }
+    async fn prepare(
+        &mut self,
+        _host: &mut Context<'_, '_, Self::Settings>,
+    ) -> Result<Flow, Error> {
+        self.end_code = AutolyserEnd::InputFailed;
+        Ok(Flow::Continue)
+    }
+    async fn input(
+        &mut self,
+        host: &mut Context<'_, '_, Self::Settings>,
+        input: Input,
+    ) -> Result<Flow, Error> {
+        let Context {
+            machine,
+            store,
+            conn,
+            stop,
+            settings,
+        } = host;
+        let policy = settings.policy();
+        let ended = matches!(
+            input,
+            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_)
+        );
+        self.end_code = match &input {
+            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+                if *stop.borrow() {
+                    AutolyserEnd::TransferCancelled
+                } else {
+                    AutolyserEnd::TransferDisconnected
+                }
+            }
+            Input::Tick => AutolyserEnd::TransferTimeout,
+            Input::Opened { .. } | Input::Bytes { .. } => AutolyserEnd::TransferError,
+        };
+        let events = match input {
+            Input::Opened { .. } => {
+                self.ready = false;
+                vec![Event::Poll(Request::Next)]
+            }
+            Input::Bytes { bytes } => {
+                if self
+                    .receive_bytes(bytes, machine, store, conn, policy)
+                    .await?
+                {
+                    return Ok(Flow::Stop);
+                }
+                #[cfg(feature = "test-hooks")]
+                if self.ready
+                    && self.guard.is_none()
+                    && !self.work.is_active()
+                    && let Some(hook) = &machine.machine().hooks.autolyser_quiescent
+                {
+                    hook.pause(stop).await.map_err(Error::TestHook)?;
+                }
+                Vec::new()
+            }
+            Input::Tick => {
+                let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
+                // Tick alone can initiate L recovery. Never interleave R with it.
+                if actions.is_empty() && self.ready && !self.recovering {
+                    self.ready = false;
+                    if let Some(worklist) = self.work.poll(store, machine).await? {
+                        let actions = self
+                            .dialog
+                            .step(self.start.elapsed(), Event::Download(&worklist))?;
+                        if process(actions, self, machine, store, conn, policy).await? {
+                            return Ok(Flow::Stop);
+                        }
+                        Vec::new()
+                    } else {
+                        vec![Event::Poll(Request::Next)]
+                    }
+                } else {
+                    if process(actions, self, machine, store, conn, policy).await? {
+                        return Ok(Flow::Stop);
+                    }
+                    Vec::new()
+                }
+            }
+            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+                vec![Event::Disconnect]
+            }
+        };
+        for event in events {
+            if matches!(event, Event::Poll(Request::Next)) {
+                self.guard = Some(custody::reserve(store, machine.machine()).await?);
+            }
+            let actions = self.dialog.step(self.start.elapsed(), event)?;
+            if process(actions, self, machine, store, conn, policy).await? {
+                return Ok(Flow::Stop);
+            }
+        }
+        if ended {
+            return Ok(Flow::Stop);
+        }
+
+        Ok(Flow::Continue)
+    }
     async fn close(
-        &self,
-        machine: &intake::Connection<'_>,
-        store: &Handle,
-        result: Result<(), Error>,
+        &mut self,
+        host: &mut Context<'_, '_, Self::Settings>,
+        result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
-        let mut result = result;
-        if let Err(effect) =
-            custody::uncertain(store, self.guard, machine.machine(), self.end_code.as_str()).await
-        {
-            result = Err(receive_custody::effect_failure(result.err(), effect));
-        }
-        if let Some(order) = self.active.as_ref()
-            && let Err(effect) =
-                crate::orders::sending::uncertain(store, order, self.end_code.as_str()).await
-        {
-            result = Err(receive_custody::effect_failure(result.err(), effect.into()));
-        }
-        result
+        let cleanup = custody::uncertain(
+            host.store,
+            self.guard,
+            host.machine.machine(),
+            self.end_code.as_str(),
+        )
+        .await;
+        receive_custody::retain_cleanup(result, cleanup);
+        self.work.close(host.store, self.end_code.as_str()).await
     }
 }
 
@@ -307,7 +320,7 @@ async fn process(
                 state.interpret_report(machine, store).await?;
             }
             Action::Park(error) => {
-                if let Some(order) = state.active.as_ref() {
+                if state.work.is_active() {
                     let code = if matches!(error, analyte_dialog::autolyser::Error::Incomplete)
                         && matches!(
                             state.end_code,
@@ -319,8 +332,7 @@ async fn process(
                     } else {
                         park_code(&error)
                     };
-                    crate::orders::sending::uncertain(store, order, &code).await?;
-                    state.active = None;
+                    state.work.refuse(store, &code).await?;
                     close = true;
                 }
                 state.ready = false;
@@ -357,7 +369,9 @@ async fn process(
                 }
             }
             Action::Insertion(reception) => {
-                close |= state.complete_insertion(reception, store).await?;
+                state.receipt.take();
+                state.ready = state.work.insertion(reception, store).await?;
+                close |= !state.ready;
             }
             Action::Uncertain => {
                 state.ready = false;

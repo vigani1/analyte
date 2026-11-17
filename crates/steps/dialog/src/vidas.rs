@@ -2,6 +2,7 @@
 //! Host owns byte journaling, storage and cancellation; the dialog owns timers.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
+use analyte_framing::Decode as _;
 use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, Packet};
 use analyte_vidas::syntax::{Kind, Message};
 use std::time::Duration;
@@ -56,6 +57,8 @@ pub enum Action {
 /// Events are supplied only after their stated host operation completes.
 #[derive(Debug, Clone)]
 pub enum Event {
+    /// One byte already retained in the host journal.
+    Byte(u8),
     /// Incoming control after configured suffix validation and journaling.
     Control(u8),
     /// Decoder's complete checksum-validated acceptance boundary.
@@ -108,6 +111,7 @@ pub enum Error {
 
 /// Deterministic state machine; one transfer identity per instance.
 pub struct Dialog {
+    decoder: analyte_framing::vidas::StreamDecoder,
     config: FrameConfig,
     policy: Config,
     state: State,
@@ -147,6 +151,7 @@ impl Dialog {
             return Err(Error::Config);
         }
         Ok(Self {
+            decoder: analyte_framing::vidas::StreamDecoder::new(config.clone()),
             config,
             policy,
             state,
@@ -230,6 +235,18 @@ impl Dialog {
             }
             return Ok(Vec::new());
         }
+        let event = if let Event::Byte(byte) = event {
+            if self.timers.inter_byte.is_some() {
+                self.timers.inter_byte = now.checked_add(self.policy.inter_byte);
+            }
+            match self.decoder.push_byte(byte)? {
+                Some(analyte_framing::vidas::Event::Packet(packet)) => Event::Packet(packet),
+                Some(analyte_framing::vidas::Event::Control(control)) => Event::Control(control),
+                None => return Ok(Vec::new()),
+            }
+        } else {
+            event
+        };
         Ok(self.apply(event))
     }
 
@@ -303,7 +320,8 @@ impl Dialog {
             }
             (
                 State::Finished,
-                Event::Control(_)
+                Event::Byte(_)
+                | Event::Control(_)
                 | Event::Packet(_)
                 | Event::Stored
                 | Event::StorageFailed
@@ -320,7 +338,8 @@ impl Dialog {
                 | State::UploadEot
                 | State::DownloadReady
                 | State::DownloadAck,
-                Event::Control(_)
+                Event::Byte(_)
+                | Event::Control(_)
                 | Event::Packet(_)
                 | Event::Stored
                 | Event::StorageFailed

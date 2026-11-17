@@ -142,6 +142,9 @@ pub struct Packet {
 /// Specific framing failure. The host's byte journal remains authoritative.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum Error {
+    /// A conversation control did not carry its configured suffix.
+    #[error("VIDAS control suffix mismatch")]
+    ControlSuffix,
     /// Invalid installed settings.
     #[error("invalid framing configuration")]
     Config,
@@ -325,6 +328,77 @@ pub fn decode(raw: &[u8], config: Config) -> Result<Packet, Error> {
         packet = decoder.push(*byte)?;
     }
     packet.ok_or(Error::Incomplete)
+}
+
+/// A packet or suffix-validated conversation control.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Event {
+    /// Complete checksummed packet.
+    Packet(Packet),
+    /// Control byte after its configured suffix.
+    Control(u8),
+}
+
+/// Separates packets and controls within one bounded VIDAS conversation.
+pub struct StreamDecoder {
+    config: Config,
+    packet: Option<Decoder>,
+    suffix: Option<(u8, usize)>,
+}
+impl StreamDecoder {
+    /// Starts an empty conversation using the installed framing policy.
+    #[must_use]
+    pub fn new(config: Config) -> Self {
+        Self {
+            config,
+            packet: None,
+            suffix: None,
+        }
+    }
+}
+impl crate::Decode for StreamDecoder {
+    type Event = Event;
+    type Error = Error;
+    fn push_byte(&mut self, byte: u8) -> Result<Option<Event>, Error> {
+        if let Some(decoder) = &mut self.packet {
+            return match decoder.push(byte)? {
+                Some(packet) => {
+                    self.packet = None;
+                    Ok(Some(Event::Packet(packet)))
+                }
+                None => Ok(None),
+            };
+        }
+        if let Some((control, index)) = self.suffix {
+            if self.config.suffix.get(index) != Some(&byte) {
+                return Err(Error::ControlSuffix);
+            }
+            let next = index.checked_add(1).ok_or(Error::Payload)?;
+            if next == self.config.suffix.len() {
+                self.suffix = None;
+                return Ok(Some(Event::Control(control)));
+            }
+            self.suffix = Some((control, next));
+            return Ok(None);
+        }
+        if byte == STX {
+            let mut decoder = Decoder::new(self.config.clone());
+            decoder.push(byte)?;
+            self.packet = Some(decoder);
+            Ok(None)
+        } else if self.config.suffix.is_empty() {
+            Ok(Some(Event::Control(byte)))
+        } else {
+            self.suffix = Some((byte, 0));
+            Ok(None)
+        }
+    }
+    fn finish_stream(&mut self) -> Result<Option<Event>, Error> {
+        if self.packet.is_some() || self.suffix.is_some() {
+            return Err(Error::Incomplete);
+        }
+        Ok(None)
+    }
 }
 
 /// STX control byte (BCI Appendix A chapter 3).

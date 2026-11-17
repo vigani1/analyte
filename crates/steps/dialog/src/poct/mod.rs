@@ -1,5 +1,6 @@
 //! Turns POCT reviewer events into ordered host actions without I/O.
 //! Kept whole: The POCT conversation state transitions and timeout decisions form one protocol dialog.
+mod input;
 mod parking;
 use analyte_poct::{
     AckKind, ApplicationError, Body, Capabilities, ControlId, EscapeReason, Message, Nullable,
@@ -14,6 +15,8 @@ use std::{
 /// Host limits and deadlines; these are policy, not claimed standard defaults.
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Maximum XML element depth accepted by the conversation framer.
+    pub depth: usize,
     /// Maximum uncommitted dynamic messages, including asynchronous observations.
     pub pending_messages: usize,
     /// Maximum accepted bytes in any message, and aggregate received control-ID bytes.
@@ -83,6 +86,8 @@ pub enum CommitOutcome {
 /// Events supplied by the host in source order, using monotonic elapsed time.
 #[derive(Debug)]
 pub enum Event {
+    /// One byte retained by the host journal before framing.
+    Byte(u8),
     /// A structurally checked received message. Host retains rejected raw receipts.
     Received(Box<Message>),
     /// Host has durably parked invalid Hello bytes and recovered a unique header ID.
@@ -116,6 +121,12 @@ pub enum Event {
 /// Ordered side effects for the host. No action performs I/O itself.
 #[derive(Debug)]
 pub enum Action {
+    /// Complete or malformed root retained for host syntax interpretation.
+    Input(Vec<u8>),
+    /// Exact pending bytes rejected at the message byte ceiling.
+    InputLimit(Vec<u8>),
+    /// Exact pending bytes received when the absolute deadline expired.
+    InputDeadline(Vec<u8>),
     /// Ask host policy about the device; no acceptance has been sent yet.
     InspectHello {
         /// Source device identity.
@@ -198,6 +209,7 @@ struct Pending {
 /// write latency inside those deadlines and supplies a fresh session on reconnect.
 #[derive(Debug)]
 pub struct Dialog {
+    input: analyte_framing::poct::Decoder,
     config: Config,
     session: ControlId,
     counter: u64,
@@ -219,7 +231,8 @@ impl Dialog {
     /// # Errors
     /// Rejects zero limits/deadlines and a session too long for derived send IDs.
     pub fn new(config: Config, session: ControlId) -> Result<Self, Error> {
-        if config.pending_messages == 0
+        if config.depth == 0
+            || config.pending_messages == 0
             || config.message_bytes == 0
             || config.response_timeout.is_zero()
             || config.unannounced_ack_timeout.is_zero()
@@ -228,6 +241,7 @@ impl Dialog {
             return Err(Error::Config);
         }
         Ok(Self {
+            input: analyte_framing::poct::Decoder::new(config.message_bytes, config.depth),
             response_deadline: config.response_timeout,
             ack_timeout: config.unannounced_ack_timeout,
             device_message_limit: config.message_bytes,
@@ -270,6 +284,9 @@ impl Dialog {
         self.clock
             .advance(now, self.config.response_timeout.max(self.ack_timeout))
             .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
+        if let Event::Byte(byte) = event {
+            return self.input_byte(now, byte);
+        }
         let response_deadline = now
             .checked_add(self.config.response_timeout)
             .ok_or(Error::Exhausted)?;
@@ -336,7 +353,7 @@ impl Dialog {
             }
             Event::Abort => self.terminate(TerminationReason::User, &mut actions)?,
             Event::Disconnected => self.close(false, &mut actions),
-            Event::Tick => {}
+            Event::Byte(_) | Event::Tick => {}
         }
         let reads = self.pending.len() < self.config.pending_messages;
         if !matches!(self.phase, Phase::Closed) && reads != self.reads {

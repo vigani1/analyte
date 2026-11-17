@@ -37,7 +37,8 @@ mod orders;
 
 pub use orders::{
     AppOrder, AppOrderPriority, Hl7Command, LawCommand, MachineOrder, OrderMappingError,
-    OutboundItem, WireMappingError, app_order, law_address, map_display, map_law_work, map_order,
+    OutboundItem, WireMappingError, app_order, law_address, map_display, map_hl7_order,
+    map_law_order, map_law_work, map_order,
 };
 
 use analyte_config::StackChoice;

@@ -303,3 +303,55 @@ fn vidas_bci_a3_retained_packet_uses_live_decoder_and_requires_exact_boundary()
     }
     Ok(())
 }
+
+#[test]
+fn vidas_bci_a_ch3_journaled_bytes_demultiplex_controls_without_ack_before_store()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_framing::vidas::{ACK, CR, ENQ, EOT, ETX, LF};
+    for suffix in [&[][..], &[CR][..], &[LF][..], &[CR, LF][..]] {
+        let config = config(Mode::Literal, suffix, false)?;
+        let mut dialog = Dialog::upload(config.clone(), policy())?;
+        let _ = dialog.start();
+        let mut actions = Vec::new();
+        for byte in config.control(ENQ) {
+            actions.extend(dialog.step(Duration::ZERO, Event::Byte(byte))?);
+        }
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, Action::Send(bytes) if *bytes == config.control(ACK)))
+        );
+        actions.clear();
+        let packet = config.encode(b"A")?;
+        for byte in &packet {
+            actions.extend(dialog.step(Duration::ZERO, Event::Byte(*byte))?);
+        }
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, Action::Store(p) if p.raw == packet))
+        );
+        assert!(!actions.iter().any(|a| matches!(a, Action::Send(_))));
+        let committed = dialog.step(Duration::ZERO, Event::Stored)?;
+        assert!(
+            committed
+                .iter()
+                .any(|a| matches!(a, Action::Send(bytes) if *bytes == config.control(ACK)))
+        );
+        actions.clear();
+        for byte in config.control(ETX).into_iter().chain(config.control(EOT)) {
+            actions.extend(dialog.step(Duration::ZERO, Event::Byte(byte))?);
+        }
+        assert!(actions.contains(&Action::Complete));
+    }
+    let mut dialog = Dialog::upload(config(Mode::Literal, b"\r\n", false)?, policy())?;
+    let _ = dialog.start();
+    dialog.step(Duration::ZERO, Event::Byte(ENQ))?;
+    assert!(matches!(
+        dialog.step(Duration::ZERO, Event::Byte(b'X')),
+        Err(analyte_dialog::vidas::Error::Framing(
+            analyte_framing::vidas::Error::ControlSuffix
+        ))
+    ));
+    Ok(())
+}

@@ -11,6 +11,7 @@ use std::time::Duration;
 fn dialog(capacity: usize) -> Result<Dialog, DialogError> {
     Dialog::new(
         Config {
+            depth: 32,
             pending_messages: capacity,
             message_bytes: 65536,
             response_timeout: Duration::from_secs(180),
@@ -392,6 +393,7 @@ fn poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack() -> Res
     let t = ticket(&store)?;
     let mut fresh = Dialog::new(
         Config {
+            depth: 32,
             pending_messages: 2,
             message_bytes: 65536,
             response_timeout: Duration::from_secs(180),
@@ -475,6 +477,7 @@ fn poct01_b5_13_reused_id_before_commit_is_retained_not_accepted() -> Result<(),
 fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
 -> Result<(), DialogError> {
     let mut config = Config {
+        depth: 32,
         pending_messages: 2,
         message_bytes: 1024,
         response_timeout: Duration::from_secs(180),
@@ -631,6 +634,7 @@ fn poct01_b_5_12_unexpected_ack_escape_references_incoming_header() -> Result<()
 fn adr_0001_poct_reports_absolute_custody_deadline_without_polling() -> Result<(), DialogError> {
     let mut dialog = Dialog::new(
         Config {
+            depth: 32,
             pending_messages: 2,
             message_bytes: 65536,
             response_timeout: Duration::from_secs(180),
@@ -661,5 +665,46 @@ fn adr_0001_poct_reports_absolute_custody_deadline_without_polling() -> Result<(
             .any(|action| matches!(action, Action::Close { normal: false, .. }))
     );
     assert_eq!(dialog.next_deadline(), None);
+    Ok(())
+}
+
+#[test]
+fn poct01_b3_2_journaled_bytes_keep_root_and_incomplete_evidence() -> Result<(), DialogError> {
+    let mut dialog = dialog(1)?;
+    let raw = peer_messages::hello("byte-hello");
+    let mut actions = Vec::new();
+    for byte in raw.bytes() {
+        actions.extend(step(&mut dialog, Event::Byte(byte))?);
+    }
+    assert!(matches!(actions.as_slice(), [Action::Input(wire)] if wire == raw.as_bytes()));
+    assert!(sends(&actions).is_empty());
+    let inspect = step(&mut dialog, received(&raw)?)?;
+    assert!(matches!(inspect.first(), Some(Action::InspectHello { .. })));
+    for byte in b"<unfinished" {
+        assert!(step(&mut dialog, Event::Byte(*byte))?.is_empty());
+    }
+    assert_eq!(dialog.take_input(), b"<unfinished");
+    assert!(dialog.take_input().is_empty());
+    Ok(())
+}
+
+#[test]
+fn poct01_b3_6_incomplete_tokens_do_not_postpone_deadline() -> Result<(), DialogError> {
+    let mut dialog = dialog(1)?;
+    for byte in b"<unfinished" {
+        assert!(
+            dialog
+                .step(Duration::from_secs(179), Event::Byte(*byte))?
+                .is_empty()
+        );
+    }
+    let actions = dialog.step(Duration::from_secs(180), Event::Byte(b'>'))?;
+    assert!(matches!(actions.first(), Some(Action::InputDeadline(raw)) if raw == b"<unfinished>"));
+    assert!(
+        actions
+            .iter()
+            .any(|action| matches!(action, Action::Close { normal: false, .. }))
+    );
+    assert!(dialog.take_input().is_empty());
     Ok(())
 }
