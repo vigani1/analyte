@@ -1,7 +1,7 @@
 //! Tests configured outgoing orders and code mappings.
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
-use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError, map_order};
+use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError};
 use analyte_model::{Identifier, NamespacedId, SampleId};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -23,7 +23,7 @@ fn rule7_outbound_selected_component_at_configured_ceiling_is_preserved() -> Tes
     )?
     .validate()?;
     let mapped = map_order(&order()?, cfg.effective().stack())?;
-    assert_eq!(mapped.record()?, b"O|1|^^^001a||^^^SEND|R||||||N\r");
+    assert_eq!(mapped.encode(), b"O|1|^^^001a||^^^SEND|R||||||N\r");
     Ok(())
 }
 
@@ -116,13 +116,11 @@ fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResul
             );
             assert_eq!(mapped.is_ok(), accepted, "{key}={bound}");
             if accepted {
-                assert_eq!(mapped?.record()?, expected);
+                assert_eq!(mapped?.encode(), expected);
             } else {
                 assert!(matches!(
                     mapped,
-                    Err(analyte_mapping::DispatchError::Astm(
-                        analyte_mapping::astm::OrderError::RecordLimit
-                    ))
+                    Err(analyte_mapping::astm::OrderError::RecordLimit)
                 ));
             }
         }
@@ -131,7 +129,7 @@ fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResul
         &order()?,
         bounded_order_config("components", 4)?.effective().stack(),
     )?;
-    assert_eq!(mapped.record()?, expected);
+    assert_eq!(mapped.encode(), expected);
     Ok(())
 }
 
@@ -144,9 +142,7 @@ fn rule5_outbound_sample_reserved_characters_are_refused_without_rewriting() -> 
         assert!(
             matches!(
                 map_order(&input, settings.effective().stack()),
-                Err(analyte_mapping::DispatchError::Astm(
-                    analyte_mapping::astm::OrderError::TextRepertoire
-                ))
+                Err(analyte_mapping::astm::OrderError::TextRepertoire)
             ),
             "{sample}"
         );
@@ -181,9 +177,7 @@ fn rule7_outbound_test_count_is_nonempty_and_inclusive() -> TestResult {
         if !accepted {
             assert!(matches!(
                 mapped,
-                Err(analyte_mapping::DispatchError::Astm(
-                    analyte_mapping::astm::OrderError::TestCount
-                ))
+                Err(analyte_mapping::astm::OrderError::TestCount)
             ));
         }
     }
@@ -224,7 +218,7 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
 fn lis02_section8_outbound_table_preserves_sample_and_never_reverses_inbound() -> TestResult {
     let config = config(include_str!("../../../core/config/examples/orders.toml"))?;
     let mapped = map_order(&order()?, config.effective().stack())?;
-    assert_eq!(mapped.record()?, b"O|1|001a||^^^SEND|R||||||N\r");
+    assert_eq!(mapped.encode(), b"O|1|001a||^^^SEND|R||||||N\r");
     Ok(())
 }
 
@@ -232,7 +226,7 @@ fn lis02_section8_outbound_table_preserves_sample_and_never_reverses_inbound() -
 fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output() -> TestResult {
     assert!(matches!(
         map_order(&order()?, config("")?.effective().stack()),
-        Err(analyte_mapping::DispatchError::Shared(
+        Err(analyte_mapping::astm::OrderError::Shared(
             OrderMappingError::Disabled
         ))
     ));
@@ -242,16 +236,16 @@ fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output(
     input.tests[0].namespace = Identifier::new("different-system")?;
     assert!(matches!(
         map_order(&input, settings.effective().stack()),
-        Err(analyte_mapping::DispatchError::Astm(
-            analyte_mapping::astm::OrderError::Shared(OrderMappingError::UnmappedTest(_))
+        Err(analyte_mapping::astm::OrderError::Shared(
+            OrderMappingError::UnmappedTest(_)
         ))
     ));
     input = order()?;
     input.priority = AppOrderPriority::Stat;
     assert!(matches!(
         map_order(&input, settings.effective().stack()),
-        Err(analyte_mapping::DispatchError::Astm(
-            analyte_mapping::astm::OrderError::Shared(OrderMappingError::UnmappedPriority)
+        Err(analyte_mapping::astm::OrderError::Shared(
+            OrderMappingError::UnmappedPriority
         ))
     ));
     let position = format!(
@@ -259,8 +253,8 @@ fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output(
     );
     assert!(matches!(
         map_order(&order()?, config(&position)?.effective().stack()),
-        Err(analyte_mapping::DispatchError::Astm(
-            analyte_mapping::astm::OrderError::Shared(OrderMappingError::MissingPosition)
+        Err(analyte_mapping::astm::OrderError::Shared(
+            OrderMappingError::MissingPosition
         ))
     ));
     Ok(())
@@ -306,7 +300,7 @@ fn lis02_section8_4_4_and_8_4_16_1_configured_destinations_get_only_explicit_con
     ] {
         let settings = config(&format!("{}\n{destinations}", context_section()))?;
         assert_eq!(
-            map_order(&context_order()?, settings.effective().stack())?.record()?,
+            map_order(&context_order()?, settings.effective().stack())?.encode(),
             expected
         );
     }
@@ -320,20 +314,20 @@ fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> 
         Identifier::new("different-system")?;
     assert!(matches!(
         map_order(&value, settings.effective().stack()),
-        Err(analyte_mapping::DispatchError::Astm(
-            analyte_mapping::astm::OrderError::Shared(OrderMappingError::UnmappedSpecimenType)
+        Err(analyte_mapping::astm::OrderError::Shared(
+            OrderMappingError::UnmappedSpecimenType
         ))
     ));
     // With no configured destination the same unknown value is not transmitted.
     assert_eq!(
-        map_order(&value, config(&context_section())?.effective().stack())?.record()?,
+        map_order(&value, config(&context_section())?.effective().stack())?.encode(),
         b"O|1|001a||^^^SEND|R||||||N\r"
     );
     value.specimen_type = None;
     assert!(matches!(
         map_order(&value, settings.effective().stack()),
-        Err(analyte_mapping::DispatchError::Astm(
-            analyte_mapping::astm::OrderError::Shared(OrderMappingError::MissingSpecimenType)
+        Err(analyte_mapping::astm::OrderError::Shared(
+            OrderMappingError::MissingSpecimenType
         ))
     ));
     Ok(())
@@ -570,4 +564,12 @@ fn hl7_ch4_patient_requirement_and_orc_group_bound_return_typed_refusals() -> Te
         ));
     }
     Ok(())
+}
+
+fn map_order(
+    order: &AppOrder,
+    stack: &analyte_config::Stack,
+) -> Result<analyte_astm::OrderRecord, analyte_mapping::astm::OrderError> {
+    let settings = stack.astm_orders().ok_or(OrderMappingError::Disabled)?;
+    analyte_mapping::astm::map_order(order, stack.astm_syntax().unwrap().limits(), settings)
 }

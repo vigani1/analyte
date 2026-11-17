@@ -2,9 +2,6 @@
 /// Failures looking up, reserving, rendering or settling machine orders.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderError {
-    /// Dispatch retained a specific protocol refusal.
-    #[error(transparent)]
-    Dispatch(#[from] analyte_mapping::DispatchError),
     /// AUTOLYSER order mapping failed.
     #[error(transparent)]
     AutolyserMapping(#[from] analyte_mapping::autolyser::OrderError),

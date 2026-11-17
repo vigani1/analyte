@@ -129,9 +129,17 @@ async fn answer(
                         |error| format!("rejected: {error}"),
                         |order| {
                             let order = super::app_order(order)?;
-                            Ok(analyte_mapping::map_order(
+                            Ok(analyte_mapping::astm::map_order(
                                 &order,
-                                machine.snapshot.effective().stack(),
+                                machine
+                                    .snapshot
+                                    .effective()
+                                    .stack()
+                                    .astm_syntax()
+                                    .ok_or(Error::AstmLimitsMissing)?
+                                    .limits(),
+                                super::settings::astm(machine)
+                                    .ok_or(Error::AstmQueryCapabilityAbsent)?,
                             )?)
                         },
                     )
@@ -141,7 +149,7 @@ async fn answer(
                         super::admission::Prepared::Rejected(_) => return Ok(failure(machine)),
                         super::admission::Prepared::Mapped(candidate, mapped) => {
                             candidates.push(candidate);
-                            records.push(mapped.record()?.to_vec());
+                            records.push(mapped.encode());
                         }
                     }
                     if records
