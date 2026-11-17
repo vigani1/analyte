@@ -591,3 +591,5 @@ mod grammar;
 pub use grammar::{ResultGrammarError, ResultMessage};
 
 mod evidence;
+
+pub use evidence::{WireCompatibility, wire_compatibility};

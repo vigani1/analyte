@@ -381,45 +381,22 @@ fn sample(
     request: query::Request<'_>,
     layout: &analyte_config::Hl7OrderQuery,
 ) -> Result<Option<SampleId>, Error> {
-    if request.filter().is_some() {
-        return Ok(None);
-    }
-    let definition = request.definition();
-    for number in 5..=12 {
-        if number == 7 || number == usize::from(layout.sample_field) {
-            continue;
-        }
-        let value = definition.field(number).map_or(b"".as_slice(), |f| f.raw());
-        if let Some(expected) = layout
-            .filters
-            .iter()
-            .find(|filter| usize::from(filter.field) == number)
-        {
-            if value != expected.value.as_bytes() {
-                return Ok(None);
-            }
-        } else if !value.is_empty() {
-            return Ok(None);
-        }
-    }
-    let Some(field) = definition.field(usize::from(layout.sample_field)) else {
-        return Ok(None);
-    };
-    let Some(raw) = field.raw().strip_suffix(layout.sample_suffix.as_bytes()) else {
-        return Ok(None);
-    };
-    let [_, component, repetition, _, subcomponent] = request.message().delimiters().bytes();
-    if raw
+    let filters = layout
+        .filters
         .iter()
-        .any(|b| [component, repetition, subcomponent].contains(b))
-    {
-        return Ok(None);
-    }
-    let text = analyte_hl7::decode_text(raw, request.message())?;
-    if text == "ALL" || text.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(SampleId::new(&text)?))
+        .map(|filter| (filter.field, filter.value.as_bytes()))
+        .collect::<Vec<_>>();
+    query::specimen(
+        request,
+        &query::SpecimenSelector {
+            field: layout.sample_field,
+            suffix: layout.sample_suffix.as_bytes(),
+            filters: &filters,
+        },
+    )?
+    .map(|sample| SampleId::new(&sample))
+    .transpose()
+    .map_err(Into::into)
 }
 async fn write(
     conn: &mut analyte_transport::Connection,

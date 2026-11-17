@@ -117,24 +117,19 @@ fn packed(
                 .saturating_add(1)
                 .checked_sub(frame.raw().len())
                 .ok_or_else(|| Error::AstmEvidenceFrameSpanUnderflow)?;
-            let text_start = start
-                .checked_add(2)
-                .ok_or_else(|| Error::AstmEvidenceFrameOffsetOverflow)?;
-            let crs = frame.text().iter().filter(|b| **b == b'\r').count();
-            let nonstandard =
-                crs > 1 || (crs > 0 && (!frame.is_final() || frame.text().last() != Some(&b'\r')));
-            // Each entry links source record fragments to the original verified frame bytes.
-            let mut fragment_start = text_start;
-            for (offset, byte) in frame.text().iter().enumerate() {
-                let end = text_start
-                    .checked_add(offset)
-                    .and_then(|n| n.checked_add(1))
-                    .ok_or_else(|| Error::AstmRecordSpanOverflow)?;
-                if *byte == b'\r' {
-                    spans.push(
-                        DepartureSpan::try_from(fragment_start..end)
-                            .map_err(|_| Error::ReversedSpan)?,
-                    );
+            let nonstandard = frame.has_packed_records();
+            for (fragment, ends_record) in frame.record_fragments() {
+                let fragment_start = start
+                    .checked_add(fragment.start)
+                    .ok_or(Error::AstmRecordSpanOverflow)?;
+                let end = start
+                    .checked_add(fragment.end)
+                    .ok_or(Error::AstmRecordSpanOverflow)?;
+                spans.push(
+                    DepartureSpan::try_from(fragment_start..end)
+                        .map_err(|_| Error::ReversedSpan)?,
+                );
+                if ends_record {
                     if nonstandard || continued_packing {
                         if entries.len() == 256 {
                             return Err(Error::AppliedDepartureEvidenceLimit);
@@ -152,19 +147,10 @@ fn packed(
                     continued_packing = false;
                     record = record
                         .checked_add(1)
-                        .ok_or_else(|| Error::AstmRecordCountOverflow)?;
-                    fragment_start = end;
+                        .ok_or(Error::AstmRecordCountOverflow)?;
+                } else {
+                    continued_packing |= nonstandard;
                 }
-            }
-            let text_end = text_start
-                .checked_add(frame.text().len())
-                .ok_or_else(|| Error::AstmFrameSpanOverflow)?;
-            if fragment_start < text_end {
-                continued_packing |= nonstandard;
-                spans.push(
-                    DepartureSpan::try_from(fragment_start..text_end)
-                        .map_err(|_| Error::ReversedSpan)?,
-                );
             }
         }
     }
@@ -184,33 +170,25 @@ fn compatibility(
             .and_then(|bytes| {
                 analyte_hl7::Message::parse(&bytes, effective.hl7_options()?)
                     .ok()
-                    .map(|message| {
-                        let utf8 = message
-                            .segments()
-                            .next()
-                            .and_then(|msh| msh.field(18))
-                            .is_some_and(|f| f.raw() == b"UNICODE UTF-8");
-                        (
-                            message.raw().windows(2).any(|bytes| bytes == b"\r\n"),
-                            message.raw().contains(&b'\n'),
-                            utf8,
-                        )
-                    })
+                    .map(|message| analyte_hl7::wire_compatibility(&message))
             })
     } else {
         None
     };
     for declaration in &effective.machine().deviations {
         let (exercised, standard) = match declaration {
-            MachineDeparture::Hl7CrLfTerminators(_) => {
-                (hl7.is_some_and(|v| v.0), "HL7 §2.4 segment boundaries")
-            }
-            MachineDeparture::Hl7LfTerminators(_) => {
-                (hl7.is_some_and(|v| v.1), "HL7 §2.4 segment boundaries")
-            }
-            MachineDeparture::Hl7Utf8InV231(_) => {
-                (hl7.is_some_and(|v| v.2), "HL7 2.3.1 §2.24.1.18")
-            }
+            MachineDeparture::Hl7CrLfTerminators(_) => (
+                hl7.as_ref().is_some_and(|v| v.crlf),
+                "HL7 §2.4 segment boundaries",
+            ),
+            MachineDeparture::Hl7LfTerminators(_) => (
+                hl7.as_ref().is_some_and(|v| v.lf),
+                "HL7 §2.4 segment boundaries",
+            ),
+            MachineDeparture::Hl7Utf8InV231(_) => (
+                hl7.as_ref().is_some_and(|v| v.legacy_utf8),
+                "HL7 2.3.1 §2.24.1.18",
+            ),
             MachineDeparture::Hl7PreserveUnsupportedEscapes(_) => {
                 (preserved_escape, "HL7 §2.7 escape sequences")
             }
@@ -252,10 +230,7 @@ fn lowercase_checksum(machine: &Machine, raw: &[u8]) -> Result<bool, Error> {
     );
     for byte in raw {
         if let Some(Event::Frame(frame)) = decoder.push(*byte)
-            && frame
-                .raw()
-                .get(frame.raw().len().saturating_sub(4)..frame.raw().len().saturating_sub(2))
-                .is_some_and(|digits| digits.iter().any(|b| matches!(*b, b'a'..=b'f')))
+            && frame.has_lowercase_checksum()
         {
             return Ok(true);
         }

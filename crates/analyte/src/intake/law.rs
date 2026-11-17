@@ -1,6 +1,6 @@
 //! Prepares immutable LAW work references; the store admits execution inside its transaction.
 use super::*;
-use analyte_hl7::{Field, law};
+use analyte_hl7::law;
 use analyte_store::{LawConflict, LawCustody, LawRejection, LawWork};
 
 #[expect(
@@ -31,15 +31,13 @@ pub(super) async fn plan(
     let Ok(results) = law::receive_results(&message) else {
         return Ok(None);
     };
-    let header = message.segments().next().ok_or(Error::LawHeader)?;
-    let raw =
-        |s: analyte_hl7::Segment<'_>, f| s.field(f).map_or(b"".as_slice(), Field::raw).to_vec();
+    let header = law::CustodyHeader::new(&message).ok_or(Error::LawHeader)?;
     let scope = analyte_model::SourceText::new(&serde_json::to_string(&(
         machine.id.as_str(),
-        raw(header, 3),
-        raw(header, 4),
+        header.application(),
+        header.facility(),
     ))?)?;
-    let message_id = Identifier::new(std::str::from_utf8(&raw(header, 10))?)?;
+    let message_id = Identifier::new(std::str::from_utf8(header.message_id())?)?;
     let mut custody = LawCustody {
         scope,
         message: message_id,
@@ -57,12 +55,7 @@ pub(super) async fn plan(
     if rejection.is_some() {
         return Ok(Some(custody));
     }
-    let component = *message
-        .delimiters()
-        .bytes()
-        .get(1)
-        .ok_or(Error::LawComponentDelimiter)?;
-    let production = raw(header, 11).split(|b| *b == component).next() == Some(b"P".as_slice());
+    let production = header.production();
     let mut notes = std::collections::BTreeMap::<usize, Vec<&str>>::new();
     let mut controls = std::collections::BTreeMap::new();
     let notices = results
@@ -86,19 +79,15 @@ pub(super) async fn plan(
     }
     let mut occurrence = 0_u16;
     let mut work = None;
-    for segment in message.segments() {
-        match segment.id() {
-            b"OBR" => {
+    for record in law::custody_records(&message) {
+        match record {
+            law::CustodyRecord::Work { placer } => {
                 occurrence = occurrence.checked_add(1).ok_or(Error::LawObrOccurrence)?;
-                let awos = raw(segment, 2);
-                if awos == b"\"\"" {
+                let Some(placer) = placer else {
                     work = None;
                     continue;
-                }
-                let placer = std::str::from_utf8(
-                    awos.split(|b| *b == component).next().unwrap_or_default(),
-                )?
-                .to_owned();
+                };
+                let placer = std::str::from_utf8(placer)?.to_owned();
                 let target = machine.id.clone();
                 let lookup = placer.clone();
                 let record = store
@@ -139,7 +128,7 @@ pub(super) async fn plan(
                     source: analyte_model::SourceText::new("")?,
                 });
             }
-            b"ORC" => {
+            law::CustodyRecord::Control { segment, complete } => {
                 if let Some(mut item) = work.take() {
                     item.execution =
                         notices
@@ -155,8 +144,8 @@ pub(super) async fn plan(
                                     analyte_model::AwosExecution::AnalyzerCancelled
                                 }
                             });
-                    item.complete = raw(segment, 5) == b"CM";
-                    item.source = analyte_model::SourceText::new(&serde_json::json!({"header_time":std::str::from_utf8(&raw(header,7))?,"estimate_zone_source":"MSH-7","notes":controls.get(&segment.raw().as_ptr().addr()).and_then(|parent| notes.get(parent)),"control":std::str::from_utf8(segment.raw())?}).to_string())?;
+                    item.complete = complete;
+                    item.source = analyte_model::SourceText::new(&serde_json::json!({"header_time":std::str::from_utf8(header.timestamp())?,"estimate_zone_source":"MSH-7","notes":controls.get(&segment.raw().as_ptr().addr()).and_then(|parent| notes.get(parent)),"control":std::str::from_utf8(segment.raw())?}).to_string())?;
                     custody.work.push(item);
                 } else if results
                     .status_notices()
@@ -170,7 +159,7 @@ pub(super) async fn plan(
                     break;
                 }
             }
-            _ => {}
+            law::CustodyRecord::Other => {}
         }
     }
     if !production {
@@ -197,8 +186,11 @@ pub(super) async fn work_conflict(
                     s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
                 })
                 .await?;
-            let payload = receipt.raw.get(1..receipt.raw.len().saturating_sub(2));
-            match payload.and_then(|bytes| law::parse_message(bytes, settings.options()).ok()) {
+            let payload = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw);
+            match payload
+                .ok()
+                .and_then(|bytes| law::parse_message(&bytes, settings.options()).ok())
+            {
                 Some(message) if law::receive_results(&message).is_ok() => {
                     crate::orders::law::validation::check(
                         store,

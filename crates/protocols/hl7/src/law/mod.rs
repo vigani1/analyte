@@ -547,3 +547,9 @@ fn validate_query_location(location: Option<&[u8]>, component: u8) -> Result<(),
     }
     Ok(())
 }
+
+mod retained;
+pub use retained::{Mismatch, ReturnedWork, compare_retained, returned_work};
+
+mod custody;
+pub use custody::{CustodyHeader, CustodyRecord, RetainedControl, custody_records};
