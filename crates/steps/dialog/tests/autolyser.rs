@@ -24,21 +24,22 @@ fn config() -> Config {
     }
 }
 
-fn start(dialog: &mut Dialog, request: Request, time: u64) {
+fn start(dialog: &mut Dialog, request: Request, time: u64) -> Result<(), DialogError> {
     assert!(
-        matches!(dialog.step(Duration::from_secs(time), Event::Poll(request)).first(), Some(Action::Write(bytes)) if bytes == &[2])
+        matches!(dialog.step(Duration::from_secs(time), Event::Poll(request))?.first(), Some(Action::Write(bytes)) if bytes == &[2])
     );
     assert!(
-        matches!(dialog.step(Duration::from_secs(time), Event::Byte(6)).first(), Some(Action::Write(bytes)) if bytes == &[match request { Request::Next => b'R', Request::Last => b'L', Request::First => b'A' }, 4])
+        matches!(dialog.step(Duration::from_secs(time), Event::Byte(6))?.first(), Some(Action::Write(bytes)) if bytes == &[match request { Request::Next => b'R', Request::Last => b'L', Request::First => b'A' }, 4])
     );
+    Ok(())
 }
 
-fn receive(dialog: &mut Dialog, raw: &[u8], time: u64) -> Vec<Action> {
+fn receive(dialog: &mut Dialog, raw: &[u8], time: u64) -> Result<Vec<Action>, DialogError> {
     let mut actions = Vec::new();
     for byte in raw {
-        actions.extend(dialog.step(Duration::from_secs(time), Event::Byte(*byte)));
+        actions.extend(dialog.step(Duration::from_secs(time), Event::Byte(*byte))?);
     }
-    actions
+    Ok(actions)
 }
 
 #[test]
@@ -123,9 +124,9 @@ fn autolyser_rev18_p178_controls_are_explicit_and_values_stay_written() -> TestR
 #[test]
 fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
     let mut dialog = Dialog::new(config())?;
-    start(&mut dialog, Request::Next, 0);
+    start(&mut dialog, Request::Next, 0).unwrap();
     let corrupt = b"TEST0042       TS002ALB 0004.21CRE 00087.5190\x04";
-    let actions = receive(&mut dialog, corrupt, 0);
+    let actions = receive(&mut dialog, corrupt, 0).unwrap();
     assert!(
         actions
             .iter()
@@ -137,7 +138,10 @@ fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
             .any(|a| matches!(a, Action::Report(_) | Action::Park(_)))
     );
     assert!(matches!(
-        dialog.step(Duration::ZERO, Event::Stored(1)).first(),
+        dialog
+            .step(Duration::ZERO, Event::Stored(1))
+            .unwrap()
+            .first(),
         Some(Action::Park(DialogError::Framing(
             analyte_framing::autolyser::Error::Checksum
         )))
@@ -145,17 +149,19 @@ fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
     assert!(matches!(
         dialog
             .step(Duration::from_secs(1), Event::Poll(Request::Next))
+            .unwrap()
             .first(),
         Some(Action::Refused(_))
     ));
     assert!(matches!(
         dialog
             .step(Duration::from_secs(1), Event::Poll(Request::First))
+            .unwrap()
             .first(),
         Some(Action::Refused(_))
     ));
-    start(&mut dialog, Request::Last, 1);
-    let actions = receive(&mut dialog, RESULT, 1);
+    start(&mut dialog, Request::Last, 1).unwrap();
+    let actions = receive(&mut dialog, RESULT, 1).unwrap();
     assert!(
         actions
             .iter()
@@ -164,18 +170,19 @@ fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
     assert!(matches!(
         dialog
             .step(Duration::from_secs(1), Event::Stored(2))
+            .unwrap()
             .first(),
         Some(Action::Report(_))
     ));
-    start(&mut dialog, Request::Next, 2);
+    start(&mut dialog, Request::Next, 2).unwrap();
     Ok(())
 }
 
 #[test]
 fn autolyser_rev18_p177_empty_queue_still_requires_storage() -> TestResult {
     let mut dialog = Dialog::new(config())?;
-    start(&mut dialog, Request::First, 0);
-    let actions = receive(&mut dialog, &[21], 0);
+    start(&mut dialog, Request::First, 0).unwrap();
+    let actions = receive(&mut dialog, &[21], 0).unwrap();
     assert!(
         actions
             .iter()
@@ -183,7 +190,10 @@ fn autolyser_rev18_p177_empty_queue_still_requires_storage() -> TestResult {
     );
     assert!(!actions.iter().any(|a| matches!(a, Action::Empty)));
     assert!(matches!(
-        dialog.step(Duration::ZERO, Event::Stored(1)).first(),
+        dialog
+            .step(Duration::ZERO, Event::Stored(1))
+            .unwrap()
+            .first(),
         Some(Action::Empty)
     ));
     Ok(())
@@ -194,29 +204,35 @@ fn autolyser_rev18_p175_download_serializes_and_preserves_binary_reply() -> Test
     let order = Worklist::parse(analyte_framing::autolyser::verified(ORDER)?)?;
     let mut dialog = Dialog::new(config())?;
     assert!(
-        matches!(dialog.step(Duration::ZERO, Event::Download(&order)).first(), Some(Action::Write(bytes)) if bytes == &[2])
+        matches!(dialog.step(Duration::ZERO, Event::Download(&order)).unwrap().first(), Some(Action::Write(bytes)) if bytes == &[2])
     );
     assert!(matches!(
         dialog
             .step(Duration::ZERO, Event::Poll(Request::Next))
+            .unwrap()
             .first(),
         Some(Action::Refused(_))
     ));
     assert!(
-        matches!(dialog.step(Duration::ZERO, Event::Byte(6)).first(), Some(Action::Write(bytes)) if bytes == ORDER)
+        matches!(dialog.step(Duration::ZERO, Event::Byte(6)).unwrap().first(), Some(Action::Write(bytes)) if bytes == ORDER)
     );
-    let actions = receive(&mut dialog, &[b'N', 21], 0);
+    let actions = receive(&mut dialog, &[b'N', 21], 0).unwrap();
     assert!(!actions.iter().any(|a| matches!(a, Action::Insertion(_))));
     assert!(matches!(
-        dialog.step(Duration::ZERO, Event::Stored(1)).first(),
+        dialog
+            .step(Duration::ZERO, Event::Stored(1))
+            .unwrap()
+            .first(),
         Some(Action::Insertion(Reception::Rejected(
             InsertionError::RepeatListMismatch
         )))
     ));
     assert_eq!(InsertionError::from(255), InsertionError::Other(255));
-    let _ = dialog.step(Duration::from_secs(1), Event::Download(&order));
-    let _ = dialog.step(Duration::from_secs(1), Event::Byte(6));
-    let actions = receive(&mut dialog, &[b'Y', 3], 1);
+    let _ = dialog
+        .step(Duration::from_secs(1), Event::Download(&order))
+        .unwrap();
+    let _ = dialog.step(Duration::from_secs(1), Event::Byte(6)).unwrap();
+    let actions = receive(&mut dialog, &[b'Y', 3], 1).unwrap();
     assert!(
         actions
             .iter()
@@ -226,6 +242,7 @@ fn autolyser_rev18_p175_download_serializes_and_preserves_binary_reply() -> Test
     assert!(matches!(
         dialog
             .step(Duration::from_secs(1), Event::Stored(2))
+            .unwrap()
             .first(),
         Some(Action::Insertion(Reception::Accepted(3)))
     ));
@@ -235,9 +252,9 @@ fn autolyser_rev18_p175_download_serializes_and_preserves_binary_reply() -> Test
 #[test]
 fn autolyser_rev18_p177_partial_timeout_and_storage_failure_never_resend() -> TestResult {
     let mut dialog = Dialog::new(config())?;
-    start(&mut dialog, Request::Next, 0);
-    receive(&mut dialog, b"TEST", 0);
-    let actions = dialog.step(Duration::from_secs(2), Event::Tick);
+    start(&mut dialog, Request::Next, 0).unwrap();
+    receive(&mut dialog, b"TEST", 0).unwrap();
+    let actions = dialog.step(Duration::from_secs(2), Event::Tick).unwrap();
     assert!(
         actions
             .iter()
@@ -247,12 +264,14 @@ fn autolyser_rev18_p177_partial_timeout_and_storage_failure_never_resend() -> Te
     assert!(
         dialog
             .step(Duration::from_secs(2), Event::StoreFailed(1))
+            .unwrap()
             .iter()
             .any(|a| matches!(a, Action::Close))
     );
     assert!(matches!(
         dialog
             .step(Duration::from_secs(3), Event::Poll(Request::Next))
+            .unwrap()
             .first(),
         Some(Action::Refused(_))
     ));
@@ -280,8 +299,8 @@ fn autolyser_rev18_p177_overlong_and_short_reports_are_stored_before_rejection()
         let mut policy = config();
         policy.max_bytes = 8;
         let mut dialog = Dialog::new(policy)?;
-        start(&mut dialog, Request::Next, 0);
-        let actions = receive(&mut dialog, raw, 0);
+        start(&mut dialog, Request::Next, 0).unwrap();
+        let actions = receive(&mut dialog, raw, 0).unwrap();
         assert!(
             actions
                 .iter()
@@ -293,6 +312,7 @@ fn autolyser_rev18_p177_overlong_and_short_reports_are_stored_before_rejection()
         assert!(
             dialog
                 .step(Duration::ZERO, Event::Stored(1))
+                .unwrap()
                 .iter()
                 .any(|a| matches!(a, Action::Park(_)))
         );
@@ -303,23 +323,26 @@ fn autolyser_rev18_p177_overlong_and_short_reports_are_stored_before_rejection()
 #[test]
 fn autolyser_rev18_p175_disconnect_during_commit_cannot_reopen_connection() -> TestResult {
     let mut dialog = Dialog::new(config())?;
-    start(&mut dialog, Request::Next, 0);
-    receive(&mut dialog, RESULT, 0);
+    start(&mut dialog, Request::Next, 0).unwrap();
+    receive(&mut dialog, RESULT, 0).unwrap();
     assert!(
         dialog
             .step(Duration::ZERO, Event::Disconnect)
+            .unwrap()
             .iter()
             .any(|a| matches!(a, Action::Close))
     );
     assert!(
         dialog
             .step(Duration::ZERO, Event::Stored(1))
+            .unwrap()
             .iter()
             .any(|a| matches!(a, Action::Report(_)))
     );
     assert!(matches!(
         dialog
             .step(Duration::from_secs(1), Event::Poll(Request::Next))
+            .unwrap()
             .first(),
         Some(Action::Refused(_))
     ));
@@ -331,32 +354,38 @@ fn autolyser_rev18_p177_l_empty_does_not_resolve_corruption() -> TestResult {
     let mut policy = config();
     policy.recovery = Recovery::LastOnPoll;
     let mut dialog = Dialog::new(policy)?;
-    start(&mut dialog, Request::Next, 0);
-    receive(&mut dialog, b"X\x04", 0);
-    let _ = dialog.step(Duration::ZERO, Event::Stored(1));
+    start(&mut dialog, Request::Next, 0).unwrap();
+    receive(&mut dialog, b"X\x04", 0).unwrap();
+    let _ = dialog.step(Duration::ZERO, Event::Stored(1)).unwrap();
     assert!(
         dialog
             .step(Duration::from_secs(1), Event::Tick)
+            .unwrap()
             .iter()
             .any(|a| matches!(a, Action::Write(bytes) if bytes == &[2]))
     );
     assert!(
         dialog
             .step(Duration::from_secs(1), Event::Byte(6))
+            .unwrap()
             .iter()
             .any(|a| matches!(a, Action::Write(bytes) if bytes == &[b'L', 4]))
     );
-    receive(&mut dialog, &[21], 1);
-    let _ = dialog.step(Duration::from_secs(1), Event::Stored(2));
+    receive(&mut dialog, &[21], 1).unwrap();
+    let _ = dialog
+        .step(Duration::from_secs(1), Event::Stored(2))
+        .unwrap();
     assert!(matches!(
         dialog
             .step(Duration::from_secs(2), Event::Poll(Request::First))
+            .unwrap()
             .first(),
         Some(Action::Refused(_))
     ));
     assert!(matches!(
         dialog
             .step(Duration::from_secs(2), Event::Poll(Request::Next))
+            .unwrap()
             .first(),
         Some(Action::Refused(_))
     ));
@@ -367,15 +396,19 @@ fn autolyser_rev18_p177_l_empty_does_not_resolve_corruption() -> TestResult {
 fn autolyser_rev18_p175_lost_download_reply_is_uncertain_without_retry() -> TestResult {
     let order = Worklist::parse(analyte_framing::autolyser::verified(ORDER)?)?;
     let mut dialog = Dialog::new(config())?;
-    let _ = dialog.step(Duration::ZERO, Event::Download(&order));
-    let _ = dialog.step(Duration::ZERO, Event::Byte(6));
-    let actions = dialog.step(Duration::from_secs(2), Event::Tick);
+    let _ = dialog
+        .step(Duration::ZERO, Event::Download(&order))
+        .unwrap();
+    let _ = dialog.step(Duration::ZERO, Event::Byte(6)).unwrap();
+    let actions = dialog.step(Duration::from_secs(2), Event::Tick).unwrap();
     assert!(
         actions
             .iter()
             .any(|a| matches!(a, Action::Store(1, bytes) if bytes.is_empty()))
     );
-    let actions = dialog.step(Duration::from_secs(2), Event::Stored(1));
+    let actions = dialog
+        .step(Duration::from_secs(2), Event::Stored(1))
+        .unwrap();
     assert!(actions.iter().any(|a| matches!(a, Action::Uncertain)));
     assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
     Ok(())
@@ -445,13 +478,15 @@ fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() 
             policy.inter_byte = Duration::from_secs(10);
         }
         let mut dialog = Dialog::new(policy)?;
-        start(&mut dialog, Request::Next, 0);
-        receive(&mut dialog, b"TEST", 1);
+        start(&mut dialog, Request::Next, 0).unwrap();
+        receive(&mut dialog, b"TEST", 1).unwrap();
         let time = if total { 4 } else { 3 };
         if total {
-            receive(&mut dialog, b"X", 3);
+            receive(&mut dialog, b"X", 3).unwrap();
         }
-        let before = dialog.step(Duration::from_secs(time - 1), Event::Tick);
+        let before = dialog
+            .step(Duration::from_secs(time - 1), Event::Tick)
+            .unwrap();
         assert!(
             !before
                 .iter()
@@ -462,17 +497,20 @@ fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() 
         } else {
             b"TEST".as_slice()
         };
-        let actions = dialog.step(Duration::from_secs(time), Event::Tick);
+        let actions = dialog.step(Duration::from_secs(time), Event::Tick).unwrap();
         assert!(
             actions
                 .iter()
                 .any(|a| matches!(a, Action::Store(1, raw) if raw == expected))
         );
         assert!(actions.iter().any(|a| matches!(a, Action::Close)));
-        let _ = dialog.step(Duration::from_secs(time), Event::Stored(1));
+        let _ = dialog
+            .step(Duration::from_secs(time), Event::Stored(1))
+            .unwrap();
         assert!(
             !dialog
                 .step(Duration::from_secs(20), Event::Tick)
+                .unwrap()
                 .iter()
                 .any(|a| matches!(a, Action::Write(_)))
         );
@@ -485,17 +523,40 @@ fn adr0001_autolyser_manual_recovery_has_no_polling_wake() -> TestResult {
     let mut dialog = Dialog::new(config())?;
     // Before the transport opens, there is no protocol operation to time.
     assert_eq!(dialog.next_deadline(), None);
-    start(&mut dialog, Request::Next, 0);
+    start(&mut dialog, Request::Next, 0).unwrap();
     assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(2)));
     receive(
         &mut dialog,
         b"TEST0042       TS002ALB 0004.21CRE 00087.5190\x04",
         0,
-    );
-    let actions = dialog.step(Duration::ZERO, Event::Stored(1));
+    )
+    .unwrap();
+    let actions = dialog.step(Duration::ZERO, Event::Stored(1)).unwrap();
     assert!(matches!(actions.first(), Some(Action::Park(_))));
     assert_eq!(dialog.next_deadline(), None);
-    assert!(dialog.step(Duration::from_secs(10), Event::Tick).is_empty());
+    assert!(
+        dialog
+            .step(Duration::from_secs(10), Event::Tick)
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(dialog.next_deadline(), None);
     Ok(())
+}
+
+#[test]
+fn adr0001_autolyser_step_rejects_reversed_time_before_mutation() {
+    let mut dialog = Dialog::new(config()).unwrap();
+    dialog.step(Duration::from_secs(2), Event::Tick).unwrap();
+    assert!(matches!(
+        dialog.step(Duration::from_secs(1), Event::Poll(Request::Next)),
+        Err(DialogError::Time)
+    ));
+    assert!(matches!(
+        dialog
+            .step(Duration::from_secs(2), Event::Poll(Request::Next))
+            .unwrap()
+            .first(),
+        Some(Action::Write(_))
+    ));
 }

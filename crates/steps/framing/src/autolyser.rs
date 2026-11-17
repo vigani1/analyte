@@ -160,6 +160,20 @@ impl Decoder {
     }
 }
 
+impl crate::Decode for Decoder {
+    type Event = Frame;
+    type Error = Error;
+    fn push_byte(&mut self, byte: u8) -> Result<Option<Frame>, Error> {
+        self.push(byte)
+    }
+    fn finish_stream(&mut self) -> Result<Option<Frame>, Error> {
+        if self.raw.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(self.finish()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

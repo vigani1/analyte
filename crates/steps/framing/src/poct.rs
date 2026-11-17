@@ -4,6 +4,9 @@ use quick_xml::{Reader, events::Event};
 /// A message exceeds the host's bounded framing policy.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Stream ended before a complete XML root.
+    #[error("incomplete POCT root")]
+    Incomplete,
     /// Message byte bound exceeded.
     #[error("POCT message limit exceeded")]
     Limit,
@@ -22,6 +25,7 @@ pub enum Error {
 /// Only incomplete tokens remain pending for more bytes.
 #[derive(Debug)]
 pub struct Decoder {
+    stream: Vec<u8>,
     cursor: usize,
     depth: usize,
     maximum: usize,
@@ -33,6 +37,7 @@ impl Decoder {
     #[must_use]
     pub fn new(maximum: usize, maximum_depth: usize) -> Self {
         Self {
+            stream: Vec::new(),
             cursor: 0,
             depth: 0,
             maximum,
@@ -129,6 +134,40 @@ fn incomplete(error: &quick_xml::Error, tail: &[u8]) -> bool {
         | XmlError::Encoding(_)
         | XmlError::Escape(_)
         | XmlError::Namespace(_) => false,
+    }
+}
+
+impl crate::Decode for Decoder {
+    type Event = Vec<u8>;
+    type Error = Error;
+    fn push_byte(&mut self, byte: u8) -> Result<Option<Vec<u8>>, Error> {
+        if self.stream.len() >= self.maximum {
+            return Err(Error::Limit);
+        }
+        self.stream.push(byte);
+        let raw = std::mem::take(&mut self.stream);
+        let result = self.scan(&raw);
+        match result {
+            Ok(Some(_)) => {
+                self.reset();
+                Ok(Some(raw))
+            }
+            Ok(None) => {
+                self.stream = raw;
+                Ok(None)
+            }
+            Err(error) => {
+                self.stream = raw;
+                Err(error)
+            }
+        }
+    }
+    fn finish_stream(&mut self) -> Result<Option<Vec<u8>>, Error> {
+        if self.stream.is_empty() {
+            Ok(None)
+        } else {
+            Err(Error::Incomplete)
+        }
     }
 }
 

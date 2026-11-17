@@ -1,5 +1,6 @@
 //! Runs host-driven Autolyser conversations with host-owned I/O and dialog-owned deadlines.
 use analyte_autolyser::syntax::{self as records, Report, Worklist};
+use analyte_framing::Decode as _;
 use analyte_framing::autolyser::{ACK, Decoder, EOT, Frame, Mode, NAK, STX};
 use std::time::Duration;
 use thiserror::Error;
@@ -350,15 +351,16 @@ impl Dialog {
     /// bytes and bytes arriving at expired deadlines. Storage always precedes
     /// interpretation. On Close the host stops feeding
     /// this dialog and retains unread transport bytes in its protected journal.
-    #[must_use]
-    pub fn step(&mut self, now: Duration, event: Event<'_>) -> Vec<Action> {
+    /// # Errors
+    /// Rejects reversed time before mutating the conversation.
+    pub fn step(&mut self, now: Duration, event: Event<'_>) -> Result<Vec<Action>, Error> {
         if self.clock.advance(now, Duration::ZERO).is_err() {
-            return vec![Action::Refused(Error::Time)];
+            return Err(Error::Time);
         }
-        match self.apply(event) {
+        Ok(match self.apply(event) {
             Ok(actions) => actions,
             Err(error) => vec![Action::Refused(error)],
-        }
+        })
     }
 
     fn apply(&mut self, event: Event<'_>) -> Result<Vec<Action>, Error> {
@@ -471,7 +473,7 @@ impl Dialog {
                 decoder,
                 total,
             } => {
-                if let Some(frame) = decoder.push(byte)? {
+                if let Some(frame) = decoder.push_byte(byte)? {
                     let insertion = *insertion;
                     let complete = frame.complete();
                     let mut actions = self.store(frame, insertion)?;

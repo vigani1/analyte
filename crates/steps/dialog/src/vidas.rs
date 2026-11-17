@@ -217,7 +217,7 @@ impl Dialog {
                     .get_mut(timer)
                     .is_some_and(|deadline| now >= deadline)
                 {
-                    return Ok(self.on(Event::Expired(timer)));
+                    return Ok(self.apply(Event::Expired(timer)));
                 }
             }
         }
@@ -230,7 +230,7 @@ impl Dialog {
             }
             return Ok(Vec::new());
         }
-        Ok(self.on(event))
+        Ok(self.apply(event))
     }
 
     fn schedule(&mut self, actions: &[Action]) {
@@ -246,10 +246,8 @@ impl Dialog {
     }
 
     /// Advances using host events. Any unexpected event parks and stops.
-    /// Compatibility entry for events at the last accepted clock time.
-    /// Timed hosts use `step`; timers are updated before returning any store action.
     #[must_use]
-    pub fn on(&mut self, event: Event) -> Vec<Action> {
+    fn apply(&mut self, event: Event) -> Vec<Action> {
         if matches!(event, Event::Tick | Event::Activity) {
             return Vec::new();
         }

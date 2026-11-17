@@ -1,4 +1,5 @@
 //! Runs ASTM stop-and-wait connections over serial or TCP (LIS01-A2 6/8).
+use analyte_framing::Decode as _;
 use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, NAK};
 use std::{collections::VecDeque, time::Duration};
 
@@ -111,7 +112,11 @@ impl Dialog {
                 Event::Capacity(value) => self.capacity = value,
                 Event::Interrupt(value) => self.interrupt = value,
                 Event::Byte(byte) => {
-                    if let Some(event) = self.decoder.push(byte) {
+                    if let Some(event) = self
+                        .decoder
+                        .push_byte(byte)
+                        .unwrap_or_else(|never| match never {})
+                    {
                         self.wire(event, &mut out)?;
                     }
                     // Unsolicited partial frames still belong to the dialog and
@@ -157,7 +162,11 @@ impl Dialog {
         }
         self.closed = true;
         self.deadline = None;
-        if let Some(astm::Event::Rejected { error, raw }) = self.decoder.finish() {
+        if let Some(astm::Event::Rejected { error, raw }) = self
+            .decoder
+            .finish_stream()
+            .unwrap_or_else(|never| match never {})
+        {
             out.push(Action::Rejected(error, raw));
         }
         let state = std::mem::replace(&mut self.state, State::Neutral);
@@ -248,7 +257,11 @@ impl Dialog {
             State::Receiving(_) | State::Contention => out.push(Action::Ended(End::Timeout)),
             State::Neutral | State::Holdoff => {}
         }
-        if let Some(astm::Event::Rejected { error, raw }) = self.decoder.finish() {
+        if let Some(astm::Event::Rejected { error, raw }) = self
+            .decoder
+            .finish_stream()
+            .unwrap_or_else(|never| match never {})
+        {
             out.push(Action::Rejected(error, raw));
         }
     }

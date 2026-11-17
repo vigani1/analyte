@@ -1,5 +1,6 @@
 //! Runs HL7 acknowledgment conversations over MLLP with documented evidence (HL7 2.5.1 2.9.2/2.9.3).
 //! Kept whole: The HL7 conversation state transitions share connection ownership and deadline invariants.
+use analyte_framing::Decode as _;
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::OwnedAckError as OwnedError;
 use analyte_hl7::{
@@ -514,7 +515,11 @@ impl Dialog {
             Event::QueryWriteFailed(part) => self.reply_failed(part, out)?,
             Event::Byte(byte) => {
                 self.frame_started.get_or_insert(self.clock.now());
-                if let Some(event) = self.decoder.push(byte) {
+                if let Some(event) = self
+                    .decoder
+                    .push_byte(byte)
+                    .unwrap_or_else(|never| match never {})
+                {
                     self.wire(event, out);
                     self.frame_started = None;
                 }
@@ -546,7 +551,11 @@ impl Dialog {
                 if let Some(sending) = self.sending.take() {
                     out.push(Action::Sent(sending.id, Outcome::Uncertain));
                 }
-                if let Some(event) = self.decoder.finish() {
+                if let Some(event) = self
+                    .decoder
+                    .finish_stream()
+                    .unwrap_or_else(|never| match never {})
+                {
                     self.wire(event, out);
                 }
                 self.closed = true;
@@ -748,7 +757,11 @@ impl Dialog {
                 }
             }
         }
-        if let Some(event) = self.decoder.finish() {
+        if let Some(event) = self
+            .decoder
+            .finish_stream()
+            .unwrap_or_else(|never| match never {})
+        {
             self.wire(event, out);
         }
         self.frame_started = None;

@@ -168,3 +168,18 @@ A new crate joins one kind, or the plan gets a new kind through this ADR.
 - Existing protocol notes move into the four-file shape without losing
   content.
 - New code that breaks the size limits fails CI, so the cleanup holds.
+
+### Shared layer contracts
+
+All six protocol stacks use `analyte_framing::Decode`: `push_byte(byte)` and
+`finish_stream()` return `Result<Option<Event>, Error>`. Events are consumed
+immediately so one call never accumulates an unbounded list. Rejected evidence
+can be an event (ASTM/MLLP) or a refusal (VIDAS/POCT); hosts journal bytes before
+feeding either. LAW reuses HL7 MLLP's decoder and implementation. Existing
+single-protocol byte and host-buffer operations are low-level primitives; the
+trait is the common integration contract. Do not mix POCT's host-buffer scanning
+and trait-owned buffering on one decoder instance. Timers stay in the dialog.
+
+Every dialog has one event entry: `step(now, event) -> Result<Vec<Action>, Error>`.
+Invalid monotonic time is rejected before mutation; protocol refusals and host
+effects remain ordered actions. VIDAS's event transition method is private.

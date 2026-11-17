@@ -134,7 +134,7 @@ impl ConnectionState {
                     Vec::new()
                 }
                 Input::Tick => {
-                    let actions = self.dialog.step(self.start.elapsed(), Event::Tick);
+                    let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
                     // Tick alone can initiate L recovery. Never interleave R with it.
                     if actions.is_empty() && self.ready && !self.recovering {
                         self.ready = false;
@@ -161,7 +161,7 @@ impl ConnectionState {
                 if matches!(event, Event::Poll(Request::Next)) {
                     self.guard = Some(custody::reserve(store, machine).await?);
                 }
-                let actions = self.dialog.step(self.start.elapsed(), event);
+                let actions = self.dialog.step(self.start.elapsed(), event)?;
                 if process(actions, self, machine, store, conn, policy).await? {
                     return Ok(());
                 }
@@ -181,7 +181,7 @@ impl ConnectionState {
         policy: &analyte_config::Autolyser,
     ) -> Result<bool, Error> {
         for byte in bytes {
-            let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte));
+            let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
             if process(actions, self, machine, store, conn, policy).await? {
                 return Ok(true);
             }
@@ -230,16 +230,27 @@ impl ConnectionState {
             Ok(time) => {
                 self.end_code = prior_code;
                 self.receipt = Some((id, time));
-                actions.extend(self.dialog.step(self.start.elapsed(), Event::Stored(token)));
+                match self.dialog.step(self.start.elapsed(), Event::Stored(token)) {
+                    Ok(next) => actions.extend(next),
+                    Err(error) => return Some(error.into()),
+                }
             }
             Err(error) => {
                 if matches!(error, receive_custody::StoreWaitError::Timeout(_)) {
                     self.end_code = AutolyserEnd::StorageTimeout;
                 }
-                actions.extend(
-                    self.dialog
-                        .step(self.start.elapsed(), Event::StoreFailed(token)),
-                );
+                match self
+                    .dialog
+                    .step(self.start.elapsed(), Event::StoreFailed(token))
+                {
+                    Ok(next) => actions.extend(next),
+                    Err(dialog_error) => {
+                        return Some(receive_custody::effect_failure(
+                            Some(error.into()),
+                            dialog_error.into(),
+                        ));
+                    }
+                }
                 return Some(error.into());
             }
         }

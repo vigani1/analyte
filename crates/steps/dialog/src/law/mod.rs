@@ -1,5 +1,6 @@
 //! Runs deterministic LAW exchanges and deadlines (TF-2b 3.27-3.29, B.6/B.7).
 //! Kept whole: The LAW conversation state transitions and their deadline decisions are reviewed together.
+use analyte_framing::Decode as _;
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::OwnedAckError as Detail;
 use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};
@@ -312,7 +313,11 @@ impl Dialog {
                     .ok_or(Error::Exhausted)?,
             );
         }
-        if let Some(event) = self.decoder.push(byte) {
+        if let Some(event) = self
+            .decoder
+            .push_byte(byte)
+            .unwrap_or_else(|never| match never {})
+        {
             match event {
                 mllp::Event::Rejected { raw, error } => {
                     out.push(Action::Rejected(error.clone(), raw));
@@ -441,7 +446,11 @@ impl Dialog {
         if let State::Commit(id, raw) = &self.state {
             out.push(Action::Uncommitted(*id, raw.clone()));
         }
-        if let Some(mllp::Event::Rejected { raw, error }) = self.decoder.finish() {
+        if let Some(mllp::Event::Rejected { raw, error }) = self
+            .decoder
+            .finish_stream()
+            .unwrap_or_else(|never| match never {})
+        {
             out.push(Action::Rejected(error, raw));
         }
     }

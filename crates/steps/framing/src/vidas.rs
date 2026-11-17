@@ -347,3 +347,18 @@ pub const NAK: u8 = 0x15;
 pub const GS: u8 = 0x1d;
 /// RS control byte (BCI Appendix A chapter 3).
 pub const RS: u8 = 0x1e;
+
+impl crate::Decode for Decoder {
+    type Event = Packet;
+    type Error = Error;
+    fn push_byte(&mut self, byte: u8) -> Result<Option<Packet>, Error> {
+        self.push(byte)
+    }
+    fn finish_stream(&mut self) -> Result<Option<Packet>, Error> {
+        if self.raw.is_empty() || matches!(self.state, State::Done) && self.suffix == usize::MAX {
+            return Ok(None);
+        }
+        self.state = State::Failed;
+        Err(Error::Incomplete)
+    }
+}
