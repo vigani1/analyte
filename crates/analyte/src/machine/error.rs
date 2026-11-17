@@ -29,7 +29,6 @@ pub(crate) enum Error {
     #[error(transparent)]
     Evidence(#[from] super::receive::error::Error),
     /// A bounded synthetic gate stopped or could not resume the connection.
-    #[cfg(feature = "test-hooks")]
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
     /// Retains both the triggering failure and an independent cleanup failure.

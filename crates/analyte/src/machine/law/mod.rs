@@ -1,6 +1,7 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 use super::connection_input::{self, Input};
 use crate::intake::ByteReason;
+use crate::machine::hooks::Pause;
 pub(crate) mod custody;
 mod error;
 use crate::orders::outcome::Code;
@@ -194,18 +195,21 @@ impl<'a, 'm> Host<'a, 'm> {
                 let id = ReceiptId::new();
                 self.receipt = Some((token, id));
                 self.stored = false;
-                #[cfg(feature = "test-hooks")]
-                if let Some(hook) = &machine.hooks.law_precommit {
-                    hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
-                }
+
+                machine
+                    .hooks
+                    .pause(Pause::LawPrecommit, &mut self.stop)
+                    .await
+                    .map_err(Error::TestHook)?;
+
                 super::custody::store_before_ack(
                     machine,
                     intake::receive(self.store, self.machine, id, raw),
                 )
                 .await?;
                 self.stored = true;
-                #[cfg(feature = "test-hooks")]
-                if let Some(hook) = &machine.hooks.law_committed {
+
+                if machine.hooks.enabled(Pause::LawCommitted) {
                     let mut stop = self.stop.clone();
                     tokio::select! {
                     biased;
@@ -213,7 +217,7 @@ impl<'a, 'm> Host<'a, 'm> {
                                 self.stopped = true;
                                 return Ok(Vec::new());
                             },
-                            result = hook.pause(&mut self.stop) => result.map_err(Error::TestHook)?,
+                            result = machine.hooks.pause(Pause::LawCommitted, &mut self.stop) => result.map_err(Error::TestHook)?,
                         }
                 }
                 Event::Committed(token)
@@ -289,10 +293,12 @@ impl<'a, 'm> Host<'a, 'm> {
         self.receipt = None;
         self.stored = false;
         if self.ready.is_some() {
-            #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &self.machine.machine().hooks.law_gates.rsp {
-                gate.pause(&mut self.stop).await.map_err(Error::TestHook)?;
-            }
+            self.machine
+                .machine()
+                .hooks
+                .pause(Pause::LawRsp, &mut self.stop)
+                .await
+                .map_err(Error::TestHook)?;
         }
         if let Some(ready) = self.ready.take() {
             let _ = ready.send(());
@@ -332,10 +338,14 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Err(Error::OutboundQueueUnavailableReservedWorkNotIssued);
             }
             self.ready = Some(notify);
-            #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &self.machine.machine().hooks.law_gates.handover {
-                gate.pause(&mut self.stop).await.map_err(Error::TestHook)?;
-            }
+
+            self.machine
+                .machine()
+                .hooks
+                .pause(Pause::LawHandover, &mut self.stop)
+                .await
+                .map_err(Error::TestHook)?;
+
             reply = Reply::Response(response.clone());
         }
         Ok(self
@@ -403,10 +413,14 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Ok(());
             }
         }
-        #[cfg(feature = "test-hooks")]
-        if let Some(hook) = &self.machine.machine().hooks.input_processed {
-            hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
-        }
+
+        self.machine
+            .machine()
+            .hooks
+            .pause(Pause::InputProcessed, &mut self.stop)
+            .await
+            .map_err(Error::TestHook)?;
+
         Ok(())
     }
     async fn finish(&mut self) -> Result<(), Error> {

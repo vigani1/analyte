@@ -3,6 +3,9 @@
 #[cfg(test)]
 use analyte_fixtures::ConfigEdit as _;
 mod alerts;
+mod hooks;
+pub(crate) use crate::machine::hooks::MachineHooks;
+pub(crate) use hooks::ProgramHooks;
 mod error;
 mod webhooks;
 pub(crate) use alerts::Condition;
@@ -17,30 +20,11 @@ use std::{
 };
 pub use webhooks::{AlertDelivery, AlertEndpoint, WebhookConfigError};
 
-#[cfg(feature = "test-hooks")]
-#[derive(Default)]
-pub(crate) struct MachineHooks {
-    pub(crate) autolyser_quiescent: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
-    pub(crate) input_processed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
-    pub(crate) law_gates: crate::runtime::test_hooks::LawGates,
-    pub(crate) law_precommit: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
-    pub(crate) law_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
-    pub(crate) astm_committed: Option<std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>>,
-    pub(crate) connection_closing: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
-}
-
-#[cfg(feature = "test-hooks")]
-#[derive(Default)]
-pub(crate) struct ProgramHooks {
-    pub(crate) stall_store_on_shutdown: bool,
-    pub(crate) loopback_destinations: std::collections::BTreeMap<String, String>,
-}
-
 /// A machine's installation identity and validated effective settings.
 pub struct Machine {
     pub(crate) capture: bool,
     pub(crate) destination_limits: analyte_sink::Limits,
-    #[cfg(feature = "test-hooks")]
+
     pub(crate) hooks: MachineHooks,
     /// Unique installation identity, independent of the shipped definition name.
     pub(crate) id: analyte_model::Identifier,
@@ -56,7 +40,7 @@ pub struct Program {
     alert_interval: Duration,
     alert_delivery: AlertDelivery,
     admin_address: Option<std::net::SocketAddrV4>,
-    #[cfg(feature = "test-hooks")]
+
     pub(crate) hooks: ProgramHooks,
     pub(crate) signing_rotation: std::collections::BTreeMap<String, Vec<analyte_model::Identifier>>,
     /// Protected directory containing the database and journals.
@@ -149,178 +133,6 @@ fn read(path: &Path) -> Result<String, Error> {
 }
 
 impl Program {
-    /// Pauses after an Autolyser exchange commits, before another poll.
-    /// # Errors
-    /// Rejects unknown machines and non-injected listeners.
-    #[cfg(feature = "test-hooks")]
-    pub fn pause_autolyser_quiescent_for_test(
-        &mut self,
-        id: &str,
-        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
-    ) -> Result<(), Error> {
-        let machine = self.test_machine_mut(id)?;
-        if machine.listener.is_none() {
-            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
-        }
-        machine.hooks.autolyser_quiescent = Some(hook);
-        Ok(())
-    }
-
-    #[cfg(feature = "test-hooks")]
-    fn test_machine_mut(&mut self, id: &str) -> Result<&mut Machine, Error> {
-        self.machines
-            .iter_mut()
-            .find(|machine| machine.id.as_str() == id)
-            .ok_or_else(|| Error::UnknownTestMachine)
-    }
-
-    /// Installs a one-shot LAW raw-commit/pre-response pause on an injected loopback machine.
-    /// # Errors
-    /// Rejects unknown machines, non-LAW stacks and production listeners.
-    #[cfg(feature = "test-hooks")]
-    pub fn pause_law_committed_for_test(
-        &mut self,
-        id: &str,
-        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
-    ) -> Result<(), Error> {
-        let machine = self.test_machine_mut(id)?;
-        if machine.listener.is_none()
-            || !matches!(
-                machine.snapshot.effective().stack(),
-                analyte_config::Stack::Law(_)
-            )
-        {
-            return Err(Error::CommitHookRequiresInjectedLawLoopbackListener);
-        }
-        machine.hooks.law_committed = Some(hook);
-        Ok(())
-    }
-    /// Installs LAW evidence gates on an injected loopback listener.
-    /// # Errors
-    /// Rejects non-LAW or non-test machines.
-    #[cfg(feature = "test-hooks")]
-    pub fn install_law_gates_for_test(
-        &mut self,
-        id: &str,
-        gates: crate::runtime::test_hooks::LawGates,
-    ) -> Result<(), Error> {
-        let machine = self.test_machine_mut(id)?;
-        if machine.listener.is_none()
-            || !matches!(
-                machine.snapshot.effective().stack(),
-                analyte_config::Stack::Law(_)
-            )
-        {
-            return Err(Error::LawGatesRequireInjectedLoopbackListener);
-        }
-        machine.hooks.law_gates = gates;
-        Ok(())
-    }
-    /// Installs a one-shot pause immediately before LAW raw custody, on a test listener.
-    /// # Errors
-    /// Rejects the same non-loopback and non-LAW machines as the commit hook.
-    #[cfg(feature = "test-hooks")]
-    pub fn pause_law_precommit_for_test(
-        &mut self,
-        id: &str,
-        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
-    ) -> Result<(), Error> {
-        self.pause_law_committed_for_test(id, hook.clone())?;
-        let machine = self.test_machine_mut(id)?;
-        machine.hooks.law_committed = None;
-        machine.hooks.law_precommit = Some(hook);
-        Ok(())
-    }
-    /// Stalls the store at shutdown with a 500 ms process deadline, for child-process tests only.
-    /// This deliberately never returns from a storage operation; the watchdog must exit 3.
-    /// # Errors
-    /// Requires injected loopback listeners for every machine; production entry points refuse it.
-    #[cfg(feature = "test-hooks")]
-    pub fn stall_store_on_shutdown_for_test(&mut self) -> Result<(), Error> {
-        if self.machines.is_empty()
-            || self
-                .machines
-                .iter()
-                .any(|machine| machine.listener.is_none())
-        {
-            return Err(Error::StuckShutdownHookRequiresInjectedLoopbackListeners);
-        }
-        self.hooks.stall_store_on_shutdown = true;
-        Ok(())
-    }
-
-    /// Installs a one-shot ASTM durable-frame/pre-ACK pause for a loopback test machine.
-    /// # Errors
-    /// Rejects unknown machines, non-ASTM stacks, or machines without an injected loopback listener.
-    #[cfg(feature = "test-hooks")]
-    pub fn pause_astm_committed_for_test(
-        &mut self,
-        id: &str,
-        hook: std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>,
-    ) -> Result<(), Error> {
-        let machine = self.test_machine_mut(id)?;
-        if machine.listener.is_none()
-            || !matches!(
-                machine.snapshot.effective().stack(),
-                analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
-            )
-        {
-            return Err(Error::CommitHookRequiresInjectedAstmLoopbackListener);
-        }
-        machine.hooks.astm_committed = Some(hook);
-        Ok(())
-    }
-
-    /// Pauses a loopback client's closing owner after protocol cleanup, before transport release.
-    /// # Errors
-    /// Rejects unknown machines and endpoints that are not loopback TCP clients.
-    #[cfg(feature = "test-hooks")]
-    pub fn pause_connection_closing_for_test(
-        &mut self,
-        id: &str,
-        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
-    ) -> Result<(), Error> {
-        let machine = self.test_machine_mut(id)?;
-        if machine.snapshot.effective().stack().transport_kind()
-            != analyte_config::TransportKind::TcpClient
-            || !machine
-                .snapshot
-                .effective()
-                .site()
-                .endpoint
-                .parse::<std::net::SocketAddr>()?
-                .ip()
-                .is_loopback()
-        {
-            return Err(Error::ClosingHookRequiresALoopbackTcpClient);
-        }
-        machine.hooks.connection_closing = Some(hook);
-        Ok(())
-    }
-
-    /// Supplies an already bound loopback listener for deterministic integration tests.
-    /// The caller can retain a clone to reserve the same address across restarts.
-    /// # Errors
-    /// Rejects unknown machines, non-loopback addresses and non-server configs.
-    #[cfg(feature = "test-hooks")]
-    pub fn set_loopback_listener_for_test(
-        &mut self,
-        id: &str,
-        listener: std::net::TcpListener,
-    ) -> Result<(), Error> {
-        let machine = self.test_machine_mut(id)?;
-        if !listener.local_addr()?.ip().is_loopback()
-            || machine.snapshot.effective().stack().transport_kind()
-                != analyte_config::TransportKind::TcpServer
-            || listener.local_addr()?.to_string() != machine.snapshot.effective().site().endpoint
-        {
-            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
-        }
-        listener.set_nonblocking(true)?;
-        machine.listener = Some(listener);
-        Ok(())
-    }
-
     /// Reads bounded files and validates every machine through `analyte-config`.
     /// # Errors
     /// Reports path, TOML, bounds, duplicate identity and machine validation failures.
@@ -400,7 +212,7 @@ impl Program {
             alert_delivery: file.alert_delivery.validate()?,
             alert_interval: Duration::from_secs(file.alert_interval_seconds),
             admin_address,
-            #[cfg(feature = "test-hooks")]
+
             hooks: ProgramHooks::default(),
             signing_rotation: file.signing_rotation,
             data_directory: base.join(file.data_directory),
@@ -446,58 +258,6 @@ impl Program {
     #[must_use]
     pub fn admin_address(&self) -> Option<std::net::SocketAddrV4> {
         self.admin_address
-    }
-
-    /// Overrides a known destination for synthetic loopback HTTP tests only.
-    /// Production `serve` and `run` reject programs containing these overrides.
-    /// # Errors
-    /// Rejects unknown destinations; the test service validates literal loopback URLs.
-    #[cfg(feature = "test-hooks")]
-    pub fn set_loopback_destination_for_test(
-        &mut self,
-        name: &str,
-        url: String,
-    ) -> Result<(), Error> {
-        if !self
-            .machines
-            .iter()
-            .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
-        {
-            return Err(Error::UnknownTestDestination);
-        }
-        self.hooks.loopback_destinations.insert(name.into(), url);
-        Ok(())
-    }
-
-    /// Shortens feed polling for an already overridden synthetic destination.
-    /// Production entry points reject the required loopback destination override.
-    /// # Errors
-    /// Rejects destinations without an override and intervals outside 1 ms to 5 s.
-    #[cfg(feature = "test-hooks")]
-    pub fn set_loopback_poll_interval_for_test(
-        &mut self,
-        name: &str,
-        interval: Duration,
-    ) -> Result<(), Error> {
-        if !self.hooks.loopback_destinations.contains_key(name)
-            || !(Duration::from_millis(1)..=Duration::from_secs(5)).contains(&interval)
-        {
-            return Err(Error::TestPollingRequiresALoopbackOverrideAndABoundedInterval);
-        }
-        for machine in &mut self.machines {
-            if machine
-                .snapshot
-                .effective()
-                .site()
-                .destination
-                .name
-                .as_str()
-                == name
-            {
-                machine.destination_limits.poll_interval = interval;
-            }
-        }
-        Ok(())
     }
 
     /// Borrows the protected directory without permitting mutation of validated settings.
@@ -738,7 +498,7 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
     }
     Ok(Machine {
         capture: entry.capture,
-        #[cfg(feature = "test-hooks")]
+
         hooks: MachineHooks::default(),
         destination_limits: crate::runtime::delivery::limits(
             snapshot.effective().site().destination.freshness_seconds,
@@ -747,23 +507,4 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
         snapshot,
         listener: None,
     })
-}
-
-#[cfg(feature = "test-hooks")]
-impl Program {
-    /// Pauses after one input chunk has entered the protocol dialog.
-    /// # Errors
-    /// Rejects unknown machines and non-injected listeners.
-    pub fn pause_input_processed_for_test(
-        &mut self,
-        id: &str,
-        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
-    ) -> Result<(), Error> {
-        let machine = self.test_machine_mut(id)?;
-        if machine.listener.is_none() {
-            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
-        }
-        machine.hooks.input_processed = Some(hook);
-        Ok(())
-    }
 }

@@ -1,6 +1,4 @@
 //! Validates exact HTTPS webhook URLs without exposing them in diagnostics.
-#[cfg(any(test, feature = "test-hooks"))]
-use crate::Error;
 
 /// Config-owned HTTPS URL, retained as an alias for existing callers.
 pub type WebhookUrl = analyte_config::HttpsUrl;
@@ -19,8 +17,8 @@ pub enum WebhookSetupError {
 /// Host HTTPS sender with the same TLS, redirect, proxy and retry policy as app delivery.
 /// No Debug implementation can reveal endpoint URLs or credentials.
 pub struct WebhookSender {
-    client: reqwest::Client,
-    url: reqwest::Url,
+    pub(crate) client: reqwest::Client,
+    pub(crate) url: reqwest::Url,
 }
 impl WebhookSender {
     /// Creates a bounded sender without opening a connection.
@@ -68,21 +66,6 @@ impl WebhookSender {
         } else {
             Err(F::Http)
         }
-    }
-
-    /// Creates an HTTP sender for a literal loopback synthetic receiver only.
-    /// # Errors
-    /// Refuses non-loopback hosts, credentials, queries and fragments.
-    #[cfg(any(test, feature = "test-hooks"))]
-    pub fn for_loopback_test(url: &str, timeout: std::time::Duration) -> Result<Self, Error> {
-        let url = analyte_config::loopback_test_url(url).map_err(Error::UrlPolicy)?;
-        if timeout.is_zero() || timeout > std::time::Duration::from_secs(300) {
-            return Err(Error::Configuration);
-        }
-        Ok(Self {
-            client: crate::http_client(timeout)?,
-            url,
-        })
     }
 }
 

@@ -80,29 +80,7 @@ impl Destination {
         Self::from_parsed(id, base.url().clone(), secrets, limits)
     }
 
-    /// Allows literal loopback HTTP solely for local synthetic reference-peer tests.
-    /// This explicit opt-in never disables TLS verification for HTTPS.
-    /// # Errors
-    /// Rejects non-loopback HTTP and the same invalid bounds as `new`.
-    #[cfg(any(test, feature = "test-hooks"))]
-    pub fn for_loopback_test(
-        id: Identifier,
-        base: &str,
-        secrets: Identifier,
-        limits: Limits,
-    ) -> Result<Self, Error> {
-        let base = if base.starts_with("https://") {
-            analyte_config::HttpsUrl::parse(base)
-                .map_err(Error::UrlPolicy)?
-                .url()
-                .clone()
-        } else {
-            analyte_config::loopback_test_url(base).map_err(Error::UrlPolicy)?
-        };
-        Self::from_parsed(id, base, secrets, limits)
-    }
-
-    fn from_parsed(
+    pub(crate) fn from_parsed(
         id: Identifier,
         mut base: reqwest::Url,
         secrets: Identifier,

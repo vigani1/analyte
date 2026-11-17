@@ -308,7 +308,7 @@ mod tests {
                 listener: None,
                 capture: false,
                 destination_limits: crate::runtime::delivery::limits(30),
-                #[cfg(feature = "test-hooks")]
+
                 hooks: crate::installation::config::MachineHooks::default(),
             };
             let mut store = Handle::start(

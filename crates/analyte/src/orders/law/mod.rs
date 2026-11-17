@@ -1,4 +1,5 @@
 //! Drives LAW work exchanges with cached orders, reservations and item outcomes (TF-2b 3.27/3.28).
+use crate::machine::hooks::Operation;
 use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
 use std::error::Error as _;
@@ -210,10 +211,11 @@ impl Connection {
         };
         let cached = query_orders(store, machine, sample, until, options).await?;
         let prepared = self.reserve(store, machine, cached, until, options).await?;
-        #[cfg(feature = "test-hooks")]
-        if let Some(gate) = &machine.hooks.law_gates.reserved {
-            gate.operation().await.map_err(Error::TestHook)?;
-        }
+        machine
+            .hooks
+            .operation(Operation::Reserved)
+            .await
+            .map_err(Error::TestHook)?;
         if Instant::now() >= until {
             return Err(Error::LawQueryDeadlineAfterReservation);
         }
@@ -399,12 +401,12 @@ async fn query_orders(
     let destination = super::destination(machine);
     let target = machine.id.clone();
     let bound = options.limits.segments;
-    #[cfg(feature = "test-hooks")]
-    if let Some(gate) = &machine.hooks.law_gates.lookup {
-        gate.operation().await.map_err(Error::TestHook)?;
-    }
-    #[cfg(feature = "test-hooks")]
-    let pages_gate = machine.hooks.law_gates.pages.clone();
+    machine
+        .hooks
+        .operation(Operation::Lookup)
+        .await
+        .map_err(Error::TestHook)?;
+    let pages_gate = machine.hooks.pages();
     let cached = store
         .request::<_, analyte_store::Error>(until, move |store| {
             let now = jiff::Timestamp::now().as_second();
@@ -450,10 +452,7 @@ async fn query_orders(
                                 });
                             }
                             found.extend(orders);
-                            #[cfg(feature = "test-hooks")]
-                            if let Some(gate) = &pages_gate {
-                                gate.pause()?;
-                            }
+                            pages_gate.pause()?;
                             match cursor {
                                 Some(cursor) => after = cursor.as_str().to_owned(),
                                 None => return Ok(found),

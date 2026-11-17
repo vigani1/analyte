@@ -240,9 +240,11 @@ async fn drive(
     closing: &mut Closing,
 ) -> Result<(), Error> {
     let result = session(machine, selected, store, &mut conn, stop.clone()).await;
-    #[cfg(feature = "test-hooks")]
-    if let Some(hook) = &machine.hooks.connection_closing {
-        hook.pause(&mut stop.clone())
+
+    if machine.hooks.enabled(hooks::Pause::ConnectionClosing) {
+        machine
+            .hooks
+            .pause(hooks::Pause::ConnectionClosing, &mut stop.clone())
             .await
             .map_err(Error::TestHook)?;
     }
@@ -256,3 +258,5 @@ async fn drive(
 }
 
 pub(crate) mod error;
+
+pub(crate) mod hooks;

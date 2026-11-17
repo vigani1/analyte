@@ -1,5 +1,6 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
 use crate::intake::ByteReason;
+use crate::machine::hooks::Pause;
 mod custody;
 mod orders;
 mod transfer_end;
@@ -123,13 +124,18 @@ impl ConnectionState {
                     {
                         return Ok(());
                     }
-                    #[cfg(feature = "test-hooks")]
+
                     if self.ready
                         && self.guard.is_none()
                         && self.active.is_none()
-                        && let Some(hook) = &machine.machine().hooks.autolyser_quiescent
+                        && machine.machine().hooks.enabled(Pause::AutolyserQuiescent)
                     {
-                        hook.pause(stop).await.map_err(Error::TestHook)?;
+                        machine
+                            .machine()
+                            .hooks
+                            .pause(Pause::AutolyserQuiescent, stop)
+                            .await
+                            .map_err(Error::TestHook)?;
                     }
                     Vec::new()
                 }

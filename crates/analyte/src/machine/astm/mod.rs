@@ -1,6 +1,7 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
 use crate::intake::ByteReason;
+use crate::machine::hooks::Pause;
 mod error;
 use crate::orders::astm::{Pending, Request};
 use crate::{deadline, intake};
@@ -338,8 +339,6 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
-        #[cfg(not(feature = "test-hooks"))]
-        let _ = stop;
         let settings = self.settings;
 
         let transfer_id = Identifier::new(&format!("{:032x}-{}", id.epoch().0, id.transfer()))?;
@@ -376,11 +375,14 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             }),
         )
         .await;
-        #[cfg(feature = "test-hooks")]
-        if committed.is_ok()
-            && let Some(hook) = &self.machine.machine().hooks.astm_committed
-        {
-            hook.pause(stop).await.map_err(Error::TestHook)?;
+
+        if committed.is_ok() && self.machine.machine().hooks.enabled(Pause::AstmCommitted) {
+            self.machine
+                .machine()
+                .hooks
+                .pause(Pause::AstmCommitted, stop)
+                .await
+                .map_err(Error::TestHook)?;
         }
         let event = match committed {
             Ok(_) => Event::Committed(id),

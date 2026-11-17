@@ -28,7 +28,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     Ok(Machine {
         capture: false,
         destination_limits: crate::runtime::delivery::limits(30),
-        #[cfg(feature = "test-hooks")]
+
         hooks: crate::installation::config::MachineHooks::default(),
         id: Identifier::new("synthetic")?,
         snapshot,

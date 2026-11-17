@@ -1,5 +1,6 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
 use crate::intake::ByteReason;
+use crate::machine::hooks::Pause;
 pub(crate) mod error_location;
 use super::connection_input::{self, Input};
 use crate::intake;
@@ -132,7 +133,6 @@ impl ConnectionState {
                     Vec::new()
                 }
             };
-            #[cfg(feature = "test-hooks")]
             let has_bytes = !bytes.is_empty();
             if self
                 .receive_bytes(bytes, machine, store, conn, stop)
@@ -141,9 +141,14 @@ impl ConnectionState {
                 return Ok(());
             }
             self.input_evidence.complete();
-            #[cfg(feature = "test-hooks")]
-            if has_bytes && let Some(hook) = &machine.machine().hooks.input_processed {
-                hook.pause(stop).await.map_err(Error::TestHook)?;
+
+            if has_bytes && machine.machine().hooks.enabled(Pause::InputProcessed) {
+                machine
+                    .machine()
+                    .hooks
+                    .pause(Pause::InputProcessed, stop)
+                    .await
+                    .map_err(Error::TestHook)?;
             }
             if let Some(query) = &mut self.queries {
                 tokio::select! {

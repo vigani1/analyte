@@ -20,42 +20,12 @@ pub(crate) fn destinations(program: &Program, loopback: bool) -> Result<Vec<Dest
             continue;
         }
         let limits = machine.destination_limits.clone();
-        #[cfg(feature = "test-hooks")]
-        let base = program
-            .hooks
-            .loopback_destinations
-            .get(settings.name.as_str())
-            .map_or(settings.base_url.as_str(), String::as_str);
-        #[cfg(feature = "test-hooks")]
-        if !loopback && !program.hooks.loopback_destinations.is_empty() {
-            return Err(Error::LoopbackOverridesRequireTheTestServiceEntryPoint);
-        }
-        #[cfg(feature = "test-hooks")]
-        destinations.push(if loopback {
-            Destination::for_loopback_test(
-                settings.name.clone(),
-                base,
-                settings.name.clone(),
-                limits,
-            )?
-        } else {
-            Destination::from_url(
-                settings.name.clone(),
-                &settings.base_url,
-                settings.name.clone(),
-                limits,
-            )?
-        });
-        #[cfg(not(feature = "test-hooks"))]
-        {
-            let _ = loopback;
-            destinations.push(Destination::from_url(
-                settings.name.clone(),
-                &settings.base_url,
-                settings.name.clone(),
-                limits,
-            )?);
-        }
+        destinations.push(super::hooks::destination(
+            &program.hooks,
+            settings,
+            limits,
+            loopback,
+        )?);
     }
     Ok(destinations)
 }
