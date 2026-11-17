@@ -101,10 +101,10 @@ fn admin_loopback() -> std::net::Ipv4Addr {
 impl Admin {
     fn address(&self) -> Result<std::net::SocketAddrV4, Error> {
         if self.address != std::net::Ipv4Addr::LOCALHOST {
-            return Err(Error::AdminAddressMustBe127001);
+            return Err(Error::AdminAddressNotLoopback);
         }
         if self.port == 0 {
-            return Err(Error::AdminPortMustBeBetween1And65535);
+            return Err(Error::AdminPortOutOfRange);
         }
         Ok(std::net::SocketAddrV4::new(self.address, self.port))
     }
@@ -143,7 +143,7 @@ fn read(path: &Path) -> Result<String, Error> {
         .take(1_048_577)
         .read_to_end(&mut bytes)?;
     if bytes.len() > analyte_config::MAX_FILE_BYTES {
-        return Err(Error::ConfigurationExceeds1Mib);
+        return Err(Error::ConfigurationTooLarge);
     }
     Ok(String::from_utf8(bytes)?)
 }

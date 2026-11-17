@@ -492,3 +492,59 @@ specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
     ));
     Ok(())
 }
+
+#[test]
+fn hl7_ch4_patient_requirement_and_orc_group_bound_return_typed_refusals() -> TestResult {
+    use analyte_mapping::{Hl7Command, WireMappingError};
+    for (require_patient, id, expected) in [
+        (
+            true,
+            "order-1".to_owned(),
+            WireMappingError::Hl7PatientNameRequired,
+        ),
+        (false, "x".repeat(23), WireMappingError::Hl7GroupIdTooLong),
+    ] {
+        let definition = format!(
+            "{}\n{}",
+            include_str!("../../../core/config/examples/hl7.toml"),
+            include_str!("../../../core/config/examples/hl7_send.toml").rewrite(
+                "require_patient_identification = false",
+                &format!("require_patient_identification = {require_patient}"),
+            ),
+        );
+        let cfg = Draft::load(
+            ("machine", &definition),
+            (
+                "site",
+                include_str!("../../../core/config/examples/site.toml"),
+            ),
+            ("local", "schema_version=1"),
+        )?
+        .validate()?;
+        let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
+            cfg.effective().stack()
+        else {
+            return Err("HL7 stream fixture expected".into());
+        };
+        let raw =
+            include_str!("../../../../docs/contract/vectors/order.json").replace("order-1", &id);
+        let app = analyte_contract::decode(raw.as_bytes())?;
+        let result = Hl7Command::new(
+            stack.syntax(),
+            stack.orders().as_ref().ok_or("orders")?,
+            &app,
+            analyte_hl7::Options::default(),
+        );
+        assert!(matches!(
+            (&result, &expected),
+            (
+                Err(WireMappingError::Hl7PatientNameRequired),
+                WireMappingError::Hl7PatientNameRequired
+            ) | (
+                Err(WireMappingError::Hl7GroupIdTooLong),
+                WireMappingError::Hl7GroupIdTooLong
+            )
+        ));
+    }
+    Ok(())
+}

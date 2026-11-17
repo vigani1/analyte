@@ -38,7 +38,7 @@ pub(crate) enum Error {
     SerialOwnerShutdownTimedOut(#[source] tokio::time::error::Elapsed),
     /// Transport close stage exceeded 25 seconds.
     #[error("transport close stage exceeded 25 seconds")]
-    TransportCloseStageExceeded25Seconds(#[source] tokio::time::error::Elapsed),
+    TransportCloseStageExceeded(#[source] tokio::time::error::Elapsed),
     /// The file link was interrupted; its source remains claimed for recovery.
     #[error("file transport interrupted; source remains claimed: {0}")]
     FileInterrupted(analyte_transport::Reason),

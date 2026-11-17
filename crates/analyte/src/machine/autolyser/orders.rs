@@ -40,7 +40,7 @@ impl ConnectionState {
         {
             self.active = Some(reserved.order);
             let analyte_mapping::MachineOrder::Autolyser(worklist) = reserved.payload else {
-                return Err(Error::AutolyserReceivedAnotherStackSOrder);
+                return Err(Error::ForeignStackOrder);
             };
             let actions = self.dialog.step(
                 self.start.elapsed(),

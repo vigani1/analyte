@@ -3,25 +3,25 @@
 pub(crate) enum Error {
     /// HL7 display services absent.
     #[error("HL7 display services absent")]
-    Hl7DisplayServicesAbsent,
+    DisplayServicesAbsent,
     /// HL7 host phase timed out; receipt requires reconciliation.
     #[error("HL7 host phase timed out; receipt requires reconciliation")]
-    Hl7HostPhaseTimedOutReceiptRequiresReconciliation,
+    HostPhaseTimedOutReceiptRequiresReconciliation,
     /// HL7 message refused.
     #[error("HL7 message refused")]
-    Hl7MessageRefused,
+    MessageRefused,
     /// HL7 order services absent.
     #[error("HL7 order services absent")]
-    Hl7OrderServicesAbsent,
+    OrderServicesAbsent,
     /// HL7 pending receipt limit exceeded.
     #[error("HL7 pending receipt limit exceeded")]
-    Hl7PendingReceiptLimitExceeded,
+    PendingReceiptLimitExceeded,
     /// HL7 query services absent.
     #[error("HL7 query services absent")]
-    Hl7QueryServicesAbsent,
+    QueryServicesAbsent,
     /// HL7 receipt correlation missing.
     #[error("HL7 receipt correlation missing")]
-    Hl7ReceiptCorrelationMissing,
+    ReceiptCorrelationMissing,
     /// Display receipt absent.
     #[error("display receipt absent")]
     DisplayReceiptAbsent,
@@ -51,10 +51,10 @@ pub(crate) enum Error {
     Orders(#[from] crate::orders::OrderError),
     /// The HL7 acknowledgment conversation refused an event.
     #[error(transparent)]
-    Hl7Dialog(#[from] analyte_dialog::hl7::Error),
+    Dialog(#[from] analyte_dialog::hl7::Error),
     /// HL7 segment syntax or acknowledgment fields were invalid.
     #[error(transparent)]
-    Hl7(#[from] analyte_hl7::Error),
+    Syntax(#[from] analyte_hl7::Error),
     /// The HL7 transport envelope failed MLLP framing.
     #[error(transparent)]
     Mllp(#[from] analyte_framing::hl7::Error),

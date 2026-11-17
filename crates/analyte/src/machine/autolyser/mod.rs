@@ -267,7 +267,7 @@ impl ConnectionState {
         let (id, _) = self
             .receipt
             .take()
-            .ok_or_else(|| Error::AutolyserReportReceiptMissing)?;
+            .ok_or_else(|| Error::ReportReceiptMissing)?;
         intake::interpret(store, machine.machine(), id).await?;
         self.ready = true;
         self.recovering = false;

@@ -23,7 +23,8 @@ pub(crate) async fn run(
         if *stop.borrow() {
             return Ok(());
         }
-        tokio::select! { biased;
+        tokio::select! {
+            biased;
             _ = stop.changed() => return Ok(()),
             _ = ticks.tick() => {}
         }
@@ -31,9 +32,17 @@ pub(crate) async fn run(
             endpoint.secret().as_str(),
         ))
         .ok();
-        tokio::select! { biased;
+        tokio::select! {
+            biased;
             _ = stop.changed() => return Ok(()),
-            result = cycle(&store,endpoint.id(),&policy,jiff::Timestamp::now().as_second(),sender.as_ref(),token.as_deref()) => {
+            result = cycle(
+                &store,
+                endpoint.id(),
+                &policy,
+                jiff::Timestamp::now().as_second(),
+                sender.as_ref(),
+                token.as_deref(),
+            ) => {
                 if let Err(error) = result {
                     // Only host/store errors reach here; send() returns fixed categories.
                     tracing::error!(endpoint=endpoint.id().as_str(), %error, "alert endpoint storage cycle failed");

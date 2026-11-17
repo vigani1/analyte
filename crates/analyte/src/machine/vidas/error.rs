@@ -3,22 +3,22 @@
 pub(crate) enum Error {
     /// VIDAS active dialog has no deadline.
     #[error("VIDAS active dialog has no deadline")]
-    VidasActiveDialogHasNoDeadline,
+    ActiveDialogHasNoDeadline,
     /// VIDAS control suffix mismatch.
     #[error("VIDAS control suffix mismatch")]
-    VidasControlSuffixMismatch,
+    ControlSuffixMismatch,
     /// VIDAS mapped request missing.
     #[error("VIDAS mapped request missing")]
-    VidasMappedRequestMissing,
+    MappedRequestMissing,
     /// VIDAS order poll deadline overflow.
     #[error("VIDAS order poll deadline overflow")]
-    VidasOrderPollDeadlineOverflow,
+    OrderPollDeadlineOverflow,
     /// VIDAS received another stack's order.
     #[error("VIDAS received another stack's order")]
-    VidasReceivedAnotherStackSOrder,
+    ForeignStackOrder,
     /// VIDAS transfer parked; reconcile before reconnect.
     #[error("VIDAS transfer parked; reconcile before reconnect")]
-    VidasTransferParkedReconcileBeforeReconnect,
+    TransferParkedReconcileBeforeReconnect,
     /// An outbound command could not represent the mapped order.
     #[error(transparent)]
     OrderMapping(#[from] analyte_mapping::OrderMappingError),
@@ -27,13 +27,13 @@ pub(crate) enum Error {
     Orders(#[from] crate::orders::OrderError),
     /// The VIDAS transfer could not advance its phase.
     #[error(transparent)]
-    VidasDialog(#[from] analyte_dialog::vidas::Error),
+    Dialog(#[from] analyte_dialog::vidas::Error),
     /// VIDAS record fields failed grammar validation.
     #[error(transparent)]
-    Vidas(#[from] analyte_vidas::syntax::Error),
+    Syntax(#[from] analyte_vidas::syntax::Error),
     /// The VIDAS packet failed framing or checksum validation.
     #[error(transparent)]
-    VidasFrame(#[from] analyte_framing::vidas::Error),
+    Frame(#[from] analyte_framing::vidas::Error),
     /// Retains uncertain custody or independent cleanup failures in their original order.
     #[error(transparent)]
     Refusal(#[from] crate::machine::custody::Refusal<Self>),
