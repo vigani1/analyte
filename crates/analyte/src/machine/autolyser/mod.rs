@@ -405,7 +405,7 @@ fn park_code(error: &analyte_dialog::autolyser::Error) -> String {
     match error {
         Error::Config => Code::AutolyserParkedConfig.as_str().into(),
         Error::Busy => Code::AutolyserParkedBusy.as_str().into(),
-        Error::Time => Code::AutolyserParkedTime.as_str().into(),
+        Error::TimeReversed | Error::Exhausted => Code::AutolyserParkedTime.as_str().into(),
         Error::Incomplete => Code::AutolyserParkedIncomplete.as_str().into(),
         Error::Storage => Code::AutolyserParkedStorage.as_str().into(),
         Error::Stale => Code::AutolyserParkedStale.as_str().into(),
