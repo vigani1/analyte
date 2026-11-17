@@ -1,7 +1,7 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
 pub(crate) mod policy;
 use super::connection_input::Input;
-use super::driver::{self, Context, Effects, Flow};
+use super::driver::{self, Context, Effects, Failures, Flow};
 use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
@@ -50,7 +50,7 @@ impl driver::ByteEffects for Host<'_, '_> {
         byte: u8,
         conn: &mut analyte_transport::Connection,
         stop: &watch::Receiver<bool>,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
         let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
@@ -65,7 +65,7 @@ impl driver::ByteEffects for Host<'_, '_> {
                 }
             }
             intake::park_bytes(store, machine, raw, ByteReason::PoctCancelled).await?;
-            return Ok(true);
+            return Ok(Flow::Stop);
         }
         self.apply(actions, conn).await
     }
@@ -85,14 +85,14 @@ impl Effects for Host<'_, '_> {
         let stop = &mut host.stop;
         // Incoming fragments must not postpone the absolute dialog deadline.
         let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-        if self.apply(actions, conn).await? {
+        if self.apply(actions, conn).await? == Flow::Stop {
             return Ok(Flow::Stop);
         }
         match input {
             Input::Opened { .. } => {}
             Input::Tick => {
                 let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-                if self.apply(actions, conn).await? {
+                if self.apply(actions, conn).await? == Flow::Stop {
                     return Ok(Flow::Stop);
                 }
             }
@@ -104,7 +104,7 @@ impl Effects for Host<'_, '_> {
                 return Ok(Flow::Stop);
             }
             Input::Bytes { bytes } => {
-                if driver::feed(self, bytes, conn, stop).await? {
+                if driver::feed(self, bytes, conn, stop).await? == Flow::Stop {
                     return Ok(Flow::Stop);
                 }
             }
@@ -180,7 +180,7 @@ impl Host<'_, '_> {
         &mut self,
         actions: Vec<Action>,
         conn: &mut analyte_transport::Connection,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
         let start = self.start;
@@ -189,7 +189,7 @@ impl Host<'_, '_> {
         let limits = super::interpretation::poct_limits(settings);
         let send_timeout_ms = settings.settings().timeouts().send_timeout_ms();
         let mut actions: VecDeque<_> = actions.into();
-        let mut failure = None;
+        let mut failures = Failures::new();
         let result = async {
             while let Some(action) = actions.pop_front() {
                 match action {
@@ -215,7 +215,7 @@ impl Host<'_, '_> {
                             match custody::store_before_ack(machine.machine(), operation).await {
                                 Ok(outcome) => Event::Stored { ticket, outcome },
                                 Err(error) => {
-                                    failure = Some(Error::from(error));
+                                    failures.keep(Error::from(error));
                                     Event::StoreFailed(ticket)
                                 }
                             };
@@ -255,18 +255,14 @@ impl Host<'_, '_> {
                     }
                     Action::Close { normal, unresolved } => {
                         retain_closure(store, machine, normal, &unresolved).await?;
-                        return Ok(true);
+                        return Ok(Flow::Stop);
                     }
                 }
             }
-            Ok(false)
+            Ok(Flow::Continue)
         }
         .await;
-        match (failure, result) {
-            (Some(error), Ok(_)) => Err(error),
-            (Some(error), Err(effect)) => Err(custody::effect_failure(Some(error), effect)),
-            (None, result) => result,
-        }
+        failures.finish(result)
     }
 }
 

@@ -1,6 +1,6 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
-use super::driver::{Context, Effects, Flow};
+use super::driver::{Context, Effects, Failures, Flow};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
@@ -50,9 +50,6 @@ pub(super) struct Host<'a, 'm> {
     dialog: Dialog,
     start: Instant,
     transfer: Option<Identifier>,
-    // Keep the failure until the dialog's NAK and refusal actions have run.
-    commit_failure:
-        Option<crate::machine::receive::custody::StoreWaitError<analyte_store::IntakeError>>,
     raw: Vec<u8>,
     payload: Vec<u8>,
     input_evidence: connection_input::Custody,
@@ -81,7 +78,6 @@ impl<'a, 'm> Host<'a, 'm> {
             dialog,
             start: Instant::now(),
             transfer: None,
-            commit_failure: None,
             raw: Vec::new(),
             payload: Vec::new(),
             input_evidence: connection_input::Custody::default(),
@@ -95,17 +91,19 @@ impl<'a, 'm> Host<'a, 'm> {
         bytes: Vec<u8>,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
-    ) -> Result<(), Error> {
+    ) -> Result<Flow, Error> {
         self.input_evidence.begin(&bytes);
         let events = self.outgoing_events(bytes).await?;
         for event in events {
             if let Event::Byte(_) = &event {
                 self.input_evidence.fed();
             }
-            self.transition(event, conn, stop).await?;
+            if self.transition(event, conn, stop).await? == Flow::Stop {
+                return Ok(Flow::Stop);
+            }
         }
         self.input_evidence.complete();
-        Ok(())
+        Ok(Flow::Continue)
     }
     async fn outgoing_events(&mut self, bytes: Vec<u8>) -> Result<Vec<Event>, Error> {
         let outgoing = if bytes.is_empty()
@@ -174,7 +172,7 @@ impl<'a, 'm> Host<'a, 'm> {
         event: Event,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
-    ) -> Result<(), Error> {
+    ) -> Result<Flow, Error> {
         let settings = self.settings;
         let mut actions = VecDeque::new();
         if matches!(event, Event::Byte(analyte_framing::astm::ENQ)) {
@@ -210,12 +208,18 @@ impl<'a, 'm> Host<'a, 'm> {
         actions: Vec<Action>,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
-    ) -> Result<(), Error> {
+    ) -> Result<Flow, Error> {
         let mut actions: VecDeque<_> = actions.into();
-        while let Some(action) = actions.pop_front() {
-            self.effect(action, conn, stop, &mut actions).await?;
+        let mut failures = Failures::new();
+        let result = async {
+            while let Some(action) = actions.pop_front() {
+                self.effect(action, conn, stop, &mut actions, &mut failures)
+                    .await?;
+            }
+            Ok(Flow::Continue)
         }
-        Ok(())
+        .await;
+        failures.finish(result)
     }
     async fn effect(
         &mut self,
@@ -223,6 +227,7 @@ impl<'a, 'm> Host<'a, 'm> {
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
+        failures: &mut Failures<Error>,
     ) -> Result<(), Error> {
         let settings = self.settings;
         match action {
@@ -230,7 +235,8 @@ impl<'a, 'm> Host<'a, 'm> {
                 conn.write(bytes).await?;
             }
             Action::Store(id, number, bytes) => {
-                self.commit_frame(id, number, bytes, stop, actions).await?;
+                self.commit_frame(id, number, bytes, stop, actions, failures)
+                    .await?;
             }
             Action::Record(record) => {
                 if analyte_astm::starts_query(&record)
@@ -271,10 +277,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .await?;
             }
             Action::StoreFailed(_) => {
-                return Err(self
-                    .commit_failure
-                    .take()
-                    .map_or(Error::CommitDeadline, Error::CommitRefused));
+                return Err(failures.take().unwrap_or(Error::CommitDeadline));
             }
             Action::LimitReached => return Err(Error::ResourceLimitRefusedTransfer),
             Action::Sent(end) => {
@@ -293,6 +296,7 @@ impl<'a, 'm> Host<'a, 'm> {
         bytes: Vec<u8>,
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
+        failures: &mut Failures<Error>,
     ) -> Result<(), Error> {
         let settings = self.settings;
 
@@ -341,7 +345,7 @@ impl<'a, 'm> Host<'a, 'm> {
         let event = match committed {
             Ok(_) => Event::Stored(id),
             Err(error) => {
-                self.commit_failure = Some(error);
+                failures.keep(Error::CommitRefused(error));
                 Event::StoreFailed(id)
             }
         };
@@ -469,22 +473,13 @@ impl Effects for Host<'_, '_> {
             Input::Closed(_) => return Ok(Flow::Stop),
             Input::Failed(_) | Input::Tick => Vec::new(),
         };
-        self.receive_bytes(bytes, host.conn, &mut host.stop).await?;
-        Ok(Flow::Continue)
+        self.receive_bytes(bytes, host.conn, &mut host.stop).await
     }
     async fn close(
         &mut self,
         _host: &mut Context<'_, '_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
-        // A failed NAK write can interrupt the action queue before CommitFailed.
-        // Keep that transport failure and the original custody cause together.
-        if let Some(error) = self.commit_failure.take() {
-            crate::machine::receive::custody::retain_cleanup(
-                result,
-                Err(Error::CommitRefused(error)),
-            );
-        }
         // Disconnect drains the dialog-owned decoder on every exit, including failed
         // host effects. Transfer and order identities are reconciled below even if
         // parking one piece of framing evidence fails.

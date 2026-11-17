@@ -217,3 +217,11 @@ then drains the resulting actions in one `apply` method. Actions produced by
 storage completion join that same ordered queue before the next input byte is
 fed. A single-action method may handle a large match, but never owns a separate
 receive loop. Protocol-specific deadlines and refusal rules remain explicit.
+
+Every `apply` returns `Result<Flow, Error>` with the shared driver's `Flow`:
+`Stop` ends the session without an error. A failure that must wait until the
+dialog's own queued replies have run (a store failure before its NAK, a failed
+reply write) is kept in the driver's one `Failures` value for that queue and
+reported when the queue ends; the driver documents the rule beside `Flow`.
+(Added on 2026-11-17 after the eighth review, finding Y5: the hosts returned
+`bool`, `()` or a state field and kept failures in fields or locals.)

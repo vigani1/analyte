@@ -141,15 +141,16 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         event: Event<'_>,
         host: &mut Context<'_, '_>,
-    ) -> Result<(), Error> {
+    ) -> Result<Flow, Error> {
         let actions = self.dialog.step(self.start.elapsed(), event)?;
         self.apply(actions, host).await
     }
+    /// LAW keeps no deferred failure: custody effects return their error at once.
     async fn apply(
         &mut self,
         actions: Vec<Action>,
         host: &mut Context<'_, '_>,
-    ) -> Result<(), Error> {
+    ) -> Result<Flow, Error> {
         let mut actions: VecDeque<_> = actions.into();
         while let Some(action) = actions.pop_front() {
             let end = self
@@ -195,14 +196,19 @@ impl<'a, 'm> Host<'a, 'm> {
                 biased;
                     () = analyte_sink::stopped(&mut stop) => {
                         self.run = Run::Stopped;
-                        return Ok(());
+                        return Ok(Flow::Stop);
                     },
                     result = operation => result?,
                 }
             };
             actions.extend(effects);
         }
-        Ok(())
+        // A committed-pause stop inside an effect still lets the queue finish.
+        Ok(if self.run == Run::Stopped {
+            Flow::Stop
+        } else {
+            Flow::Continue
+        })
     }
     async fn effect(
         &mut self,
@@ -438,8 +444,7 @@ impl<'a, 'm> Host<'a, 'm> {
         self.pending_input = bytes.into();
         while let Some(byte) = self.pending_input.front().copied() {
             self.pending_input.pop_front();
-            self.transition(Event::Byte(byte), host).await?;
-            if self.run == Run::Stopped {
+            if self.transition(Event::Byte(byte), host).await? == Flow::Stop {
                 return Ok(());
             }
         }

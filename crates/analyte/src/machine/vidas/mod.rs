@@ -1,6 +1,6 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use super::connection_input::Input;
-use super::driver::{self, Context, Effects, Flow};
+use super::driver::{self, Context, Effects, Failures, Flow};
 use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
@@ -72,7 +72,7 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         bytes: Vec<u8>,
         conn: &mut analyte_transport::Connection,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
         self.phase = Phase::Transferring;
@@ -97,11 +97,11 @@ impl<'a, 'm> Host<'a, 'm> {
                 Err(error) => return Err(error.into()),
             }
             // Process Store before consuming a merged ETX/EOT following it.
-            if self.apply(Vec::new(), conn).await? {
-                return Ok(true);
+            if self.apply(Vec::new(), conn).await? == Flow::Stop {
+                return Ok(Flow::Stop);
             }
         }
-        Ok(false)
+        Ok(Flow::Continue)
     }
 }
 
@@ -133,7 +133,7 @@ impl Effects for Host<'_, '_> {
         {
             self.start_download(&request)?;
         }
-        if self.apply(Vec::new(), host.conn).await? {
+        if self.apply(Vec::new(), host.conn).await? == Flow::Stop {
             return Ok(Flow::Stop);
         }
         self.end_code = VidasEnd::InputFailed;
@@ -163,7 +163,7 @@ impl Effects for Host<'_, '_> {
                 return Ok(Flow::Stop);
             }
             Input::Bytes { bytes } => {
-                if self.receive_bytes(bytes, conn).await? {
+                if self.receive_bytes(bytes, conn).await? == Flow::Stop {
                     return Ok(Flow::Stop);
                 }
             }
@@ -188,76 +188,79 @@ impl Host<'_, '_> {
         &mut self,
         actions: Vec<Action>,
         conn: &mut analyte_transport::Connection,
-    ) -> Result<bool, Error> {
+    ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
         let installed = self.settings.policy();
         self.actions.extend(actions);
-        let mut failure = None;
-        let mut complete = false;
-        while let Some(action) = self.actions.pop_front() {
-            match action {
-                Action::Write(bytes) => {
-                    self.end_code = VidasEnd::WriteFailed;
-                    custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
-                    self.end_code = VidasEnd::TransferError;
-                }
-                Action::Store(packet) => {
-                    let id = ReceiptId::new();
-                    let operation = store_upload(store, machine, id, &packet.raw);
-                    match custody::store_before_ack(machine.machine(), operation).await {
-                        Ok(()) => {
-                            // The dialog expired its own commit deadline before accepting completion.
-                            self.actions
-                                .extend(self.dialog.step(self.start.elapsed(), Event::Stored)?);
+        let mut failures = Failures::new();
+        let result = async {
+            let mut complete = false;
+            while let Some(action) = self.actions.pop_front() {
+                match action {
+                    Action::Write(bytes) => {
+                        self.end_code = VidasEnd::WriteFailed;
+                        custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
+                        self.end_code = VidasEnd::TransferError;
+                    }
+                    Action::Store(packet) => {
+                        let id = ReceiptId::new();
+                        let operation = store_upload(store, machine, id, &packet.raw);
+                        match custody::store_before_ack(machine.machine(), operation).await {
+                            Ok(()) => {
+                                // The dialog expired its own commit deadline before accepting completion.
+                                self.actions
+                                    .extend(self.dialog.step(self.start.elapsed(), Event::Stored)?);
+                            }
+                            Err(error) => {
+                                self.actions.extend(
+                                    self.dialog.step(self.start.elapsed(), Event::StoreFailed)?,
+                                );
+                                failures.keep(error.into());
+                            }
                         }
-                        Err(error) => {
-                            self.actions.extend(
-                                self.dialog.step(self.start.elapsed(), Event::StoreFailed)?,
-                            );
-                            failure = Some(error.into());
+                    }
+                    Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
+                    Action::Park => {
+                        if self.end_code == VidasEnd::TransferError {
+                            self.end_code = match self.dialog.expired_timer() {
+                                Some(Timer::Acknowledgment) => VidasEnd::AcknowledgmentTimeout,
+                                Some(Timer::Interbyte) => VidasEnd::InterbyteTimeout,
+                                Some(Timer::Session) => VidasEnd::SessionTimeout,
+                                Some(Timer::Commit) => VidasEnd::CommitTimeout,
+                                None => VidasEnd::TransferRefusedOrUnexpected,
+                            };
+                        }
+                        let parked = intake::park_bytes(
+                            store,
+                            machine,
+                            Vec::new(),
+                            ByteReason::VidasIncomplete,
+                        )
+                        .await;
+                        parked?;
+                        if failures.is_empty() {
+                            failures.keep(Error::TransferUnreconciled);
                         }
                     }
+                    Action::Close => match self.work.confirmed(store).await? {
+                        crate::orders::vidas::Progress::DownloadNext(request) => {
+                            self.start_download(&request)?;
+                        }
+                        crate::orders::vidas::Progress::DownloadFinished => {
+                            self.dialog = Dialog::upload(self.config.clone(), self.policy.clone())?;
+                            self.start = Instant::now();
+                            self.actions.extend(self.dialog.start());
+                            self.phase = Phase::Idle;
+                        }
+                        crate::orders::vidas::Progress::UploadFinished => complete = true,
+                    },
                 }
-                Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
-                Action::Park => {
-                    if self.end_code == VidasEnd::TransferError {
-                        self.end_code = match self.dialog.expired_timer() {
-                            Some(Timer::Acknowledgment) => VidasEnd::AcknowledgmentTimeout,
-                            Some(Timer::Interbyte) => VidasEnd::InterbyteTimeout,
-                            Some(Timer::Session) => VidasEnd::SessionTimeout,
-                            Some(Timer::Commit) => VidasEnd::CommitTimeout,
-                            None => VidasEnd::TransferRefusedOrUnexpected,
-                        };
-                    }
-                    let parked =
-                        intake::park_bytes(store, machine, Vec::new(), ByteReason::VidasIncomplete)
-                            .await;
-                    if let Err(error) = parked {
-                        return Err(custody::effect_failure(failure, error.into()));
-                    }
-                    if failure.is_none() {
-                        failure = Some(Error::TransferUnreconciled);
-                    }
-                }
-                Action::Close => match self.work.confirmed(store).await? {
-                    crate::orders::vidas::Progress::DownloadNext(request) => {
-                        self.start_download(&request)?;
-                    }
-                    crate::orders::vidas::Progress::DownloadFinished => {
-                        self.dialog = Dialog::upload(self.config.clone(), self.policy.clone())?;
-                        self.start = Instant::now();
-                        self.actions.extend(self.dialog.start());
-                        self.phase = Phase::Idle;
-                    }
-                    crate::orders::vidas::Progress::UploadFinished => complete = true,
-                },
             }
+            Ok(if complete { Flow::Stop } else { Flow::Continue })
         }
-        match failure {
-            Some(error) => Err(error),
-            None => Ok(complete),
-        }
+        .await;
+        failures.finish(result)
     }
 }
 
