@@ -5,10 +5,12 @@ mod custody;
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::machine::connection_input::Input;
-use crate::machine::custody::{self as receive_custody, ms};
+use crate::machine::receive;
+use crate::machine::receive::custody::ms;
 use crate::orders::outcome::AutolyserEnd;
 mod error;
-use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
+pub(crate) mod settings;
+use analyte_dialog::autolyser::{Action, Dialog, Event, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
@@ -79,21 +81,7 @@ impl<'a, 'm> Host<'a, 'm> {
         settings: &'a analyte_config::AutolyserStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
-        let policy = settings.policy();
-        let dialog = Dialog::new(Config {
-            poll: ms(policy.poll_ms),
-            ack: ms(policy.acknowledgment_ms),
-            response: ms(policy.response_ms),
-            inter_byte: ms(policy.interbyte_ms),
-            storage: ms(policy.storage_ms),
-            max_bytes: settings.settings().frame_limit(),
-            controls: policy.controls,
-            recovery: if policy.recover_last_on_poll {
-                Recovery::LastOnPoll
-            } else {
-                Recovery::ManualLast
-            },
-        })?;
+        let dialog = Dialog::new(settings::dialog(settings))?;
         Ok(Self {
             machine,
             settings,
@@ -225,7 +213,7 @@ impl Effects for Host<'_, '_> {
             self.end_code.as_str(),
         )
         .await;
-        receive_custody::retain_cleanup(result, cleanup);
+        receive::custody::retain_cleanup(result, cleanup);
         self.work
             .close(self.store, self.end_code.into())
             .await
@@ -245,7 +233,7 @@ impl<'a, 'm> Host<'a, 'm> {
         let prior_code = self.end_code;
         self.end_code = AutolyserEnd::StorageFailed;
         let id = ReceiptId::new();
-        let stored = receive_custody::store_before_ack(
+        let stored = receive::custody::store_before_ack(
             machine.machine(),
             intake::receive(store, machine, id, raw),
         )
@@ -260,7 +248,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
             }
             Err(error) => {
-                if matches!(error, receive_custody::StoreWaitError::Timeout(_)) {
+                if matches!(error, receive::custody::StoreWaitError::Timeout(_)) {
                     self.end_code = AutolyserEnd::StorageTimeout;
                 }
                 match self
@@ -269,7 +257,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 {
                     Ok(next) => actions.extend(next),
                     Err(dialog_error) => {
-                        return Some(receive_custody::effect_failure(
+                        return Some(receive::custody::effect_failure(
                             Some(error.into()),
                             dialog_error.into(),
                         ));
@@ -314,7 +302,7 @@ impl Host<'_, '_> {
             match action {
                 Action::Write(bytes) => {
                     self.end_code = AutolyserEnd::WriteFailed;
-                    receive_custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
+                    receive::custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
                     self.end_code = AutolyserEnd::TransferError;
                 }
                 Action::Store(token, raw) => {
@@ -361,12 +349,12 @@ impl Host<'_, '_> {
                         }
                     };
                     if let Err(error) = parked {
-                        return Err(receive_custody::effect_failure(failure, error.into()));
+                        return Err(receive::custody::effect_failure(failure, error.into()));
                     }
                     if let Err(error) =
                         custody::uncertain(store, self.guard, machine.machine(), &reason).await
                     {
-                        return Err(receive_custody::effect_failure(failure, error));
+                        return Err(receive::custody::effect_failure(failure, error));
                     }
                 }
                 Action::Empty => {

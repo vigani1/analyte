@@ -1,6 +1,6 @@
 //! Maps VIDAS codes, original values and outgoing work.
 use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
-use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
+use crate::orders::codes::{self, map_priority};
 use crate::orders::{AppOrder, map_patient};
 use crate::{Output, Position};
 
@@ -145,7 +145,7 @@ pub fn map_order(
     {
         return Err(OrderError::TestCount);
     }
-    outbound_priority(settings.priorities(), order.priority)?;
+    map_priority(settings.priorities(), order.priority)?;
     let limit = match installed.sample_limit {
         analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
         analyte_config::VidasSampleLimit::Seventeen => {
@@ -155,7 +155,7 @@ pub fn map_order(
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
     for test in &order.tests {
-        let mapped = outbound_test(settings.tests(), test)?;
+        let mapped = codes::map_test(settings.tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
             return Err(OrderError::AssayComponents);
         };

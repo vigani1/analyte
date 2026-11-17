@@ -12,7 +12,6 @@ publish.workspace = true
 reqwest = { workspace = true }
 analyte-model = { workspace = true }
 analyte-framing = { workspace = true }
-analyte-astm = { workspace = true }
 analyte-hl7 = { workspace = true }
 serde = { workspace = true }
 analyte-transport = { workspace = true }

@@ -107,6 +107,39 @@ pub(crate) fn budget(machine: &crate::installation::config::Machine) -> Duration
     }
 }
 
+/// Gives one protocol host error, which must have a `Refusal(Refusal<Self>)` variant,
+/// the shared custody conversions: link and evidence causes, uncertain store waits and
+/// independent cleanup failures. One definition keeps every host's refusal identical.
+macro_rules! refusal_conversions {
+    ($target:ty) => {
+        impl<C> From<C> for $target
+        where
+            $crate::machine::receive::error::Error: From<C>,
+        {
+            fn from(cause: C) -> Self {
+                Self::Refusal($crate::machine::receive::custody::Refusal::Evidence(
+                    Box::new($crate::machine::receive::error::Error::from(cause)),
+                ))
+            }
+        }
+        impl From<$crate::machine::receive::custody::StoreWaitError<Self>> for $target {
+            fn from(cause: $crate::machine::receive::custody::StoreWaitError<Self>) -> Self {
+                Self::Refusal($crate::machine::receive::custody::Refusal::Custody(
+                    Box::new(cause),
+                ))
+            }
+        }
+        impl $crate::machine::receive::custody::CleanupFailure for $target {
+            fn with_effect(original: Self, effect: Self) -> Self {
+                Self::Refusal($crate::machine::receive::custody::Refusal::Cleanup(
+                    Box::new($crate::machine::receive::custody::Cleanup { original, effect }),
+                ))
+            }
+        }
+    };
+}
+pub(crate) use refusal_conversions;
+
 #[cfg(test)]
 mod tests {
     use super::*;

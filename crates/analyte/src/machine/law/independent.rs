@@ -61,7 +61,7 @@ pub(in crate::machine) async fn run(
     // Every task and queued reservation is joined/settled on each exit path.
     let (result, side) = tokio::select! {
         biased;
-        ()=crate::machine::stopping(&mut stop)=>(Ok(()),Finished::Stop),
+        ()=analyte_sink::stopped(&mut stop)=>(Ok(()),Finished::Stop),
         result=&mut inbound=>(result,Finished::Inbound),
         result=&mut outbound=>(result,Finished::Outbound),
     };
@@ -70,17 +70,17 @@ pub(in crate::machine) async fn run(
         Finished::Stop => {
             let (inbound, outbound) = tokio::join!(&mut inbound, &mut outbound);
             let mut result = inbound;
-            super::super::custody::retain_cleanup(&mut result, outbound);
+            crate::machine::receive::custody::retain_cleanup(&mut result, outbound);
             result
         }
         Finished::Inbound => outbound.await,
         Finished::Outbound => inbound.await,
     };
     let mut result = result;
-    super::super::custody::retain_cleanup(&mut result, cleanup);
+    crate::machine::receive::custody::retain_cleanup(&mut result, cleanup);
     if *stop.borrow() {
         let retained = closing.after_commits().await;
-        super::super::custody::retain_cleanup(&mut result, retained.map_err(Into::into));
+        crate::machine::receive::custody::retain_cleanup(&mut result, retained.map_err(Into::into));
     }
     result
 }
@@ -100,7 +100,7 @@ async fn server(
         loop {
             tokio::select! {
                 biased;
-                () = crate::machine::stopping(&mut stop) => break,
+                () = analyte_sink::stopped(&mut stop) => break,
                 completed = sessions.join_next(), if !sessions.is_empty() => {
                     if let Some(completed) = completed {
                         report(&machine, completed.map_err(task_failure)?);
@@ -215,7 +215,7 @@ async fn worker(
         loop {
             tokio::select! {
                 biased;
-                () = crate::machine::stopping(&mut stop) => break,
+                () = analyte_sink::stopped(&mut stop) => break,
                 job = queue.recv() => {
                     let Some(mut job) = job else { break; };
 
@@ -228,7 +228,7 @@ async fn worker(
                     let until = machine.hooks.queued_deadline(until);
                     let ready = tokio::select! {
                         biased;
-                        () = crate::machine::stopping(&mut stop) => {
+                        () = analyte_sink::stopped(&mut stop) => {
                             Err(Code::LawIndependentShutdownBeforeResponse.as_str())
                         },
                         ready = tokio::time::timeout_at(until.into(), &mut job.ready) => match ready {
@@ -257,8 +257,8 @@ async fn worker(
                     let context = intake::ConnectionEvidence::new(&machine)?;
                     let outgoing = tokio::select! {
                         biased;
-                        () = crate::machine::stopping(&mut stop) => break,
-                        result = idle_orders.idle(&store, context.machine(), settings.options()) => result,
+                        () = analyte_sink::stopped(&mut stop) => break,
+                        result = idle_orders.idle(&store, context.machine(), crate::machine::law::settings::options(&settings)) => result,
                     };
                     match outgoing {
                         Ok(Some(message)) => {
@@ -337,7 +337,7 @@ async fn exchange(
     }
     let stream = tokio::select! {
         biased;
-        ()=crate::machine::stopping(&mut stop)=>return Ok(()),
+        ()=analyte_sink::stopped(&mut stop)=>return Ok(()),
         result=tokio::time::timeout_at(until.into(),TcpStream::connect(outbound))=>result.map_err(Error::OutboundConnectDeadline)??,
     };
     let limits = analyte_transport::Limits::new(

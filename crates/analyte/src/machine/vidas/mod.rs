@@ -1,11 +1,12 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use super::connection_input::Input;
-use super::custody::{self, ms};
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::intake::ByteReason;
+use crate::machine::receive::custody::{self, ms};
 use crate::orders::outcome::VidasEnd;
 mod error;
+pub(crate) mod settings;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
 use analyte_framing::vidas::Config;
 use analyte_model::ReceiptId;
@@ -41,16 +42,8 @@ impl<'a, 'm> Host<'a, 'm> {
         settings: &'a analyte_config::VidasStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
-        let installed = &settings.policy();
-        let config = crate::reading::vidas_config(settings)?;
-        let policy = DialogConfig {
-            ack: ms(installed.acknowledgment_ms),
-            inter_byte: ms(installed.interbyte_ms),
-            session: ms(installed.session_ms),
-            commit: ms(installed.commit_ms),
-            retries: installed.retries,
-            backoff: ms(installed.backoff_ms),
-        };
+        let config = settings::framing(settings)?;
+        let policy = settings::dialog(settings);
         let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
         let actions = dialog.start().into();
         Ok(Self {

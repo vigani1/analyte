@@ -25,7 +25,9 @@ fn deadline<E>(duration: Duration, expired: E) -> Result<Instant, E> {
     Instant::now().checked_add(duration).ok_or(expired)
 }
 
-async fn cancelled(stop: &mut watch::Receiver<bool>) {
+/// Waits until shutdown is requested or its owner disappears, ignoring false updates.
+/// Cancellation leaves the receiver owned by the caller.
+pub async fn stopped(stop: &mut watch::Receiver<bool>) {
     loop {
         if *stop.borrow() {
             return;
@@ -57,4 +59,38 @@ fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
         .no_proxy()
         .timeout(timeout)
         .build()
+}
+
+#[cfg(test)]
+mod stop_tests {
+    use super::*;
+    use std::{future::Future, task::Poll};
+
+    #[tokio::test(start_paused = true)]
+    async fn rule7_stop_wait_ignores_false_and_wakes_on_true_or_owner_loss() {
+        for close in [false, true] {
+            let (sender, mut receiver) = watch::channel(false);
+            let wait = stopped(&mut receiver);
+            tokio::pin!(wait);
+            assert!(
+                std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx)))
+                    .await
+                    .is_pending()
+            );
+            sender.send(false).expect("receiver is alive");
+            assert!(
+                std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx)))
+                    .await
+                    .is_pending()
+            );
+            if close {
+                drop(sender);
+            } else {
+                sender.send(true).expect("receiver is alive");
+            }
+            tokio::time::timeout(Duration::from_millis(1), wait)
+                .await
+                .expect("stop wakes promptly");
+        }
+    }
 }

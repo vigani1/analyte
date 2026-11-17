@@ -4,16 +4,11 @@ use super::*;
 
 #[tokio::test]
 async fn rule7_service_close_waits_for_store_destruction() -> Result<(), crate::Error> {
-    struct Space {
+    struct Observer {
         entered: Option<tokio::sync::oneshot::Sender<()>>,
         release: std::sync::mpsc::Receiver<()>,
     }
-    impl FreeSpace for Space {
-        fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
-            Ok(u64::MAX)
-        }
-    }
-    impl Drop for Space {
+    impl Drop for Observer {
         fn drop(&mut self) {
             let _ = self.entered.take().expect("one destruction").send(());
             self.release
@@ -33,9 +28,12 @@ async fn rule7_service_close_waits_for_store_destruction() -> Result<(), crate::
             limits.busy_timeout = Duration::from_millis(100);
             limits
         },
-        Box::new(Space {
-            entered: Some(entered),
-            release: released,
+        Box::new(analyte_fixtures::ObservedSpace {
+            space: analyte_fixtures::UnlimitedSpace,
+            observer: Observer {
+                entered: Some(entered),
+                release: released,
+            },
         }),
         1,
         crate::test_startup_deadline()?,

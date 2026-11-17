@@ -7,13 +7,14 @@ pub(super) fn read(
     syntax: &analyte_config::Hl7Syntax,
     mappings: &analyte_config::Mappings,
 ) -> Result<analyte_mapping::Output, Error> {
-    let message = analyte_hl7::Message::parse(payload, syntax.options())?;
+    let message =
+        analyte_hl7::Message::parse(payload, crate::machine::hl7::settings::options(syntax))?;
     Ok(analyte_mapping::hl7::map(
-        &analyte_mapping::hl7::Settings {
+        &crate::machine::hl7::settings::mapping(
             syntax,
             mappings,
-            declarations: &config.effective().machine().deviations,
-        },
+            &config.effective().machine().deviations,
+        ),
         &message,
         input,
     )?)

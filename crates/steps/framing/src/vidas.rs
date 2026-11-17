@@ -356,10 +356,11 @@ impl StreamDecoder {
         }
     }
 }
-impl crate::Decode for StreamDecoder {
-    type Event = Event;
-    type Error = Error;
-    fn push_byte(&mut self, byte: u8) -> Result<Option<Event>, Error> {
+impl StreamDecoder {
+    /// Consumes one byte, returning a complete frame or a specific refusal.
+    /// # Errors
+    /// Reports invalid or overlong input.
+    pub fn push(&mut self, byte: u8) -> Result<Option<Event>, Error> {
         if let Some(decoder) = &mut self.packet {
             return match decoder.push(byte)? {
                 Some(packet) => {
@@ -393,7 +394,10 @@ impl crate::Decode for StreamDecoder {
             Ok(None)
         }
     }
-    fn finish_stream(&mut self) -> Result<Option<Event>, Error> {
+    /// Ends decoding and refuses incomplete evidence.
+    /// # Errors
+    /// Returns the protocol-specific incomplete-frame error.
+    pub fn finish(&mut self) -> Result<Option<Event>, Error> {
         if self.packet.is_some() || self.suffix.is_some() {
             return Err(Error::Incomplete);
         }
@@ -422,13 +426,11 @@ pub const GS: u8 = 0x1d;
 /// RS control byte (BCI Appendix A chapter 3).
 pub const RS: u8 = 0x1e;
 
-impl crate::Decode for Decoder {
-    type Event = Packet;
-    type Error = Error;
-    fn push_byte(&mut self, byte: u8) -> Result<Option<Packet>, Error> {
-        self.push(byte)
-    }
-    fn finish_stream(&mut self) -> Result<Option<Packet>, Error> {
+impl Decoder {
+    /// Ends decoding and refuses incomplete evidence.
+    /// # Errors
+    /// Returns the protocol-specific incomplete-frame error.
+    pub fn finish(&mut self) -> Result<Option<Packet>, Error> {
         if self.raw.is_empty() || matches!(self.state, State::Done) && self.suffix == usize::MAX {
             return Ok(None);
         }
@@ -440,7 +442,6 @@ impl crate::Decode for Decoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Decode;
     use proptest::prelude::*;
 
     fn config(
@@ -518,13 +519,13 @@ mod tests {
             let mut decoder = Decoder::new(c.clone());
             let mut failed = false;
             for byte in damaged {
-                if decoder.push_byte(byte).is_err() {
+                if decoder.push(byte).is_err() {
                     failed = true;
                     break;
                 }
             }
             assert!(failed);
-            assert_eq!(decoder.push_byte(b'A').unwrap_err(), Error::Stopped);
+            assert_eq!(decoder.push(b'A').unwrap_err(), Error::Stopped);
         }
         let mut trailing = raw;
         trailing.push(EOT);
@@ -550,12 +551,12 @@ mod tests {
             let split = split.min(raw.len());
             let mut output = Vec::new();
             for fragment in [&raw[..split], &raw[split..]] {
-                for byte in fragment { if let Some(packet) = decoder.push_byte(*byte).unwrap() { output.push(packet); } }
+                for byte in fragment { if let Some(packet) = decoder.push(*byte).unwrap() { output.push(packet); } }
             }
             prop_assert_eq!(output.len(), 1);
             prop_assert_eq!(&output[0].body, body.as_bytes());
             prop_assert_eq!(&output[0].raw, &raw);
-            prop_assert!(decoder.finish_stream().unwrap().is_none());
+            prop_assert!(decoder.finish().unwrap().is_none());
         }
     }
 }

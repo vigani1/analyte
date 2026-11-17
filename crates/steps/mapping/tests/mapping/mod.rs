@@ -1,4 +1,5 @@
 //! Tests machine field mapping and exact value retention.
+use analyte_config::{Encoding, Escapes, RecordTransport, Stack, SyntaxLimits, Terminator};
 #[path = "../settings.rs"]
 mod settings;
 use analyte_config::{Draft, Validated};
@@ -41,7 +42,7 @@ fn input() -> Input<'static> {
 fn hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error>> {
     let config = config(definition)?;
     let raw = format!("MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\r{body}");
-    let options = config.effective().hl7_options().ok_or("missing options")?;
+    let options = effective_options(config.effective()).ok_or("missing options")?;
     let message = analyte_hl7::Message::parse(raw.as_bytes(), options)?;
     Ok(map_hl7(&settings::hl7_mapping(&config), &message, input())?)
 }
@@ -109,4 +110,60 @@ fn qualified_hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::er
         qualified.push('\r');
     }
     hl7(&qualified, definition)
+}
+
+fn options_from_values(
+    encoding: Encoding,
+    terminator: Terminator,
+    escapes: Escapes,
+    limits: &SyntaxLimits,
+) -> analyte_hl7::Options {
+    analyte_hl7::Options {
+        allow_utf8_in_v231: false,
+        charset: match encoding {
+            Encoding::Ascii => analyte_hl7::Charset::Ascii,
+            Encoding::Latin1 => analyte_hl7::Charset::Latin1,
+            Encoding::Utf8 => analyte_hl7::Charset::Utf8,
+        },
+        terminator: match terminator {
+            Terminator::Cr => analyte_hl7::Terminator::Cr,
+            Terminator::CrLf => analyte_hl7::Terminator::CrLf,
+            Terminator::Lf => analyte_hl7::Terminator::Lf,
+        },
+        escapes: match escapes {
+            Escapes::Reject => analyte_hl7::EscapePolicy::Reject,
+            Escapes::Preserve => analyte_hl7::EscapePolicy::Preserve,
+        },
+        limits: analyte_hl7::Limits {
+            message_bytes: limits.bytes(),
+            segments: limits.records(),
+            fields: limits.fields(),
+            repetitions: limits.repetitions(),
+        },
+    }
+}
+
+fn options(syntax: &analyte_config::Hl7Syntax) -> analyte_hl7::Options {
+    analyte_hl7::Options {
+        allow_utf8_in_v231: syntax.allow_utf8_in_v231(),
+        ..options_from_values(
+            syntax.encoding(),
+            syntax.terminator(),
+            syntax.escapes(),
+            syntax.limits(),
+        )
+    }
+}
+fn effective_options(effective: &analyte_config::Effective) -> Option<analyte_hl7::Options> {
+    match effective.stack() {
+        Stack::Hl7(RecordTransport::Stream(s)) => Some(options(s.settings().syntax())),
+        Stack::Hl7(RecordTransport::Folder(s)) => Some(options(s.settings().syntax())),
+        Stack::Law(s) => Some(options_from_values(
+            Encoding::Utf8,
+            Terminator::Cr,
+            Escapes::Reject,
+            s.settings().limits(),
+        )),
+        Stack::Astm(_) | Stack::Poct(_) | Stack::Vidas(_) | Stack::Autolyser(_) => None,
+    }
 }

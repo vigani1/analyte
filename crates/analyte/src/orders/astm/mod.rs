@@ -44,10 +44,7 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
     {
         return Ok(None);
     }
-    let limits = machine
-        .snapshot
-        .effective()
-        .astm_limits()
+    let limits = crate::machine::astm::settings::limits(machine.snapshot.effective())
         .ok_or_else(|| Error::AstmLimitsMissing)?;
     let messages = analyte_astm::parse(payload, limits)?;
     Ok(

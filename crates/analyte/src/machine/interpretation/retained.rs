@@ -102,8 +102,12 @@ pub(crate) async fn process(
         }
     };
     let parsed = match &profile {
-        Profile::Law(settings) => law::parse_message(&payload, settings.options()),
-        Profile::Hl7(syntax, _) => Message::parse(&payload, syntax.options()),
+        Profile::Law(settings) => {
+            law::parse_message(&payload, crate::machine::law::settings::options(settings))
+        }
+        Profile::Hl7(syntax, _) => {
+            Message::parse(&payload, crate::machine::hl7::settings::options(syntax))
+        }
     };
     let context = Context {
         receipt,
@@ -199,7 +203,8 @@ async fn finish(
     action: Option<Reprocess>,
 ) -> Result<Outcome, Error> {
     let location = context.payload.and_then(|payload| {
-        let options = machine.snapshot.effective().hl7_options()?;
+        let options =
+            crate::machine::hl7::settings::effective_options(machine.snapshot.effective())?;
         crate::machine::hl7::error_location::mapping_location(&mapped, payload, options.terminator)
     });
     let mapping = supplied.unwrap_or_else(|| match mapped {

@@ -6,8 +6,9 @@ use super::connection_input::{self, Input};
 use super::driver::{Context, Effects, Flow};
 use crate::intake;
 mod error;
+pub(crate) mod settings;
 use crate::orders::outcome::Code;
-use analyte_dialog::hl7::{Action, Config, Dialog, Event};
+use analyte_dialog::hl7::{Action, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
@@ -53,18 +54,7 @@ impl<'a, 'm> Host<'a, 'm> {
         settings: &'a analyte_config::Hl7Stack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
-        let mut options = settings.settings().syntax().options();
-        options.limits.message_bytes = options
-            .limits
-            .message_bytes
-            .min(settings.settings().frame_limit());
-        let config = Config::new(
-            options,
-            Duration::from_millis(u64::from(
-                settings.settings().timeouts().receive_timeout_ms(),
-            )),
-            1,
-        )?;
+        let (options, config) = settings::dialog(settings)?;
         let mut dialog = Dialog::new(config, 0);
         let start = Instant::now();
         let wake = None;
@@ -152,7 +142,9 @@ impl<'a, 'm> Host<'a, 'm> {
         if let Some(error) = self.commit_error.take() {
             return Err(match result {
                 Ok(_) => error,
-                Err(effect) => super::custody::effect_failure(Some(error), effect),
+                Err(effect) => {
+                    crate::machine::receive::custody::effect_failure(Some(error), effect)
+                }
             });
         }
         if result? {
@@ -305,7 +297,7 @@ impl<'a, 'm> Host<'a, 'm> {
             };
             let reply = tokio::select! {
                 biased;
-                () = super::stopping(stop) => return Ok(true),
+                () = analyte_sink::stopped(stop) => return Ok(true),
                 result = query.answer(store, machine.machine(), request, &self.dialog, self.start) => result?,
             };
             if let Some(reply) = reply {
@@ -328,7 +320,7 @@ impl<'a, 'm> Host<'a, 'm> {
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
-        match super::custody::store_before_ack(
+        match crate::machine::receive::custody::store_before_ack(
             machine.machine(),
             intake::receive(store, machine, id, raw),
         )
@@ -530,7 +522,7 @@ impl Effects for Host<'_, '_> {
         if let Some(query) = &mut self.queries {
             tokio::select! {
                 biased;
-                () = super::stopping(stop) => return Ok(Flow::Stop),
+                () = analyte_sink::stopped(stop) => return Ok(Flow::Stop),
                 result = query.idle(store, machine, conn, &mut self.dialog, self.start, self.settings) => result?,
             }
         }
@@ -545,12 +537,12 @@ impl Effects for Host<'_, '_> {
         let machine = self.machine;
         let store = self.store;
         let cleanup = self.input_evidence.retain(store, machine).await;
-        super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+        crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         // A cancelled or failed host operation must expose partial input as well.
         let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnected) {
             Ok(actions) => actions,
             Err(error) => {
-                super::custody::retain_cleanup(result, Err(error.into()));
+                crate::machine::receive::custody::retain_cleanup(result, Err(error.into()));
                 Vec::new()
             }
         };
@@ -558,7 +550,10 @@ impl Effects for Host<'_, '_> {
             if let Action::Rejected(error, bytes) = action {
                 let cleanup =
                     intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await;
-                super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+                crate::machine::receive::custody::retain_cleanup(
+                    result,
+                    cleanup.map_err(Into::into),
+                );
             }
         }
         if let Some(query) = &mut self.queries {
@@ -573,7 +568,7 @@ impl Effects for Host<'_, '_> {
                     },
                 )
                 .await;
-            super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+            crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         }
         Ok(())
     }

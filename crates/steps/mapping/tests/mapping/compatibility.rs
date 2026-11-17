@@ -24,7 +24,7 @@ fn hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            config.effective().hl7_options().ok_or("options")?,
+            effective_options(config.effective()).ok_or("options")?,
         )?;
         let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         assert!(output.requires_parking(), "{output:?}");
@@ -65,7 +65,7 @@ fn hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map() -> TestResult {
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            config.effective().hl7_options().ok_or("options")?,
+            effective_options(config.effective()).ok_or("options")?,
         )?;
         assert!(map_hl7(&settings::hl7_mapping(&config), &message, input()).is_err());
         assert_eq!(message.raw(), raw.as_bytes());
@@ -84,7 +84,7 @@ fn law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time() -> TestResult
         let raw = std::str::from_utf8(LAW_RESULT)?.rewrite("|2.5.1|", &format!("|{version}|"));
         let message = analyte_hl7::law::parse_message(
             raw.as_bytes(),
-            config.effective().hl7_options().ok_or("options")?,
+            effective_options(config.effective()).ok_or("options")?,
         )?;
         let results = analyte_hl7::law::Results::new(&message)?;
         let output = analyte_mapping::law::map(settings::law(&config), &results, input())?;
@@ -155,7 +155,7 @@ fn hl7_2_5_1_s2_8_1_2_legacy_results_map_stable_fields_and_keep_uncertain_extens
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            config.effective().hl7_options().ok_or("options")?,
+            effective_options(config.effective()).ok_or("options")?,
         )?;
         let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         let part = first(&output)?;
@@ -227,7 +227,7 @@ fn hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning() -> TestResult {
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            config.effective().hl7_options().ok_or("options")?,
+            effective_options(config.effective()).ok_or("options")?,
         )?;
         let result = map_hl7(&settings::hl7_mapping(&config), &message, input());
         if extra.is_empty() {

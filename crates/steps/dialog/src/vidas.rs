@@ -2,7 +2,6 @@
 //! Host owns byte journaling, storage and cancellation; the dialog owns timers.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
-use analyte_framing::Decode as _;
 use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, Packet};
 use analyte_vidas::syntax::{Kind, Message};
 use std::time::Duration;
@@ -239,7 +238,7 @@ impl Dialog {
             if self.timers.inter_byte.is_some() {
                 self.timers.inter_byte = now.checked_add(self.policy.inter_byte);
             }
-            match self.decoder.push_byte(byte)? {
+            match self.decoder.push(byte)? {
                 Some(analyte_framing::vidas::Event::Packet(packet)) => Event::Packet(packet),
                 Some(analyte_framing::vidas::Event::Control(control)) => Event::Control(control),
                 None => return Ok(Vec::new()),

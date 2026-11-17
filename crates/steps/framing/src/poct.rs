@@ -143,10 +143,11 @@ fn incomplete(error: &quick_xml::Error, tail: &[u8]) -> bool {
     }
 }
 
-impl crate::Decode for Decoder {
-    type Event = Vec<u8>;
-    type Error = Error;
-    fn push_byte(&mut self, byte: u8) -> Result<Option<Vec<u8>>, Error> {
+impl Decoder {
+    /// Consumes one byte, returning a complete frame or a specific refusal.
+    /// # Errors
+    /// Reports invalid or overlong input.
+    pub fn push(&mut self, byte: u8) -> Result<Option<Vec<u8>>, Error> {
         if self.stream.len() >= self.maximum {
             return Err(Error::Limit);
         }
@@ -171,7 +172,10 @@ impl crate::Decode for Decoder {
             }
         }
     }
-    fn finish_stream(&mut self) -> Result<Option<Vec<u8>>, Error> {
+    /// Ends decoding and refuses incomplete evidence.
+    /// # Errors
+    /// Returns the protocol-specific incomplete-frame error.
+    pub fn finish(&mut self) -> Result<Option<Vec<u8>>, Error> {
         if self.stream.is_empty() {
             Ok(None)
         } else {

@@ -12,7 +12,7 @@ fn rule7_overlimit_repetitions_and_parts_fail_before_partial_success() -> TestRe
     );
     let message = analyte_hl7::Message::parse(
         raw.as_bytes(),
-        config.effective().hl7_options().ok_or("options")?,
+        effective_options(config.effective()).ok_or("options")?,
     )?;
     assert!(matches!(
         map_hl7(&settings::hl7_mapping(&config), &message, input()),
@@ -28,7 +28,7 @@ fn rule7_overlimit_repetitions_and_parts_fail_before_partial_success() -> TestRe
     }
     let message = analyte_hl7::Message::parse(
         raw.as_bytes(),
-        config.effective().hl7_options().ok_or("options")?,
+        effective_options(config.effective()).ok_or("options")?,
     )?;
     assert!(matches!(
         map_hl7(&settings::hl7_mapping(&config), &message, input()),
@@ -45,7 +45,7 @@ fn hl7_231_oru_and_declared_ts_precision_are_kept() -> TestResult {
     let config = config(&HL7_CONFIG.rewrite("v251", "v231"))?;
     let raw = b"MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|P|2.3.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F|||20261115123000^D\r";
     let message =
-        analyte_hl7::Message::parse(raw, config.effective().hl7_options().ok_or("options")?)?;
+        analyte_hl7::Message::parse(raw, effective_options(config.effective()).ok_or("options")?)?;
     let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
     let time = first(&output)?
         .times
@@ -63,7 +63,7 @@ proptest! {
     #[test]
     fn rule7_arbitrary_wire_inputs_that_parse_never_panic(raw in prop::collection::vec(any::<u8>(), 0..2048)) {
         let hl7_config = config(HL7_CONFIG).map_err(|e| TestCaseError::fail(e.to_string()))?;
-        if let Some(options) = hl7_config.effective().hl7_options()
+        if let Some(options) = effective_options(hl7_config.effective())
             && let Ok(message) = analyte_hl7::Message::parse(&raw, options)
             && let Ok(output) = map_hl7(&analyte_mapping::hl7::Settings { syntax: settings::hl7(&hl7_config).0, mappings: settings::hl7(&hl7_config).1, declarations: &hl7_config.effective().machine().deviations }, &message, input()) {
             for result in &output.results {
@@ -123,7 +123,7 @@ fn rule7_expanded_parent_context_has_a_separate_budget() -> TestResult {
     }
     let message = analyte_hl7::Message::parse(
         raw.as_bytes(),
-        config.effective().hl7_options().ok_or("options")?,
+        effective_options(config.effective()).ok_or("options")?,
     )?;
     assert!(matches!(
         map_hl7(&settings::hl7_mapping(&config), &message, input()),
@@ -187,7 +187,7 @@ fn lis02_6_12_hl7_251_msh11_unknown_processing_still_refused() -> TestResult {
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            definition.effective().hl7_options().ok_or("options")?,
+            effective_options(definition.effective()).ok_or("options")?,
         )?;
         assert!(matches!(
             map_hl7(

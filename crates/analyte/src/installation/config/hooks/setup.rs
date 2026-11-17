@@ -103,7 +103,7 @@ impl Program {
     pub fn pause_astm_committed_for_test(
         &mut self,
         id: &str,
-        hook: std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>,
+        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
     ) -> Result<(), Error> {
         let machine = self.test_machine_mut(id)?;
         if machine.listener.is_none()

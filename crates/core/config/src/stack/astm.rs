@@ -33,7 +33,7 @@ pub struct AstmOrders {
 pub struct AstmStack {
     /// Shared link, resource and interpretation settings.
     pub(super) settings: super::StackSettings<StreamTransport, AstmSyntax, Mappings>,
-    record_boundaries: analyte_framing::astm::RecordBoundaries,
+    packed_records: bool,
     /// Required LIS01 checksum policy.
     pub(super) checksum_hex: ChecksumHex,
     /// Required simultaneous-ENQ policy.
@@ -59,20 +59,6 @@ pub(super) fn astm_orders(orders: &Orders, path: &str) -> Result<AstmOrders, Err
             .clone()
             .ok_or_else(|| invalid(path, "orders.astm", "ASTM orders require O-record layout"))?,
     })
-}
-
-impl AstmSyntax {
-    /// Supplies the LIS02 parser with the configured resource ceilings.
-    #[must_use]
-    pub fn parser_limits(&self) -> analyte_astm::Limits {
-        analyte_astm::Limits {
-            bytes: self.limits.bytes,
-            record: self.limits.record_bytes,
-            fields: self.limits.fields,
-            repeats: self.limits.repetitions,
-            components: self.limits.components,
-        }
-    }
 }
 
 impl AstmSyntax {
@@ -112,18 +98,10 @@ impl AstmOrders {
 }
 
 impl AstmStack {
-    /// Returns the inbound record policy selected only by a validated departure.
+    /// Whether a validated departure allows packed records in one frame.
     #[must_use]
-    pub fn record_boundaries(&self) -> analyte_framing::astm::RecordBoundaries {
-        self.record_boundaries
-    }
-    /// Returns the selected digit-case policy without relaxing checksum correctness.
-    #[must_use]
-    pub fn checksum_policy(&self) -> analyte_framing::astm::HexPolicy {
-        match self.checksum_hex {
-            ChecksumHex::Strict => analyte_framing::astm::HexPolicy::Strict,
-            ChecksumHex::AcceptLowercase => analyte_framing::astm::HexPolicy::AcceptLowercase,
-        }
+    pub fn packed_records(&self) -> bool {
+        self.packed_records
     }
     /// Checksum spelling accepted by the framer.
     #[must_use]
@@ -158,15 +136,10 @@ pub(super) fn build(
                 .clone()
                 .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
         },
-        record_boundaries: if machine
+        packed_records: machine
             .deviations
             .iter()
-            .any(|d| matches!(d, MachineDeparture::AstmPackedRecordsInFrame(_)))
-        {
-            analyte_framing::astm::RecordBoundaries::Packed
-        } else {
-            analyte_framing::astm::RecordBoundaries::Separate
-        },
+            .any(|d| matches!(d, MachineDeparture::AstmPackedRecordsInFrame(_))),
         checksum_hex: machine.framing.checksum_hex.ok_or_else(|| {
             invalid(
                 path,

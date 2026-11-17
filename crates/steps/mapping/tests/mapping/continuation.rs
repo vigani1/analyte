@@ -20,7 +20,7 @@ fn hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result() -> T
             );
             let message = analyte_hl7::Message::parse(
                 raw.as_bytes(),
-                config.effective().hl7_options().ok_or("options")?,
+                effective_options(config.effective()).ok_or("options")?,
             )?;
             assert!(matches!(
                 map_hl7(&settings::hl7_mapping(&config), &message, input()),
@@ -49,7 +49,7 @@ fn hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused() -> TestRe
         let raw = format!("MSH|^~\\&|SYN||||20261116||{kind}|MSG|P|2.5.1\r{body}");
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            cfg.effective().hl7_options().ok_or("options")?,
+            effective_options(cfg.effective()).ok_or("options")?,
         )?;
         assert!(
             map_hl7(
@@ -82,7 +82,7 @@ fn hl7_251_s7_4_3_17_collection_range_is_not_ts_precision() -> TestResult {
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            cfg.effective().hl7_options().ok_or("options")?,
+            effective_options(cfg.effective()).ok_or("options")?,
         )?;
         assert!(matches!(
             map_hl7(
@@ -152,7 +152,7 @@ fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResu
             );
             let message = analyte_hl7::Message::parse(
                 raw.as_bytes(),
-                cfg.effective().hl7_options().ok_or("options")?,
+                effective_options(cfg.effective()).ok_or("options")?,
             )?;
             let output = map_hl7(&settings::hl7_mapping(&cfg), &message, input())?;
             let must_park = value != "F" && (field != 22 || matches!(edition, "v282" | "v291"));
@@ -173,7 +173,7 @@ fn hl7_251_s2_10_1_unnegotiated_sequence_number_is_refused() -> TestResult {
     let cfg = config(HL7_CONFIG)?;
     let raw=b"MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|2.5.1|1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message =
-        analyte_hl7::Message::parse(raw, cfg.effective().hl7_options().ok_or("options")?)?;
+        analyte_hl7::Message::parse(raw, effective_options(cfg.effective()).ok_or("options")?)?;
     assert!(matches!(
         map_hl7(
             &analyte_mapping::hl7::Settings {

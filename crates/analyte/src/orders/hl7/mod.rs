@@ -541,11 +541,9 @@ mod tests {
             .ok_or("second reservation")?;
         let database = rusqlite::Connection::open(temp.path().join("cleanup-failure.db"))?;
         database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
-        let options = machine
-            .snapshot
-            .effective()
-            .hl7_options()
-            .ok_or("options")?;
+        let options =
+            crate::machine::hl7::settings::effective_options(machine.snapshot.effective())
+                .ok_or("options")?;
         let mut connection = Hl7OrderLink::new(options)?;
         connection.owner = owner;
         connection.active = vec![failed, good];
@@ -605,11 +603,9 @@ mod tests {
         };
         let owner = Identifier::new("original-connection")?;
         reserve_original_connection(&store, &key, &owner).await?;
-        let options = machine
-            .snapshot
-            .effective()
-            .hl7_options()
-            .ok_or("options")?;
+        let options =
+            crate::machine::hl7::settings::effective_options(machine.snapshot.effective())
+                .ok_or("options")?;
         let mut other = Hl7OrderLink::new(options)?;
         other.reserving.push(key.clone());
         other

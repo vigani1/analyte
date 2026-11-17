@@ -107,7 +107,7 @@ fn packed(
     use analyte_framing::astm::{Decoder, Event, Limit};
     let mut decoder = Decoder::new(
         Limit::new(settings.settings().frame_limit())?,
-        settings.checksum_policy(),
+        crate::machine::astm::settings::checksum_policy(settings),
     );
     let mut record = 1usize;
     let mut spans = Vec::new();
@@ -132,7 +132,7 @@ fn packed(
                 );
                 if ends_record {
                     if nonstandard || continued_packing {
-                        if entries.len() == 256 {
+                        if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
                             return Err(Error::AppliedDepartureEvidenceLimit);
                         }
                         entries.push(AppliedDeparture {
@@ -195,7 +195,7 @@ fn compatibility(
             | MachineDeparture::AstmHostContentionPriority(_) => (false, ""),
         };
         if exercised {
-            if entries.len() == 256 {
+            if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
                 return Err(Error::AppliedDepartureEvidenceLimit);
             }
             entries.push(AppliedDeparture {
@@ -224,7 +224,7 @@ fn lowercase_checksum(machine: &Machine, raw: &[u8]) -> Result<bool, Error> {
     };
     let mut decoder = Decoder::new(
         Limit::new(settings.settings().frame_limit())?,
-        settings.checksum_policy(),
+        crate::machine::astm::settings::checksum_policy(settings),
     );
     for byte in raw {
         if let Some(Event::Frame(frame)) = decoder.push(*byte)

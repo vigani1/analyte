@@ -4,7 +4,7 @@ pub(crate) mod policy;
 pub(crate) mod retained;
 #[cfg(test)]
 use crate::Error;
-pub(super) use crate::reading::poct_limits;
+pub(super) use crate::machine::poct::settings::limits as poct_limits;
 use crate::{deadline, installation::config::Machine, intake};
 use analyte_config::Stack;
 #[cfg(test)]
@@ -79,7 +79,7 @@ fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Err
     let Stack::Vidas(settings) = machine.snapshot.effective().stack() else {
         return Err("test requires VIDAS settings".into());
     };
-    Ok(crate::reading::vidas_config(settings)?)
+    Ok(crate::machine::vidas::settings::framing(settings)?)
 }
 
 /// Failures reading retained receipt context, separate from a stored parked interpretation.

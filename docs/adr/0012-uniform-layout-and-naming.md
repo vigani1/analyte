@@ -177,14 +177,17 @@ A new crate joins one kind, or the plan gets a new kind through this ADR.
 
 ### Shared layer contracts
 
-All six protocol stacks use `analyte_framing::Decode`: `push_byte(byte)` and
-`finish_stream()` return `Result<Option<Event>, Error>`. Events are consumed
-immediately so one call never accumulates an unbounded list. Rejected evidence
-can be an event (ASTM/MLLP) or a refusal (VIDAS/POCT); hosts journal bytes before
-feeding either. LAW reuses HL7 MLLP's decoder and implementation. Existing
-single-protocol byte and host-buffer operations are low-level primitives; the
-trait is the common integration contract. Do not mix POCT's host-buffer scanning
-and trait-owned buffering on one decoder instance. Timers stay in the dialog.
+All six stacks decode one byte at a time and consume events immediately, so
+one call never accumulates an unbounded list. Concrete decoders expose one byte
+entry point, `push(byte)`, and one end-of-stream operation, `finish()`.
+ASTM/MLLP return `Option<Event>`; fallible decoders return
+`Result<Option<Event>, Error>`. Autolyser `finish()` always returns the partial
+frame so its bytes can be stored.
+Rejected evidence can be an event or a refusal; hosts journal bytes before
+feeding either. LAW uses HL7 MLLP directly. A forwarding trait adds no generic
+production boundary, so these concrete operations are the integration contract.
+Do not mix POCT's host-buffer scanning and stream-owned buffering on one decoder
+instance. Timers stay in the dialog.
 
 Every dialog has one event entry: `step(now, event) -> Result<Vec<Action>, Error>`.
 Invalid monotonic time is rejected before mutation; protocol refusals and host

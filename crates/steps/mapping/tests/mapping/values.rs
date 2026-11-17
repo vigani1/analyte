@@ -36,8 +36,10 @@ fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
         let mut raw = format!("MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1||||||{charset}\rOBR|1||001\rOBX|1|TX|SYN^Synthetic^synthetic||").into_bytes();
         raw.extend_from_slice(bytes);
         raw.extend_from_slice(b"||||||F\r");
-        let message =
-            analyte_hl7::Message::parse(&raw, config.effective().hl7_options().ok_or("options")?)?;
+        let message = analyte_hl7::Message::parse(
+            &raw,
+            effective_options(config.effective()).ok_or("options")?,
+        )?;
         let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         let value = first(&output)?.values.as_slice().first().ok_or("value")?;
         assert_eq!(value.original.as_str(), "caf\u{e9}\\F\\end");
@@ -289,7 +291,7 @@ fn plan6_training_and_debug_never_deliver_for_both_protocols() -> TestResult {
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            config.effective().hl7_options().ok_or("options")?,
+            effective_options(config.effective()).ok_or("options")?,
         )?;
         let b = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         for output in [a, b] {
@@ -451,7 +453,7 @@ fn hl7_7_3_7_oul_specimen_order_orc_and_result_ownership() -> TestResult {
     let config = config(HL7_CONFIG)?;
     let raw = b"MSH|^~\\&|SYN||||202611151200||OUL^R22^OUL_R22|MSG|P|2.5.1\rPID|1\rSPM|1|specimen\rSAC|||container\rOBR|1||001\rORC|RE\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message =
-        analyte_hl7::Message::parse(raw, config.effective().hl7_options().ok_or("options")?)?;
+        analyte_hl7::Message::parse(raw, effective_options(config.effective()).ok_or("options")?)?;
     let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
     assert_eq!(
         first(&output)?

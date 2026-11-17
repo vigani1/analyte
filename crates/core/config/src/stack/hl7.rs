@@ -2,7 +2,7 @@
 use super::{
     DialogTimeouts, Edition, Encoding, Error, Escapes, Hl7OrderQuery, Hl7Send, Mappings,
     OrderQuery, OrderTables, Orders, Responsibility, Syntax, SyntaxLimits, TcpTransport,
-    Terminator, hl7_options, invalid, limits, order_tables, tcp,
+    Terminator, invalid, limits, order_tables, tcp,
 };
 use crate::ParsedMachine;
 use analyte_model::Identifier;
@@ -117,17 +117,6 @@ pub(super) fn hl7_orders(orders: &Orders, path: &str) -> Result<Hl7Orders, Error
             })
             .transpose()?,
     })
-}
-
-impl Hl7Syntax {
-    /// Supplies all negotiated HL7 parser options without optional required fields.
-    #[must_use]
-    pub fn options(&self) -> analyte_hl7::Options {
-        analyte_hl7::Options {
-            allow_utf8_in_v231: self.allow_utf8_in_v231,
-            ..hl7_options(self.encoding, self.terminator, self.escapes, &self.limits)
-        }
-    }
 }
 
 impl Hl7Syntax {
