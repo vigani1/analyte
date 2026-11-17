@@ -376,3 +376,6 @@ impl Report {
         Self::parse(&out, control.is_some())
     }
 }
+
+#[cfg(test)]
+mod tests;

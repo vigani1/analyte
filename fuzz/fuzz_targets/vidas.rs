@@ -5,8 +5,9 @@ use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
     use analyte_framing::vidas::*;
     use analyte_vidas::syntax::{Message, SampleLimit};
+    for mode in [Mode::Literal, Mode::Alternate] {
     let Ok(config) = Config::new(
-        Mode::Literal,
+        mode,
         80,
         1920,
         &[],
@@ -32,6 +33,7 @@ fuzz_target!(|data: &[u8]| {
                 }
             }
         }
+    }
     }
     if let Ok(text) = std::str::from_utf8(data) {
         for limit in [SampleLimit::Twelve, SampleLimit::Seventeen] {
