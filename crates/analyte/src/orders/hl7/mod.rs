@@ -56,7 +56,7 @@ impl Connection {
         }
         if let Some(exchange) = send::next(
             store,
-            machine,
+            machine.machine(),
             &self.owner,
             self.options,
             &mut self.cursor,
@@ -64,7 +64,7 @@ impl Connection {
         )
         .await?
         {
-            let wait = crate::orders::settings::hl7(machine)
+            let wait = crate::orders::settings::hl7(machine.machine())
                 .and_then(|orders| orders.send().as_ref())
                 .ok_or(Error::Hl7SendSettingsMissing)?
                 .settings()

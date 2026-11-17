@@ -18,7 +18,7 @@ impl ConnectionState {
                 .checked_add(ms(1000))
                 .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
             if let Some(reserved) =
-                crate::orders::sending::next(store, machine, &mut self.cursor).await?
+                crate::orders::sending::next(store, machine.machine(), &mut self.cursor).await?
             {
                 self.active = Some(reserved.order);
                 let analyte_mapping::MachineOrder::Vidas(requests) = reserved.payload else {

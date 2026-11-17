@@ -34,7 +34,7 @@ pub use reprocess::Reprocess;
 pub use delivery_operator::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 14;
+pub const SCHEMA_VERSION: i64 = 15;
 pub use machine_orders::{
     ItemDecision, ItemOutcome, MachineOrder, MachineOrderFilter, MachineOrderItem, MachineOrderKey,
     OrderItems, OrderReservation, ReservationPreflight, ReserveOptions, SendRefusal,

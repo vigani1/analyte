@@ -1,8 +1,20 @@
 //! Validates exact HTTPS webhook URLs without exposing them in diagnostics.
+#[cfg(any(test, feature = "test-hooks"))]
 use crate::Error;
 
 /// Config-owned HTTPS URL, retained as an alias for existing callers.
 pub type WebhookUrl = analyte_config::HttpsUrl;
+
+/// Sender construction failed before any request could be sent.
+#[derive(Debug, thiserror::Error)]
+pub enum WebhookSetupError {
+    /// Timeout is zero or exceeds five minutes.
+    #[error("webhook timeout must be within 1ns..=300s")]
+    TimeoutBounds,
+    /// Verified TLS client initialization failed; the original cause is retained.
+    #[error("webhook TLS initialization failed")]
+    Tls(#[from] reqwest::Error),
+}
 
 /// Host HTTPS sender with the same TLS, redirect, proxy and retry policy as app delivery.
 /// No Debug implementation can reveal endpoint URLs or credentials.
@@ -14,9 +26,9 @@ impl WebhookSender {
     /// Creates a bounded sender without opening a connection.
     /// # Errors
     /// Rejects invalid timeouts or failure to initialize verified TLS.
-    pub fn new(url: &WebhookUrl, timeout: std::time::Duration) -> Result<Self, Error> {
+    pub fn new(url: &WebhookUrl, timeout: std::time::Duration) -> Result<Self, WebhookSetupError> {
         if timeout.is_zero() || timeout > std::time::Duration::from_secs(300) {
-            return Err(Error::Configuration);
+            return Err(WebhookSetupError::TimeoutBounds);
         }
         Ok(Self {
             client: crate::http_client(timeout)?,
@@ -63,7 +75,7 @@ impl WebhookSender {
     /// Refuses non-loopback hosts, credentials, queries and fragments.
     #[cfg(any(test, feature = "test-hooks"))]
     pub fn for_loopback_test(url: &str, timeout: std::time::Duration) -> Result<Self, Error> {
-        let url = analyte_config::loopback_test_url(url).map_err(|_| Error::Configuration)?;
+        let url = analyte_config::loopback_test_url(url).map_err(Error::UrlPolicy)?;
         if timeout.is_zero() || timeout > std::time::Duration::from_secs(300) {
             return Err(Error::Configuration);
         }

@@ -58,7 +58,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             establish: Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
             frame: Duration::from_millis(u64::from(settings.timeouts().send_timeout_ms())),
             receive: Duration::from_millis(u64::from(settings.timeouts().receive_timeout_ms())),
-            commit: super::custody::budget(machine),
+            commit: super::custody::budget(machine.machine()),
             ..Timers::default()
         };
         let config = Config::new(
@@ -115,7 +115,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 },
                 answer = async {
                     match self.pending.as_mut() {
-                        Some(query) => query.finish(self.machine).await,
+                        Some(query) => query.finish(self.machine.machine()).await,
                         None => std::future::pending().await,
                     }
                 }, if self.pending.is_some() => {
@@ -128,7 +128,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             let bytes = match event {
                 Some(Input::Opened { session }) => {
                     tracing::info!(
-                        machine = self.machine.id.as_str(),
+                        machine = self.machine.machine().id.as_str(),
                         session,
                         "ASTM connection opened"
                     );
@@ -173,14 +173,15 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.next_order_poll = Instant::now()
                 .checked_add(Duration::from_secs(1))
                 .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
-            crate::orders::sending::next(self.store, self.machine, &mut self.order_cursor).await?
+            crate::orders::sending::next(self.store, self.machine.machine(), &mut self.order_cursor)
+                .await?
         } else {
             None
         };
         let events = if let Some(reserved) = outgoing {
             self.active_orders.push(reserved.order);
             vec![Event::Send(crate::orders::astm::envelope(
-                self.machine,
+                self.machine.machine(),
                 vec![reserved.payload.record()?.to_vec()],
                 analyte_astm::OrderTermination::Normal,
             ))]
@@ -192,12 +193,12 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 .response_deadline
                 .is_some_and(|until| Instant::now() >= until)
             {
-                self.response = crate::orders::astm::failure(self.machine);
+                self.response = crate::orders::astm::failure(self.machine.machine());
             }
             match self.response.take() {
                 Some(reply) => match crate::orders::astm::reserve_query(
                     self.store,
-                    self.machine,
+                    self.machine.machine(),
                     reply,
                     self.response_deadline.unwrap_or_else(Instant::now),
                     &mut self.active_orders,
@@ -231,19 +232,19 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.query_started = Some(Instant::now());
             if self.pending.is_some() || self.response.is_some() {
                 self.pending = None;
-                self.response = crate::orders::astm::failure(self.machine);
+                self.response = crate::orders::astm::failure(self.machine.machine());
                 self.response_deadline = None;
             }
             let expected = settings
                 .frame_limit()
-                .checked_add(self.machine.snapshot.canonical().len())
+                .checked_add(self.machine.machine().snapshot.canonical().len())
                 .ok_or_else(|| Error::AdmissionSizeOverflow)?;
             let capacity = self
                 .store
                 .request(deadline()?, move |s| s.admission(expected))
                 .await;
             if let Err(error) = &capacity {
-                tracing::error!(machine = self.machine.id.as_str(), error_kind = %error, "storage admission refused");
+                tracing::error!(machine = self.machine.machine().id.as_str(), error_kind = %error, "storage admission refused");
             }
             actions.extend(
                 self.dialog
@@ -346,9 +347,15 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         }
         self.raw.extend_from_slice(&bytes);
         let provenance = analyte_store::FrameProvenance {
-            machine: self.machine.id.clone(),
-            driver: intake::driver(self.machine)?,
-            config: self.machine.snapshot.canonical().as_bytes().to_vec(),
+            machine: self.machine.machine().id.clone(),
+            driver: intake::driver(self.machine.machine())?,
+            config: self
+                .machine
+                .machine()
+                .snapshot
+                .canonical()
+                .as_bytes()
+                .to_vec(),
         };
         let sequence = analyte_store::FrameSequence::new(
             number.value(),
@@ -356,7 +363,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         )
         .map_err(analyte_store::Error::from)?;
         let committed = super::custody::store_before_ack(
-            self.machine,
+            self.machine.machine(),
             self.store.request(deadline()?, move |s| {
                 s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
             }),
@@ -364,7 +371,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         .await;
         #[cfg(feature = "test-hooks")]
         if committed.is_ok()
-            && let Some(hook) = &self.machine.hooks.astm_committed
+            && let Some(hook) = &self.machine.machine().hooks.astm_committed
         {
             hook.pause(stop).await.map_err(Error::TestHook)?;
         }
@@ -385,9 +392,9 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 let id = ReceiptId::new();
                 intake::receive(self.store, self.machine, id, std::mem::take(&mut self.raw))
                     .await?;
-                match crate::orders::astm::request(self.machine, &self.payload)? {
+                match crate::orders::astm::request(self.machine.machine(), &self.payload)? {
                     None => {
-                        intake::interpret(self.store, self.machine, id).await?;
+                        intake::interpret(self.store, self.machine.machine(), id).await?;
                     }
                     Some(Request::Cancel) => {
                         self.pending = None;
@@ -396,18 +403,18 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     }
                     Some(Request::Unsupported) => {
                         self.pending = None;
-                        self.response = crate::orders::astm::failure(self.machine);
+                        self.response = crate::orders::astm::failure(self.machine.machine());
                         self.response_deadline = None;
                     }
                     Some(Request::Orders(samples)) => {
                         if self.pending.is_some() || self.response.is_some() {
                             self.pending = None;
-                            self.response = crate::orders::astm::failure(self.machine);
+                            self.response = crate::orders::astm::failure(self.machine.machine());
                             self.response_deadline = None;
                         } else {
                             self.pending = Some(Pending::new(
                                 self.store,
-                                self.machine,
+                                self.machine.machine(),
                                 samples,
                                 self.query_started.unwrap_or_else(Instant::now),
                             )?);

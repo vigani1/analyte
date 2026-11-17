@@ -64,7 +64,7 @@ impl Destination {
         secrets: Identifier,
         limits: Limits,
     ) -> Result<Self, Error> {
-        let base = analyte_config::HttpsUrl::parse(base).map_err(|_| Error::Configuration)?;
+        let base = analyte_config::HttpsUrl::parse(base).map_err(Error::UrlPolicy)?;
         Self::from_url(id, &base, secrets, limits)
     }
 
@@ -93,11 +93,11 @@ impl Destination {
     ) -> Result<Self, Error> {
         let base = if base.starts_with("https://") {
             analyte_config::HttpsUrl::parse(base)
-                .map_err(|_| Error::Configuration)?
+                .map_err(Error::UrlPolicy)?
                 .url()
                 .clone()
         } else {
-            analyte_config::loopback_test_url(base).map_err(|_| Error::Configuration)?
+            analyte_config::loopback_test_url(base).map_err(Error::UrlPolicy)?
         };
         Self::from_parsed(id, base, secrets, limits)
     }
@@ -137,7 +137,9 @@ impl Destination {
     }
 
     pub(crate) fn url(&self, path: &str) -> Result<reqwest::Url, Error> {
-        self.base.join(path).map_err(|_| Error::Configuration)
+        self.base
+            .join(path)
+            .map_err(|cause| Error::UrlJoin(Box::new(cause)))
     }
 
     pub(crate) fn credentials(&self, source: &dyn SecretsSource) -> Result<Credentials, Error> {

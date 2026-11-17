@@ -90,32 +90,32 @@ pub(super) fn file_stack(
 }
 
 impl FileAstmStack {
-    /// Returns the validated operation timeout ms setting.
+    /// Upper bound in milliseconds for a transport operation.
     #[must_use]
     pub fn operation_timeout_ms(&self) -> u32 {
         self.operation_timeout_ms
     }
-    /// Returns the validated frame limit setting.
+    /// Maximum retained frame size before framing refuses more bytes.
     #[must_use]
     pub fn frame_limit(&self) -> usize {
         self.frame_limit
     }
-    /// Returns the validated timeouts setting.
+    /// Bounded protocol waits used by the connection state machine.
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         &self.timeouts
     }
-    /// Returns the validated syntax setting.
+    /// Record grammar settings applied after framing.
     #[must_use]
     pub fn syntax(&self) -> &AstmSyntax {
         &self.syntax
     }
-    /// Returns the validated mappings setting.
+    /// Explicit source-to-common-model mappings; unknown codes are not guessed.
     #[must_use]
     pub fn mappings(&self) -> &Mappings {
         &self.mappings
     }
-    /// Returns the validated orders setting.
+    /// Validated order policy used before encoding commands.
     #[must_use]
     pub fn orders(&self) -> &Option<AstmOrders> {
         &self.orders
@@ -123,32 +123,32 @@ impl FileAstmStack {
 }
 
 impl FileHl7Stack {
-    /// Returns the validated operation timeout ms setting.
+    /// Upper bound in milliseconds for a transport operation.
     #[must_use]
     pub fn operation_timeout_ms(&self) -> u32 {
         self.operation_timeout_ms
     }
-    /// Returns the validated frame limit setting.
+    /// Maximum retained frame size before framing refuses more bytes.
     #[must_use]
     pub fn frame_limit(&self) -> usize {
         self.frame_limit
     }
-    /// Returns the validated timeouts setting.
+    /// Bounded protocol waits used by the connection state machine.
     #[must_use]
     pub fn timeouts(&self) -> &DialogTimeouts {
         &self.timeouts
     }
-    /// Returns the validated syntax setting.
+    /// Record grammar settings applied after framing.
     #[must_use]
     pub fn syntax(&self) -> &Hl7Syntax {
         &self.syntax
     }
-    /// Returns the validated mappings setting.
+    /// Explicit source-to-common-model mappings; unknown codes are not guessed.
     #[must_use]
     pub fn mappings(&self) -> &Mappings {
         &self.mappings
     }
-    /// Returns the validated orders setting.
+    /// Validated order policy used before encoding commands.
     #[must_use]
     pub fn orders(&self) -> &Option<Hl7Orders> {
         &self.orders

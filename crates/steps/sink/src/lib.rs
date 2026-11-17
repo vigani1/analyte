@@ -5,7 +5,7 @@ mod delivery;
 mod destination;
 mod polling;
 mod webhook;
-pub use webhook::{WebhookSender, WebhookUrl};
+pub use webhook::{WebhookSender, WebhookSetupError, WebhookUrl};
 
 pub use delivery::{DeliveryOutcome, Worker, encode_delivery, encode_order_event};
 pub use destination::{Credentials, Destination, Limits, SecretsSource};
@@ -20,6 +20,35 @@ pub enum Error {
     /// Invalid destination URL or operational limits.
     #[error("invalid destination configuration")]
     Configuration,
+    /// Delivery identity is not an RFC `UUIDv7`.
+    #[error("invalid delivery identity")]
+    Identity(#[from] analyte_model::InvalidUuid),
+    /// Delivery identity text cannot be decoded as a UUID.
+    #[error("invalid delivery UUID text")]
+    Uuid(#[from] uuid::Error),
+    /// Order identity exceeds the store text bounds.
+    #[error("invalid order identity")]
+    OrderId(#[from] analyte_model::TextError),
+    /// Retry duration cannot fit the timestamp representation.
+    #[error("retry duration exceeds timestamp range")]
+    Integer(#[from] std::num::TryFromIntError),
+    /// Retry timestamp addition exceeded its representable range.
+    #[error("retry timestamp overflow: {now} + {delay}")]
+    RetryOverflow {
+        /// Unix timestamp before scheduling the retry.
+        now: i64,
+        /// Requested retry delay in seconds.
+        delay: i64,
+    },
+    /// Outgoing immutable bytes exceed the contract ceiling.
+    #[error("outgoing payload exceeds document limit")]
+    PayloadTooLarge,
+    /// URL violates the shared endpoint policy; retains the precise rejection reason.
+    #[error("destination URL policy rejected: {0}")]
+    UrlPolicy(&'static str),
+    /// URL joining failed; the parser cause remains available without logging the URL.
+    #[error("destination URL path rejected")]
+    UrlJoin(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// Host could not resolve named credentials.
     #[error("named credentials unavailable")]
     Secrets,

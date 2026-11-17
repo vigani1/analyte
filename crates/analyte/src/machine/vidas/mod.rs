@@ -56,7 +56,7 @@ impl ConnectionState {
         settings: &analyte_config::VidasStack,
     ) -> Result<Self, Error> {
         let installed = &settings.policy();
-        let config = crate::reading::vidas_config(&machine.snapshot)?;
+        let config = crate::reading::vidas_config(&machine.machine().snapshot)?;
         let policy = DialogConfig {
             ack: ms(installed.acknowledgment_ms),
             inter_byte: ms(installed.interbyte_ms),
@@ -247,7 +247,7 @@ async fn process(
             Action::Store(packet) => {
                 let id = ReceiptId::new();
                 let operation = store_upload(store, machine, id, &packet.raw);
-                match custody::store_before_ack(machine, operation).await {
+                match custody::store_before_ack(machine.machine(), operation).await {
                     Ok(()) => {
                         // The dialog expired its own commit deadline before accepting completion.
                         state
@@ -322,6 +322,6 @@ async fn store_upload(
     raw: &[u8],
 ) -> Result<(), intake::Error> {
     intake::receive(store, machine, id, raw.to_vec()).await?;
-    intake::interpret(store, machine, id).await?;
+    intake::interpret(store, machine.machine(), id).await?;
     Ok(())
 }

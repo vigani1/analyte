@@ -115,7 +115,7 @@ impl ConnectionState {
             let bytes = match event {
                 Some(Input::Opened { session }) => {
                     tracing::info!(
-                        machine = machine.id.as_str(),
+                        machine = machine.machine().id.as_str(),
                         session,
                         "HL7 connection opened"
                     );
@@ -138,7 +138,7 @@ impl ConnectionState {
             }
             self.input_evidence.complete();
             #[cfg(feature = "test-hooks")]
-            if has_bytes && let Some(hook) = &machine.hooks.input_processed {
+            if has_bytes && let Some(hook) = &machine.machine().hooks.input_processed {
                 hook.pause(stop).await.map_err(Error::TestHook)?;
             }
             if let Some(query) = &mut self.queries {
@@ -336,7 +336,7 @@ impl ConnectionState {
         if !edition_matches {
             intake::failed_reading(
                 store,
-                machine,
+                machine.machine(),
                 id,
                 "HL7 query edition differs from configured edition",
             )
@@ -354,7 +354,7 @@ impl ConnectionState {
             let reply = tokio::select! {
                 biased;
                 () = super::stopping(stop) => return Ok(true),
-                result = query.answer(store, machine, request, &self.dialog, self.start) => result?,
+                result = query.answer(store, machine.machine(), request, &self.dialog, self.start) => result?,
             };
             if let Some(reply) = reply {
                 actions.extend(
@@ -376,8 +376,11 @@ impl ConnectionState {
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
-        match super::custody::store_before_ack(machine, intake::receive(store, machine, id, raw))
-            .await
+        match super::custody::store_before_ack(
+            machine.machine(),
+            intake::receive(store, machine, id, raw),
+        )
+        .await
         {
             Ok(_) => {
                 if self.pending.len() >= 2 {
@@ -411,7 +414,8 @@ impl ConnectionState {
             .pending
             .remove(&(token.epoch(), token.ordinal()))
             .ok_or_else(|| Error::ReceiptCorrelationMissing)?;
-        let (outcome, location) = intake::interpret_with_location(store, machine, id).await?;
+        let (outcome, location) =
+            intake::interpret_with_location(store, machine.machine(), id).await?;
         let event = if matches!(outcome, intake::InterpretationOutcome::Accepted) {
             Event::Interpreted(token)
         } else {
@@ -444,7 +448,7 @@ impl ConnectionState {
                 .remove(&(token.epoch(), token.ordinal()))
                 .ok_or(Error::DisplayReceiptAbsent)?;
             if let Some(detail) = detail {
-                intake::failed_reading(store, machine, id, &detail).await?;
+                intake::failed_reading(store, machine.machine(), id, &detail).await?;
             }
         }
         self.queries

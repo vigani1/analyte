@@ -21,17 +21,17 @@ pub(super) fn order_tables(orders: &Orders) -> OrderTables {
 }
 
 impl OrderTables {
-    /// Returns the validated tests setting.
+    /// Explicit application-to-instrument test-code mapping.
     #[must_use]
     pub fn tests(&self) -> &Vec<OutboundTest> {
         &self.tests
     }
-    /// Returns the validated specimen types setting.
+    /// Explicit specimen-code mappings; unknown specimens remain unresolved.
     #[must_use]
     pub fn specimen_types(&self) -> &Option<Vec<OutboundSpecimen>> {
         &self.specimen_types
     }
-    /// Returns the validated priorities setting.
+    /// Explicit order-priority mapping.
     #[must_use]
     pub fn priorities(&self) -> &Vec<OrderPriority> {
         &self.priorities

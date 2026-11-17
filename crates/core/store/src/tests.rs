@@ -1,4 +1,4 @@
-//! Tests src behavior with synthetic fixtures.
+//! Checks durable custody, immutable evidence and recovery using temporary stores.
 use crate::test_support::*;
 use crate::*;
 

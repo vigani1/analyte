@@ -15,49 +15,49 @@ pub(crate) use vidas::framing as vidas_config;
 /// Specific failures from each owned reading layer; callers retain and park the receipt.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Preserves the `Astm` boundary failure.
+    /// ASTM record syntax was rejected.
     #[error(transparent)]
     Astm(#[from] analyte_astm::Error),
-    /// Preserves the `Hl7` boundary failure.
+    /// HL7 segment syntax was rejected.
     #[error(transparent)]
     Hl7(#[from] analyte_hl7::Error),
-    /// Preserves the `Law` boundary failure.
+    /// LAW profile requirements were violated.
     #[error(transparent)]
     Law(#[from] analyte_hl7::law::Failure),
-    /// Preserves the `Poct` boundary failure.
+    /// POCT message grammar was rejected.
     #[error(transparent)]
     Poct(#[from] analyte_poct::MessageError),
-    /// Preserves the `Vidas` boundary failure.
+    /// VIDAS record syntax was rejected.
     #[error(transparent)]
     Vidas(#[from] analyte_vidas::syntax::Error),
-    /// Preserves the `Autolyser` boundary failure.
+    /// Autolyser record syntax was rejected.
     #[error(transparent)]
     Autolyser(#[from] analyte_autolyser::syntax::Error),
-    /// Preserves the `AstmFrame` boundary failure.
+    /// ASTM frame integrity or size checks failed.
     #[error(transparent)]
     AstmFrame(#[from] analyte_framing::astm::Error),
-    /// Preserves the `AstmReceipt` boundary failure.
+    /// Retained ASTM frames could not form a complete message.
     #[error(transparent)]
     AstmReceipt(#[from] analyte_framing::astm::ReceiptError),
-    /// Preserves the `MllpFrame` boundary failure.
+    /// MLLP envelope framing failed.
     #[error(transparent)]
     MllpFrame(#[from] analyte_framing::hl7::Error),
-    /// Preserves the `MllpReceipt` boundary failure.
+    /// Retained MLLP bytes could not form a complete message.
     #[error(transparent)]
     MllpReceipt(#[from] analyte_framing::hl7::ReceiptError),
-    /// Preserves the `VidasFrame` boundary failure.
+    /// VIDAS envelope integrity checks failed.
     #[error(transparent)]
     VidasFrame(#[from] analyte_framing::vidas::Error),
-    /// Preserves the `AutolyserFrame` boundary failure.
+    /// Autolyser envelope integrity checks failed.
     #[error(transparent)]
     AutolyserFrame(#[from] analyte_framing::autolyser::Error),
-    /// Preserves the `Encoding` boundary failure.
+    /// Receipt text is not valid UTF-8.
     #[error(transparent)]
     Encoding(#[from] std::str::Utf8Error),
-    /// Preserves the `Mapping` boundary failure.
+    /// Configured field extraction failed.
     #[error(transparent)]
     Mapping(#[from] analyte_mapping::Error),
-    /// Preserves the `Evidence` boundary failure.
+    /// Result identity or value evidence could not be constructed.
     #[error(transparent)]
     Evidence(#[from] analyte_mapping::ResultMappingError),
     /// Required receipt or configuration context is unavailable.

@@ -1,4 +1,4 @@
-//! Tests src behavior with synthetic fixtures.
+//! Exercises HTTP delivery, immutable identities and bounded order polling against local synthetic peers.
 //! Kept whole: Shared receiver, proxy and store fixtures keep delivery scenarios on the same controlled HTTP harness.
 use super::*;
 use analyte_fixtures as guard;
@@ -241,9 +241,9 @@ impl Peer {
 
 fn destination(url: &str) -> Result<Destination, Error> {
     Destination::for_loopback_test(
-        Identifier::new("app").map_err(|_| Error::Configuration)?,
+        Identifier::new("app").map_err(Error::OrderId)?,
         url,
-        Identifier::new("secrets").map_err(|_| Error::Configuration)?,
+        Identifier::new("secrets").map_err(Error::OrderId)?,
         limits(),
     )
 }

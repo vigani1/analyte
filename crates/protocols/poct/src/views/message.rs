@@ -271,7 +271,7 @@ impl Message {
         })
     }
 
-    /// Returns the validated common header.
+    /// Borrows the checked common header.
     #[must_use]
     pub fn header(&self) -> &Header {
         &self.header

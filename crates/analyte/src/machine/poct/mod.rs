@@ -295,13 +295,14 @@ async fn process(
                 }
                 Action::Store { ticket, message } => {
                     let operation = store_message(store, machine, &message);
-                    let outcome = match custody::store_before_ack(machine, operation).await {
-                        Ok(outcome) => outcome,
-                        Err(error) => {
-                            failure = Some(Error::from(error));
-                            CommitOutcome::Failed
-                        }
-                    };
+                    let outcome =
+                        match custody::store_before_ack(machine.machine(), operation).await {
+                            Ok(outcome) => outcome,
+                            Err(error) => {
+                                failure = Some(Error::from(error));
+                                CommitOutcome::Failed
+                            }
+                        };
                     actions.extend(
                         dialog.step(start.elapsed(), Event::Committed { ticket, outcome })?,
                     );
@@ -384,7 +385,7 @@ async fn store_message(
     intake::receive(store, machine, id, message.document().raw().to_vec()).await?;
     match message.body() {
         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
-            intake::interpret(store, machine, id).await?;
+            intake::interpret(store, machine.machine(), id).await?;
             // This fresh receipt has exactly one interpretation. POCT promises
             // readable custody even when mapped findings require operator review.
             let readable = store
@@ -407,7 +408,7 @@ async fn store_message(
         Body::Hello { .. } => {
             // Mark the complete, parsed Hello as connection context. Transport
             // journal fragments are also receipts, but are not interpreted Hellos.
-            intake::remember_hello(store, machine, id).await?;
+            intake::remember_hello(store, machine.machine(), id).await?;
         }
         Body::Status { .. }
         | Body::EndTopic(_)

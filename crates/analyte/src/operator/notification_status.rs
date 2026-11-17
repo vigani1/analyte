@@ -8,7 +8,7 @@ pub(crate) fn describe(status: &AlertEndpointStatus, now: i64) -> String {
         .and_then(|time| now.checked_sub(time))
         .filter(|age| *age >= 0);
     format!(
-        "alert_endpoint={} pending_count={} oldest_age_seconds={} last_success={} next_attempt={} exhausted={} queue_full={} failed={}",
+        "alert_endpoint={} pending_count={} oldest_age_seconds={} last_success={} next_attempt={} exhausted={} queue_full={} failed={} last_failure={}",
         status.endpoint.as_str(),
         status.pending,
         known(age),
@@ -16,7 +16,8 @@ pub(crate) fn describe(status: &AlertEndpointStatus, now: i64) -> String {
         known(status.next_attempt),
         status.exhausted,
         status.queue_full,
-        status.failed
+        status.failed,
+        status.last_failure.as_deref().unwrap_or("none")
     )
 }
 pub(crate) async fn snapshot(
@@ -60,6 +61,7 @@ mod tests {
             exhausted: 1,
             queue_full: true,
             failed: 2,
+            last_failure: Some("setup".into()),
         };
         let text = describe(&state, 120);
         for value in [
@@ -71,6 +73,7 @@ mod tests {
             "exhausted=1",
             "queue_full=true",
             "failed=2",
+            "last_failure=setup",
         ] {
             assert!(text.contains(value));
         }

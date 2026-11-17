@@ -1,4 +1,4 @@
-//! Tests src behavior with synthetic fixtures.
+//! Checks configuration rejection and immutable validated settings using synthetic inputs.
 use super::*;
 const SITE: &str = include_str!("../examples/site.toml");
 const ASTM: &str = include_str!("../examples/astm.toml");

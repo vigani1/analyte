@@ -31,7 +31,7 @@ pub fn encode_delivery(
     let IdentityStatus::Resolved(identity) = &result.identity else {
         return Err(Error::RequiresParking);
     };
-    let id = DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| Error::Configuration)?;
+    let id = DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(Error::Identity)?;
     let document = analyte_contract::Delivery::from_result(result, receipt, id, created_at)?;
     Ok(analyte_store::Delivery {
         id,
@@ -54,14 +54,11 @@ pub fn encode_order_event(
 ) -> Result<analyte_store::OrderEventDelivery, Error> {
     let payload = serde_json::to_vec(event)?;
     if payload.len() > analyte_contract::MAX_DOCUMENT_BYTES {
-        return Err(Error::ResponseTooLarge);
+        return Err(Error::PayloadTooLarge);
     }
     let fields = event.fields();
-    let id = uuid::Uuid::parse_str(fields.delivery_id.as_str())
-        .ok()
-        .and_then(|id| DeliveryId::try_from(id).ok())
-        .ok_or(Error::Configuration)?;
-    let order_id = Identifier::new(fields.order_id.as_str()).map_err(|_| Error::Configuration)?;
+    let id = DeliveryId::try_from(uuid::Uuid::parse_str(fields.delivery_id.as_str())?)?;
+    let order_id = Identifier::new(fields.order_id.as_str())?;
     Ok(analyte_store::OrderEventDelivery {
         id,
         destination,
@@ -203,10 +200,10 @@ impl<'a> Worker<'a> {
                 DeliveryOutcome::Paused,
             ),
             ResponseAction::Retry { after } => {
-                let delay = backoff(destination, claim.earlier_attempts, after);
+                let delay = i64::try_from(backoff(destination, claim.earlier_attempts, after))?;
                 let next = now
-                    .checked_add(i64::try_from(delay).map_err(|_| Error::Configuration)?)
-                    .ok_or(Error::Configuration)?;
+                    .checked_add(delay)
+                    .ok_or(Error::RetryOverflow { now, delay })?;
                 (Attempt::RetryAt(next), DeliveryOutcome::RetryAt(next))
             }
         };

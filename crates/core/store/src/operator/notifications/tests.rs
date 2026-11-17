@@ -307,3 +307,59 @@ fn adr0014_resolution_never_overtakes_failed_raise_even_in_same_second() -> Test
     assert_eq!(decoded(&resolution)?["event"], "resolved");
     Ok(())
 }
+
+#[test]
+fn adr0014_v14_upgrade_preserves_alert_bytes_and_progress() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("v14.db");
+    drop(open(&path)?);
+    let db = Connection::open(&path)?;
+    // Version 15 changes only this constraint; restore the v14 table before
+    // seeding evidence and exercising the normal ordered upgrade.
+    let previous = include_str!("../../upkeep/current-schema.sql")
+        .lines()
+        .find(|line| line.starts_with("CREATE TABLE alert_progress("))
+        .ok_or("missing alert progress schema")?
+        .replace(
+            "'network','credentials','http','interrupted','setup','tls_setup'",
+            "'network','credentials','http','interrupted'",
+        );
+    db.execute_batch("DROP TABLE alert_progress;")?;
+    db.execute_batch(&previous)?;
+    db.execute_batch(
+        "CREATE INDEX alert_progress_due ON alert_progress(exhausted,next_attempt,event);",
+    )?;
+    db.execute_batch(
+        "PRAGMA user_version=14;
+        INSERT INTO alert_endpoints VALUES('relay',7,0,90);
+        INSERT INTO alert_events VALUES('00000000000000000000000000000001','relay','condition',1,'raised',100,x'7b7d');
+        INSERT INTO alert_progress VALUES('00000000000000000000000000000001',2,130,0,'network');",
+    )?;
+    drop(db);
+    let mut store = open(&path)?;
+    assert_eq!(
+        store
+            .db
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        15
+    );
+    let endpoint = Identifier::new("relay")?;
+    let status = store.alert_endpoint_status()?;
+    assert_eq!(status[0].last_failure.as_deref(), Some("network"));
+    assert_eq!(status[0].last_success, Some(90));
+    assert_eq!(status[0].next_attempt, Some(130));
+    let event = store
+        .claim_alert_attempt(&endpoint, 130, 5, 5, 300)?
+        .ok_or("event lost")?;
+    assert_eq!(event.id().as_str(), "00000000000000000000000000000001");
+    assert_eq!(event.payload(), b"{}");
+    assert_eq!(event.attempts(), 3);
+    for failure in [AlertFailure::Setup, AlertFailure::Tls] {
+        store.fail_alert_attempt(event.id(), failure)?;
+    }
+    assert_eq!(
+        store.alert_endpoint_status()?[0].last_failure.as_deref(),
+        Some("tls_setup")
+    );
+    Ok(())
+}
