@@ -206,46 +206,33 @@ impl Effects for Host<'_, '_> {
 }
 
 impl<'a, 'm> Host<'a, 'm> {
+    /// Stores a report before the dialog may acknowledge it. A failed store is
+    /// kept until the dialog's own refusal has run; it never ends the queue early.
     async fn store_report(
         &mut self,
         token: analyte_dialog::autolyser::StoreId,
         raw: Vec<u8>,
         actions: &mut VecDeque<Action>,
-        machine: &intake::ConnectionEvidence<'_>,
-        store: &Handle,
-    ) -> Option<Error> {
+        failures: &mut Failures<Error>,
+    ) -> Result<(), Error> {
         let id = ReceiptId::new();
         let stored = receive::custody::store_before_ack(
-            machine.machine(),
-            intake::receive(store, machine, id, raw),
+            self.machine.machine(),
+            intake::receive(self.store, self.machine, id, raw),
         )
         .await;
-        match stored {
+        let event = match stored {
             Ok(time) => {
                 self.receipt = Some((id, time));
-                match self.dialog.step(self.start.elapsed(), Event::Stored(token)) {
-                    Ok(next) => actions.extend(next),
-                    Err(error) => return Some(error.into()),
-                }
+                Event::Stored(token)
             }
             Err(error) => {
-                match self
-                    .dialog
-                    .step(self.start.elapsed(), Event::StoreFailed(token))
-                {
-                    Ok(next) => actions.extend(next),
-                    Err(dialog_error) => {
-                        return Some(receive::custody::effect_failure(
-                            Some(error.into()),
-                            dialog_error.into(),
-                        ));
-                    }
-                }
-                return Some(error.into());
+                failures.keep(error.into());
+                Event::StoreFailed(token)
             }
-        }
-
-        None
+        };
+        actions.extend(self.dialog.step(self.start.elapsed(), event)?);
+        Ok(())
     }
     async fn interpret_report(
         &mut self,
@@ -283,12 +270,8 @@ impl Host<'_, '_> {
                         receive::custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
                     }
                     Action::Store(token, raw) => {
-                        if let Some(error) = self
-                            .store_report(token, raw, &mut actions, machine, store)
-                            .await
-                        {
-                            failures.keep(error);
-                        }
+                        self.store_report(token, raw, &mut actions, &mut failures)
+                            .await?;
                     }
                     Action::Report(_) => {
                         self.interpret_report(machine, store).await?;
