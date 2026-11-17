@@ -27,7 +27,7 @@ fn feed(d: &mut Dialog, raw: &[u8]) -> Result<Vec<Action>, Error> {
     }
     Ok(actions)
 }
-fn receipt(actions: &[Action]) -> Result<ReceiptId, Box<dyn std::error::Error>> {
+fn receipt(actions: &[Action]) -> Result<ExchangeId, Box<dyn std::error::Error>> {
     actions
         .iter()
         .find_map(|action| {
@@ -122,7 +122,7 @@ fn law_tf2b_3_29_adr0003_ack_choice_follows_durable_interpretation() -> TestResu
         let bytes = actions
             .iter()
             .find_map(|a| {
-                if let Action::Write(bytes, _) = a {
+                if let Action::Write(analyte_dialog::Write { bytes, .. }) = a {
                     Some(bytes)
                 } else {
                     None
@@ -175,7 +175,11 @@ fn law_tf2b_b6_independent_link_does_not_ack_unrelated_transactions() -> TestRes
     )?;
     let id = receipt(&actions)?;
     let actions = d.step(Duration::ZERO, Event::Stored(id))?;
-    assert!(actions.iter().any(|a| matches!(a, Action::Failed(_, _))));
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a, Action::Parked(_, Failure::NotOrl)))
+    );
     assert!(
         actions
             .iter()
@@ -249,7 +253,7 @@ fn law_tf2b_b6_3_28_work_budget_begins_after_issuance_and_never_resends() -> Tes
     );
     let mut d = dialog(Link::WorkResponse)?;
     let actions = d.step(Duration::ZERO, Event::Send(&work, Duration::from_secs(2)))?;
-    assert!(actions.iter().any(|a| matches!(a, Action::Write(bytes, until) if Some(work.raw()) == analyte_framing::hl7::payload(bytes) && *until == Duration::from_secs(2))));
+    assert!(actions.iter().any(|a| matches!(a, Action::Write(analyte_dialog::Write { bytes, until: Some(until) }) if Some(work.raw()) == analyte_framing::hl7::payload(bytes) && *until == Duration::from_secs(2))));
     let actions = d.step(Duration::from_secs(1), Event::Written)?;
     assert!(actions.iter().any(|a| matches!(a, Action::WorkIssued)));
     d.step(
@@ -294,10 +298,10 @@ fn law_tf2b_3_27_3_28_availability_precedes_same_link_followup() -> TestResult {
         Duration::ZERO,
         Event::Reply(id, &reply, Some(Duration::from_secs(3))),
     )?;
-    assert!(actions.iter().any(|a| matches!(a, Action::Write(bytes, _) if analyte_framing::hl7::payload(bytes) == Some(rsp.raw()))));
+    assert!(actions.iter().any(|a| matches!(a, Action::Write(analyte_dialog::Write { bytes, .. }) if analyte_framing::hl7::payload(bytes) == Some(rsp.raw()))));
     assert!(!actions.iter().any(|a| matches!(a, Action::WorkIssued)));
     let actions = d.step(Duration::from_secs(1), Event::Written)?;
-    assert!(actions.iter().any(|a| matches!(a, Action::Write(bytes, _) if analyte_framing::hl7::payload(bytes) == Some(work.raw()))));
+    assert!(actions.iter().any(|a| matches!(a, Action::Write(analyte_dialog::Write { bytes, .. }) if analyte_framing::hl7::payload(bytes) == Some(work.raw()))));
     let actions = d.step(Duration::from_secs(2), Event::Written)?;
     assert!(actions.iter().any(|a| matches!(a, Action::WorkIssued)));
     Ok(())

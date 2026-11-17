@@ -13,21 +13,7 @@ use orders::Orders;
 pub use orders::{DisplayReply, ReplyPart};
 mod evidence;
 
-/// Connection-scoped host request identity. The host must supply a unique epoch after restart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReceiptId(u64, u64);
-impl ReceiptId {
-    /// Returns the host-selected connection incarnation for journaling.
-    #[must_use]
-    pub fn epoch(self) -> u64 {
-        self.0
-    }
-    /// Returns the unique request ordinal within this incarnation.
-    #[must_use]
-    pub fn ordinal(self) -> u64 {
-        self.1
-    }
-}
+pub use crate::ExchangeId;
 
 /// Validated resource and deadline configuration.
 #[derive(Debug, Clone, Copy)]
@@ -110,15 +96,15 @@ pub enum Event<'a> {
     /// Next received byte.
     Byte(u8),
     /// Durable commit succeeded.
-    Stored(ReceiptId),
+    Stored(ExchangeId),
     /// Durable commit failed; responsibility was not accepted.
-    StoreFailed(ReceiptId),
+    StoreFailed(ExchangeId),
     /// Interpretation succeeded under the agreed profile.
-    Interpreted(ReceiptId),
+    Interpreted(ExchangeId),
     /// Interpretation failed, with structured location and a rejection/content-error choice.
-    NotInterpretable(ReceiptId, AckError<'a>, bool),
+    NotInterpretable(ExchangeId, AckError<'a>, AckChoice),
     /// Fresh response metadata for the requested response phase.
-    Respond(ReceiptId, Response<'a>),
+    Respond(ExchangeId, Response<'a>),
     /// Explicit outgoing message; never retried automatically.
     Send(&'a [u8]),
     /// Reply prepared only after lookup and any required durable reservations.
@@ -135,13 +121,13 @@ pub enum Event<'a> {
 #[derive(Debug)]
 pub enum Action {
     /// Commit exact MLLP block, including framing, with driver/config versions.
-    Store(ReceiptId, Vec<u8>),
+    Store(ExchangeId, Vec<u8>),
     /// Interpret exact payload only after durable commit.
-    Interpret(ReceiptId, Vec<u8>),
+    Interpret(ExchangeId, Vec<u8>),
     /// Supply fresh response metadata; code identifies the exchange phase.
-    ResponseNeeded(ReceiptId, AckCode),
+    ResponseNeeded(ExchangeId, AckCode),
     /// Issue these framed bytes promptly.
-    Write(Vec<u8>),
+    Write(crate::Write),
     /// Framing evidence to park.
     Rejected(mllp::Error, Vec<u8>),
     /// Unparseable or refused complete block to park.
@@ -151,7 +137,7 @@ pub enum Action {
     /// Host event refused without losing earlier effects.
     Refused(Error),
     /// Host phase expired; late replies must be reconciled by the host.
-    TimedOut(ReceiptId),
+    TimedOut(ExchangeId),
     /// Peer explicitly committed the message; application processing is still pending.
     CommitAccepted(Vec<u8>),
     /// Sender outcome, correlated to its original MSH-10.
@@ -159,11 +145,11 @@ pub enum Action {
     /// Unsolicited or mismatched acknowledgment retained for investigation.
     Unmatched(Vec<u8>),
     /// A late routed receipt was retained after its exchange had already timed out.
-    ReceiptRetained(ReceiptId),
+    ReceiptRetained(ExchangeId),
     /// Durable query ready for host cache lookup; `started` is the first-byte time.
     Query {
         /// Committed receipt correlation.
-        receipt: ReceiptId,
+        receipt: ExchangeId,
         /// Parsed message preserving original bytes.
         message: Message,
         /// First-byte time relative to this connection clock.
@@ -174,7 +160,7 @@ pub enum Action {
     /// Durable unsolicited-order response ready for retained-work reconciliation.
     OrderResponse {
         /// Committed receipt correlation.
-        receipt: ReceiptId,
+        receipt: ExchangeId,
         /// Parsed message preserving original bytes.
         message: Message,
     },
@@ -183,7 +169,7 @@ pub enum Action {
     /// DSR application ACK decision, made only after its raw receipt was committed.
     DisplayOutcome {
         /// Committed ACK receipt, absent for timeout.
-        receipt: Option<ReceiptId>,
+        receipt: Option<ExchangeId>,
         /// True only for a correlated application AA.
         accepted: bool,
         /// Stable nonclinical outcome reason.
@@ -295,7 +281,7 @@ enum Phase {
 }
 #[derive(Debug)]
 struct Pending {
-    id: ReceiptId,
+    id: ExchangeId,
     message: Message,
     phase: Phase,
     responsibility: Responsibility,
@@ -311,7 +297,7 @@ pub struct Dialog {
     next: u64,
     decoder: mllp::Decoder,
     pending: Option<Pending>,
-    malformed: Option<(ReceiptId, Vec<u8>, Error)>,
+    malformed: Option<(ExchangeId, Vec<u8>, Error)>,
     queue: VecDeque<(Vec<u8>, Duration)>,
     sending: Option<Sending>,
     error: Option<OwnedError>,
@@ -410,7 +396,7 @@ impl Dialog {
                 }
             }
         };
-        let wire = mllp::encode(raw, self.config.limit)?;
+        let wire = crate::Write::encode(raw, self.config.limit, None)?;
         out.push(Action::Write(wire));
         if let Some(waiting) = waiting {
             self.sending = Some(Sending { id, waiting });
@@ -420,7 +406,7 @@ impl Dialog {
         Ok(())
     }
 
-    fn committed(&mut self, id: ReceiptId, out: &mut Vec<Action>) -> Result<(), Error> {
+    fn committed(&mut self, id: ExchangeId, out: &mut Vec<Action>) -> Result<(), Error> {
         if self.complete_order_commit(id, out)? {
             return Ok(());
         }
@@ -444,7 +430,7 @@ impl Dialog {
         Ok(())
     }
 
-    fn commit_failed(&mut self, id: ReceiptId, out: &mut Vec<Action>) -> Result<(), Error> {
+    fn commit_failed(&mut self, id: ExchangeId, out: &mut Vec<Action>) -> Result<(), Error> {
         if self
             .orders
             .as_mut()
@@ -470,7 +456,7 @@ impl Dialog {
 
     fn respond(
         &mut self,
-        id: ReceiptId,
+        id: ExchangeId,
         response: Response<'_>,
         out: &mut Vec<Action>,
     ) -> Result<(), Error> {
@@ -488,9 +474,10 @@ impl Dialog {
             error,
             self.config.options,
         )? {
-            out.push(Action::Write(mllp::encode(
+            out.push(Action::Write(crate::Write::encode(
                 message.raw(),
                 self.config.limit,
+                None,
             )?));
         }
         pending.codes.pop_front();
@@ -543,7 +530,13 @@ impl Dialog {
                 {
                     return Err(Error::Stale);
                 }
-                self.finish_host(id, false, reject, Some(error), out)?;
+                self.finish_host(
+                    id,
+                    false,
+                    matches!(reject, AckChoice::Reject),
+                    Some(error),
+                    out,
+                )?;
             }
             Event::Respond(id, response) => {
                 self.respond(id, response, out)?;
@@ -568,7 +561,7 @@ impl Dialog {
 
     fn finish_host(
         &mut self,
-        id: ReceiptId,
+        id: ExchangeId,
         success: bool,
         reject: bool,
         error: Option<AckError<'_>>,
@@ -656,7 +649,7 @@ impl Dialog {
                     return;
                 }
                 if let Some(next) = self.next.checked_add(1) {
-                    let id = ReceiptId(self.epoch, self.next);
+                    let id = ExchangeId(self.epoch, self.next);
                     self.next = next;
                     self.pending = Some(Pending {
                         id,
@@ -673,7 +666,7 @@ impl Dialog {
             }
             Err(error) => {
                 if let Some(next) = self.next.checked_add(1) {
-                    let id = ReceiptId(self.epoch, self.next);
+                    let id = ExchangeId(self.epoch, self.next);
                     self.next = next;
                     out.push(Action::Store(id, raw.clone()));
                     self.malformed = Some((id, raw, error));
@@ -720,7 +713,7 @@ impl Dialog {
         out.push(Action::Unmatched(raw.to_vec()));
     }
 
-    fn complete_malformed(&mut self, id: ReceiptId, out: &mut Vec<Action>) -> Result<bool, Error> {
+    fn complete_malformed(&mut self, id: ExchangeId, out: &mut Vec<Action>) -> Result<bool, Error> {
         if self
             .malformed
             .as_ref()
@@ -767,4 +760,13 @@ impl Dialog {
         }
         self.frame_started = None;
     }
+}
+
+/// Selects the negative application acknowledgment without an unnamed flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AckChoice {
+    /// Refuse the transaction.
+    Reject,
+    /// Report a content error after custody.
+    ContentError,
 }

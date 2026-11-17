@@ -1,4 +1,4 @@
-﻿//! Distinguishes order input, deadlines, storage and settlement failures while retaining their causes.
+//! Distinguishes order input, deadlines, storage and settlement failures while retaining their causes.
 /// Failures looking up, reserving, rendering or settling machine orders.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderError {
