@@ -76,7 +76,7 @@ pub(crate) async fn active(store: &Handle) -> Result<Vec<AlertState>, Error> {
         };
         cursor = serde_json::to_string(&last.key)?;
         if alerts.len().saturating_add(page.len()) > 4096 {
-            return Err(Error::ActiveAlertSnapshotExceeds4096Rows);
+            return Err(Error::AlertSnapshotTooLarge);
         }
         alerts.extend(page);
     }
@@ -137,7 +137,7 @@ pub(crate) async fn run(
         }
         tokio::select! {
             biased;
-            _ = stop.changed() => return Ok(()),
+            () = analyte_sink::stopped(&mut stop) => return Ok(()),
             result = evaluate(&store, &policies, &destinations, jiff::Timestamp::now().as_second()) => result?,
         }
     }

@@ -183,7 +183,7 @@ pub enum Problem {
     /// Populated source status contradicts an enabled final-only guarantee.
     DepartureConflict,
     /// Version 1 cannot carry the provenance of departure-derived final status.
-    DepartureDerivedStatusRequiresContract,
+    DerivedStatusContract,
 
     /// Source value does not fit the configured test expectation.
     ValueKindMismatch {

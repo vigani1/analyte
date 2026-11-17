@@ -12,6 +12,8 @@ use std::{
 use thiserror::Error;
 use tokio::sync::mpsc;
 
+mod deadline;
+pub use deadline::DeadlineKind;
 mod evidence;
 pub mod folder;
 pub mod recording;
@@ -59,7 +61,7 @@ pub enum Error {
     Offline,
     /// An operation exceeded its deadline.
     #[error("deadline elapsed during {0}")]
-    Deadline(&'static str),
+    Deadline(DeadlineKind),
     /// An I/O failure retains the endpoint and original error.
     #[error("{operation} at {endpoint}: {source}")]
     Io {
@@ -75,6 +77,12 @@ pub enum Error {
 /// Nonclinical reasons carried on the ordered event stream.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reason {
+    /// Queue or operation bounds were invalid.
+    InvalidLimits,
+    /// A write exceeded the transport byte limit.
+    OversizedWrite,
+    /// The connection was not open.
+    Offline,
     /// Peer ended the stream.
     Disconnect,
     /// Host requested shutdown.
@@ -93,7 +101,7 @@ pub enum Reason {
     /// Server refused an excess connection.
     LimitReached,
     /// An operation deadline elapsed.
-    Deadline(&'static str),
+    Deadline(DeadlineKind),
 }
 
 impl Error {
@@ -108,13 +116,11 @@ impl Error {
                 operation,
                 kind: source.kind(),
             },
-            Self::Deadline(operation) => Reason::Deadline(operation),
+            Self::Deadline(operation) => Reason::Deadline(*operation),
             Self::ConsumerClosed => Reason::Cancelled,
-            Self::InvalidLimits | Self::OversizedWrite | Self::Offline => Reason::Io {
-                endpoint: "transport".into(),
-                operation: "validation",
-                kind: io::ErrorKind::InvalidInput,
-            },
+            Self::InvalidLimits => Reason::InvalidLimits,
+            Self::OversizedWrite => Reason::OversizedWrite,
+            Self::Offline => Reason::Offline,
         }
     }
 }
@@ -215,7 +221,7 @@ impl Connection {
         match until {
             Some(until) => tokio::time::timeout_at(until, write)
                 .await
-                .map_err(|_| Error::Deadline("write all"))?,
+                .map_err(|_| Error::Deadline(DeadlineKind::WriteAll))?,
             None => write.await,
         }
     }
@@ -232,7 +238,7 @@ impl Connection {
     pub async fn receive(&mut self) -> Result<Option<Event>, Error> {
         let event = tokio::time::timeout(self.limits.deadline, self.events.recv())
             .await
-            .map_err(|_| Error::Deadline("receive"))?;
+            .map_err(|_| Error::Deadline(DeadlineKind::Receive))?;
         match &event {
             Some(Event::Opened { session }) => self.observed_session = *session,
             Some(Event::Closed(_)) | None => self.observed_session = 0,
@@ -258,7 +264,7 @@ impl Connection {
             self.writes.send(Write { session, bytes }),
         )
         .await
-        .map_err(|_| Error::Deadline("queue write"))?
+        .map_err(|_| Error::Deadline(DeadlineKind::QueueWrite))?
         .map_err(|_| Error::ConsumerClosed)
     }
 }
@@ -370,7 +376,7 @@ impl IoSide {
     async fn send(&self, event: Event) -> Result<(), Error> {
         tokio::time::timeout(self.limits.deadline, self.events.send(event))
             .await
-            .map_err(|_| Error::Deadline("event backpressure"))?
+            .map_err(|_| Error::Deadline(DeadlineKind::EventBackpressure))?
             .map_err(|_| Error::ConsumerClosed)
     }
 
@@ -548,7 +554,7 @@ mod tests {
         let until = tokio::time::Instant::now() + Duration::from_millis(20);
         assert!(matches!(
             dialog.write_all(&bytes, Some(until)).await,
-            Err(Error::Deadline("write all"))
+            Err(Error::Deadline(DeadlineKind::WriteAll))
         ));
         let prefix = side.writes.try_recv().map_err(|_| Error::ConsumerClosed)?;
         assert_eq!(Some(prefix.bytes.as_slice()), bytes.get(..CHUNK_LIMIT));

@@ -1,9 +1,10 @@
 //! Constructs validated FILE protocol settings.
+use super::RecordKind;
 use super::{
     AstmOrders, AstmSyntax, DialogTimeouts, Error, Hl7Orders, Hl7Syntax, Mappings, RecordTransport,
     Stack, astm_orders, astm_syntax, hl7_orders, hl7_syntax, invalid,
 };
-use crate::{ParsedMachine, StackChoice};
+use crate::ParsedMachine;
 
 /// Watched-folder records without any stream framing or acknowledgment policy.
 #[derive(Debug, Clone)]
@@ -28,8 +29,8 @@ pub(super) fn file_stack(
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<Stack, Error> {
-    Ok(match machine.choice() {
-        StackChoice::FileAstm => Stack::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
+    Ok(match machine.choice().file_record_kind() {
+        Some(RecordKind::Astm) => Stack::Astm(RecordTransport::Folder(Box::new(FileAstmStack {
             settings: super::StackSettings {
                 transport: machine.transport.operation_timeout_ms,
                 frame_limit: machine.framing.limit,
@@ -46,7 +47,7 @@ pub(super) fn file_stack(
                 .map(|o| astm_orders(o, path))
                 .transpose()?,
         }))),
-        StackChoice::FileHl7 => Stack::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
+        Some(RecordKind::Hl7) => Stack::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
             settings: super::StackSettings {
                 transport: machine.transport.operation_timeout_ms,
                 frame_limit: machine.framing.limit,
@@ -63,12 +64,7 @@ pub(super) fn file_stack(
                 .map(|o| hl7_orders(o, path))
                 .transpose()?,
         }))),
-        StackChoice::AstmLis02
-        | StackChoice::Hl7V2
-        | StackChoice::LawManager
-        | StackChoice::Poct
-        | StackChoice::VidasLiteral
-        | StackChoice::Autolyser => {
+        None | Some(RecordKind::Vendor) => {
             return Err(Error::IncompatibleStack {
                 path: path.into(),
                 reason: "validated file pickup supports only LIS02 or HL7",

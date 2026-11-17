@@ -113,7 +113,7 @@ pub(super) async fn complete(
         match state {
             PollIntentState::Confirmed => *guard = None,
             PollIntentState::Pending | PollIntentState::Uncertain => {
-                return Err(Error::PollConfirmationDidNotReconcileCustody);
+                return Err(Error::PollCustodyUnreconciled);
             }
         }
     }

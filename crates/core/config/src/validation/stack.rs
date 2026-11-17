@@ -64,9 +64,8 @@ pub(super) fn validate_stack(m: &ParsedMachine<'_>, path: &str) -> Result<(), Er
 pub(super) fn validate_dialog_and_framing(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
     let d = &m.dialog;
     let f = &m.framing;
-    if (matches!(m.choice(), StackChoice::AstmLis02)) != d.contention_priority.is_some()
-        || matches!(m.choice(), StackChoice::Hl7V2 | StackChoice::LawManager)
-            != d.acknowledgment.is_some()
+    if (m.choice().has_astm_link()) != d.contention_priority.is_some()
+        || m.choice().has_hl7_acknowledgment() != d.acknowledgment.is_some()
     {
         return Err(invalid(
             path,
@@ -93,14 +92,14 @@ pub(super) fn validate_dialog_and_framing(m: &ParsedMachine<'_>, path: &str) -> 
             "use 1 through 16777216 bytes",
         ));
     }
-    if (matches!(m.choice(), StackChoice::AstmLis02)) != f.checksum_hex.is_some() {
+    if (m.choice().has_astm_link()) != f.checksum_hex.is_some() {
         return Err(invalid(
             path,
             "framing.checksum_hex",
             "declare checksum hex policy only for LIS01",
         ));
     }
-    if matches!(m.choice(), StackChoice::AstmLis02) {
+    if m.choice().has_astm_link() {
         analyte_framing::astm::Limit::new(f.limit).map_err(|_| {
             invalid(
                 path,
@@ -122,11 +121,9 @@ pub(super) fn validate_syntax(m: &ParsedMachine<'_>, path: &str) -> Result<(), E
             edition: edition.as_str(),
         });
     }
-    if (matches!(
-        m.choice(),
-        StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager
-    )) != (s.edition.is_some() && s.terminator.is_some() && s.escapes.is_some())
-        || (matches!(m.choice(), StackChoice::AstmLis02 | StackChoice::FileAstm)
+    if (m.choice().has_hl7_records())
+        != (s.edition.is_some() && s.terminator.is_some() && s.escapes.is_some())
+        || (m.choice().has_astm_records()
             && (s.edition.is_some() || s.terminator.is_some() || s.escapes.is_some()))
     {
         return Err(invalid(
@@ -168,7 +165,7 @@ pub(super) fn validate_protocol(m: &ParsedMachine<'_>, path: &str) -> Result<(),
             "poct",
         ),
         (
-            matches!(m.choice(), StackChoice::VidasLiteral),
+            m.choice().has_vidas_assay_codes(),
             m.vidas.is_some(),
             "vidas",
         ),

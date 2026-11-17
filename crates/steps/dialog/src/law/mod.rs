@@ -8,6 +8,42 @@ use thiserror::Error;
 
 mod failure;
 pub use crate::ExchangeId;
+/// Operation whose deadline elapsed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeadlineKind {
+    /// Deadline for LAW independent transaction deadline.
+    IndependentTransaction,
+    /// Deadline for LAW receive deadline expired.
+    Receive,
+    /// Deadline for LAW response send deadline expired.
+    ResponseSend,
+    /// Deadline for LAW processing deadline expired; no acceptance promised.
+    Processing,
+    /// Deadline for LAW exchange closed.
+    Closed,
+    /// Deadline for LAW outbound work expired before issuance.
+    OutboundWork,
+}
+impl DeadlineKind {
+    /// Stable operation text for display and retained evidence.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::IndependentTransaction => "LAW independent transaction deadline",
+            Self::Receive => "LAW receive deadline expired",
+            Self::ResponseSend => "LAW response send deadline expired",
+            Self::Processing => "LAW processing deadline expired; no acceptance promised",
+            Self::Closed => "LAW exchange closed",
+            Self::OutboundWork => "LAW outbound work expired before issuance",
+        }
+    }
+}
+impl std::fmt::Display for DeadlineKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Link role; independent outbound links accept only the correlated ORL transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Link {
@@ -142,7 +178,7 @@ pub enum Error {
     Busy,
     /// Named exchange deadline expired.
     #[error("{0}")]
-    Deadline(&'static str),
+    Deadline(DeadlineKind),
     /// Storage refused custody.
     #[error("LAW durable commit refused")]
     NotStored,
@@ -271,19 +307,19 @@ impl Dialog {
             let reason = match self.state {
                 State::Idle => {
                     if self.link == Link::WorkResponse {
-                        "LAW independent transaction deadline"
+                        DeadlineKind::IndependentTransaction
                     } else {
-                        "LAW receive deadline expired"
+                        DeadlineKind::Receive
                     }
                 }
-                State::Writing { .. } => "LAW response send deadline expired",
+                State::Writing { .. } => DeadlineKind::ResponseSend,
                 State::Store(..)
                 | State::Query(_)
                 | State::WorkResponse(_)
                 | State::Interpret(..)
                 | State::Respond(..)
-                | State::AwaitDeadline => "LAW processing deadline expired; no acceptance promised",
-                State::Closed => "LAW exchange closed",
+                | State::AwaitDeadline => DeadlineKind::Processing,
+                State::Closed => DeadlineKind::Closed,
             };
             if let Event::Byte(byte) = event {
                 out.push(Action::Unconsumed(byte));
@@ -392,7 +428,7 @@ impl Dialog {
             }
             Event::Send(message, until) => {
                 if self.link == Link::WorkResponse && self.clock.now() >= until {
-                    return Err(Error::Deadline("LAW outbound work expired before issuance"));
+                    return Err(Error::Deadline(DeadlineKind::OutboundWork));
                 }
                 if !matches!(self.state, State::Idle) || self.receiving() {
                     return Err(Error::Busy);

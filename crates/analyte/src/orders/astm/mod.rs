@@ -121,7 +121,7 @@ async fn answer(
                     bytes = bytes
                         .checked_add(cached.document.len())
                         .filter(|n| *n <= limits.bytes())
-                        .ok_or_else(|| Error::AstmQueryResponseByteLimitExceeded)?;
+                        .ok_or_else(|| Error::AstmQueryResponseTooLarge)?;
                     let order: analyte_contract::Order =
                         analyte_contract::decode(cached.document.as_bytes())?;
                     let fields = order.fields();

@@ -17,6 +17,31 @@ use std::{
 };
 use tokio::sync::watch;
 
+enum Query<'a> {
+    Idle,
+    Receiving {
+        started: Instant,
+        superseded: bool,
+    },
+    LookingUp {
+        pending: Pending<'a>,
+    },
+    Answer {
+        reply: Option<crate::orders::astm::Reply>,
+        until: Instant,
+    },
+}
+impl Query<'_> {
+    fn started(&self) -> Result<Instant, Error> {
+        match self {
+            Self::Receiving { started, .. } => Ok(*started),
+            Self::Idle | Self::LookingUp { .. } | Self::Answer { .. } => {
+                Err(Error::QueryStartMissing)
+            }
+        }
+    }
+}
+
 pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::AstmStack,
@@ -31,13 +56,9 @@ pub(super) struct Host<'a, 'm> {
     raw: Vec<u8>,
     payload: Vec<u8>,
     input_evidence: connection_input::Custody,
-    pending: Option<Pending<'a>>,
-    response: Option<crate::orders::astm::Reply>,
-    response_deadline: Option<Instant>,
-    query_started: Option<Instant>,
-    active_orders: Vec<analyte_store::MachineOrder>,
-    order_cursor: String,
-    next_order_poll: Instant,
+    query: Query<'a>,
+    query_orders: Vec<analyte_store::MachineOrder>,
+    work: crate::orders::sending::Work<Vec<u8>>,
 }
 
 impl<'a, 'm> Host<'a, 'm> {
@@ -64,13 +85,9 @@ impl<'a, 'm> Host<'a, 'm> {
             raw: Vec::new(),
             payload: Vec::new(),
             input_evidence: connection_input::Custody::default(),
-            pending: None,
-            response: None,
-            response_deadline: None,
-            query_started: None,
-            active_orders: Vec::new(),
-            order_cursor: String::new(),
-            next_order_poll: Instant::now(),
+            query: Query::Idle,
+            query_orders: Vec::new(),
+            work: crate::orders::sending::Work::default(),
         })
     }
     async fn receive_bytes(
@@ -93,18 +110,10 @@ impl<'a, 'm> Host<'a, 'm> {
     async fn outgoing_events(&mut self, bytes: Vec<u8>) -> Result<Vec<Event>, Error> {
         let outgoing = if bytes.is_empty()
             && self.dialog.next_deadline().is_none()
-            && self.response.is_none()
-            && self.pending.is_none()
-            && Instant::now() >= self.next_order_poll
+            && matches!(self.query, Query::Idle | Query::Receiving { .. })
         {
-            self.next_order_poll = Instant::now()
-                .checked_add(Duration::from_secs(1))
-                .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
-            crate::orders::sending::next(
-                self.store,
-                self.machine.machine(),
-                &mut self.order_cursor,
-                |order| {
+            self.work
+                .poll_one(self.store, self.machine.machine(), |order| {
                     analyte_mapping::astm::map_order(
                         order,
                         self.settings.settings().syntax().limits(),
@@ -114,36 +123,37 @@ impl<'a, 'm> Host<'a, 'm> {
                                 analyte_mapping::OrderMappingError::Disabled,
                             ))?,
                     )
-                },
-            )
-            .await?
+                    .map(|record| record.encode())
+                })
+                .await?
         } else {
             None
         };
         let events = if let Some(reserved) = outgoing {
-            self.active_orders.push(reserved.order);
             vec![Event::Send(crate::orders::astm::envelope(
                 self.machine.machine(),
-                vec![reserved.payload.encode()],
+                vec![reserved],
                 analyte_astm::OrderTermination::Normal,
             ))]
         } else if bytes.is_empty()
-            && self.response.is_some()
+            && matches!(self.query, Query::Answer { .. })
             && self.dialog.next_deadline().is_none()
         {
-            if self
-                .response_deadline
-                .is_some_and(|until| Instant::now() >= until)
-            {
-                self.response = crate::orders::astm::failure(self.machine.machine());
+            let Query::Answer { mut reply, until } =
+                std::mem::replace(&mut self.query, Query::Idle)
+            else {
+                return Err(Error::QueryStartMissing);
+            };
+            if Instant::now() >= until {
+                reply = crate::orders::astm::failure(self.machine.machine());
             }
-            match self.response.take() {
+            match reply {
                 Some(reply) => match crate::orders::astm::reserve_query(
                     self.store,
                     self.machine.machine(),
                     reply,
-                    self.response_deadline.unwrap_or_else(Instant::now),
-                    &mut self.active_orders,
+                    until,
+                    &mut self.query_orders,
                 )
                 .await?
                 {
@@ -171,12 +181,10 @@ impl<'a, 'm> Host<'a, 'm> {
             // Start the query budget before admission and journaling.
             // A new transfer supersedes a pending lookup, so no cached
             // order response can wait behind another machine message.
-            self.query_started = Some(Instant::now());
-            if self.pending.is_some() || self.response.is_some() {
-                self.pending = None;
-                self.response = crate::orders::astm::failure(self.machine.machine());
-                self.response_deadline = None;
-            }
+            self.query = Query::Receiving {
+                started: Instant::now(),
+                superseded: matches!(self.query, Query::LookingUp { .. } | Query::Answer { .. }),
+            };
             let expected = settings
                 .settings()
                 .frame_limit()
@@ -225,8 +233,10 @@ impl<'a, 'm> Host<'a, 'm> {
                 self.commit_frame(id, number, bytes, stop, actions).await?;
             }
             Action::Record(record) => {
-                if analyte_astm::starts_query(&record) && self.query_started.is_none() {
-                    self.query_started = Some(Instant::now());
+                if analyte_astm::starts_query(&record)
+                    && !matches!(self.query, Query::Receiving { .. })
+                {
+                    return Err(Error::QueryStartMissing);
                 }
                 if self
                     .payload
@@ -268,7 +278,8 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Action::LimitReached => return Err(Error::ResourceLimitRefusedTransfer),
             Action::Sent(end) => {
-                for order in self.active_orders.drain(..) {
+                self.work.astm_finished(self.store, end).await?;
+                for order in self.query_orders.drain(..) {
                     crate::orders::sending::finished(self.store, &order, end).await?;
                 }
             }
@@ -349,27 +360,37 @@ impl<'a, 'm> Host<'a, 'm> {
                         intake::interpret(self.store, self.machine.machine(), id).await?;
                     }
                     Some(Request::Cancel) => {
-                        self.pending = None;
-                        self.response = None;
-                        self.response_deadline = None;
+                        self.query = Query::Idle;
                     }
                     Some(Request::Unsupported) => {
-                        self.pending = None;
-                        self.response = crate::orders::astm::failure(self.machine.machine());
-                        self.response_deadline = None;
+                        let started = self.query.started()?;
+                        self.query = Query::Answer {
+                            reply: crate::orders::astm::failure(self.machine.machine()),
+                            until: started,
+                        };
                     }
                     Some(Request::Orders(samples)) => {
-                        if self.pending.is_some() || self.response.is_some() {
-                            self.pending = None;
-                            self.response = crate::orders::astm::failure(self.machine.machine());
-                            self.response_deadline = None;
+                        let started = self.query.started()?;
+                        if matches!(
+                            self.query,
+                            Query::Receiving {
+                                superseded: true,
+                                ..
+                            }
+                        ) {
+                            self.query = Query::Answer {
+                                reply: crate::orders::astm::failure(self.machine.machine()),
+                                until: started,
+                            };
                         } else {
-                            self.pending = Some(Pending::new(
-                                self.store,
-                                self.machine.machine(),
-                                samples,
-                                self.query_started.unwrap_or_else(Instant::now),
-                            )?);
+                            self.query = Query::LookingUp {
+                                pending: Pending::new(
+                                    self.store,
+                                    self.machine.machine(),
+                                    samples,
+                                    started,
+                                )?,
+                            };
                         }
                     }
                 }
@@ -387,7 +408,20 @@ impl<'a, 'm> Host<'a, 'm> {
         }
         self.raw.clear();
         self.payload.clear();
-        self.query_started = None;
+        if let Query::Receiving {
+            started,
+            superseded,
+        } = self.query
+        {
+            self.query = if superseded {
+                Query::Answer {
+                    reply: crate::orders::astm::failure(self.machine.machine()),
+                    until: started,
+                }
+            } else {
+                Query::Idle
+            };
+        }
 
         Ok(())
     }
@@ -396,29 +430,31 @@ impl<'a, 'm> Host<'a, 'm> {
 impl Effects for Host<'_, '_> {
     type Error = Error;
     fn wait(&self) -> Result<Option<Duration>, Error> {
-        if self.response.is_some() && self.dialog.next_deadline().is_none() {
+        if matches!(self.query, Query::Answer { .. }) && self.dialog.next_deadline().is_none() {
             return Ok(Some(Duration::ZERO));
         }
-        Ok(Some(
-            self.dialog
-                .next_deadline()
-                .map_or(Duration::from_secs(1), |deadline| {
-                    deadline.saturating_sub(self.start.elapsed())
-                }),
-        ))
+        Ok(Some(self.dialog.next_deadline().map_or(
+            crate::orders::sending::ORDER_POLL_INTERVAL,
+            |deadline| deadline.saturating_sub(self.start.elapsed()),
+        )))
     }
     async fn background(
         &mut self,
         _machine: &intake::ConnectionEvidence<'_>,
         _store: &Handle,
     ) -> Result<(), Error> {
-        let answer = match self.pending.as_mut() {
-            Some(query) => query.finish(self.machine.machine()).await,
-            None => std::future::pending().await,
+        let Query::LookingUp { pending } = &mut self.query else {
+            return std::future::pending().await;
         };
-        self.response_deadline = self.pending.as_ref().map(Pending::deadline);
-        self.pending = None;
-        self.response = answer?;
+        let answer = pending.finish(self.machine.machine()).await?;
+        let until = pending.deadline();
+        self.query = match answer {
+            Some(reply) => Query::Answer {
+                reply: Some(reply),
+                until,
+            },
+            None => Query::Idle,
+        };
         Ok(())
     }
     async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
@@ -480,7 +516,15 @@ impl Effects for Host<'_, '_> {
         }
         let cleanup = self.input_evidence.retain(self.store, self.machine).await;
         crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
-        for order in self.active_orders.drain(..) {
+        let cleanup = self
+            .work
+            .close(
+                self.store,
+                crate::orders::outcome::Code::ConnectionEndedBeforeConfirmation.into(),
+            )
+            .await;
+        crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+        for order in self.query_orders.drain(..) {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,
                 &order,

@@ -121,7 +121,11 @@ mod tests {
                 if panic {
                     std::panic::panic_any("protected-panic-token");
                 }
-                Err(analyte_transport::Error::Deadline("protected-error-token"))
+                Err(analyte_transport::Error::Io {
+                    operation: "test",
+                    endpoint: "protected-error-token".into(),
+                    source: std::io::Error::other("protected-error-token"),
+                })
             });
             let output = crate::machine::worker::tests::capture(|| {
                 drop(Owner {

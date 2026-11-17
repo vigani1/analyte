@@ -5,11 +5,6 @@ use crate::{
 };
 use analyte_store::Handle;
 use analyte_vidas::syntax::Message;
-use std::time::{Duration, Instant};
-
-// Preserve the existing VIDAS idle polling cadence independently of dialog timers.
-const ORDER_POLL_INTERVAL: Duration = Duration::from_secs(1);
-
 pub(crate) enum Progress {
     UploadFinished,
     DownloadNext(Message),
@@ -22,12 +17,9 @@ impl Work<Message> {
         store: &Handle,
         settings: &analyte_config::VidasStack,
     ) -> Result<Option<Message>, Error> {
-        if Instant::now() < self.next_poll {
+        if !self.poll_due()? {
             return Ok(None);
         }
-        self.next_poll = Instant::now()
-            .checked_add(ORDER_POLL_INTERVAL)
-            .ok_or(Error::OrderPollDeadlineOverflow)?;
         if !self
             .reserve(store, machine.machine(), |order| {
                 let requests = analyte_mapping::vidas::map_order(

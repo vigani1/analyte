@@ -2,7 +2,7 @@
 use crate::installation::config::Machine;
 use crate::intake::{Error, InterpretationOutcome, Mapping, ParkReason};
 use crate::machine::interpretation::ReadError;
-use analyte_config::{RecordTransport, Stack};
+use analyte_config::Stack;
 use analyte_hl7::{Message, WireCompatibility, law};
 use analyte_store::{Handle, InterpretationCommit, Receipt, Reprocess};
 
@@ -20,14 +20,15 @@ impl Context<'_> {
         machine: &Machine,
     ) -> Result<super::policy::Policy, Error> {
         use super::policy::Policy;
-        match machine.snapshot.effective().stack() {
-            Stack::Law(_) => Ok(Policy::Execution(
+        let stack = machine.snapshot.effective().stack();
+        if stack.law().is_some() {
+            Ok(Policy::Execution(
                 crate::machine::law::policy::Policy::prepare(store, machine, self.results).await?,
-            )),
-            Stack::Poct(_) => Ok(crate::machine::poct::policy::policy()),
-            Stack::Astm(_) | Stack::Hl7(_) | Stack::Vidas(_) | Stack::Autolyser(_) => {
-                Ok(Policy::standard())
-            }
+            ))
+        } else if matches!(stack, Stack::Poct(_)) {
+            Ok(crate::machine::poct::policy::policy())
+        } else {
+            Ok(Policy::standard())
         }
     }
 }
@@ -51,16 +52,12 @@ pub(crate) async fn process(
     supplied: Option<Mapping>,
     action: Option<Reprocess>,
 ) -> Result<Outcome, Error> {
-    let profile = match machine.snapshot.effective().stack() {
-        Stack::Hl7(RecordTransport::Stream(s)) => {
-            Some(Profile::Hl7(s.settings().syntax(), s.settings().codes()))
-        }
-        Stack::Hl7(RecordTransport::Folder(s)) => {
-            Some(Profile::Hl7(s.settings().syntax(), s.settings().codes()))
-        }
-        Stack::Law(s) => Some(Profile::Law(s)),
-        Stack::Astm(_) | Stack::Poct(_) | Stack::Vidas(_) | Stack::Autolyser(_) => None,
-    };
+    let stack = machine.snapshot.effective().stack();
+    let profile = stack.law().map(Profile::Law).or_else(|| {
+        stack
+            .hl7_record_settings()
+            .map(|(syntax, mappings)| Profile::Hl7(syntax, mappings))
+    });
     let Some(profile) = profile else {
         let mapping = if supplied.is_some() {
             Ok(analyte_mapping::Output::default())
@@ -210,12 +207,10 @@ async fn finish(
     let mapping = supplied.unwrap_or_else(|| match mapped {
         Ok(output) => Mapping::Mapped(output),
         Err(error) => {
-            let reason = match machine.snapshot.effective().stack() {
-                Stack::Vidas(_) => format!("VIDAS interpretation: {error}"),
-                Stack::Autolyser(_) => format!("Autolyser interpretation: {error}"),
-                Stack::Poct(_) => format!("POCT interpretation: {error}"),
-                Stack::Astm(_) | Stack::Hl7(_) | Stack::Law(_) => error.to_string(),
-            };
+            let reason = format!(
+                "{}{error}",
+                machine.snapshot.effective().stack().interpretation_prefix()
+            );
             Mapping::Parked(ParkReason::Diagnostic(reason))
         }
     });
